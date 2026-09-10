@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, Monitor, Users, UsersThree } from '@phosphor-icons/react';
 import { getSubOrgsWithDetails } from '../../-services/custom-team-services';
@@ -64,6 +65,7 @@ export function StatCard({
  * current view.
  */
 export function SubOrgSummaryCards() {
+    const { t } = useTranslation('manageCustomTeamsSubOrgSummaryCards');
     const instituteId = getCurrentInstituteId();
     const { data, isLoading } = useQuery({
         queryKey: ['sub-orgs-with-details', instituteId],
@@ -93,25 +95,25 @@ export function SubOrgSummaryCards() {
         <div className="flex flex-wrap gap-3">
             <StatCard
                 tone="primary"
-                label={`Total ${term}`}
+                label={t('cards.totalTerm', { term })}
                 value={show(summary.total)}
                 icon={<Monitor className="size-5" />}
             />
             <StatCard
                 tone="success"
-                label="Active"
+                label={t('cards.active')}
                 value={show(summary.active)}
                 icon={<CheckCircle className="size-5" />}
             />
             <StatCard
                 tone="warning"
-                label="Total Learners"
+                label={t('cards.totalLearners')}
                 value={show(summary.learners)}
                 icon={<UsersThree className="size-5" />}
             />
             <StatCard
                 tone="info"
-                label="Total Seats"
+                label={t('cards.totalSeats')}
                 value={isLoading ? '—' : `${summary.usedSeats}/${summary.totalSeats}`}
                 icon={<Users className="size-5" />}
             />

@@ -1,8 +1,35 @@
-import { describe, expect, it } from 'vitest';
-import {
+import { describe, expect, it, vi } from 'vitest';
+import en from '../../../../../public/locales/en/communicationWhatsappErrors.json';
+
+/**
+ * whatsapp-errors.ts resolves its display text through the i18next singleton (it runs from
+ * plain, non-React call sites, so it cannot use the useTranslation() hook). Rather than boot the
+ * real i18next backend (which fetches catalogs over the network — unavailable here), mock the
+ * singleton with a tiny resolver over the real English catalog, so these tests still exercise the
+ * actual production strings rather than raw keys.
+ */
+function readCatalog(path: string[]): unknown {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return path.reduce((node: any, segment) => node?.[segment], en);
+}
+
+vi.mock('@/i18n', () => ({
+    default: {
+        language: 'en',
+        t: (key: string, options?: Record<string, unknown>) => {
+            const [, path] = key.split(':');
+            const value = readCatalog(path?.split('.') ?? []);
+            if (typeof value !== 'string') return key;
+            if (!options) return value;
+            return value.replace(/\{\{(\w+)\}\}/g, (_, name) => String(options[name] ?? ''));
+        },
+    },
+}));
+
+const {
     describeApiError,
     explainWhatsAppFailure,
-} from '@/routes/communication/inbox/-utils/whatsapp-errors';
+} = await import('@/routes/communication/inbox/-utils/whatsapp-errors');
 
 /**
  * A failed WhatsApp message used to reach the admin as the provider's own shorthand —

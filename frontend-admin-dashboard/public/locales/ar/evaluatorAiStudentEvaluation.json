@@ -1,0 +1,18 @@
+{
+    "noPdfSubmissionFound": "لم يتم العثور على أي ملف PDF مُرسل من هذا الطالب",
+    "couldNotRetrievePdfUrl": "تعذّر استرجاع رابط PDF",
+    "failedToRetrievePdf": "فشل استرجاع ملف PDF",
+    "columnId": "المعرّف",
+    "columnName": "الاسم",
+    "columnSubmission": "الإرسال",
+    "columnMarks": "الدرجات",
+    "columnDetails": "التفاصيل",
+    "columnStatus": "الحالة",
+    "loading": "جارٍ التحميل...",
+    "preview": "معاينة",
+    "details": "التفاصيل",
+    "extractedResponsesOf": "الإجابات المستخرجة لـ {{student}}",
+    "confirmReEvaluation": "تأكيد إعادة التقييم",
+    "confirmReEvaluateStudent": "هل أنت متأكد من رغبتك في إعادة تقييم هذا الطالب؟",
+    "goAhead": "متابعة"
+}

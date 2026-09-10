@@ -1,0 +1,11 @@
+{
+    "loadOlderMessages": "تحميل الرسائل الأقدم",
+    "noMessages": "لا توجد رسائل في هذه المحادثة",
+    "backToConversations": "العودة إلى المحادثات",
+    "reply": "رد",
+    "fromAddress": "من {{address}}",
+    "sent": "أُرسلت",
+    "received": "استُلمت",
+    "selectConversation": "اختر محادثة بريد إلكتروني",
+    "selectConversationHint": "انقر على أي صف على اليسار لعرض محادثته"
+}

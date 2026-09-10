@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, ClipboardText, XCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyTable } from '@/components/design-system/table';
@@ -36,6 +37,7 @@ import {
  * that need a decision under three hundred that don't.
  */
 export const RegularizationsMain = () => {
+    const { t } = useTranslation('erpRegularizationsMain');
     const { isHrAdmin, isHrStaff } = useHrRole();
     const [status, setStatus] = useState<RegularizationStatus>('PENDING');
     const [pending, setPending] = useState<{
@@ -50,12 +52,12 @@ export const RegularizationsMain = () => {
         const base: ColumnDef<RegularizationDTO>[] = [
             {
                 id: 'employee',
-                header: 'Employee',
+                header: t('columns.employee'),
                 size: 200,
                 cell: ({ row }) => (
                     <div className="flex flex-col">
                         <span className="truncate text-body font-semibold text-foreground">
-                            {row.original.employee_name || 'Employee'}
+                            {row.original.employee_name || t('defaultEmployeeName')}
                         </span>
                         {row.original.employee_code && (
                             <span className="text-caption text-muted-foreground">
@@ -67,7 +69,7 @@ export const RegularizationsMain = () => {
             },
             {
                 id: 'date',
-                header: 'Date',
+                header: t('columns.date'),
                 size: 120,
                 cell: ({ row }) => (
                     <span className="text-body text-foreground">
@@ -79,7 +81,7 @@ export const RegularizationsMain = () => {
             },
             {
                 id: 'change',
-                header: 'Requested change',
+                header: t('columns.requestedChange'),
                 size: 240,
                 cell: ({ row }) => (
                     <div className="flex flex-wrap items-center gap-2">
@@ -91,24 +93,28 @@ export const RegularizationsMain = () => {
             },
             {
                 id: 'times',
-                header: 'Times',
+                header: t('columns.times'),
                 size: 200,
                 cell: ({ row }) => (
                     <div className="flex flex-col text-caption tabular-nums">
                         <span className="text-muted-foreground">
-                            was {formatClockTime(row.original.original_check_in)}–
-                            {formatClockTime(row.original.original_check_out)}
+                            {t('timesWas', {
+                                from: formatClockTime(row.original.original_check_in),
+                                to: formatClockTime(row.original.original_check_out),
+                            })}
                         </span>
                         <span className="text-foreground">
-                            asks {formatClockTime(row.original.requested_check_in)}–
-                            {formatClockTime(row.original.requested_check_out)}
+                            {t('timesAsks', {
+                                from: formatClockTime(row.original.requested_check_in),
+                                to: formatClockTime(row.original.requested_check_out),
+                            })}
                         </span>
                     </div>
                 ),
             },
             {
                 id: 'reason',
-                header: 'Reason',
+                header: t('columns.reason'),
                 size: 240,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-muted-foreground">
@@ -121,12 +127,12 @@ export const RegularizationsMain = () => {
         if (status !== 'PENDING') {
             base.push({
                 id: 'outcome',
-                header: 'Outcome',
+                header: t('columns.outcome'),
                 size: 180,
                 cell: ({ row }) => (
                     <div className="flex flex-col gap-1">
                         <StatusChip
-                            text={humanizeToken(row.original.approval_status) || 'Pending'}
+                            text={humanizeToken(row.original.approval_status) || t('defaultOutcome')}
                             textSize="text-caption"
                             status={regularizationTone(row.original.approval_status)}
                             showIcon={false}
@@ -144,7 +150,7 @@ export const RegularizationsMain = () => {
         if (isHrAdmin && status === 'PENDING') {
             base.push({
                 id: 'actions',
-                header: 'Decision',
+                header: t('columns.decision'),
                 size: 180,
                 cell: ({ row }) => (
                     <div className="flex items-center gap-2">
@@ -156,7 +162,7 @@ export const RegularizationsMain = () => {
                                 setPending({ request: row.original, decision: 'APPROVED' })
                             }
                         >
-                            <CheckCircle size={15} className="text-success-600" /> Approve
+                            <CheckCircle size={15} className="text-success-600" /> {t('approve')}
                         </MyButton>
                         <MyButton
                             type="button"
@@ -166,7 +172,7 @@ export const RegularizationsMain = () => {
                                 setPending({ request: row.original, decision: 'REJECTED' })
                             }
                         >
-                            <XCircle size={15} className="text-danger-600" /> Reject
+                            <XCircle size={15} className="text-danger-600" /> {t('reject')}
                         </MyButton>
                     </div>
                 ),
@@ -174,25 +180,22 @@ export const RegularizationsMain = () => {
         }
 
         return base;
-    }, [isHrAdmin, status]);
+    }, [isHrAdmin, status, t]);
 
     if (!isHrStaff) return <HrNoAccessCard />;
 
     return (
         <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">
-                <h2 className="text-h2-semibold text-foreground">Regularizations</h2>
+                <h2 className="text-h2-semibold text-foreground">{t('heading')}</h2>
                 <p className="max-w-3xl text-body text-muted-foreground">
-                    Corrections employees have asked for on their own attendance — a missed
-                    check-in, a day marked absent that wasn&apos;t. Approving one rewrites the
-                    attendance record for that day, so the corrected day is what payroll pays
-                    against.
+                    {t('description')}
                 </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
                 <SingleFilterChip
-                    label="Status"
+                    label={t('statusFilterLabel')}
                     options={REGULARIZATION_STATUSES.map((option) => ({
                         id: option,
                         label: humanizeToken(option),
@@ -201,8 +204,10 @@ export const RegularizationsMain = () => {
                     onChange={(next) => setStatus((next as RegularizationStatus) ?? 'PENDING')}
                 />
                 <span className="text-caption text-muted-foreground">
-                    {rows.length} {rows.length === 1 ? 'request' : 'requests'}{' '}
-                    {humanizeToken(status).toLowerCase()}
+                    {t('requestsCount', {
+                        count: rows.length,
+                        status: humanizeToken(status).toLowerCase(),
+                    })}
                 </span>
             </div>
 
@@ -210,7 +215,7 @@ export const RegularizationsMain = () => {
                 <HrLoadingRows rows={4} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Couldn't load regularization requests."
+                    message={t('loadError')}
                     onRetry={() => void query.refetch()}
                 />
             ) : rows.length === 0 ? (
@@ -218,13 +223,13 @@ export const RegularizationsMain = () => {
                     icon={<ClipboardText size={36} className="text-muted-foreground" />}
                     title={
                         status === 'PENDING'
-                            ? 'Nothing waiting for a decision'
-                            : `No ${humanizeToken(status).toLowerCase()} requests`
+                            ? t('emptyPendingTitle')
+                            : t('emptyOtherTitle', { status: humanizeToken(status).toLowerCase() })
                     }
                     description={
                         status === 'PENDING'
-                            ? 'Requests appear here when an employee asks for a correction to their attendance.'
-                            : 'Switch the status filter to see the other requests.'
+                            ? t('emptyPendingDescription')
+                            : t('emptyOtherDescription')
                     }
                 />
             ) : (
@@ -247,8 +252,7 @@ export const RegularizationsMain = () => {
 
             {!isHrAdmin && (
                 <p className="text-caption text-muted-foreground">
-                    You can review requests but not decide them — approving or rejecting needs an HR
-                    Admin role in this institute.
+                    {t('reviewOnlyNote')}
                 </p>
             )}
 

@@ -1,4 +1,5 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
+import { useTranslation } from 'react-i18next';
 import { createLazyFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -71,6 +72,7 @@ export const Route = createLazyFileRoute('/announcement/email-campaigning/')({
 });
 
 function EmailCampaigningPage() {
+    const { t } = useTranslation('announcementEmailCampaigningIndex');
     const { setNavHeading } = useNavHeadingStore();
     const { toast } = useToast();
     const navigate = useNavigate();
@@ -206,8 +208,8 @@ function EmailCampaigningPage() {
     >({});
 
     useEffect(() => {
-        setNavHeading(isEditing ? 'Edit Scheduled Campaign' : 'Email Campaigning');
-    }, [setNavHeading, isEditing]);
+        setNavHeading(isEditing ? t('page.navHeadingEdit') : t('page.navHeadingCreate'));
+    }, [setNavHeading, isEditing, t]);
 
     // Prefill when editing: fetch the announcement once and hydrate form state
     useEffect(() => {
@@ -371,8 +373,8 @@ function EmailCampaigningPage() {
             } catch (e) {
                 console.error('Failed to prefill announcement', e);
                 toast({
-                    title: 'Could not load campaign for editing',
-                    description: e instanceof Error ? e.message : 'Try again',
+                    title: t('toast.prefillErrorTitle'),
+                    description: e instanceof Error ? e.message : t('common.tryAgain'),
                     variant: 'destructive',
                 });
             }
@@ -380,7 +382,7 @@ function EmailCampaigningPage() {
         return () => {
             cancelled = true;
         };
-    }, [editingId, toast]);
+    }, [editingId, toast, t]);
 
     // Load institute tags for TAG recipients
     useEffect(() => {
@@ -480,7 +482,7 @@ function EmailCampaigningPage() {
             };
         } catch (error) {
             console.error('Error loading email templates:', error);
-            setTemplatesError('Failed to load email templates. Please try again.');
+            setTemplatesError(t('templatesLoadError'));
             return { options: [], hasMore: false };
         }
     };
@@ -636,8 +638,8 @@ function EmailCampaigningPage() {
         } catch (error) {
             console.error('Error loading template:', error);
             toast({
-                title: 'Error',
-                description: 'Failed to load template content. Please try again.',
+                title: t('toast.templateLoadErrorTitle'),
+                description: t('toast.templateLoadErrorDescription'),
                 variant: 'destructive',
             });
         }
@@ -902,44 +904,44 @@ function EmailCampaigningPage() {
             const trimmedContent = htmlContent.trim();
 
             if (!trimmedTitle) {
-                validationErrors.push('Campaign name is required');
-                fieldErrors.title = 'Campaign name is required';
+                validationErrors.push(t('validation.campaignNameRequired'));
+                fieldErrors.title = t('validation.campaignNameRequired');
             }
             if (!trimmedSubject) {
-                validationErrors.push('Email subject is required');
-                fieldErrors.subject = 'Email subject is required';
+                validationErrors.push(t('validation.emailSubjectRequired'));
+                fieldErrors.subject = t('validation.emailSubjectRequired');
             }
             if (!trimmedContent) {
-                validationErrors.push('Content is required');
-                fieldErrors.content = 'Content is required';
+                validationErrors.push(t('validation.contentRequired'));
+                fieldErrors.content = t('validation.contentRequired');
             }
 
             // Validate SYSTEM_ALERT mode settings
             const s = (modeSettings.SYSTEM_ALERT || {}) as Record<string, unknown>;
             const p = (s.priority as string) || '';
             if (!p) {
-                validationErrors.push('Priority is required');
-                fieldErrors['modes.SYSTEM_ALERT.priority'] = 'Priority is required';
+                validationErrors.push(t('validation.priorityRequired'));
+                fieldErrors['modes.SYSTEM_ALERT.priority'] = t('validation.priorityRequired');
             }
 
             // Scheduling validations
             if (scheduleType === 'ONE_TIME') {
                 if (!oneTimeStart) {
-                    validationErrors.push('Schedule: run time is required');
-                    fieldErrors['schedule.startDate'] = 'Run time is required';
+                    validationErrors.push(t('validation.scheduleRunTimeRequired'));
+                    fieldErrors['schedule.startDate'] = t('validation.runTimeRequired');
                 }
             }
             if (scheduleType === 'RECURRING') {
                 if (!cronExpression) {
-                    validationErrors.push('Schedule: cron expression is required for recurring');
-                    fieldErrors['schedule.cronExpression'] = 'Cron expression is required';
+                    validationErrors.push(t('validation.scheduleCronRequired'));
+                    fieldErrors['schedule.cronExpression'] = t('validation.cronRequired');
                 }
             }
 
             if (validationErrors.length > 0) {
                 setErrors(fieldErrors);
                 toast({
-                    title: 'Missing required fields',
+                    title: t('toast.missingFieldsTitle'),
                     description: validationErrors.slice(0, 4).join('\n'),
                     variant: 'destructive',
                 });
@@ -955,8 +957,8 @@ function EmailCampaigningPage() {
                 );
                 if (missingTags) {
                     toast({
-                        title: 'Select at least one tag',
-                        description: 'You have a TAG recipient without any selected tags.',
+                        title: t('toast.selectTagTitle'),
+                        description: t('toast.selectTagDescription'),
                         variant: 'destructive',
                     });
                     return;
@@ -964,8 +966,8 @@ function EmailCampaigningPage() {
                 const instId = getInstituteId();
                 if (!instId) {
                     toast({
-                        title: 'Institute required',
-                        description: 'An institute must be selected to target TAG recipients.',
+                        title: t('toast.instituteRequiredTitle'),
+                        description: t('toast.instituteRequiredDescription'),
                         variant: 'destructive',
                     });
                     return;
@@ -984,9 +986,8 @@ function EmailCampaigningPage() {
                 });
                 if (missingFilters) {
                     toast({
-                        title: 'Configure custom field filters',
-                        description:
-                            'You have a Custom Field Filter recipient without any configured filters.',
+                        title: t('toast.configureCustomFieldFiltersTitle'),
+                        description: t('toast.configureCustomFieldFiltersDescription'),
                         variant: 'destructive',
                     });
                     return;
@@ -1178,9 +1179,9 @@ function EmailCampaigningPage() {
                 await AnnouncementService.update(editingId, payload);
                 try {
                     const { toast: sonnerToast } = await import('sonner');
-                    sonnerToast.success('Email campaign updated successfully');
+                    sonnerToast.success(t('toast.updateSuccess'));
                 } catch {
-                    toast({ title: 'Email campaign updated successfully' });
+                    toast({ title: t('toast.updateSuccess') });
                 }
                 // Return the user to the schedule view after a successful update
                 navigate({ to: '/announcement/schedule' });
@@ -1189,9 +1190,9 @@ function EmailCampaigningPage() {
 
                 try {
                     const { toast: sonnerToast } = await import('sonner');
-                    sonnerToast.success('Email campaign created successfully');
+                    sonnerToast.success(t('toast.createSuccess'));
                 } catch {
-                    toast({ title: 'Email campaign created successfully' });
+                    toast({ title: t('toast.createSuccess') });
                 }
 
                 // Reset fields only on create — keep edited values visible after update
@@ -1239,16 +1240,16 @@ function EmailCampaigningPage() {
 
                 const msg = Object.values(details).slice(0, 5).join('\n');
                 toast({
-                    title: 'Please fix the highlighted fields',
+                    title: t('toast.fixHighlightedFieldsTitle'),
                     description: msg,
                     variant: 'destructive',
                 });
             } else {
                 toast({
-                    title: 'Failed to create',
+                    title: t('toast.failedToCreateTitle'),
                     description:
                         anyErr?.response?.data?.message ||
-                        (err instanceof Error ? err.message : 'Try again'),
+                        (err instanceof Error ? err.message : t('common.tryAgain')),
                     variant: 'destructive',
                 });
             }
@@ -1261,19 +1262,19 @@ function EmailCampaigningPage() {
         <div className="p-4">
             <div className="flex items-center justify-between gap-3">
                 <h2 className="text-xl font-semibold">
-                    {isEditing ? 'Edit Scheduled Email Campaign' : 'Email Campaigning'}
+                    {isEditing ? t('page.titleEdit') : t('page.titleCreate')}
                 </h2>
                 {isEditing && (
                     <div className="flex items-center gap-2">
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                            Editing scheduled campaign
+                            {t('page.editingBadge')}
                         </span>
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => navigate({ to: '/announcement/schedule' })}
                         >
-                            Cancel
+                            {t('page.cancel')}
                         </Button>
                     </div>
                 )}
@@ -1283,30 +1284,38 @@ function EmailCampaigningPage() {
                 <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
                     <DialogContent className="max-w-3xl">
                         <DialogHeader>
-                            <DialogTitle>Review Email Campaign</DialogTitle>
-                            <DialogDescription>Confirm details before creating.</DialogDescription>
+                            <DialogTitle>{t('reviewDialog.title')}</DialogTitle>
+                            <DialogDescription>{t('reviewDialog.description')}</DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4">
                             <div>
-                                <div className="text-sm font-medium">Campaign Name</div>
+                                <div className="text-sm font-medium">
+                                    {t('reviewDialog.campaignName')}
+                                </div>
                                 <div className="text-sm text-neutral-700">{title || '—'}</div>
                             </div>
                             <div>
-                                <div className="text-sm font-medium">Email Subject</div>
+                                <div className="text-sm font-medium">
+                                    {t('reviewDialog.emailSubject')}
+                                </div>
                                 <div className="text-sm text-neutral-700">{subject || '—'}</div>
                             </div>
                             <div>
-                                <div className="text-sm font-medium">Mode</div>
+                                <div className="text-sm font-medium">{t('reviewDialog.mode')}</div>
                                 <div className="text-sm text-neutral-700">
-                                    SYSTEM_ALERT (General Announcement)
+                                    {t('reviewDialog.modeSystemAlert')}
                                 </div>
                             </div>
                             <div>
-                                <div className="text-sm font-medium">Medium</div>
+                                <div className="text-sm font-medium">
+                                    {t('reviewDialog.medium')}
+                                </div>
                                 <div className="text-sm text-neutral-700">EMAIL</div>
                             </div>
                             <div>
-                                <div className="text-sm font-medium">Audience</div>
+                                <div className="text-sm font-medium">
+                                    {t('reviewDialog.audience')}
+                                </div>
                                 <div className="flex flex-wrap gap-2 text-xs">
                                     {reviewRecipientItems.length === 0 && <span>—</span>}
                                     {reviewRecipientItems.map((it, i) => (
@@ -1319,7 +1328,9 @@ function EmailCampaigningPage() {
                                 </div>
                             </div>
                             <div>
-                                <div className="text-sm font-medium">Schedule</div>
+                                <div className="text-sm font-medium">
+                                    {t('reviewDialog.schedule')}
+                                </div>
                                 <div className="text-sm text-neutral-700">
                                     {scheduleType === 'IMMEDIATE' && `IMMEDIATE(${timezone})`}
                                     {scheduleType === 'ONE_TIME' &&
@@ -1331,7 +1342,7 @@ function EmailCampaigningPage() {
                         </div>
                         <DialogFooter>
                             <Button variant="secondary" onClick={() => setIsReviewOpen(false)}>
-                                Back
+                                {t('reviewDialog.back')}
                             </Button>
                             <Button
                                 onClick={() => {
@@ -1340,7 +1351,9 @@ function EmailCampaigningPage() {
                                 }}
                                 disabled={isSubmitting}
                             >
-                                {isEditing ? 'Confirm & Update' : 'Confirm & Create'}
+                                {isEditing
+                                    ? t('reviewDialog.confirmUpdate')
+                                    : t('reviewDialog.confirmCreate')}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
@@ -1350,32 +1363,32 @@ function EmailCampaigningPage() {
                 <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
                     <DialogContent className="w-[95vw] max-w-none">
                         <DialogHeader>
-                            <DialogTitle>Email Preview</DialogTitle>
-                            <p className="text-xs text-gray-500">This is how the email will appear in the recipient's inbox.</p>
+                            <DialogTitle>{t('previewDialog.title')}</DialogTitle>
+                            <p className="text-xs text-gray-500">{t('previewDialog.description')}</p>
                             <div className="mt-2 flex items-center gap-2">
                                 <Button
                                     variant={previewDevice === 'mobile' ? 'default' : 'outline'}
                                     size="sm"
                                     onClick={() => setPreviewDevice('mobile')}
                                 >
-                                    <Smartphone className="mr-1 size-4" />
-                                    Mobile
+                                    <Smartphone className="me-1 size-4" />
+                                    {t('previewDialog.mobile')}
                                 </Button>
                                 <Button
                                     variant={previewDevice === 'tablet' ? 'default' : 'outline'}
                                     size="sm"
                                     onClick={() => setPreviewDevice('tablet')}
                                 >
-                                    <Tablet className="mr-1 size-4" />
-                                    Tablet
+                                    <Tablet className="me-1 size-4" />
+                                    {t('previewDialog.tablet')}
                                 </Button>
                                 <Button
                                     variant={previewDevice === 'laptop' ? 'default' : 'outline'}
                                     size="sm"
                                     onClick={() => setPreviewDevice('laptop')}
                                 >
-                                    <Laptop className="mr-1 size-4" />
-                                    Laptop
+                                    <Laptop className="me-1 size-4" />
+                                    {t('previewDialog.laptop')}
                                 </Button>
                             </div>
                         </DialogHeader>
@@ -1392,12 +1405,12 @@ function EmailCampaigningPage() {
                                 {/* Simulated inbox header — subject + preview text */}
                                 <div className="flex-shrink-0 border-b bg-gray-50 px-4 py-3">
                                     <div className="flex items-center gap-2 text-xs text-gray-400">
-                                        <span>From: Your Institute</span>
+                                        <span>{t('previewDialog.from')}</span>
                                         <span>·</span>
-                                        <span>To: recipient@email.com</span>
+                                        <span>{t('previewDialog.to')}</span>
                                     </div>
                                     <div className="mt-1 text-sm font-semibold text-gray-900">
-                                        {subject || '(No Subject)'}
+                                        {subject || t('previewDialog.noSubject')}
                                     </div>
                                     {previewText && (
                                         <div className="mt-0.5 text-xs text-gray-500">{previewText}</div>
@@ -1405,8 +1418,11 @@ function EmailCampaigningPage() {
                                 </div>
                                 {/* Email body — rendered exactly as recipient sees it */}
                                 <iframe
-                                    title="Email Preview"
-                                    srcDoc={htmlContent || '<html><body style="padding:32px;color:#999;font-family:sans-serif;text-align:center"><p>No email content</p></body></html>'}
+                                    title={t('previewDialog.title')}
+                                    srcDoc={
+                                        htmlContent ||
+                                        `<html><body style="padding:32px;color:#999;font-family:sans-serif;text-align:center"><p>${t('previewDialog.noContentBody')}</p></body></html>`
+                                    }
                                     style={{ flex: 1, width: '100%', border: 'none' }}
                                     sandbox="allow-same-origin"
                                 />
@@ -1418,13 +1434,13 @@ function EmailCampaigningPage() {
                 {/* Basic */}
                 <section className="grid gap-3">
                     <Label>
-                        Campaign Name{' '}
+                        {t('basic.campaignNameLabel')}{' '}
                         <span className="text-xs font-normal text-gray-400">
-                            (internal — used to identify this campaign in your dashboard)
+                            {t('basic.campaignNameHint')}
                         </span>
                     </Label>
                     <Input
-                        placeholder="e.g. Spring 2026 onboarding — batch A"
+                        placeholder={t('basic.campaignNamePlaceholder')}
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                         className={errors.title ? 'border-red-500' : ''}
@@ -1432,27 +1448,32 @@ function EmailCampaigningPage() {
                     {errors.title && <p className="text-xs text-red-600">{errors.title}</p>}
 
                     <Label>
-                        Email Subject{' '}
+                        {t('basic.emailSubjectLabel')}{' '}
                         <span className="text-xs font-normal text-gray-400">
-                            (what recipients see in their inbox)
+                            {t('basic.emailSubjectHint')}
                         </span>
                     </Label>
                     <Input
-                        placeholder="Email subject line"
+                        placeholder={t('basic.emailSubjectPlaceholder')}
                         value={subject}
                         onChange={(e) => setSubject(e.target.value)}
                         className={errors.subject ? 'border-red-500' : ''}
                     />
                     {errors.subject && <p className="text-xs text-red-600">{errors.subject}</p>}
 
-                    <Label>Preview Text <span className="text-xs font-normal text-gray-400">(shown in inbox before opening)</span></Label>
+                    <Label>
+                        {t('basic.previewTextLabel')}{' '}
+                        <span className="text-xs font-normal text-gray-400">
+                            {t('basic.previewTextHint')}
+                        </span>
+                    </Label>
                     <Input
-                        placeholder="Enter preview text..."
+                        placeholder={t('basic.previewTextPlaceholder')}
                         value={previewText}
                         onChange={(e) => setPreviewText(e.target.value)}
                     />
 
-                    <Label>Email Content</Label>
+                    <Label>{t('basic.emailContentLabel')}</Label>
                     <div className="flex items-center gap-2 self-end">
                         <Button
                             variant="outline"
@@ -1460,7 +1481,7 @@ function EmailCampaigningPage() {
                             onClick={() => setContentView('editor')}
                             disabled={contentView === 'editor'}
                         >
-                            Rich Editor
+                            {t('basic.richEditor')}
                         </Button>
                         <Button
                             variant="outline"
@@ -1468,7 +1489,7 @@ function EmailCampaigningPage() {
                             onClick={() => setContentView('source')}
                             disabled={contentView === 'source'}
                         >
-                            HTML Source
+                            {t('basic.htmlSource')}
                         </Button>
                         <Button
                             variant="outline"
@@ -1476,7 +1497,7 @@ function EmailCampaigningPage() {
                             onClick={() => setIsPreviewOpen(true)}
                             disabled={isPreviewOpen}
                         >
-                            Preview
+                            {t('basic.preview')}
                         </Button>
                     </div>
                     {contentView === 'editor' && (
@@ -1494,7 +1515,7 @@ function EmailCampaigningPage() {
                                     value={htmlContent}
                                     onChange={setHtmlContent}
                                     onBlur={() => {}}
-                                    placeholder={'Write the email content'}
+                                    placeholder={t('basic.contentPlaceholder')}
                                     minHeight={160}
                                 />
                             </Suspense>
@@ -1502,7 +1523,7 @@ function EmailCampaigningPage() {
                     )}
                     {contentView === 'source' && (
                         <Textarea
-                            placeholder="HTML source"
+                            placeholder={t('basic.htmlSourcePlaceholder')}
                             value={htmlContent}
                             onChange={(e) => setHtmlContent(e.target.value)}
                             rows={10}
@@ -1516,7 +1537,7 @@ function EmailCampaigningPage() {
 
                 {/* Email Template Section */}
                 <section className="grid gap-3">
-                    <h3 className="text-lg font-medium">Email Template</h3>
+                    <h3 className="text-lg font-medium">{t('template.heading')}</h3>
 
                     <div className="mb-4 flex items-center gap-2">
                         <Checkbox
@@ -1531,14 +1552,14 @@ function EmailCampaigningPage() {
                             }}
                         />
                         <Label htmlFor="use-template" className="text-sm font-medium">
-                            Use Email Template
+                            {t('template.useTemplate')}
                         </Label>
                     </div>
 
                     {useTemplate && (
                         <div className="mb-4">
                             <Label className="mb-2 block text-sm font-medium">
-                                Select Template
+                                {t('template.selectTemplate')}
                             </Label>
                             <AsyncSearchableSelect
                                 value={selectedTemplateId}
@@ -1547,9 +1568,9 @@ function EmailCampaigningPage() {
                                     handleTemplateSelection(value, option?.label)
                                 }
                                 loadOptions={loadEmailTemplateOptions}
-                                placeholder="Select a template"
-                                searchPlaceholder="Search templates..."
-                                emptyText="No templates found."
+                                placeholder={t('template.placeholder')}
+                                searchPlaceholder={t('template.searchPlaceholder')}
+                                emptyText={t('template.emptyText')}
                                 footer={
                                     <div className="border-t p-1">
                                         <button
@@ -1563,14 +1584,14 @@ function EmailCampaigningPage() {
                                             }
                                         >
                                             <Plus className="size-4" />
-                                            <span>Add New Template</span>
+                                            <span>{t('template.addNew')}</span>
                                         </button>
                                     </div>
                                 }
                             />
                             {selectedTemplateId && (
                                 <div className="mt-2 text-xs text-neutral-600">
-                                    Template selected: {selectedTemplateName}
+                                    {t('template.selected', { name: selectedTemplateName })}
                                 </div>
                             )}
                             {templatesError && (
@@ -1581,7 +1602,9 @@ function EmailCampaigningPage() {
 
                     {/* From Email selection */}
                     <div className="mb-4">
-                        <Label className="mb-2 block text-sm font-medium">From Email</Label>
+                        <Label className="mb-2 block text-sm font-medium">
+                            {t('template.fromEmailLabel')}
+                        </Label>
                         <Select
                             value={selectedFromEmail || ''}
                             onValueChange={(value) => {
@@ -1595,8 +1618,8 @@ function EmailCampaigningPage() {
                                 <SelectValue
                                     placeholder={
                                         emailConfigsLoading
-                                            ? 'Loading email configurations...'
-                                            : 'Select from email'
+                                            ? t('template.fromEmailLoading')
+                                            : t('template.fromEmailPlaceholder')
                                     }
                                 />
                             </SelectTrigger>
@@ -1617,27 +1640,27 @@ function EmailCampaigningPage() {
                                         })
                                 ) : (
                                     <SelectItem value="no-configs" disabled>
-                                        No email configurations available
+                                        {t('template.fromEmailNoConfigs')}
                                     </SelectItem>
                                 )}
                             </SelectContent>
                         </Select>
                         {selectedFromEmail && (
                             <div className="mt-2 text-xs text-neutral-600">
-                                From:{' '}
-                                {
-                                    emailConfigurations.find(
-                                        (c) => `${c.email} -${c.name} ` === selectedFromEmail
-                                    )?.email
-                                }
+                                {t('template.fromPrefix', {
+                                    email:
+                                        emailConfigurations.find(
+                                            (c) => `${c.email} -${c.name} ` === selectedFromEmail
+                                        )?.email || '',
+                                })}
                             </div>
                         )}
                     </div>
 
                     <p className="text-sm text-neutral-600">
                         {useTemplate
-                            ? 'Template content will be applied to Title and Content above.'
-                            : 'Subject and body will use the Title and Content provided above.'}
+                            ? t('template.helperUseTemplate')
+                            : t('template.helperNoTemplate')}
                     </p>
                 </section>
 
@@ -1645,27 +1668,27 @@ function EmailCampaigningPage() {
 
                 {/* Audience */}
                 <section className="grid gap-3">
-                    <h3 className="text-lg font-medium">Audience</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Define who should receive this email campaign.
-                    </p>
+                    <h3 className="text-lg font-medium">{t('audience.heading')}</h3>
+                    <p className="text-sm text-muted-foreground">{t('audience.description')}</p>
                     <div className="flex flex-wrap gap-2">
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => addRecipientPreset('ALL_STUDENTS')}
                         >
-                            + All Students
+                            {t('audience.addAllStudents')}
                         </Button>
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => addRecipientPreset('ALL_TEACHERS')}
                         >
-                            + All Teachers
+                            {t('audience.addAllTeachers')}
                         </Button>
                         <Button variant="outline" size="sm" onClick={addBatchRecipient}>
-                            + {getTerminology(ContentTerms.Batch, SystemTerms.Batch)}
+                            {t('audience.addBatch', {
+                                batchTerm: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
+                            })}
                         </Button>
                         <Button
                             variant="outline"
@@ -1677,7 +1700,7 @@ function EmailCampaigningPage() {
                                 ])
                             }
                         >
-                            + Tag
+                            {t('audience.addTag')}
                         </Button>
                         <Button
                             variant="outline"
@@ -1689,7 +1712,7 @@ function EmailCampaigningPage() {
                                 ])
                             }
                         >
-                            + Specific User
+                            {t('audience.addUser')}
                         </Button>
                         <Button
                             variant="outline"
@@ -1705,7 +1728,7 @@ function EmailCampaigningPage() {
                                 ])
                             }
                         >
-                            + Campaign
+                            {t('audience.addCampaign')}
                         </Button>
                     </div>
 
@@ -1774,16 +1797,24 @@ function EmailCampaigningPage() {
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="ROLE">Role</SelectItem>
-                                                <SelectItem value="USER">User</SelectItem>
+                                                <SelectItem value="ROLE">
+                                                    {t('recipientType.role')}
+                                                </SelectItem>
+                                                <SelectItem value="USER">
+                                                    {t('recipientType.user')}
+                                                </SelectItem>
                                                 <SelectItem value="PACKAGE_SESSION">
                                                     {getTerminology(
                                                         ContentTerms.Batch,
                                                         SystemTerms.Batch
                                                     )}
                                                 </SelectItem>
-                                                <SelectItem value="TAG">Tag</SelectItem>
-                                                <SelectItem value="AUDIENCE">Campaign</SelectItem>
+                                                <SelectItem value="TAG">
+                                                    {t('recipientType.tag')}
+                                                </SelectItem>
+                                                <SelectItem value="AUDIENCE">
+                                                    {t('recipientType.campaign')}
+                                                </SelectItem>
                                             </SelectContent>
                                         </Select>
                                         {r.recipientType === 'ROLE' && (
@@ -1805,18 +1836,26 @@ function EmailCampaigningPage() {
                                                 }}
                                             >
                                                 <SelectTrigger className="w-40">
-                                                    <SelectValue placeholder="Select role" />
+                                                    <SelectValue
+                                                        placeholder={t('role.selectPlaceholder')}
+                                                    />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="STUDENT">Student</SelectItem>
-                                                    <SelectItem value="TEACHER">Teacher</SelectItem>
-                                                    <SelectItem value="ADMIN">Admin</SelectItem>
+                                                    <SelectItem value="STUDENT">
+                                                        {t('role.student')}
+                                                    </SelectItem>
+                                                    <SelectItem value="TEACHER">
+                                                        {t('role.teacher')}
+                                                    </SelectItem>
+                                                    <SelectItem value="ADMIN">
+                                                        {t('role.admin')}
+                                                    </SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         )}
                                         {r.recipientType === 'USER' && (
                                             <Input
-                                                placeholder="User ID or email"
+                                                placeholder={t('userIdPlaceholder')}
                                                 value={r.recipientId}
                                                 onChange={(e) => {
                                                     setRecipients((prev) =>
@@ -1873,9 +1912,11 @@ function EmailCampaigningPage() {
                                                             value: option.id,
                                                             label: option.label,
                                                         }))}
-                                                    placeholder="Select batch"
-                                                    searchPlaceholder="Search batches..."
-                                                    emptyText="No batches found."
+                                                    placeholder={t('batch.selectPlaceholder')}
+                                                    searchPlaceholder={t(
+                                                        'batch.searchPlaceholder'
+                                                    )}
+                                                    emptyText={t('batch.emptyText')}
                                                 />
                                                 {r.recipientId &&
                                                     packageSessionOptions.find(
@@ -1891,14 +1932,18 @@ function EmailCampaigningPage() {
                                                             }}
                                                         >
                                                             <SelectTrigger className="w-full">
-                                                                <SelectValue placeholder="Select role" />
+                                                                <SelectValue
+                                                                    placeholder={t(
+                                                                        'role.selectPlaceholder'
+                                                                    )}
+                                                                />
                                                             </SelectTrigger>
                                                             <SelectContent>
                                                                 <SelectItem value="ADMIN">
-                                                                    Admin
+                                                                    {t('role.admin')}
                                                                 </SelectItem>
                                                                 <SelectItem value="LEARNER">
-                                                                    Learner
+                                                                    {t('role.learner')}
                                                                 </SelectItem>
                                                             </SelectContent>
                                                         </Select>
@@ -1918,19 +1963,20 @@ function EmailCampaigningPage() {
                                                     }
                                                     placeholder={
                                                         tagsLoading
-                                                            ? 'Loading tags…'
-                                                            : 'Select one or more tags'
+                                                            ? t('tag.loading')
+                                                            : t('tag.selectPlaceholder')
                                                     }
                                                     disabled={tagsLoading}
                                                 />
                                                 <div className="mt-1 text-xs text-muted-foreground">
-                                                    Tags target users linked to the selected tags.
+                                                    {t('tag.helper')}
                                                 </div>
                                                 {Array.isArray(tagSelections[idx]) &&
                                                     (tagSelections[idx]?.length ?? 0) > 0 && (
                                                         <div className="mt-1 text-xs text-neutral-600">
-                                                            Estimated users for this row:{' '}
-                                                            {rowTagEstimates[idx] ?? '—'}
+                                                            {t('tag.estimatedForRow', {
+                                                                count: rowTagEstimates[idx] ?? '—',
+                                                            })}
                                                         </div>
                                                     )}
                                             </div>
@@ -1966,8 +2012,8 @@ function EmailCampaigningPage() {
                                                     <SelectValue
                                                         placeholder={
                                                             campaignsLoading
-                                                                ? 'Loading campaigns…'
-                                                                : 'Select campaign'
+                                                                ? t('campaign.loading')
+                                                                : t('campaign.selectPlaceholder')
                                                         }
                                                     />
                                                 </SelectTrigger>
@@ -2002,8 +2048,8 @@ function EmailCampaigningPage() {
                                                     ) : (
                                                         <SelectItem value="no-campaigns" disabled>
                                                             {campaignsLoading
-                                                                ? 'Loading campaigns…'
-                                                                : 'No campaigns available'}
+                                                                ? t('campaign.loading')
+                                                                : t('campaign.noneAvailable')}
                                                         </SelectItem>
                                                     )}
                                                 </SelectContent>
@@ -2012,8 +2058,7 @@ function EmailCampaigningPage() {
                                         {r.recipientType === 'CUSTOM_FIELD_FILTER' && (
                                             <div className="flex-1 space-y-3">
                                                 <div className="mb-2 text-xs text-muted-foreground">
-                                                    Filter users based on custom field values. Add
-                                                    multiple filters to narrow down the audience.
+                                                    {t('customFieldFilter.helper')}
                                                 </div>
                                                 {(customFieldFilters[idx] || []).map(
                                                     (filter, filterIdx) => {
@@ -2065,7 +2110,7 @@ function EmailCampaigningPage() {
                                                                             }}
                                                                         >
                                                                             <SelectTrigger className="w-full">
-                                                                                <SelectValue placeholder="Select custom field" />
+                                                                                <SelectValue placeholder={t('customFieldFilter.selectFieldPlaceholder')} />
                                                                             </SelectTrigger>
                                                                             <SelectContent>
                                                                                 {customFieldOptions
@@ -2129,24 +2174,14 @@ function EmailCampaigningPage() {
                                                                                             <SelectValue />
                                                                                         </SelectTrigger>
                                                                                         <SelectContent>
-                                                                                            <SelectItem value="equals">
-                                                                                                Equals
-                                                                                            </SelectItem>
-                                                                                            <SelectItem value="contains">
-                                                                                                Contains
-                                                                                            </SelectItem>
-                                                                                            <SelectItem value="starts_with">
-                                                                                                Starts
-                                                                                                with
-                                                                                            </SelectItem>
-                                                                                            <SelectItem value="ends_with">
-                                                                                                Ends
-                                                                                                with
-                                                                                            </SelectItem>
+                                                                                            <SelectItem value="equals">{t('customFieldFilter.operatorEquals')}</SelectItem>
+                                                                                            <SelectItem value="contains">{t('customFieldFilter.operatorContains')}</SelectItem>
+                                                                                            <SelectItem value="starts_with">{t('customFieldFilter.operatorStartsWith')}</SelectItem>
+                                                                                            <SelectItem value="ends_with">{t('customFieldFilter.operatorEndsWith')}</SelectItem>
                                                                                         </SelectContent>
                                                                                     </Select>
                                                                                     <Input
-                                                                                        placeholder="Enter filter value"
+                                                                                        placeholder={t('customFieldFilter.valuePlaceholder')}
                                                                                         value={
                                                                                             typeof filter.filterValue ===
                                                                                             'string'
@@ -2203,7 +2238,7 @@ function EmailCampaigningPage() {
                                                                                             }
                                                                                         )
                                                                                     }
-                                                                                    placeholder="Select values"
+                                                                                    placeholder={t('customFieldFilter.selectValuesPlaceholder')}
                                                                                 />
                                                                             )}
 
@@ -2212,7 +2247,7 @@ function EmailCampaigningPage() {
                                                                                 'number' && (
                                                                                 <Input
                                                                                     type="number"
-                                                                                    placeholder="Enter number"
+                                                                                    placeholder={t('customFieldFilter.numberPlaceholder')}
                                                                                     value={
                                                                                         typeof filter.filterValue ===
                                                                                         'string'
@@ -2257,7 +2292,7 @@ function EmailCampaigningPage() {
                                                     onClick={() => addCustomFieldFilter(idx)}
                                                     className="w-full"
                                                 >
-                                                    + Add Filter
+                                                    {t('customFieldFilter.addFilter')}
                                                 </Button>
                                             </div>
                                         )}
@@ -2265,7 +2300,7 @@ function EmailCampaigningPage() {
                                             variant="ghost"
                                             onClick={() => removeRecipientAtIndex(idx)}
                                         >
-                                            Remove
+                                            {t('recipientRow.remove')}
                                         </Button>
                                     </div>
 
@@ -2276,19 +2311,19 @@ function EmailCampaigningPage() {
                                             <div className="space-y-2">
                                                 <div className="flex items-center justify-between">
                                                     <label className="text-sm font-medium">
-                                                        Exclusions
+                                                        {t('exclusions.label')}
                                                     </label>
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
                                                         onClick={() => addExclusion(idx)}
                                                     >
-                                                        + Add Exclusion
+                                                        {t('exclusions.addExclusion')}
                                                     </Button>
                                                 </div>
                                                 {(recipientExclusions[idx] || []).length === 0 ? (
                                                     <p className="text-xs text-muted-foreground">
-                                                        No exclusions added yet
+                                                        {t('exclusions.none')}
                                                     </p>
                                                 ) : (
                                                     <div className="space-y-2">
@@ -2316,10 +2351,10 @@ function EmailCampaigningPage() {
                                                                         </SelectTrigger>
                                                                         <SelectContent>
                                                                             <SelectItem value="ROLE">
-                                                                                Role
+                                                                                {t('recipientType.role')}
                                                                             </SelectItem>
                                                                             <SelectItem value="USER">
-                                                                                User
+                                                                                {t('recipientType.user')}
                                                                             </SelectItem>
                                                                             <SelectItem value="PACKAGE_SESSION">
                                                                                 {getTerminology(
@@ -2328,7 +2363,7 @@ function EmailCampaigningPage() {
                                                                                 )}
                                                                             </SelectItem>
                                                                             <SelectItem value="TAG">
-                                                                                Tag
+                                                                                {t('recipientType.tag')}
                                                                             </SelectItem>
                                                                         </SelectContent>
                                                                     </Select>
@@ -2357,17 +2392,21 @@ function EmailCampaigningPage() {
                                                                             }}
                                                                         >
                                                                             <SelectTrigger className="w-32">
-                                                                                <SelectValue placeholder="Select role" />
+                                                                                <SelectValue
+                                                                                    placeholder={t(
+                                                                                        'role.selectPlaceholder'
+                                                                                    )}
+                                                                                />
                                                                             </SelectTrigger>
                                                                             <SelectContent>
                                                                                 <SelectItem value="STUDENT">
-                                                                                    Student
+                                                                                    {t('role.student')}
                                                                                 </SelectItem>
                                                                                 <SelectItem value="TEACHER">
-                                                                                    Teacher
+                                                                                    {t('role.teacher')}
                                                                                 </SelectItem>
                                                                                 <SelectItem value="ADMIN">
-                                                                                    Admin
+                                                                                    {t('role.admin')}
                                                                                 </SelectItem>
                                                                             </SelectContent>
                                                                         </Select>
@@ -2410,9 +2449,9 @@ function EmailCampaigningPage() {
                                                                                     value: option.id,
                                                                                     label: option.label,
                                                                                 }))}
-                                                                            placeholder="Select batch"
-                                                                            searchPlaceholder="Search batches..."
-                                                                            emptyText="No batches found."
+                                                                            placeholder={t('batch.selectPlaceholder')}
+                                                                            searchPlaceholder={t('batch.searchPlaceholder')}
+                                                                            emptyText={t('batch.emptyText')}
                                                                             triggerClassName="w-48"
                                                                         />
                                                                     ) : exclusion.recipientType ===
@@ -2445,7 +2484,11 @@ function EmailCampaigningPage() {
                                                                             }}
                                                                         >
                                                                             <SelectTrigger className="w-48">
-                                                                                <SelectValue placeholder="Select tag" />
+                                                                                <SelectValue
+                                                                                    placeholder={t(
+                                                                                        'tag.selectTagPlaceholder'
+                                                                                    )}
+                                                                                />
                                                                             </SelectTrigger>
                                                                             <SelectContent>
                                                                                 {tagOptions
@@ -2477,7 +2520,9 @@ function EmailCampaigningPage() {
                                                                         </Select>
                                                                     ) : (
                                                                         <Input
-                                                                            placeholder="User ID or email"
+                                                                            placeholder={t(
+                                                                                'userIdPlaceholder'
+                                                                            )}
                                                                             value={
                                                                                 exclusion.recipientId
                                                                             }
@@ -2520,7 +2565,7 @@ function EmailCampaigningPage() {
                                                     <div className="space-y-2 border-t pt-3">
                                                         <div className="flex items-center justify-between">
                                                             <label className="text-sm font-medium">
-                                                                Custom Field Filters
+                                                                {t('customFieldsSection.label')}
                                                             </label>
                                                             <Button
                                                                 variant="outline"
@@ -2529,13 +2574,13 @@ function EmailCampaigningPage() {
                                                                     addCustomFieldFilter(idx)
                                                                 }
                                                             >
-                                                                + Add Custom Field
+                                                                {t('customFieldsSection.addCustomField')}
                                                             </Button>
                                                         </div>
                                                         {(customFieldFilters[idx] || []).length ===
                                                         0 ? (
                                                             <p className="text-xs text-muted-foreground">
-                                                                No custom field filters added yet
+                                                                {t('customFieldsSection.none')}
                                                             </p>
                                                         ) : (
                                                             <div className="space-y-2">
@@ -2596,7 +2641,7 @@ function EmailCampaigningPage() {
                                                                                         }}
                                                                                     >
                                                                                         <SelectTrigger className="w-full">
-                                                                                            <SelectValue placeholder="Select custom field" />
+                                                                                            <SelectValue placeholder={t('customFieldFilter.selectFieldPlaceholder')} />
                                                                                         </SelectTrigger>
                                                                                         <SelectContent>
                                                                                             {customFieldOptions
@@ -2665,24 +2710,14 @@ function EmailCampaigningPage() {
                                                                                                         <SelectValue />
                                                                                                     </SelectTrigger>
                                                                                                     <SelectContent>
-                                                                                                        <SelectItem value="equals">
-                                                                                                            Equals
-                                                                                                        </SelectItem>
-                                                                                                        <SelectItem value="contains">
-                                                                                                            Contains
-                                                                                                        </SelectItem>
-                                                                                                        <SelectItem value="starts_with">
-                                                                                                            Starts
-                                                                                                            with
-                                                                                                        </SelectItem>
-                                                                                                        <SelectItem value="ends_with">
-                                                                                                            Ends
-                                                                                                            with
-                                                                                                        </SelectItem>
+                                                                                                        <SelectItem value="equals">{t('customFieldFilter.operatorEquals')}</SelectItem>
+                                                                                                        <SelectItem value="contains">{t('customFieldFilter.operatorContains')}</SelectItem>
+                                                                                                        <SelectItem value="starts_with">{t('customFieldFilter.operatorStartsWith')}</SelectItem>
+                                                                                                        <SelectItem value="ends_with">{t('customFieldFilter.operatorEndsWith')}</SelectItem>
                                                                                                     </SelectContent>
                                                                                                 </Select>
                                                                                                 <Input
-                                                                                                    placeholder="Enter filter value"
+                                                                                                    placeholder={t('customFieldFilter.valuePlaceholder')}
                                                                                                     value={
                                                                                                         typeof filter.filterValue ===
                                                                                                         'string'
@@ -2741,7 +2776,7 @@ function EmailCampaigningPage() {
                                                                                                         }
                                                                                                     )
                                                                                                 }
-                                                                                                placeholder="Select values"
+                                                                                                placeholder={t('customFieldFilter.selectValuesPlaceholder')}
                                                                                             />
                                                                                         )}
 
@@ -2750,7 +2785,7 @@ function EmailCampaigningPage() {
                                                                                             'number' && (
                                                                                             <Input
                                                                                                 type="number"
-                                                                                                placeholder="Enter number"
+                                                                                                placeholder={t('customFieldFilter.numberPlaceholder')}
                                                                                                 value={
                                                                                                     typeof filter.filterValue ===
                                                                                                     'string'
@@ -2830,7 +2865,7 @@ function EmailCampaigningPage() {
                                                             return next;
                                                         });
                                                     }}
-                                                    aria-label="Remove tag"
+                                                    aria-label={t('tag.removeAriaLabel')}
                                                 >
                                                     ×
                                                 </button>
@@ -2864,7 +2899,7 @@ function EmailCampaigningPage() {
                                             type="button"
                                             className="text-neutral-500 hover:text-neutral-800"
                                             onClick={() => removeRecipientAtIndex(idx)}
-                                            aria-label="Remove recipient"
+                                            aria-label={t('recipientRow.removeRecipientAriaLabel')}
                                         >
                                             ×
                                         </button>
@@ -2878,8 +2913,10 @@ function EmailCampaigningPage() {
                     {Object.values(tagSelections).flat().length > 0 && (
                         <div className="text-xs text-neutral-600">
                             {estimatingUsers
-                                ? 'Estimating users…'
-                                : `Estimated users(any of selected tags): ${estimatedUsers ?? '—'} `}
+                                ? t('estimatedUsers.estimating')
+                                : t('estimatedUsers.countLabel', {
+                                      count: estimatedUsers ?? '—',
+                                  })}
                         </div>
                     )}
                 </section>
@@ -2888,15 +2925,13 @@ function EmailCampaigningPage() {
 
                 {/* Mode Settings - Fixed to SYSTEM_ALERT */}
                 <section className="grid gap-3">
-                    <h3 className="text-lg font-medium">Campaign Settings</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Configure the priority and expiration for this email campaign.
-                    </p>
+                    <h3 className="text-lg font-medium">{t('settings.heading')}</h3>
+                    <p className="text-sm text-muted-foreground">{t('settings.description')}</p>
                     <div className="rounded-md border p-4">
-                        <div className="mb-2 font-medium">Priority & Expiration</div>
+                        <div className="mb-2 font-medium">{t('settings.priorityExpiration')}</div>
                         <div className="grid gap-3 md:grid-cols-2">
                             <div>
-                                <Label>Priority</Label>
+                                <Label>{t('settings.priorityLabel')}</Label>
                                 <Select
                                     value={
                                         (modeSettings.SYSTEM_ALERT?.priority as string) || 'MEDIUM'
@@ -2909,7 +2944,7 @@ function EmailCampaigningPage() {
                                     }
                                 >
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Priority" />
+                                        <SelectValue placeholder={t('settings.priorityPlaceholder')} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="HIGH">HIGH</SelectItem>
@@ -2924,7 +2959,7 @@ function EmailCampaigningPage() {
                                 )}
                             </div>
                             <div>
-                                <Label>Expires At (Optional)</Label>
+                                <Label>{t('settings.expiresAt')}</Label>
                                 <Input
                                     type="datetime-local"
                                     value={(modeSettings.SYSTEM_ALERT?.expiresAt as string) || ''}
@@ -2947,7 +2982,7 @@ function EmailCampaigningPage() {
 
                 {/* Scheduling */}
                 <section className="grid gap-3">
-                    <h3 className="text-lg font-medium">Scheduling</h3>
+                    <h3 className="text-lg font-medium">{t('scheduling.heading')}</h3>
                     <div className="grid gap-3 md:grid-cols-3">
                         <Select
                             value={scheduleType}
@@ -2956,7 +2991,7 @@ function EmailCampaigningPage() {
                             }
                         >
                             <SelectTrigger>
-                                <SelectValue placeholder="Schedule Type" />
+                                <SelectValue placeholder={t('scheduling.typePlaceholder')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="IMMEDIATE">IMMEDIATE</SelectItem>
@@ -2966,7 +3001,7 @@ function EmailCampaigningPage() {
                         </Select>
                         <Select value={timezone} onValueChange={(v) => setTimezone(v)}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Timezone" />
+                                <SelectValue placeholder={t('scheduling.timezonePlaceholder')} />
                             </SelectTrigger>
                             <SelectContent>
                                 {TIMEZONE_OPTIONS.map((tz) => (
@@ -2977,40 +3012,42 @@ function EmailCampaigningPage() {
                             </SelectContent>
                         </Select>
                         <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs text-neutral-600">Quick picks:</span>
+                            <span className="text-xs text-neutral-600">
+                                {t('scheduling.quickPicks')}
+                            </span>
                             <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => applyScheduleQuickPick('NOW')}
                             >
-                                Now
+                                {t('scheduling.now')}
                             </Button>
                             <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => applyScheduleQuickPick('IN_1H')}
                             >
-                                +1h
+                                {t('scheduling.plus1h')}
                             </Button>
                             <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => applyScheduleQuickPick('TOMORROW_9AM')}
                             >
-                                Tmrw 9AM
+                                {t('scheduling.tomorrow9am')}
                             </Button>
                             <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => applyScheduleQuickPick('NEXT_MON_9AM')}
                             >
-                                Mon 9AM
+                                {t('scheduling.monday9am')}
                             </Button>
                         </div>
                     </div>
                     {scheduleType === 'ONE_TIME' && (
                         <div className="grid gap-2">
-                            <Label>Run At</Label>
+                            <Label>{t('scheduling.runAt')}</Label>
                             <Input
                                 type="datetime-local"
                                 value={oneTimeStart}
@@ -3026,9 +3063,9 @@ function EmailCampaigningPage() {
                     )}
                     {scheduleType === 'RECURRING' && (
                         <div className="grid gap-2">
-                            <Label>Cron Expression</Label>
+                            <Label>{t('scheduling.cronExpressionLabel')}</Label>
                             <Input
-                                placeholder="0 0 9 * * ?"
+                                placeholder={t('scheduling.cronPlaceholder')}
                                 value={cronExpression}
                                 onChange={(e) => setCronExpression(e.target.value)}
                                 className={
@@ -3046,21 +3083,21 @@ function EmailCampaigningPage() {
                                     size="sm"
                                     onClick={() => applyCronTemplate('DAILY_9')}
                                 >
-                                    Daily 9AM
+                                    {t('scheduling.daily9am')}
                                 </Button>
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => applyCronTemplate('MON_9')}
                                 >
-                                    Monday 9AM
+                                    {t('scheduling.monday9amTemplate')}
                                 </Button>
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => applyCronTemplate('HOURLY')}
                                 >
-                                    Hourly
+                                    {t('scheduling.hourly')}
                                 </Button>
                             </div>
                         </div>
@@ -3072,18 +3109,18 @@ function EmailCampaigningPage() {
                     <Button onClick={handleSubmit} disabled={isSubmitting}>
                         {isSubmitting
                             ? isEditing
-                                ? 'Updating…'
-                                : 'Sending…'
+                                ? t('submit.updating')
+                                : t('submit.sending')
                             : isEditing
-                              ? 'Update Scheduled Campaign'
-                              : 'Send Email Campaign'}
+                              ? t('submit.updateCampaign')
+                              : t('submit.sendCampaign')}
                     </Button>
                     <Button
                         variant="outline"
                         onClick={() => setIsReviewOpen(true)}
                         disabled={isSubmitting}
                     >
-                        {isEditing ? 'Review and Update' : 'Review and Send'}
+                        {isEditing ? t('submit.reviewAndUpdate') : t('submit.reviewAndSend')}
                     </Button>
                 </div>
             </div>

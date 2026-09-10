@@ -1,0 +1,42 @@
+{
+    "dialog": {
+        "title": "Sélectionner les {{term}} pour l'évaluation"
+    },
+    "table": {
+        "name": "Nom",
+        "enrollmentId": "Identifiant d'inscription",
+        "attemptCount": "Nombre de tentatives",
+        "currentPdfId": "ID PDF actuel",
+        "notAvailable": "N/D",
+        "attemptsCount_one": "{{count}} tentative",
+        "attemptsCount_many": "{{count}} tentatives",
+        "attemptsCount_other": "{{count}} tentatives",
+        "attemptLabel": "Tentative {{number}}",
+        "evaluatingWithAssessment": "Évaluation des {{term}} avec {{assessment}}...",
+        "emptyState": "Aucun {{term}} inscrit trouvé.",
+        "submitSelected": "Envoyer la sélection ({{count}})"
+    },
+    "pagination": {
+        "pageInfo": "Page {{current}} sur {{total}}",
+        "previous": "Précédent",
+        "next": "Suivant",
+        "selectedCount_one": "{{count}} sélectionné",
+        "selectedCount_many": "{{count}} sélectionnés",
+        "selectedCount_other": "{{count}} sélectionnés"
+    },
+    "common": {
+        "cancel": "Annuler"
+    },
+    "assessmentDialog": {
+        "title": "Sélectionner une évaluation",
+        "assessmentLabel": "Évaluation",
+        "selectPlaceholder": "Sélectionner une évaluation",
+        "evaluating": "Évaluation en cours...",
+        "evaluateButton": "Évaluer"
+    },
+    "toast": {
+        "selectAtLeastOneStudent": "Veuillez sélectionner au moins un étudiant",
+        "selectAssessment": "Veuillez sélectionner une évaluation",
+        "evaluationFailed": "Échec de l'évaluation. Veuillez réessayer."
+    }
+}

@@ -1,0 +1,36 @@
+{
+    "validation": {
+        "courseRequired": "الدورة مطلوبة",
+        "sessionRequired": "الجلسة مطلوبة",
+        "levelRequired": "المستوى مطلوب"
+    },
+    "toast": {
+        "noDataToExport": "لا توجد بيانات للتصدير بعد",
+        "exportSuccess": "تم تصدير التقرير",
+        "exportFailed": "فشل تصدير ملف PDF"
+    },
+    "form": {
+        "selectA": "اختر {{term}}",
+        "searchTerm": "ابحث عن {{term}}...",
+        "generateReport": "إنشاء التقرير"
+    },
+    "report": {
+        "exporting": "جارٍ التصدير...",
+        "exportPdf": "تصدير PDF",
+        "subjectWiseOverview": "نظرة عامة حسب {{term}}"
+    },
+    "pdf": {
+        "batchSubjectWiseProgress": "التقدم حسب {{subjectTerm}} لـ {{batchTerm}}",
+        "learnerProgressReport": "تقرير تقدم المتعلم",
+        "learnerLabel": "المتعلم",
+        "termCompleted": "{{term}} مكتمل",
+        "termsTracked": "{{term}} متتبَّعة",
+        "termWiseProgress": "التقدم حسب {{term}}",
+        "termColonName": "{{term}}: {{name}}",
+        "completed": "مكتمل",
+        "dailyTimeAvg": "متوسط الوقت اليومي",
+        "termDailyTimeAvg": "متوسط الوقت اليومي لـ {{term}}",
+        "termWiseProgressReport": "تقرير التقدم حسب {{term}}",
+        "learningProgressReport": "تقرير تقدم التعلم"
+    }
+}

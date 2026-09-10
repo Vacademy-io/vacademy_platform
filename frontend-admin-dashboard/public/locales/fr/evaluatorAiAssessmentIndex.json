@@ -1,0 +1,17 @@
+{
+    "navHeading": "Évaluation",
+    "assessmentListHeading": "Liste des évaluations",
+    "createAssessment": "Créer une évaluation",
+    "assessmentIdLabel": "ID de l'évaluation : {{id}}",
+    "loadingDetails": "Chargement des détails de l'évaluation...",
+    "columnQuestion": "Question",
+    "columnAnswer": "Réponse",
+    "columnCriteria": "Critères",
+    "confirmDeleteAssessment": "Voulez-vous vraiment supprimer cette évaluation ? ",
+    "delete": "Supprimer",
+    "failedToLoadDetails": "Échec du chargement des détails de l'évaluation",
+    "noAssessmentsAvailable": "Aucune évaluation disponible",
+    "noAnswerAvailable": "Aucune réponse disponible",
+    "viewLess": "Voir moins",
+    "viewMore": "Voir plus"
+}

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { getInstituteId } from '@/constants/helper';
 import { reportApiError } from '@/lib/report-api-error';
 import {
@@ -124,6 +125,7 @@ export function usePayslips({
     entries,
     isEntriesLoading,
 }: UsePayslipsArgs): UsePayslipsResult {
+    const { t } = useTranslation('erpUsePayslips');
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
     const { byId } = useEmployeeNames();
@@ -178,8 +180,8 @@ export function usePayslips({
     const status = (run?.status ?? '').toUpperCase();
     const blockedReason = NOT_GENERATABLE.has(status)
         ? status === 'CANCELLED'
-            ? 'This run was cancelled, so there is nothing to issue payslips for. Create a fresh run for this month instead.'
-            : 'Payslips are rendered from computed entries, so the run has to be processed first. Process it from the action bar above, then come back.'
+            ? t('blockedCancelled')
+            : t('blockedNotProcessed')
         : null;
     const canGenerate = !!run && blockedReason === null;
 
@@ -193,7 +195,7 @@ export function usePayslips({
             await refresh();
             // The server distinguishes newly generated from re-rendered legacy
             // payslips in this sentence, so it is passed through untouched.
-            return message.trim() ? message : 'Payslips generated.';
+            return message.trim() ? message : t('generatedFallback');
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-payslips',
@@ -201,7 +203,7 @@ export function usePayslips({
             });
             return null;
         }
-    }, [runId, refresh]);
+    }, [runId, refresh, t]);
 
     const emailAll = useCallback(async (): Promise<PayslipEmailResult | null> => {
         try {

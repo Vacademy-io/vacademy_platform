@@ -1,0 +1,8 @@
+{
+    "sectionDefaultName": "Section {{number}}",
+    "assessmentSavedSuccess": "Votre évaluation a été enregistrée avec succès !",
+    "errorSavingAssessment": "Erreur lors de l'enregistrement de l'évaluation",
+    "addQuestions": "Ajouter des questions",
+    "next": "Suivant",
+    "addSection": "Ajouter une section"
+}

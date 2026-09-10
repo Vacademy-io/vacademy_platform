@@ -4,7 +4,12 @@
  *
  * Everything here is calendar-based, not duration-based — a message sent at 23:55 is "Yesterday"
  * at 00:05, not "3 hours ago", which is the distinction a plain millisecond diff gets wrong.
+ *
+ * This is a plain utility module, not a component/hook, so `useTranslation()` cannot be called
+ * here. The i18next singleton is used directly instead (same pattern as
+ * settings/-components/Payment/utils/utils.ts) — see the shared i18n rollout guide.
  */
+import i18next from 'i18next';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -37,11 +42,12 @@ export function formatDayLabel(timestamp?: string, now: Date = new Date()): stri
     if (!d) return '';
 
     const daysAgo = calendarDaysAgo(d, now);
-    if (daysAgo === 0) return 'Today';
-    if (daysAgo === 1) return 'Yesterday';
-    if (daysAgo > 1 && daysAgo < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+    if (daysAgo === 0) return i18next.t('communicationDayLabels:today');
+    if (daysAgo === 1) return i18next.t('communicationDayLabels:yesterday');
+    if (daysAgo > 1 && daysAgo < 7)
+        return d.toLocaleDateString(i18next.language, { weekday: 'long' });
 
-    return d.toLocaleDateString(undefined, {
+    return d.toLocaleDateString(i18next.language, {
         day: 'numeric',
         month: 'long',
         // A future-dated row (clock skew) falls here too, and reads as a plain date rather than
@@ -53,7 +59,9 @@ export function formatDayLabel(timestamp?: string, now: Date = new Date()): stri
 /** Clock time on a single message bubble. */
 export function formatMessageTime(timestamp?: string): string {
     const d = parse(timestamp);
-    return d ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
+    return d
+        ? d.toLocaleTimeString(i18next.language, { hour: '2-digit', minute: '2-digit' })
+        : '';
 }
 
 /**
@@ -67,11 +75,12 @@ export function formatConversationTime(timestamp?: string, now: Date = new Date(
 
     const daysAgo = calendarDaysAgo(d, now);
     if (daysAgo === 0)
-        return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    if (daysAgo === 1) return 'Yesterday';
-    if (daysAgo > 1 && daysAgo < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
+        return d.toLocaleTimeString(i18next.language, { hour: '2-digit', minute: '2-digit' });
+    if (daysAgo === 1) return i18next.t('communicationDayLabels:yesterday');
+    if (daysAgo > 1 && daysAgo < 7)
+        return d.toLocaleDateString(i18next.language, { weekday: 'short' });
 
-    return d.toLocaleDateString(undefined, {
+    return d.toLocaleDateString(i18next.language, {
         day: 'numeric',
         month: 'short',
         ...(d.getFullYear() === now.getFullYear() ? {} : { year: '2-digit' }),

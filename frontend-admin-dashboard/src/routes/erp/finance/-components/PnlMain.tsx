@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { DownloadSimple, Warning, CheckCircle, Info } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
@@ -32,6 +33,7 @@ import { downloadBlobAsFile, monthFileStamp, usePnlSnapshot } from '../-hooks/us
  * so comparing anything else would put two different bases on one line.
  */
 export const PnlMain = () => {
+    const { t } = useTranslation('erpPnlMain');
     const { isHrAdmin, isHrStaff } = useHrRole();
     const [period, setPeriod] = useState<MonthValue>(() => previousMonthValue());
 
@@ -54,11 +56,11 @@ export const PnlMain = () => {
                 responseType: 'blob',
             });
             downloadBlobAsFile(data as Blob, `pnl_snapshot_${monthFileStamp(period)}.csv`);
-            toast.success('P&L snapshot downloaded');
+            toast.success(t('toast.downloaded'));
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-finance',
-                fallbackMessage: 'Could not download the P&L snapshot.',
+                fallbackMessage: t('errors.downloadFailed'),
             });
         }
     };
@@ -68,8 +70,7 @@ export const PnlMain = () => {
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-col gap-1">
                     <p className="text-body text-neutral-500">
-                        Fee revenue actually collected in {formatMonthValue(period)}, against what
-                        payroll cost the institute for the same month.
+                        {t('subtitle', { month: formatMonthValue(period) })}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -77,18 +78,18 @@ export const PnlMain = () => {
                         value={period}
                         onChange={setPeriod}
                         disableFuture
-                        label="Period"
+                        label={t('periodLabel')}
                     />
                     {isHrAdmin && (
                         <MyButton
                             buttonType="secondary"
                             scale="medium"
                             onAsyncClick={handleDownload}
-                            loadingText="Preparing…"
+                            loadingText={t('preparing')}
                             disabled={!snapshot}
                         >
                             <DownloadSimple size={16} />
-                            Download CSV
+                            {t('downloadCsv')}
                         </MyButton>
                     )}
                 </div>
@@ -96,7 +97,7 @@ export const PnlMain = () => {
 
             {isError ? (
                 <HrErrorState
-                    message="Could not load the P&L snapshot."
+                    message={t('errors.loadFailed')}
                     onRetry={() => void refetch()}
                 />
             ) : (
@@ -108,7 +109,7 @@ export const PnlMain = () => {
                             <div className="flex items-center gap-2 text-warning-700">
                                 <Warning size={18} />
                                 <span className="text-subtitle font-medium">
-                                    Check before relying on these figures
+                                    {t('checkWarnings')}
                                 </span>
                             </div>
                             <ul className="flex list-disc flex-col gap-1 ps-6 text-body text-neutral-600">
@@ -134,16 +135,12 @@ export const PnlMain = () => {
                             )}
                             <span>
                                 {snapshot.journal.posted
-                                    ? `Payroll journal posted for this period${
-                                          snapshot.journal.count
-                                              ? ` (${snapshot.journal.count} ${
-                                                    snapshot.journal.count === 1
-                                                        ? 'entry'
-                                                        : 'entries'
-                                                })`
-                                              : ''
-                                      }.`
-                                    : 'No payroll journal for this period yet — approving the payroll run posts it.'}
+                                    ? snapshot.journal.count
+                                        ? t('journal.postedWithCount', {
+                                              count: snapshot.journal.count,
+                                          })
+                                        : t('journal.posted')
+                                    : t('journal.notPosted')}
                             </span>
                         </Card>
                     ) : null}
@@ -151,10 +148,10 @@ export const PnlMain = () => {
                     <Card className="flex flex-col gap-4 p-5">
                         <div className="flex flex-col gap-1">
                             <h3 className="text-subtitle font-semibold text-neutral-700">
-                                Cost by department
+                                {t('costByDepartment')}
                             </h3>
                             <p className="text-caption text-neutral-500">
-                                Employer cost is gross pay plus employer statutory contributions.
+                                {t('employerCostHint')}
                             </p>
                         </div>
 
@@ -162,7 +159,7 @@ export const PnlMain = () => {
                             <HrLoadingRows rows={4} />
                         ) : departments.length === 0 ? (
                             <p className="py-6 text-center text-body text-neutral-500">
-                                No payroll cost recorded for {formatMonthValue(period)}.
+                                {t('noCostRecorded', { month: formatMonthValue(period) })}
                             </p>
                         ) : (
                             <div className="overflow-x-auto">
@@ -170,13 +167,17 @@ export const PnlMain = () => {
                                     <thead>
                                         <tr className="border-b border-neutral-200 text-caption uppercase text-neutral-500">
                                             <th className="py-2 text-start font-medium">
-                                                Department
+                                                {t('columns.department')}
                                             </th>
-                                            <th className="py-2 text-end font-medium">Headcount</th>
                                             <th className="py-2 text-end font-medium">
-                                                Employer cost
+                                                {t('columns.headcount')}
                                             </th>
-                                            <th className="py-2 text-end font-medium">Share</th>
+                                            <th className="py-2 text-end font-medium">
+                                                {t('columns.employerCost')}
+                                            </th>
+                                            <th className="py-2 text-end font-medium">
+                                                {t('columns.share')}
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -209,7 +210,9 @@ export const PnlMain = () => {
                                     {snapshot?.departmentTotal !== undefined && (
                                         <tfoot>
                                             <tr className="border-t border-neutral-200 font-medium">
-                                                <td className="py-2.5 text-neutral-700">Total</td>
+                                                <td className="py-2.5 text-neutral-700">
+                                                    {t('total')}
+                                                </td>
                                                 <td />
                                                 <td className="py-2.5">
                                                     <MoneyCell

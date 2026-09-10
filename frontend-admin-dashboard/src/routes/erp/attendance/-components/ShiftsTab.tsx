@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
 import { Clock, PencilSimple, Plus, UsersThree } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyTable } from '@/components/design-system/table';
@@ -23,6 +24,7 @@ import { ShiftDialog } from './ShiftDialog';
  * assigned, which is why it is called out in the table rather than buried.
  */
 export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
+    const { t } = useTranslation('erpShiftsTab');
     const query = useShifts();
     const [editing, setEditing] = useState<ShiftDTO | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -34,15 +36,15 @@ export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         const base: ColumnDef<ShiftDTO>[] = [
             {
                 id: 'name',
-                header: 'Shift',
+                header: t('columns.shift'),
                 size: 220,
                 cell: ({ row }) => (
                     <div className="flex flex-col">
                         <span className="flex items-center gap-2 truncate text-body font-semibold text-foreground">
-                            {row.original.name || row.original.code || 'Shift'}
+                            {row.original.name || row.original.code || t('defaultShiftName')}
                             {row.original.is_default && (
                                 <StatusChip
-                                    text="Default"
+                                    text={t('defaultChip')}
                                     textSize="text-caption"
                                     status="INFO"
                                     showIcon={false}
@@ -59,45 +61,47 @@ export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             },
             {
                 id: 'timing',
-                header: 'Timing',
+                header: t('columns.timing'),
                 size: 160,
                 cell: ({ row }) => (
                     <span className="text-body tabular-nums text-foreground">
                         {formatClockTime(row.original.start_time)} –{' '}
                         {formatClockTime(row.original.end_time)}
                         {row.original.is_night_shift && (
-                            <span className="ms-2 text-caption text-muted-foreground">night</span>
+                            <span className="ms-2 text-caption text-muted-foreground">
+                                {t('nightTag')}
+                            </span>
                         )}
                     </span>
                 ),
             },
             {
                 id: 'break',
-                header: 'Break',
+                header: t('columns.break'),
                 size: 100,
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-muted-foreground">
                         {row.original.break_duration_min
-                            ? `${row.original.break_duration_min} min`
+                            ? t('minutesValue', { count: row.original.break_duration_min })
                             : '—'}
                     </span>
                 ),
             },
             {
                 id: 'grace',
-                header: 'Grace',
+                header: t('columns.grace'),
                 size: 100,
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-muted-foreground">
                         {row.original.grace_period_min
-                            ? `${row.original.grace_period_min} min`
+                            ? t('minutesValue', { count: row.original.grace_period_min })
                             : '—'}
                     </span>
                 ),
             },
             {
                 id: 'thresholds',
-                header: 'Full / half day',
+                header: t('columns.thresholds'),
                 size: 140,
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-foreground">
@@ -120,7 +124,9 @@ export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             buttonType="text"
                             scale="small"
                             layoutVariant="icon"
-                            aria-label={`Edit ${row.original.name ?? 'shift'}`}
+                            aria-label={t('editAriaLabel', {
+                                name: row.original.name ?? t('defaultShiftFallback'),
+                            })}
                             onClick={() => {
                                 setEditing(row.original);
                                 setDialogOpen(true);
@@ -134,14 +140,13 @@ export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         }
 
         return base;
-    }, [isHrAdmin]);
+    }, [isHrAdmin, t]);
 
     return (
         <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <p className="max-w-2xl text-body text-muted-foreground">
-                    Working hours, breaks and the thresholds that decide whether a day counts as
-                    full, half or absent. Employees with no assignment fall on the default shift.
+                    {t('intro')}
                 </p>
                 {isHrAdmin && (
                     <div className="flex flex-wrap items-center gap-3">
@@ -152,7 +157,7 @@ export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             disable={rows.length === 0}
                             onClick={() => setAssignOpen(true)}
                         >
-                            <UsersThree size={18} /> Assign to employees
+                            <UsersThree size={18} /> {t('assignToEmployees')}
                         </MyButton>
                         <MyButton
                             type="button"
@@ -163,7 +168,7 @@ export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                 setDialogOpen(true);
                             }}
                         >
-                            <Plus size={18} /> Add shift
+                            <Plus size={18} /> {t('addShift')}
                         </MyButton>
                     </div>
                 )}
@@ -173,14 +178,14 @@ export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                 <HrLoadingRows rows={3} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Couldn't load shifts."
+                    message={t('loadError')}
                     onRetry={() => void query.refetch()}
                 />
             ) : rows.length === 0 ? (
                 <HrEmptyState
                     icon={<Clock size={36} className="text-muted-foreground" />}
-                    title="No shifts defined yet"
-                    description="Add at least one shift and mark it default — until then a check-in has no hours to be measured against."
+                    title={t('emptyTitle')}
+                    description={t('emptyDescription')}
                 >
                     {isHrAdmin && (
                         <MyButton
@@ -192,7 +197,7 @@ export const ShiftsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                 setDialogOpen(true);
                             }}
                         >
-                            <Plus size={18} /> Add the first shift
+                            <Plus size={18} /> {t('addFirstShift')}
                         </MyButton>
                     )}
                 </HrEmptyState>

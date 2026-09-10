@@ -1,0 +1,8 @@
+{
+    "view": "देखें",
+    "markingCriteriaFor": "{{marks}} अंकों के लिए अंकन मानदंड",
+    "selectedCriteria": "चयनित मानदंड:",
+    "criteriaColumn": "मानदंड",
+    "marksColumn": "अंक",
+    "noCriteriaSelected": "कोई मानदंड चयनित नहीं है, कृपया उपलब्ध सूची से मानदंड चुनें"
+}

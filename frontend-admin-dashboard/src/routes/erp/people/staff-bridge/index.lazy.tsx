@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, Chalkboard, MagnifyingGlass, Plus, UsersThree } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
@@ -26,12 +28,12 @@ export const Route = createLazyFileRoute('/erp/people/staff-bridge/')({
 const PAGE_SIZE = 25;
 
 /** The roles the bridge endpoint filters by — the institute's non-learner roles. */
-const ROLE_OPTIONS = [
-    { id: 'ADMIN', label: 'Admin' },
-    { id: 'TEACHER', label: 'Teacher' },
-    { id: 'EVALUATOR', label: 'Evaluator' },
-    { id: 'CONTENT CREATOR', label: 'Content creator' },
-    { id: 'ASSESSMENT CREATOR', label: 'Assessment creator' },
+const buildRoleOptions = (t: TFunction) => [
+    { id: 'ADMIN', label: t('roles.admin') },
+    { id: 'TEACHER', label: t('roles.teacher') },
+    { id: 'EVALUATOR', label: t('roles.evaluator') },
+    { id: 'CONTENT CREATOR', label: t('roles.contentCreator') },
+    { id: 'ASSESSMENT CREATOR', label: t('roles.assessmentCreator') },
 ];
 
 function StaffBridgeRoute() {
@@ -68,10 +70,11 @@ function StatCard({
 }
 
 function StaffBridgePage() {
+    const { t } = useTranslation('erpStaffBridgeIndex');
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">People</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
 
     const navigate = useNavigate();
     const { isHrAdmin, isHrStaff } = useHrRole();
@@ -101,22 +104,23 @@ function StaffBridgePage() {
     const totalElements = bridge.data?.total_elements ?? rows.length;
     const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
     const anyFilter = !!role || !!search.trim();
+    const roleOptions = useMemo(() => buildRoleOptions(t), [t]);
 
     const columns = useMemo<ColumnDef<StaffBridgeRow>[]>(
         () => [
             {
                 id: 'full_name',
-                header: 'Name',
+                header: t('table.name'),
                 size: 190,
                 cell: ({ row }) => (
                     <span className="truncate text-body font-semibold text-foreground">
-                        {row.original.full_name || row.original.email || 'Team member'}
+                        {row.original.full_name || row.original.email || t('teamMember')}
                     </span>
                 ),
             },
             {
                 id: 'email',
-                header: 'Email',
+                header: t('table.email'),
                 size: 210,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-muted-foreground">
@@ -126,7 +130,7 @@ function StaffBridgePage() {
             },
             {
                 id: 'roles',
-                header: 'Roles',
+                header: t('table.roles'),
                 size: 200,
                 cell: ({ row }) => {
                     const roles = row.original.roles ?? [];
@@ -144,20 +148,20 @@ function StaffBridgePage() {
             },
             {
                 id: 'teaches',
-                header: 'Teaches',
+                header: t('table.teaches'),
                 size: 100,
                 cell: ({ row }) =>
                     row.original.teaches ? (
                         <span className="flex items-center gap-1 text-caption text-success-600">
-                            <Chalkboard size={16} /> Yes
+                            <Chalkboard size={16} /> {t('yes')}
                         </span>
                     ) : (
-                        <span className="text-caption text-muted-foreground">No</span>
+                        <span className="text-caption text-muted-foreground">{t('no')}</span>
                     ),
             },
             {
                 id: 'hr_profile',
-                header: 'HR profile',
+                header: t('table.hrProfile'),
                 size: 200,
                 cell: ({ row }) => {
                     const staff = row.original;
@@ -176,7 +180,7 @@ function StaffBridgePage() {
                                 }
                             >
                                 <CheckCircle size={16} weight="fill" className="text-success-600" />
-                                {staff.employee_code || 'View profile'}
+                                {staff.employee_code || t('viewProfile')}
                             </button>
                         );
                     }
@@ -192,7 +196,11 @@ function StaffBridgePage() {
                     }
 
                     if (!isHrAdmin) {
-                        return <span className="text-caption text-muted-foreground">None yet</span>;
+                        return (
+                            <span className="text-caption text-muted-foreground">
+                                {t('noneYet')}
+                            </span>
+                        );
                     }
 
                     return (
@@ -202,7 +210,7 @@ function StaffBridgePage() {
                             scale="small"
                             onClick={() => setCreateFor(staff)}
                         >
-                            <Plus size={14} /> Create HR profile
+                            <Plus size={14} /> {t('createHrProfile')}
                         </MyButton>
                     );
                 },
@@ -210,7 +218,7 @@ function StaffBridgePage() {
         ],
         // `navigate` and the setter are stable; only the role gate changes a cell.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [isHrAdmin]
+        [isHrAdmin, t]
     );
 
     if (!isHrStaff) {
@@ -229,11 +237,8 @@ function StaffBridgePage() {
         <div className="flex flex-col gap-6 p-4 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
-                    <h2 className="text-h2-semibold text-foreground">Staff coverage</h2>
-                    <p className="text-body text-muted-foreground">
-                        Everyone on your team, and whether they have an HR profile. Creating one
-                        here reuses their existing account — no new user, no invitation.
-                    </p>
+                    <h2 className="text-h2-semibold text-foreground">{t('heading')}</h2>
+                    <p className="text-body text-muted-foreground">{t('subheading')}</p>
                 </div>
                 <MyButton
                     type="button"
@@ -241,33 +246,35 @@ function StaffBridgePage() {
                     scale="medium"
                     onClick={() => navigate({ to: '/erp/people' })}
                 >
-                    <UsersThree size={18} /> All employees
+                    <UsersThree size={18} /> {t('allEmployees')}
                 </MyButton>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
                 <StatCard
-                    label="Team members"
+                    label={t('stats.teamMembers')}
                     value={totalStaff}
                     icon={<UsersThree size={20} className="text-primary-500" />}
                 />
                 <StatCard
-                    label="With an HR profile"
+                    label={t('stats.withHrProfile')}
                     value={withProfile}
                     hint={
                         totalStaff > 0
-                            ? `${Math.round((withProfile / totalStaff) * 100)}% covered`
+                            ? t('stats.coveredPercent', {
+                                  percent: Math.round((withProfile / totalStaff) * 100),
+                              })
                             : undefined
                     }
                     icon={<CheckCircle size={20} className="text-success-600" />}
                 />
                 <StatCard
-                    label="Teaching, no profile"
+                    label={t('stats.teachingNoProfile')}
                     value={teachingWithout}
                     hint={
                         teachingWithout > 0
-                            ? 'These people are paid but invisible to payroll'
-                            : 'Every teacher is covered'
+                            ? t('stats.paidButInvisible')
+                            : t('stats.everyTeacherCovered')
                     }
                     icon={<Chalkboard size={20} className="text-warning-600" />}
                 />
@@ -285,13 +292,13 @@ function StaffBridgePage() {
                             setSearchInput(event.target.value)
                         }
                         inputType="text"
-                        inputPlaceholder="Search by name or email"
+                        inputPlaceholder={t('searchPlaceholder')}
                         className="ps-9 sm:w-full"
                     />
                 </div>
                 <SingleFilterChip
-                    label="Role"
-                    options={ROLE_OPTIONS}
+                    label={t('table.role')}
+                    options={roleOptions}
                     value={role}
                     onChange={setRole}
                 />
@@ -304,7 +311,7 @@ function StaffBridgePage() {
                             setRole(undefined);
                         }}
                     >
-                        Clear filters
+                        {t('clearFilters')}
                     </button>
                 )}
             </div>
@@ -312,18 +319,13 @@ function StaffBridgePage() {
             {bridge.isLoading ? (
                 <HrLoadingRows />
             ) : bridge.isError ? (
-                <HrErrorState
-                    message="Couldn't load staff coverage."
-                    onRetry={() => bridge.refetch()}
-                />
+                <HrErrorState message={t('errors.load')} onRetry={() => bridge.refetch()} />
             ) : rows.length === 0 ? (
                 <HrEmptyState
                     icon={<UsersThree size={40} className="text-muted-foreground" />}
-                    title={anyFilter ? 'Nobody matches this search' : 'No team members found'}
+                    title={anyFilter ? t('empty.noMatchTitle') : t('empty.noneTitle')}
                     description={
-                        anyFilter
-                            ? 'Try a different name, or clear the role filter.'
-                            : 'Invite people to your institute from Manage institute → Teams, then come back to give them HR profiles.'
+                        anyFilter ? t('empty.noMatchDescription') : t('empty.noneDescription')
                     }
                 />
             ) : (

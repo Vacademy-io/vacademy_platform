@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Info } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -33,6 +34,7 @@ interface AssignShiftDialogProps {
  * against last month's shift.
  */
 export const AssignShiftDialog = ({ open, onOpenChange, shifts }: AssignShiftDialogProps) => {
+    const { t } = useTranslation('erpAssignShiftDialog');
     const mutation = useAssignShift();
     const [shiftId, setShiftId] = useState<string>('');
     const [employeeIds, setEmployeeIds] = useState<string[]>([]);
@@ -83,15 +85,15 @@ export const AssignShiftDialog = ({ open, onOpenChange, shifts }: AssignShiftDia
 
     const onSubmit = async () => {
         if (!shiftId) {
-            setError('Pick the shift to assign.');
+            setError(t('validation.shiftRequired'));
             return;
         }
         if (employeeIds.length === 0) {
-            setError('Pick at least one employee.');
+            setError(t('validation.employeeRequired'));
             return;
         }
         if (!effectiveFrom) {
-            setError('Pick the date the assignment starts from.');
+            setError(t('validation.dateRequired'));
             return;
         }
         setError(null);
@@ -101,16 +103,14 @@ export const AssignShiftDialog = ({ open, onOpenChange, shifts }: AssignShiftDia
                 employee_ids: employeeIds,
                 effective_from: effectiveFrom,
             });
-            toast.success(
-                `${employeeIds.length} ${employeeIds.length === 1 ? 'employee' : 'employees'} assigned`
-            );
+            toast.success(t('assignedToast', { count: employeeIds.length }));
             onOpenChange(false);
         } catch (assignError) {
             setError(
                 reportApiError(assignError, {
                     feature: 'erp-attendance',
                     tags: { action: 'assign-shift' },
-                    fallbackMessage: 'Could not assign the shift.',
+                    fallbackMessage: t('assignErrorFallback'),
                 })
             );
         }
@@ -118,7 +118,7 @@ export const AssignShiftDialog = ({ open, onOpenChange, shifts }: AssignShiftDia
 
     return (
         <MyDialog
-            heading="Assign a shift"
+            heading={t('heading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-xl"
@@ -130,16 +130,16 @@ export const AssignShiftDialog = ({ open, onOpenChange, shifts }: AssignShiftDia
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={onSubmit}
-                        loadingText="Assigning…"
+                        loadingText={t('assigning')}
                     >
-                        Assign shift
+                        {t('assignShift')}
                     </MyButton>
                 </div>
             }
@@ -148,17 +148,15 @@ export const AssignShiftDialog = ({ open, onOpenChange, shifts }: AssignShiftDia
                 <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                     <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
                     <span>
-                        Assigning closes any shift these employees are already on from the effective
-                        date onwards — an employee is only ever on one shift at a time. Days before
-                        that date keep being judged against their old shift.
+                        {t('infoNote')}
                     </span>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                    <span className="text-body text-foreground">Shift</span>
+                    <span className="text-body text-foreground">{t('shiftLabel')}</span>
                     <MyDropdown
                         currentValue={selectedShiftLabel}
-                        placeholder="Select a shift"
+                        placeholder={t('selectShiftPlaceholder')}
                         dropdownList={shiftOptions.map((option) => option.label)}
                         handleChange={(value) =>
                             setShiftId(
@@ -170,7 +168,7 @@ export const AssignShiftDialog = ({ open, onOpenChange, shifts }: AssignShiftDia
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                    <span className="text-body text-foreground">Employees</span>
+                    <span className="text-body text-foreground">{t('employeesLabel')}</span>
                     <MultiSelect
                         options={employeeOptions}
                         selected={employeeIds}
@@ -178,31 +176,33 @@ export const AssignShiftDialog = ({ open, onOpenChange, shifts }: AssignShiftDia
                         disabled={employees.isLoading || employees.isError}
                         placeholder={
                             employees.isLoading
-                                ? 'Loading employees…'
+                                ? t('loadingEmployees')
                                 : employees.isError
-                                  ? 'Employees unavailable'
-                                  : 'Select employees'
+                                  ? t('employeesUnavailable')
+                                  : t('selectEmployeesPlaceholder')
                         }
                         /* Inside a dialog: a portalled list can't be scrolled through react-remove-scroll. */
                         portal={false}
                     />
                     {employees.isError && (
                         <span className="text-caption text-danger-600">
-                            Could not load employees. Close this and try again.
+                            {t('employeesLoadError')}
                         </span>
                     )}
                     {!employees.isLoading &&
                         !employees.isError &&
                         (employees.data?.total_elements ?? 0) > employeeOptions.length && (
                             <span className="text-caption text-muted-foreground">
-                                Showing the first {employeeOptions.length} of{' '}
-                                {employees.data?.total_elements} active employees.
+                                {t('showingFirstOfTotal', {
+                                    count: employeeOptions.length,
+                                    total: employees.data?.total_elements,
+                                })}
                             </span>
                         )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                    <span className="text-body text-foreground">Effective from</span>
+                    <span className="text-body text-foreground">{t('effectiveFromLabel')}</span>
                     <MyInput
                         inputType="date"
                         input={effectiveFrom}

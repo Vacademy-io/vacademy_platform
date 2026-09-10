@@ -1,0 +1,14 @@
+{
+    "toast": {
+        "sessionEditedSuccess": "{{term}} modifié avec succès",
+        "sessionEditFailed": "Échec de la modification de {{term}}"
+    },
+    "button": {
+        "saveChanges": "Enregistrer les modifications"
+    },
+    "card": {
+        "startDate": "Date de début",
+        "editButton": "Modifier {{term}}",
+        "deleteButton": "Supprimer {{term}}"
+    }
+}

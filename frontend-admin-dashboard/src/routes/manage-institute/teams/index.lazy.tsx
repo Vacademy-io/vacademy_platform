@@ -1,4 +1,5 @@
 import { createLazyFileRoute } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { SearchInput } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/search-input';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -86,6 +87,7 @@ export const Route = createLazyFileRoute('/manage-institute/teams/')({
 });
 
 function RouteComponent() {
+  const { t } = useTranslation('manageInstituteTeamsIndexLazy');
   const { setNavHeading } = useNavHeadingStore();
   const setHandleRefetchUsersData = useRefetchUsersStore(
     (state) => state.setHandleRefetchUsersData
@@ -454,8 +456,8 @@ function RouteComponent() {
   }, [allRolesFilter]);
 
   useEffect(() => {
-    setNavHeading('Teams');
-  }, []);
+    setNavHeading(t('navHeading'));
+  }, [setNavHeading, t]);
 
   // Convert TeamMember to UserRolesDataEntry for the options components
   const toUserRolesDataEntry = (member: TeamMember): UserRolesDataEntry => ({
@@ -485,7 +487,7 @@ function RouteComponent() {
   const columns: ColumnDef<TeamMember>[] = [
     {
       accessorKey: 'full_name',
-      header: 'Name',
+      header: t('columns.name'),
       size: 200,
       cell: ({ row }) => (
         <div className="text-sm font-medium text-neutral-700">
@@ -495,7 +497,7 @@ function RouteComponent() {
     },
     {
       accessorKey: 'email',
-      header: 'Email',
+      header: t('columns.email'),
       size: 250,
       cell: ({ row }) => (
         <div className="text-sm text-neutral-600">
@@ -505,7 +507,7 @@ function RouteComponent() {
     },
     {
       accessorKey: 'username',
-      header: 'Username',
+      header: t('columns.username'),
       size: 150,
       cell: ({ row }) => (
         <div className="text-sm text-neutral-600">
@@ -517,7 +519,7 @@ function RouteComponent() {
       ? [
           {
             id: 'password',
-            header: 'Password',
+            header: t('columns.password'),
             size: 200,
             cell: ({ row }) => <PasswordCell password={row.original.password} />,
           } as ColumnDef<TeamMember>,
@@ -525,7 +527,7 @@ function RouteComponent() {
       : []),
     {
       accessorKey: 'mobile_number',
-      header: 'Phone',
+      header: t('columns.phone'),
       size: 150,
       cell: ({ row }) => (
         <div className="text-sm text-neutral-600">
@@ -535,7 +537,7 @@ function RouteComponent() {
     },
     {
       accessorKey: 'roles',
-      header: 'Roles',
+      header: t('columns.roles'),
       size: 250,
       cell: ({ row }) => {
         const instituteRoles = row.original.roles.filter(
@@ -557,7 +559,7 @@ function RouteComponent() {
     },
     {
       id: 'subOrgs',
-      header: 'Sub-Orgs',
+      header: t('columns.subOrgs'),
       size: 220,
       cell: ({ row }) => {
         // Access comes from two places and the column has to reflect both, or an
@@ -588,7 +590,7 @@ function RouteComponent() {
               <span
                 key={subOrg.id}
                 className="rounded-full bg-info-50 px-2 py-0.5 text-xs text-info-600"
-                title="Assigned to this person"
+                title={t('subOrgColumn.assignedTooltip')}
               >
                 {subOrg.name}
               </span>
@@ -597,10 +599,10 @@ function RouteComponent() {
               <span
                 key={subOrg.id}
                 className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600"
-                title="Granted by this person's role"
+                title={t('subOrgColumn.grantedByRoleTooltip')}
               >
                 {subOrg.name}
-                <span className="ml-1 text-neutral-400">via role</span>
+                <span className="ms-1 text-neutral-400">{t('subOrgColumn.viaRole')}</span>
               </span>
             ))}
           </div>
@@ -609,7 +611,7 @@ function RouteComponent() {
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('columns.actions'),
       size: 80,
       cell: ({ row }) => {
         const member = row.original;
@@ -623,7 +625,7 @@ function RouteComponent() {
               subOrgAssign={
                 canAssignSubOrgs
                   ? {
-                      label: `Assign ${subOrgTermPlural.toLowerCase()}`,
+                      label: t('assignSubOrgs', { term: subOrgTermPlural.toLowerCase() }),
                       // Individual links only. Role-derived access isn't editable
                       // per person — it's changed on the role in Display Settings.
                       currentSubOrgIds: (linksMap.get(member.id) ?? []).map((s) => s.id),
@@ -663,7 +665,7 @@ function RouteComponent() {
                 }`}
             >
               <span className={`${selectedTab === 'instituteUsers' ? 'text-primary-500' : ''}`}>
-                Institute Users
+                {t('tabs.instituteUsers')}
               </span>
               <Badge
                 className="rounded-lg bg-primary-500 p-0 px-2 text-caption text-white"
@@ -680,7 +682,7 @@ function RouteComponent() {
                 }`}
             >
               <span className={`${selectedTab === 'invites' ? 'text-primary-500' : ''}`}>
-                Invites
+                {t('tabs.invites')}
               </span>
               <Badge
                 className="rounded-lg bg-primary-500 p-0 px-2 text-caption text-white"
@@ -698,7 +700,7 @@ function RouteComponent() {
                   }`}
               >
                 <span className={`${selectedTab === 'orgChart' ? 'text-primary-500' : ''}`}>
-                  Org Chart
+                  {t('tabs.orgChart')}
                 </span>
               </TabsTrigger>
             )}
@@ -737,7 +739,7 @@ function RouteComponent() {
                     });
                   }
                 }}
-                placeholder="Search by name, email..."
+                placeholder={t('search.placeholder')}
               />
             </div>
             {searchInput.length > 0 && (
@@ -751,7 +753,7 @@ function RouteComponent() {
           </div>
           <div className="flex items-center gap-3">
             <FilterChips
-              label="Role Type"
+              label={t('filters.roleType')}
               filterList={roleTypeWithCustomNames}
               selectedFilters={selectedFilter.roles.map(r => ({ id: r.id, label: r.name }))}
               handleSelect={(option) => {
@@ -778,7 +780,7 @@ function RouteComponent() {
             />
             {selectedTab === 'instituteUsers' && (
               <FilterChips
-                label="Status"
+                label={t('filters.status')}
                 filterList={roleStatusWithLabel}
                 selectedFilters={selectedFilter.status.map(s => ({ id: s.id, label: s.name }))}
                 handleSelect={(option) => {
@@ -805,7 +807,7 @@ function RouteComponent() {
             )}
             {selectedTab === 'instituteUsers' && subOrgFilterList.length > 0 && userSubOrgLinks !== undefined && (
               <FilterChips
-                label="Sub-Org"
+                label={t('filters.subOrg')}
                 filterList={subOrgFilterList}
                 selectedFilters={(selectedFilter.subOrgs ?? []).map(s => ({ id: s.id, label: s.name }))}
                 handleSelect={(option) => {
@@ -835,7 +837,7 @@ function RouteComponent() {
                 >
                   <div className="flex items-center gap-2">
                     <Funnel size={16} />
-                    <span>Apply Filters</span>
+                    <span>{t('filters.applyFilters')}</span>
                   </div>
                 </MyButton>
               )}
@@ -851,7 +853,7 @@ function RouteComponent() {
                 >
                   <div className="flex items-center gap-2">
                     <X size={16} />
-                    <span>Clear All</span>
+                    <span>{t('filters.clearAll')}</span>
                   </div>
                 </MyButton>
               )}
@@ -895,10 +897,10 @@ function RouteComponent() {
                 <Users size={32} className="text-neutral-400" weight="duotone" />
               </div>
               <h3 className="mb-2 text-lg font-semibold text-neutral-900">
-                No team members found
+                {t('emptyState.title')}
               </h3>
               <p className="mb-6 max-w-sm text-sm text-neutral-500">
-                We couldn't find any team members matching your current search or filters. Try adjusting them or invite new users.
+                {t('emptyState.body')}
               </p>
               {(selectedFilter.roles.length > 0 || selectedFilter.status.length > 0 || (selectedFilter.subOrgs?.length ?? 0) > 0 || searchFilter) && (
                 <MyButton
@@ -910,7 +912,7 @@ function RouteComponent() {
                     setSearchFilter('');
                   }}
                 >
-                  Clear all filters
+                  {t('filters.clearAllFilters')}
                 </MyButton>
               )}
             </div>

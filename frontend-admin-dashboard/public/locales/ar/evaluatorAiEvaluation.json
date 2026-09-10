@@ -1,0 +1,18 @@
+{
+    "evaluatingStudents": "الرجاء الانتظار، نقوم بتقييم الطلاب...",
+    "evaluatedStudentsSuccess_zero": "تم تقييم الطلاب بنجاح",
+    "evaluatedStudentsSuccess_one": "تم تقييم طالب واحد بنجاح",
+    "evaluatedStudentsSuccess_two": "تم تقييم طالبين بنجاح",
+    "evaluatedStudentsSuccess_few": "تم تقييم {{count}} طلاب بنجاح",
+    "evaluatedStudentsSuccess_many": "تم تقييم {{count}} طالبًا بنجاح",
+    "evaluatedStudentsSuccess_other": "تم تقييم {{count}} طالب بنجاح",
+    "fileProcessingRetry": "الملف قيد المعالجة، يرجى المحاولة مرة أخرى",
+    "evaluationFailedFor": "فشل التقييم لـ {{assessment}}",
+    "failedToEvaluateStudents": "فشل تقييم الطلاب",
+    "evaluationList": "قائمة التقييمات",
+    "evaluationListForAssessment": "قائمة التقييمات لـ {{assessment}}",
+    "evaluateStudents": "تقييم الطلاب",
+    "noEvaluatedStudents": "لا يوجد طلاب تم تقييمهم",
+    "noEvaluatedStudentsDescription": "لم تقم بتقييم أي طالب بعد. انقر على زر \"تقييم الطلاب\" لاختيار الطلاب للتقييم.",
+    "selectStudentsForAssignment": "اختيار الطلاب للتكليف"
+}

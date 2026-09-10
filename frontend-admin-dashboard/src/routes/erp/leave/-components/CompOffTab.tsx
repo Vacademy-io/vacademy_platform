@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { ArrowsClockwise, Info } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyTable, type TableData } from '@/components/design-system/table';
@@ -27,6 +28,7 @@ import { DaysCell, LeaveStatusChip, employeeLabel } from './leave-meta';
  * from approving one that expires in three months.
  */
 export const CompOffTab = () => {
+    const { t } = useTranslation('erpCompOffTab');
     const { isHrAdmin } = useHrRole();
     const [employeeId, setEmployeeId] = useState<string | undefined>();
     const [actingId, setActingId] = useState<string | null>(null);
@@ -47,12 +49,12 @@ export const CompOffTab = () => {
         setActingId(compOff.id);
         try {
             await mutation.mutateAsync({ id: compOff.id, status });
-            toast.success(status === 'APPROVED' ? 'Comp-off approved' : 'Comp-off rejected');
+            toast.success(status === 'APPROVED' ? t('approvedToast') : t('rejectedToast'));
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-leave',
                 tags: { action: status === 'APPROVED' ? 'approve-comp-off' : 'reject-comp-off' },
-                fallbackMessage: 'Could not update this comp-off.',
+                fallbackMessage: t('updateErrorFallback'),
             });
         } finally {
             setActingId(null);
@@ -63,7 +65,7 @@ export const CompOffTab = () => {
         () => [
             {
                 id: 'employee',
-                header: 'Employee',
+                header: t('columns.employee'),
                 size: 220,
                 cell: ({ row }) => (
                     <span className="truncate text-body font-semibold text-foreground">
@@ -73,7 +75,7 @@ export const CompOffTab = () => {
             },
             {
                 id: 'worked_on_date',
-                header: 'Worked on',
+                header: t('columns.workedOn'),
                 size: 140,
                 cell: ({ row }) => (
                     <span className="text-body text-foreground">
@@ -85,13 +87,13 @@ export const CompOffTab = () => {
             },
             {
                 id: 'earned_days',
-                header: 'Earned days',
+                header: t('columns.earnedDays'),
                 size: 120,
                 cell: ({ row }) => <DaysCell value={row.original.earned_days} />,
             },
             {
                 id: 'expiry_date',
-                header: 'Expires',
+                header: t('columns.expires'),
                 size: 140,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -101,7 +103,7 @@ export const CompOffTab = () => {
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columns.status'),
                 size: 130,
                 cell: ({ row }) => <LeaveStatusChip status={row.original.status} />,
             },
@@ -124,9 +126,9 @@ export const CompOffTab = () => {
                                           type="button"
                                           disable={busy}
                                           onAsyncClick={() => act(row.original, 'APPROVED')}
-                                          loadingText="Approving…"
+                                          loadingText={t('approving')}
                                       >
-                                          Approve
+                                          {t('approve')}
                                       </MyButton>
                                       <MyButton
                                           buttonType="text"
@@ -134,9 +136,9 @@ export const CompOffTab = () => {
                                           type="button"
                                           disable={busy}
                                           onAsyncClick={() => act(row.original, 'REJECTED')}
-                                          loadingText="Rejecting…"
+                                          loadingText={t('rejecting')}
                                       >
-                                          Reject
+                                          {t('reject')}
                                       </MyButton>
                                   </div>
                               );
@@ -148,7 +150,7 @@ export const CompOffTab = () => {
         // `act` is stable enough for the table's purposes; only the admin flag and the
         // in-flight row change what a cell renders.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [isHrAdmin, actingId]
+        [isHrAdmin, actingId, t]
     );
 
     const tableData: TableData<CompOffDTO> = {
@@ -163,19 +165,19 @@ export const CompOffTab = () => {
     return (
         <div className="flex flex-col gap-4">
             <p className="max-w-3xl text-body text-muted-foreground">
-                Days an employee worked when they did not have to. Approving one credits their
-                COMP_OFF balance with the earned days, which then expire on the date shown — an
-                unused comp-off is not carried forward past it.
+                {t('intro')}
             </p>
 
             <div className="flex flex-wrap items-end gap-3">
                 <div className="w-full sm:w-80">
-                    <span className="mb-1 block text-caption text-muted-foreground">Employee</span>
+                    <span className="mb-1 block text-caption text-muted-foreground">
+                        {t('employeeLabel')}
+                    </span>
                     <EmployeePicker
                         value={employeeId ?? ''}
                         onChange={(id) => setEmployeeId(id || undefined)}
                         filterStatus={null}
-                        placeholder="All employees"
+                        placeholder={t('allEmployeesPlaceholder')}
                     />
                 </div>
                 {employeeId && (
@@ -185,7 +187,7 @@ export const CompOffTab = () => {
                         type="button"
                         onClick={() => setEmployeeId(undefined)}
                     >
-                        <ArrowsClockwise size={14} /> Show everyone
+                        <ArrowsClockwise size={14} /> {t('showEveryone')}
                     </MyButton>
                 )}
             </div>
@@ -194,16 +196,16 @@ export const CompOffTab = () => {
                 <HrLoadingRows rows={4} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Couldn't load comp-off records."
+                    message={t('loadError')}
                     onRetry={() => void query.refetch()}
                 />
             ) : rows.length === 0 ? (
                 <HrEmptyState
-                    title="No comp-off recorded"
+                    title={t('emptyTitle')}
                     description={
                         employeeId
-                            ? 'This employee has not claimed any comp-off yet.'
-                            : 'Comp-off appears here when an employee claims a day they worked on a holiday or weekly off.'
+                            ? t('emptyDescriptionFiltered')
+                            : t('emptyDescriptionAll')
                     }
                 />
             ) : (
@@ -219,8 +221,7 @@ export const CompOffTab = () => {
 
             <p className="flex items-start gap-2 text-caption text-muted-foreground">
                 <Info size={14} className="mt-0.5 shrink-0" />
-                Approved comp-off shows up as a COMP_OFF row in the balances table above, where it
-                behaves like any other leave type until it expires.
+                {t('footerNote')}
             </p>
         </div>
     );

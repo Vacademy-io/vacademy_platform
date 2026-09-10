@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { Info, PauseCircle } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { cn } from '@/lib/utils';
 import type {
@@ -8,12 +10,13 @@ import type {
     PayrollEntryDTO,
 } from '@/routes/erp/-shared/hr-types';
 
-const GROUPS: { type: ComponentType; label: string; tone: 'earning' | 'deduction' | 'default' }[] =
-    [
-        { type: 'EARNING', label: 'Earnings', tone: 'default' },
-        { type: 'DEDUCTION', label: 'Deductions', tone: 'deduction' },
-        { type: 'EMPLOYER_CONTRIBUTION', label: 'Employer contributions', tone: 'default' },
-    ];
+const buildGroups = (
+    t: TFunction
+): { type: ComponentType; label: string; tone: 'earning' | 'deduction' | 'default' }[] => [
+    { type: 'EARNING', label: t('groups.earnings'), tone: 'default' },
+    { type: 'DEDUCTION', label: t('groups.deductions'), tone: 'deduction' },
+    { type: 'EMPLOYER_CONTRIBUTION', label: t('groups.employerContributions'), tone: 'default' },
+];
 
 const toNumber = (value: number | string | null | undefined) => {
     const numeric = typeof value === 'string' ? Number(value) : value ?? 0;
@@ -40,6 +43,7 @@ const Row = ({
     currency: string | null | undefined;
     tone: 'earning' | 'deduction' | 'default';
 }) => {
+    const { t } = useTranslation('erpEntryBreakdown');
     const highlight = isTds(component);
     return (
         <div
@@ -50,11 +54,11 @@ const Row = ({
         >
             <span className="flex min-w-0 items-center gap-2">
                 <span className="truncate text-caption text-neutral-600">
-                    {component.component_name ?? component.component_code ?? 'Component'}
+                    {component.component_name ?? component.component_code ?? t('component')}
                 </span>
                 {highlight && (
                     <span className="shrink-0 rounded-sm bg-warning-100 px-1 text-caption text-warning-600">
-                        Tax
+                        {t('tax')}
                     </span>
                 )}
             </span>
@@ -81,18 +85,20 @@ const Row = ({
  * to make a payslip look wrong.
  */
 export const EntryBreakdown = ({ entry }: { entry: PayrollEntryDTO }) => {
+    const { t } = useTranslation('erpEntryBreakdown');
     const currency = entry.currency;
 
     const grouped = useMemo(() => {
         const components = entry.components ?? [];
-        return GROUPS.map((group) => {
+        const groups = buildGroups(t);
+        return groups.map((group) => {
             const rows = components.filter(
                 (component) => (component.component_type ?? '').toUpperCase() === group.type
             );
             const subtotal = rows.reduce((sum, component) => sum + toNumber(component.amount), 0);
             return { ...group, rows, subtotal };
         });
-    }, [entry.components]);
+    }, [entry.components, t]);
 
     const earnings = grouped.find((group) => group.type === 'EARNING')?.subtotal ?? 0;
     const deductions = grouped.find((group) => group.type === 'DEDUCTION')?.subtotal ?? 0;
@@ -108,7 +114,7 @@ export const EntryBreakdown = ({ entry }: { entry: PayrollEntryDTO }) => {
                         className="mt-1 shrink-0 text-warning-600"
                     />
                     <p className="text-caption text-warning-600">
-                        <span className="font-semibold">On hold: </span>
+                        <span className="font-semibold">{t('onHold')} </span>
                         {entry.hold_reason}
                     </p>
                 </div>
@@ -117,7 +123,7 @@ export const EntryBreakdown = ({ entry }: { entry: PayrollEntryDTO }) => {
             {!hasComponents ? (
                 <div className="flex items-center gap-2 text-caption text-neutral-500">
                     <Info size={16} />
-                    No component breakdown was stored for this entry.
+                    {t('noBreakdown')}
                 </div>
             ) : (
                 <>
@@ -132,7 +138,7 @@ export const EntryBreakdown = ({ entry }: { entry: PayrollEntryDTO }) => {
                                 </span>
                                 {group.rows.length === 0 ? (
                                     <span className="px-3 py-1 text-caption text-neutral-400">
-                                        None
+                                        {t('none')}
                                     </span>
                                 ) : (
                                     group.rows.map((component, index) => (
@@ -149,7 +155,7 @@ export const EntryBreakdown = ({ entry }: { entry: PayrollEntryDTO }) => {
                                 )}
                                 <div className="mt-1 flex items-center justify-between gap-4 border-t border-border px-3 pt-2">
                                     <span className="text-caption font-semibold text-neutral-600">
-                                        Subtotal
+                                        {t('subtotal')}
                                     </span>
                                     <MoneyCell
                                         value={group.subtotal}
@@ -162,21 +168,21 @@ export const EntryBreakdown = ({ entry }: { entry: PayrollEntryDTO }) => {
                     </div>
 
                     <div className="flex flex-wrap items-center justify-end gap-2 text-caption text-neutral-500">
-                        <span>Earnings</span>
+                        <span>{t('groups.earnings')}</span>
                         <MoneyCell
                             value={earnings}
                             currency={currency}
                             className="inline text-caption text-neutral-600"
                         />
                         <span>−</span>
-                        <span>Deductions</span>
+                        <span>{t('groups.deductions')}</span>
                         <MoneyCell
                             value={deductions}
                             currency={currency}
                             className="inline text-caption text-danger-600"
                         />
                         <span>=</span>
-                        <span className="font-semibold text-neutral-700">Net pay</span>
+                        <span className="font-semibold text-neutral-700">{t('netPay')}</span>
                         <MoneyCell
                             value={entry.net_pay}
                             currency={currency}

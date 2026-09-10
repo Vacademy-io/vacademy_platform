@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { ArrowLeft, Plus, Trash, WarningCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { getInstituteId } from '@/constants/helper';
 import { cn } from '@/lib/utils';
 import { getBackendErrorBody, reportApiError } from '@/lib/report-api-error';
@@ -19,15 +21,18 @@ interface Props {
     onClose: () => void;
 }
 
-const LANGUAGES = [
-    { code: 'en', label: 'English' }, { code: 'en_US', label: 'English (US)' },
-    { code: 'hi', label: 'Hindi' }, { code: 'es', label: 'Spanish' },
-    { code: 'pt_BR', label: 'Portuguese (BR)' }, { code: 'ar', label: 'Arabic' },
-    { code: 'fr', label: 'French' }, { code: 'de', label: 'German' },
-    { code: 'id', label: 'Indonesian' }, { code: 'it', label: 'Italian' },
-    { code: 'ja', label: 'Japanese' }, { code: 'ko', label: 'Korean' },
-    { code: 'zh_CN', label: 'Chinese (Simplified)' },
-];
+/** Meta's supported template languages. Built from `t` because the labels are user-visible. */
+function buildLanguages(t: TFunction): { code: string; label: string }[] {
+    return [
+        { code: 'en', label: t('languages.en') }, { code: 'en_US', label: t('languages.en_US') },
+        { code: 'hi', label: t('languages.hi') }, { code: 'es', label: t('languages.es') },
+        { code: 'pt_BR', label: t('languages.pt_BR') }, { code: 'ar', label: t('languages.ar') },
+        { code: 'fr', label: t('languages.fr') }, { code: 'de', label: t('languages.de') },
+        { code: 'id', label: t('languages.id') }, { code: 'it', label: t('languages.it') },
+        { code: 'ja', label: t('languages.ja') }, { code: 'ko', label: t('languages.ko') },
+        { code: 'zh_CN', label: t('languages.zh_CN') },
+    ];
+}
 
 const fieldClass = 'w-full mt-1 px-2 py-1.5 text-sm border rounded';
 const buttonFieldClass = 'w-full px-2 py-1 text-xs border rounded';
@@ -35,6 +40,8 @@ const buttonFieldClass = 'w-full px-2 py-1 text-xs border rounded';
 const invalidClass = 'border-danger-400 bg-danger-50 focus:border-danger-500';
 
 export function TemplateBuilder({ template, onClose }: Props) {
+    const { t } = useTranslation('communicationTemplateBuilder');
+    const LANGUAGES = useMemo(() => buildLanguages(t), [t]);
     const isEditing = !!template?.id;
     const instituteId = getInstituteId() || '';
 
@@ -132,12 +139,12 @@ export function TemplateBuilder({ template, onClose }: Props) {
         toast.error(
             found.length === 1
                 ? found[0]!.message
-                : `${found.length} things need fixing before this can be saved — see the list above.`
+                : t('toast.multipleProblems', { count: found.length })
         );
     };
 
     const handleSaveDraft = async () => {
-        const found = validateDraft({ name, category, bodyText });
+        const found = validateDraft(t, { name, category, bodyText });
         if (found.length > 0) { showLocalProblems(found); return; }
 
         setSaving(true);
@@ -149,15 +156,15 @@ export function TemplateBuilder({ template, onClose }: Props) {
                 : await createTemplateDraft(buildDTO());
             setDraftId(saved.id);
             setProblems([]);
-            toast.success('Draft saved');
+            toast.success(t('toast.draftSaved'));
             onClose();
         } catch (err) {
-            applyServerProblem(err, 'whatsapp-template-save', 'Could not save the draft.');
+            applyServerProblem(err, 'whatsapp-template-save', t('toast.saveDraftFailed'));
         } finally { setSaving(false); }
     };
 
     const handleSubmit = async () => {
-        const found = validateForSubmit({
+        const found = validateForSubmit(t, {
             name,
             language,
             category,
@@ -184,7 +191,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
             id = saved.id;
             setDraftId(id);
         } catch (err) {
-            applyServerProblem(err, 'whatsapp-template-save', 'Could not save the template.');
+            applyServerProblem(err, 'whatsapp-template-save', t('toast.saveTemplateFailed'));
             setSaving(false);
             return;
         }
@@ -194,8 +201,8 @@ export function TemplateBuilder({ template, onClose }: Props) {
             setProblems([]);
             toast.success(
                 submitted.status === 'APPROVED'
-                    ? 'Template approved by Meta and ready to use.'
-                    : 'Template submitted to Meta for approval.'
+                    ? t('toast.approvedByMeta')
+                    : t('toast.submittedToMeta')
             );
             onClose();
         } catch (err) {
@@ -204,14 +211,14 @@ export function TemplateBuilder({ template, onClose }: Props) {
             applyServerProblem(
                 err,
                 'whatsapp-template-submit',
-                'Meta rejected the template. Your draft has been saved.'
+                t('toast.metaRejected')
             );
-            toast.info('Your draft is saved — fix the problem above and submit again.');
+            toast.info(t('toast.draftSavedRetry'));
         } finally { setSaving(false); }
     };
 
     const addButton = (type: string) => {
-        if (buttons.length >= 3) { toast.error('Maximum 3 buttons'); return; }
+        if (buttons.length >= 3) { toast.error(t('toast.maxButtons')); return; }
         setButtons([...buttons, { type, text: '', url: type === 'URL' ? 'https://' : undefined }]);
     };
 
@@ -221,16 +228,16 @@ export function TemplateBuilder({ template, onClose }: Props) {
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b bg-white shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
                     <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 shrink-0"><ArrowLeft size={20} /></button>
-                    <h2 className="text-lg font-semibold truncate">{isEditing ? 'Edit Template' : 'Create Template'}</h2>
+                    <h2 className="text-lg font-semibold truncate">{isEditing ? t('header.edit') : t('header.create')}</h2>
                 </div>
                 <div className="flex gap-2 shrink-0">
                     <button onClick={handleSaveDraft} disabled={saving}
                         className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50 disabled:opacity-50">
-                        Save Draft
+                        {t('header.saveDraft')}
                     </button>
                     <button onClick={handleSubmit} disabled={saving}
                         className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
-                        {saving ? 'Submitting...' : 'Submit for Approval'}
+                        {saving ? t('header.submitting') : t('header.submitForApproval')}
                     </button>
                 </div>
             </div>
@@ -248,8 +255,8 @@ export function TemplateBuilder({ template, onClose }: Props) {
                             <div className="min-w-0 text-sm text-danger-600">
                                 <p className="font-medium">
                                     {problems.length === 1
-                                        ? 'This template needs a fix'
-                                        : `${problems.length} things need fixing`}
+                                        ? t('problemsBanner.single')
+                                        : t('problemsBanner.multiple', { count: problems.length })}
                                 </p>
                                 <ul className="mt-1 list-disc space-y-0.5 pl-4">
                                     {problems.map((p, i) => (
@@ -263,24 +270,24 @@ export function TemplateBuilder({ template, onClose }: Props) {
                     {/* Meta info */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                            <label className="text-xs font-medium text-gray-600">Template Name</label>
+                            <label className="text-xs font-medium text-gray-600">{t('fields.templateName')}</label>
                             <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                                 placeholder="order_confirmation"
                                 aria-invalid={isInvalid('name')}
                                 className={cn(fieldClass, isInvalid('name') && invalidClass)} />
-                            <p className="text-[10px] text-gray-400 mt-0.5">Lowercase, underscores only</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">{t('fields.templateNameHint')}</p>
                         </div>
                         <div>
-                            <label className="text-xs font-medium text-gray-600">Category</label>
+                            <label className="text-xs font-medium text-gray-600">{t('fields.category')}</label>
                             <select value={category} onChange={(e) => setCategory(e.target.value)}
                                 className={cn(fieldClass, isInvalid('category') && invalidClass)}>
-                                <option value="MARKETING">Marketing</option>
-                                <option value="UTILITY">Utility</option>
-                                <option value="AUTHENTICATION">Authentication</option>
+                                <option value="MARKETING">{t('fields.categoryMarketing')}</option>
+                                <option value="UTILITY">{t('fields.categoryUtility')}</option>
+                                <option value="AUTHENTICATION">{t('fields.categoryAuthentication')}</option>
                             </select>
                         </div>
                         <div>
-                            <label className="text-xs font-medium text-gray-600">Language</label>
+                            <label className="text-xs font-medium text-gray-600">{t('fields.language')}</label>
                             <select value={language} onChange={(e) => setLanguage(e.target.value)}
                                 className={cn(fieldClass, isInvalid('language') && invalidClass)}>
                                 {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
@@ -290,18 +297,18 @@ export function TemplateBuilder({ template, onClose }: Props) {
 
                     {/* Header */}
                     <div className="p-3 border rounded bg-white">
-                        <label className="text-xs font-semibold text-gray-600">Header</label>
+                        <label className="text-xs font-semibold text-gray-600">{t('fields.header')}</label>
                         <select value={headerType} onChange={(e) => setHeaderType(e.target.value)}
                             className={cn(fieldClass, isInvalid('headerType') && invalidClass)}>
-                            <option value="NONE">None</option>
-                            <option value="TEXT">Text</option>
-                            <option value="IMAGE">Image</option>
-                            <option value="VIDEO">Video</option>
-                            <option value="DOCUMENT">Document</option>
+                            <option value="NONE">{t('fields.headerNone')}</option>
+                            <option value="TEXT">{t('fields.headerText')}</option>
+                            <option value="IMAGE">{t('fields.headerImage')}</option>
+                            <option value="VIDEO">{t('fields.headerVideo')}</option>
+                            <option value="DOCUMENT">{t('fields.headerDocument')}</option>
                         </select>
                         {headerType === 'TEXT' && (
                             <input type="text" value={headerText} onChange={(e) => setHeaderText(e.target.value)}
-                                placeholder="Header text (max 60 chars)" maxLength={60}
+                                placeholder={t('fields.headerTextPlaceholder')} maxLength={60}
                                 aria-invalid={isInvalid('headerText')}
                                 className={cn(fieldClass, 'mt-2', isInvalid('headerText') && invalidClass)} />
                         )}
@@ -310,13 +317,15 @@ export function TemplateBuilder({ template, onClose }: Props) {
                         {headerType === 'TEXT' && placeholderIndexes(headerText).length > 0 && (
                             <input type="text" value={headerSampleValues[0] || ''}
                                 onChange={(e) => setHeaderSampleValues([e.target.value])}
-                                placeholder="Sample value for the header variable (e.g. October)"
+                                placeholder={t('fields.headerSampleValuePlaceholder')}
                                 aria-invalid={isInvalid('headerSampleValues')}
                                 className={cn(fieldClass, 'mt-2', isInvalid('headerSampleValues') && invalidClass)} />
                         )}
                         {headerType !== 'NONE' && headerType !== 'TEXT' && (
                             <input type="text" value={headerSampleUrl} onChange={(e) => setHeaderSampleUrl(e.target.value)}
-                                placeholder={`Sample ${headerType.toLowerCase()} URL (for Meta approval)`}
+                                placeholder={t('fields.headerSampleUrlPlaceholder', {
+                                    kind: t(`headerKind.${headerType.toLowerCase()}`),
+                                })}
                                 aria-invalid={isInvalid('headerSampleUrl')}
                                 className={cn(fieldClass, 'mt-2', isInvalid('headerSampleUrl') && invalidClass)} />
                         )}
@@ -325,23 +334,26 @@ export function TemplateBuilder({ template, onClose }: Props) {
                     {/* Body */}
                     <div className="p-3 border rounded bg-white">
                         <div className="flex justify-between items-center">
-                            <label className="text-xs font-semibold text-gray-600">Body Text</label>
+                            <label className="text-xs font-semibold text-gray-600">{t('fields.bodyText')}</label>
                             <button onClick={insertPlaceholder}
                                 className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-0.5">
-                                <Plus size={12} /> Add Variable {`{{${placeholderCount + 1}}}`}
+                                <Plus size={12} /> {t('fields.addVariable')} {`{{${placeholderCount + 1}}}`}
                             </button>
                         </div>
+                        {/* The placeholder itself demonstrates Meta's literal {{n}} template syntax to
+                            the admin, so it is left untranslated rather than risk colliding with
+                            i18next's own {{ }} interpolation markers. */}
                         <textarea value={bodyText} onChange={(e) => setBodyText(e.target.value)}
                             placeholder="Hello {{1}}, your order {{2}} is confirmed for {{3}}."
                             aria-invalid={isInvalid('bodyText')}
                             className={cn(fieldClass, 'h-24 resize-y', isInvalid('bodyText') && invalidClass)}
                             maxLength={1024} />
-                        <p className="text-[10px] text-gray-400 mt-0.5">{bodyText.length}/1024 characters</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{t('fields.charCount', { count: bodyText.length })}</p>
 
                         {/* Variable names + Sample values */}
                         {placeholderCount > 0 && (
                             <div className="mt-2 space-y-1">
-                                <p className="text-xs text-gray-500">Variable configuration:</p>
+                                <p className="text-xs text-gray-500">{t('fields.variableConfiguration')}</p>
                                 {adjustedSamples.map((val, i) => (
                                     <div key={i} className="flex items-start gap-2">
                                         <span className="text-xs text-gray-400 w-10 shrink-0 pt-1.5">{`{{${i + 1}}}`}</span>
@@ -352,7 +364,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                                     arr[i] = e.target.value;
                                                     setBodyVariableNames(arr);
                                                 }}
-                                                placeholder="Variable name (e.g. name, course)"
+                                                placeholder={t('fields.variableNamePlaceholder')}
                                                 className="flex-1 min-w-0 px-2 py-1 text-xs border rounded" />
                                             <input type="text" value={val}
                                                 onChange={(e) => {
@@ -360,7 +372,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                                     arr[i] = e.target.value;
                                                     setBodySampleValues(arr);
                                                 }}
-                                                placeholder="Sample value (e.g. John)"
+                                                placeholder={t('fields.sampleValuePlaceholder')}
                                                 aria-invalid={isInvalid('bodySampleValues') && !val.trim()}
                                                 className={cn(
                                                     'flex-1 min-w-0 px-2 py-1 text-xs border rounded',
@@ -370,7 +382,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                     </div>
                                 ))}
                                 <p className="text-[10px] text-gray-400 mt-1">
-                                    Variable names let you use named params in the API: {`{"name": "John"}`} instead of {`{"1": "John"}`}
+                                    {t('fields.apiNamedParamsHint')}
                                 </p>
                             </div>
                         )}
@@ -378,16 +390,16 @@ export function TemplateBuilder({ template, onClose }: Props) {
 
                     {/* Footer */}
                     <div className="p-3 border rounded bg-white">
-                        <label className="text-xs font-semibold text-gray-600">Footer (optional)</label>
+                        <label className="text-xs font-semibold text-gray-600">{t('fields.footer')}</label>
                         <input type="text" value={footerText} onChange={(e) => setFooterText(e.target.value)}
-                            placeholder="Thank you for your business!" maxLength={60}
+                            placeholder={t('fields.footerPlaceholder')} maxLength={60}
                             aria-invalid={isInvalid('footerText')}
                             className={cn(fieldClass, isInvalid('footerText') && invalidClass)} />
                     </div>
 
                     {/* Buttons */}
                     <div className="p-3 border rounded bg-white">
-                        <label className="text-xs font-semibold text-gray-600">Buttons (max 3)</label>
+                        <label className="text-xs font-semibold text-gray-600">{t('fields.buttons')}</label>
                         <div className="space-y-2 mt-2">
                             {buttons.map((btn, i) => (
                                 <div key={i} className="flex items-start gap-2 p-2 bg-gray-50 rounded">
@@ -395,9 +407,11 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                         <span className="text-[10px] text-gray-400">{btn.type}</span>
                                         <input type="text" value={btn.text}
                                             onChange={(e) => { const u = [...buttons]; u[i] = { ...btn, text: e.target.value }; setButtons(u); }}
-                                            placeholder="Button text" maxLength={25}
+                                            placeholder={t('fields.buttonTextPlaceholder')} maxLength={25}
                                             aria-invalid={isInvalid(`buttons.${i}.text`)}
                                             className={cn(buttonFieldClass, isInvalid(`buttons.${i}.text`) && invalidClass)} />
+                                        {/* Untranslated for the same {{n}} literal-syntax reason as the body
+                                            placeholder above. */}
                                         {btn.type === 'URL' && (
                                             <input type="text" value={btn.url || ''}
                                                 onChange={(e) => { const u = [...buttons]; u[i] = { ...btn, url: e.target.value }; setButtons(u); }}
@@ -410,14 +424,14 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                         {btn.type === 'URL' && placeholderIndexes(btn.url || '').length > 0 && (
                                             <input type="text" value={btn.example?.[0] || ''}
                                                 onChange={(e) => { const u = [...buttons]; u[i] = { ...btn, example: [e.target.value] }; setButtons(u); }}
-                                                placeholder="Sample full URL (e.g. https://example.com/track/A123)"
+                                                placeholder={t('fields.buttonUrlSamplePlaceholder')}
                                                 aria-invalid={isInvalid(`buttons.${i}.example`)}
                                                 className={cn(buttonFieldClass, isInvalid(`buttons.${i}.example`) && invalidClass)} />
                                         )}
                                         {btn.type === 'PHONE_NUMBER' && (
                                             <input type="text" value={btn.phoneNumber || ''}
                                                 onChange={(e) => { const u = [...buttons]; u[i] = { ...btn, phoneNumber: e.target.value }; setButtons(u); }}
-                                                placeholder="+919876543210"
+                                                placeholder={t('fields.buttonPhonePlaceholder')}
                                                 aria-invalid={isInvalid(`buttons.${i}.phoneNumber`)}
                                                 className={cn(buttonFieldClass, isInvalid(`buttons.${i}.phoneNumber`) && invalidClass)} />
                                         )}
@@ -429,9 +443,9 @@ export function TemplateBuilder({ template, onClose }: Props) {
                         </div>
                         {buttons.length < 3 && (
                             <div className="flex flex-wrap gap-2 mt-2">
-                                <button onClick={() => addButton('QUICK_REPLY')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">+ Quick Reply</button>
-                                <button onClick={() => addButton('URL')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">+ URL Button</button>
-                                <button onClick={() => addButton('PHONE_NUMBER')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">+ Phone</button>
+                                <button onClick={() => addButton('QUICK_REPLY')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">{t('fields.addQuickReply')}</button>
+                                <button onClick={() => addButton('URL')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">{t('fields.addUrlButton')}</button>
+                                <button onClick={() => addButton('PHONE_NUMBER')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">{t('fields.addPhone')}</button>
                             </div>
                         )}
                     </div>
@@ -440,31 +454,31 @@ export function TemplateBuilder({ template, onClose }: Props) {
                 {/* Preview (right) */}
                 <div className="w-full md:w-96 shrink-0 border-t md:border-t-0 md:border-l bg-[#e5ddd5] p-6 md:overflow-y-auto flex items-start justify-center">
                     <div className="w-72 max-w-full">
-                        <p className="text-xs text-center text-gray-500 mb-3">WhatsApp Preview</p>
+                        <p className="text-xs text-center text-gray-500 mb-3">{t('preview.title')}</p>
                         <div className="bg-white rounded-lg shadow-md overflow-hidden">
                             {/* Header preview */}
                             {headerType !== 'NONE' && (
                                 <div className="bg-gray-100 p-3">
                                     {headerType === 'TEXT' && (
-                                        <p className="text-sm font-semibold text-gray-800">{headerText || 'Header text'}</p>
+                                        <p className="text-sm font-semibold text-gray-800">{headerText || t('preview.headerTextFallback')}</p>
                                     )}
                                     {headerType === 'IMAGE' && (
                                         <div className="h-32 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">
-                                            {headerSampleUrl ? <img src={headerSampleUrl} alt="" className="h-full w-full object-cover rounded" /> : '📷 Image'}
+                                            {headerSampleUrl ? <img src={headerSampleUrl} alt="" className="h-full w-full object-cover rounded" /> : t('preview.imageFallback')}
                                         </div>
                                     )}
                                     {headerType === 'VIDEO' && (
-                                        <div className="h-32 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">🎬 Video</div>
+                                        <div className="h-32 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">{t('preview.videoFallback')}</div>
                                     )}
                                     {headerType === 'DOCUMENT' && (
-                                        <div className="h-16 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">📄 Document</div>
+                                        <div className="h-16 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">{t('preview.documentFallback')}</div>
                                     )}
                                 </div>
                             )}
 
                             {/* Body preview */}
                             <div className="p-3">
-                                <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewBody || 'Your message body will appear here...'}</p>
+                                <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewBody || t('preview.bodyFallback')}</p>
                             </div>
 
                             {/* Footer preview */}
@@ -482,7 +496,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                             <span className="text-sm text-blue-500 font-medium">
                                                 {btn.type === 'URL' && '🔗 '}
                                                 {btn.type === 'PHONE_NUMBER' && '📞 '}
-                                                {btn.text || `Button ${i + 1}`}
+                                                {btn.text || t('preview.buttonFallback', { n: i + 1 })}
                                             </span>
                                         </div>
                                     ))}
@@ -499,10 +513,10 @@ export function TemplateBuilder({ template, onClose }: Props) {
 
                         {/* Info */}
                         <div className="mt-3 p-2 bg-white/80 rounded text-[10px] text-gray-500 space-y-0.5">
-                            <p><strong>Category:</strong> {category}</p>
-                            <p><strong>Language:</strong> {language}</p>
-                            <p><strong>Placeholders:</strong> {placeholderCount}</p>
-                            <p><strong>Buttons:</strong> {buttons.length}/3</p>
+                            <p><strong>{t('preview.category')}</strong> {category}</p>
+                            <p><strong>{t('preview.language')}</strong> {language}</p>
+                            <p><strong>{t('preview.placeholders')}</strong> {placeholderCount}</p>
+                            <p><strong>{t('preview.buttonsCount')}</strong> {buttons.length}/3</p>
                         </div>
                     </div>
                 </div>

@@ -1,0 +1,13 @@
+{
+    "inviteLinks": "Invite Links",
+    "add": "Add",
+    "inviteLinksLabel": "Invite Links:",
+    "view": "View",
+    "defaultTag": "DEFAULT",
+    "makeDefault": "Make Default",
+    "noInviteLinksAvailable": "No invite links available.",
+    "invitePage": "Invite Page",
+    "copyFailed": "Copy failed",
+    "failedToSubmitRating": "Failed to submit rating",
+    "unexpectedError": "An unexpected error occurred"
+}

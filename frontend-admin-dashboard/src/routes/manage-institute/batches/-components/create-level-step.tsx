@@ -11,8 +11,10 @@ import { MyButton } from '@/components/design-system/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { useTranslation } from 'react-i18next';
 
 export const CreateLevelStep = () => {
+    const { t } = useTranslation('manageInstituteCreateLevelStep');
     const { getLevelsFromPackage, instituteDetails, getSessionFromPackage } =
         useInstituteDetailsStore();
     const [newLevelName, setNewLevelName] = useState('');
@@ -79,7 +81,9 @@ export const CreateLevelStep = () => {
                 render={({ field }) => (
                     <FormItem className="space-y-3">
                         <FormLabel className="text-base font-medium text-neutral-700">
-                            {getTerminology(ContentTerms.Level, SystemTerms.Level)} Selection
+                            {t('form.levelSelectionLabel', {
+                                term: getTerminology(ContentTerms.Level, SystemTerms.Level),
+                            })}
                         </FormLabel>
                         <FormControl>
                             <RadioGroup
@@ -106,8 +110,12 @@ export const CreateLevelStep = () => {
                                         htmlFor="existing-level"
                                         className={`cursor-pointer font-normal ${levelList.length === 0 ? 'text-neutral-400' : 'text-neutral-600'}`}
                                     >
-                                        Select existing{' '}
-                                        {getTerminology(ContentTerms.Level, SystemTerms.Level)}
+                                        {t('form.selectExisting', {
+                                            term: getTerminology(
+                                                ContentTerms.Level,
+                                                SystemTerms.Level
+                                            ),
+                                        })}
                                     </FormLabel>
                                 </FormItem>
                                 <FormItem className="flex items-center space-x-2 space-y-0">
@@ -118,8 +126,12 @@ export const CreateLevelStep = () => {
                                         htmlFor="new-level"
                                         className="cursor-pointer font-normal text-neutral-600"
                                     >
-                                        Create new{' '}
-                                        {getTerminology(ContentTerms.Level, SystemTerms.Level)}
+                                        {t('form.createNew', {
+                                            term: getTerminology(
+                                                ContentTerms.Level,
+                                                SystemTerms.Level
+                                            ),
+                                        })}
                                     </FormLabel>
                                 </FormItem>
                             </RadioGroup>
@@ -133,7 +145,7 @@ export const CreateLevelStep = () => {
                 <FormField
                     control={form.control}
                     name="selectedLevel"
-                    rules={{ required: 'Please select a level' }}
+                    rules={{ required: t('validation.pleaseSelectLevel') }}
                     render={({ field }) => (
                         <FormItem className="flex flex-col gap-1.5">
                             <FormLabel className="text-neutral-700">
@@ -145,10 +157,12 @@ export const CreateLevelStep = () => {
                                     currentValue={field.value}
                                     dropdownList={levelList}
                                     handleChange={field.onChange}
-                                    placeholder={`Select a ${getTerminology(
-                                        ContentTerms.Level,
-                                        SystemTerms.Level
-                                    ).toLocaleLowerCase()}`}
+                                    placeholder={t('form.selectALevelPlaceholder', {
+                                        term: getTerminology(
+                                            ContentTerms.Level,
+                                            SystemTerms.Level
+                                        ).toLocaleLowerCase(),
+                                    })}
                                     disable={levelList.length === 0}
                                 />
                             </FormControl>
@@ -165,7 +179,7 @@ export const CreateLevelStep = () => {
                             <p className="text-sm font-medium text-neutral-700">{newLevelName}</p>
                             {newLevelDuration && (
                                 <p className="text-xs text-neutral-500">
-                                    Duration: {newLevelDuration} days
+                                    {t('form.durationDays', { count: newLevelDuration })}
                                 </p>
                             )}
                         </div>
@@ -219,11 +233,12 @@ export const CreateLevelStep = () => {
                                     htmlFor="duplicate-materials"
                                     className="cursor-pointer text-sm font-normal text-neutral-700"
                                 >
-                                    Duplicate study materials from a pre-existing{' '}
-                                    {getTerminology(
-                                        ContentTerms.Session,
-                                        SystemTerms.Session
-                                    ).toLocaleLowerCase()}
+                                    {t('form.duplicateFromPreExisting', {
+                                        term: getTerminology(
+                                            ContentTerms.Session,
+                                            SystemTerms.Session
+                                        ).toLocaleLowerCase(),
+                                    })}
                                 </FormLabel>
                             </FormItem>
                         )}
@@ -233,15 +248,16 @@ export const CreateLevelStep = () => {
                         <FormField
                             control={form.control}
                             name="selectedDuplicateSession"
-                            rules={{ required: 'Please select a session to duplicate from' }}
+                            rules={{ required: t('validation.pleaseSelectSessionToDuplicate') }}
                             render={({ field }) => (
                                 <FormItem className="mt-3 flex flex-col gap-1.5">
                                     <FormLabel className="text-neutral-700">
-                                        Duplicate from{' '}
-                                        {getTerminology(
-                                            ContentTerms.Session,
-                                            SystemTerms.Session
-                                        ).toLocaleLowerCase()}{' '}
+                                        {t('form.duplicateFrom', {
+                                            term: getTerminology(
+                                                ContentTerms.Session,
+                                                SystemTerms.Session
+                                            ).toLocaleLowerCase(),
+                                        })}{' '}
                                         <span className="text-danger-500">*</span>
                                     </FormLabel>
                                     <FormControl>
@@ -249,10 +265,12 @@ export const CreateLevelStep = () => {
                                             currentValue={field.value}
                                             dropdownList={sessionList}
                                             handleChange={field.onChange}
-                                            placeholder={`Select ${getTerminology(
-                                                ContentTerms.Session,
-                                                SystemTerms.Session
-                                            ).toLocaleLowerCase()} for duplication`}
+                                            placeholder={t('form.selectForDuplication', {
+                                                term: getTerminology(
+                                                    ContentTerms.Session,
+                                                    SystemTerms.Session
+                                                ).toLocaleLowerCase(),
+                                            })}
                                             disable={sessionList.length === 0}
                                         />
                                     </FormControl>

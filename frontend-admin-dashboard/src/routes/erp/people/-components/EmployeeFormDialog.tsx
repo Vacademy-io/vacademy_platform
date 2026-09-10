@@ -2,11 +2,14 @@ import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
 import { Form } from '@/components/ui/form';
+import i18n from '@/i18n';
 import { reportApiError } from '@/lib/report-api-error';
 import type {
     DepartmentDTO,
@@ -15,9 +18,9 @@ import type {
 } from '@/routes/erp/-shared/hr-types';
 import { useCreateEmployee, useEmployeeOptions, useUpdateEmployee } from '../-hooks/use-hr-people';
 import {
-    EMPLOYMENT_TYPE_OPTIONS,
+    buildEmploymentTypeOptions,
+    buildUnchangedPlaceholder,
     NONE_VALUE,
-    UNCHANGED_PLACEHOLDER,
     isMaskedValue,
     toSelectOptions,
     type SelectOption,
@@ -33,15 +36,26 @@ import { HrTextField } from './HrFormFields';
  * already holds.
  */
 
+const NAMESPACE = 'erpEmployeeFormDialog';
+
+/**
+ * `employeeSchema` is a module-scope singleton whose shape drives `EmployeeFormValues`
+ * via `z.infer`, so it cannot be rebuilt inside the component with a `t` from
+ * `useTranslation()` without breaking that type. Validation copy uses the shared
+ * i18next singleton directly instead (same pattern as studyLibraryScheduleSchema).
+ */
+const schemaT: TFunction = ((key: string, options?: Record<string, unknown>) =>
+    i18n.t(key, { ns: NAMESPACE, ...options })) as TFunction;
+
 const employeeSchema = z.object({
     user_id: z.string(),
     employee_code: z.string(),
-    join_date: z.string().min(1, 'Pick the joining date'),
+    join_date: z.string().min(1, schemaT('validation.joinDateRequired')),
     department_id: z.string(),
     designation_id: z.string(),
     reporting_manager_id: z.string(),
     employment_type: z.string(),
-    notice_period_days: z.string().regex(/^\d*$/, 'Use a whole number of days'),
+    notice_period_days: z.string().regex(/^\d*$/, schemaT('validation.noticePeriodWholeNumber')),
     nationality: z.string(),
     emergency_contact_name: z.string(),
     emergency_contact_phone: z.string(),
@@ -59,7 +73,7 @@ const buildSchema = (isEdit: boolean) =>
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 path: ['user_id'],
-                message: 'A user id is required to link this profile to a person',
+                message: schemaT('validation.userIdRequired'),
             });
         }
     });
@@ -144,6 +158,7 @@ export function EmployeeFormDialog({
     designations,
     onSaved,
 }: EmployeeFormDialogProps) {
+    const { t } = useTranslation(['erpEmployeeFormDialog', 'erpEmployeeFields']);
     const isEdit = !!employee?.id;
     const createEmployee = useCreateEmployee();
     const updateEmployee = useUpdateEmployee();
@@ -164,34 +179,36 @@ export function EmployeeFormDialog({
     }, [open, employee]);
 
     const departmentOptions = useMemo(
-        () => toSelectOptions(departments, 'No department'),
-        [departments]
+        () => toSelectOptions(departments, t('noDepartment')),
+        [departments, t]
     );
     const designationOptions = useMemo(
-        () => toSelectOptions(designations, 'No designation'),
-        [designations]
+        () => toSelectOptions(designations, t('noDesignation')),
+        [designations, t]
     );
     const managerOptions = useMemo<SelectOption[]>(() => {
         const rows = (managerQuery.data?.content ?? []).filter(
             (row) => !!row.id && row.id !== employee?.id
         );
         return [
-            { _id: NONE_VALUE, value: NONE_VALUE, label: 'No reporting manager' },
+            { _id: NONE_VALUE, value: NONE_VALUE, label: t('noReportingManager') },
             ...rows.map((row) => ({
                 _id: row.id as string,
                 value: row.id as string,
                 label: row.full_name || row.employee_code || (row.id as string),
             })),
         ];
-    }, [managerQuery.data, employee?.id]);
+    }, [managerQuery.data, employee?.id, t]);
 
     const employmentTypeOptions = useMemo<SelectOption[]>(
         () => [
-            { _id: NONE_VALUE, value: NONE_VALUE, label: 'Not set' },
-            ...EMPLOYMENT_TYPE_OPTIONS,
+            { _id: NONE_VALUE, value: NONE_VALUE, label: t('notSet') },
+            ...buildEmploymentTypeOptions(t),
         ],
-        []
+        [t]
     );
+
+    const unchangedPlaceholder = useMemo(() => buildUnchangedPlaceholder(t), [t]);
 
     const panMasked = isEdit && isMaskedValue(employee?.pan_number);
     const uanMasked = isEdit && isMaskedValue(employee?.uan_number);
@@ -222,10 +239,10 @@ export function EmployeeFormDialog({
         try {
             if (isEdit && employee?.id) {
                 await updateEmployee.mutateAsync({ id: employee.id, payload });
-                toast.success('Employee profile updated');
+                toast.success(t('toast.updated'));
             } else {
                 await createEmployee.mutateAsync(payload);
-                toast.success('Employee added');
+                toast.success(t('toast.added'));
             }
             onSaved?.();
             onOpenChange(false);
@@ -235,15 +252,15 @@ export function EmployeeFormDialog({
                 tags: { 'erp.action': isEdit ? 'update-employee' : 'create-employee' },
                 extra: { employeeId: employee?.id },
                 fallbackMessage: isEdit
-                    ? 'Could not update this employee profile'
-                    : 'Could not add this employee',
+                    ? t('errors.updateFailed')
+                    : t('errors.createFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading={isEdit ? 'Edit employee' : 'Add employee'}
+            heading={isEdit ? t('editEmployee') : t('addEmployee')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-3xl"
@@ -255,16 +272,16 @@ export function EmployeeFormDialog({
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText={isEdit ? 'Saving…' : 'Adding…'}
+                        loadingText={isEdit ? t('saving') : t('adding')}
                     >
-                        {isEdit ? 'Save changes' : 'Add employee'}
+                        {isEdit ? t('saveChanges') : t('addEmployee')}
                     </MyButton>
                 </>
             }
@@ -276,28 +293,30 @@ export function EmployeeFormDialog({
                     noValidate
                 >
                     <section className="flex flex-col gap-4">
-                        <h3 className="text-subtitle text-foreground">Who this profile is for</h3>
+                        <h3 className="text-subtitle text-foreground">
+                            {t('sections.whoThisIsFor')}
+                        </h3>
                         {!isEdit && (
                             <HrTextField
                                 control={form.control}
                                 name="user_id"
-                                label="User id"
-                                placeholder="Platform user id"
+                                label={t('fields.userId.label')}
+                                placeholder={t('fields.userId.placeholder')}
                                 required
-                                description="Easier path: open Staff Coverage and create the HR profile straight from someone already on your team — it fills the user id in for you."
+                                description={t('fields.userId.description')}
                             />
                         )}
                         <div className="grid gap-4 sm:grid-cols-2">
                             <HrTextField
                                 control={form.control}
                                 name="employee_code"
-                                label="Employee code"
-                                placeholder="e.g. EMP-014"
+                                label={t('fields.employeeCode.label')}
+                                placeholder={t('fields.employeeCode.placeholder')}
                             />
                             <HrTextField
                                 control={form.control}
                                 name="join_date"
-                                label="Join date"
+                                label={t('fields.joinDate.label')}
                                 inputType="date"
                                 required
                             />
@@ -305,102 +324,102 @@ export function EmployeeFormDialog({
                     </section>
 
                     <section className="flex flex-col gap-4">
-                        <h3 className="text-subtitle text-foreground">Role in the organisation</h3>
+                        <h3 className="text-subtitle text-foreground">
+                            {t('sections.roleInOrganisation')}
+                        </h3>
                         <div className="grid gap-4 sm:grid-cols-2">
                             <SelectField
                                 control={form.control}
                                 name="department_id"
-                                label="Department"
+                                label={t('fields.department')}
                                 options={departmentOptions}
                                 className="w-full sm:w-full"
                             />
                             <SelectField
                                 control={form.control}
                                 name="designation_id"
-                                label="Designation"
+                                label={t('fields.designation')}
                                 options={designationOptions}
                                 className="w-full sm:w-full"
                             />
                             <SelectField
                                 control={form.control}
                                 name="reporting_manager_id"
-                                label="Reporting manager"
+                                label={t('fields.reportingManager')}
                                 options={managerOptions}
                                 className="w-full sm:w-full"
                             />
                             <SelectField
                                 control={form.control}
                                 name="employment_type"
-                                label="Employment type"
+                                label={t('fields.employmentType')}
                                 options={employmentTypeOptions}
                                 className="w-full sm:w-full"
                             />
                             <HrTextField
                                 control={form.control}
                                 name="notice_period_days"
-                                label="Notice period (days)"
-                                placeholder="e.g. 30"
+                                label={t('fields.noticePeriod.label')}
+                                placeholder={t('fields.noticePeriod.placeholder')}
                             />
                             <HrTextField
                                 control={form.control}
                                 name="nationality"
-                                label="Nationality"
-                                placeholder="e.g. Indian"
+                                label={t('fields.nationality.label')}
+                                placeholder={t('fields.nationality.placeholder')}
                             />
                         </div>
                     </section>
 
                     <section className="flex flex-col gap-4">
-                        <h3 className="text-subtitle text-foreground">Emergency contact</h3>
+                        <h3 className="text-subtitle text-foreground">
+                            {t('sections.emergencyContact')}
+                        </h3>
                         <div className="grid gap-4 sm:grid-cols-3">
                             <HrTextField
                                 control={form.control}
                                 name="emergency_contact_name"
-                                label="Name"
-                                placeholder="Contact name"
+                                label={t('fields.contactName.label')}
+                                placeholder={t('fields.contactName.placeholder')}
                             />
                             <HrTextField
                                 control={form.control}
                                 name="emergency_contact_phone"
-                                label="Phone"
+                                label={t('fields.contactPhone.label')}
                                 inputType="tel"
-                                placeholder="Contact number"
+                                placeholder={t('fields.contactPhone.placeholder')}
                             />
                             <HrTextField
                                 control={form.control}
                                 name="emergency_contact_relation"
-                                label="Relation"
-                                placeholder="e.g. Spouse"
+                                label={t('fields.contactRelation.label')}
+                                placeholder={t('fields.contactRelation.placeholder')}
                             />
                         </div>
                     </section>
 
                     <section className="flex flex-col gap-4">
-                        <h3 className="text-subtitle text-foreground">Statutory identifiers</h3>
+                        <h3 className="text-subtitle text-foreground">
+                            {t('sections.statutoryIdentifiers')}
+                        </h3>
                         <div className="grid gap-4 sm:grid-cols-2">
                             <HrTextField
                                 control={form.control}
                                 name="pan_number"
-                                label="PAN"
-                                placeholder={panMasked ? UNCHANGED_PLACEHOLDER : 'e.g. ABCDE1234F'}
-                                description={
-                                    panMasked
-                                        ? 'The stored number is hidden. Leave this blank to keep it.'
-                                        : undefined
+                                label={t('fields.pan.label')}
+                                placeholder={
+                                    panMasked ? unchangedPlaceholder : t('fields.pan.placeholder')
                                 }
+                                description={panMasked ? t('maskedHint') : undefined}
                             />
                             <HrTextField
                                 control={form.control}
                                 name="uan_number"
-                                label="UAN"
+                                label={t('fields.uan.label')}
                                 placeholder={
-                                    uanMasked ? UNCHANGED_PLACEHOLDER : 'Provident fund UAN'
+                                    uanMasked ? unchangedPlaceholder : t('fields.uan.placeholder')
                                 }
-                                description={
-                                    uanMasked
-                                        ? 'The stored number is hidden. Leave this blank to keep it.'
-                                        : undefined
-                                }
+                                description={uanMasked ? t('maskedHint') : undefined}
                             />
                         </div>
                     </section>

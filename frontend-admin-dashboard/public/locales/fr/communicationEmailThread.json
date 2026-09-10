@@ -1,0 +1,11 @@
+{
+    "loadOlderMessages": "Charger les messages plus anciens",
+    "noMessages": "Aucun message dans cette conversation",
+    "backToConversations": "Retour aux conversations",
+    "reply": "Répondre",
+    "fromAddress": "de {{address}}",
+    "sent": "Envoyé",
+    "received": "Reçu",
+    "selectConversation": "Sélectionnez une conversation par e-mail",
+    "selectConversationHint": "Cliquez sur une ligne à gauche pour afficher sa conversation"
+}

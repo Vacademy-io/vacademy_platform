@@ -1,0 +1,38 @@
+{
+    "form": {
+        "courseRequired": "الكورس مطلوب",
+        "sessionRequired": "الفصل الدراسي مطلوب",
+        "levelRequired": "المستوى مطلوب",
+        "studentRequired": "الطالب مطلوب",
+        "startDateRequired": "تاريخ البدء مطلوب",
+        "endDateRequired": "تاريخ الانتهاء مطلوب",
+        "dateRangeTooLong": "يجب أن يكون الفرق بين تاريخ البدء وتاريخ الانتهاء أقل من شهر واحد.",
+        "selectPlaceholder": "اختر {{term}}",
+        "searchPlaceholder": "ابحث عن {{term}}...",
+        "nameLabel": "الاسم",
+        "selectStudent": "اختر الطالب",
+        "searchStudent": "ابحث عن طالب...",
+        "noStudentsFound": "لم يتم العثور على طلاب",
+        "errorsHeading": "يرجى تصحيح الأخطاء التالية:"
+    },
+    "actions": {
+        "generateReport": "إنشاء التقرير",
+        "exporting": "جارٍ التصدير…",
+        "exportPdf": "تصدير PDF"
+    },
+    "toast": {
+        "exportSuccess": "تم تصدير تقرير المتعلم",
+        "exportFailed": "فشل تصدير PDF"
+    },
+    "report": {
+        "duration": "المدة:",
+        "courseCompletedLabel": "{{term}} مكتمل",
+        "dailyTimeSpentAvg": "متوسط الوقت اليومي المستغرق",
+        "concentrationScoreAvg": "متوسط درجة التركيز",
+        "dailyLearningPerformance": "أداء التعلم اليومي",
+        "trackDailyProgress": "تتبّع التقدم اليومي وأنماط النشاط",
+        "activitySummary": "ملخص النشاط",
+        "learningTimeline": "الجدول الزمني للتعلم",
+        "dateLabel": "التاريخ:"
+    }
+}

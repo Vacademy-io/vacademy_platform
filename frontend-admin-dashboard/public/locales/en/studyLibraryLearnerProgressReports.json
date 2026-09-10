@@ -1,0 +1,54 @@
+{
+    "loading": "Loading…",
+    "view": "View",
+    "unnamedLearner": "Unnamed {{learner}}",
+    "viewProgressBreakdownAriaLabel": "View progress breakdown for {{name}}",
+    "status": {
+        "completed": "Completed",
+        "onTrack": "On track",
+        "inProgress": "In progress",
+        "behind": "Behind",
+        "notStarted": "Not started"
+    },
+    "columns": {
+        "courseProgress": "{{course}} progress",
+        "status": "Status",
+        "chaptersDone": "Chapters done"
+    },
+    "picker": {
+        "selectA": "Select a {{term}}",
+        "searchTerm": "Search {{term}}..."
+    },
+    "emptyBatch": {
+        "selectBatch": "Select a batch to view {{learner}} progress.",
+        "selectCourse": "Select a {{course}} to see {{learner}} progress.",
+        "autoPicked": "{{session}} and {{level}} are picked automatically when there is only one."
+    },
+    "stats": {
+        "enrolled_one": "Enrolled {{learner}}",
+        "enrolled_other": "Enrolled {{learner}}s",
+        "avgProgressThisPage": "Avg progress (this page)",
+        "completedThisPage": "Completed (this page)",
+        "notStartedThisPage": "Not started (this page)"
+    },
+    "search": {
+        "placeholder": "Search {{learner}} by name",
+        "label": "Search",
+        "clear": "Clear",
+        "enrolledCount_one": "{{count}} enrolled {{learner}}",
+        "enrolledCount_other": "{{count}} enrolled {{learner}}s"
+    },
+    "error": {
+        "loadFailed": "Could not load enrolled {{learner}}s for this batch.",
+        "retry": "Retry"
+    },
+    "empty": {
+        "noMatch": "No {{learner}} matches “{{search}}”.",
+        "noneEnrolled": "No {{learner}} is enrolled in this batch yet.",
+        "tryDifferentName": "Try a different name.",
+        "progressAppearsHere": "Progress appears here once {{learner}}s are enrolled."
+    },
+    "drawer": {
+        "percentComplete": "{{percent}}% of {{course}} complete"
+    }
+}

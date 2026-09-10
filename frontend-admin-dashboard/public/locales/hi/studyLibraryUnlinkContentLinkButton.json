@@ -1,0 +1,11 @@
+{
+    "removedFrom": "{{chapterName}} से हटाया गया",
+    "couldNotRemove": "लिंक हटाया नहीं जा सका। कृपया पुनः प्रयास करें।",
+    "addedTo": "इसमें जोड़ा गया",
+    "removeFromAriaLabel": "{{chapterName}} से हटाएं",
+    "remove": "हटाएं",
+    "removeThisSlideTitle": "इस स्लाइड को हटाएं?",
+    "removeThisSlideDescription": "इससे स्लाइड अध्याय से भी हट जाएगी।",
+    "cancel": "रद्द करें",
+    "removingEllipsis": "हटाया जा रहा है…"
+}

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { TFunction } from 'i18next';
 import { Copy, DotsThreeVertical, LinkSimple } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import {
@@ -119,6 +120,7 @@ const avatarTone = (name: string) => {
 const Blank = () => <span className="text-muted-foreground">–</span>;
 
 interface BuildSubOrgColumnsArgs {
+    t: TFunction;
     /** Institute-configured word for an invite (the column's header). */
     inviteTerm: string;
     /** Resolves a row's full invite URL, for the copy button's tooltip. */
@@ -130,6 +132,7 @@ interface BuildSubOrgColumnsArgs {
 
 /** Every column the VLE list can render, in their natural left-to-right order. */
 export function buildSubOrgColumns({
+    t,
     inviteTerm,
     buildInviteUrl,
     copyInviteLink,
@@ -138,18 +141,18 @@ export function buildSubOrgColumns({
     return [
         {
             id: 'name',
-            label: 'Institute Name',
+            label: t('columns.name'),
             // A row without its name is unidentifiable, and the CSV would lose the VLE it
             // describes — so this one can be moved but not switched off.
             locked: true,
             // The cell stacks the admin's name under the org name, so the CSV keeps them as
             // two fields rather than flattening one into the other.
-            csvHeaders: ['Name', 'Admin'],
+            csvHeaders: [t('csv.name'), t('csv.admin')],
             csvValues: (o) => [o.name, o.admin_name],
             sortValue: (o) => o.name,
             defaultWidth: 256,
             cell: (o) => {
-                const name = o.name || 'Unknown';
+                const name = o.name || t('fallback.unknown');
                 return (
                     <div className="flex items-center gap-2">
                         <Avatar className="size-8 shrink-0">
@@ -193,8 +196,8 @@ export function buildSubOrgColumns({
         },
         {
             id: 'email',
-            label: 'Email',
-            csvHeaders: ['Email'],
+            label: t('columns.email'),
+            csvHeaders: [t('csv.email')],
             csvValues: (o) => [o.admin_email],
             sortValue: (o) => o.admin_email,
             defaultWidth: 176,
@@ -209,8 +212,8 @@ export function buildSubOrgColumns({
         },
         {
             id: 'phone',
-            label: 'Phone',
-            csvHeaders: ['Phone'],
+            label: t('columns.phone'),
+            csvHeaders: [t('csv.phone')],
             csvValues: (o) => [o.admin_phone],
             sortValue: (o) => o.admin_phone,
             cell: (o) =>
@@ -218,12 +221,12 @@ export function buildSubOrgColumns({
         },
         {
             id: 'address',
-            label: 'Address',
+            label: t('columns.address'),
             // 192px rather than the old 320: address is reference data you look up on one
             // row, while the extra 128px was pushing Seats — a number you scan down the
             // whole column — past the right edge.
             defaultWidth: 192,
-            csvHeaders: ['Address'],
+            csvHeaders: [t('csv.address')],
             csvValues: (o) => [o.address_line],
             sortValue: (o) => o.address_line,
             cell: (o) =>
@@ -242,24 +245,24 @@ export function buildSubOrgColumns({
         },
         {
             id: 'city',
-            label: 'City',
-            csvHeaders: ['City'],
+            label: t('columns.city'),
+            csvHeaders: [t('csv.city')],
             csvValues: (o) => [o.city],
             sortValue: (o) => o.city,
             cell: (o) => o.city || <Blank />,
         },
         {
             id: 'state',
-            label: 'State',
-            csvHeaders: ['State'],
+            label: t('columns.state'),
+            csvHeaders: [t('csv.state')],
             csvValues: (o) => [o.state],
             sortValue: (o) => o.state,
             cell: (o) => o.state || <Blank />,
         },
         {
             id: 'pincode',
-            label: 'Pincode',
-            csvHeaders: ['Pincode'],
+            label: t('columns.pincode'),
+            csvHeaders: [t('csv.pincode')],
             csvValues: (o) => [o.pincode],
             sortValue: (o) => o.pincode,
             cell: (o) =>
@@ -267,8 +270,8 @@ export function buildSubOrgColumns({
         },
         {
             id: 'status',
-            label: 'Status',
-            csvHeaders: ['Status'],
+            label: t('columns.status'),
+            csvHeaders: [t('csv.status')],
             csvValues: (o) => [o.plan_status ? humanizeStatus(o.plan_status) : ''],
             sortValue: (o) => (o.plan_status ? humanizeStatus(o.plan_status) : ''),
             cell: (o) =>
@@ -282,8 +285,8 @@ export function buildSubOrgColumns({
         },
         {
             id: 'learners',
-            label: 'Learners',
-            csvHeaders: ['Learners'],
+            label: t('columns.learners'),
+            csvHeaders: [t('csv.learners')],
             csvValues: (o) => [o.learner_count ?? o.used_seats ?? ''],
             sortValue: (o) => o.learner_count ?? o.used_seats,
             cellClassName: 'text-right',
@@ -294,10 +297,10 @@ export function buildSubOrgColumns({
         },
         {
             id: 'seats',
-            label: 'Seats',
+            label: t('columns.seats'),
             // Rendered as "used/total" in one cell, but split across two CSV fields so a
             // spreadsheet can sum or sort them.
-            csvHeaders: ['Seats Used', 'Seats Total'],
+            csvHeaders: [t('csv.seatsUsed'), t('csv.seatsTotal')],
             csvValues: (o) => [o.used_seats ?? '', o.total_seats ?? ''],
             // Occupancy, not raw seats — "4/1000" is emptier than "9/10".
             sortValue: (o) =>
@@ -324,7 +327,10 @@ export function buildSubOrgColumns({
                             <div
                                 className="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100"
                                 role="img"
-                                aria-label={`${pct}% of seats used`}
+                                aria-label={t('seats.percentUsedAriaLabel', {
+                                    count: pct,
+                                    percent: pct,
+                                })}
                             >
                                 {/* eslint-disable-next-line -- the width IS the datum: a
                                     per-row percentage has no Tailwind token, and rounding it
@@ -350,7 +356,7 @@ export function buildSubOrgColumns({
         {
             id: 'invite',
             label: inviteTerm,
-            csvHeaders: ['Invite Code'],
+            csvHeaders: [t('csv.inviteCode')],
             csvValues: (o) => [o.invite_code],
             cell: (o) =>
                 o.invite_code ? (
@@ -370,8 +376,8 @@ export function buildSubOrgColumns({
         },
         {
             id: 'created_at',
-            label: 'Created On',
-            csvHeaders: ['Created On'],
+            label: t('columns.createdOn'),
+            csvHeaders: [t('csv.createdOn')],
             csvValues: (o) => [formatDate(o.created_at)],
             // The raw timestamp, so it orders chronologically rather than by "Aug" < "Jul".
             sortValue: (o) => (o.created_at ? new Date(o.created_at).getTime() : null),
@@ -379,7 +385,7 @@ export function buildSubOrgColumns({
         },
         {
             id: 'actions',
-            label: 'Actions',
+            label: t('columns.actions'),
             // Locked: hiding the only per-row action surface would strand the row's
             // operations behind nothing at all.
             locked: true,
@@ -397,20 +403,22 @@ export function buildSubOrgColumns({
                             className="size-8"
                             // The row navigates on click; the menu must not also fire it.
                             onClick={(e) => e.stopPropagation()}
-                            aria-label={`Actions for ${o.name || 'this row'}`}
+                            aria-label={t('actions.ariaLabel', {
+                                name: o.name || t('actions.thisRow'),
+                            })}
                         >
                             <DotsThreeVertical className="size-4" weight="bold" />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenuItem onSelect={() => openSubOrg(o)}>
-                            Open details
+                            {t('actions.openDetails')}
                         </DropdownMenuItem>
                         {o.invite_code && (
                             <DropdownMenuItem
                                 onSelect={() => navigator.clipboard.writeText(buildInviteUrl(o))}
                             >
-                                Copy invite link
+                                {t('actions.copyInviteLink')}
                             </DropdownMenuItem>
                         )}
                     </DropdownMenuContent>

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useInboxStore } from '../-stores/inbox-store';
 import type { InboxMessage } from '../-services/inbox-api';
 import { ReplyBox } from './reply-box';
@@ -24,6 +26,7 @@ interface Props {
 }
 
 export function ChatPanel({ onLoadOlder, onRetry }: Props) {
+    const { t } = useTranslation('communicationChatPanel');
     const selectedPhone = useInboxStore((s) => s.selectedPhone);
     const selectPhone = useInboxStore((s) => s.selectPhone);
     const messages = useInboxStore((s) => s.messages);
@@ -50,8 +53,8 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
             <div className="flex-1 hidden md:flex items-center justify-center bg-gray-50">
                 <div className="text-center text-gray-400">
                     <ChatCircle size={56} className="mx-auto mb-3 opacity-40" />
-                    <p className="text-sm font-medium">Select a conversation</p>
-                    <p className="text-xs mt-1">Choose a contact from the left to view messages</p>
+                    <p className="text-sm font-medium">{t('emptyState.title')}</p>
+                    <p className="text-xs mt-1">{t('emptyState.subtitle')}</p>
                 </div>
             </div>
         );
@@ -64,7 +67,7 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
                 <button
                     onClick={() => selectPhone(null)}
                     className="md:hidden p-1 -ml-1 rounded hover:bg-gray-100 text-gray-500 shrink-0"
-                    title="Back to conversations"
+                    title={t('backToConversations')}
                 >
                     <ArrowLeft size={20} />
                 </button>
@@ -78,7 +81,7 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
                     <p className="text-xs text-gray-400 truncate">
                         {selectedConvo?.senderName ? selectedPhone : ''}
                         {selectedConvo?.userId && (
-                            <span className="ml-2 text-blue-500">ID: {selectedConvo.userId}</span>
+                            <span className="ms-2 text-blue-500">{t('idLabel', { id: selectedConvo.userId })}</span>
                         )}
                     </p>
                 </div>
@@ -92,11 +95,11 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
                 <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 shrink-0">
                     <HandWaving size={16} className="mt-0.5 shrink-0 text-amber-600" />
                     <div className="min-w-0 text-xs text-amber-800">
-                        <p className="font-medium">Waiting for your reply</p>
-                        <p className="text-amber-700">{escalationReasonText(selectedConvo.escalationReason)}</p>
+                        <p className="font-medium">{t('escalation.title')}</p>
+                        <p className="text-amber-700">{escalationReasonText(selectedConvo.escalationReason, t)}</p>
                         {selectedConvo.escalationMessage && (
                             <p className="mt-0.5 italic text-amber-700">
-                                They asked: “{selectedConvo.escalationMessage}”
+                                {t('escalation.askedQuote', { message: selectedConvo.escalationMessage })}
                             </p>
                         )}
                     </div>
@@ -121,7 +124,7 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
                             className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-caption font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-60"
                         >
                             <ArrowClockwise size={12} />
-                            {isLoading ? 'Retrying…' : 'Try again'}
+                            {isLoading ? t('loadError.retrying') : t('loadError.tryAgain')}
                         </button>
                     </div>
                 )}
@@ -135,14 +138,14 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
                             className="text-xs px-3 py-1 bg-white rounded-full shadow text-gray-500 hover:bg-gray-50 inline-flex items-center gap-1"
                         >
                             <ArrowUp size={12} />
-                            {isLoading ? 'Loading...' : 'Load older messages'}
+                            {isLoading ? t('loadOlder.loading') : t('loadOlder.cta')}
                         </button>
                     </div>
                 )}
 
                 {!isLoading && !messagesError && messages.length === 0 && (
                     <p className="py-10 text-center text-xs text-gray-500">
-                        No messages in this conversation yet
+                        {t('noMessages')}
                     </p>
                 )}
 
@@ -175,6 +178,7 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
 }
 
 function MessageBubble({ msg }: { msg: InboxMessage }) {
+    const { t } = useTranslation('communicationChatPanel');
     const failed = msg.deliveryStatus === 'FAILED';
     // The provider's verdict, said in words an admin can act on: "Re-engagement message (131047)"
     // becomes the 24-hour window, and an unrecognised code still shows the provider's exact text.
@@ -197,7 +201,7 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                 )}
                 {msg.direction === 'OUTGOING' && (
                     <p className="text-xs font-medium text-blue-600 mb-0.5 flex items-center gap-0.5">
-                        <Robot size={10} /> Bot
+                        <Robot size={10} /> {t('bot')}
                     </p>
                 )}
 
@@ -223,7 +227,7 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                 {/* Template context: which template it came from */}
                 {msg.templateName && (
                     <p className="text-caption text-gray-500 mt-1 flex flex-wrap items-center gap-1">
-                        <span className="italic">via template “{msg.templateName}”</span>
+                        <span className="italic">{t('viaTemplate', { name: msg.templateName })}</span>
                         {msg.provider && (
                             <span className="px-1 py-px rounded bg-black/5 uppercase tracking-wide">
                                 {msg.provider}
@@ -238,7 +242,7 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                     <div className="mt-1 rounded-md bg-red-100/70 px-2 py-1 text-caption text-red-700">
                         <p className="flex flex-wrap items-center gap-1 font-medium">
                             <WarningCircle size={11} />
-                            Not delivered
+                            {t('notDelivered')}
                             {msg.attemptedType && msg.attemptedType !== 'text' && (
                                 <span className="rounded bg-red-200/70 px-1 py-px uppercase tracking-wide">
                                     {msg.attemptedType}
@@ -253,11 +257,11 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                         )}
                         {failure?.accountLevel && (
                             <p className="mt-0.5 font-medium text-red-700">
-                                This affects every WhatsApp message from this number, not only this chat.
+                                {t('accountLevelFailure')}
                             </p>
                         )}
                         {failure?.code && (
-                            <p className="mt-0.5 text-red-400">WhatsApp error code {failure.code}</p>
+                            <p className="mt-0.5 text-red-400">{t('errorCode', { code: failure.code })}</p>
                         )}
                     </div>
                 )}
@@ -279,16 +283,16 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
 }
 
 /** Plain-language version of why the chatbot handed this conversation over. */
-function escalationReasonText(reason?: string): string {
+function escalationReasonText(reason: string | undefined, t: TFunction): string {
     switch (reason) {
         case 'MAX_TURNS':
-            return 'The conversation reached its automated reply limit.';
+            return t('escalation.reason.maxTurns');
         case 'AI_ERROR':
-            return 'The assistant could not generate a reply.';
+            return t('escalation.reason.aiError');
         case 'MANUAL':
-            return 'Handed over by an admin.';
+            return t('escalation.reason.manual');
         default:
-            return "The assistant didn't have the information to answer, so it said it would check with the team.";
+            return t('escalation.reason.default');
     }
 }
 
@@ -306,9 +310,10 @@ function MessageHeaderMedia({
     url: string;
     filename?: string;
 }) {
-    const t = (type || 'IMAGE').toUpperCase();
+    const { t } = useTranslation('communicationChatPanel');
+    const kind = (type || 'IMAGE').toUpperCase();
 
-    if (t === 'VIDEO') {
+    if (kind === 'VIDEO') {
         return (
             <video
                 src={url}
@@ -318,11 +323,11 @@ function MessageHeaderMedia({
         );
     }
 
-    if (t === 'AUDIO') {
+    if (kind === 'AUDIO') {
         return <audio src={url} controls className="mb-1.5 w-full" />;
     }
 
-    if (t === 'DOCUMENT') {
+    if (kind === 'DOCUMENT') {
         return (
             <a
                 href={url}
@@ -331,7 +336,7 @@ function MessageHeaderMedia({
                 className="mb-1.5 flex items-center gap-1.5 rounded-md bg-black/5 px-2 py-1.5 text-caption text-blue-600 hover:underline"
             >
                 <FileText size={14} />
-                <span className="truncate">{filename || 'View document'}</span>
+                <span className="truncate">{filename || t('viewDocument')}</span>
             </a>
         );
     }
@@ -341,7 +346,7 @@ function MessageHeaderMedia({
         <a href={url} target="_blank" rel="noopener noreferrer">
             <img
                 src={url}
-                alt="attachment"
+                alt={t('attachmentAlt')}
                 loading="lazy"
                 onError={(e) => {
                     const anchor = e.currentTarget.closest('a');

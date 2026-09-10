@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MyButton } from '@/components/design-system/button';
@@ -44,6 +45,7 @@ export const toSelectedNodeIds = (topics: KbTopic[], selectedLeafIds: Set<string
  * the common case is one click and the detail is there only if wanted.
  */
 export const TopicPicker = ({ topics, selectedLeafIds, onChange }: TopicPickerProps) => {
+    const { t } = useTranslation('knowledgeBaseTopicPicker');
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
     const allLeaves = useMemo(() => topics.flatMap(leavesOf), [topics]);
@@ -82,15 +84,18 @@ export const TopicPicker = ({ topics, selectedLeafIds, onChange }: TopicPickerPr
             <div className="flex items-center justify-between">
                 <p className="text-caption text-neutral-500">
                     {selectedLeafIds.size === 0
-                        ? 'Nothing selected — the paper will draw from everything.'
-                        : `${selectedLeafIds.size} of ${allLeaves.length} subtopics selected`}
+                        ? t('emptySelection')
+                        : t('selectedCount', {
+                              count: selectedLeafIds.size,
+                              total: allLeaves.length,
+                          })}
                 </p>
                 <MyButton
                     buttonType="text"
                     scale="medium"
                     onClick={() => setLeaves(allLeaves, !allSelected)}
                 >
-                    {allSelected ? 'Clear all' : 'Select all'}
+                    {allSelected ? t('actions.clearAll') : t('actions.selectAll')}
                 </MyButton>
             </div>
 
@@ -109,7 +114,7 @@ export const TopicPicker = ({ topics, selectedLeafIds, onChange }: TopicPickerPr
                                 <Checkbox
                                     checked={fully ? true : partial ? 'indeterminate' : false}
                                     onCheckedChange={() => toggleTopic(topic)}
-                                    aria-label={`Select ${topic.title}`}
+                                    aria-label={t('selectTopicAriaLabel', { title: topic.title })}
                                     className="mt-0.5"
                                 />
                                 <button
@@ -137,8 +142,13 @@ export const TopicPicker = ({ topics, selectedLeafIds, onChange }: TopicPickerPr
                                         {hasSubs && (
                                             <span className="mt-0.5 block text-caption text-neutral-400">
                                                 {chosen.length > 0 && !fully
-                                                    ? `${chosen.length} of ${leaves.length} subtopics`
-                                                    : `${leaves.length} subtopics`}
+                                                    ? t('subtopicsPartial', {
+                                                          count: chosen.length,
+                                                          total: leaves.length,
+                                                      })
+                                                    : t('subtopicsTotal', {
+                                                          count: leaves.length,
+                                                      })}
                                             </span>
                                         )}
                                     </span>

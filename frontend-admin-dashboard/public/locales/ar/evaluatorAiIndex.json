@@ -1,0 +1,13 @@
+{
+    "dashboardHeading": "لوحة التحكم",
+    "dashboardDescription": "تعرض هذه الصفحة لوحة تحكم المؤسسة.",
+    "greetingHello": "مرحبًا",
+    "greetingName": "أيها المُقيِّم!",
+    "enrollStudentsTitle": "تسجيل الطلاب",
+    "enroll": "تسجيل",
+    "assessmentCreatedLabel": "التقييمات التي تم إنشاؤها",
+    "createAssessmentTitle": "إنشاء تقييم لتصحيحه",
+    "create": "إنشاء",
+    "evaluateStudentsTitle": "تقييم إجابات الطلاب لأحد التقييمات",
+    "evaluate": "تقييم"
+}

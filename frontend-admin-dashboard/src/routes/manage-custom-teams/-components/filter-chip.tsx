@@ -1,4 +1,5 @@
 import { X } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * One applied filter, shown as a removable chip under a toolbar.
@@ -20,16 +21,17 @@ export function FilterChip({
     value: string;
     onRemove: () => void;
 }) {
+    const { t } = useTranslation('manageCustomTeamsFilterChip');
     return (
         <span className="inline-flex max-w-56 items-center gap-1 rounded-full border border-primary-200 bg-primary-50 py-1 pl-2.5 pr-1 text-xs text-primary-600">
-            <span className="shrink-0 font-medium">{label}:</span>
+            <span className="shrink-0 font-medium">{t('labelSeparator', { label })}</span>
             <span className="truncate" title={value}>
                 {value}
             </span>
             <button
                 type="button"
                 onClick={onRemove}
-                aria-label={`Remove ${label} filter ${value}`}
+                aria-label={t('removeFilter', { label, value })}
                 className="ml-0.5 rounded-full p-0.5 text-primary-500 transition-colors hover:bg-primary-100 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
             >
                 <X className="size-3" weight="bold" />

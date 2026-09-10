@@ -1,6 +1,7 @@
 /* eslint-disable */
 import { AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import React, { MutableRefObject, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useFieldArray, UseFormReturn } from "react-hook-form";
 import { PencilSimpleLine, TrashSimple, X } from "@phosphor-icons/react";
 import {
@@ -51,6 +52,7 @@ export const Step2SectionInfo = ({
     currentStep: number;
     oldData: MutableRefObject<SectionFormType>;
 }) => {
+    const { t } = useTranslation("evaluatorAiStep2SectionInfo");
     const [enableSectionName, setEnableSectionName] = useState(true);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const {
@@ -147,7 +149,7 @@ export const Step2SectionInfo = ({
                     className="flex flex-wrap items-center justify-start gap-5"
                     id="upload-question-paper"
                 >
-                    <h3>Upload Question Paper</h3>
+                    <h3>{t("uploadQuestionPaper")}</h3>
                     <AlertDialog
                         open={isUploadFromDeviceDialogOpen}
                         onOpenChange={setIsUploadFromDeviceDialogOpen}
@@ -159,13 +161,13 @@ export const Step2SectionInfo = ({
                                 buttonType="secondary"
                                 className="font-thin"
                             >
-                                Upload from Device
+                                {t("uploadFromDevice")}
                             </MyButton>
                         </AlertDialogTrigger>
                         <AlertDialogContent className="p-0">
                             <div className="flex items-center justify-between rounded-md bg-primary-50">
                                 <h1 className="rounded-sm p-4 font-bold text-primary-500">
-                                    Upload Question Paper From Device
+                                    {t("uploadQuestionPaperFromDevice")}
                                 </h1>
                                 <AlertDialogCancel
                                     className="border-none bg-primary-50 shadow-none hover:bg-primary-50"
@@ -194,13 +196,13 @@ export const Step2SectionInfo = ({
                                 buttonType="secondary"
                                 className="font-thin"
                             >
-                                Create Manually
+                                {t("createManually")}
                             </MyButton>
                         </AlertDialogTrigger>
                         <AlertDialogContent className="p-0">
                             <div className="flex items-center justify-between rounded-md bg-primary-50">
                                 <h1 className="rounded-sm p-4 font-bold text-primary-500">
-                                    Create Question Paper Manually
+                                    {t("createQuestionPaperManually")}
                                 </h1>
                                 <AlertDialogCancel
                                     className="border-none bg-primary-50 shadow-none hover:bg-primary-50"
@@ -223,10 +225,10 @@ export const Step2SectionInfo = ({
                 <div className="flex items-center gap-4 text-sm font-thin" id="marking-scheme">
                     <div className="flex flex-col font-normal">
                         <h1>
-                            Marks Per Question
+                            {t("marksPerQuestion")}
                             <span className="text-subtitle text-danger-600">*</span>
                         </h1>
-                        <h1>(Default)</h1>
+                        <h1>{t("defaultLabel")}</h1>
                     </div>
                     <FormField
                         control={control}
@@ -267,14 +269,14 @@ export const Step2SectionInfo = ({
 
                 {Boolean(getSectionQuestions(index)?.length) && (
                     <div>
-                        <h1 className="mb-4 text-primary-500">Adaptive Marking Rules</h1>
+                        <h1 className="mb-4 text-primary-500">{t("adaptiveMarkingRules")}</h1>
                         <Table>
                             <TableHeader className="bg-primary-200">
                                 <TableRow>
-                                    <TableHead>Q.No.</TableHead>
-                                    <TableHead>Question</TableHead>
-                                    <TableHead>Marks</TableHead>
-                                    <TableHead>Criteria</TableHead>
+                                    <TableHead>{t("columnQNo")}</TableHead>
+                                    <TableHead>{t("columnQuestion")}</TableHead>
+                                    <TableHead>{t("columnMarks")}</TableHead>
+                                    <TableHead>{t("columnCriteria")}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody className="bg-neutral-50">
@@ -331,7 +333,7 @@ export const Step2SectionInfo = ({
                 {(watch(`section.${index}.marks_per_question`) ||
                     watch(`section.${index}.total_marks`)) && (
                     <div className="flex items-center justify-end gap-1">
-                        <span>Total Marks</span>
+                        <span>{t("totalMarks")}</span>
                         <span>:</span>
                         <h1>{getSectionMarks(index)}</h1>
                     </div>

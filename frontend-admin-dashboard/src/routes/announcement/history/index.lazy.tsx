@@ -33,6 +33,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { isUserAdmin } from '@/utils/userDetails';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 type Announcement = {
     id: string;
@@ -125,6 +127,11 @@ const allStatuses = [
     'CANCELLED',
 ];
 
+function statusLabel(t: TFunction, status?: string) {
+    if (!status) return '-';
+    return t(`status.${status}`, { defaultValue: status });
+}
+
 function useAnnouncements(
     view: 'all' | 'planned' | 'past',
     params: {
@@ -160,13 +167,14 @@ function useAnnouncements(
 }
 
 function AnnouncementHistoryPage() {
+    const { t } = useTranslation('announcementHistoryIndex');
     const { setNavHeading } = useNavHeadingStore();
     const { toast } = useToast();
     const admin = isUserAdmin();
 
     useEffect(() => {
-        setNavHeading('Announcement History');
-    }, [setNavHeading]);
+        setNavHeading(t('heading'));
+    }, [setNavHeading, t]);
 
     const [view, setView] = useState<'all' | 'planned' | 'past'>('all');
     const [page, setPage] = useState(0);
@@ -205,48 +213,48 @@ function AnnouncementHistoryPage() {
                 const s = await AnnouncementService.stats(statsFor.id);
                 setStats(s);
             } catch (e) {
-                toast({ title: 'Failed to load stats', variant: 'destructive' });
+                toast({ title: t('toasts.statsLoadFailed'), variant: 'destructive' });
             }
         })();
-    }, [statsFor, toast]);
+    }, [statsFor, toast, t]);
 
     const onApprove = async (a: Announcement) => {
         try {
             await AnnouncementService.approve(a.id, 'ADMIN');
-            toast({ title: 'Approved' });
+            toast({ title: t('toasts.approved') });
             refetch();
         } catch (e) {
-            toast({ title: 'Approve failed', variant: 'destructive' });
+            toast({ title: t('toasts.approveFailed'), variant: 'destructive' });
         }
     };
     const onReject = async () => {
         if (!rejectFor) return;
         try {
             await AnnouncementService.reject(rejectFor.id, 'ADMIN', rejectReason || '');
-            toast({ title: 'Rejected' });
+            toast({ title: t('toasts.rejected') });
             setRejectReason('');
             setRejectFor(null);
             refetch();
         } catch (e) {
-            toast({ title: 'Reject failed', variant: 'destructive' });
+            toast({ title: t('toasts.rejectFailed'), variant: 'destructive' });
         }
     };
     const onDeliverNow = async (a: Announcement) => {
         try {
             await AnnouncementService.deliver(a.id);
-            toast({ title: 'Delivery triggered' });
+            toast({ title: t('toasts.deliveryTriggered') });
             refetch();
         } catch (e) {
-            toast({ title: 'Trigger failed', variant: 'destructive' });
+            toast({ title: t('toasts.triggerFailed'), variant: 'destructive' });
         }
     };
     const onDelete = async (a: Announcement) => {
         try {
             await AnnouncementService.remove(a.id);
-            toast({ title: 'Deleted' });
+            toast({ title: t('toasts.deleted') });
             refetch();
         } catch (e) {
-            toast({ title: 'Delete failed', variant: 'destructive' });
+            toast({ title: t('toasts.deleteFailed'), variant: 'destructive' });
         }
     };
 
@@ -254,7 +262,7 @@ function AnnouncementHistoryPage() {
 
     return (
         <div className="p-4">
-            <h2 className="mb-4 text-xl font-semibold">Announcement History</h2>
+            <h2 className="mb-4 text-xl font-semibold">{t('heading')}</h2>
             <Tabs
                 value={view}
                 onValueChange={(v: string) => {
@@ -263,9 +271,9 @@ function AnnouncementHistoryPage() {
                 }}
             >
                 <TabsList>
-                    <TabsTrigger value="all">All</TabsTrigger>
-                    <TabsTrigger value="planned">Planned</TabsTrigger>
-                    <TabsTrigger value="past">Past</TabsTrigger>
+                    <TabsTrigger value="all">{t('tabs.all')}</TabsTrigger>
+                    <TabsTrigger value="planned">{t('tabs.planned')}</TabsTrigger>
+                    <TabsTrigger value="past">{t('tabs.past')}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="all">
                     <Toolbar
@@ -310,7 +318,9 @@ function AnnouncementHistoryPage() {
             <Separator className="my-4" />
 
             <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-sm text-neutral-500">{filtered.length} results</div>
+                <div className="text-sm text-neutral-500">
+                    {t('results', { count: filtered.length })}
+                </div>
                 <div className="flex items-center gap-2">
                     <Select
                         value={String(size)}
@@ -320,7 +330,7 @@ function AnnouncementHistoryPage() {
                         }}
                     >
                         <SelectTrigger className="w-[100px]">
-                            <SelectValue placeholder="Size" />
+                            <SelectValue placeholder={t('sizeLabel')} />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="10">10</SelectItem>
@@ -334,11 +344,11 @@ function AnnouncementHistoryPage() {
                             disabled={page === 0}
                             onClick={() => setPage((p) => Math.max(0, p - 1))}
                         >
-                            Prev
+                            {t('prev')}
                         </Button>
-                        <div className="text-sm">Page {page + 1}</div>
+                        <div className="text-sm">{t('page', { page: page + 1 })}</div>
                         <Button variant="secondary" onClick={() => setPage((p) => p + 1)}>
-                            Next
+                            {t('next')}
                         </Button>
                     </div>
                 </div>
@@ -348,24 +358,24 @@ function AnnouncementHistoryPage() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Title</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Modes</TableHead>
-                            <TableHead>Mediums</TableHead>
-                            <TableHead>Schedule</TableHead>
-                            <TableHead>Created By</TableHead>
-                            <TableHead>Created At</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
+                            <TableHead>{t('table.title')}</TableHead>
+                            <TableHead>{t('table.status')}</TableHead>
+                            <TableHead>{t('table.modes')}</TableHead>
+                            <TableHead>{t('table.mediums')}</TableHead>
+                            <TableHead>{t('table.schedule')}</TableHead>
+                            <TableHead>{t('table.createdBy')}</TableHead>
+                            <TableHead>{t('table.createdAt')}</TableHead>
+                            <TableHead className="text-end">{t('table.actions')}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={8}>Loading…</TableCell>
+                                <TableCell colSpan={8}>{t('table.loading')}</TableCell>
                             </TableRow>
                         ) : filtered.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={8}>No announcements</TableCell>
+                                <TableCell colSpan={8}>{t('table.empty')}</TableCell>
                             </TableRow>
                         ) : (
                             filtered.map((a) => (
@@ -374,19 +384,19 @@ function AnnouncementHistoryPage() {
                                         <div className="font-medium">{a.title}</div>
                                         {a.recipients && a.recipients.length > 0 && (
                                             <div className="mt-1 text-xs text-neutral-500">
-                                                Recipients:{' '}
+                                                {t('table.recipientsPrefix')}{' '}
                                                 {a.recipients
                                                     .slice(0, 3)
                                                     .map((r) => r.recipientType)
                                                     .join(', ')}
                                                 {a.recipients.length > 3
-                                                    ? ` +${a.recipients.length - 3}`
+                                                    ? ` ${t('table.recipientsMore', { count: a.recipients.length - 3 })}`
                                                     : ''}
                                             </div>
                                         )}
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="outline">{a.status || '-'}</Badge>
+                                        <Badge variant="outline">{statusLabel(t, a.status)}</Badge>
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex max-w-[220px] flex-wrap gap-1">
@@ -426,18 +436,18 @@ function AnnouncementHistoryPage() {
                                             size="sm"
                                             onClick={() => setDetails(a)}
                                         >
-                                            View
+                                            {t('actions.view')}
                                         </Button>
                                         <Button
                                             variant="secondary"
                                             size="sm"
                                             onClick={() => setStatsFor(a)}
                                         >
-                                            Stats
+                                            {t('actions.stats')}
                                         </Button>
                                         {a.status === 'PENDING_APPROVAL' && admin && (
                                             <Button size="sm" onClick={() => onApprove(a)}>
-                                                Approve
+                                                {t('actions.approve')}
                                             </Button>
                                         )}
                                         {a.status === 'PENDING_APPROVAL' && admin && (
@@ -446,13 +456,13 @@ function AnnouncementHistoryPage() {
                                                 size="sm"
                                                 onClick={() => setRejectFor(a)}
                                             >
-                                                Reject
+                                                {t('actions.reject')}
                                             </Button>
                                         )}
                                         {(a.status === 'SCHEDULED' ||
                                             a.scheduling?.scheduleType === 'ONE_TIME') && (
                                                 <Button size="sm" onClick={() => onDeliverNow(a)}>
-                                                    Deliver now
+                                                    {t('actions.deliverNow')}
                                                 </Button>
                                             )}
                                         {admin && (
@@ -461,7 +471,7 @@ function AnnouncementHistoryPage() {
                                                 size="sm"
                                                 onClick={() => onDelete(a)}
                                             >
-                                                Delete
+                                                {t('actions.delete')}
                                             </Button>
                                         )}
                                     </TableCell>
@@ -475,16 +485,20 @@ function AnnouncementHistoryPage() {
             <Dialog open={!!details} onOpenChange={(open) => !open && setDetails(null)}>
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
-                        <DialogTitle>Announcement Details</DialogTitle>
+                        <DialogTitle>{t('detailsDialog.title')}</DialogTitle>
                     </DialogHeader>
                     {details && (
                         <div className="grid gap-3">
                             <div>
                                 <div className="text-lg font-medium">{details.title}</div>
-                                <div className="text-xs text-neutral-500">{details.status}</div>
+                                <div className="text-xs text-neutral-500">
+                                    {statusLabel(t, details.status)}
+                                </div>
                             </div>
                             <div className="rounded border p-3">
-                                <div className="mb-1 text-sm font-medium">Content</div>
+                                <div className="mb-1 text-sm font-medium">
+                                    {t('detailsDialog.content')}
+                                </div>
                                 <div
                                     className="prose max-h-64 overflow-auto text-sm"
                                     dangerouslySetInnerHTML={{
@@ -497,7 +511,9 @@ function AnnouncementHistoryPage() {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="rounded border p-3">
-                                    <div className="mb-1 text-sm font-medium">Modes</div>
+                                    <div className="mb-1 text-sm font-medium">
+                                        {t('detailsDialog.modes')}
+                                    </div>
                                     <div className="flex flex-wrap gap-1">
                                         {details.modes?.map((m, i) => (
                                             <Badge key={i}>{m.modeType}</Badge>
@@ -505,7 +521,9 @@ function AnnouncementHistoryPage() {
                                     </div>
                                 </div>
                                 <div className="rounded border p-3">
-                                    <div className="mb-1 text-sm font-medium">Mediums</div>
+                                    <div className="mb-1 text-sm font-medium">
+                                        {t('detailsDialog.mediums')}
+                                    </div>
                                     <div className="flex flex-wrap gap-1">
                                         {details.mediums?.map((m, i) => (
                                             <Badge key={i} variant="secondary">
@@ -517,7 +535,9 @@ function AnnouncementHistoryPage() {
                             </div>
                             {details.recipients && (
                                 <div className="rounded border p-3">
-                                    <div className="mb-1 text-sm font-medium">Recipients</div>
+                                    <div className="mb-1 text-sm font-medium">
+                                        {t('detailsDialog.recipients')}
+                                    </div>
                                     <div className="text-sm">
                                         {details.recipients.map((r, i) => (
                                             <div key={i}>
@@ -535,7 +555,7 @@ function AnnouncementHistoryPage() {
             <Dialog open={!!statsFor} onOpenChange={(open) => !open && setStatsFor(null)}>
                 <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
                     <DialogHeader className="flex-shrink-0">
-                        <DialogTitle>Delivery Stats</DialogTitle>
+                        <DialogTitle>{t('statsDialog.title')}</DialogTitle>
                     </DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-2">
                         {stats ? (
@@ -546,38 +566,38 @@ function AnnouncementHistoryPage() {
                                     <div className="mb-3 sm:mb-4 flex items-center gap-2">
                                         <div className="h-1 w-6 sm:w-8 rounded-full bg-gradient-to-r from-blue-500 to-blue-400"></div>
                                         <h4 className="text-base sm:text-lg font-semibold text-neutral-800">
-                                            Delivery overview
+                                            {t('statsDialog.overviewTitle')}
                                         </h4>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
                                         <StatTile
-                                            label="Recipients"
+                                            label={t('statsDialog.tiles.recipients')}
                                             value={stats.totalRecipients}
                                         />
                                         <StatTile
-                                            label="Delivered"
+                                            label={t('statsDialog.tiles.delivered')}
                                             value={stats.deliveredCount}
                                             sub={percent(stats.deliveryRate)}
                                             tone="success"
                                         />
                                         <StatTile
-                                            label="Read"
+                                            label={t('statsDialog.tiles.read')}
                                             value={stats.readCount}
                                             sub={percent(stats.readRate)}
                                             tone="info"
                                         />
                                         <StatTile
-                                            label="Failed"
+                                            label={t('statsDialog.tiles.failed')}
                                             value={stats.failedCount}
                                             tone="danger"
                                         />
                                         <StatTile
-                                            label="Dismissed"
+                                            label={t('statsDialog.tiles.dismissed')}
                                             value={stats.dismissedCount}
                                             tone="muted"
                                         />
                                         <StatTile
-                                            label="Dismiss rate"
+                                            label={t('statsDialog.tiles.dismissRate')}
                                             value={percent(stats.dismissRate)}
                                             tone="muted"
                                         />
@@ -591,55 +611,55 @@ function AnnouncementHistoryPage() {
                                         <div className="mb-3 sm:mb-4 flex items-center gap-2">
                                             <div className="h-1 w-6 sm:w-8 rounded-full bg-gradient-to-r from-purple-500 to-purple-400"></div>
                                             <h4 className="text-base sm:text-lg font-semibold text-neutral-800">
-                                                Email events
+                                                {t('statsDialog.emailEventsTitle')}
                                             </h4>
                                             <span className="text-xs text-neutral-500">
-                                                via SES
+                                                {t('statsDialog.viaSes')}
                                             </span>
                                         </div>
                                         <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                             <StatTile
-                                                label="Emails sent"
+                                                label={t('statsDialog.emailTiles.emailsSent')}
                                                 value={stats.emailsSent}
                                             />
                                             <StatTile
-                                                label="Delivered"
+                                                label={t('statsDialog.emailTiles.delivered')}
                                                 value={stats.emailsDelivered}
                                                 sub={percent(stats.emailDeliveryRate)}
                                                 tone="success"
                                             />
                                             <StatTile
-                                                label="Opened"
+                                                label={t('statsDialog.emailTiles.opened')}
                                                 value={stats.emailsOpened}
                                                 sub={percent(stats.emailOpenRate)}
                                                 tone="info"
                                             />
                                             <StatTile
-                                                label="Clicked"
+                                                label={t('statsDialog.emailTiles.clicked')}
                                                 value={stats.emailsClicked}
                                                 sub={percent(stats.emailClickRate)}
                                                 tone="info"
                                             />
                                             <StatTile
-                                                label="Bounced"
+                                                label={t('statsDialog.emailTiles.bounced')}
                                                 value={stats.emailsBounced}
                                                 sub={percent(stats.emailBounceRate)}
                                                 tone="warning"
                                             />
                                             <StatTile
-                                                label="Rejected"
+                                                label={t('statsDialog.emailTiles.rejected')}
                                                 value={stats.emailsRejected}
                                                 sub={percent(stats.emailRejectRate)}
                                                 tone="danger"
                                             />
                                             <StatTile
-                                                label="Complained"
+                                                label={t('statsDialog.emailTiles.complained')}
                                                 value={stats.emailsComplained}
                                                 sub={percent(stats.emailComplaintRate)}
                                                 tone="danger"
                                             />
                                             <StatTile
-                                                label="Awaiting events"
+                                                label={t('statsDialog.emailTiles.awaitingEvents')}
                                                 value={stats.emailsPending}
                                                 tone="muted"
                                             />
@@ -649,16 +669,13 @@ function AnnouncementHistoryPage() {
                                             stats.emailsRejected === 0 &&
                                             stats.emailsPending > 0 && (
                                                 <p className="mt-3 text-xs text-neutral-500">
-                                                    Emails were dispatched but no SES events have
-                                                    come back yet. If you're running locally,
-                                                    ensure the SES → SNS → notification_service
-                                                    webhook is configured.
+                                                    {t('statsDialog.pendingNote')}
                                                 </p>
                                             )}
                                     </div>
                                 ) : (
                                     <div className="rounded-xl border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
-                                        No emails were sent for this announcement.
+                                        {t('statsDialog.noEmails')}
                                     </div>
                                 )}
 
@@ -674,7 +691,7 @@ function AnnouncementHistoryPage() {
                             <div className="flex items-center justify-center py-8">
                                 <div className="flex items-center gap-2 text-sm text-neutral-500">
                                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-600"></div>
-                                    Loading statistics...
+                                    {t('statsDialog.loading')}
                                 </div>
                             </div>
                         )}
@@ -685,20 +702,20 @@ function AnnouncementHistoryPage() {
             <Dialog open={!!rejectFor} onOpenChange={(open) => !open && setRejectFor(null)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Reject Announcement</DialogTitle>
+                        <DialogTitle>{t('rejectDialog.title')}</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-2">
                         <Textarea
-                            placeholder="Reason"
+                            placeholder={t('rejectDialog.reasonPlaceholder')}
                             value={rejectReason}
                             onChange={(e) => setRejectReason(e.target.value)}
                         />
                         <div className="flex justify-end gap-2">
                             <Button variant="secondary" onClick={() => setRejectFor(null)}>
-                                Cancel
+                                {t('rejectDialog.cancel')}
                             </Button>
                             <Button variant="destructive" onClick={onReject}>
-                                Reject
+                                {t('rejectDialog.reject')}
                             </Button>
                         </div>
                     </div>
@@ -720,31 +737,36 @@ function Toolbar(props: {
     setTo: (v: string) => void;
 }) {
     const { search, setSearch, status, setStatus, showDate, from, to, setFrom, setTo } = props;
+    const { t } = useTranslation('announcementHistoryIndex');
     return (
         <div className="mt-4 flex flex-wrap items-end gap-3">
             <div className="w-64">
-                <label className="mb-1 block text-xs text-neutral-600">Search title</label>
+                <label className="mb-1 block text-xs text-neutral-600">
+                    {t('toolbar.searchLabel')}
+                </label>
                 <Input
-                    placeholder="Search…"
+                    placeholder={t('toolbar.searchPlaceholder')}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
             </div>
             {setStatus !== (undefined as never) && (
                 <div className="w-56">
-                    <label className="mb-1 block text-xs text-neutral-600">Status</label>
+                    <label className="mb-1 block text-xs text-neutral-600">
+                        {t('toolbar.statusLabel')}
+                    </label>
                     <Select
                         value={status ?? 'ALL'}
                         onValueChange={(v) => setStatus(v === 'ALL' ? undefined : v)}
                     >
                         <SelectTrigger>
-                            <SelectValue placeholder="All" />
+                            <SelectValue placeholder={t('toolbar.statusAll')} />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="ALL">All</SelectItem>
+                            <SelectItem value="ALL">{t('toolbar.statusAll')}</SelectItem>
                             {allStatuses.map((s) => (
                                 <SelectItem key={s} value={s}>
-                                    {s}
+                                    {statusLabel(t, s)}
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -754,7 +776,9 @@ function Toolbar(props: {
             {showDate && (
                 <>
                     <div>
-                        <label className="mb-1 block text-xs text-neutral-600">From</label>
+                        <label className="mb-1 block text-xs text-neutral-600">
+                            {t('toolbar.fromLabel')}
+                        </label>
                         <Input
                             type="datetime-local"
                             value={from}
@@ -762,7 +786,9 @@ function Toolbar(props: {
                         />
                     </div>
                     <div>
-                        <label className="mb-1 block text-xs text-neutral-600">To</label>
+                        <label className="mb-1 block text-xs text-neutral-600">
+                            {t('toolbar.toLabel')}
+                        </label>
                         <Input
                             type="datetime-local"
                             value={to}
@@ -776,12 +802,13 @@ function Toolbar(props: {
 }
 
 function ScheduleCell({ scheduling }: { scheduling: Announcement['scheduling'] }) {
-    if (!scheduling || !scheduling.scheduleType) return <div>-</div>;
-    if (scheduling.scheduleType === 'IMMEDIATE') return <div>Immediate</div>;
+    const { t } = useTranslation('announcementHistoryIndex');
+    if (!scheduling || !scheduling.scheduleType) return <div>{t('schedule.none')}</div>;
+    if (scheduling.scheduleType === 'IMMEDIATE') return <div>{t('schedule.immediate')}</div>;
     if (scheduling.scheduleType === 'ONE_TIME')
         return (
             <div className="text-xs">
-                <div>One-time</div>
+                <div>{t('schedule.oneTime')}</div>
                 <div>
                     {formatDateTime(scheduling.startDate)} → {formatDateTime(scheduling.endDate)}
                 </div>
@@ -789,8 +816,8 @@ function ScheduleCell({ scheduling }: { scheduling: Announcement['scheduling'] }
         );
     return (
         <div className="text-xs">
-            <div>Recurring</div>
-            <div>CRON: {scheduling.cronExpression || '-'}</div>
+            <div>{t('schedule.recurring')}</div>
+            <div>{t('schedule.cron', { expr: scheduling.cronExpression || '-' })}</div>
         </div>
     );
 }
@@ -798,6 +825,7 @@ function ScheduleCell({ scheduling }: { scheduling: Announcement['scheduling'] }
 // Paginated per-recipient list inside the stats dialog. Reads the
 // GET /announcements/{id}/recipients Spring Page endpoint 10 rows at a time.
 function RecipientsSection({ announcementId }: { announcementId: string }) {
+    const { t } = useTranslation('announcementHistoryIndex');
     const [rows, setRows] = useState<AnnouncementRecipientRow[]>([]);
     const [page, setPage] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
@@ -820,7 +848,7 @@ function RecipientsSection({ announcementId }: { announcementId: string }) {
                 setTotalPages(data?.totalPages ?? 0);
             } catch (e) {
                 if (cancelled) return;
-                setError('Failed to load recipients');
+                setError(t('statsDialog.recipientsSection.loadFailed'));
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -828,14 +856,14 @@ function RecipientsSection({ announcementId }: { announcementId: string }) {
         return () => {
             cancelled = true;
         };
-    }, [announcementId, page]);
+    }, [announcementId, page, t]);
 
     return (
         <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-6">
             <div className="mb-3 flex items-center gap-2 sm:mb-4">
                 <div className="h-1 w-6 rounded-full bg-gradient-to-r from-green-500 to-green-400 sm:w-8"></div>
                 <h4 className="text-base font-semibold text-neutral-800 sm:text-lg">
-                    Recipients
+                    {t('statsDialog.recipientsSection.title')}
                 </h4>
             </div>
             {error ? (
@@ -846,23 +874,25 @@ function RecipientsSection({ announcementId }: { announcementId: string }) {
                 <div className="flex items-center justify-center py-6">
                     <div className="flex items-center gap-2 text-sm text-neutral-500">
                         <div className="size-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-600"></div>
-                        Loading recipients...
+                        {t('statsDialog.recipientsSection.loading')}
                     </div>
                 </div>
             ) : rows.length === 0 ? (
                 <div className="rounded border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
-                    No recipients found for this announcement.
+                    {t('statsDialog.recipientsSection.empty')}
                 </div>
             ) : (
                 <div className="overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Mode</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Seen at</TableHead>
-                                <TableHead>Dismissed at</TableHead>
+                                <TableHead>{t('statsDialog.recipientsSection.table.name')}</TableHead>
+                                <TableHead>{t('statsDialog.recipientsSection.table.mode')}</TableHead>
+                                <TableHead>{t('statsDialog.recipientsSection.table.status')}</TableHead>
+                                <TableHead>{t('statsDialog.recipientsSection.table.seenAt')}</TableHead>
+                                <TableHead>
+                                    {t('statsDialog.recipientsSection.table.dismissedAt')}
+                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -873,7 +903,7 @@ function RecipientsSection({ announcementId }: { announcementId: string }) {
                                         <Badge variant="secondary">{r.modeType}</Badge>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="outline">{r.status || '-'}</Badge>
+                                        <Badge variant="outline">{statusLabel(t, r.status)}</Badge>
                                     </TableCell>
                                     <TableCell>{formatDateTime(r.readAt ?? undefined)}</TableCell>
                                     <TableCell>
@@ -893,10 +923,13 @@ function RecipientsSection({ announcementId }: { announcementId: string }) {
                         disabled={loading || page === 0}
                         onClick={() => setPage((p) => Math.max(0, p - 1))}
                     >
-                        Prev
+                        {t('prev')}
                     </Button>
                     <div className="text-sm text-neutral-600">
-                        Page {page + 1} of {totalPages}
+                        {t('statsDialog.recipientsSection.pagePagination', {
+                            page: page + 1,
+                            totalPages,
+                        })}
                     </div>
                     <Button
                         variant="secondary"
@@ -904,7 +937,7 @@ function RecipientsSection({ announcementId }: { announcementId: string }) {
                         disabled={loading || page + 1 >= totalPages}
                         onClick={() => setPage((p) => p + 1)}
                     >
-                        Next
+                        {t('next')}
                     </Button>
                 </div>
             )}

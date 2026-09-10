@@ -74,6 +74,8 @@ import { useMarksStore, feedbackKey } from "@/stores/evaluation/marks-store";
 import { LoadingOverlay, UploadingOverlay } from "./Overlay";
 import { readEvalReturnUrl, clearEvalReturnUrl } from "../-utils/eval-return";
 import { runEvaluationSubmit } from "../-utils/submit-evaluation";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.mjs`;
 
@@ -114,41 +116,44 @@ const MIN_FIT_ZOOM = 0.25;
 
 // Help text for the tool guide dialog. Tool rows reuse the live `tools` list (so
 // icons stay in sync); this keys a short description by the tool's label.
-const TOOL_HELP: Record<string, string> = {
-    Select: "Select, move or resize any annotation on the page.",
-    Pen: "Click, then draw free-hand on the page. Adjust colour and thickness from the Stroke control next to it.",
-    Tick: "Click, then click anywhere on the page to stamp a green tick — click again to stamp more.",
-    Cross: "Click, then click anywhere on the page to stamp a red cross — click again to stamp more.",
-    Text: "Click, then click on the page to add a comment box and start typing.",
-    Box: "Click, then click anywhere on the page to draw a rectangle centred on that spot.",
-    Circle: "Click, then click anywhere on the page to draw a circle centred on that spot.",
-    Delete: "Delete the selected annotation(s) (or press Backspace/Delete).",
-};
+// Module-scope factory (no React context here) — called with the component's
+// own `t` once useTranslation is available. Keys stay the English tool labels
+// coming from useCanvasTools, which is the lookup identity, not user-facing text.
+const buildToolHelp = (t: TFunction): Record<string, string> => ({
+    Select: t("toolHelp.select"),
+    Pen: t("toolHelp.pen"),
+    Tick: t("toolHelp.tick"),
+    Cross: t("toolHelp.cross"),
+    Text: t("toolHelp.text"),
+    Box: t("toolHelp.box"),
+    Circle: t("toolHelp.circle"),
+    Delete: t("toolHelp.delete"),
+});
 
 // The non-tool controls (toolbar actions + the bottom bar).
-const CONTROL_HELP = [
-    { icon: SlidersHorizontal, label: "Stroke & colour", description: "Adjust pen thickness/colour — applies to what's selected too." },
-    { icon: ListNumbers, label: "Marks number", description: "Insert a numeric mark (0–9, fractions, decimals)." },
-    { icon: Upload, label: "Upload", description: "Load an evaluated PDF from your device and continue on it." },
-    { icon: Download, label: "Download", description: "Download the annotated answer sheet." },
-    { icon: RefreshCcw, label: "Reset", description: "Clear all annotations from every page." },
-    { icon: ArrowUUpLeft, label: "Undo", description: "Undo the last change on this page (bottom bar)." },
-    { icon: ArrowUUpRight, label: "Redo", description: "Redo the last undone change (bottom bar)." },
-    { icon: ChevronLeft, label: "Page navigation", description: "Move to the previous or next page (bottom bar)." },
-    { icon: RotateCcw, label: "Rotate", description: "Rotate a sideways or upside-down scan to read it upright (bottom bar)." },
-    { icon: MagnifyingGlassPlus, label: "Zoom", description: "Zoom in, out, or fit the page to the width (bottom bar)." },
-    { icon: CornersOut, label: "Fullscreen", description: "Hide the browser chrome for a bigger view of the answer sheet. Esc exits." },
-    { icon: PaperPlaneTilt, label: "Submit", description: "Submit the evaluation — marks and feedback are required." },
+const buildControlHelp = (t: TFunction) => [
+    { icon: SlidersHorizontal, label: t("controlHelp.strokeColour.label"), description: t("controlHelp.strokeColour.description") },
+    { icon: ListNumbers, label: t("controlHelp.marksNumber.label"), description: t("controlHelp.marksNumber.description") },
+    { icon: Upload, label: t("controlHelp.upload.label"), description: t("controlHelp.upload.description") },
+    { icon: Download, label: t("controlHelp.download.label"), description: t("controlHelp.download.description") },
+    { icon: RefreshCcw, label: t("controlHelp.reset.label"), description: t("controlHelp.reset.description") },
+    { icon: ArrowUUpLeft, label: t("controlHelp.undo.label"), description: t("controlHelp.undo.description") },
+    { icon: ArrowUUpRight, label: t("controlHelp.redo.label"), description: t("controlHelp.redo.description") },
+    { icon: ChevronLeft, label: t("controlHelp.pageNavigation.label"), description: t("controlHelp.pageNavigation.description") },
+    { icon: RotateCcw, label: t("controlHelp.rotate.label"), description: t("controlHelp.rotate.description") },
+    { icon: MagnifyingGlassPlus, label: t("controlHelp.zoom.label"), description: t("controlHelp.zoom.description") },
+    { icon: CornersOut, label: t("controlHelp.fullscreen.label"), description: t("controlHelp.fullscreen.description") },
+    { icon: PaperPlaneTilt, label: t("controlHelp.submit.label"), description: t("controlHelp.submit.description") },
 ];
 
 // Quick-pick colours for the Pen/Box/Circle stroke. Literal canvas colour
 // values (not design tokens) — these paint onto the answer sheet itself, the
 // same "user-picked colour in an editor" exception the ColorPicker below uses.
-const PEN_SWATCHES: { label: string; value: string }[] = [
-    { label: "Green", value: "green" },
-    { label: "Red", value: "red" },
-    { label: "Blue", value: "#1D4ED8" }, // design-lint-ignore: literal ink colour, not UI chrome
-    { label: "Black", value: "#111827" }, // design-lint-ignore: literal ink colour, not UI chrome
+const buildPenSwatches = (t: TFunction): { label: string; value: string }[] => [
+    { label: t("penSwatches.green"), value: "green" },
+    { label: t("penSwatches.red"), value: "red" },
+    { label: t("penSwatches.blue"), value: "#1D4ED8" }, // design-lint-ignore: literal ink colour, not UI chrome
+    { label: t("penSwatches.black"), value: "#111827" }, // design-lint-ignore: literal ink colour, not UI chrome
 ];
 
 interface PDFEvaluatorProps {
@@ -176,6 +181,11 @@ const PDFEvaluator = ({
     examType,
     assessmentVisibility,
 }: PDFEvaluatorProps) => {
+    const { t, i18n: i18nInstance } = useTranslation("evaluationPdfEditor");
+    const TOOL_HELP = buildToolHelp(t);
+    const CONTROL_HELP = buildControlHelp(t);
+    const PEN_SWATCHES = buildPenSwatches(t);
+
     // File states
     const [pdfFile, setPdfFile] = useState<File | null>(file);
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -333,7 +343,7 @@ const PDFEvaluator = ({
         maxFiles: 1,
         onDropRejected: (errors) => {
             console.log(errors);
-            setError("Invalid file type. Please upload a PDF file.");
+            setError(t("errors.invalidFileType"));
         },
     });
 
@@ -615,8 +625,7 @@ const PDFEvaluator = ({
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             e.preventDefault();
-            const message =
-                "Changes you made may not be saved. Are you sure you want to leave this page?";
+            const message = t("confirmLeave");
             e.returnValue = message;
             return message;
         };
@@ -631,8 +640,7 @@ const PDFEvaluator = ({
     useEffect(() => {
         const unsubscribe = router.subscribe("onBeforeNavigate", (event) => {
             if (pdfFile) {
-                const confirmMessage =
-                    "Changes you made may not be saved. Are you sure you want to leave this page?";
+                const confirmMessage = t("confirmLeave");
 
                 if (!window.confirm(confirmMessage)) {
                     event.preventDefault();
@@ -708,15 +716,15 @@ const PDFEvaluator = ({
             await saveEvaluationDraft(assessmentId, instituteId, attemptId, draft);
             setDraftSavedAt(draft.savedAt);
             if (announce) {
-                toast.success("Draft saved", {
-                    description: "You can safely leave and resume this evaluation later.",
+                toast.success(t("toasts.draftSavedTitle"), {
+                    description: t("toasts.draftSavedDesc"),
                     duration: 3000,
                 });
             }
         } catch (error) {
             console.error("Failed to save evaluation draft:", error);
             if (!announce) throw error;
-            toast.error("Couldn't save draft. Please try again.");
+            toast.error(t("errors.draftSaveFailed"));
         } finally {
             savingDraftRef.current = false;
             setIsSavingDraft(false);
@@ -803,8 +811,8 @@ const PDFEvaluator = ({
                 }
 
                 setDraftSavedAt(draft.savedAt || null);
-                toast.success("Draft restored", {
-                    description: "We loaded your saved progress. Continue where you left off.",
+                toast.success(t("toasts.draftRestoredTitle"), {
+                    description: t("toasts.draftRestoredDesc"),
                     duration: 4000,
                 });
             } catch (error) {
@@ -817,7 +825,7 @@ const PDFEvaluator = ({
     // Short, local "last saved" label for the draft hint.
     const formatSavedAt = (iso: string) => {
         try {
-            return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            return new Date(iso).toLocaleTimeString(i18nInstance.language, { hour: "2-digit", minute: "2-digit" });
         } catch {
             return "";
         }
@@ -880,7 +888,7 @@ const PDFEvaluator = ({
     // flattened with their ink on top, and swapped in whole. Every other page's
     // quality is completely unaffected.
     const buildEvaluatedPdfBytes = async (): Promise<Uint8Array> => {
-        if (!pdfFile) throw new Error("No PDF file available for annotation.");
+        if (!pdfFile) throw new Error(t("errors.noPdfFile"));
 
         // Snapshot annotations + the canvas size they were captured at, including
         // unsaved edits on the live page.
@@ -958,7 +966,7 @@ const PDFEvaluator = ({
             contentCanvas.width = viewport.width;
             contentCanvas.height = viewport.height;
             const ctx = contentCanvas.getContext("2d");
-            if (!ctx) throw new Error("Could not get a 2D context to rotate this page.");
+            if (!ctx) throw new Error(t("errors.canvasContext"));
             // JPEG has no alpha, so paint an opaque base first — otherwise the
             // un-drawn margins would encode as black.
             ctx.fillStyle = "#ffffff"; // design-lint-ignore: canvas paint value, not UI chrome
@@ -1002,7 +1010,7 @@ const PDFEvaluator = ({
             }
 
             setIsLoading(true);
-            setError("Generating PDF, please wait...");
+            setError(t("errors.generatingPdf"));
 
             const bytes = await buildEvaluatedPdfBytes();
             const blob = new Blob([bytes], { type: "application/pdf" });
@@ -1019,7 +1027,7 @@ const PDFEvaluator = ({
             setError("");
         } catch (error) {
             console.error("Error generating annotated PDF:", error);
-            setError("Failed to generate annotated PDF. Please try again.");
+            setError(t("errors.generatePdfFailed"));
             setIsLoading(false);
         }
     };
@@ -1076,7 +1084,7 @@ const PDFEvaluator = ({
             // Browsers reject this when the gesture isn't trusted or the policy
             // blocks it — tell the evaluator instead of failing silently.
             console.error("Fullscreen toggle failed:", error);
-            toast.error("Your browser wouldn't allow fullscreen here.");
+            toast.error(t("errors.fullscreenBlocked"));
         }
     };
 
@@ -1095,7 +1103,7 @@ const PDFEvaluator = ({
     // same as loading a differently-sized PDF — see remeasureCanvasToPdf().
     const rotatePage = (delta: number) => {
         if (fabricCanvas && fabricCanvas.getObjects().length > 0) {
-            toast.info("Existing marks on this page may shift — check their position after rotating.");
+            toast.info(t("toasts.rotateWarning"));
         }
         setPageRotations((prev) => {
             const current = prev[pageNumber] ?? 0;
@@ -1143,7 +1151,7 @@ const PDFEvaluator = ({
         redoStack.current = [];
         syncHistoryFlags();
         setIsResetDialogOpen(false);
-        toast.success("All annotations cleared");
+        toast.success(t("toasts.annotationsCleared"));
     };
 
     async function loadPDF() {
@@ -1229,7 +1237,7 @@ const PDFEvaluator = ({
         // Guard: never submit an evaluation without marks.
         if (!canSubmit) {
             setIsSubmitDialogOpen(false);
-            toast.error("Please award marks before submitting.");
+            toast.error(t("errors.awardMarksBeforeSubmit"));
             return;
         }
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -1319,18 +1327,18 @@ const PDFEvaluator = ({
             // Name what broke and say plainly that nothing was saved — the old
             // generic "Error submitting evaluation" let a failure read like a
             // slow success, so evaluators walked away from ungraded copies.
-            toast.error("Evaluation not submitted", {
+            toast.error(t("errors.submitFailedTitle"), {
                 description: outcome.workRescued
-                    ? `${outcome.reason} Nothing was saved for this copy — your marking is kept as a draft, so you can retry.`
-                    : `${outcome.reason} Nothing was saved — your marking is still on screen, please try again.`,
+                    ? t("errors.submitFailedRescued", { reason: outcome.reason })
+                    : t("errors.submitFailedNotRescued", { reason: outcome.reason }),
                 duration: 8000,
             });
             return;
         }
 
         resetMarks();
-        toast.success("Evaluation Submitted", {
-            description: "The answer sheet evaluation has been completed and submitted.",
+        toast.success(t("toasts.evaluationSubmittedTitle"), {
+            description: t("toasts.evaluationSubmittedDesc"),
             duration: 3000,
         });
 
@@ -1359,7 +1367,7 @@ const PDFEvaluator = ({
                 <Card className="w-full max-w-lg">
                     <CardHeader>
                         <CardTitle className="text-lg font-semibold">
-                            Upload answer sheet
+                            {t("upload.heading")}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -1374,7 +1382,7 @@ const PDFEvaluator = ({
                                     <ImportFileImage />
 
                                     <p className="text-center text-base text-neutral-600">
-                                        Drag and drop a PDF file here, or click to select one
+                                        {t("upload.dropzone")}
                                     </p>
                                 </div>
                             </div>
@@ -1419,7 +1427,7 @@ const PDFEvaluator = ({
                                     <button
                                         type="button"
                                         onClick={() => scrollToolbar(-200)}
-                                        aria-label="Scroll toolbar left"
+                                        aria-label={t("toolbar.scrollLeft")}
                                         className="absolute left-0 top-1/2 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-md hover:bg-neutral-50"
                                     >
                                         <ChevronLeft className="size-3.5" aria-hidden="true" />
@@ -1464,7 +1472,7 @@ const PDFEvaluator = ({
                                                                     size="icon"
                                                                     className="size-9 rounded-lg hover:bg-neutral-100"
                                                                     disabled={isLoading}
-                                                                    aria-label="Stroke thickness and colour"
+                                                                    aria-label={t("toolbar.strokeThicknessColour")}
                                                                 >
                                                                     <SlidersHorizontal
                                                                         className="size-4 text-neutral-600"
@@ -1473,13 +1481,13 @@ const PDFEvaluator = ({
                                                                 </Button>
                                                             </PopoverTrigger>
                                                         </TooltipTrigger>
-                                                        <TooltipContent>Stroke &amp; colour</TooltipContent>
+                                                        <TooltipContent>{t("controlHelp.strokeColour.label")}</TooltipContent>
                                                     </Tooltip>
                                                     <PopoverContent className="w-64 space-y-4 p-3" side="right">
                                                         <div className="space-y-2">
                                                             <div className="flex items-center justify-between">
                                                                 <span className="text-xs font-medium text-neutral-600">
-                                                                    Thickness
+                                                                    {t("toolbar.thickness")}
                                                                 </span>
                                                                 <span className="text-xs tabular-nums text-neutral-400">
                                                                     {canvasUtils.strokeWidth}px
@@ -1498,7 +1506,7 @@ const PDFEvaluator = ({
                                                         </div>
                                                         <div className="space-y-2">
                                                             <span className="text-xs font-medium text-neutral-600">
-                                                                Colour
+                                                                {t("toolbar.colour")}
                                                             </span>
                                                             <div className="flex items-center gap-2">
                                                                 {PEN_SWATCHES.map((swatch) => (
@@ -1562,13 +1570,13 @@ const PDFEvaluator = ({
                                                     variant="ghost"
                                                     size="icon"
                                                     className="size-9 rounded-lg hover:bg-neutral-100"
-                                                    aria-label="Insert marks number"
+                                                    aria-label={t("toolbar.insertMarksNumber")}
                                                 >
                                                     <ListNumbers className="size-4" aria-hidden="true" />
                                                 </Button>
                                             </PopoverTrigger>
                                         </TooltipTrigger>
-                                        <TooltipContent>Marks number</TooltipContent>
+                                        <TooltipContent>{t("controlHelp.marksNumber.label")}</TooltipContent>
                                     </Tooltip>
                                     <PopoverContent className="w-64 p-2" side="right">
                                         <div className="grid grid-cols-5 gap-2">
@@ -1609,13 +1617,13 @@ const PDFEvaluator = ({
                                                     variant="ghost"
                                                     size="icon"
                                                     className="size-9 rounded-lg hover:bg-neutral-100"
-                                                    aria-label="More actions"
+                                                    aria-label={t("toolbar.moreActions")}
                                                 >
                                                     <DotsThreeVertical className="size-4" aria-hidden="true" />
                                                 </Button>
                                             </PopoverTrigger>
                                         </TooltipTrigger>
-                                        <TooltipContent>More</TooltipContent>
+                                        <TooltipContent>{t("toolbar.more")}</TooltipContent>
                                     </Tooltip>
                                     <PopoverContent className="w-56 p-1" side="bottom" align="end">
                                         <Button
@@ -1625,7 +1633,7 @@ const PDFEvaluator = ({
                                             className="w-full justify-start gap-2 px-2 py-2 text-sm font-normal text-neutral-700 hover:bg-neutral-100"
                                         >
                                             <Upload className="size-4 text-neutral-500" aria-hidden="true" />
-                                            Upload an evaluated PDF
+                                            {t("toolbar.uploadEvaluatedPdf")}
                                         </Button>
                                         <Button
                                             variant="ghost"
@@ -1634,7 +1642,7 @@ const PDFEvaluator = ({
                                             className="w-full justify-start gap-2 px-2 py-2 text-sm font-normal text-neutral-700 hover:bg-neutral-100"
                                         >
                                             <Download className="size-4 text-neutral-500" aria-hidden="true" />
-                                            Download annotated PDF
+                                            {t("toolbar.downloadAnnotatedPdf")}
                                         </Button>
                                         <Button
                                             variant="ghost"
@@ -1643,7 +1651,7 @@ const PDFEvaluator = ({
                                             className="w-full justify-start gap-2 px-2 py-2 text-sm font-normal text-neutral-700 hover:bg-neutral-100"
                                         >
                                             <RefreshCcw className="size-4 text-neutral-500" aria-hidden="true" />
-                                            Reset annotations
+                                            {t("toolbar.resetAnnotations")}
                                         </Button>
                                         <Button
                                             variant="ghost"
@@ -1651,7 +1659,7 @@ const PDFEvaluator = ({
                                             className="w-full justify-start gap-2 px-2 py-2 text-sm font-normal text-neutral-700 hover:bg-neutral-100"
                                         >
                                             <Info className="size-4 text-neutral-500" aria-hidden="true" />
-                                            Tool guide
+                                            {t("toolbar.toolGuide")}
                                         </Button>
                                     </PopoverContent>
                                 </Popover>
@@ -1661,19 +1669,18 @@ const PDFEvaluator = ({
                                 >
                                     <AlertDialogContent>
                                         <AlertDialogHeader>
-                                            <AlertDialogTitle>Reset annotations?</AlertDialogTitle>
+                                            <AlertDialogTitle>{t("resetDialog.title")}</AlertDialogTitle>
                                             <AlertDialogDescription>
-                                                This removes all your marks and annotations from every
-                                                page of this answer sheet. This can&apos;t be undone.
+                                                {t("resetDialog.description")}
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogCancel>{t("resetDialog.cancel")}</AlertDialogCancel>
                                             <AlertDialogAction
                                                 onClick={handleResetAnnotations}
                                                 className="bg-danger-500 text-white hover:bg-danger-400"
                                             >
-                                                Reset annotations
+                                                {t("resetDialog.confirm")}
                                             </AlertDialogAction>
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
@@ -1686,14 +1693,13 @@ const PDFEvaluator = ({
                                 >
                                     <AlertDialogContent>
                                         <AlertDialogHeader>
-                                            <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
+                                            <AlertDialogTitle>{t("submitDialog.title")}</AlertDialogTitle>
                                             <AlertDialogDescription>
-                                                Are you sure you want to submit this evaluation? This
-                                                action cannot be undone.
+                                                {t("submitDialog.description")}
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogCancel>{t("submitDialog.cancel")}</AlertDialogCancel>
                                             <AlertDialogAction
                                                 onClick={handleSubmit}
                                                 className="bg-primary-500 text-white hover:bg-primary-400"
@@ -1701,7 +1707,7 @@ const PDFEvaluator = ({
                                                 {(isUploading || isUploadingFile) && (
                                                     <Loader2 className="size-6 animate-spin text-primary-500" />
                                                 )}
-                                                Continue
+                                                {t("submitDialog.confirm")}
                                             </AlertDialogAction>
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
@@ -1711,7 +1717,7 @@ const PDFEvaluator = ({
                                     <button
                                         type="button"
                                         onClick={() => scrollToolbar(200)}
-                                        aria-label="Scroll toolbar right"
+                                        aria-label={t("toolbar.scrollRight")}
                                         className="absolute right-0 top-1/2 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-md hover:bg-neutral-50"
                                     >
                                         <ChevronRight className="size-3.5" aria-hidden="true" />
@@ -1723,14 +1729,14 @@ const PDFEvaluator = ({
                 </div>
 
                 <MyDialog
-                    heading="Tool guide"
+                    heading={t("toolbar.toolGuide")}
                     open={isHelpDialogOpen}
                     onOpenChange={setIsHelpDialogOpen}
                 >
                     <div className="max-h-96 space-y-5 overflow-y-auto pr-1">
                         <div>
                             <p className="mb-2 text-2xs font-medium uppercase tracking-wide text-neutral-500">
-                                Annotation tools
+                                {t("helpDialog.annotationTools")}
                             </p>
                             <ul className="space-y-3">
                                 {[...tools, deleteTool].map((tool) => (
@@ -1758,7 +1764,7 @@ const PDFEvaluator = ({
                         </div>
                         <div>
                             <p className="mb-2 text-2xs font-medium uppercase tracking-wide text-neutral-500">
-                                Controls
+                                {t("helpDialog.controls")}
                             </p>
                             <ul className="space-y-3">
                                 {CONTROL_HELP.map((item) => (
@@ -1794,12 +1800,12 @@ const PDFEvaluator = ({
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <CardTitle className="text-base font-semibold">
-                                        Answer Sheet Evaluation
+                                        {t("header.title")}
                                     </CardTitle>
                                     {(pageRotations[pageNumber] ?? 0) !== 0 && (
                                         <span className="inline-flex items-center gap-1 rounded-full bg-info-50 px-2.5 py-1 text-2xs font-medium text-info-600">
                                             <RotateCw className="size-3" aria-hidden="true" />
-                                            Rotated {pageRotations[pageNumber]}°
+                                            {t("header.rotatedBadge", { degrees: pageRotations[pageNumber] })}
                                         </span>
                                     )}
                                 </div>
@@ -1812,9 +1818,9 @@ const PDFEvaluator = ({
                                         className={cn(
                                             (isFreeTool || showEvaluationPanel) && "hidden"
                                         )}
-                                        aria-label="Open grading panel"
+                                        aria-label={t("header.openGradingPanel")}
                                     >
-                                        Grade
+                                        {t("header.grade")}
                                     </MyButton>
                                 </div>
                             </div>
@@ -1933,10 +1939,10 @@ const PDFEvaluator = ({
                         <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-4 py-3">
                             <div className="flex flex-col">
                                 <span className="text-2xs font-medium uppercase tracking-wide text-neutral-500">
-                                    Grading
+                                    {t("gradingPanel.gradingLabel")}
                                 </span>
                                 <h2 className="text-base font-semibold text-neutral-900">
-                                    Evaluation
+                                    {t("gradingPanel.heading")}
                                 </h2>
                             </div>
                             <Button
@@ -1944,8 +1950,8 @@ const PDFEvaluator = ({
                                 size="icon"
                                 onClick={() => setShowEvaluationPanel(false)}
                                 className="hover:bg-neutral-100"
-                                aria-label="Close evaluation panel"
-                                title="Close panel"
+                                aria-label={t("gradingPanel.closePanel")}
+                                title={t("gradingPanel.closePanelTitle")}
                             >
                                 <X className="size-5" aria-hidden="true" />
                             </Button>
@@ -1971,7 +1977,7 @@ const PDFEvaluator = ({
                                     disable={isLoading || !canSubmit}
                                     className="w-full"
                                 >
-                                    Submit evaluation
+                                    {t("footer.submitEvaluation")}
                                 </MyButton>
                                 <MyButton
                                     buttonType="secondary"
@@ -1980,13 +1986,13 @@ const PDFEvaluator = ({
                                     disable={isSavingDraft || isLoading || isUploading}
                                     className="w-full"
                                 >
-                                    {isSavingDraft ? "Saving draft…" : "Save draft"}
+                                    {isSavingDraft ? t("footer.savingDraft") : t("footer.saveDraft")}
                                 </MyButton>
                                 {(draftSavedAt || !canSubmit) && (
                                     <p className="text-center text-xs text-neutral-400">
                                         {draftSavedAt
-                                            ? `Draft saved ${formatSavedAt(draftSavedAt)} · resume anytime`
-                                            : "Award marks to submit, or save a draft to finish later."}
+                                            ? t("footer.draftSavedHint", { time: formatSavedAt(draftSavedAt) })
+                                            : t("footer.awardMarksHint")}
                                     </p>
                                 )}
                             </div>
@@ -2000,8 +2006,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={handleUndo}
                         disabled={!canUndo || isLoading}
-                        aria-label="Undo"
-                        title="Undo"
+                        aria-label={t("bottomBar.undo")}
+                        title={t("bottomBar.undo")}
                         className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <ArrowUUpLeft className="size-4" aria-hidden="true" />
@@ -2009,8 +2015,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={handleRedo}
                         disabled={!canRedo || isLoading}
-                        aria-label="Redo"
-                        title="Redo"
+                        aria-label={t("bottomBar.redo")}
+                        title={t("bottomBar.redo")}
                         className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <ArrowUUpRight className="size-4" aria-hidden="true" />
@@ -2019,8 +2025,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={() => changePage(-1)}
                         disabled={pageNumber <= 1 || isLoading}
-                        aria-label="Previous page"
-                        title="Previous page"
+                        aria-label={t("bottomBar.previousPage")}
+                        title={t("bottomBar.previousPage")}
                         className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <ChevronLeft className="size-4" aria-hidden="true" />
@@ -2031,8 +2037,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={() => changePage(1)}
                         disabled={pageNumber >= numPages || isLoading}
-                        aria-label="Next page"
-                        title="Next page"
+                        aria-label={t("bottomBar.nextPage")}
+                        title={t("bottomBar.nextPage")}
                         className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <ChevronRight className="size-4" aria-hidden="true" />
@@ -2041,8 +2047,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={handleZoomOut}
                         disabled={isLoading || zoomLevel <= MIN_ZOOM}
-                        aria-label="Zoom out"
-                        title="Zoom out"
+                        aria-label={t("bottomBar.zoomOut")}
+                        title={t("bottomBar.zoomOut")}
                         className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <MagnifyingGlassMinus size={16} aria-hidden="true" />
@@ -2050,8 +2056,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={handleResetZoom}
                         disabled={isLoading}
-                        aria-label="Fit page to width"
-                        title="Fit page to width"
+                        aria-label={t("bottomBar.fitPageToWidth")}
+                        title={t("bottomBar.fitPageToWidth")}
                         className="min-w-12 cursor-pointer rounded-full px-2 py-1 text-center text-xs font-medium tabular-nums text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-40"
                     >
                         {Math.round(zoomLevel * 100)}%
@@ -2059,8 +2065,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={handleZoomIn}
                         disabled={isLoading || zoomLevel >= MAX_ZOOM}
-                        aria-label="Zoom in"
-                        title="Zoom in"
+                        aria-label={t("bottomBar.zoomIn")}
+                        title={t("bottomBar.zoomIn")}
                         className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <MagnifyingGlassPlus size={16} aria-hidden="true" />
@@ -2069,8 +2075,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={() => rotatePage(-90)}
                         disabled={isLoading}
-                        aria-label="Rotate page left"
-                        title="Rotate page left"
+                        aria-label={t("bottomBar.rotateLeft")}
+                        title={t("bottomBar.rotateLeft")}
                         className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-40"
                     >
                         <RotateCcw size={16} aria-hidden="true" />
@@ -2078,8 +2084,8 @@ const PDFEvaluator = ({
                     <button
                         onClick={() => rotatePage(90)}
                         disabled={isLoading}
-                        aria-label="Rotate page right"
-                        title="Rotate page right"
+                        aria-label={t("bottomBar.rotateRight")}
+                        title={t("bottomBar.rotateRight")}
                         className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-40"
                     >
                         <RotateCw size={16} aria-hidden="true" />
@@ -2087,8 +2093,8 @@ const PDFEvaluator = ({
                     <div className="mx-1 h-5 w-px bg-neutral-200" aria-hidden="true" />
                     <button
                         onClick={toggleFullscreen}
-                        aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                        title={isFullscreen ? "Exit fullscreen" : "Fullscreen — more room to read the answer sheet"}
+                        aria-label={isFullscreen ? t("bottomBar.exitFullscreen") : t("bottomBar.enterFullscreen")}
+                        title={isFullscreen ? t("bottomBar.exitFullscreen") : t("bottomBar.fullscreenTitleEnter")}
                         aria-pressed={isFullscreen}
                         className={cn(
                             "cursor-pointer rounded-full p-2 transition-colors hover:bg-neutral-100",

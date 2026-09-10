@@ -1,0 +1,22 @@
+{
+    "questionPaperIdRequired": "प्रश्न पत्र ID आवश्यक है",
+    "questionPaperIdMustBeNumber": "प्रश्न पत्र ID एक संख्या होनी चाहिए",
+    "questionFieldRequired": "प्रश्न फ़ील्ड आवश्यक है",
+    "questionFieldMustBeString": "प्रश्न फ़ील्ड एक स्ट्रिंग होनी चाहिए",
+    "optionFieldRequired": "विकल्प फ़ील्ड आवश्यक है",
+    "optionFieldMustBeString": "विकल्प फ़ील्ड एक स्ट्रिंग होनी चाहिए",
+    "answerFieldRequired": "उत्तर फ़ील्ड आवश्यक है",
+    "answerFieldMustBeString": "उत्तर फ़ील्ड एक स्ट्रिंग होनी चाहिए",
+    "explanationFieldRequired": "स्पष्टीकरण फ़ील्ड आवश्यक है",
+    "explanationFieldMustBeString": "स्पष्टीकरण फ़ील्ड एक स्ट्रिंग होनी चाहिए",
+    "fileUploadRequired": "फ़ाइल अपलोड आवश्यक है और यह एक मान्य फ़ाइल होनी चाहिए",
+    "questionNameRequired": "प्रश्न का नाम आवश्यक है",
+    "mcqsMustHaveSingleChoiceOptions": "MCQS प्रश्नों में singleChoiceOptions होना आवश्यक है",
+    "mcqsMustHaveAtLeast2Options": "MCQS में कम से कम 2 विकल्प होने चाहिए",
+    "mcqsMustHaveExactlyOneSelected": "MCQS में ठीक एक विकल्प चयनित होना चाहिए",
+    "optionIsRequired": "विकल्प {{number}} आवश्यक है",
+    "mcqmMustHaveMultipleChoiceOptions": "MCQM प्रश्नों में multipleChoiceOptions होना आवश्यक है",
+    "mcqmMustHaveAtLeast2Options": "MCQM में कम से कम 2 विकल्प होने चाहिए",
+    "mcqmMustHaveAtLeastOneSelected": "MCQM में कम से कम एक विकल्प चयनित होना चाहिए",
+    "incorrectAnswerTypeEntered": "दर्ज किया गया उत्तर प्रकार सही नहीं है {{numericType}}"
+}

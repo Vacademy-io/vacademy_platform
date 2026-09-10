@@ -1,0 +1,45 @@
+{
+    "table": {
+        "date": "التاريخ",
+        "class": "الحصة",
+        "status": "الحالة",
+        "present": "حاضر",
+        "absent": "غائب",
+        "duration": "المدة",
+        "talkTime": "وقت الحديث",
+        "chats": "المحادثات",
+        "polls": "الاستطلاعات",
+        "raiseHand": "رفع اليد"
+    },
+    "export": {
+        "generatedOn": "تم الإنشاء {{date}}",
+        "exportSuccess": "تم تصدير تقرير المتعلم",
+        "exportFailed": "فشل تصدير ملف PDF"
+    },
+    "errors": {
+        "loadFailed": "حدث خطأ أثناء تحميل التقرير. يرجى المحاولة مرة أخرى."
+    },
+    "emptyState": {
+        "title": "لم يتم العثور على حصص مباشرة",
+        "description": "لم تكن لدى هذا المتعلم أي حصص مباشرة مجدولة خلال الفترة المحددة."
+    },
+    "actions": {
+        "attendanceTracker": "متتبع الحضور",
+        "exporting": "جارٍ التصدير…",
+        "exportPdf": "تصدير PDF"
+    },
+    "metrics": {
+        "attendance": "الحضور",
+        "batchPercentage": "الدفعة {{value}}%",
+        "classesAttended": "الحصص المحضورة",
+        "avgDurationPerClass": "متوسط المدة / الحصة",
+        "batchDuration": "الدفعة {{value}}",
+        "engagement": "التفاعل",
+        "batchEngagement": "الدفعة {{value}} · من أصل 100",
+        "engagementInfo": "درجة التفاعل (0–100) بناءً على المشاركة أثناء الحصة — وقت الحديث والمحادثات والاستطلاعات ورفع اليد، تُقاس لكل حصة. 100 = المتعلم الأكثر نشاطًا في هذه الدفعة. متاحة فقط للحصص المتزامنة مع مزود الخدمة (Zoom/BBB)."
+    },
+    "sections": {
+        "classHistoryTitle": "سجل الحصص",
+        "classHistorySubtitle": "الحضور والمشاركة لكل حصة خلال الفترة"
+    }
+}

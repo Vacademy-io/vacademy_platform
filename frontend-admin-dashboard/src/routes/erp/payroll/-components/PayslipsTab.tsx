@@ -9,6 +9,8 @@ import {
     Prohibit,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { formatMonthValue } from '@/components/design-system/month-picker';
@@ -24,12 +26,12 @@ import type {
 import { HrEmptyState, HrErrorState } from '@/routes/erp/people/-components/HrStates';
 import { usePayslips, type PayslipRow } from '@/routes/erp/payroll/-hooks/use-payslips';
 
-const EMAIL_STATUS_LABELS: Record<string, string> = {
-    SENT: 'Sent',
-    FAILED: 'Failed',
-    NOT_SENT: 'Not sent',
-    PENDING: 'Pending',
-};
+const buildEmailStatusLabels = (t: TFunction): Record<string, string> => ({
+    SENT: t('emailStatusSent'),
+    FAILED: t('emailStatusFailed'),
+    NOT_SENT: t('emailStatusNotSent'),
+    PENDING: t('emailStatusPending'),
+});
 
 /** Not-sent is a neutral fact, not a warning — nothing is wrong until a send fails. */
 const emailStatusChipType = (status: string | undefined): StatusType => {
@@ -67,6 +69,7 @@ export const PayslipsTab = ({
     isEntriesLoading,
     isHrAdmin,
 }: PayslipsTabProps) => {
+    const { t } = useTranslation('erpPayslipsTab');
     const {
         payslips,
         isLoading,
@@ -82,6 +85,8 @@ export const PayslipsTab = ({
     const [confirmEmail, setConfirmEmail] = useState(false);
     const [emailResult, setEmailResult] = useState<PayslipEmailResult | null>(null);
 
+    const emailStatusLabels = useMemo(() => buildEmailStatusLabels(t), [t]);
+
     const period =
         run?.month && run?.year ? formatMonthValue({ month: run.month, year: run.year }) : '—';
 
@@ -96,14 +101,14 @@ export const PayslipsTab = ({
         if (result === null) return;
         setConfirmEmail(false);
         setEmailResult(result);
-        toast.success(`${result.sent} of ${result.total} payslips emailed.`);
+        toast.success(t('emailToastSummary', { sent: result.sent, total: result.total, count: result.total }));
     };
 
     const columns = useMemo<ColumnDef<PayslipRow>[]>(
         () => [
             {
                 id: 'employee',
-                header: 'Employee',
+                header: t('columnEmployee'),
                 cell: ({ row }) => (
                     <div className="flex flex-col">
                         <span className="text-body font-semibold text-neutral-700">
@@ -119,7 +124,7 @@ export const PayslipsTab = ({
             },
             {
                 id: 'period',
-                header: 'Period',
+                header: t('columnPeriod'),
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-600">
                         {row.original.month && row.original.year
@@ -133,13 +138,15 @@ export const PayslipsTab = ({
             },
             {
                 id: 'email_status',
-                header: 'Email',
+                header: t('columnEmail'),
                 cell: ({ row }) => {
                     const status = (row.original.email_status ?? '').toUpperCase();
                     return (
                         <div className="flex flex-col gap-1">
                             <StatusChip
-                                text={EMAIL_STATUS_LABELS[status] ?? row.original.email_status ?? '—'}
+                                text={
+                                    emailStatusLabels[status] ?? row.original.email_status ?? '—'
+                                }
                                 textSize="text-caption"
                                 status={emailStatusChipType(status)}
                                 showIcon={false}
@@ -155,7 +162,7 @@ export const PayslipsTab = ({
             },
             {
                 id: 'generated_at',
-                header: 'Generated',
+                header: t('columnGenerated'),
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-600">
                         {row.original.generated_at ? formatDateTime(row.original.generated_at) : '—'}
@@ -174,16 +181,16 @@ export const PayslipsTab = ({
                                 onAsyncClick={async () => {
                                     await download(row.original);
                                 }}
-                                loadingText="Preparing…"
+                                loadingText={t('preparingLoading')}
                             >
                                 <DownloadSimple size={14} />
-                                Download
+                                {t('downloadButton')}
                             </MyButton>
                         </div>
                     ) : null,
             },
         ],
-        [download]
+        [download, t, emailStatusLabels]
     );
 
     // ── The run isn't far enough along for the backend to render anything ──
@@ -191,7 +198,7 @@ export const PayslipsTab = ({
         return (
             <HrEmptyState
                 icon={<Prohibit size={32} className="text-neutral-300" />}
-                title="Payslips aren't available for this run yet"
+                title={t('blockedTitle')}
                 description={blockedReason}
             />
         );
@@ -199,10 +206,7 @@ export const PayslipsTab = ({
 
     if (isError) {
         return (
-            <HrErrorState
-                message="Could not load the payslips for this run."
-                onRetry={() => void refetch()}
-            />
+            <HrErrorState message={t('loadError')} onRetry={() => void refetch()} />
         );
     }
 
@@ -211,29 +215,21 @@ export const PayslipsTab = ({
         return (
             <HrEmptyState
                 icon={<FileText size={32} className="text-neutral-300" />}
-                title="No payslips generated yet"
-                description={
-                    <>
-                        Generating renders one PDF per employee on this run — earnings, deductions
-                        and net pay for {period} — and stores it against their record. Held
-                        employees are skipped. Nothing is emailed until you ask for it.
-                    </>
-                }
+                title={t('emptyTitle')}
+                description={<>{t('emptyDescription', { period })}</>}
             >
                 {canGenerate && isHrAdmin ? (
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={runGenerate}
-                        loadingText="Generating…"
+                        loadingText={t('generatingLoading')}
                     >
                         <FileText size={16} />
-                        Generate payslips
+                        {t('generateButton')}
                     </MyButton>
                 ) : (
-                    <p className="text-caption text-neutral-500">
-                        Generating payslips is limited to HR admins.
-                    </p>
+                    <p className="text-caption text-neutral-500">{t('generateAdminOnly')}</p>
                 )}
             </HrEmptyState>
         );
@@ -256,11 +252,11 @@ export const PayslipsTab = ({
         <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <p className="max-w-2xl text-caption text-neutral-500">
-                    {payslips.length} payslip{payslips.length === 1 ? '' : 's'} for {period}.
+                    {t('summaryPayslipsCount', { count: payslips.length, period })}
                     {notSent > 0
-                        ? ` ${notSent} ${notSent === 1 ? 'has' : 'have'} not been emailed yet.`
-                        : ' Every one has been emailed.'}{' '}
-                    Regenerating is safe: payslips that already have a stored PDF are left alone.
+                        ? ` ${t('notSentLine', { count: notSent })}`
+                        : ` ${t('allEmailedLine')}`}{' '}
+                    {t('regenerateSafeLine')}
                 </p>
 
                 {isHrAdmin && (
@@ -269,10 +265,10 @@ export const PayslipsTab = ({
                             buttonType="secondary"
                             scale="small"
                             onAsyncClick={runGenerate}
-                            loadingText="Regenerating…"
+                            loadingText={t('regeneratingLoading')}
                         >
                             <ArrowClockwise size={14} />
-                            Regenerate
+                            {t('regenerateButton')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
@@ -280,7 +276,7 @@ export const PayslipsTab = ({
                             onClick={() => setConfirmEmail(true)}
                         >
                             <EnvelopeSimple size={14} />
-                            Email all payslips
+                            {t('emailAllButton')}
                         </MyButton>
                     </div>
                 )}
@@ -289,10 +285,7 @@ export const PayslipsTab = ({
             {!isHrAdmin && (
                 <div className="flex items-start gap-2 rounded-md border border-border bg-muted p-3">
                     <Info size={18} className="mt-1 shrink-0 text-neutral-400" />
-                    <p className="text-caption text-muted-foreground">
-                        Generating and emailing payslips is limited to HR admins. You can read and
-                        download every payslip here.
-                    </p>
+                    <p className="text-caption text-muted-foreground">{t('nonAdminInfo')}</p>
                 </div>
             )}
 
@@ -307,7 +300,7 @@ export const PayslipsTab = ({
 
             {/* ── Confirm the fan-out ── */}
             <MyDialog
-                heading={`Email ${period} payslips`}
+                heading={t('emailDialogHeading', { period })}
                 open={confirmEmail}
                 onOpenChange={(open) => !open && setConfirmEmail(false)}
                 dialogWidth="max-w-lg"
@@ -318,34 +311,23 @@ export const PayslipsTab = ({
                             scale="medium"
                             onClick={() => setConfirmEmail(false)}
                         >
-                            Not yet
+                            {t('notYetButton')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={runEmail}
-                            loadingText="Sending…"
+                            loadingText={t('sendingLoading')}
                         >
-                            Send {payslips.length} email{payslips.length === 1 ? '' : 's'}
+                            {t('sendEmailsButton', { count: payslips.length })}
                         </MyButton>
                     </>
                 }
             >
                 <div className="flex flex-col gap-3 text-body text-neutral-600">
-                    <p>
-                        Every employee on this run is sent{' '}
-                        <span className="font-semibold">their own payslip PDF</span> at the email
-                        address on their profile — {payslips.length} message
-                        {payslips.length === 1 ? '' : 's'} in total.
-                    </p>
-                    <p>
-                        Payslips already marked Sent are included again, so use this once the
-                        figures are final.
-                    </p>
-                    <p className="text-caption text-neutral-500">
-                        Sending happens one employee at a time and does not stop at the first
-                        failure — you get a per-employee report when it finishes.
-                    </p>
+                    <p>{t('dialogBody1', { count: payslips.length })}</p>
+                    <p>{t('dialogBody2')}</p>
+                    <p className="text-caption text-neutral-500">{t('dialogBody3')}</p>
                 </div>
             </MyDialog>
 
@@ -368,11 +350,14 @@ const EmailResultDialog = ({
     result: PayslipEmailResult | null;
     onClose: () => void;
 }) => {
+    const { t } = useTranslation('erpPayslipsTab');
+    const emailStatusLabels = useMemo(() => buildEmailStatusLabels(t), [t]);
+
     const columns = useMemo<ColumnDef<PayslipEmailOutcome>[]>(
         () => [
             {
                 id: 'employee_code',
-                header: 'Employee',
+                header: t('resultColumnEmployee'),
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-700">
                         {row.original.employee_code ?? '—'}
@@ -381,12 +366,12 @@ const EmailResultDialog = ({
             },
             {
                 id: 'status',
-                header: 'Result',
+                header: t('resultColumnResult'),
                 cell: ({ row }) => {
                     const status = (row.original.status ?? '').toUpperCase();
                     return (
                         <StatusChip
-                            text={EMAIL_STATUS_LABELS[status] ?? row.original.status ?? '—'}
+                            text={emailStatusLabels[status] ?? row.original.status ?? '—'}
                             textSize="text-caption"
                             status={emailStatusChipType(status)}
                             showIcon={false}
@@ -396,13 +381,13 @@ const EmailResultDialog = ({
             },
             {
                 id: 'reason',
-                header: 'Why it failed',
+                header: t('resultColumnReason'),
                 cell: ({ row }) => (
                     <span className="text-body text-danger-600">{row.original.reason ?? ''}</span>
                 ),
             },
         ],
-        []
+        [t, emailStatusLabels]
     );
 
     if (!result) return null;
@@ -427,37 +412,32 @@ const EmailResultDialog = ({
 
     return (
         <MyDialog
-            heading="Payslip email results"
+            heading={t('resultHeading')}
             open
             onOpenChange={(open) => !open && onClose()}
             dialogWidth="max-w-3xl"
             footer={
                 <MyButton buttonType="primary" scale="medium" onClick={onClose}>
-                    Done
+                    {t('doneButton')}
                 </MyButton>
             }
         >
             <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap gap-3">
-                    <SummaryTile label="Attempted" value={result.total} />
-                    <SummaryTile label="Sent" value={result.sent} tone="success" />
-                    <SummaryTile label="Failed" value={result.failed} tone="danger" />
+                    <SummaryTile label={t('tileAttempted')} value={result.total} />
+                    <SummaryTile label={t('tileSent')} value={result.sent} tone="success" />
+                    <SummaryTile label={t('tileFailed')} value={result.failed} tone="danger" />
                 </div>
 
                 {result.failed > 0 ? (
                     <div className="flex items-start gap-2 rounded-md border border-warning-200 bg-warning-50 p-3">
                         <Info size={18} className="mt-1 shrink-0 text-warning-600" />
                         <p className="text-caption text-warning-600">
-                            {result.failed} employee{result.failed === 1 ? '' : 's'} did not receive
-                            a payslip. Fix the reason below — usually a missing or wrong email
-                            address on the employee profile — then email again. Only the failures
-                            need chasing; the rest have theirs.
+                            {t('failedWarning', { count: result.failed })}
                         </p>
                     </div>
                 ) : (
-                    <p className="text-body text-success-600">
-                        Every payslip reached its employee.
-                    </p>
+                    <p className="text-body text-success-600">{t('allReachedMessage')}</p>
                 )}
 
                 {ordered.length > 0 && (

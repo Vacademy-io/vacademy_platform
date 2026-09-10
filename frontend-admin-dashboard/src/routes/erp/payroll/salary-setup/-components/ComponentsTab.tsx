@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
 import { Check, Info, Minus, PencilSimple, Plus, Warning } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { StatusChip } from '@/components/design-system/status-chips';
@@ -13,15 +14,14 @@ import type { SalaryComponentDTO } from '@/routes/erp/-shared/hr-types';
 import { ComponentDialog } from './ComponentDialog';
 import { COMPONENT_CATEGORY_LABELS, ComponentTypeChip } from './salary-meta';
 
-const GL_TOOLTIP =
-    'Where this component posts in the accounting journal; blank uses the default for its type';
-
-const BoolCell = ({ value }: { value: boolean | undefined }) =>
-    value ? (
-        <Check size={16} className="text-success-600" aria-label="Yes" />
+const BoolCell = ({ value }: { value: boolean | undefined }) => {
+    const { t } = useTranslation('erpComponentsTab');
+    return value ? (
+        <Check size={16} className="text-success-600" aria-label={t('boolYes')} />
     ) : (
-        <Minus size={16} className="text-neutral-300" aria-label="No" />
+        <Minus size={16} className="text-neutral-300" aria-label={t('boolNo')} />
     );
+};
 
 /**
  * The institute's salary component catalogue.
@@ -30,6 +30,7 @@ const BoolCell = ({ value }: { value: boolean | undefined }) =>
  * backend enforces the same, so hiding them just avoids a guaranteed 403).
  */
 export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
+    const { t } = useTranslation('erpComponentsTab');
     const instituteId = getInstituteId();
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editing, setEditing] = useState<SalaryComponentDTO | null>(null);
@@ -64,7 +65,7 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         () => [
             {
                 id: 'name',
-                header: 'Component',
+                header: t('columns.component'),
                 accessorKey: 'name',
                 cell: ({ row }) => (
                     <div className="flex flex-col">
@@ -81,7 +82,7 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             },
             {
                 id: 'code',
-                header: 'Code',
+                header: t('columns.code'),
                 accessorKey: 'code',
                 cell: ({ row }) => (
                     <span className="font-mono text-caption text-neutral-600">
@@ -91,12 +92,12 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             },
             {
                 id: 'type',
-                header: 'Type',
+                header: t('columns.type'),
                 cell: ({ row }) => <ComponentTypeChip type={row.original.type} />,
             },
             {
                 id: 'category',
-                header: 'Category',
+                header: t('columns.category'),
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-600">
                         {COMPONENT_CATEGORY_LABELS[(row.original.category ?? '').toUpperCase()] ??
@@ -107,12 +108,12 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             },
             {
                 id: 'is_taxable',
-                header: 'Taxable',
+                header: t('columns.taxable'),
                 cell: ({ row }) => <BoolCell value={row.original.is_taxable} />,
             },
             {
                 id: 'is_statutory',
-                header: 'Statutory',
+                header: t('columns.statutory'),
                 cell: ({ row }) => <BoolCell value={row.original.is_statutory} />,
             },
             {
@@ -122,12 +123,12 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <span className="flex cursor-help items-center gap-1">
-                                    GL account
+                                    {t('columns.glAccount')}
                                     <Info size={14} className="text-neutral-400" />
                                 </span>
                             </TooltipTrigger>
                             <TooltipContent side="bottom" className="max-w-xs">
-                                {GL_TOOLTIP}
+                                {t('glTooltip')}
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -138,15 +139,15 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             {row.original.gl_account_code}
                         </span>
                     ) : (
-                        <span className="text-caption text-neutral-400">Default</span>
+                        <span className="text-caption text-neutral-400">{t('glDefault')}</span>
                     ),
             },
             {
                 id: 'is_active',
-                header: 'State',
+                header: t('columns.state'),
                 cell: ({ row }) => (
                     <StatusChip
-                        text={row.original.is_active === false ? 'Inactive' : 'Active'}
+                        text={row.original.is_active === false ? t('stateInactive') : t('stateActive')}
                         textSize="text-caption"
                         status={row.original.is_active === false ? 'INFO' : 'SUCCESS'}
                         showIcon={false}
@@ -163,7 +164,9 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                   buttonType="text"
                                   scale="small"
                                   layoutVariant="icon"
-                                  aria-label={`Edit ${row.original.name ?? 'component'}`}
+                                  aria-label={t('editAriaLabel', {
+                                      name: row.original.name ?? t('defaultComponentName'),
+                                  })}
                                   onClick={() => openEdit(row.original)}
                               >
                                   <PencilSimple size={16} />
@@ -173,7 +176,7 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                   ]
                 : []),
         ],
-        [isHrAdmin]
+        [isHrAdmin, t]
     );
 
     const tableData: TableData<SalaryComponentDTO> = {
@@ -189,13 +192,12 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <p className="max-w-2xl text-body text-neutral-600">
-                    Every line that can appear on a payslip. Codes are what the payroll engine
-                    matches on, so treat them as identifiers rather than labels.
+                    {t('intro')}
                 </p>
                 {isHrAdmin && (
                     <MyButton buttonType="primary" scale="medium" onClick={openCreate}>
                         <Plus size={16} />
-                        Add component
+                        {t('addComponent')}
                     </MyButton>
                 )}
             </div>
@@ -205,7 +207,7 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                     <CardContent className="flex flex-col items-start gap-3 p-6">
                         <div className="flex items-center gap-2 text-body text-danger-600">
                             <Warning size={18} />
-                            Could not load salary components.
+                            {t('loadError')}
                         </div>
                         <MyButton
                             buttonType="secondary"
@@ -213,25 +215,23 @@ export const ComponentsTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             onAsyncClick={async () => {
                                 await refetch();
                             }}
-                            loadingText="Retrying…"
+                            loadingText={t('retrying')}
                         >
-                            Retry
+                            {t('retry')}
                         </MyButton>
                     </CardContent>
                 </Card>
             ) : !isLoading && rows.length === 0 ? (
                 <Card>
                     <CardContent className="flex flex-col items-start gap-3 p-6">
-                        <p className="text-subtitle text-neutral-700">No components yet</p>
+                        <p className="text-subtitle text-neutral-700">{t('emptyTitle')}</p>
                         <p className="max-w-xl text-body text-neutral-600">
-                            Start with the earnings you actually pay — BASIC and HRA are usually
-                            first. Statutory deductions (TDS, PF, ESI, PT) are created by payroll
-                            itself, so you don&apos;t need to add them.
+                            {t('emptyDescription')}
                         </p>
                         {isHrAdmin && (
                             <MyButton buttonType="primary" scale="medium" onClick={openCreate}>
                                 <Plus size={16} />
-                                Add component
+                                {t('addComponent')}
                             </MyButton>
                         )}
                     </CardContent>

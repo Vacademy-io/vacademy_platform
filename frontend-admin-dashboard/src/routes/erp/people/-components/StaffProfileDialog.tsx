@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
@@ -21,14 +23,15 @@ import { HrTextField } from './HrFormFields';
  * today because the common case is "we are onboarding HR now", not backfilling.
  */
 
-const staffProfileSchema = z.object({
-    employee_code: z.string(),
-    join_date: z.string().min(1, 'Pick the joining date'),
-    department_id: z.string(),
-    designation_id: z.string(),
-});
+const buildStaffProfileSchema = (t: TFunction) =>
+    z.object({
+        employee_code: z.string(),
+        join_date: z.string().min(1, t('errors.joinDateRequired')),
+        department_id: z.string(),
+        designation_id: z.string(),
+    });
 
-type StaffProfileFormValues = z.infer<typeof staffProfileSchema>;
+type StaffProfileFormValues = z.infer<ReturnType<typeof buildStaffProfileSchema>>;
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -47,7 +50,9 @@ export function StaffProfileDialog({
     departments,
     designations,
 }: StaffProfileDialogProps) {
+    const { t } = useTranslation('erpStaffProfileDialog');
     const createFromStaff = useCreateEmployeeFromStaff();
+    const staffProfileSchema = buildStaffProfileSchema(t);
 
     const form = useForm<StaffProfileFormValues>({
         resolver: zodResolver(staffProfileSchema),
@@ -73,15 +78,15 @@ export function StaffProfileDialog({
     }, [open, staff.user_id]);
 
     const departmentOptions = useMemo(
-        () => toSelectOptions(departments, 'No department'),
-        [departments]
+        () => toSelectOptions(departments, t('noDepartment')),
+        [departments, t]
     );
     const designationOptions = useMemo(
-        () => toSelectOptions(designations, 'No designation'),
-        [designations]
+        () => toSelectOptions(designations, t('noDesignation')),
+        [designations, t]
     );
 
-    const personLabel = staff.full_name || staff.email || 'this person';
+    const personLabel = staff.full_name || staff.email || t('thisPerson');
 
     const onSubmit = async (values: StaffProfileFormValues) => {
         if (!staff.user_id) return;
@@ -95,21 +100,21 @@ export function StaffProfileDialog({
                 designation_id:
                     values.designation_id === NONE_VALUE ? undefined : values.designation_id,
             });
-            toast.success(`HR profile created for ${personLabel}`);
+            toast.success(t('toasts.created', { name: personLabel }));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-people',
                 tags: { 'erp.action': 'create-employee-from-staff' },
                 extra: { userId: staff.user_id },
-                fallbackMessage: `Could not create an HR profile for ${personLabel}`,
+                fallbackMessage: t('errors.createFailed', { name: personLabel }),
             });
         }
     };
 
     return (
         <MyDialog
-            heading="Create HR profile"
+            heading={t('heading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-lg"
@@ -121,16 +126,16 @@ export function StaffProfileDialog({
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Creating…"
+                        loadingText={t('creating')}
                     >
-                        Create profile
+                        {t('createProfile')}
                     </MyButton>
                 </>
             }
@@ -153,27 +158,27 @@ export function StaffProfileDialog({
                     <HrTextField
                         control={form.control}
                         name="employee_code"
-                        label="Employee code"
-                        placeholder="Leave blank to let HR assign one"
+                        label={t('fields.employeeCodeLabel')}
+                        placeholder={t('fields.employeeCodePlaceholder')}
                     />
                     <HrTextField
                         control={form.control}
                         name="join_date"
-                        label="Join date"
+                        label={t('fields.joinDateLabel')}
                         inputType="date"
                         required
                     />
                     <SelectField
                         control={form.control}
                         name="department_id"
-                        label="Department"
+                        label={t('fields.departmentLabel')}
                         options={departmentOptions}
                         className="w-full sm:w-full"
                     />
                     <SelectField
                         control={form.control}
                         name="designation_id"
-                        label="Designation"
+                        label={t('fields.designationLabel')}
                         options={designationOptions}
                         className="w-full sm:w-full"
                     />

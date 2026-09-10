@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     ArrowClockwise,
     PaperPlaneTilt,
@@ -318,15 +319,16 @@ function HeaderBar({
     onDirectionChange: (v: EmailDirectionFilter) => void;
     onRefresh: () => void;
 }) {
+    const { t } = useTranslation('communicationEmailInboxPanel');
     return (
         <header className="px-4 py-3 border-b bg-card shrink-0">
             <div className="flex items-start justify-between gap-4 mb-3">
                 <div className="flex items-start gap-2.5 min-w-0">
                     <Tray size={20} className="text-primary mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                        <h3 className="text-sm font-semibold text-foreground">Email Inbox</h3>
+                        <h3 className="text-sm font-semibold text-foreground">{t('title')}</h3>
                         <p className="text-xs text-muted-foreground truncate">
-                            Conversations grouped by audience email, scoped to your configured senders
+                            {t('subtitle')}
                         </p>
                     </div>
                 </div>
@@ -335,7 +337,7 @@ function HeaderBar({
                     size="icon"
                     onClick={onRefresh}
                     className="h-8 w-8 shrink-0"
-                    title="Refresh"
+                    title={t('refresh')}
                 >
                     <ArrowClockwise size={16} />
                 </Button>
@@ -363,17 +365,18 @@ function SenderSelect({
     value: string;
     onChange: (v: string) => void;
 }) {
+    const { t } = useTranslation('communicationEmailInboxPanel');
     const empty = senders.length === 0;
     return (
         <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-none">
-            <span className="text-xs text-muted-foreground shrink-0">Inbox for</span>
+            <span className="text-xs text-muted-foreground shrink-0">{t('inboxFor')}</span>
             <Select value={value} onValueChange={onChange} disabled={empty}>
                 <SelectTrigger className="h-8 text-xs w-full sm:w-[260px]">{/* design-lint-ignore: preserves original desktop sender-select width */}
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value={ALL_SENDERS} className="text-xs">
-                        {empty ? 'No senders configured' : `All senders (${senders.length})`}
+                        {empty ? t('noSendersConfigured') : t('allSenders', { count: senders.length })}
                     </SelectItem>
                     {senders.map((s) => (
                         <SelectItem key={s} value={s} className="text-xs">
@@ -393,12 +396,13 @@ function DirectionFilter({
     value: EmailDirectionFilter;
     onChange: (v: EmailDirectionFilter) => void;
 }) {
+    const { t } = useTranslation('communicationEmailInboxPanel');
     const options: { value: EmailDirectionFilter; label: string; icon: React.ReactNode }[] = [
-        { value: 'ALL', label: 'All', icon: null },
-        { value: 'SENT', label: 'Sent', icon: <PaperPlaneTilt size={12} weight="fill" /> },
+        { value: 'ALL', label: t('direction.all'), icon: null },
+        { value: 'SENT', label: t('direction.sent'), icon: <PaperPlaneTilt size={12} weight="fill" /> },
         {
             value: 'RECEIVED',
-            label: 'Received',
+            label: t('direction.received'),
             icon: <ArrowFatDown size={12} weight="fill" />,
         },
     ];

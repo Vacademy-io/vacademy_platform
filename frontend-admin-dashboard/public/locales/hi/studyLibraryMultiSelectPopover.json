@@ -1,0 +1,9 @@
+{
+    "noOptions": "कोई विकल्प नहीं",
+    "allLabel": "सभी {{label}}",
+    "selectedCount_one": "{{count}} चयनित",
+    "selectedCount_other": "{{count}} चयनित",
+    "searchPlaceholder": "{{label}} खोजें…",
+    "allSelected": "सभी चयनित",
+    "clear": "साफ़ करें"
+}

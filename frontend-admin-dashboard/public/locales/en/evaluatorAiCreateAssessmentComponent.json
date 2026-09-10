@@ -1,0 +1,8 @@
+{
+    "steps": {
+        "basicInfo": "Basic Info",
+        "addQuestion": "Add Question"
+    },
+    "pageTitle": "Create Assessment",
+    "pageDescription": "This page is for creating an assessment for students via admin."
+}

@@ -2,6 +2,8 @@ import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     ArrowLeft,
     CheckCircle,
@@ -61,7 +63,7 @@ const POLL_MS = 3000;
 
 const DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD', 'MIXED'];
 
-function errorMessage(error: unknown, fallback: string): string {
+function errorMessage(t: TFunction, error: unknown, fallback: string): string {
     const response = (error as { response?: { status?: number; data?: { detail?: unknown } } })
         ?.response;
     const detail = response?.data?.detail;
@@ -69,16 +71,16 @@ function errorMessage(error: unknown, fallback: string): string {
         if (detail && typeof detail === 'object' && 'message' in detail) {
             return String((detail as { message: unknown }).message);
         }
-        return 'Not enough credits.';
+        return t('errors.notEnoughCredits');
     }
     return typeof detail === 'string' ? detail : fallback;
 }
 
-function StepHeader({ step }: { step: Step }) {
+function StepHeader({ step, t }: { step: Step; t: TFunction }) {
     const steps: Array<{ key: Step; label: string }> = [
-        { key: 'scope', label: 'Choose material' },
-        { key: 'blueprint', label: 'Plan the paper' },
-        { key: 'review', label: 'Review questions' },
+        { key: 'scope', label: t('steps.chooseMaterial') },
+        { key: 'blueprint', label: t('steps.planPaper') },
+        { key: 'review', label: t('steps.reviewQuestions') },
     ];
     const activeIndex = step === 'generating' ? 1 : steps.findIndex((s) => s.key === step);
     return (
@@ -113,6 +115,7 @@ function StepHeader({ step }: { step: Step }) {
 }
 
 function PaperBuilderPage() {
+    const { t, i18n } = useTranslation('knowledgeBasePaperKbIdIndex');
     const { kbId } = Route.useParams();
     const { resume } = Route.useSearch();
     const navigate = useNavigate();
@@ -145,8 +148,8 @@ function PaperBuilderPage() {
     const [resuming, setResuming] = useState(Boolean(resume));
 
     useEffect(() => {
-        setNavHeading('Create question paper');
-    }, [setNavHeading]);
+        setNavHeading(t('pageTitle'));
+    }, [setNavHeading, t]);
 
     // Reopen a previous run: its plan always, its questions when it produced
     // any. A FAILED run lands back on the blueprint so it can simply be re-run.
@@ -169,12 +172,12 @@ function PaperBuilderPage() {
                     setStep('blueprint');
                 }
             })
-            .catch(() => toast.error('Could not reopen that paper'))
+            .catch(() => toast.error(t('errors.reopenFailed')))
             .finally(() => !cancelled && setResuming(false));
         return () => {
             cancelled = true;
         };
-    }, [resume]);
+    }, [resume, t]);
 
     useEffect(() => {
         getTopics(kbId)
@@ -193,9 +196,9 @@ function PaperBuilderPage() {
         setRebuilding(true);
         try {
             setTopics(await rebuildTopics(kbId));
-            toast.success('Topic map rebuilt');
+            toast.success(t('toasts.topicMapRebuilt'));
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not rebuild the topic map'));
+            toast.error(errorMessage(t, error, t('errors.rebuildTopicMapFailed')));
         } finally {
             setRebuilding(false);
         }
@@ -217,12 +220,12 @@ function PaperBuilderPage() {
                 setStep('blueprint');
                 setRefineText('');
             } catch (error) {
-                toast.error(errorMessage(error, 'Could not plan the paper'));
+                toast.error(errorMessage(t, error, t('errors.planFailed')));
             } finally {
                 setPlanning(false);
             }
         },
-        [kbId, spec, selectedNodeIds, blueprint]
+        [kbId, spec, selectedNodeIds, blueprint, t]
     );
 
     // ---- Generate ---------------------------------------------------------
@@ -238,7 +241,7 @@ function PaperBuilderPage() {
             setGenerationId(null);
             setStep('generating');
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not start generating'));
+            toast.error(errorMessage(t, error, t('errors.startGenerationFailed')));
         }
     };
 
@@ -256,7 +259,7 @@ function PaperBuilderPage() {
                     return;
                 }
                 if (job.status === 'FAILED') {
-                    toast.error(job.status_message || 'Generation failed');
+                    toast.error(job.status_message || t('errors.generationFailed'));
                     setStep('blueprint');
                     return;
                 }
@@ -270,7 +273,7 @@ function PaperBuilderPage() {
             cancelled = true;
             clearTimeout(handle);
         };
-    }, [step, taskId]);
+    }, [step, taskId, t]);
 
     // ---- Regenerate one ---------------------------------------------------
     const regenerate = async (raw: RawPaperQuestion, instruction?: string) => {
@@ -278,7 +281,7 @@ function PaperBuilderPage() {
         const rowId = raw.kb_meta?.row_id;
         const row = blueprint.rows.find((r) => r.id === rowId);
         if (!row) {
-            toast.error('This question’s section is no longer in the plan.');
+            toast.error(t('errors.sectionMissing'));
             return;
         }
         const num = raw.question_number ?? 0;
@@ -314,9 +317,9 @@ function PaperBuilderPage() {
             } catch {
                 /* keep the previous issues rather than clearing them */
             }
-            toast.success('Question rewritten');
+            toast.success(t('toasts.questionRewritten'));
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not rewrite that question'));
+            toast.error(errorMessage(t, error, t('errors.rewriteFailed')));
         } finally {
             setRegenNumber(null);
         }
@@ -338,10 +341,10 @@ function PaperBuilderPage() {
                     () => undefined
                 );
             }
-            toast.success('Saved to your question bank');
+            toast.success(t('toasts.savedToQuestionBank'));
             navigate({ to: '/assessment/question-papers' });
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not save the paper'));
+            toast.error(errorMessage(t, error, t('errors.saveFailed')));
         } finally {
             setSaving(false);
         }
@@ -362,7 +365,7 @@ function PaperBuilderPage() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Create question paper</title>
+                <title>{t('pageTitle')}</title>
             </Helmet>
 
             <div className="flex flex-col gap-5">
@@ -374,9 +377,9 @@ function PaperBuilderPage() {
                         className="w-fit"
                     >
                         <ArrowLeft className="mr-1 size-4" />
-                        {kb?.name ?? 'Knowledge base'}
+                        {kb?.name ?? t('fallbackKnowledgeBase')}
                     </MyButton>
-                    <StepHeader step={step} />
+                    <StepHeader step={step} t={t} />
                 </div>
 
                 {/* Reopening a saved run: hold the step UI until its plan lands,
@@ -384,7 +387,7 @@ function PaperBuilderPage() {
                 {resuming && (
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">
                         <Spinner className="size-6 animate-spin text-primary-500" />
-                        <p className="text-body text-neutral-600">Reopening your paper…</p>
+                        <p className="text-body text-neutral-600">{t('resumingMessage')}</p>
                     </Card>
                 )}
 
@@ -395,13 +398,10 @@ function PaperBuilderPage() {
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <p className="text-subtitle font-semibold text-neutral-700">
-                                        What should the paper cover?
+                                        {t('scope.materialHeading')}
                                     </p>
                                     <p className="text-caption text-neutral-500">
-                                        The topics found across everything in this knowledge base.
-                                        Pick a topic to include all of it, or open it to choose
-                                        subtopics. Leave everything unticked to draw from the whole
-                                        knowledge base.
+                                        {t('scope.materialDescription')}
                                     </p>
                                 </div>
                                 {topics !== null && topics.length > 0 && (
@@ -411,7 +411,9 @@ function PaperBuilderPage() {
                                         onClick={handleRebuildTopics}
                                         disable={rebuilding}
                                     >
-                                        {rebuilding ? 'Rebuilding…' : 'Rebuild'}
+                                        {rebuilding
+                                            ? t('scope.rebuildingButton')
+                                            : t('scope.rebuildButton')}
                                     </MyButton>
                                 )}
                             </div>
@@ -420,8 +422,7 @@ function PaperBuilderPage() {
                             {topics !== null && topics.length === 0 && (
                                 <div className="flex flex-col items-start gap-2">
                                     <p className="text-body text-neutral-500">
-                                        No topic map yet. It is built automatically once a document
-                                        finishes processing.
+                                        {t('scope.noTopicMap')}
                                     </p>
                                     <MyButton
                                         buttonType="secondary"
@@ -429,7 +430,9 @@ function PaperBuilderPage() {
                                         onClick={handleRebuildTopics}
                                         disable={rebuilding}
                                     >
-                                        {rebuilding ? 'Building…' : 'Build the topic map'}
+                                        {rebuilding
+                                            ? t('scope.buildingButton')
+                                            : t('scope.buildTopicMapButton')}
                                     </MyButton>
                                 </div>
                             )}
@@ -444,11 +447,11 @@ function PaperBuilderPage() {
 
                         <Card className="flex flex-col gap-4 p-4">
                             <p className="text-subtitle font-semibold text-neutral-700">
-                                What kind of paper?
+                                {t('scope.paperKindHeading')}
                             </p>
                             <div className="grid grid-cols-2 gap-3">
                                 <MyInput
-                                    label="Number of questions"
+                                    label={t('scope.numQuestionsLabel')}
                                     inputType="number"
                                     input={String(spec.total_questions ?? '')}
                                     onChangeFunction={(e) =>
@@ -457,11 +460,11 @@ function PaperBuilderPage() {
                                             total_questions: Number(e.target.value),
                                         })
                                     }
-                                    inputPlaceholder="20"
+                                    inputPlaceholder={t('scope.numQuestionsPlaceholder')}
                                     className="w-full"
                                 />
                                 <MyInput
-                                    label="Duration (minutes)"
+                                    label={t('scope.durationLabel')}
                                     inputType="number"
                                     input={String(spec.duration_minutes ?? '')}
                                     onChangeFunction={(e) =>
@@ -470,13 +473,13 @@ function PaperBuilderPage() {
                                             duration_minutes: Number(e.target.value),
                                         })
                                     }
-                                    inputPlaceholder="90"
+                                    inputPlaceholder={t('scope.durationPlaceholder')}
                                     className="w-full"
                                 />
                             </div>
                             <div className="flex flex-col gap-1">
                                 <span className="text-subtitle font-regular text-neutral-600">
-                                    Overall difficulty
+                                    {t('scope.difficultyLabel')}
                                 </span>
                                 <Select
                                     value={spec.difficulty}
@@ -488,30 +491,30 @@ function PaperBuilderPage() {
                                     <SelectContent>
                                         {DIFFICULTIES.map((d) => (
                                             <SelectItem key={d} value={d}>
-                                                {d.charAt(0) + d.slice(1).toLowerCase()}
+                                                {t(`scope.difficulty.${d.toLowerCase()}`)}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <MyInput
-                                label="Class or level"
+                                label={t('scope.gradeLabel')}
                                 inputType="text"
                                 input={spec.grade ?? ''}
                                 onChangeFunction={(e) =>
                                     setSpec({ ...spec, grade: e.target.value })
                                 }
-                                inputPlaceholder="e.g. Class 9"
+                                inputPlaceholder={t('scope.gradePlaceholder')}
                                 className="w-full"
                             />
                             <MyInput
-                                label="Follow a pattern (optional)"
+                                label={t('scope.examStyleLabel')}
                                 inputType="text"
                                 input={spec.exam_style ?? ''}
                                 onChangeFunction={(e) =>
                                     setSpec({ ...spec, exam_style: e.target.value })
                                 }
-                                inputPlaceholder="e.g. CBSE board pattern"
+                                inputPlaceholder={t('scope.examStylePlaceholder')}
                                 className="w-full"
                             />
 
@@ -524,18 +527,17 @@ function PaperBuilderPage() {
                                 {planning ? (
                                     <>
                                         <Spinner className="mr-1 size-4 animate-spin" />
-                                        Planning…
+                                        {t('scope.planningButton')}
                                     </>
                                 ) : (
                                     <>
                                         <ListChecks className="mr-1 size-4" />
-                                        Plan the paper
+                                        {t('scope.planPaperButton')}
                                     </>
                                 )}
                             </MyButton>
                             <p className="text-caption text-neutral-400">
-                                You will see the full plan and can change it before any question is
-                                written.
+                                {t('scope.planHint')}
                             </p>
                         </Card>
                     </div>
@@ -550,10 +552,20 @@ function PaperBuilderPage() {
                                     {blueprint.title}
                                 </p>
                                 <p className="text-caption text-neutral-500">
-                                    {blueprint.total_questions} questions ·{' '}
-                                    {blueprint.total_marks.toLocaleString('en-IN')} marks
+                                    {t('blueprint.questionsCount', {
+                                        count: blueprint.total_questions,
+                                    })}{' '}
+                                    ·{' '}
+                                    {t('blueprint.marksCount', {
+                                        count: blueprint.total_marks,
+                                        formatted: blueprint.total_marks.toLocaleString(
+                                            i18n.language
+                                        ),
+                                    })}
                                     {blueprint.duration_minutes
-                                        ? ` · ${blueprint.duration_minutes} min`
+                                        ? t('blueprint.durationSuffix', {
+                                              minutes: blueprint.duration_minutes,
+                                          })
                                         : ''}
                                 </p>
                             </div>
@@ -564,7 +576,7 @@ function PaperBuilderPage() {
                                     onClick={() => setStep('scope')}
                                     disable={planning}
                                 >
-                                    Change material
+                                    {t('blueprint.changeMaterialButton')}
                                 </MyButton>
                                 <MyButton
                                     buttonType="primary"
@@ -573,9 +585,13 @@ function PaperBuilderPage() {
                                     disable={planning || blueprint.total_questions === 0}
                                 >
                                     <PaperPlaneTilt className="mr-1 size-4" />
-                                    Generate {blueprint.total_questions} questions
+                                    {t('blueprint.generateButton', {
+                                        count: blueprint.total_questions,
+                                    })}
                                     {estimate
-                                        ? ` · ≈${Math.round(estimate.estimated_credits)} credits`
+                                        ? t('blueprint.generateCreditsSuffix', {
+                                              credits: Math.round(estimate.estimated_credits),
+                                          })
                                         : ''}
                                 </MyButton>
                             </div>
@@ -585,9 +601,10 @@ function PaperBuilderPage() {
                             <Card className="flex items-center gap-2 border-danger-200 bg-danger-50 p-3">
                                 <Coins className="size-4 text-danger-500" />
                                 <p className="text-caption text-danger-600">
-                                    This needs about {Math.round(estimate.estimated_credits)}{' '}
-                                    credits but only {Math.round(estimate.current_balance ?? 0)} are
-                                    available.
+                                    {t('blueprint.insufficientCredits', {
+                                        needed: Math.round(estimate.estimated_credits),
+                                        available: Math.round(estimate.current_balance ?? 0),
+                                    })}
                                 </p>
                             </Card>
                         )}
@@ -601,13 +618,13 @@ function PaperBuilderPage() {
                         <Card className="flex flex-col gap-2 p-4">
                             <p className="flex items-center gap-2 text-caption font-semibold text-neutral-600">
                                 <Sparkle className="size-4 text-primary-500" />
-                                Ask for a change
+                                {t('blueprint.askForChangeHeading')}
                             </p>
                             <div className="flex flex-wrap gap-2">
                                 {[
-                                    'Add a section of numericals',
-                                    'Make section B harder',
-                                    'More application-based questions',
+                                    t('blueprint.suggestions.numericals'),
+                                    t('blueprint.suggestions.harderSectionB'),
+                                    t('blueprint.suggestions.moreApplicationBased'),
                                 ].map((s) => (
                                     <button
                                         key={s}
@@ -626,7 +643,7 @@ function PaperBuilderPage() {
                                     inputType="text"
                                     input={refineText}
                                     onChangeFunction={(e) => setRefineText(e.target.value)}
-                                    inputPlaceholder="e.g. drop the long answers and add 5 more MCQs from chapter 2"
+                                    inputPlaceholder={t('blueprint.refinePlaceholder')}
                                     className="w-full flex-1"
                                 />
                                 <MyButton
@@ -635,7 +652,9 @@ function PaperBuilderPage() {
                                     disable={planning || !refineText.trim()}
                                     onClick={() => void plan(refineText.trim())}
                                 >
-                                    {planning ? 'Updating…' : 'Update plan'}
+                                    {planning
+                                        ? t('blueprint.updatingButton')
+                                        : t('blueprint.updatePlanButton')}
                                 </MyButton>
                             </div>
                         </Card>
@@ -647,11 +666,12 @@ function PaperBuilderPage() {
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">
                         <Spinner className="size-7 animate-spin text-primary-500" />
                         <p className="text-subtitle font-semibold text-neutral-700">
-                            Writing {blueprint?.total_questions ?? ''} questions from your material
+                            {t('generating.writingHeading', {
+                                count: blueprint?.total_questions ?? 0,
+                            })}
                         </p>
                         <p className="max-w-md text-body text-neutral-500">
-                            This usually takes a few minutes. You can leave this page — the paper
-                            keeps generating and will be waiting in your question bank drafts.
+                            {t('generating.hint')}
                         </p>
                     </Card>
                 )}
@@ -666,17 +686,20 @@ function PaperBuilderPage() {
                                 </p>
                                 <p className="flex flex-wrap items-center gap-x-3 text-caption text-neutral-500">
                                     <span>
-                                        {result.delivered} of {result.planned} questions written
+                                        {t('review.deliveredCount', {
+                                            delivered: result.delivered,
+                                            planned: result.planned,
+                                        })}
                                     </span>
                                     {errorCount > 0 ? (
                                         <span className="flex items-center gap-1 text-danger-600">
                                             <WarningCircle className="size-3.5" />
-                                            {errorCount} need fixing
+                                            {t('review.needFixing', { count: errorCount })}
                                         </span>
                                     ) : (
                                         <span className="flex items-center gap-1 text-success-600">
                                             <CheckCircle className="size-3.5" />
-                                            All checks passed
+                                            {t('review.allChecksPassed')}
                                         </span>
                                     )}
                                 </p>
@@ -688,7 +711,7 @@ function PaperBuilderPage() {
                                 disable={saving || result.questions.length === 0}
                             >
                                 <FloppyDisk className="mr-1 size-4" />
-                                {saving ? 'Saving…' : 'Save to question bank'}
+                                {saving ? t('review.savingButton') : t('review.saveButton')}
                             </MyButton>
                         </Card>
 

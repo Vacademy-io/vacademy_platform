@@ -1,3 +1,4 @@
+import i18next from 'i18next';
 import { Check, Checks, WarningCircle } from '@phosphor-icons/react';
 
 /**
@@ -34,13 +35,13 @@ export function deliveryState(deliveryStatus?: string, logType?: string): Delive
 export function deliveryLabel(state: DeliveryState): string {
     switch (state) {
         case 'READ':
-            return 'Read';
+            return i18next.t('communicationDeliveryTicks:read');
         case 'DELIVERED':
-            return 'Delivered';
+            return i18next.t('communicationDeliveryTicks:delivered');
         case 'FAILED':
-            return 'Not delivered';
+            return i18next.t('communicationDeliveryTicks:notDelivered');
         default:
-            return 'Sent';
+            return i18next.t('communicationDeliveryTicks:sent');
     }
 }
 

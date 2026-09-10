@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MagnifyingGlass, ArrowFatDown, PaperPlaneTilt, EnvelopeSimple } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +36,7 @@ export function EmailConversationList({
     onLoadMore,
     loadingMore,
 }: Props) {
+    const { t, i18n } = useTranslation('communicationEmailConversationList');
     const sentinelRef = useRef<HTMLDivElement | null>(null);
 
     // Infinite scroll — fire onLoadMore the moment the bottom sentinel enters view.
@@ -73,7 +76,7 @@ export function EmailConversationList({
                         type="search"
                         value={searchQuery}
                         onChange={(e) => onSearchChange(e.target.value)}
-                        placeholder="Search by email or subject…"
+                        placeholder={t('searchPlaceholder')}
                         className="pl-8 h-9"
                     />
                 </div>
@@ -97,6 +100,8 @@ export function EmailConversationList({
                                     conversation={c}
                                     selected={selectedEmail === c.email}
                                     onClick={() => onSelect(c.email)}
+                                    t={t}
+                                    locale={i18n.language}
                                 />
                             ))}
                         </ul>
@@ -121,7 +126,7 @@ export function EmailConversationList({
                         )}
                         {!hasMore && conversations.length > 0 && (
                             <p className="text-center text-[11px] text-muted-foreground py-3">
-                                End of conversations
+                                {t('endOfConversations')}
                             </p>
                         )}
                     </>
@@ -135,10 +140,14 @@ function ConversationRow({
     conversation: c,
     selected,
     onClick,
+    t,
+    locale,
 }: {
     conversation: EmailConversation;
     selected: boolean;
     onClick: () => void;
+    t: TFunction;
+    locale: string;
 }) {
     const display = c.name || c.email;
     const initials = getInitials(display);
@@ -173,7 +182,7 @@ function ConversationRow({
                             {display}
                         </p>
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
-                            {c.lastMessageTime ? formatTime(c.lastMessageTime) : ''}
+                            {c.lastMessageTime ? formatTime(c.lastMessageTime, t, locale) : ''}
                         </span>
                     </div>
 
@@ -215,13 +224,14 @@ function DirectionIcon({ outgoing }: { outgoing: boolean }) {
 }
 
 function EmptyState() {
+    const { t } = useTranslation('communicationEmailConversationList');
     return (
         <div className="h-full flex items-center justify-center py-12 px-6">
             <div className="text-center text-muted-foreground">
                 <EnvelopeSimple size={36} className="mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No email conversations yet</p>
+                <p className="text-sm">{t('noConversations')}</p>
                 <p className="text-xs mt-1 opacity-70">
-                    Conversations appear once you send or receive email
+                    {t('noConversationsHint')}
                 </p>
             </div>
         </div>
@@ -236,18 +246,18 @@ function getInitials(s: string): string {
     return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
-function formatTime(timestamp: string): string {
+function formatTime(timestamp: string, t: TFunction, locale: string): string {
     try {
         const d = new Date(timestamp);
         const now = new Date();
         const isToday = d.toDateString() === now.toDateString();
         if (isToday) {
-            return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+            return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
         }
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
-        if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        if (d.toDateString() === yesterday.toDateString()) return t('yesterday');
+        return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
     } catch {
         return '';
     }

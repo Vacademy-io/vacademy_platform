@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ArrowRight, Calculator, Sparkle, UserMinus } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -47,6 +48,7 @@ const parseAmount = (text: string): number | undefined => {
 };
 
 export const IncentivesTab = () => {
+    const { t } = useTranslation('erpIncentivesTab');
     const { isHrAdmin } = useHrRole();
 
     const [earningMonth, setEarningMonth] = useState<MonthValue>(() => previousMonthValue());
@@ -62,9 +64,9 @@ export const IncentivesTab = () => {
     const commissionError =
         commissionValue !== undefined &&
         (commissionValue < 0 || commissionValue > MAX_COMMISSION_PCT)
-            ? `Enter 0–${MAX_COMMISSION_PCT}%`
+            ? t('enterRange', { max: MAX_COMMISSION_PCT })
             : null;
-    const fixedError = fixedValue !== undefined && fixedValue < 0 ? 'Cannot be negative' : null;
+    const fixedError = fixedValue !== undefined && fixedValue < 0 ? t('cannotBeNegative') : null;
 
     const terms: IncentiveTerms = useMemo(
         () => ({
@@ -109,12 +111,15 @@ export const IncentivesTab = () => {
             reportApiError(result.error, {
                 feature: 'erp-incentives',
                 tags: { action: 'preview' },
-                fallbackMessage: 'Could not compute incentives for this month.',
+                fallbackMessage: t('errors.computeFailed'),
             });
             return;
         }
         toast.success(
-            `${formatCount(result.data?.counsellor_count)} counsellor(s) in ${formatMonthValue(earningMonth)}`
+            t('toast.previewReady', {
+                count: formatCount(result.data?.counsellor_count),
+                month: formatMonthValue(earningMonth),
+            })
         );
     };
 
@@ -123,14 +128,16 @@ export const IncentivesTab = () => {
             const result = await materializeMutation.mutateAsync(terms);
             setMaterializeResult(result);
             toast.success(
-                `${result.created_count ?? 0} incentive adjustment(s) created on ${formatMonthValue(payoutMonth)} payroll` +
-                    (result.skipped_count ? ` · ${result.skipped_count} skipped` : '')
+                t('toast.materialized', {
+                    count: result.created_count ?? 0,
+                    month: formatMonthValue(payoutMonth),
+                }) + (result.skipped_count ? ` · ${t('toast.skipped', { count: result.skipped_count })}` : '')
             );
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-incentives',
                 tags: { action: 'materialize' },
-                fallbackMessage: 'Could not create the incentive adjustments.',
+                fallbackMessage: t('errors.materializeFailed'),
             });
         }
     };
@@ -139,7 +146,7 @@ export const IncentivesTab = () => {
         () => [
             {
                 id: 'counsellor',
-                header: 'Counsellor',
+                header: t('columns.counsellor'),
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-700">
                         {row.original.counsellor_name || row.original.counsellor_user_id || '—'}
@@ -148,12 +155,12 @@ export const IncentivesTab = () => {
             },
             {
                 id: 'revenue',
-                header: 'Revenue collected',
+                header: t('columns.revenueCollected'),
                 cell: ({ row }) => <MoneyCell value={row.original.revenue ?? null} dashOnZero />,
             },
             {
                 id: 'paying_leads',
-                header: 'Paying leads',
+                header: t('columns.payingLeads'),
                 cell: ({ row }) => (
                     <span className="block text-end tabular-nums text-neutral-600">
                         {formatCount(row.original.paying_leads)}
@@ -162,7 +169,7 @@ export const IncentivesTab = () => {
             },
             {
                 id: 'payments',
-                header: 'Payments',
+                header: t('columns.payments'),
                 cell: ({ row }) => (
                     <span className="block text-end tabular-nums text-neutral-600">
                         {formatCount(row.original.payments)}
@@ -171,27 +178,27 @@ export const IncentivesTab = () => {
             },
             {
                 id: 'commission_component',
-                header: 'Commission',
+                header: t('columns.commission'),
                 cell: ({ row }) => (
                     <MoneyCell value={row.original.commission_component ?? null} dashOnZero />
                 ),
             },
             {
                 id: 'fixed_component',
-                header: 'Per conversion',
+                header: t('columns.perConversion'),
                 cell: ({ row }) => (
                     <MoneyCell value={row.original.fixed_component ?? null} dashOnZero />
                 ),
             },
             {
                 id: 'incentive',
-                header: 'Incentive',
+                header: t('columns.incentive'),
                 cell: ({ row }) => (
                     <MoneyCell value={row.original.incentive ?? null} tone="earning" dashOnZero />
                 ),
             },
         ],
-        []
+        [t]
     );
 
     const tableData: TableData<IncentiveRowDTO> = {
@@ -205,18 +212,13 @@ export const IncentivesTab = () => {
 
     return (
         <div className="flex flex-col gap-4">
-            <p className="max-w-3xl text-body text-neutral-600">
-                Sales incentive per counsellor, computed from revenue actually collected in a month
-                — paid leads of converted enquiries, not pipeline. Set a commission percentage, a
-                flat amount per conversion, or both; materializing writes a CRM_INCENTIVE adjustment
-                that the payout month&apos;s regular payroll run pays.
-            </p>
+            <p className="max-w-3xl text-body text-neutral-600">{t('intro')}</p>
 
             <Card className="flex flex-col gap-4 p-4">
                 <div className="flex flex-wrap items-start gap-4">
                     <div className="flex flex-col gap-1.5">
                         <span className="text-caption text-neutral-600">
-                            Earning month (revenue collected)
+                            {t('earningMonthLabel')}
                         </span>
                         <MonthPicker
                             value={earningMonth}
@@ -225,7 +227,9 @@ export const IncentivesTab = () => {
                         />
                     </div>
                     <div className="flex w-40 flex-col gap-1.5">
-                        <span className="text-caption text-neutral-600">Commission (%)</span>
+                        <span className="text-caption text-neutral-600">
+                            {t('commissionLabel')}
+                        </span>
                         <MyInput
                             inputType="number"
                             input={commissionText}
@@ -238,7 +242,7 @@ export const IncentivesTab = () => {
                     </div>
                     <div className="flex w-48 flex-col gap-1.5">
                         <span className="text-caption text-neutral-600">
-                            Fixed per conversion (optional)
+                            {t('fixedPerConversionLabel')}
                         </span>
                         <MyInput
                             inputType="number"
@@ -254,53 +258,53 @@ export const IncentivesTab = () => {
                         scale="medium"
                         className="mt-6"
                         onAsyncClick={runPreview}
-                        loadingText="Computing…"
+                        loadingText={t('computing')}
                         disabled={!termsUsable}
                     >
                         <Calculator size={16} />
-                        {preview ? 'Recompute preview' : 'Preview incentives'}
+                        {preview ? t('recomputePreview') : t('previewIncentives')}
                     </MyButton>
                 </div>
                 <p className="text-caption text-neutral-500">
-                    Commission runs 0–{MAX_COMMISSION_PCT}% of collected revenue; the fixed amount
-                    is paid once per paying lead. At least one of the two must be set, or every
-                    counsellor computes to nothing.
+                    {t('commissionHint', { max: MAX_COMMISSION_PCT })}
                 </p>
             </Card>
 
             {!termsUsable ? (
                 <HrEmptyState
-                    title="Set a commission or a per-conversion amount"
-                    description="Incentives are revenue × commission, plus a flat amount per conversion. With neither set there is nothing to compute."
+                    title={t('emptyTerms.title')}
+                    description={t('emptyTerms.description')}
                 />
             ) : previewQuery.isError ? (
                 <HrErrorState
-                    message="Could not compute incentives for this month."
+                    message={t('errors.computeFailed')}
                     onRetry={() => void previewQuery.refetch()}
                 />
             ) : !preview ? (
                 <HrEmptyState
-                    title="Nothing computed yet"
-                    description={`Preview reads every payment collected in ${formatMonthValue(earningMonth)} and attributes it to the counsellor who converted the lead. It is a heavy query, so it runs only when you ask for it.`}
+                    title={t('nothingComputed.title')}
+                    description={t('nothingComputed.description', {
+                        month: formatMonthValue(earningMonth),
+                    })}
                 />
             ) : (
                 <>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <VariablePayStat
-                            label="Counsellors"
+                            label={t('stats.counsellors')}
                             value={preview.counsellor_count ?? allRows.length}
                         />
                         <VariablePayStat
-                            label="Revenue collected"
+                            label={t('stats.revenueCollected')}
                             value={preview.total_revenue}
                             isMoney
                         />
                         <VariablePayStat
-                            label="Paying leads"
+                            label={t('stats.payingLeads')}
                             value={preview.total_paying_leads ?? 0}
                         />
                         <VariablePayStat
-                            label="Total incentive"
+                            label={t('stats.totalIncentive')}
                             value={preview.total_incentive}
                             isMoney
                         />
@@ -308,8 +312,10 @@ export const IncentivesTab = () => {
 
                     {linkedRows.length === 0 ? (
                         <HrEmptyState
-                            title="No counsellor can be paid for this month"
-                            description={`Nothing was collected in ${formatMonthValue(earningMonth)}, or every counsellor who collected is missing an employee record.`}
+                            title={t('noneToPay.title')}
+                            description={t('noneToPay.description', {
+                                month: formatMonthValue(earningMonth),
+                            })}
                         />
                     ) : (
                         <MyTable<IncentiveRowDTO>
@@ -327,15 +333,10 @@ export const IncentivesTab = () => {
                             <div className="flex items-center gap-2 text-warning-700">
                                 <UserMinus size={18} />
                                 <span className="text-subtitle font-medium">
-                                    {unlinkedRows.length} counsellor(s) will be skipped
+                                    {t('willBeSkipped', { count: unlinkedRows.length })}
                                 </span>
                             </div>
-                            <p className="text-body text-neutral-600">
-                                These people collected revenue but are not linked to an employee
-                                record — there is nobody to raise a payroll adjustment against, so
-                                materializing leaves them out. Their incentive is included in the
-                                total above so the number is honest.
-                            </p>
+                            <p className="text-body text-neutral-600">{t('unlinkedHint')}</p>
                             <ul className="flex flex-col gap-2">
                                 {unlinkedRows.map((row) => (
                                     <li
@@ -361,18 +362,18 @@ export const IncentivesTab = () => {
                         <Card className="flex flex-col gap-3 p-4">
                             <div className="flex flex-col gap-1">
                                 <span className="text-subtitle font-medium text-neutral-700">
-                                    Pay this incentive
+                                    {t('payThisIncentive')}
                                 </span>
                                 <span className="max-w-2xl text-caption text-neutral-500">
-                                    One CRM_INCENTIVE adjustment per linked counsellor, on the
-                                    payout month&apos;s regular payroll run. Running it twice for
-                                    the same payout period is safe — the second run creates nothing.
+                                    {t('payThisIncentiveHint')}
                                 </span>
                             </div>
 
                             <div className="flex flex-wrap items-end gap-4">
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="text-caption text-neutral-600">Earned in</span>
+                                    <span className="text-caption text-neutral-600">
+                                        {t('earnedIn')}
+                                    </span>
                                     <span className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-body font-medium text-neutral-700">
                                         {formatMonthValue(earningMonth)}
                                     </span>
@@ -383,7 +384,7 @@ export const IncentivesTab = () => {
                                 />
                                 <div className="flex flex-col gap-1.5">
                                     <span className="text-caption text-neutral-600">
-                                        Paid on payroll for
+                                        {t('paidOnPayrollFor')}
                                     </span>
                                     <MonthPicker value={payoutMonth} onChange={setPayoutMonth} />
                                 </div>
@@ -391,35 +392,37 @@ export const IncentivesTab = () => {
                                     buttonType="primary"
                                     scale="medium"
                                     onAsyncClick={handleMaterialize}
-                                    loadingText="Creating…"
+                                    loadingText={t('creating')}
                                     disabled={linkedRows.length === 0}
                                 >
                                     <Sparkle size={16} />
-                                    Materialize
+                                    {t('materialize')}
                                 </MyButton>
                             </div>
 
                             <p className="text-caption text-neutral-500">
-                                {formatMonthValue(earningMonth)} incentive will be paid in the{' '}
-                                {formatMonthValue(payoutMonth)} payroll run.
+                                {t('payoutSummary', {
+                                    earning: formatMonthValue(earningMonth),
+                                    payout: formatMonthValue(payoutMonth),
+                                })}
                                 {earningMonth.month === payoutMonth.month &&
                                 earningMonth.year === payoutMonth.year
-                                    ? ' Both months are the same — check that is what you meant.'
+                                    ? ` ${t('sameMonthWarning')}`
                                     : ''}
                             </p>
 
                             {materializeResult && (
                                 <div className="grid gap-3 sm:grid-cols-3">
                                     <VariablePayStat
-                                        label="Adjustments created"
+                                        label={t('stats.adjustmentsCreated')}
                                         value={materializeResult.created_count ?? 0}
                                     />
                                     <VariablePayStat
-                                        label="Skipped"
+                                        label={t('stats.skipped')}
                                         value={materializeResult.skipped_count ?? 0}
                                     />
                                     <VariablePayStat
-                                        label="Total paid out"
+                                        label={t('stats.totalPaidOut')}
                                         value={materializeResult.total_amount}
                                         isMoney
                                     />

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     EnvelopeSimple,
     ArrowUp,
@@ -44,6 +46,7 @@ export function EmailThread({
     onReply,
     onBack,
 }: Props) {
+    const { t } = useTranslation('communicationEmailThread');
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -76,7 +79,7 @@ export function EmailThread({
                                 onClick={onLoadOlder}
                                 className="h-7 text-xs gap-1"
                             >
-                                <ArrowUp size={12} /> Load older messages
+                                <ArrowUp size={12} /> {t('loadOlderMessages')}
                             </Button>
                         </div>
                     )}
@@ -89,7 +92,7 @@ export function EmailThread({
                         </div>
                     ) : messages.length === 0 ? (
                         <p className="text-center text-xs text-muted-foreground py-8">
-                            No messages in this conversation
+                            {t('noMessages')}
                         </p>
                     ) : (
                         messages.map((m) => <MessageBubble key={m.id || m.timestamp} msg={m} />)
@@ -115,6 +118,7 @@ function ThreadHeader({
     onReply?: () => void;
     onBack?: () => void;
 }) {
+    const { t } = useTranslation('communicationEmailThread');
     return (
         <header className="px-4 py-3 border-b bg-background shrink-0 flex items-center gap-3">
             {onBack && (
@@ -123,7 +127,7 @@ function ThreadHeader({
                     size="icon"
                     onClick={onBack}
                     className="md:hidden h-8 w-8 -ml-1 shrink-0"
-                    title="Back to conversations"
+                    title={t('backToConversations')}
                 >
                     <ArrowLeft size={18} />
                 </Button>
@@ -144,10 +148,10 @@ function ThreadHeader({
                     onClick={onReply}
                     size="sm"
                     className="h-8 gap-1.5 shrink-0"
-                    title="Reply"
+                    title={t('reply')}
                 >
                     <ArrowBendUpLeft size={14} weight="bold" />
-                    Reply
+                    {t('reply')}
                 </Button>
             )}
         </header>
@@ -155,6 +159,7 @@ function ThreadHeader({
 }
 
 function MessageBubble({ msg }: { msg: EmailMessage }) {
+    const { t, i18n } = useTranslation('communicationEmailThread');
     const [open, setOpen] = useState(false);
     const outgoing = msg.direction === 'OUTGOING';
 
@@ -173,7 +178,7 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
                 <CollapsibleTrigger asChild>
                     <button className="w-full text-left px-3 py-2.5 space-y-1">
                         <div className="flex items-center gap-1.5">
-                            <DirectionBadge outgoing={outgoing} />
+                            <DirectionBadge outgoing={outgoing} t={t} />
                             {msg.subject && (
                                 <p className="text-sm font-medium text-foreground truncate flex-1">
                                     {msg.subject}
@@ -186,11 +191,13 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
                             </p>
                         )}
                         <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 pl-0.5">
-                            <span>{formatFullTime(msg.timestamp)}</span>
+                            <span>{formatFullTime(msg.timestamp, i18n.language)}</span>
                             {outgoing && msg.instituteAddress && (
                                 <>
                                     <Separator orientation="vertical" className="h-2.5" />
-                                    <span className="truncate">from {msg.instituteAddress}</span>
+                                    <span className="truncate">
+                                        {t('fromAddress', { address: msg.instituteAddress })}
+                                    </span>
                                 </>
                             )}
                             {msg.source && (
@@ -234,32 +241,33 @@ function MessageBubble({ msg }: { msg: EmailMessage }) {
     );
 }
 
-function DirectionBadge({ outgoing }: { outgoing: boolean }) {
+function DirectionBadge({ outgoing, t }: { outgoing: boolean; t: TFunction }) {
     return outgoing ? (
         <Badge
             variant="secondary"
             className="h-5 px-1.5 text-[10px] gap-1 bg-primary/10 text-primary hover:bg-primary/10"
         >
-            <PaperPlaneTilt size={10} weight="fill" /> Sent
+            <PaperPlaneTilt size={10} weight="fill" /> {t('sent')}
         </Badge>
     ) : (
         <Badge
             variant="secondary"
             className="h-5 px-1.5 text-[10px] gap-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
         >
-            <ArrowFatDown size={10} weight="fill" /> Received
+            <ArrowFatDown size={10} weight="fill" /> {t('received')}
         </Badge>
     );
 }
 
 function EmptyThread() {
+    const { t } = useTranslation('communicationEmailThread');
     return (
         <div className="flex-1 flex items-center justify-center bg-muted/30">
             <div className="text-center text-muted-foreground">
                 <EnvelopeSimple size={56} className="mx-auto mb-3 opacity-40" />
-                <p className="text-sm font-medium">Select an email conversation</p>
+                <p className="text-sm font-medium">{t('selectConversation')}</p>
                 <p className="text-xs mt-1 opacity-70">
-                    Click any row on the left to view its thread
+                    {t('selectConversationHint')}
                 </p>
             </div>
         </div>
@@ -319,10 +327,10 @@ function buildEmailSrcDoc(html: string): string {
     return `<!doctype html><html><head>${meta}${styleTag}</head><body>${html}</body></html>`;
 }
 
-function formatFullTime(timestamp: string): string {
+function formatFullTime(timestamp: string, locale: string): string {
     try {
         const d = new Date(timestamp);
-        return d.toLocaleString(undefined, {
+        return d.toLocaleString(locale, {
             month: 'short',
             day: 'numeric',
             hour: '2-digit',

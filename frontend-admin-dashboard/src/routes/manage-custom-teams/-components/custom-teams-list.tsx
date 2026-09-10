@@ -1,6 +1,7 @@
 import { MyButton } from '@/components/design-system/button';
 import { Plus, User, Building2, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { AddMemberForm } from './add-member-form';
 import { SubOrgRemoveMemberDialog } from './sub-org-remove-member-dialog';
@@ -79,6 +80,7 @@ export interface CustomTeamsListProps {
 }
 
 export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsListProps = {}) {
+    const { t } = useTranslation('manageCustomTeamsCustomTeamsList');
     // Institutes rename this concept via Settings → Naming (Channel Partner,
     // Branch, Franchise, VLE …); user-facing labels must follow that.
     const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
@@ -265,14 +267,14 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
         onSuccess: (_data, vars) => {
             toast.success(
                 vars.removeMode === 'SOFT'
-                    ? 'Member scheduled for removal — access continues until the chosen date'
-                    : `Member removed from ${subOrgTerm.toLowerCase()}`
+                    ? t('toast.removeScheduled')
+                    : t('toast.removed', { org: subOrgTerm.toLowerCase() })
             );
             setRemoveTarget(null);
             queryClient.invalidateQueries({ queryKey: ['custom-teams'] });
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.message || err?.message || 'Failed to remove member');
+            toast.error(err?.response?.data?.message || err?.message || t('toast.removeFailed'));
         },
     });
 
@@ -295,7 +297,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                 <span
                                     className={selectedTab === 'active' ? 'text-primary-500' : ''}
                                 >
-                                    Active
+                                    {t('tabs.active')}
                                 </span>
                                 <Badge
                                     className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
@@ -315,7 +317,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                 <span
                                     className={selectedTab === 'invited' ? 'text-primary-500' : ''}
                                 >
-                                    Invited
+                                    {t('tabs.invited')}
                                 </span>
                                 <Badge
                                     className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
@@ -339,17 +341,17 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                         <div className="relative w-full min-w-40 sm:w-auto sm:max-w-56 sm:flex-1">
                             <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
                             <Input
-                                aria-label="Search members"
+                                aria-label={t('search.ariaLabel')}
                                 value={searchInput}
                                 onChange={(e) => setSearchInput(e.target.value)}
-                                placeholder="Search by name, email or phone"
+                                placeholder={t('search.placeholder')}
                                 className="h-10 px-8"
                             />
                             {searchInput && (
                                 <button
                                     type="button"
                                     onClick={() => setSearchInput('')}
-                                    aria-label="Clear search"
+                                    aria-label={t('search.clearAriaLabel')}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                                 >
                                     <X className="size-3.5" weight="bold" />
@@ -360,7 +362,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                             <div className="ml-auto flex shrink-0 items-center gap-2">
                                 <MyButton onClick={() => setIsAddMemberOpen(true)}>
                                     <Plus className="mr-2 h-4 w-4" />
-                                    Add Member
+                                    {t('addMember')}
                                 </MyButton>
                             </div>
                         )}
@@ -368,11 +370,11 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                     {roleOptions.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2">
                             <MultiSelectFilter
-                                label="Role"
+                                label={t('filters.roleLabel')}
                                 options={roleOptions}
                                 selected={roleFilter}
                                 onChange={setRoleFilter}
-                                placeholder="Search role…"
+                                placeholder={t('filters.rolePlaceholder')}
                                 widthClass="w-auto min-w-24"
                             />
                         </div>
@@ -382,11 +384,14 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                 {hasActiveFilters && (
                     <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
                         <span className="text-xs text-muted-foreground">
-                            {filteredMembers.length} of {members.length} members
+                            {t('filters.summary', {
+                                filtered: filteredMembers.length,
+                                count: members.length,
+                            })}
                         </span>
                         {!!q && (
                             <FilterChip
-                                label="Search"
+                                label={t('filters.chipSearchLabel')}
                                 value={searchInput.trim()}
                                 onRemove={() => setSearchInput('')}
                             />
@@ -394,7 +399,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                         {roleFilter.map((value) => (
                             <FilterChip
                                 key={`role-${value}`}
-                                label="Role"
+                                label={t('filters.chipRoleLabel')}
                                 value={value}
                                 onRemove={() =>
                                     setRoleFilter(roleFilter.filter((v) => v !== value))
@@ -409,7 +414,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                             }}
                             className="rounded-sm text-xs font-medium text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                         >
-                            Clear all
+                            {t('filters.clearAll')}
                         </button>
                     </div>
                 )}
@@ -420,17 +425,17 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                     <Table>
                         <TableHeader>
                             <TableRow className="hover:bg-transparent">
-                                <TableHead className={HEAD_CLASS}>Member</TableHead>
-                                <TableHead className={HEAD_CLASS}>Email</TableHead>
-                                <TableHead className={HEAD_CLASS}>Phone</TableHead>
-                                <TableHead className={HEAD_CLASS}>Roles</TableHead>
-                                <TableHead className={HEAD_CLASS}>Status</TableHead>
+                                <TableHead className={HEAD_CLASS}>{t('table.member')}</TableHead>
+                                <TableHead className={HEAD_CLASS}>{t('table.email')}</TableHead>
+                                <TableHead className={HEAD_CLASS}>{t('table.phone')}</TableHead>
+                                <TableHead className={HEAD_CLASS}>{t('table.roles')}</TableHead>
+                                <TableHead className={HEAD_CLASS}>{t('table.status')}</TableHead>
                                 {mode === 'subOrg' && (
-                                    <TableHead className={HEAD_CLASS}>Pending Dues</TableHead>
+                                    <TableHead className={HEAD_CLASS}>{t('table.pendingDues')}</TableHead>
                                 )}
                                 {mode === 'subOrg' && canManageTeam && (
                                     <TableHead className={cn(HEAD_CLASS, 'text-right')}>
-                                        Actions
+                                        {t('table.actions')}
                                     </TableHead>
                                 )}
                             </TableRow>
@@ -446,8 +451,8 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                             <User className="h-8 w-8 opacity-50" />
                                             <p>
                                                 {hasActiveFilters
-                                                    ? 'No members match your filters.'
-                                                    : 'No members found.'}
+                                                    ? t('empty.noMatch')
+                                                    : t('empty.none')}
                                             </p>
                                         </div>
                                     </TableCell>
@@ -573,8 +578,10 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                                                 {fmt}
                                                             </span>
                                                             <span className="text-[10px] text-muted-foreground">
-                                                                {dues.pending_installments_count}{' '}
-                                                                pending
+                                                                {t('dues.pendingCount', {
+                                                                    count:
+                                                                        dues.pending_installments_count,
+                                                                })}
                                                                 {dues.next_due_date
                                                                     ? ` · next ${new Date(
                                                                           dues.next_due_date
@@ -602,8 +609,12 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                                     size="icon"
                                                     disabled={removeMutation.isPending}
                                                     className="h-8 w-8 text-neutral-500 hover:bg-danger-50 hover:text-danger-600"
-                                                    aria-label={`Remove from ${subOrgTerm.toLowerCase()}`}
-                                                    title={`Remove from ${subOrgTerm.toLowerCase()}`}
+                                                    aria-label={t('actions.removeFrom', {
+                                                        org: subOrgTerm.toLowerCase(),
+                                                    })}
+                                                    title={t('actions.removeFrom', {
+                                                        org: subOrgTerm.toLowerCase(),
+                                                    })}
                                                     onClick={() => {
                                                         const userId = member.id || member.userId;
                                                         if (!userId) return;

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { ArrowsClockwise, CalendarBlank, PlusMinus } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
@@ -46,6 +47,7 @@ type BulkJob = 'ACCRUAL' | 'YEAR_END';
  * useful answer is which of the other six moved.
  */
 export const LeaveBalancesMain = () => {
+    const { t } = useTranslation('erpLeaveBalancesMain');
     const { isHrAdmin, isHrStaff } = useHrRole();
     const [year, setYear] = useState<number>(() => new Date().getFullYear());
     const [employeeId, setEmployeeId] = useState<string | undefined>();
@@ -79,8 +81,8 @@ export const LeaveBalancesMain = () => {
                 typeof message === 'string' && message.trim()
                     ? message
                     : job === 'ACCRUAL'
-                      ? 'Accrual run finished'
-                      : 'Year-end process finished'
+                      ? t('accrualFinished')
+                      : t('yearEndFinished')
             );
             setPendingJob(null);
         } catch (error) {
@@ -88,9 +90,7 @@ export const LeaveBalancesMain = () => {
                 feature: 'erp-leave',
                 tags: { action: job === 'ACCRUAL' ? 'run-accrual' : 'run-year-end' },
                 fallbackMessage:
-                    job === 'ACCRUAL'
-                        ? 'Could not run the accrual.'
-                        : 'Could not run the year-end process.',
+                    job === 'ACCRUAL' ? t('accrualError') : t('yearEndError'),
             });
         }
     };
@@ -99,7 +99,7 @@ export const LeaveBalancesMain = () => {
         () => [
             {
                 id: 'employee',
-                header: 'Employee',
+                header: t('columns.employee'),
                 size: 220,
                 cell: ({ row }) => (
                     <span className="truncate text-body font-semibold text-foreground">
@@ -109,7 +109,7 @@ export const LeaveBalancesMain = () => {
             },
             {
                 id: 'leave_type',
-                header: 'Leave type',
+                header: t('columns.leaveType'),
                 size: 150,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-foreground">
@@ -119,43 +119,43 @@ export const LeaveBalancesMain = () => {
             },
             {
                 id: 'opening_balance',
-                header: 'Opening',
+                header: t('columns.opening'),
                 size: 100,
                 cell: ({ row }) => <DaysCell value={row.original.opening_balance} />,
             },
             {
                 id: 'accrued',
-                header: 'Accrued',
+                header: t('columns.accrued'),
                 size: 100,
                 cell: ({ row }) => <DaysCell value={row.original.accrued} />,
             },
             {
                 id: 'used',
-                header: 'Used',
+                header: t('columns.used'),
                 size: 100,
                 cell: ({ row }) => <DaysCell value={row.original.used} />,
             },
             {
                 id: 'adjustment',
-                header: 'Adjustment',
+                header: t('columns.adjustment'),
                 size: 110,
                 cell: ({ row }) => <DaysCell value={row.original.adjustment} />,
             },
             {
                 id: 'carried_forward',
-                header: 'Carried fwd',
+                header: t('columns.carriedForward'),
                 size: 110,
                 cell: ({ row }) => <DaysCell value={row.original.carried_forward} />,
             },
             {
                 id: 'encashed',
-                header: 'Encashed',
+                header: t('columns.encashed'),
                 size: 100,
                 cell: ({ row }) => <DaysCell value={row.original.encashed} />,
             },
             {
                 id: 'closing_balance',
-                header: 'Closing',
+                header: t('columns.closing'),
                 size: 110,
                 cell: ({ row }) => <DaysCell value={row.original.closing_balance} emphasis />,
             },
@@ -172,14 +172,14 @@ export const LeaveBalancesMain = () => {
                                   type="button"
                                   onClick={() => setAdjusting(row.original)}
                               >
-                                  <PlusMinus size={14} /> Adjust
+                                  <PlusMinus size={14} /> {t('columns.adjust')}
                               </MyButton>
                           ),
                       } as ColumnDef<LeaveBalanceDTO>,
                   ]
                 : []),
         ],
-        [isHrAdmin]
+        [isHrAdmin, t]
     );
 
     if (!isHrStaff) return <HrNoAccessCard />;
@@ -196,11 +196,7 @@ export const LeaveBalancesMain = () => {
     return (
         <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <p className="max-w-3xl text-body text-muted-foreground">
-                    What every employee has left, per leave type. The closing balance is the opening
-                    balance plus what has accrued and been carried forward, less what has been used
-                    or encashed, plus any manual adjustment.
-                </p>
+                <p className="max-w-3xl text-body text-muted-foreground">{t('description')}</p>
                 {isHrAdmin && (
                     <div className="flex flex-wrap items-center gap-2">
                         <MyButton
@@ -209,7 +205,7 @@ export const LeaveBalancesMain = () => {
                             type="button"
                             onClick={() => setPendingJob('ACCRUAL')}
                         >
-                            <ArrowsClockwise size={16} /> Run accrual
+                            <ArrowsClockwise size={16} /> {t('runAccrual')}
                         </MyButton>
                         <MyButton
                             buttonType="secondary"
@@ -217,7 +213,7 @@ export const LeaveBalancesMain = () => {
                             type="button"
                             onClick={() => setPendingJob('YEAR_END')}
                         >
-                            <CalendarBlank size={16} /> Year-end process
+                            <CalendarBlank size={16} /> {t('yearEndProcess')}
                         </MyButton>
                     </div>
                 )}
@@ -225,14 +221,16 @@ export const LeaveBalancesMain = () => {
 
             <Tabs defaultValue="balances" className="flex flex-col gap-2">
                 <TabsList className="h-auto w-full flex-wrap justify-start sm:w-fit">
-                    <TabsTrigger value="balances">Balances</TabsTrigger>
-                    <TabsTrigger value="comp-off">Comp-off</TabsTrigger>
+                    <TabsTrigger value="balances">{t('tabs.balances')}</TabsTrigger>
+                    <TabsTrigger value="comp-off">{t('tabs.compOff')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="balances" className="mt-4 flex flex-col gap-4">
                     <div className="flex flex-wrap items-end gap-3">
                         <div className="flex flex-col gap-1">
-                            <span className="text-caption text-muted-foreground">Year</span>
+                            <span className="text-caption text-muted-foreground">
+                                {t('yearLabel')}
+                            </span>
                             <MyDropdown
                                 currentValue={String(year)}
                                 dropdownList={recentLeaveYears().map(String)}
@@ -241,13 +239,13 @@ export const LeaveBalancesMain = () => {
                         </div>
                         <div className="w-full sm:w-80">
                             <span className="mb-1 block text-caption text-muted-foreground">
-                                Employee
+                                {t('employeeLabel')}
                             </span>
                             <EmployeePicker
                                 value={employeeId ?? ''}
                                 onChange={(id) => setEmployeeId(id || undefined)}
                                 filterStatus={null}
-                                placeholder="All employees"
+                                placeholder={t('allEmployeesPlaceholder')}
                             />
                         </div>
                         {employeeId && (
@@ -257,7 +255,7 @@ export const LeaveBalancesMain = () => {
                                 type="button"
                                 onClick={() => setEmployeeId(undefined)}
                             >
-                                <ArrowsClockwise size={14} /> Show everyone
+                                <ArrowsClockwise size={14} /> {t('showEveryone')}
                             </MyButton>
                         )}
                     </div>
@@ -266,16 +264,16 @@ export const LeaveBalancesMain = () => {
                         <HrLoadingRows />
                     ) : query.isError ? (
                         <HrErrorState
-                            message="Couldn't load leave balances."
+                            message={t('loadError')}
                             onRetry={() => void query.refetch()}
                         />
                     ) : rows.length === 0 ? (
                         <HrEmptyState
-                            title={`No balances for ${year}`}
+                            title={t('noBalancesTitle', { year })}
                             description={
                                 employeeId
-                                    ? 'This employee has no balance row for the selected year. Balances are created by the accrual run once a policy applies to them.'
-                                    : 'Balances appear once a leave policy is in force and the accrual has run for the period. Set the policies up under Types & Policies first.'
+                                    ? t('noBalancesForEmployeeDescription')
+                                    : t('noBalancesDescription')
                             }
                         />
                     ) : (
@@ -308,18 +306,15 @@ export const LeaveBalancesMain = () => {
             >
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Run the leave accrual now?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('accrualDialog.title')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This credits this period&apos;s leave to every eligible employee,
-                            following each leave type&apos;s policy. It is safe to run more than
-                            once — the accrual ledger makes a repeat for the same period a no-op, so
-                            nobody gets credited twice.
+                            {t('accrualDialog.description')}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Not now</AlertDialogCancel>
+                        <AlertDialogCancel>{t('notNow')}</AlertDialogCancel>
                         <AlertDialogAction onClick={() => void runJob('ACCRUAL')}>
-                            Run accrual
+                            {t('runAccrual')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -331,18 +326,15 @@ export const LeaveBalancesMain = () => {
             >
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Run the year-end process?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('yearEndDialog.title')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This closes the leave year: each balance is carried forward or encashed
-                            according to its leave type&apos;s policy, up to the carry-forward cap.
-                            Run it once the closing year is genuinely finished — balances that lapse
-                            are not recoverable from here.
+                            {t('yearEndDialog.description')}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Not now</AlertDialogCancel>
+                        <AlertDialogCancel>{t('notNow')}</AlertDialogCancel>
                         <AlertDialogAction onClick={() => void runJob('YEAR_END')}>
-                            Run year-end
+                            {t('runYearEnd')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

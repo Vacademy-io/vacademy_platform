@@ -1,0 +1,13 @@
+{
+    "inviteLinks": "आमंत्रण लिंक",
+    "add": "जोड़ें",
+    "inviteLinksLabel": "आमंत्रण लिंक:",
+    "view": "देखें",
+    "defaultTag": "डिफ़ॉल्ट",
+    "makeDefault": "डिफ़ॉल्ट बनाएं",
+    "noInviteLinksAvailable": "कोई आमंत्रण लिंक उपलब्ध नहीं है।",
+    "invitePage": "आमंत्रण पृष्ठ",
+    "copyFailed": "कॉपी करना विफल रहा",
+    "failedToSubmitRating": "रेटिंग सबमिट करने में विफल",
+    "unexpectedError": "एक अनपेक्षित त्रुटि हुई"
+}

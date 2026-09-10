@@ -5,6 +5,7 @@ import { RadioGroupItem, RadioGroup } from '@/components/ui/radio-group';
 
 import { useEffect, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 // import { Session } from '@/components/common/study-library/add-course/add-course-form';
 import { MyButton } from '@/components/design-system/button';
@@ -14,6 +15,7 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const CreateSessionStep = () => {
+    const { t } = useTranslation('manageInstituteCreateSessionStep');
     const [newSessionName, setNewSessionName] = useState('');
     const [newSessionStartDate, setNewSessionStartDate] = useState('');
     const form = useFormContext();
@@ -51,7 +53,9 @@ export const CreateSessionStep = () => {
                 render={({ field }) => (
                     <FormItem className="space-y-3">
                         <FormLabel className="text-base font-medium text-neutral-700">
-                            {getTerminology(ContentTerms.Session, SystemTerms.Session)} Selection
+                            {t('selectionLabel', {
+                                session: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                            })}
                         </FormLabel>
                         <FormControl>
                             <RadioGroup
@@ -71,11 +75,12 @@ export const CreateSessionStep = () => {
                                         htmlFor="existing-session"
                                         className="cursor-pointer font-normal text-neutral-600"
                                     >
-                                        Select existing{' '}
-                                        {getTerminology(
-                                            ContentTerms.Session,
-                                            SystemTerms.Session
-                                        ).toLocaleLowerCase()}
+                                        {t('selectExisting', {
+                                            session: getTerminology(
+                                                ContentTerms.Session,
+                                                SystemTerms.Session
+                                            ).toLocaleLowerCase(),
+                                        })}
                                     </FormLabel>
                                 </FormItem>
                                 <FormItem className="flex items-center space-x-2 space-y-0">
@@ -86,11 +91,12 @@ export const CreateSessionStep = () => {
                                         htmlFor="new-session"
                                         className="cursor-pointer font-normal text-neutral-600"
                                     >
-                                        Create new{' '}
-                                        {getTerminology(
-                                            ContentTerms.Session,
-                                            SystemTerms.Session
-                                        ).toLocaleLowerCase()}
+                                        {t('createNew', {
+                                            session: getTerminology(
+                                                ContentTerms.Session,
+                                                SystemTerms.Session
+                                            ).toLocaleLowerCase(),
+                                        })}
                                     </FormLabel>
                                 </FormItem>
                             </RadioGroup>
@@ -104,7 +110,7 @@ export const CreateSessionStep = () => {
                 <FormField
                     control={form.control}
                     name="selectedSession"
-                    rules={{ required: 'Please select a session' }}
+                    rules={{ required: t('validation.selectSession') }}
                     render={({ field }) => (
                         <FormItem className="flex flex-col gap-1.5">
                             <FormLabel className="text-neutral-700">
@@ -119,10 +125,12 @@ export const CreateSessionStep = () => {
                                         name: session.name,
                                     }))}
                                     handleChange={field.onChange}
-                                    placeholder={`Select a ${getTerminology(
-                                        ContentTerms.Session,
-                                        SystemTerms.Session
-                                    ).toLocaleLowerCase()}`}
+                                    placeholder={t('selectPlaceholder', {
+                                        session: getTerminology(
+                                            ContentTerms.Session,
+                                            SystemTerms.Session
+                                        ).toLocaleLowerCase(),
+                                    })}
                                     disable={sessionList.length === 0}
                                 />
                             </FormControl>
@@ -138,7 +146,7 @@ export const CreateSessionStep = () => {
                         <div className="flex grow flex-col">
                             <p className="text-sm font-medium text-neutral-700">{newSessionName}</p>
                             <p className="text-xs text-neutral-500">
-                                Start Date: {newSessionStartDate}
+                                {t('startDate', { date: newSessionStartDate })}
                             </p>
                         </div>
                         <MyButton

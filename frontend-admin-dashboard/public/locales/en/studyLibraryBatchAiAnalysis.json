@@ -1,0 +1,53 @@
+{
+    "description": "Generate an AI report for every active learner in this batch.",
+    "form": {
+        "courseRequired": "Course is required",
+        "sessionRequired": "Session is required",
+        "levelRequired": "Level is required",
+        "startDateRequired": "Start Date is required",
+        "endDateRequired": "End Date is required",
+        "dateRangeTooLong": "The difference between Start Date and End Date should be less than one month.",
+        "selectPlaceholder": "Select a {{term}}",
+        "searchPlaceholder": "Search {{term}}...",
+        "errorsHeading": "Please fix the following errors:"
+    },
+    "range": {
+        "label": "Range:",
+        "last7Days": "Last 7 days",
+        "hide": "Hide",
+        "change": "Change"
+    },
+    "actions": {
+        "loadingLearners": "Loading learners…",
+        "generating": "Generating…",
+        "generateReports": "Generate AI Reports",
+        "stop": "Stop",
+        "retryFailed": "Retry failed",
+        "view": "View"
+    },
+    "toast": {
+        "resolveBatchFailed": "Could not resolve the selected batch. Check course / session / level.",
+        "noActiveLearners": "No active learners found in this batch.",
+        "generationFinished": "Batch report generation finished.",
+        "loadLearnersFailed": "Failed to load the batch learners.",
+        "stopping": "Stopping after the current learner…",
+        "reselectRequired": "Re-select the batch and date range to retry.",
+        "reportNotReady": "Report is not ready to view yet.",
+        "loadReportFailed": "Failed to load the report.",
+        "generationStartFailed": "Could not start generation",
+        "generationFailedOrTimedOut": "Generation failed or timed out"
+    },
+    "progress": {
+        "doneCount": "{{done}}/{{total}} done",
+        "completedCount_one": "{{count}} completed",
+        "completedCount_other": "{{count}} completed",
+        "failedCount_one": "{{count}} failed",
+        "failedCount_other": "{{count}} failed"
+    },
+    "status": {
+        "queued": "Queued",
+        "generating": "Generating",
+        "completed": "Completed",
+        "failed": "Failed"
+    }
+}

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { BookOpenText, Books, Lock, UploadSimple, X } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
@@ -18,20 +20,30 @@ import type {
 } from '../../-types/library';
 import { LibraryCover } from './LibraryCover';
 
-const FACET_LABELS: Array<{ key: keyof ListingFacets; label: string }> = [
-    { key: 'subject', label: 'Subject' },
-    { key: 'level', label: 'Class / Exam' },
-    { key: 'board', label: 'Board' },
-    { key: 'language', label: 'Language' },
+const buildFacetLabels = (t: TFunction): Array<{ key: keyof ListingFacets; label: string }> => [
+    { key: 'subject', label: t('facets.subject') },
+    { key: 'level', label: t('facets.level') },
+    { key: 'board', label: t('facets.board') },
+    { key: 'language', label: t('facets.language') },
 ];
 
 const formatCount = (n: number) => new Intl.NumberFormat('en-IN').format(n);
 
 /** One line of honest numbers, skipping anything we don't have. */
-const describeSize = (library: LibraryListing): string =>
+const describeSize = (t: TFunction, library: LibraryListing): string =>
     [
-        library.sources ? `${formatCount(library.sources)} sources` : null,
-        library.pages ? `${formatCount(library.pages)} pages` : null,
+        library.sources
+            ? t('describeSize.sources', {
+                  count: library.sources,
+                  formatted: formatCount(library.sources),
+              })
+            : null,
+        library.pages
+            ? t('describeSize.pages', {
+                  count: library.pages,
+                  formatted: formatCount(library.pages),
+              })
+            : null,
         library.language,
     ]
         .filter(Boolean)
@@ -45,50 +57,57 @@ const LibraryGridCard = ({
     library: LibraryListing;
     price: number;
     onOpen: () => void;
-}) => (
-    <button
-        type="button"
-        onClick={onOpen}
-        className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white text-left transition-all hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-md"
-    >
-        <div className="h-28 w-full overflow-hidden bg-neutral-50">
-            <LibraryCover
-                fileId={library.cover_file_id}
-                alt={library.cover_alt}
-                title={library.title}
-            />
-        </div>
-        <div className="flex flex-1 flex-col gap-2 p-4">
-            <p className="break-words text-body font-semibold text-neutral-700">{library.title}</p>
-            <p className="line-clamp-2 break-words text-caption text-neutral-500">
-                {library.summary}
-            </p>
-            <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-caption text-neutral-400">
-                {[library.subject, library.level, library.board].filter(Boolean).map((chip) => (
-                    <span key={chip} className="rounded-sm bg-neutral-50 px-1.5 py-0.5">
-                        {chip}
-                    </span>
-                ))}
+}) => {
+    const { t } = useTranslation('knowledgeBaseLibraryBrowser');
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white text-start transition-all hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-md"
+        >
+            <div className="h-28 w-full overflow-hidden bg-neutral-50">
+                <LibraryCover
+                    fileId={library.cover_file_id}
+                    alt={library.cover_alt}
+                    title={library.title}
+                />
             </div>
-            <p className="text-caption text-neutral-400">{describeSize(library)}</p>
-            <div className="pt-1">
-                {library.unlocked ? (
-                    <StatusChip
-                        status="SUCCESS"
-                        text="Unlocked"
-                        textSize="text-caption"
-                        showIcon={false}
-                    />
-                ) : (
-                    <span className="flex items-center gap-1.5 text-caption font-medium text-primary-500">
-                        <Lock size={13} weight="fill" />
-                        {price} credits
-                    </span>
-                )}
+            <div className="flex flex-1 flex-col gap-2 p-4">
+                <p className="break-words text-body font-semibold text-neutral-700">
+                    {library.title}
+                </p>
+                <p className="line-clamp-2 break-words text-caption text-neutral-500">
+                    {library.summary}
+                </p>
+                <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-caption text-neutral-400">
+                    {[library.subject, library.level, library.board]
+                        .filter(Boolean)
+                        .map((chip) => (
+                            <span key={chip} className="rounded-sm bg-neutral-50 px-1.5 py-0.5">
+                                {chip}
+                            </span>
+                        ))}
+                </div>
+                <p className="text-caption text-neutral-400">{describeSize(t, library)}</p>
+                <div className="pt-1">
+                    {library.unlocked ? (
+                        <StatusChip
+                            status="SUCCESS"
+                            text={t('card.unlocked')}
+                            textSize="text-caption"
+                            showIcon={false}
+                        />
+                    ) : (
+                        <span className="flex items-center gap-1.5 text-caption font-medium text-primary-500">
+                            <Lock size={13} weight="fill" />
+                            {t('card.credits', { count: price })}
+                        </span>
+                    )}
+                </div>
             </div>
-        </div>
-    </button>
-);
+        </button>
+    );
+};
 
 /**
  * Browse the libraries Vacademy publishes.
@@ -98,7 +117,9 @@ const LibraryGridCard = ({
  * explaining what each library is before they spend anything on it.
  */
 export const LibraryBrowser = () => {
+    const { t } = useTranslation('knowledgeBaseLibraryBrowser');
     const navigate = useNavigate();
+    const FACET_LABELS = useMemo(() => buildFacetLabels(t), [t]);
     const [libraries, setLibraries] = useState<LibraryListing[] | null>(null);
     const [price, setPrice] = useState(0);
     const [facets, setFacets] = useState<FacetValues | null>(null);
@@ -150,11 +171,7 @@ export const LibraryBrowser = () => {
     return (
         <div className="flex flex-col gap-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
-                <p className="max-w-2xl text-body text-neutral-500">
-                    Ready-made knowledge bases from Vacademy. Unlock one and use it to build
-                    question papers and assessments straight away — no uploading, no waiting for a
-                    book to process.
-                </p>
+                <p className="max-w-2xl text-body text-neutral-500">{t('intro')}</p>
                 {canPublish && (
                     <MyButton
                         buttonType="secondary"
@@ -162,7 +179,7 @@ export const LibraryBrowser = () => {
                         onClick={() => navigate({ to: '/knowledge-base/publish' })}
                     >
                         <UploadSimple className="mr-1 size-4" />
-                        Manage library
+                        {t('manageLibrary')}
                     </MyButton>
                 )}
             </div>
@@ -172,7 +189,7 @@ export const LibraryBrowser = () => {
                     inputType="text"
                     input={search}
                     onChangeFunction={(e) => setSearch(e.target.value)}
-                    inputPlaceholder="Search libraries"
+                    inputPlaceholder={t('searchPlaceholder')}
                     className="w-full sm:max-w-sm"
                 />
 
@@ -215,7 +232,7 @@ export const LibraryBrowser = () => {
                         className="self-start"
                     >
                         <X className="mr-1 size-3.5" />
-                        Clear filters
+                        {t('clearFilters')}
                     </MyButton>
                 )}
             </div>
@@ -233,17 +250,17 @@ export const LibraryBrowser = () => {
                     <Books className="size-7 text-neutral-300" />
                     <p className="text-body text-neutral-600">
                         {activeFilters.length > 0 || search
-                            ? 'No libraries match those filters'
-                            : 'No libraries published yet'}
+                            ? t('empty.noneMatch')
+                            : t('empty.noneYet')}
                     </p>
                     <p className="text-caption text-neutral-400">
                         {activeFilters.length > 0 || search
-                            ? 'Try widening your search.'
-                            : 'Vacademy-published libraries will appear here as they are released.'}
+                            ? t('empty.widenSearch')
+                            : t('empty.willAppear')}
                     </p>
                     {(activeFilters.length > 0 || search) && (
                         <MyButton buttonType="secondary" scale="small" onClick={clearAll}>
-                            Clear filters
+                            {t('clearFilters')}
                         </MyButton>
                     )}
                 </Card>
@@ -270,8 +287,7 @@ export const LibraryBrowser = () => {
             {libraries && libraries.length > 0 && (
                 <p className="flex items-center gap-1.5 text-caption text-neutral-400">
                     <BookOpenText size={14} />
-                    Unlocking a library is a one-time charge and lasts forever, including material
-                    we add to it later.
+                    {t('footerNote')}
                 </p>
             )}
         </div>

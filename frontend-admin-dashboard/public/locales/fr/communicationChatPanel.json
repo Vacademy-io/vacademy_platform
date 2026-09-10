@@ -1,0 +1,34 @@
+{
+    "emptyState": {
+        "title": "Sélectionnez une conversation",
+        "subtitle": "Choisissez un contact à gauche pour voir les messages"
+    },
+    "backToConversations": "Retour aux conversations",
+    "idLabel": "ID : {{id}}",
+    "escalation": {
+        "title": "En attente de votre réponse",
+        "reason": {
+            "maxTurns": "La conversation a atteint sa limite de réponses automatiques.",
+            "aiError": "L'assistant n'a pas pu générer de réponse.",
+            "manual": "Transférée par un administrateur.",
+            "default": "L'assistant n'avait pas l'information pour répondre, il a donc indiqué qu'il vérifierait auprès de l'équipe."
+        },
+        "askedQuote": "Ils ont demandé : « {{message}} »"
+    },
+    "loadError": {
+        "retrying": "Nouvelle tentative…",
+        "tryAgain": "Réessayer"
+    },
+    "loadOlder": {
+        "loading": "Chargement...",
+        "cta": "Charger les messages plus anciens"
+    },
+    "noMessages": "Aucun message dans cette conversation pour le moment",
+    "bot": "Bot",
+    "viaTemplate": "via le modèle « {{name}} »",
+    "notDelivered": "Non livré",
+    "accountLevelFailure": "Cela affecte tous les messages WhatsApp envoyés depuis ce numéro, pas seulement cette conversation.",
+    "errorCode": "Code d'erreur WhatsApp {{code}}",
+    "viewDocument": "Voir le document",
+    "attachmentAlt": "pièce jointe"
+}

@@ -1,0 +1,41 @@
+{
+    "waitingRoom": {
+        "5min": "5 minutes",
+        "10min": "10 minutes",
+        "15min": "15 minutes",
+        "30min": "30 minutes",
+        "45min": "45 minutes"
+    },
+    "waitingRoomType": {
+        "waitingRoom": "Waiting Room",
+        "preJoining": "Pre-Joining (join live class directly)"
+    },
+    "streaming": {
+        "youtube": "Youtube",
+        "googleMeet": "Google Meet",
+        "zoom": "Zoom",
+        "zoho": "Zoho",
+        "vacademyMeet": "Vacademy Meet",
+        "other": "Other"
+    },
+    "timezone": {
+        "pacific": "Pacific Time (US & Canada)",
+        "mountain": "Mountain Time (US & Canada)",
+        "central": "Central Time (US & Canada)",
+        "eastern": "Eastern Time (US & Canada)",
+        "atlantic": "Atlantic Time (Canada)",
+        "brasilia": "Brasilia, São Paulo",
+        "london": "London, Dublin, Edinburgh",
+        "paris": "Paris, Berlin, Rome",
+        "athens": "Athens, Cairo, Helsinki",
+        "dubai": "Dubai, Abu Dhabi",
+        "india": "India Standard Time (Mumbai, Delhi)",
+        "bangladesh": "Bangladesh Standard Time (Dhaka)",
+        "thailand": "Thailand, Vietnam (Bangkok)",
+        "singapore": "Singapore, Malaysia",
+        "china": "China Standard Time (Beijing)",
+        "japan": "Japan Standard Time (Tokyo)",
+        "sydney": "Australian Eastern Time (Sydney)",
+        "auckland": "New Zealand (Auckland)"
+    }
+}

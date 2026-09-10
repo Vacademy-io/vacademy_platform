@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useInboxStore } from '../-stores/inbox-store';
 import { InboxConversation, InboxFilter } from '../-services/inbox-api';
 import { DeliveryTicks, deliveryState } from './delivery-ticks';
@@ -10,21 +12,24 @@ interface Props {
     onRetry: () => void;
 }
 
-const FILTERS: Array<{ key: InboxFilter; label: string; title: string }> = [
-    { key: 'ALL', label: 'All', title: 'Every conversation' },
-    {
-        key: 'UNANSWERED',
-        label: 'Unanswered',
-        title: 'The chatbot handed these over and nobody has replied yet',
-    },
-    {
-        key: 'FAILED',
-        label: 'Not delivered',
-        title: 'Conversations where a message was refused by WhatsApp',
-    },
-];
+function buildFilters(t: TFunction): Array<{ key: InboxFilter; label: string; title: string }> {
+    return [
+        { key: 'ALL', label: t('filters.all.label'), title: t('filters.all.title') },
+        {
+            key: 'UNANSWERED',
+            label: t('filters.unanswered.label'),
+            title: t('filters.unanswered.title'),
+        },
+        {
+            key: 'FAILED',
+            label: t('filters.failed.label'),
+            title: t('filters.failed.title'),
+        },
+    ];
+}
 
 export function ConversationList({ onLoadMore, onRetry }: Props) {
+    const { t } = useTranslation('communicationConversationList');
     const conversations = useInboxStore((s) => s.conversations);
     const selectedPhone = useInboxStore((s) => s.selectedPhone);
     const selectPhone = useInboxStore((s) => s.selectPhone);
@@ -35,6 +40,8 @@ export function ConversationList({ onLoadMore, onRetry }: Props) {
     const isLoading = useInboxStore((s) => s.isLoadingConversations);
     const hasMore = useInboxStore((s) => s.hasMoreConversations);
     const error = useInboxStore((s) => s.conversationsError);
+
+    const filters = buildFilters(t);
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -57,7 +64,7 @@ export function ConversationList({ onLoadMore, onRetry }: Props) {
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search by phone or name..."
+                        placeholder={t('searchPlaceholder')}
                         className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-400"
                     />
                 </div>
@@ -65,7 +72,7 @@ export function ConversationList({ onLoadMore, onRetry }: Props) {
                 {/* Filters — hidden while searching, since search spans every conversation */}
                 {!searchQuery && (
                     <div className="mt-2 flex gap-1">
-                        {FILTERS.map((f) => (
+                        {filters.map((f) => (
                             <button
                                 key={f.key}
                                 onClick={() => setFilter(f.key)}
@@ -101,7 +108,7 @@ export function ConversationList({ onLoadMore, onRetry }: Props) {
                         className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-caption font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-60"
                     >
                         <ArrowClockwise size={12} />
-                        {isLoading ? 'Retrying…' : 'Try again'}
+                        {isLoading ? t('retrying') : t('tryAgain')}
                     </button>
                 </div>
             )}
@@ -109,7 +116,7 @@ export function ConversationList({ onLoadMore, onRetry }: Props) {
             {/* Conversation list */}
             <div className="flex-1 overflow-y-auto" onScroll={handleScroll}>
                 {conversations.length === 0 && !isLoading && !error ? (
-                    <p className="p-4 text-sm text-gray-400 text-center">{emptyText(filter)}</p>
+                    <p className="p-4 text-sm text-gray-400 text-center">{emptyText(filter, t)}</p>
                 ) : (
                     conversations.map((c) => (
                         <button
@@ -147,21 +154,21 @@ export function ConversationList({ onLoadMore, onRetry }: Props) {
                                 <div className="mt-1 flex flex-wrap gap-1">
                                     {!!c.escalationId && (
                                         <span
-                                            title={escalationTitle(c)}
+                                            title={escalationTitle(c, t)}
                                             className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-px text-caption font-medium text-amber-700"
                                         >
-                                            <HandWaving size={10} /> Bot handed over
+                                            <HandWaving size={10} /> {t('botHandedOver')}
                                         </span>
                                     )}
                                     {(c.failedCount ?? 0) > 0 && (
                                         <span
-                                            title={`${c.failedCount} message(s) were not delivered`}
+                                            title={t('notDeliveredCount', { count: c.failedCount ?? 0 })}
                                             className="inline-flex items-center gap-1 rounded-full bg-red-100 px-1.5 py-px text-caption font-medium text-red-600"
                                         >
                                             <WarningCircle size={10} />
                                             {c.failedCount === 1
-                                                ? 'Not delivered'
-                                                : `${c.failedCount} not delivered`}
+                                                ? t('notDelivered')
+                                                : t('notDeliveredCountShort', { count: c.failedCount ?? 0 })}
                                         </span>
                                     )}
                                 </div>
@@ -184,28 +191,28 @@ export function ConversationList({ onLoadMore, onRetry }: Props) {
                     ))
                 )}
                 {isLoading && (
-                    <p className="p-3 text-xs text-gray-400 text-center">Loading...</p>
+                    <p className="p-3 text-xs text-gray-400 text-center">{t('loading')}</p>
                 )}
             </div>
         </div>
     );
 }
 
-function emptyText(filter: InboxFilter): string {
-    if (filter === 'UNANSWERED') return 'Every conversation has been replied to';
-    if (filter === 'FAILED') return 'Every message was delivered';
-    return 'No conversations yet';
+function emptyText(filter: InboxFilter, t: TFunction): string {
+    if (filter === 'UNANSWERED') return t('empty.unanswered');
+    if (filter === 'FAILED') return t('empty.failed');
+    return t('empty.all');
 }
 
 /** Tooltip explaining why the bot stepped aside on this conversation. */
-function escalationTitle(c: InboxConversation): string {
+function escalationTitle(c: InboxConversation, t: TFunction): string {
     const why =
         c.escalationReason === 'MAX_TURNS'
-            ? 'The conversation reached its automated reply limit'
+            ? t('escalation.maxTurns')
             : c.escalationReason === 'AI_ERROR'
-              ? 'The assistant could not generate a reply'
+              ? t('escalation.aiError')
               : c.escalationReason === 'MANUAL'
-                ? 'Handed over by an admin'
-                : "The assistant didn't have the information to answer";
-    return c.escalationMessage ? `${why}\n\nThey asked: ${c.escalationMessage}` : why;
+                ? t('escalation.manual')
+                : t('escalation.noInfo');
+    return c.escalationMessage ? t('escalation.withMessage', { why, message: c.escalationMessage }) : why;
 }

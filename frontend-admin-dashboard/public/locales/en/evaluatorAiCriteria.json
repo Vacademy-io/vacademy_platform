@@ -1,0 +1,57 @@
+{
+    "marking10": {
+        "criterion1": "complete answer including introduction, definition, explanation, examples, conclusion having clear structure/presentation and correct grammar/language with a word count of 200–250 words or more and no off-topic/irrelevant content",
+        "criterion2": "answer including introduction, definition, explanation, examples, conclusion having no clear structure/presentation and incorrect grammar/language with a word count of 200–250 words or more and no off-topic/irrelevant content",
+        "criterion3": "answer including introduction, definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 150-200 words and no off-topic/irrelevant content",
+        "criterion4": "answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 100-150 words and no off-topic/irrelevant content",
+        "criterion5": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 80-100 words with some off-topic/irrelevant content"
+    },
+    "marking1": {
+        "criterion1": "complete answer including definition, explanation, examples, having clear structure/presentation and correct grammar/language with a word count of 20-40 words or more and no off-topic/irrelevant content",
+        "criterion2": "answer including definition, explanation, examples, having no clear structure/presentation and incorrect grammar/language with a word count of 20-40 words or more and no off-topic/irrelevant content",
+        "criterion3": "answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 10-20 words and no off-topic/irrelevant content",
+        "criterion4": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of less than 20 words and some off-topic/irrelevant content",
+        "criterion5": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of less than 20 words and all off-topic/irrelevant content"
+    },
+    "marking2": {
+        "criterion1": "complete answer including definition, explanation, examples, having clear structure/presentation and correct grammar/language with a word count of 40-60 words or more and no off-topic/irrelevant content",
+        "criterion2": "answer including definition, explanation, examples, having no clear structure/presentation and incorrect grammar/language with a word count of 40-60 words or more and no off-topic/irrelevant content",
+        "criterion3": "answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 30-40 words and no off-topic/irrelevant content",
+        "criterion4": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 30-40 words and some off-topic/irrelevant content",
+        "criterion5": "answer including definition, with or without a clear structure/presentation and correct grammar/language having a word count of 20-30 words and no off-topic/irrelevant content",
+        "criterion6": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of less than 20 words and all off-topic/irrelevant content"
+    },
+    "marking8": {
+        "criterion1": "complete answer including introduction, definition, explanation, examples, conclusion having clear structure/presentation and correct grammar/language with a word count of 150-200 words or more and no off-topic/irrelevant content",
+        "criterion2": "answer including introduction, definition, explanation, examples, conclusion having no clear structure/presentation and incorrect grammar/language with a word count of 150-200 words or more and no off-topic/irrelevant content",
+        "criterion3": "answer including introduction, definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 120-150 words and no off-topic/irrelevant content",
+        "criterion4": "answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 100-150 words and some off-topic/irrelevant content",
+        "criterion5": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 50-100 words and no off-topic/irrelevant content",
+        "criterion6": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 50-100 words and some off-topic/irrelevant content",
+        "criterion7": "answer including definition and example, with or without a clear structure/presentation and correct grammar/language having a word count of 50-100 words and no off-topic/irrelevant content",
+        "criterion8": "answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 50 words and no off-topic/irrelevant content",
+        "criterion9": "answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 50 words and some/all off-topic/irrelevant content"
+    },
+    "marking5": {
+        "criterion1": "complete answer including introduction, definition, explanation, examples, conclusion having clear structure/presentation and correct grammar/language with a word count of 100-150 words or more and no off-topic/irrelevant content",
+        "criterion2": "answer including introduction, definition, explanation, examples, conclusion having no clear structure/presentation and incorrect grammar/language with a word count of 100-150 words or more and no off-topic/irrelevant content",
+        "criterion3": "answer including introduction, definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 80-100 words and no off-topic/irrelevant content",
+        "criterion4": "answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 80-100 words and some off-topic/irrelevant content",
+        "criterion5": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 50-80 words and no off-topic/irrelevant content",
+        "criterion6": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 50-80 words and some off-topic/irrelevant content",
+        "criterion7": "answer including definition and example, with or without a clear structure/presentation and correct grammar/language having a word count of 30-50 words and no off-topic/irrelevant content",
+        "criterion8": "answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 20-50 words and no off-topic/irrelevant content",
+        "criterion9": "answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 30 words and some/all off-topic/irrelevant content"
+    },
+    "marking4": {
+        "criterion1": "complete answer including introduction, definition, explanation, examples, conclusion having clear structure/presentation and correct grammar/language with a word count of 80-100 words or more and no off-topic/irrelevant content",
+        "criterion2": "answer including introduction, definition, explanation, examples, conclusion having no clear structure/presentation and incorrect grammar/language with a word count of 80-100 words or more and no off-topic/irrelevant content",
+        "criterion3": "answer including introduction, definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 60-80 words and no off-topic/irrelevant content",
+        "criterion4": "answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 60-80 words and some off-topic/irrelevant content",
+        "criterion5": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 40-60 words and no off-topic/irrelevant content",
+        "criterion6": "answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 40-60 words and some off-topic/irrelevant content",
+        "criterion7": "answer including definition and example, with or without a clear structure/presentation and correct grammar/language having a word count of 20-40 words and no off-topic/irrelevant content",
+        "criterion8": "answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 20-40 words and no off-topic/irrelevant content",
+        "criterion9": "answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 20 words and some/all off-topic/irrelevant content"
+    }
+}

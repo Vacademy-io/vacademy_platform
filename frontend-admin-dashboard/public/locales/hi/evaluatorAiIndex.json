@@ -1,0 +1,13 @@
+{
+    "dashboardHeading": "डैशबोर्ड",
+    "dashboardDescription": "यह पेज संस्थान का डैशबोर्ड दिखाता है।",
+    "greetingHello": "नमस्ते",
+    "greetingName": "मूल्यांकनकर्ता!",
+    "enrollStudentsTitle": "छात्रों को नामांकित करें",
+    "enroll": "नामांकित करें",
+    "assessmentCreatedLabel": "बनाए गए मूल्यांकन",
+    "createAssessmentTitle": "मूल्यांकन के लिए एक असेसमेंट बनाएं",
+    "create": "बनाएं",
+    "evaluateStudentsTitle": "किसी असेसमेंट के लिए छात्रों की प्रतिक्रिया का मूल्यांकन करें",
+    "evaluate": "मूल्यांकन करें"
+}

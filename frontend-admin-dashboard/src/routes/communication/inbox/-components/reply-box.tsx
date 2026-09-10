@@ -10,6 +10,7 @@ import {
     Stop,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
     sendReply,
     getSessionWindow,
@@ -107,6 +108,7 @@ interface Props {
 }
 
 export function ReplyBox({ phone }: Props) {
+    const { t } = useTranslation('communicationReplyBox');
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const [showTemplates, setShowTemplates] = useState(false);
@@ -149,8 +151,8 @@ export function ReplyBox({ phone }: Props) {
     useEffect(() => {
         if (showTemplates && templates.length === 0) {
             listTemplates(instituteId)
-                .then((data) => setTemplates(data.filter((t) => t.status === 'APPROVED')))
-                .catch(() => toast.error('Failed to load templates'));
+                .then((data) => setTemplates(data.filter((tpl) => tpl.status === 'APPROVED')))
+                .catch(() => toast.error(t('toast.loadTemplatesFailed')));
         }
     }, [showTemplates]);
 
@@ -161,7 +163,12 @@ export function ReplyBox({ phone }: Props) {
             const limit = MEDIA_LIMITS[kind];
             if (file.size > limit) {
                 toast.error(
-                    `${file.name} is ${formatSize(file.size)}. WhatsApp allows ${formatSize(limit)} for ${kind === 'document' ? 'documents' : `${kind}s`}.`
+                    t('toast.fileTooLarge', {
+                        fileName: file.name,
+                        fileSize: formatSize(file.size),
+                        limit: formatSize(limit),
+                        kindLabel: t(`mediaKindPlural.${kind}`),
+                    })
                 );
                 return;
             }
@@ -178,29 +185,32 @@ export function ReplyBox({ phone }: Props) {
                     true
                 );
                 if (!fileId) {
-                    toast.error('Upload failed. Please try again.');
+                    toast.error(t('toast.uploadFailed'));
                     return;
                 }
                 // WhatsApp fetches the file itself, so this has to be a public URL, not a file id.
                 const url = await getPublicUrl(fileId);
                 if (!url) {
-                    toast.error('Could not get a public link for the uploaded file.');
+                    toast.error(t('toast.noPublicLink'));
                     return;
                 }
                 setAttachment({ url, name: file.name, kind, size: file.size, downgradedFrom });
                 if (downgradedFrom) {
                     toast.info(
-                        `WhatsApp can't show ${file.type || 'this format'} as ${downgradedFrom === 'image' ? 'a photo' : `${downgradedFrom}`}, so it will be sent as a document.`
+                        t('toast.downgradedToDocument', {
+                            fileType: file.type || t('thisFormat'),
+                            asLabel: t(`downgradeAsLabel.${downgradedFrom}`),
+                        })
                     );
                 }
             } catch (err) {
                 console.error(err);
-                toast.error('Upload failed. Please try again.');
+                toast.error(t('toast.uploadFailed'));
             } finally {
                 setUploading(false);
             }
         },
-        [instituteId]
+        [instituteId, t]
     );
 
     /** Release the mic and the timer. Safe to call twice. */
@@ -209,7 +219,7 @@ export function ReplyBox({ phone }: Props) {
             clearInterval(tickRef.current);
             tickRef.current = null;
         }
-        recorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+        recorderRef.current?.stream.getTracks().forEach((track) => track.stop());
         recorderRef.current = null;
         setRecording(false);
         setRecordedSeconds(0);
@@ -220,16 +230,12 @@ export function ReplyBox({ phone }: Props) {
 
     const startRecording = useCallback(async () => {
         if (mediaSupport === 'no') {
-            toast.error(
-                'Voice notes need the updated notification service. The feature is built but not deployed yet.'
-            );
+            toast.error(t('toast.voiceNotesUnavailable'));
             return;
         }
         const format = pickRecordingFormat();
         if (!format) {
-            toast.error(
-                'This browser can only record WebM audio, which WhatsApp rejects. Try Chrome 126+, Safari or Firefox.'
-            );
+            toast.error(t('toast.unsupportedRecordingFormat'));
             return;
         }
 
@@ -264,9 +270,9 @@ export function ReplyBox({ phone }: Props) {
             tickRef.current = setInterval(() => setRecordedSeconds((n) => n + 1), 1000);
         } catch (err) {
             console.error(err);
-            toast.error('Could not access the microphone. Check the browser permission.');
+            toast.error(t('toast.micAccessDenied'));
         }
-    }, [mediaSupport, stageFile, teardownRecorder]);
+    }, [mediaSupport, stageFile, teardownRecorder, t]);
 
     const stopRecording = useCallback((discard: boolean) => {
         discardRef.current = discard;
@@ -284,13 +290,11 @@ export function ReplyBox({ phone }: Props) {
      */
     const openFilePicker = useCallback(() => {
         if (mediaSupport === 'no') {
-            toast.error(
-                'Attachments need the updated notification service. The feature is built but not deployed yet.'
-            );
+            toast.error(t('toast.attachmentsUnavailable'));
             return;
         }
         fileInputRef.current?.click();
-    }, [mediaSupport]);
+    }, [mediaSupport, t]);
 
     const handleFilePick = useCallback(
         async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -336,11 +340,11 @@ export function ReplyBox({ phone }: Props) {
             // A refused send is recorded in the thread as "Not delivered", so the toast says what
             // WhatsApp actually objected to — "24-hour reply window closed" rather than the raw
             // "Re-engagement message (131047)" — and points at the thread for the rest.
-            const { title, detail } = describeApiError(err, 'Message not sent');
+            const { title, detail } = describeApiError(err, t('toast.messageNotSent'));
             toast.error(title, {
                 description: detail
-                    ? `${detail} It is marked as not delivered in the chat.`
-                    : 'It is marked as not delivered in the chat.',
+                    ? `${detail} ${t('toast.notDeliveredNote')}`
+                    : t('toast.notDeliveredNote'),
             });
         } finally {
             setSending(false);
@@ -354,6 +358,7 @@ export function ReplyBox({ phone }: Props) {
         updateConversationLastMessage,
         markConversationAnswered,
         instituteId,
+        t,
     ]);
 
     const handleSendTemplate = useCallback(async (template: WhatsAppTemplateDTO) => {
@@ -376,12 +381,12 @@ export function ReplyBox({ phone }: Props) {
 
                 // Always prompt user for parameter values
                 const labels = defaults.map((d, i) => {
-                    const name = template.bodyVariableNames?.[i] || `param ${i + 1}`;
-                    return `${name}${d ? ` (e.g. ${d})` : ''}`;
+                    const name = template.bodyVariableNames?.[i] || t('templatePrompt.paramFallback', { n: i + 1 });
+                    return `${name}${d ? t('templatePrompt.exampleSuffix', { value: d }) : ''}`;
                 }).join(', ');
 
                 const userInput = prompt(
-                    `Template "${template.name}" requires ${paramCount} value(s):\n${labels}\n\nEnter values (comma-separated):`
+                    `${t('templatePrompt.header', { name: template.name, count: paramCount })}\n${labels}\n\n${t('templatePrompt.footer')}`
                 );
                 if (userInput === null) { setSending(false); return; }
 
@@ -401,33 +406,40 @@ export function ReplyBox({ phone }: Props) {
             });
 
             if (response.status === 'COMPLETED' && response.accepted > 0) {
-                toast.success(`Template "${template.name}" sent`);
+                toast.success(t('toast.templateSent', { name: template.name }));
                 // Add to message list
                 appendMessage({
                     id: Date.now().toString(),
-                    body: `[Template: ${template.name}] ${template.bodyText || ''}`,
+                    body: `${t('templateLabel', { name: template.name })} ${template.bodyText || ''}`,
                     direction: 'OUTGOING',
                     timestamp: new Date().toISOString(),
                     source: 'unified-send',
                 });
-                updateConversationLastMessage(phone, `[Template] ${template.name}`, 'OUTGOING');
+                updateConversationLastMessage(
+                    phone,
+                    t('templateShortLabel', { name: template.name }),
+                    'OUTGOING'
+                );
                 setShowTemplates(false);
             } else {
                 const failure = explainWhatsAppFailure(response.results?.[0]?.error);
-                toast.error(`Template "${template.name}" was not sent`, {
+                toast.error(t('toast.templateNotSent', { name: template.name }), {
                     description: failure
                         ? [failure.title, failure.detail].filter(Boolean).join(' — ')
-                        : 'The provider rejected the send without giving a reason.',
+                        : t('toast.providerRejectedNoReason'),
                 });
             }
         } catch (err) {
             console.error(err);
-            const { title, detail } = describeApiError(err, `Could not send template "${template.name}"`);
+            const { title, detail } = describeApiError(
+                err,
+                t('toast.couldNotSendTemplate', { name: template.name })
+            );
             toast.error(title, detail ? { description: detail } : undefined);
         } finally {
             setSending(false);
         }
-    }, [phone, instituteId, appendMessage, updateConversationLastMessage]);
+    }, [phone, instituteId, appendMessage, updateConversationLastMessage, t]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -437,8 +449,8 @@ export function ReplyBox({ phone }: Props) {
     };
 
     const filteredTemplates = templates.filter(
-        (t) => t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
-               (t.bodyText || '').toLowerCase().includes(templateSearch.toLowerCase())
+        (tpl) => tpl.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
+               (tpl.bodyText || '').toLowerCase().includes(templateSearch.toLowerCase())
     );
 
     return (
@@ -447,7 +459,7 @@ export function ReplyBox({ phone }: Props) {
             {showTemplates && (
                 <div className="absolute bottom-full left-0 right-0 bg-white border-t shadow-lg max-h-72 flex flex-col">
                     <div className="flex items-center justify-between px-3 py-2 border-b">
-                        <span className="text-xs font-semibold text-gray-600">Send Template (outside 24hr window)</span>
+                        <span className="text-xs font-semibold text-gray-600">{t('sendTemplateHeader')}</span>
                         <button onClick={() => setShowTemplates(false)} className="p-1 hover:bg-gray-100 rounded">
                             <X size={14} />
                         </button>
@@ -457,23 +469,23 @@ export function ReplyBox({ phone }: Props) {
                             type="text"
                             value={templateSearch}
                             onChange={(e) => setTemplateSearch(e.target.value)}
-                            placeholder="Search templates..."
+                            placeholder={t('searchTemplatesPlaceholder')}
                             className="w-full px-2 py-1 text-xs border rounded"
                         />
                     </div>
                     <div className="flex-1 overflow-y-auto">
                         {filteredTemplates.length === 0 ? (
-                            <p className="text-xs text-gray-400 text-center py-4">No approved templates found</p>
+                            <p className="text-xs text-gray-400 text-center py-4">{t('noApprovedTemplates')}</p>
                         ) : (
-                            filteredTemplates.map((t) => (
+                            filteredTemplates.map((tpl) => (
                                 <button
-                                    key={t.id}
-                                    onClick={() => handleSendTemplate(t)}
+                                    key={tpl.id}
+                                    onClick={() => handleSendTemplate(tpl)}
                                     disabled={sending}
                                     className="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-50 disabled:opacity-50"
                                 >
-                                    <p className="text-xs font-medium text-gray-800">{t.name}</p>
-                                    <p className="text-[10px] text-gray-400 truncate">{t.bodyText}</p>
+                                    <p className="text-xs font-medium text-gray-800">{tpl.name}</p>
+                                    <p className="text-[10px] text-gray-400 truncate">{tpl.bodyText}</p>
                                 </button>
                             ))
                         )}
@@ -489,16 +501,15 @@ export function ReplyBox({ phone }: Props) {
                 <div className="flex items-start gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2">
                     <Clock size={15} className="mt-0.5 shrink-0 text-amber-600" />
                     <p className="text-xs text-amber-800">
-                        <span className="font-medium">The 24-hour reply window has closed.</span>{' '}
-                        WhatsApp will reject plain messages and attachments until they message you
-                        again — send an approved{' '}
+                        <span className="font-medium">{t('windowClosed.title')}</span>{' '}
+                        {t('windowClosed.body')}{' '}
                         <button
                             onClick={() => setShowTemplates(true)}
                             className="underline underline-offset-2 hover:text-amber-900"
                         >
-                            template
+                            {t('windowClosed.linkText')}
                         </button>{' '}
-                        instead.
+                        {t('windowClosed.suffix')}
                     </p>
                 </div>
             )}
@@ -518,15 +529,20 @@ export function ReplyBox({ phone }: Props) {
                             {attachment.name}
                         </p>
                         <p className="text-[11px] text-gray-400">
-                            {attachment.kind} · {formatSize(attachment.size)}
-                            {attachment.downgradedFrom ? ' · sent as a document' : ''}
-                            {attachment.kind === 'audio' ? ' · WhatsApp sends audio without a caption' : ''}
+                            {[
+                                t(`mediaKindLabel.${attachment.kind}`),
+                                formatSize(attachment.size),
+                                attachment.downgradedFrom ? t('sentAsDocument') : null,
+                                attachment.kind === 'audio' ? t('audioNoCaption') : null,
+                            ]
+                                .filter(Boolean)
+                                .join(' · ')}
                         </p>
                     </div>
                     <button
                         onClick={() => setAttachment(null)}
                         className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
-                        title="Remove attachment"
+                        title={t('removeAttachment')}
                     >
                         <X size={14} />
                     </button>
@@ -538,13 +554,13 @@ export function ReplyBox({ phone }: Props) {
                 <div className="flex items-center gap-2 border-t bg-red-50 px-4 py-2">
                     <span className="size-2 animate-pulse rounded-full bg-red-500" />
                     <p className="flex-1 text-xs text-red-700">
-                        Recording voice note · {formatDuration(recordedSeconds)}
+                        {t('recordingInProgress', { duration: formatDuration(recordedSeconds) })}
                     </p>
                     <button
                         onClick={() => stopRecording(true)}
                         className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-100"
                     >
-                        Cancel
+                        {t('cancel')}
                     </button>
                 </div>
             )}
@@ -554,7 +570,7 @@ export function ReplyBox({ phone }: Props) {
                 <button
                     onClick={() => setShowTemplates(!showTemplates)}
                     className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg shrink-0"
-                    title="Send template (for messages outside 24hr window)"
+                    title={t('sendTemplateTooltip')}
                 >
                     <FileText size={20} />
                 </button>
@@ -573,8 +589,8 @@ export function ReplyBox({ phone }: Props) {
                     }`}
                     title={
                         mediaSupport === 'no'
-                            ? 'Attachments need the updated notification service — not deployed yet'
-                            : 'Attach a photo, video or document'
+                            ? t('attachmentsUnavailableTooltip')
+                            : t('attachTooltip')
                     }
                 >
                     {uploading ? (
@@ -593,7 +609,7 @@ export function ReplyBox({ phone }: Props) {
                               ? 'text-gray-300 hover:bg-green-50 hover:text-green-600'
                               : 'text-gray-400 hover:bg-green-50 hover:text-green-600'
                     }`}
-                    title={recording ? 'Stop and attach the recording' : 'Record a voice note'}
+                    title={recording ? t('stopRecordingTooltip') : t('recordVoiceNoteTooltip')}
                 >
                     {recording ? <Stop size={20} weight="fill" /> : <Microphone size={20} />}
                 </button>
@@ -601,7 +617,7 @@ export function ReplyBox({ phone }: Props) {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={attachment ? 'Add a caption...' : 'Type a message...'}
+                    placeholder={attachment ? t('captionPlaceholder') : t('messagePlaceholder')}
                     rows={1}
                     className="flex-1 px-3 py-2 text-sm border rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-green-400 max-h-24"
                     style={{ minHeight: '40px' }}

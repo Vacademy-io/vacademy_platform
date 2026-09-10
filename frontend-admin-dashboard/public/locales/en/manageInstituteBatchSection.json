@@ -1,0 +1,24 @@
+{
+    "toast": {
+        "batchDeletedSuccess": "Batch deleted successfully",
+        "batchDeleteFailed": "Failed to delete batch",
+        "inviteLinkCopied": "Invite link copied to clipboard"
+    },
+    "batchCard": {
+        "studentCount_one": "{{count}} {{term}}",
+        "studentCount_other": "{{count}} {{term}}s",
+        "inviteCodeLabel": "Invite Code:",
+        "enrollButton": "Enroll {{term}}",
+        "viewBatchButton": "View Batch"
+    },
+    "deleteDialog": {
+        "heading": "Delete Batch",
+        "cancel": "Cancel",
+        "confirm": "Yes, Delete",
+        "confirmMessage": "Are you sure you want to delete the batch \"{{batchName}}\"? This action cannot be undone."
+    },
+    "section": {
+        "noBatches": "No batches found for this package.",
+        "noBatchesInSession": "No batches found for this package in the selected session."
+    }
+}

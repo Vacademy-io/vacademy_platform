@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { getInstituteId } from '@/constants/helper';
 import { useInboxStore } from '../-stores/inbox-store';
@@ -12,6 +13,7 @@ import { shouldAdoptUrlPhone, urlSearchFor } from '../-utils/inbox-url-sync';
 const POLL_INTERVAL = 20000; // 20 seconds
 
 export function InboxPage() {
+    const { t } = useTranslation('communicationInboxPage');
     const instituteId = getInstituteId() || '';
     const { phone: phoneInUrl } = useSearch({ from: '/communication/inbox/' });
     const navigate = useNavigate({ from: '/communication/inbox/' });
@@ -84,11 +86,11 @@ export function InboxPage() {
             console.error('Failed to load conversations', err);
             // Shown in the list rather than swallowed: an inbox that silently renders "No
             // conversations yet" on a failed request reads as "nobody has ever written to us".
-            setConversationsError(describeApiError(err, 'Could not load conversations'));
+            setConversationsError(describeApiError(err, t('errors.conversationsFallback')));
         } finally {
             setIsLoadingConversations(false);
         }
-    }, [instituteId, searchQuery, filter, conversationOffset]);
+    }, [instituteId, searchQuery, filter, conversationOffset, t]);
 
     const loadMessages = useCallback(async (phone: string, cursor?: string) => {
         setIsLoadingMessages(true);
@@ -105,11 +107,11 @@ export function InboxPage() {
             setMessagesError(null);
         } catch (err) {
             console.error('Failed to load messages', err);
-            setMessagesError(describeApiError(err, 'Could not load this conversation'));
+            setMessagesError(describeApiError(err, t('errors.messagesFallback')));
         } finally {
             setIsLoadingMessages(false);
         }
-    }, [instituteId]);
+    }, [instituteId, t]);
 
     // Initial load
     useEffect(() => {
@@ -171,12 +173,12 @@ export function InboxPage() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b bg-white shrink-0">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-800">WhatsApp Inbox</h2>
+                    <h2 className="text-lg font-semibold text-gray-800">{t('title')}</h2>
                     <p className="text-xs text-gray-400">
-                        View and reply to WhatsApp conversations
+                        {t('subtitle')}
                         {waitingCount > 0 && (
-                            <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-px font-medium text-amber-700">
-                                {waitingCount} handed over by the bot
+                            <span className="ms-2 rounded-full bg-amber-100 px-1.5 py-px font-medium text-amber-700">
+                                {t('waitingCount', { count: waitingCount })}
                             </span>
                         )}
                     </p>
@@ -184,7 +186,7 @@ export function InboxPage() {
                 <button
                     onClick={handleRefresh}
                     className="p-2 rounded hover:bg-gray-100 text-gray-500"
-                    title="Refresh"
+                    title={t('refresh')}
                 >
                     <ArrowClockwise size={18} />
                 </button>

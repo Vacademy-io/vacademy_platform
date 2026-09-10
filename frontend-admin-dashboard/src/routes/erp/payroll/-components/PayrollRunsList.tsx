@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { ArrowRight, Plus, Receipt } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { MoneyCell } from '@/components/design-system/money-cell';
@@ -11,8 +12,8 @@ import { MyTable, type TableData } from '@/components/design-system/table';
 import { useHrRole } from '@/hooks/use-hr-role';
 import type { PayrollRunDTO } from '@/routes/erp/-shared/hr-types';
 import {
-    RUN_STATUS_LABELS,
-    RUN_TYPE_LABELS,
+    buildRunStatusLabels,
+    buildRunTypeLabels,
     runStatusChipType,
     type PayrollRunStatus,
     type PayrollRunType,
@@ -63,6 +64,7 @@ const StampCell = ({ label, value }: { label: string; value: string | undefined 
  * two runs, and splitting that across pages would hide the run you came for.
  */
 export const PayrollRunsList = () => {
+    const { t } = useTranslation(['erpPayrollRunsList', 'erpPayrollStatus']);
     const navigate = useNavigate();
     const { isHrAdmin, isHrStaff } = useHrRole();
     const [year, setYear] = useState(() => new Date().getFullYear());
@@ -83,11 +85,13 @@ export const PayrollRunsList = () => {
         void navigate({ to: '/erp/payroll/$runId', params: { runId } });
     };
 
-    const columns = useMemo<ColumnDef<PayrollRunDTO>[]>(
-        () => [
+    const columns = useMemo<ColumnDef<PayrollRunDTO>[]>(() => {
+        const runTypeLabels = buildRunTypeLabels(t);
+        const runStatusLabels = buildRunStatusLabels(t);
+        return [
             {
                 id: 'period',
-                header: 'Period',
+                header: t('table.columns.period'),
                 cell: ({ row }) => (
                     <span className="text-body font-semibold text-neutral-700">
                         {row.original.month && row.original.year
@@ -101,15 +105,15 @@ export const PayrollRunsList = () => {
             },
             {
                 id: 'run_type',
-                header: 'Type',
+                header: t('table.columns.type'),
                 cell: ({ row }) => (
                     <StatusChip
                         text={
-                            RUN_TYPE_LABELS[
+                            runTypeLabels[
                                 (row.original.run_type ?? 'REGULAR').toUpperCase() as PayrollRunType
                             ] ??
                             row.original.run_type ??
-                            'Regular'
+                            t('table.defaultRunType')
                         }
                         textSize="text-caption"
                         status="INFO"
@@ -119,11 +123,11 @@ export const PayrollRunsList = () => {
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('table.columns.status'),
                 cell: ({ row }) => (
                     <StatusChip
                         text={
-                            RUN_STATUS_LABELS[
+                            runStatusLabels[
                                 (row.original.status ?? '').toUpperCase() as PayrollRunStatus
                             ] ??
                             row.original.status ??
@@ -137,7 +141,7 @@ export const PayrollRunsList = () => {
             },
             {
                 id: 'total_employees',
-                header: 'Employees',
+                header: t('table.columns.employees'),
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-neutral-600">
                         {row.original.total_employees ?? 0}
@@ -146,7 +150,7 @@ export const PayrollRunsList = () => {
             },
             {
                 id: 'total_net_pay',
-                header: 'Total net pay',
+                header: t('table.columns.totalNetPay'),
                 cell: ({ row }) => (
                     <MoneyCell
                         value={row.original.total_net_pay}
@@ -157,16 +161,16 @@ export const PayrollRunsList = () => {
             },
             {
                 id: 'processed_at',
-                header: 'Processed',
+                header: t('table.columns.processed'),
                 cell: ({ row }) => (
-                    <StampCell label="by payroll" value={row.original.processed_at} />
+                    <StampCell label={t('table.processedByLabel')} value={row.original.processed_at} />
                 ),
             },
             {
                 id: 'approved_at',
-                header: 'Approved',
+                header: t('table.columns.approved'),
                 cell: ({ row }) => (
-                    <StampCell label="by finance" value={row.original.approved_at} />
+                    <StampCell label={t('table.approvedByLabel')} value={row.original.approved_at} />
                 ),
             },
             {
@@ -179,17 +183,16 @@ export const PayrollRunsList = () => {
                             scale="small"
                             onClick={() => openRun(row.original.id)}
                         >
-                            Open
+                            {t('actions.open')}
                             <ArrowRight size={14} />
                         </MyButton>
                     </div>
                 ),
             },
-        ],
+        ];
         // openRun closes over `navigate`, which is stable for the life of the route.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        []
-    );
+    }, [t]);
 
     if (!isHrStaff) return <HrNoAccessCard />;
 
@@ -207,8 +210,7 @@ export const PayrollRunsList = () => {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-col gap-1">
                     <p className="max-w-2xl text-body text-neutral-600">
-                        One run per month and run type. A run computes nothing until you process it,
-                        and pays nobody until it is approved and marked paid.
+                        {t('description')}
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -216,7 +218,7 @@ export const PayrollRunsList = () => {
                         currentValue={String(year)}
                         dropdownList={YEAR_OPTIONS}
                         handleChange={(value) => setYear(Number(value))}
-                        placeholder="Year"
+                        placeholder={t('yearPlaceholder')}
                         className="w-28"
                         contentClassName="min-w-28"
                     />
@@ -227,7 +229,7 @@ export const PayrollRunsList = () => {
                             onClick={() => setDialogOpen(true)}
                         >
                             <Plus size={16} />
-                            New payroll run
+                            {t('actions.newPayrollRun')}
                         </MyButton>
                     )}
                 </div>
@@ -235,17 +237,17 @@ export const PayrollRunsList = () => {
 
             {isError ? (
                 <HrErrorState
-                    message="Could not load payroll runs for this year."
+                    message={t('errors.loadFailed')}
                     onRetry={() => void refetch()}
                 />
             ) : !isLoading && rows.length === 0 ? (
                 <HrEmptyState
                     icon={<Receipt size={32} className="text-neutral-300" />}
-                    title={`No payroll runs in ${year}`}
+                    title={t('empty.title', { year })}
                     description={
                         isHrAdmin
-                            ? 'Create a run for the month you want to pay. Salary structures must be assigned first, or employees will land in the run errors.'
-                            : 'Nothing has been run for this year yet. An HR admin creates payroll runs.'
+                            ? t('empty.adminDescription')
+                            : t('empty.staffDescription')
                     }
                 >
                     {isHrAdmin && (
@@ -255,7 +257,7 @@ export const PayrollRunsList = () => {
                             onClick={() => setDialogOpen(true)}
                         >
                             <Plus size={16} />
-                            New payroll run
+                            {t('actions.newPayrollRun')}
                         </MyButton>
                     )}
                 </HrEmptyState>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DownloadSimple, WarningCircle, CheckCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { Card } from '@/components/ui/card';
@@ -23,6 +24,7 @@ import {
 import { ComplianceStat, ComplianceWarnings } from './compliance-shared';
 
 export const Form16Preview = ({ financialYear }: { financialYear: string }) => {
+    const { t } = useTranslation('erpTdsFilingPreviews');
     const [employeeId, setEmployeeId] = useState<string>('');
 
     const query = useQuery({
@@ -40,11 +42,11 @@ export const Form16Preview = ({ financialYear }: { financialYear: string }) => {
                 { employeeId, financialYear },
                 `form16_${data?.employeeCode || employeeId}_${financialYear}.pdf`
             );
-            toast.success('Form 16 downloaded');
+            toast.success(t('form16.toast.downloaded'));
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-compliance',
-                fallbackMessage: 'Could not download Form 16.',
+                fallbackMessage: t('form16.errors.downloadFailed'),
             });
         }
     };
@@ -52,25 +54,27 @@ export const Form16Preview = ({ financialYear }: { financialYear: string }) => {
     return (
         <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-                <span className="text-caption uppercase text-neutral-500">Employee</span>
+                <span className="text-caption uppercase text-neutral-500">
+                    {t('form16.employeeLabel')}
+                </span>
                 <EmployeePicker
                     value={employeeId}
                     onChange={setEmployeeId}
                     portal={false}
-                    placeholder="Choose an employee"
+                    placeholder={t('form16.employeePickerPlaceholder')}
                 />
             </div>
 
             {!employeeId ? (
                 <HrEmptyState
-                    title="Pick an employee"
-                    description="Form 16 Part B is issued per employee for the financial year."
+                    title={t('form16.empty.title')}
+                    description={t('form16.empty.description')}
                 />
             ) : query.isLoading ? (
                 <HrLoadingRows rows={4} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Could not build Form 16 for this employee."
+                    message={t('form16.errors.loadFailed')}
                     onRetry={() => void query.refetch()}
                 />
             ) : (
@@ -78,37 +82,54 @@ export const Form16Preview = ({ financialYear }: { financialYear: string }) => {
                     <ComplianceWarnings warnings={data?.warnings} />
                     {data?.lastComputedMonth !== undefined && data.lastComputedMonth < 12 && (
                         <p className="rounded-md bg-warning-50 px-3 py-2 text-caption text-warning-700">
-                            The financial year is incomplete — annual figures are projections until
-                            March payroll is processed.
+                            {t('form16.incompleteYearNotice')}
                         </p>
                     )}
 
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <ComplianceStat label="Gross salary" value={data?.grossSalaryPaid} isMoney />
-                        <ComplianceStat label="Total exemptions" value={data?.totalExemptions} isMoney />
-                        <ComplianceStat label="Taxable income" value={data?.taxableIncome} isMoney />
-                        <ComplianceStat label="TDS deducted" value={data?.totalTdsDeducted} isMoney />
+                        <ComplianceStat
+                            label={t('form16.stats.grossSalary')}
+                            value={data?.grossSalaryPaid}
+                            isMoney
+                        />
+                        <ComplianceStat
+                            label={t('form16.stats.totalExemptions')}
+                            value={data?.totalExemptions}
+                            isMoney
+                        />
+                        <ComplianceStat
+                            label={t('form16.stats.taxableIncome')}
+                            value={data?.taxableIncome}
+                            isMoney
+                        />
+                        <ComplianceStat
+                            label={t('form16.stats.tdsDeducted')}
+                            value={data?.totalTdsDeducted}
+                            isMoney
+                        />
                     </div>
 
                     <Card className="flex flex-col gap-2 p-4 text-body">
                         <div className="flex justify-between">
-                            <span className="text-neutral-500">Regime</span>
+                            <span className="text-neutral-500">{t('form16.card.regime')}</span>
                             <span className="text-neutral-700">{data?.regime || '—'}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-neutral-500">PAN</span>
+                            <span className="text-neutral-500">{t('form16.card.pan')}</span>
                             <span className="tabular-nums text-neutral-700">
                                 {data?.employeePan || '—'}
                             </span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-neutral-500">Deductor TAN</span>
+                            <span className="text-neutral-500">{t('form16.card.deductorTan')}</span>
                             <span className="tabular-nums text-neutral-700">
                                 {data?.deductorTan || '—'}
                             </span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-neutral-500">Total tax liability</span>
+                            <span className="text-neutral-500">
+                                {t('form16.card.totalTaxLiability')}
+                            </span>
                             <MoneyCell value={data?.totalTaxLiability ?? null} className="w-auto" />
                         </div>
                     </Card>
@@ -118,11 +139,15 @@ export const Form16Preview = ({ financialYear }: { financialYear: string }) => {
                             <table className="w-full text-body">
                                 <thead>
                                     <tr className="border-b border-neutral-200 bg-neutral-50 text-caption uppercase text-neutral-500">
-                                        <th className="px-3 py-2 text-start font-medium">Month</th>
-                                        <th className="px-3 py-2 text-end font-medium">
-                                            Income paid
+                                        <th className="px-3 py-2 text-start font-medium">
+                                            {t('form16.table.month')}
                                         </th>
-                                        <th className="px-3 py-2 text-end font-medium">TDS</th>
+                                        <th className="px-3 py-2 text-end font-medium">
+                                            {t('form16.table.incomePaid')}
+                                        </th>
+                                        <th className="px-3 py-2 text-end font-medium">
+                                            {t('form16.table.tds')}
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -151,10 +176,10 @@ export const Form16Preview = ({ financialYear }: { financialYear: string }) => {
                         buttonType="secondary"
                         scale="medium"
                         onAsyncClick={handleDownload}
-                        loadingText="Preparing…"
+                        loadingText={t('form16.actions.preparing')}
                     >
                         <DownloadSimple size={16} />
-                        Download PDF
+                        {t('form16.actions.downloadPdf')}
                     </MyButton>
                 </>
             )}
@@ -169,6 +194,7 @@ export const Form24QPreview = ({
     financialYear: string;
     quarter: string;
 }) => {
+    const { t } = useTranslation('erpTdsFilingPreviews');
     const query = useQuery({
         queryKey: [...ERP_KEY, '24q', financialYear, quarter],
         queryFn: () => fetchForm24Q(financialYear, quarter),
@@ -182,7 +208,7 @@ export const Form24QPreview = ({
     if (query.isError) {
         return (
             <HrErrorState
-                message="Could not build the Form 24Q data."
+                message={t('form24q.errors.loadFailed')}
                 onRetry={() => void query.refetch()}
             />
         );
@@ -206,20 +232,20 @@ export const Form24QPreview = ({
                     {data?.mismatch ? <WarningCircle size={18} /> : <CheckCircle size={18} />}
                     <span className="text-subtitle font-medium">
                         {data?.mismatch
-                            ? 'TDS deducted does not match the challans recorded'
-                            : 'TDS deducted matches the challans recorded'}
+                            ? t('form24q.reconciliation.mismatch')
+                            : t('form24q.reconciliation.matched')}
                     </span>
                 </div>
                 <div className="flex flex-wrap gap-6 text-body">
                     <span className="text-neutral-600">
-                        Deducted:{' '}
+                        {t('form24q.reconciliation.deducted')}{' '}
                         <MoneyCell
                             value={data?.totalTdsDeducted ?? null}
                             className="inline-block w-auto"
                         />
                     </span>
                     <span className="text-neutral-600">
-                        Deposited:{' '}
+                        {t('form24q.reconciliation.deposited')}{' '}
                         <MoneyCell
                             value={data?.totalChallanAmount ?? null}
                             className="inline-block w-auto"
@@ -228,27 +254,42 @@ export const Form24QPreview = ({
                 </div>
                 {data?.mismatch && (
                     <p className="text-caption text-neutral-600">
-                        Record the missing challan in the Challans register, or check whether a
-                        deposit was made against a different quarter.
+                        {t('form24q.reconciliation.mismatchHint')}
                     </p>
                 )}
             </Card>
 
             <div className="grid gap-3 sm:grid-cols-3">
-                <ComplianceStat label="Deductees" value={rows.length} />
-                <ComplianceStat label="Challans" value={data?.challans?.length ?? 0} />
-                <ComplianceStat label="Deductor TAN" value={data?.deductor?.tan ?? '—'} />
+                <ComplianceStat label={t('form24q.stats.deductees')} value={rows.length} />
+                <ComplianceStat
+                    label={t('form24q.stats.challans')}
+                    value={data?.challans?.length ?? 0}
+                />
+                <ComplianceStat
+                    label={t('form24q.stats.deductorTan')}
+                    value={data?.deductor?.tan ?? '—'}
+                />
             </div>
 
             <div className="overflow-x-auto rounded-md border border-neutral-200">
                 <table className="w-full text-body">
                     <thead>
                         <tr className="border-b border-neutral-200 bg-neutral-50 text-caption uppercase text-neutral-500">
-                            <th className="px-3 py-2 text-start font-medium">Employee</th>
-                            <th className="px-3 py-2 text-end font-medium">PAN</th>
-                            <th className="px-3 py-2 text-end font-medium">Month</th>
-                            <th className="px-3 py-2 text-end font-medium">Income paid</th>
-                            <th className="px-3 py-2 text-end font-medium">TDS</th>
+                            <th className="px-3 py-2 text-start font-medium">
+                                {t('form24q.table.employee')}
+                            </th>
+                            <th className="px-3 py-2 text-end font-medium">
+                                {t('form24q.table.pan')}
+                            </th>
+                            <th className="px-3 py-2 text-end font-medium">
+                                {t('form24q.table.month')}
+                            </th>
+                            <th className="px-3 py-2 text-end font-medium">
+                                {t('form24q.table.incomePaid')}
+                            </th>
+                            <th className="px-3 py-2 text-end font-medium">
+                                {t('form24q.table.tds')}
+                            </th>
                         </tr>
                     </thead>
                     <tbody>

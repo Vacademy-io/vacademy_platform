@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
     ArrowCounterClockwise,
     CheckCircle,
@@ -60,12 +61,13 @@ export const RunActionBar = ({
     onMarkPaid,
     onCancel,
 }: RunActionBarProps) => {
+    const { t } = useTranslation('erpRunActionBar');
     const [pending, setPending] = useState<ActionKey | null>(null);
 
     const period =
         run.month && run.year
             ? formatMonthValue({ month: run.month, year: run.year })
-            : 'this month';
+            : t('thisMonth');
 
     /** Run an action, surface the server's own sentence, and close the confirmation. */
     const commit = async (action: () => Promise<string | null>) => {
@@ -90,10 +92,7 @@ export const RunActionBar = ({
         return (
             <div className="flex items-start gap-2 rounded-md border border-border bg-muted p-3">
                 <Info size={18} className="mt-1 shrink-0 text-neutral-400" />
-                <p className="text-caption text-muted-foreground">
-                    Processing, approving and paying a run is limited to HR admins. You can review
-                    every figure here.
-                </p>
+                <p className="text-caption text-muted-foreground">{t('adminOnlyNotice')}</p>
             </div>
         );
     }
@@ -108,7 +107,7 @@ export const RunActionBar = ({
                         onClick={() => setPending('process')}
                     >
                         <Gear size={16} />
-                        Process run
+                        {t('buttons.processRun')}
                     </MyButton>
                 )}
                 {transitions.canApprove && (
@@ -118,7 +117,7 @@ export const RunActionBar = ({
                         onClick={() => setPending('approve')}
                     >
                         <CheckCircle size={16} />
-                        Approve run
+                        {t('buttons.approveRun')}
                     </MyButton>
                 )}
                 {transitions.canMarkPaid && (
@@ -128,7 +127,7 @@ export const RunActionBar = ({
                         onClick={() => setPending('markPaid')}
                     >
                         <Money size={16} />
-                        Mark as paid
+                        {t('buttons.markAsPaid')}
                     </MyButton>
                 )}
                 {transitions.canReject && (
@@ -138,20 +137,20 @@ export const RunActionBar = ({
                         onClick={() => setPending('reject')}
                     >
                         <ArrowCounterClockwise size={16} />
-                        Reject &amp; recalculate
+                        {t('buttons.rejectAndRecalculate')}
                     </MyButton>
                 )}
                 {transitions.canCancel && (
                     <MyButton buttonType="text" scale="medium" onClick={() => setPending('cancel')}>
                         <Prohibit size={16} />
-                        Cancel run
+                        {t('buttons.cancelRun')}
                     </MyButton>
                 )}
             </div>
 
             {/* ── Process ── */}
             <MyDialog
-                heading={`Process payroll for ${period}`}
+                heading={t('process.heading', { period })}
                 open={pending === 'process'}
                 onOpenChange={(open) => !open && setPending(null)}
                 dialogWidth="max-w-lg"
@@ -162,42 +161,35 @@ export const RunActionBar = ({
                             scale="medium"
                             onClick={() => setPending(null)}
                         >
-                            Not yet
+                            {t('notYet')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={() => commit(onProcess)}
-                            loadingText="Processing…"
+                            loadingText={t('process.processing')}
                         >
-                            Process run
+                            {t('buttons.processRun')}
                         </MyButton>
                     </>
                 }
             >
                 <div className="flex flex-col gap-3 text-body text-neutral-600">
+                    <p>{t('process.body1')}</p>
                     <p>
-                        This computes a payslip for every employee this run covers — earnings,
-                        statutory deductions, loan EMIs and approved reimbursements.
-                    </p>
-                    <p>
-                        It also{' '}
+                        {t('process.body2Prefix')}{' '}
                         <span className="font-semibold">
-                            locks {period}&apos;s attendance and leave
+                            {t('process.body2Bold', { period })}
                         </span>
-                        , so corrections after this point need the run rejected first.
+                        {t('process.body2Suffix')}
                     </p>
-                    <p className="text-caption text-neutral-500">
-                        Processing runs synchronously and takes longer the more employees you have.
-                        Employees it cannot compute are listed under Errors rather than failing the
-                        whole run.
-                    </p>
+                    <p className="text-caption text-neutral-500">{t('process.body3')}</p>
                 </div>
             </MyDialog>
 
             {/* ── Approve ── */}
             <MyDialog
-                heading={`Approve ${period} payroll`}
+                heading={t('approve.heading', { period })}
                 open={pending === 'approve'}
                 onOpenChange={(open) => !open && setPending(null)}
                 dialogWidth="max-w-lg"
@@ -208,36 +200,32 @@ export const RunActionBar = ({
                             scale="medium"
                             onClick={() => setPending(null)}
                         >
-                            Keep reviewing
+                            {t('approve.keepReviewing')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={() => commit(onApprove)}
-                            loadingText="Approving…"
+                            loadingText={t('approve.approving')}
                         >
-                            Approve run
+                            {t('buttons.approveRun')}
                         </MyButton>
                     </>
                 }
             >
                 <div className="flex flex-col gap-3 text-body text-neutral-600">
                     <p>
-                        Approving{' '}
-                        <span className="font-semibold">posts the accounting journal</span> for this
-                        run — salary expense, statutory liabilities and net payable all land in the
-                        books.
+                        {t('approve.body1Prefix')}{' '}
+                        <span className="font-semibold">{t('approve.body1Bold')}</span>{' '}
+                        {t('approve.body1Suffix')}
                     </p>
-                    <p>
-                        Check the totals and any held employees first. Approval can still be undone
-                        with Reject, but that reverses the journal too.
-                    </p>
+                    <p>{t('approve.body2')}</p>
                 </div>
             </MyDialog>
 
             {/* ── Mark paid ── */}
             <MyDialog
-                heading={`Mark ${period} payroll as paid`}
+                heading={t('markPaid.heading', { period })}
                 open={pending === 'markPaid'}
                 onOpenChange={(open) => !open && setPending(null)}
                 dialogWidth="max-w-lg"
@@ -248,28 +236,22 @@ export const RunActionBar = ({
                             scale="medium"
                             onClick={() => setPending(null)}
                         >
-                            Not yet
+                            {t('notYet')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={() => commit(onMarkPaid)}
-                            loadingText="Marking paid…"
+                            loadingText={t('markPaid.marking')}
                         >
-                            Mark as paid
+                            {t('buttons.markAsPaid')}
                         </MyButton>
                     </>
                 }
             >
                 <div className="flex flex-col gap-3 text-body text-neutral-600">
-                    <p>
-                        Do this once the money has actually left the bank. Every entry in the run is
-                        marked paid and the run closes.
-                    </p>
-                    <p className="text-caption text-neutral-500">
-                        A paid run can no longer be rejected or cancelled — it is the end of the
-                        line.
-                    </p>
+                    <p>{t('markPaid.body1')}</p>
+                    <p className="text-caption text-neutral-500">{t('markPaid.body2')}</p>
                 </div>
             </MyDialog>
 
@@ -282,34 +264,34 @@ export const RunActionBar = ({
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2 text-danger-600">
                             <Warning size={20} weight="fill" />
-                            Reject {period} payroll?
+                            {t('reject.title', { period })}
                         </AlertDialogTitle>
                         <AlertDialogDescription asChild>
                             <div className="flex flex-col gap-3 text-body text-neutral-600">
-                                <p>This unwinds everything processing did:</p>
+                                <p>{t('reject.intro')}</p>
                                 <ul className="list-inside list-disc space-y-1 text-caption">
-                                    <li>Loan EMIs deducted by this run are reversed</li>
-                                    <li>Reimbursements are unlinked and become claimable again</li>
-                                    <li>Every computed payslip entry is deleted</li>
-                                    <li>The accounting journal is reversed</li>
+                                    <li>{t('reject.item1')}</li>
+                                    <li>{t('reject.item2')}</li>
+                                    <li>{t('reject.item3')}</li>
+                                    <li>{t('reject.item4')}</li>
                                 </ul>
                                 <p>
-                                    The run returns to <span className="font-semibold">Draft</span>{' '}
-                                    so you can fix the data and process it again. Nothing is lost
-                                    permanently, but the figures on this screen are.
+                                    {t('reject.returnsPrefix')}{' '}
+                                    <span className="font-semibold">{t('reject.draft')}</span>{' '}
+                                    {t('reject.returnsSuffix')}
                                 </p>
                             </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Keep the run</AlertDialogCancel>
+                        <AlertDialogCancel>{t('keepTheRun')}</AlertDialogCancel>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={() => commit(onReject)}
-                            loadingText="Rejecting…"
+                            loadingText={t('reject.rejecting')}
                         >
-                            Reject &amp; return to Draft
+                            {t('reject.confirm')}
                         </MyButton>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -324,31 +306,24 @@ export const RunActionBar = ({
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2 text-danger-600">
                             <Warning size={20} weight="fill" />
-                            Cancel {period} payroll?
+                            {t('cancel.title', { period })}
                         </AlertDialogTitle>
                         <AlertDialogDescription asChild>
                             <div className="flex flex-col gap-3 text-body text-neutral-600">
-                                <p>
-                                    The run is closed as cancelled and drops off the happy path. Any
-                                    loan EMIs and reimbursements it had claimed are released back to
-                                    the employees.
-                                </p>
-                                <p>
-                                    A fresh run can then be created for {period} — cancelling is how
-                                    you start over rather than correct.
-                                </p>
+                                <p>{t('cancel.body1')}</p>
+                                <p>{t('cancel.body2', { period })}</p>
                             </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Keep the run</AlertDialogCancel>
+                        <AlertDialogCancel>{t('keepTheRun')}</AlertDialogCancel>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={() => commit(onCancel)}
-                            loadingText="Cancelling…"
+                            loadingText={t('cancel.cancelling')}
                         >
-                            Cancel this run
+                            {t('cancel.confirm')}
                         </MyButton>
                     </AlertDialogFooter>
                 </AlertDialogContent>

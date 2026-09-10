@@ -1,0 +1,38 @@
+{
+    "form": {
+        "courseRequired": "Le cours est requis",
+        "sessionRequired": "La session est requise",
+        "levelRequired": "Le niveau est requis",
+        "studentRequired": "L'élève est requis",
+        "startDateRequired": "La date de début est requise",
+        "endDateRequired": "La date de fin est requise",
+        "dateRangeTooLong": "L'écart entre la date de début et la date de fin doit être inférieur à un mois.",
+        "selectPlaceholder": "Sélectionner un(e) {{term}}",
+        "searchPlaceholder": "Rechercher {{term}}...",
+        "nameLabel": "Nom",
+        "selectStudent": "Sélectionner un élève",
+        "searchStudent": "Rechercher un élève...",
+        "noStudentsFound": "Aucun élève trouvé",
+        "errorsHeading": "Veuillez corriger les erreurs suivantes :"
+    },
+    "actions": {
+        "generateReport": "Générer le rapport",
+        "exporting": "Exportation en cours…",
+        "exportPdf": "Exporter en PDF"
+    },
+    "toast": {
+        "exportSuccess": "Rapport de l'apprenant exporté",
+        "exportFailed": "Échec de l'exportation du PDF"
+    },
+    "report": {
+        "duration": "Durée :",
+        "courseCompletedLabel": "{{term}} terminé(s)",
+        "dailyTimeSpentAvg": "Temps quotidien passé (moyenne)",
+        "concentrationScoreAvg": "Score de concentration (moyenne)",
+        "dailyLearningPerformance": "Performance d'apprentissage quotidienne",
+        "trackDailyProgress": "Suivez la progression quotidienne et les tendances d'activité",
+        "activitySummary": "Résumé d'activité",
+        "learningTimeline": "Chronologie d'apprentissage",
+        "dateLabel": "Date :"
+    }
+}

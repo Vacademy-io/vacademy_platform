@@ -1,0 +1,8 @@
+{
+    "view": "View",
+    "markingCriteriaFor": "Marking Criteria for {{marks}} marks",
+    "selectedCriteria": "Selected Criteria:",
+    "criteriaColumn": "Criteria",
+    "marksColumn": "Marks",
+    "noCriteriaSelected": "No criteria selected, please select criteria from available list"
+}

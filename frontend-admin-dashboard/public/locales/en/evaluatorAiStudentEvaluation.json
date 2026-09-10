@@ -1,0 +1,18 @@
+{
+    "noPdfSubmissionFound": "No PDF submission found for this student",
+    "couldNotRetrievePdfUrl": "Could not retrieve PDF URL",
+    "failedToRetrievePdf": "Failed to retrieve PDF",
+    "columnId": "Id",
+    "columnName": "Name",
+    "columnSubmission": "Submission",
+    "columnMarks": "Marks",
+    "columnDetails": "Details",
+    "columnStatus": "Status",
+    "loading": "Loading...",
+    "preview": "Preview",
+    "details": "Details",
+    "extractedResponsesOf": "Extracted Responses of {{student}}",
+    "confirmReEvaluation": "Confirm Re-evaluation",
+    "confirmReEvaluateStudent": "Are you sure you want to re-evaluate this student?",
+    "goAhead": "Go ahead"
+}

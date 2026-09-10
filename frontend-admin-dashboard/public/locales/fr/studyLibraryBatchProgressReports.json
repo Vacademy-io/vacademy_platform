@@ -1,0 +1,36 @@
+{
+    "validation": {
+        "courseRequired": "Le cours est requis",
+        "sessionRequired": "La session est requise",
+        "levelRequired": "Le niveau est requis"
+    },
+    "toast": {
+        "noDataToExport": "Aucune donnée à exporter pour l'instant",
+        "exportSuccess": "Rapport exporté",
+        "exportFailed": "Échec de l'exportation du PDF"
+    },
+    "form": {
+        "selectA": "Sélectionner un(e) {{term}}",
+        "searchTerm": "Rechercher {{term}}...",
+        "generateReport": "Générer le rapport"
+    },
+    "report": {
+        "exporting": "Exportation en cours...",
+        "exportPdf": "Exporter en PDF",
+        "subjectWiseOverview": "Aperçu par {{term}}"
+    },
+    "pdf": {
+        "batchSubjectWiseProgress": "Progression par {{subjectTerm}} — {{batchTerm}}",
+        "learnerProgressReport": "Rapport de progression de l'apprenant",
+        "learnerLabel": "Apprenant",
+        "termCompleted": "{{term}} terminé(e)",
+        "termsTracked": "{{term}}s suivi(e)s",
+        "termWiseProgress": "Progression par {{term}}",
+        "termColonName": "{{term}} : {{name}}",
+        "completed": "Terminé",
+        "dailyTimeAvg": "Temps quotidien (moy.)",
+        "termDailyTimeAvg": "Temps quotidien (moy.) — {{term}}",
+        "termWiseProgressReport": "Rapport de progression par {{term}}",
+        "learningProgressReport": "Rapport de progression d'apprentissage"
+    }
+}

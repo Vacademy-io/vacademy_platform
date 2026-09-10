@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { getSubOrgsWithDetails, type SubOrgListItem } from '../../-services/custom-team-services';
@@ -121,6 +122,8 @@ function SkeletonRows({ columns }: { columns: number }) {
 }
 
 export function SubOrgList() {
+    const { t } = useTranslation('manageCustomTeamsSubOrgList');
+    const { t: tColumns } = useTranslation('manageCustomTeamsSubOrgColumns');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [searchInput, setSearchInput] = useState('');
     const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -172,9 +175,9 @@ export function SubOrgList() {
         const options = [...present]
             .sort()
             .map((value) => ({ value, label: humanizeStatus(value) }));
-        if (hasNoPlan) options.push({ value: NO_PLAN, label: 'No plan' });
+        if (hasNoPlan) options.push({ value: NO_PLAN, label: t('filters.noPlanOption') });
         return options;
-    }, [allSubOrgs]);
+    }, [allSubOrgs, t]);
 
     // City/State options come from the loaded rows (address stamped on the spawned
     // institute at registration) — a filter only appears when values exist. Address and
@@ -259,10 +262,10 @@ export function SubOrgList() {
             const url = buildInviteUrl(org);
             if (url) {
                 navigator.clipboard.writeText(url);
-                toast.success('Invite link copied');
+                toast.success(t('toasts.inviteLinkCopied'));
             }
         },
-        [buildInviteUrl]
+        [buildInviteUrl, t]
     );
 
     // Column layout, remembered per browser: which columns are on, and their order.
@@ -283,12 +286,13 @@ export function SubOrgList() {
     const naturalColumns = useMemo<SubOrgColumn[]>(
         () =>
             buildSubOrgColumns({
+                t: tColumns,
                 inviteTerm: getTerminology(OtherTerms.Invite, SystemTerms.Invite),
                 buildInviteUrl,
                 copyInviteLink,
                 openSubOrg,
             }),
-        [buildInviteUrl, copyInviteLink, openSubOrg]
+        [tColumns, buildInviteUrl, copyInviteLink, openSubOrg]
     );
 
     /** Natural ids reconciled against the saved order — the on-screen left-to-right order. */
@@ -368,7 +372,7 @@ export function SubOrgList() {
      */
     const handleExport = () => {
         if (filteredSubOrgs.length === 0) {
-            toast.info('Nothing to export.');
+            toast.info(t('toasts.nothingToExport'));
             return;
         }
         const csv = buildCsv(
@@ -380,13 +384,11 @@ export function SubOrgList() {
             '_'
         );
         downloadCsv(csv, `${safeName}_list.csv`);
-        toast.success(
-            `Exported ${filteredSubOrgs.length} ${
-                filteredSubOrgs.length === 1
-                    ? getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()
-                    : getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()
-            }.`
-        );
+        const term =
+            filteredSubOrgs.length === 1
+                ? getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()
+                : getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase();
+        toast.success(t('toasts.exported', { count: filteredSubOrgs.length, term }));
     };
 
     // A failed fetch must NOT fall through to the empty table. React Query leaves `data`
@@ -400,13 +402,12 @@ export function SubOrgList() {
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-danger-200 bg-danger-50 p-8 text-center">
                 <Buildings className="size-8 text-danger-400" />
                 <p className="text-subtitle font-semibold text-danger-700">
-                    Couldn&apos;t load{' '}
-                    {getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()}
+                    {t('error.title', {
+                        term: getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase(),
+                    })}
                 </p>
                 <p className="text-caption text-danger-600">
-                    {status === 403
-                        ? 'Your role does not have access to this data. Ask an institute admin to check the Display Settings for your role.'
-                        : 'Something went wrong fetching the list. Please retry in a moment.'}
+                    {status === 403 ? t('error.forbidden') : t('error.generic')}
                 </p>
             </div>
         );
@@ -441,17 +442,17 @@ export function SubOrgList() {
                             <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
                             <Input
                                 id={searchId}
-                                aria-label="Search"
+                                aria-label={t('filters.searchAriaLabel')}
                                 value={searchInput}
                                 onChange={(e) => setSearchInput(e.target.value)}
-                                placeholder="Search by name, email or phone"
+                                placeholder={t('filters.searchPlaceholder')}
                                 className="h-10 px-8"
                             />
                             {searchInput && (
                                 <button
                                     type="button"
                                     onClick={() => setSearchInput('')}
-                                    aria-label="Clear search"
+                                    aria-label={t('filters.clearSearchAriaLabel')}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                                 >
                                     <X className="size-3.5" weight="bold" />
@@ -477,13 +478,15 @@ export function SubOrgList() {
                                     disable={filteredSubOrgs.length === 0}
                                 >
                                     <DownloadSimple className="mr-2 size-4" />
-                                    Export
+                                    {t('actions.export')}
                                 </MyButton>
                             )}
                             {canCreate && (
                                 <MyButton onClick={() => setIsCreateModalOpen(true)}>
                                     <Plus className="mr-2 size-4" />
-                                    Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
+                                    {t('actions.create', {
+                                        term: getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg),
+                                    })}
                                 </MyButton>
                             )}
                         </div>
@@ -495,41 +498,41 @@ export function SubOrgList() {
                     <div className="flex flex-wrap items-center gap-2">
                         {statusOptions.length > 0 && (
                             <MultiSelectFilter
-                                label="Status"
+                                label={t('filters.status')}
                                 options={statusOptions}
                                 selected={statusFilter}
                                 onChange={setStatusFilter}
-                                placeholder="Search status…"
+                                placeholder={t('filters.statusSearchPlaceholder')}
                                 widthClass="w-auto min-w-24"
                             />
                         )}
                         {cityOptions.length > 0 && (
                             <MultiSelectFilter
-                                label="City"
+                                label={t('filters.city')}
                                 options={cityOptions}
                                 selected={cityFilter}
                                 onChange={setCityFilter}
-                                placeholder="Search city…"
+                                placeholder={t('filters.citySearchPlaceholder')}
                                 widthClass="w-auto min-w-20"
                             />
                         )}
                         {stateOptions.length > 0 && (
                             <MultiSelectFilter
-                                label="State"
+                                label={t('filters.state')}
                                 options={stateOptions}
                                 selected={stateFilter}
                                 onChange={setStateFilter}
-                                placeholder="Search state…"
+                                placeholder={t('filters.stateSearchPlaceholder')}
                                 widthClass="w-auto min-w-24"
                             />
                         )}
                         {/* Placeholder is the field name, not a sample value: "110001" read as a
                             pincode that was already applied. */}
                         <Input
-                            aria-label="Pincode"
+                            aria-label={t('filters.pincodeAriaLabel')}
                             value={pincodeFilter}
                             onChange={(e) => setPincodeFilter(e.target.value)}
-                            placeholder="Pincode"
+                            placeholder={t('filters.pincodePlaceholder')}
                             inputMode="numeric"
                             className={cn(
                                 'h-10 w-24',
@@ -542,15 +545,18 @@ export function SubOrgList() {
                 {hasActiveFilters && (
                     <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
                         <span className="text-xs text-muted-foreground">
-                            {filteredSubOrgs.length} of {allSubOrgs.length}{' '}
-                            {getTerminologyPlural(
-                                OtherTerms.SubOrg,
-                                SystemTerms.SubOrg
-                            ).toLowerCase()}
+                            {t('summary.filteredCount', {
+                                filtered: filteredSubOrgs.length,
+                                total: allSubOrgs.length,
+                                term: getTerminologyPlural(
+                                    OtherTerms.SubOrg,
+                                    SystemTerms.SubOrg
+                                ).toLowerCase(),
+                            })}
                         </span>
                         {!!q && (
                             <FilterChip
-                                label="Search"
+                                label={t('filters.search')}
                                 value={searchInput.trim()}
                                 onRemove={() => setSearchInput('')}
                             />
@@ -558,8 +564,12 @@ export function SubOrgList() {
                         {statusFilter.map((value) => (
                             <FilterChip
                                 key={`status-${value}`}
-                                label="Status"
-                                value={value === NO_PLAN ? 'No plan' : humanizeStatus(value)}
+                                label={t('filters.status')}
+                                value={
+                                    value === NO_PLAN
+                                        ? t('filters.noPlanOption')
+                                        : humanizeStatus(value)
+                                }
                                 onRemove={() =>
                                     setStatusFilter(statusFilter.filter((v) => v !== value))
                                 }
@@ -568,7 +578,7 @@ export function SubOrgList() {
                         {cityFilter.map((value) => (
                             <FilterChip
                                 key={`city-${value}`}
-                                label="City"
+                                label={t('filters.city')}
                                 value={value}
                                 onRemove={() =>
                                     setCityFilter(cityFilter.filter((v) => v !== value))
@@ -578,7 +588,7 @@ export function SubOrgList() {
                         {stateFilter.map((value) => (
                             <FilterChip
                                 key={`state-${value}`}
-                                label="State"
+                                label={t('filters.state')}
                                 value={value}
                                 onRemove={() =>
                                     setStateFilter(stateFilter.filter((v) => v !== value))
@@ -587,7 +597,7 @@ export function SubOrgList() {
                         ))}
                         {!!pincodeFilter.trim() && (
                             <FilterChip
-                                label="Pincode"
+                                label={t('filters.pincodeAriaLabel')}
                                 value={pincodeFilter.trim()}
                                 onRemove={() => setPincodeFilter('')}
                             />
@@ -603,7 +613,7 @@ export function SubOrgList() {
                             }}
                             className="rounded-sm text-xs font-medium text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                         >
-                            Clear all
+                            {t('filters.clearAll')}
                         </button>
                     </div>
                 )}
@@ -672,8 +682,8 @@ export function SubOrgList() {
                                                 // does not say the control sorts. The label keeps
                                                 // that visible text inside it, so voice control
                                                 // ("click Name") still targets the right button.
-                                                aria-label={`Sort by ${c.label}`}
-                                                title={`Sort by ${c.label}`}
+                                                aria-label={t('table.sortBy', { label: c.label })}
+                                                title={t('table.sortBy', { label: c.label })}
                                             >
                                                 {c.label}
                                                 {!active && (
@@ -722,14 +732,18 @@ export function SubOrgList() {
                                             <Buildings className="h-8 w-8 opacity-50" />
                                             <p>
                                                 {hasActiveFilters
-                                                    ? `No ${getTerminologyPlural(
-                                                          OtherTerms.SubOrg,
-                                                          SystemTerms.SubOrg
-                                                      ).toLowerCase()} match your filters.`
-                                                    : `No ${getTerminologyPlural(
-                                                          OtherTerms.SubOrg,
-                                                          SystemTerms.SubOrg
-                                                      ).toLowerCase()} found.`}
+                                                    ? t('empty.filtered', {
+                                                          term: getTerminologyPlural(
+                                                              OtherTerms.SubOrg,
+                                                              SystemTerms.SubOrg
+                                                          ).toLowerCase(),
+                                                      })
+                                                    : t('empty.none', {
+                                                          term: getTerminologyPlural(
+                                                              OtherTerms.SubOrg,
+                                                              SystemTerms.SubOrg
+                                                          ).toLowerCase(),
+                                                      })}
                                             </p>
                                         </div>
                                     </TableCell>

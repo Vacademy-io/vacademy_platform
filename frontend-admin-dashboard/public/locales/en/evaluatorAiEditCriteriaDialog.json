@@ -1,0 +1,14 @@
+{
+    "edit": "Edit",
+    "markingCriteria": "Marking Criteria",
+    "totalMarks": "Total Marks:",
+    "criteriaLabel": "Criteria:",
+    "criteriaColumn": "Criteria",
+    "marksColumn": "Marks",
+    "actionColumn": "Action",
+    "emptyCriteria": "No criteria. Add one below.",
+    "addNewCriteria": "Add New Criteria:",
+    "criteriaDescriptionPlaceholder": "Enter criteria description",
+    "cancel": "Cancel",
+    "save": "Save"
+}

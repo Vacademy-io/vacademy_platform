@@ -1,6 +1,7 @@
 import { createLazyFileRoute, useNavigate, useRouter } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
 import { ArrowSquareOut, Plus } from '@phosphor-icons/react';
@@ -21,6 +22,7 @@ export const Route = createLazyFileRoute('/evaluator-ai/')({
 });
 
 export function EvaluationDashboard() {
+  const { t } = useTranslation('evaluatorAiIndex');
   const [assessments] = useLocalStorage('assessments', []);
   const [students] = useLocalStorage('students', []);
 
@@ -39,20 +41,20 @@ export function EvaluationDashboard() {
   };
 
   useEffect(() => {
-    setNavHeading(<h1 className="text-lg">Dashboard</h1>);
-  }, []);
+    setNavHeading(<h1 className="text-lg">{t('dashboardHeading')}</h1>);
+  }, [t]);
 
   return (
     <>
       <Helmet>
-        <title>Dashboard</title>
+        <title>{t('dashboardHeading')}</title>
         <meta
           name="description"
-          content="This page shows the dashboard of the institute."
+          content={t('dashboardDescription')}
         />
       </Helmet>
       <h1 className="text-2xl">
-        Hello <span className="text-primary-500">Evaluator!</span>
+        {t('greetingHello')} <span className="text-primary-500">{t('greetingName')}</span>
       </h1>
       <div className="mt-8 flex w-full flex-col gap-6">
         <div className={`flex gap-6`}>
@@ -60,7 +62,7 @@ export function EvaluationDashboard() {
             <Card className="flex-1 grow bg-neutral-50 shadow-none">
               <CardHeader className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle>Enroll students</CardTitle>
+                  <CardTitle>{t('enrollStudentsTitle')}</CardTitle>
                   <MyButton
                     type="submit"
                     scale="medium"
@@ -70,7 +72,7 @@ export function EvaluationDashboard() {
                     className="text-sm"
                     onClick={handleEnrollButtonClick}
                   >
-                    Enroll
+                    {t('enroll')}
                   </MyButton>
                 </div>
                 <CardDescription className="flex items-center gap-4">
@@ -101,7 +103,7 @@ export function EvaluationDashboard() {
             <Card className="flex-1 grow bg-neutral-50 shadow-none">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>Create Assessment to evaluate</CardTitle>
+                  <CardTitle>{t('createAssessmentTitle')}</CardTitle>
                   <MyButton
                     type="submit"
                     scale="medium"
@@ -116,7 +118,7 @@ export function EvaluationDashboard() {
                     }}
                   >
                     <Plus size={32} />
-                    Create
+                    {t('create')}
                   </MyButton>
                 </div>
                 <CardDescription className="flex items-center gap-4 py-6">
@@ -130,7 +132,7 @@ export function EvaluationDashboard() {
                     }
                   >
                     <div className="flex items-center gap-1 hover:text-primary-500">
-                      <span>Assessment created</span>
+                      <span>{t('assessmentCreatedLabel')}</span>
                       <ArrowSquareOut />
                     </div>
                     <span className="text-primary-500">
@@ -148,7 +150,7 @@ export function EvaluationDashboard() {
         <Card className="h-[400px] bg-neutral-50 shadow-none">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Evaluate students response for an assessment</CardTitle>
+              <CardTitle>{t('evaluateStudentsTitle')}</CardTitle>
               <MyButton
                 type="submit"
                 scale="medium"
@@ -165,7 +167,7 @@ export function EvaluationDashboard() {
                   });
                 }}
               >
-                Evaluate
+                {t('evaluate')}
               </MyButton>
             </div>
             <CardDescription className="flex items-center gap-4"></CardDescription>

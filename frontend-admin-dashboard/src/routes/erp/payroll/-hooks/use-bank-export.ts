@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { getInstituteId } from '@/constants/helper';
 import { reportApiError } from '@/lib/report-api-error';
 import {
@@ -55,6 +56,7 @@ export interface UseBankExportResult {
  * person fixing it can look up quickly.
  */
 export function useBankExport({ runId, run }: UseBankExportArgs): UseBankExportResult {
+    const { t } = useTranslation('erpUseBankExport');
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
     const { byCode } = useEmployeeNames();
@@ -71,8 +73,8 @@ export function useBankExport({ runId, run }: UseBankExportArgs): UseBankExportR
         ? EXPORTABLE.has(status)
             ? null
             : status === 'CANCELLED'
-              ? 'This run was cancelled — there is nothing to pay out.'
-              : 'A bank file can only be built from an approved run, so the amounts in it are the ones the institute signed off. Approve the run first.'
+              ? t('blockedReasons.cancelled')
+              : t('blockedReasons.notApproved')
         : null;
     const canGenerate = !!run && blockedReason === null;
 

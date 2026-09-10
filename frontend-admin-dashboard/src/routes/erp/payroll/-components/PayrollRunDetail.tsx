@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, NotePencil } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { formatMonthValue } from '@/components/design-system/month-picker';
 import { StatusChip } from '@/components/design-system/status-chips';
@@ -10,8 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useHrRole } from '@/hooks/use-hr-role';
 import { RunStatusStepper } from '@/routes/erp/-shared/RunStatusStepper';
 import {
-    RUN_STATUS_LABELS,
-    RUN_TYPE_LABELS,
+    buildRunStatusLabels,
+    buildRunTypeLabels,
     runStatusChipType,
     type PayrollRunStatus,
     type PayrollRunType,
@@ -41,6 +42,7 @@ export const PayrollRunDetail = ({
     /** Lets the route lift the resolved period into the nav heading. */
     onPeriodResolved?: (period: string) => void;
 }) => {
+    const { t } = useTranslation(['erpPayrollRunDetail', 'erpPayrollStatus']);
     const navigate = useNavigate();
     const { isHrAdmin, isHrStaff } = useHrRole();
     const [tab, setTab] = useState('entries');
@@ -84,12 +86,9 @@ export const PayrollRunDetail = ({
             <div className="flex flex-col gap-4">
                 <MyButton buttonType="text" scale="small" onClick={backToRuns}>
                     <ArrowLeft size={14} />
-                    All payroll runs
+                    {t('backToRuns')}
                 </MyButton>
-                <HrErrorState
-                    message="Could not load this payroll run."
-                    onRetry={() => void refetchRun()}
-                />
+                <HrErrorState message={t('errors.loadFailed')} onRetry={() => void refetchRun()} />
             </div>
         );
     }
@@ -97,13 +96,15 @@ export const PayrollRunDetail = ({
     const runType = (run?.run_type ?? 'REGULAR').toUpperCase() as PayrollRunType;
     const status = (run?.status ?? '').toUpperCase() as PayrollRunStatus;
     const errorCount = errors.length;
+    const runTypeLabels = buildRunTypeLabels(t);
+    const runStatusLabels = buildRunStatusLabels(t);
 
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-4">
                 <MyButton buttonType="text" scale="small" onClick={backToRuns}>
                     <ArrowLeft size={14} />
-                    All payroll runs
+                    {t('backToRuns')}
                 </MyButton>
 
                 {isRunLoading || !run ? (
@@ -114,15 +115,17 @@ export const PayrollRunDetail = ({
                 ) : (
                     <div className="flex flex-col gap-4">
                         <div className="flex flex-wrap items-center gap-3">
-                            <h2 className="text-h2 text-neutral-700">{period || 'Payroll run'}</h2>
+                            <h2 className="text-h2 text-neutral-700">
+                                {period || t('fallbackHeading')}
+                            </h2>
                             <StatusChip
-                                text={RUN_TYPE_LABELS[runType] ?? run.run_type ?? 'Regular'}
+                                text={runTypeLabels[runType] ?? run.run_type ?? t('fallbackRunType')}
                                 textSize="text-caption"
                                 status="INFO"
                                 showIcon={false}
                             />
                             <StatusChip
-                                text={RUN_STATUS_LABELS[status] ?? run.status ?? '—'}
+                                text={runStatusLabels[status] ?? run.status ?? '—'}
                                 textSize="text-caption"
                                 status={runStatusChipType(run.status)}
                                 showIcon={false}
@@ -156,17 +159,19 @@ export const PayrollRunDetail = ({
 
             <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-4">
                 <TabsList className="w-fit">
-                    <TabsTrigger value="entries">Entries ({entries.length})</TabsTrigger>
+                    <TabsTrigger value="entries">
+                        {t('tabs.entries', { count: entries.length })}
+                    </TabsTrigger>
                     <TabsTrigger value="errors" className="flex items-center gap-2">
-                        Errors
+                        {t('tabs.errors')}
                         {errorCount > 0 && (
                             <Badge variant="destructive" className="px-2">
                                 {errorCount}
                             </Badge>
                         )}
                     </TabsTrigger>
-                    <TabsTrigger value="payslips">Payslips</TabsTrigger>
-                    <TabsTrigger value="bank-file">Bank file</TabsTrigger>
+                    <TabsTrigger value="payslips">{t('tabs.payslips')}</TabsTrigger>
+                    <TabsTrigger value="bank-file">{t('tabs.bankFile')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="entries" className="mt-0">

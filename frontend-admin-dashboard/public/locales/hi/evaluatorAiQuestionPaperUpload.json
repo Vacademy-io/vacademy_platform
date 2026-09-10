@@ -1,0 +1,31 @@
+{
+    "form": {
+        "questionsLabel": "प्रश्न",
+        "optionsLabel": "विकल्प",
+        "answersLabel": "उत्तर",
+        "explanationsLabel": "स्पष्टीकरण",
+        "docxHelp": {
+            "before": "यदि आपको docx फ़ाइल अपलोड करने में समस्या हो रही है, तो कृपया अपनी फ़ाइल को html में बदलें",
+            "linkText": "यहाँ",
+            "after": "और फिर से अपलोड करने का प्रयास करें।",
+            "step1": "चरण 1 - इस वेबसाइट पर जाएँ",
+            "step2": "चरण 2 - एम्बेड इमेज सक्षम करें",
+            "step3": "चरण 3 - परिवर्तित करने के बाद अपनी html फ़ाइल डाउनलोड करें",
+            "imageAlt": "लोगो"
+        },
+        "fileSizeProgress": "{{uploaded}} MB / {{total}} MB"
+    },
+    "common": {
+        "loading": "लोड हो रहा है...",
+        "preview": "पूर्वावलोकन",
+        "addQuestions": "प्रश्न जोड़ें",
+        "done": "पूर्ण"
+    },
+    "defaults": {
+        "sectionName": "अनुभाग 1"
+    },
+    "toast": {
+        "questionPaperAdded": "प्रश्न पत्र सफलतापूर्वक जोड़ा गया",
+        "questionsIncomplete": "आपके कुछ प्रश्न अधूरे हैं या उन पर ध्यान देने की आवश्यकता है!"
+    }
+}

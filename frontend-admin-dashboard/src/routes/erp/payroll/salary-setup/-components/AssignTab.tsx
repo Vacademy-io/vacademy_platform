@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Info, Warning } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { MoneyCell } from '@/components/design-system/money-cell';
@@ -35,22 +37,23 @@ import {
 import type { EmployeeSalaryStructureDTO } from '@/routes/erp/-shared/hr-types';
 import { CURRENCY_OPTIONS } from './salary-meta';
 
-const schema = z.object({
-    employee_id: z.string().min(1, 'Pick an employee'),
-    template_id: z.string().min(1, 'Pick a template'),
-    ctc_annual: z
-        .string()
-        .min(1, 'Enter the annual CTC')
-        .refine(
-            (value) => Number.isFinite(Number(value)) && Number(value) > 0,
-            'Enter an amount above zero'
-        ),
-    effective_from: z.string().min(1, 'Pick the date this structure starts'),
-    currency: z.enum(['INR', 'AED', 'SAR']),
-    revision_reason: z.string().trim().max(300, 'Keep the reason under 300 characters'),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        employee_id: z.string().min(1, t('employeeIdRequired')),
+        template_id: z.string().min(1, t('templateIdRequired')),
+        ctc_annual: z
+            .string()
+            .min(1, t('ctcRequired'))
+            .refine(
+                (value) => Number.isFinite(Number(value)) && Number(value) > 0,
+                t('ctcAboveZero')
+            ),
+        effective_from: z.string().min(1, t('effectiveFromRequired')),
+        currency: z.enum(['INR', 'AED', 'SAR']),
+        revision_reason: z.string().trim().max(300, t('reasonMaxLength')),
+    });
 
-type AssignFormValues = z.infer<typeof schema>;
+type AssignFormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 const defaultValues: AssignFormValues = {
     employee_id: '',
@@ -61,8 +64,8 @@ const defaultValues: AssignFormValues = {
     revision_reason: '',
 };
 
-const formatRange = (structure: EmployeeSalaryStructureDTO) =>
-    `${structure.effective_from ?? '—'} → ${structure.effective_to ?? 'open'}`;
+const formatRange = (t: TFunction, structure: EmployeeSalaryStructureDTO) =>
+    `${structure.effective_from ?? '—'} → ${structure.effective_to ?? t('openStatus')}`;
 
 /**
  * Put an employee on a salary structure at a CTC.
@@ -74,8 +77,11 @@ const formatRange = (structure: EmployeeSalaryStructureDTO) =>
  * blind is how you discover a wrong CTC three payslips later.
  */
 export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
+    const { t } = useTranslation('erpAssignTab');
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
+
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const form = useForm<AssignFormValues>({
         resolver: zodResolver(schema),
@@ -136,7 +142,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: hrKeys.salaryStructures(employeeId) });
             queryClient.invalidateQueries({ queryKey: hrKeys.employee(employeeId) });
-            toast.success('Salary structure assigned');
+            toast.success(t('assignSuccess'));
             form.reset({
                 ...defaultValues,
                 // Keep the employee selected so the refreshed history is right there.
@@ -162,7 +168,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             values.effective_from <= activeStructure.effective_from
         ) {
             form.setError('effective_from', {
-                message: `Must be after ${activeStructure.effective_from}, when the current structure started`,
+                message: t('mustBeAfter', { date: activeStructure.effective_from }),
             });
             return;
         }
@@ -181,7 +187,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         () => [
             {
                 id: 'template_name',
-                header: 'Template',
+                header: t('columnTemplate'),
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-700">
                         {row.original.template_name ?? '—'}
@@ -190,14 +196,16 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             },
             {
                 id: 'effective',
-                header: 'Effective',
+                header: t('columnEffective'),
                 cell: ({ row }) => (
-                    <span className="text-body text-neutral-600">{formatRange(row.original)}</span>
+                    <span className="text-body text-neutral-600">
+                        {formatRange(t, row.original)}
+                    </span>
                 ),
             },
             {
                 id: 'ctc_annual',
-                header: 'CTC (annual)',
+                header: t('columnCtc'),
                 cell: ({ row }) => (
                     <MoneyCell
                         value={row.original.ctc_annual}
@@ -208,7 +216,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             },
             {
                 id: 'gross_monthly',
-                header: 'Gross / month',
+                header: t('columnGrossMonthly'),
                 cell: ({ row }) => (
                     <MoneyCell
                         value={row.original.gross_monthly}
@@ -219,12 +227,12 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columnStatus'),
                 cell: ({ row }) => {
                     const status = (row.original.status ?? '').toUpperCase();
                     return (
                         <StatusChip
-                            text={status === 'ACTIVE' ? 'Current' : 'Superseded'}
+                            text={status === 'ACTIVE' ? t('statusCurrent') : t('statusSuperseded')}
                             textSize="text-caption"
                             status={status === 'ACTIVE' ? 'SUCCESS' : 'INFO'}
                             showIcon={false}
@@ -234,7 +242,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             },
             {
                 id: 'revision_reason',
-                header: 'Reason',
+                header: t('columnReason'),
                 cell: ({ row }) => (
                     <span className="text-caption text-neutral-500">
                         {row.original.revision_reason ?? '—'}
@@ -242,7 +250,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                 ),
             },
         ],
-        []
+        [t]
     );
 
     const structureTableData: TableData<EmployeeSalaryStructureDTO> = {
@@ -258,7 +266,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         <div className="flex flex-col gap-6">
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-title">Assign a salary structure</CardTitle>
+                    <CardTitle className="text-title">{t('cardTitle')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <Form {...form}>
@@ -273,7 +281,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                     name="employee_id"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Employee</FormLabel>
+                                            <FormLabel>{t('employeeLabel')}</FormLabel>
                                             <FormControl>
                                                 <EmployeePicker
                                                     value={field.value}
@@ -291,7 +299,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                     name="template_id"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Template</FormLabel>
+                                            <FormLabel>{t('templateLabel')}</FormLabel>
                                             <FormControl>
                                                 <SearchableSelect
                                                     options={templateOptions}
@@ -302,11 +310,11 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                                     }
                                                     placeholder={
                                                         templatesQuery.isLoading
-                                                            ? 'Loading templates…'
-                                                            : 'Select template'
+                                                            ? t('loadingTemplates')
+                                                            : t('selectTemplate')
                                                     }
-                                                    searchPlaceholder="Search templates"
-                                                    emptyText="No templates yet — create one on the Templates tab."
+                                                    searchPlaceholder={t('searchTemplates')}
+                                                    emptyText={t('noTemplatesYet')}
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -319,7 +327,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                     name="ctc_annual"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>CTC (annual)</FormLabel>
+                                            <FormLabel>{t('ctcLabel')}</FormLabel>
                                             <FormControl>
                                                 <MyInput
                                                     inputType="number"
@@ -336,8 +344,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                                 />
                                             </FormControl>
                                             <FormDescription className="text-caption text-neutral-500">
-                                                The full annual cost. Monthly component amounts are
-                                                derived from this by the template.
+                                                {t('ctcDescription')}
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -349,7 +356,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                     name="effective_from"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Effective from</FormLabel>
+                                            <FormLabel>{t('effectiveFromLabel')}</FormLabel>
                                             <FormControl>
                                                 <MyInput
                                                     inputType="date"
@@ -373,7 +380,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                 <SelectField
                                     control={form.control}
                                     name="currency"
-                                    label="Currency"
+                                    label={t('currencyLabel')}
                                     required
                                     disabled={!isHrAdmin}
                                     options={CURRENCY_OPTIONS}
@@ -386,11 +393,13 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                         name="revision_reason"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Revision reason</FormLabel>
+                                                <FormLabel>{t('revisionReasonLabel')}</FormLabel>
                                                 <FormControl>
                                                     <MyInput
                                                         inputType="text"
-                                                        inputPlaceholder="Annual increment 2026"
+                                                        inputPlaceholder={t(
+                                                            'revisionReasonPlaceholder'
+                                                        )}
                                                         className="w-full sm:w-full"
                                                         disabled={!isHrAdmin}
                                                         input={field.value}
@@ -402,8 +411,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                                     />
                                                 </FormControl>
                                                 <FormDescription className="text-caption text-neutral-500">
-                                                    Kept on the superseded structure as the reason
-                                                    it changed.
+                                                    {t('revisionReasonDescription')}
                                                 </FormDescription>
                                                 <FormMessage />
                                             </FormItem>
@@ -419,12 +427,11 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                         className="mt-0.5 shrink-0 text-warning-600"
                                     />
                                     <span>
-                                        This employee already has a current structure starting{' '}
+                                        {t('supersedeWarning')}{' '}
                                         <span className="font-semibold">
                                             {activeStructure.effective_from ?? '—'}
                                         </span>
-                                        . Saving supersedes it. The new effective-from date must be
-                                        after that date — backdating is rejected.
+                                        {t('supersedeWarningSuffix')}
                                     </span>
                                 </div>
                             )}
@@ -432,10 +439,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             {!isHrAdmin && (
                                 <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                                     <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
-                                    <span>
-                                        You can review structures here, but assigning one needs HR
-                                        Admin access.
-                                    </span>
+                                    <span>{t('noAdminInfo')}</span>
                                 </div>
                             )}
 
@@ -445,9 +449,9 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                         buttonType="primary"
                                         scale="medium"
                                         onAsyncClick={form.handleSubmit(onSubmit)}
-                                        loadingText="Assigning…"
+                                        loadingText={t('assigningLoading')}
                                     >
-                                        Assign structure
+                                        {t('assignButton')}
                                     </MyButton>
                                 </div>
                             )}
@@ -459,7 +463,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
             {!!employeeId && (
                 <div className="flex flex-col gap-3">
                     <h3 className="text-subtitle text-neutral-700">
-                        Existing structures for this employee
+                        {t('existingStructuresHeading')}
                     </h3>
 
                     {structuresQuery.isError ? (
@@ -467,7 +471,7 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             <CardContent className="flex flex-col items-start gap-3 p-6">
                                 <div className="flex items-center gap-2 text-body text-danger-600">
                                     <Warning size={18} />
-                                    Could not load this employee&apos;s structures.
+                                    {t('loadStructuresError')}
                                 </div>
                                 <MyButton
                                     buttonType="secondary"
@@ -475,17 +479,16 @@ export const AssignTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                     onAsyncClick={async () => {
                                         await structuresQuery.refetch();
                                     }}
-                                    loadingText="Retrying…"
+                                    loadingText={t('retrying')}
                                 >
-                                    Retry
+                                    {t('retry')}
                                 </MyButton>
                             </CardContent>
                         </Card>
                     ) : !structuresQuery.isLoading && structures.length === 0 ? (
                         <Card>
                             <CardContent className="p-6 text-body text-neutral-600">
-                                No salary structure yet — this will be their first, so any
-                                effective-from date is accepted.
+                                {t('noStructuresYet')}
                             </CardContent>
                         </Card>
                     ) : (

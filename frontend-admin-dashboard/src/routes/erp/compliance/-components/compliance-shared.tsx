@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Warning, Prohibit } from '@phosphor-icons/react';
 import { Card } from '@/components/ui/card';
 import { MoneyCell } from '@/components/design-system/money-cell';
@@ -35,12 +36,13 @@ export const FY_QUARTERS = [
  * block, never collapsed away.
  */
 export const ComplianceWarnings = ({ warnings }: { warnings?: string[] }) => {
+    const { t } = useTranslation('erpComplianceShared');
     if (!warnings?.length) return null;
     return (
         <Card className="flex flex-col gap-2 border-warning-200 bg-warning-50 p-4">
             <div className="flex items-center gap-2 text-warning-700">
                 <Warning size={18} />
-                <span className="text-subtitle font-medium">Check before filing</span>
+                <span className="text-subtitle font-medium">{t('warnings.title')}</span>
             </div>
             <ul className="flex list-disc flex-col gap-1 ps-6 text-body text-neutral-600">
                 {warnings.map((w) => (
@@ -60,30 +62,33 @@ export const ComplianceWarnings = ({ warnings }: { warnings?: string[] }) => {
  */
 export const ComplianceSkipped = ({
     skipped,
-    noun = 'employees',
+    noun,
 }: {
     skipped?: ComplianceSkippedRowDTO[];
     noun?: string;
 }) => {
+    const { t } = useTranslation('erpComplianceShared');
     if (!skipped?.length) return null;
+    const resolvedNoun = noun ?? t('skipped.defaultNoun');
     return (
         <Card className="flex flex-col gap-3 border-danger-200 bg-danger-50 p-4">
             <div className="flex items-center gap-2 text-danger-600">
                 <Prohibit size={18} />
                 <span className="text-subtitle font-medium">
-                    {skipped.length} {noun} excluded from this file
+                    {t('skipped.excludedCount', { count: skipped.length, noun: resolvedNoun })}
                 </span>
             </div>
-            <p className="text-caption text-neutral-600">
-                Fix the reason below and generate again — the file as it stands does not include
-                them.
-            </p>
+            <p className="text-caption text-neutral-600">{t('skipped.fixHint')}</p>
             <div className="overflow-x-auto">
                 <table className="w-full text-body">
                     <thead>
                         <tr className="border-b border-danger-200 text-caption uppercase text-neutral-500">
-                            <th className="py-2 text-start font-medium">Employee</th>
-                            <th className="py-2 text-start font-medium">Reason</th>
+                            <th className="py-2 text-start font-medium">
+                                {t('skipped.table.employee')}
+                            </th>
+                            <th className="py-2 text-start font-medium">
+                                {t('skipped.table.reason')}
+                            </th>
                         </tr>
                     </thead>
                     <tbody>

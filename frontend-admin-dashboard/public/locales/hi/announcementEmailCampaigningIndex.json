@@ -1,0 +1,203 @@
+{
+    "page": {
+        "titleEdit": "शेड्यूल्ड ईमेल कैंपेन संपादित करें",
+        "titleCreate": "ईमेल कैंपेनिंग",
+        "navHeadingEdit": "शेड्यूल्ड कैंपेन संपादित करें",
+        "navHeadingCreate": "ईमेल कैंपेनिंग",
+        "editingBadge": "शेड्यूल्ड कैंपेन संपादित हो रहा है",
+        "cancel": "रद्द करें"
+    },
+    "common": {
+        "tryAgain": "पुनः प्रयास करें"
+    },
+    "toast": {
+        "prefillErrorTitle": "संपादन के लिए कैंपेन लोड नहीं हो सका",
+        "templateLoadErrorTitle": "त्रुटि",
+        "templateLoadErrorDescription": "टेम्पलेट सामग्री लोड करने में विफल। कृपया पुनः प्रयास करें।",
+        "missingFieldsTitle": "आवश्यक फ़ील्ड गायब हैं",
+        "selectTagTitle": "कम से कम एक टैग चुनें",
+        "selectTagDescription": "आपके पास बिना किसी चुने हुए टैग वाला एक TAG प्राप्तकर्ता है।",
+        "instituteRequiredTitle": "संस्थान आवश्यक है",
+        "instituteRequiredDescription": "TAG प्राप्तकर्ताओं को लक्षित करने के लिए एक संस्थान चुना जाना चाहिए।",
+        "configureCustomFieldFiltersTitle": "कस्टम फ़ील्ड फ़िल्टर कॉन्फ़िगर करें",
+        "configureCustomFieldFiltersDescription": "आपके पास बिना किसी कॉन्फ़िगर किए गए फ़िल्टर वाला एक कस्टम फ़ील्ड फ़िल्टर प्राप्तकर्ता है।",
+        "updateSuccess": "ईमेल कैंपेन सफलतापूर्वक अपडेट किया गया",
+        "createSuccess": "ईमेल कैंपेन सफलतापूर्वक बनाया गया",
+        "fixHighlightedFieldsTitle": "कृपया हाइलाइट किए गए फ़ील्ड ठीक करें",
+        "failedToCreateTitle": "बनाने में विफल"
+    },
+    "validation": {
+        "campaignNameRequired": "कैंपेन का नाम आवश्यक है",
+        "emailSubjectRequired": "ईमेल विषय आवश्यक है",
+        "contentRequired": "सामग्री आवश्यक है",
+        "priorityRequired": "प्राथमिकता आवश्यक है",
+        "scheduleRunTimeRequired": "शेड्यूल: रन समय आवश्यक है",
+        "runTimeRequired": "रन समय आवश्यक है",
+        "scheduleCronRequired": "शेड्यूल: रिकरिंग के लिए क्रॉन एक्सप्रेशन आवश्यक है",
+        "cronRequired": "क्रॉन एक्सप्रेशन आवश्यक है"
+    },
+    "templatesLoadError": "ईमेल टेम्पलेट लोड करने में विफल। कृपया पुनः प्रयास करें।",
+    "reviewDialog": {
+        "title": "ईमेल कैंपेन की समीक्षा करें",
+        "description": "बनाने से पहले विवरण की पुष्टि करें।",
+        "campaignName": "कैंपेन का नाम",
+        "emailSubject": "ईमेल विषय",
+        "mode": "मोड",
+        "modeSystemAlert": "SYSTEM_ALERT (सामान्य घोषणा)",
+        "medium": "माध्यम",
+        "audience": "दर्शक",
+        "schedule": "शेड्यूल",
+        "back": "वापस",
+        "confirmUpdate": "पुष्टि करें और अपडेट करें",
+        "confirmCreate": "पुष्टि करें और बनाएं"
+    },
+    "previewDialog": {
+        "title": "ईमेल पूर्वावलोकन",
+        "description": "प्राप्तकर्ता के इनबॉक्स में ईमेल इस तरह दिखाई देगा।",
+        "mobile": "मोबाइल",
+        "tablet": "टैबलेट",
+        "laptop": "लैपटॉप",
+        "from": "प्रेषक: आपका संस्थान",
+        "to": "प्रति: recipient@email.com",
+        "noSubject": "(कोई विषय नहीं)",
+        "noContentBody": "कोई ईमेल सामग्री नहीं"
+    },
+    "basic": {
+        "campaignNameLabel": "कैंपेन का नाम",
+        "campaignNameHint": "(आंतरिक — आपके डैशबोर्ड में इस कैंपेन की पहचान के लिए उपयोग किया जाता है)",
+        "campaignNamePlaceholder": "जैसे स्प्रिंग 2026 ऑनबोर्डिंग — बैच A",
+        "emailSubjectLabel": "ईमेल विषय",
+        "emailSubjectHint": "(प्राप्तकर्ता अपने इनबॉक्स में क्या देखते हैं)",
+        "emailSubjectPlaceholder": "ईमेल विषय पंक्ति",
+        "previewTextLabel": "पूर्वावलोकन टेक्स्ट",
+        "previewTextHint": "(खोलने से पहले इनबॉक्स में दिखाया जाता है)",
+        "previewTextPlaceholder": "पूर्वावलोकन टेक्स्ट दर्ज करें...",
+        "emailContentLabel": "ईमेल सामग्री",
+        "richEditor": "रिच एडिटर",
+        "htmlSource": "HTML स्रोत",
+        "preview": "पूर्वावलोकन",
+        "contentPlaceholder": "ईमेल की सामग्री लिखें",
+        "htmlSourcePlaceholder": "HTML स्रोत"
+    },
+    "template": {
+        "heading": "ईमेल टेम्पलेट",
+        "useTemplate": "ईमेल टेम्पलेट का उपयोग करें",
+        "selectTemplate": "टेम्पलेट चुनें",
+        "placeholder": "एक टेम्पलेट चुनें",
+        "searchPlaceholder": "टेम्पलेट खोजें...",
+        "emptyText": "कोई टेम्पलेट नहीं मिला।",
+        "addNew": "नया टेम्पलेट जोड़ें",
+        "selected": "टेम्पलेट चयनित: {{name}}",
+        "fromEmailLabel": "प्रेषक ईमेल",
+        "fromEmailLoading": "ईमेल कॉन्फ़िगरेशन लोड हो रहे हैं...",
+        "fromEmailPlaceholder": "प्रेषक ईमेल चुनें",
+        "fromEmailNoConfigs": "कोई ईमेल कॉन्फ़िगरेशन उपलब्ध नहीं है",
+        "fromPrefix": "प्रेषक: {{email}}",
+        "helperUseTemplate": "टेम्पलेट सामग्री ऊपर दिए गए शीर्षक और सामग्री पर लागू की जाएगी।",
+        "helperNoTemplate": "विषय और मुख्य भाग ऊपर दिए गए शीर्षक और सामग्री का उपयोग करेंगे।"
+    },
+    "audience": {
+        "heading": "दर्शक",
+        "description": "परिभाषित करें कि इस ईमेल कैंपेन को कौन प्राप्त करेगा।",
+        "addAllStudents": "+ सभी छात्र",
+        "addAllTeachers": "+ सभी शिक्षक",
+        "addBatch": "+ {{batchTerm}}",
+        "addTag": "+ टैग",
+        "addUser": "+ विशिष्ट उपयोगकर्ता",
+        "addCampaign": "+ कैंपेन"
+    },
+    "recipientType": {
+        "role": "भूमिका",
+        "user": "उपयोगकर्ता",
+        "tag": "टैग",
+        "campaign": "कैंपेन"
+    },
+    "role": {
+        "student": "छात्र",
+        "teacher": "शिक्षक",
+        "admin": "एडमिन",
+        "learner": "शिक्षार्थी",
+        "selectPlaceholder": "भूमिका चुनें"
+    },
+    "userIdPlaceholder": "उपयोगकर्ता ID या ईमेल",
+    "batch": {
+        "selectPlaceholder": "बैच चुनें",
+        "searchPlaceholder": "बैच खोजें...",
+        "emptyText": "कोई बैच नहीं मिला।"
+    },
+    "tag": {
+        "loading": "टैग लोड हो रहे हैं…",
+        "selectPlaceholder": "एक या अधिक टैग चुनें",
+        "helper": "टैग चयनित टैग से जुड़े उपयोगकर्ताओं को लक्षित करते हैं।",
+        "estimatedForRow": "इस पंक्ति के लिए अनुमानित उपयोगकर्ता: {{count}}",
+        "selectTagPlaceholder": "टैग चुनें",
+        "removeAriaLabel": "टैग हटाएं"
+    },
+    "campaign": {
+        "loading": "कैंपेन लोड हो रहे हैं…",
+        "selectPlaceholder": "कैंपेन चुनें",
+        "noneAvailable": "कोई कैंपेन उपलब्ध नहीं है"
+    },
+    "customFieldFilter": {
+        "helper": "कस्टम फ़ील्ड मानों के आधार पर उपयोगकर्ताओं को फ़िल्टर करें। दर्शकों को सीमित करने के लिए कई फ़िल्टर जोड़ें।",
+        "selectFieldPlaceholder": "कस्टम फ़ील्ड चुनें",
+        "operatorEquals": "बराबर है",
+        "operatorContains": "में शामिल है",
+        "operatorStartsWith": "से शुरू होता है",
+        "operatorEndsWith": "पर समाप्त होता है",
+        "valuePlaceholder": "फ़िल्टर मान दर्ज करें",
+        "selectValuesPlaceholder": "मान चुनें",
+        "numberPlaceholder": "संख्या दर्ज करें",
+        "addFilter": "+ फ़िल्टर जोड़ें"
+    },
+    "recipientRow": {
+        "remove": "हटाएं",
+        "removeRecipientAriaLabel": "प्राप्तकर्ता हटाएं"
+    },
+    "exclusions": {
+        "label": "बहिष्करण",
+        "addExclusion": "+ बहिष्करण जोड़ें",
+        "none": "अभी तक कोई बहिष्करण नहीं जोड़ा गया"
+    },
+    "customFieldsSection": {
+        "label": "कस्टम फ़ील्ड फ़िल्टर",
+        "addCustomField": "+ कस्टम फ़ील्ड जोड़ें",
+        "none": "अभी तक कोई कस्टम फ़ील्ड फ़िल्टर नहीं जोड़ा गया"
+    },
+    "estimatedUsers": {
+        "estimating": "उपयोगकर्ताओं का अनुमान लगाया जा रहा है…",
+        "countLabel": "अनुमानित उपयोगकर्ता (चयनित टैग में से कोई भी): {{count}}"
+    },
+    "settings": {
+        "heading": "कैंपेन सेटिंग्स",
+        "description": "इस ईमेल कैंपेन के लिए प्राथमिकता और समाप्ति कॉन्फ़िगर करें।",
+        "priorityExpiration": "प्राथमिकता और समाप्ति",
+        "priorityLabel": "प्राथमिकता",
+        "priorityPlaceholder": "प्राथमिकता",
+        "expiresAt": "समाप्ति तिथि (वैकल्पिक)"
+    },
+    "scheduling": {
+        "heading": "शेड्यूलिंग",
+        "typePlaceholder": "शेड्यूल प्रकार",
+        "timezonePlaceholder": "समय क्षेत्र",
+        "quickPicks": "त्वरित चयन:",
+        "now": "अभी",
+        "plus1h": "+1 घंटा",
+        "tomorrow9am": "कल सुबह 9 बजे",
+        "monday9am": "सोम सुबह 9 बजे",
+        "runAt": "रन समय",
+        "cronExpressionLabel": "क्रॉन एक्सप्रेशन",
+        "cronPlaceholder": "0 0 9 * * ?",
+        "daily9am": "रोज़ सुबह 9 बजे",
+        "monday9amTemplate": "सोमवार सुबह 9 बजे",
+        "hourly": "प्रति घंटा"
+    },
+    "submit": {
+        "updating": "अपडेट हो रहा है…",
+        "sending": "भेजा जा रहा है…",
+        "updateCampaign": "शेड्यूल्ड कैंपेन अपडेट करें",
+        "sendCampaign": "ईमेल कैंपेन भेजें",
+        "reviewAndUpdate": "समीक्षा करें और अपडेट करें",
+        "reviewAndSend": "समीक्षा करें और भेजें"
+    }
+}

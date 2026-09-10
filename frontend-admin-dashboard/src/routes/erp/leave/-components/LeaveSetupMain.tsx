@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Check, Minus, PencilSimple, Plus } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { StatusChip } from '@/components/design-system/status-chips';
@@ -19,11 +21,11 @@ import { LeavePolicyDialog } from './LeavePolicyDialog';
 import { LeaveTypeDialog } from './LeaveTypeDialog';
 import { ACCRUAL_TYPE_LABELS, GENDER_LABELS, formatDays, humanizeToken } from './leave-meta';
 
-const BoolCell = ({ value }: { value: boolean | undefined }) =>
+const BoolCell = ({ value, t }: { value: boolean | undefined; t: TFunction }) =>
     value ? (
-        <Check size={16} className="text-success-600" aria-label="Yes" />
+        <Check size={16} className="text-success-600" aria-label={t('yes')} />
     ) : (
-        <Minus size={16} className="text-neutral-300" aria-label="No" />
+        <Minus size={16} className="text-neutral-300" aria-label={t('no')} />
     );
 
 const RecordStatusChip = ({ status }: { status: string | null | undefined }) => {
@@ -54,6 +56,7 @@ const asTableData = <T,>(rows: T[]): TableData<T> => ({
  * reference a leave type that doesn't exist yet.
  */
 export const LeaveSetupMain = () => {
+    const { t } = useTranslation('erpLeaveSetupMain');
     const { isHrAdmin, isHrStaff } = useHrRole();
     const [typeDialogOpen, setTypeDialogOpen] = useState(false);
     const [editingType, setEditingType] = useState<LeaveTypeDTO | null>(null);
@@ -79,7 +82,7 @@ export const LeaveSetupMain = () => {
     const typeNameById = useMemo(() => {
         const map = new Map<string, string>();
         types.forEach((type) => {
-            if (type.id) map.set(type.id, type.name || type.code || 'Leave');
+            if (type.id) map.set(type.id, type.name || type.code || t('leave'));
         });
         return map;
     }, [types]);
@@ -105,7 +108,7 @@ export const LeaveSetupMain = () => {
         () => [
             {
                 id: 'name',
-                header: 'Leave type',
+                header: t('columns.leaveType'),
                 size: 200,
                 cell: ({ row }) => (
                     <div className="flex flex-col">
@@ -122,7 +125,7 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'code',
-                header: 'Code',
+                header: t('columns.code'),
                 size: 110,
                 cell: ({ row }) => (
                     <span className="font-mono text-caption text-muted-foreground">
@@ -132,41 +135,41 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'is_paid',
-                header: 'Paid',
+                header: t('columns.paid'),
                 size: 80,
-                cell: ({ row }) => <BoolCell value={row.original.is_paid} />,
+                cell: ({ row }) => <BoolCell value={row.original.is_paid} t={t} />,
             },
             {
                 id: 'carry_forward',
-                header: 'Carry forward',
+                header: t('columns.carryForward'),
                 size: 140,
                 cell: ({ row }) =>
                     row.original.is_carry_forward ? (
                         <span className="text-body tabular-nums text-foreground">
                             {row.original.max_carry_forward === undefined ||
                             row.original.max_carry_forward === null
-                                ? 'Uncapped'
-                                : `Up to ${row.original.max_carry_forward}`}
+                                ? t('uncapped')
+                                : t('upTo', { count: row.original.max_carry_forward })}
                         </span>
                     ) : (
-                        <BoolCell value={false} />
+                        <BoolCell value={false} t={t} />
                     ),
             },
             {
                 id: 'is_encashable',
-                header: 'Encashable',
+                header: t('columns.encashable'),
                 size: 110,
-                cell: ({ row }) => <BoolCell value={row.original.is_encashable} />,
+                cell: ({ row }) => <BoolCell value={row.original.is_encashable} t={t} />,
             },
             {
                 id: 'requires_document',
-                header: 'Document',
+                header: t('columns.document'),
                 size: 110,
-                cell: ({ row }) => <BoolCell value={row.original.requires_document} />,
+                cell: ({ row }) => <BoolCell value={row.original.requires_document} t={t} />,
             },
             {
                 id: 'min_days',
-                header: 'Min days',
+                header: t('columns.minDays'),
                 size: 100,
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-muted-foreground">
@@ -176,7 +179,7 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'max_consecutive_days',
-                header: 'Max consecutive',
+                header: t('columns.maxConsecutive'),
                 size: 140,
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-muted-foreground">
@@ -186,7 +189,7 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'applicable_gender',
-                header: 'Applies to',
+                header: t('columns.appliesTo'),
                 size: 110,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -197,7 +200,7 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columns.status'),
                 size: 110,
                 cell: ({ row }) => <RecordStatusChip status={row.original.status} />,
             },
@@ -213,7 +216,9 @@ export const LeaveSetupMain = () => {
                                   scale="small"
                                   layoutVariant="icon"
                                   type="button"
-                                  aria-label={`Edit ${row.original.name ?? 'leave type'}`}
+                                  aria-label={t('editLeaveType', {
+                                      name: row.original.name ?? t('leaveTypeFallback'),
+                                  })}
                                   onClick={() => openEditType(row.original)}
                               >
                                   <PencilSimple size={16} />
@@ -223,14 +228,14 @@ export const LeaveSetupMain = () => {
                   ]
                 : []),
         ],
-        [isHrAdmin]
+        [isHrAdmin, t]
     );
 
     const policyColumns = useMemo<ColumnDef<LeavePolicyDTO>[]>(
         () => [
             {
                 id: 'leave_type',
-                header: 'Leave type',
+                header: t('columns.leaveType'),
                 size: 190,
                 cell: ({ row }) => (
                     <span className="truncate text-body font-semibold text-foreground">
@@ -243,7 +248,7 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'annual_quota',
-                header: 'Annual quota',
+                header: t('columns.annualQuota'),
                 size: 120,
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-foreground">
@@ -253,7 +258,7 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'accrual_type',
-                header: 'Accrual',
+                header: t('columns.accrual'),
                 size: 120,
                 cell: ({ row }) => (
                     <span className="text-body text-foreground">
@@ -264,7 +269,7 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'accrual_amount',
-                header: 'Per period',
+                header: t('columns.perPeriod'),
                 size: 110,
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-muted-foreground">
@@ -274,25 +279,25 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'pro_rata_enabled',
-                header: 'Pro-rata',
+                header: t('columns.proRata'),
                 size: 100,
-                cell: ({ row }) => <BoolCell value={row.original.pro_rata_enabled} />,
+                cell: ({ row }) => <BoolCell value={row.original.pro_rata_enabled} t={t} />,
             },
             {
                 id: 'applicable_after_days',
-                header: 'Applicable after',
+                header: t('columns.applicableAfter'),
                 size: 140,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
                         {row.original.applicable_after_days
-                            ? `${row.original.applicable_after_days} days`
-                            : 'From joining'}
+                            ? t('daysCount', { count: row.original.applicable_after_days })
+                            : t('fromJoining')}
                     </span>
                 ),
             },
             {
                 id: 'effective',
-                header: 'Effective',
+                header: t('columns.effective'),
                 size: 190,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -300,7 +305,7 @@ export const LeaveSetupMain = () => {
                             ? `${formatDate(row.original.effective_from)} → ${
                                   row.original.effective_to
                                       ? formatDate(row.original.effective_to)
-                                      : 'open'
+                                      : t('open')
                               }`
                             : '—'}
                     </span>
@@ -308,7 +313,7 @@ export const LeaveSetupMain = () => {
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columns.status'),
                 size: 110,
                 cell: ({ row }) => <RecordStatusChip status={row.original.status} />,
             },
@@ -324,9 +329,9 @@ export const LeaveSetupMain = () => {
                                   scale="small"
                                   layoutVariant="icon"
                                   type="button"
-                                  aria-label={`Edit the ${
-                                      row.original.leave_type_name ?? 'leave'
-                                  } policy`}
+                                  aria-label={t('editLeavePolicy', {
+                                      name: row.original.leave_type_name ?? t('leaveFallback'),
+                                  })}
                                   onClick={() => openEditPolicy(row.original)}
                               >
                                   <PencilSimple size={16} />
@@ -336,31 +341,25 @@ export const LeaveSetupMain = () => {
                   ]
                 : []),
         ],
-        [isHrAdmin, typeNameById]
+        [isHrAdmin, typeNameById, t]
     );
 
     if (!isHrStaff) return <HrNoAccessCard />;
 
     return (
         <div className="flex flex-col gap-4">
-            <p className="max-w-3xl text-body text-muted-foreground">
-                What kinds of leave your institute grants, and how much of each an employee gets.
-                Requests and balances both read this configuration, so a change here affects future
-                accruals and approvals — never leave that has already been approved.
-            </p>
+            <p className="max-w-3xl text-body text-muted-foreground">{t('intro')}</p>
 
             <Tabs defaultValue="types" className="flex flex-col gap-2">
                 <TabsList className="h-auto w-full flex-wrap justify-start sm:w-fit">
-                    <TabsTrigger value="types">Leave types</TabsTrigger>
-                    <TabsTrigger value="policies">Policies</TabsTrigger>
+                    <TabsTrigger value="types">{t('tabs.types')}</TabsTrigger>
+                    <TabsTrigger value="policies">{t('tabs.policies')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="types" className="mt-4 flex flex-col gap-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <p className="max-w-2xl text-body text-muted-foreground">
-                            The kinds of leave themselves — their rules, not their quota. Codes are
-                            what balances and payroll match on, so treat them as identifiers rather
-                            than labels.
+                            {t('typesTabIntro')}
                         </p>
                         {isHrAdmin && (
                             <MyButton
@@ -369,7 +368,7 @@ export const LeaveSetupMain = () => {
                                 type="button"
                                 onClick={openCreateType}
                             >
-                                <Plus size={16} /> Add leave type
+                                <Plus size={16} /> {t('addLeaveType')}
                             </MyButton>
                         )}
                     </div>
@@ -378,13 +377,13 @@ export const LeaveSetupMain = () => {
                         <HrLoadingRows rows={4} />
                     ) : typesQuery.isError ? (
                         <HrErrorState
-                            message="Couldn't load leave types."
+                            message={t('errors.loadTypes')}
                             onRetry={() => void typesQuery.refetch()}
                         />
                     ) : types.length === 0 ? (
                         <HrEmptyState
-                            title="No leave types yet"
-                            description="Start with the leave you actually grant — casual, sick and earned leave are the usual three. Unpaid leave is worth adding too: payroll treats it as loss of pay."
+                            title={t('emptyTypes.title')}
+                            description={t('emptyTypes.description')}
                         >
                             {isHrAdmin && (
                                 <MyButton
@@ -393,7 +392,7 @@ export const LeaveSetupMain = () => {
                                     type="button"
                                     onClick={openCreateType}
                                 >
-                                    <Plus size={16} /> Add leave type
+                                    <Plus size={16} /> {t('addLeaveType')}
                                 </MyButton>
                             )}
                         </HrEmptyState>
@@ -412,9 +411,7 @@ export const LeaveSetupMain = () => {
                 <TabsContent value="policies" className="mt-4 flex flex-col gap-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <p className="max-w-2xl text-body text-muted-foreground">
-                            How much of each leave type an employee gets, and on what rhythm the
-                            scheduled accrual credits it. A leave type with no active policy grants
-                            nobody anything.
+                            {t('policiesTabIntro')}
                         </p>
                         {isHrAdmin && (
                             <MyButton
@@ -423,7 +420,7 @@ export const LeaveSetupMain = () => {
                                 type="button"
                                 onClick={openCreatePolicy}
                             >
-                                <Plus size={16} /> Add policy
+                                <Plus size={16} /> {t('addPolicy')}
                             </MyButton>
                         )}
                     </div>
@@ -432,16 +429,16 @@ export const LeaveSetupMain = () => {
                         <HrLoadingRows rows={4} />
                     ) : policiesQuery.isError ? (
                         <HrErrorState
-                            message="Couldn't load leave policies."
+                            message={t('errors.loadPolicies')}
                             onRetry={() => void policiesQuery.refetch()}
                         />
                     ) : policies.length === 0 ? (
                         <HrEmptyState
-                            title="No policies yet"
+                            title={t('emptyPolicies.title')}
                             description={
                                 types.length === 0
-                                    ? 'Create a leave type first — a policy has to attach to one.'
-                                    : 'Give each leave type a quota and an accrual rhythm. Until then the accrual run has nothing to credit.'
+                                    ? t('emptyPolicies.descriptionNoTypes')
+                                    : t('emptyPolicies.description')
                             }
                         >
                             {isHrAdmin && types.length > 0 && (
@@ -451,7 +448,7 @@ export const LeaveSetupMain = () => {
                                     type="button"
                                     onClick={openCreatePolicy}
                                 >
-                                    <Plus size={16} /> Add policy
+                                    <Plus size={16} /> {t('addPolicy')}
                                 </MyButton>
                             )}
                         </HrEmptyState>

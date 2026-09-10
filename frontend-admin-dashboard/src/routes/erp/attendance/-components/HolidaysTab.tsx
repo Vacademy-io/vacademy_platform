@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { CalendarX, ListPlus, PencilSimple, Plus, Trash } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { StatusChip } from '@/components/design-system/status-chips';
@@ -29,19 +30,19 @@ import { monthOf } from './attendance-meta';
 import { BulkHolidaysDialog } from './BulkHolidaysDialog';
 import { HolidayDialog } from './HolidayDialog';
 
-const MONTH_NAMES = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
+const MONTH_KEYS = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
 ];
 
 /** The years worth offering: last year (still being corrected) through next year (being planned). */
@@ -59,6 +60,7 @@ const selectableYears = (): number[] => {
  * and not marked by hand on the daily board.
  */
 export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
+    const { t } = useTranslation('erpHolidaysTab');
     const [year, setYear] = useState<number>(() => new Date().getFullYear());
     const [editing, setEditing] = useState<HolidayDTO | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -92,13 +94,13 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         if (!pendingDelete?.id) return;
         try {
             await deleteMutation.mutateAsync(pendingDelete.id);
-            toast.success('Holiday removed');
+            toast.success(t('toast.removed'));
             setPendingDelete(null);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-attendance',
                 tags: { action: 'delete-holiday' },
-                fallbackMessage: 'Could not remove the holiday.',
+                fallbackMessage: t('errors.removeFailed'),
             });
         }
     };
@@ -107,8 +109,7 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
         <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <p className="max-w-2xl text-body text-muted-foreground">
-                    Days the institute is closed. Attendance marks these HOLIDAY on its own, so a
-                    day missing from this calendar counts as a working day nobody turned up for.
+                    {t('description')}
                 </p>
                 {isHrAdmin && (
                     <div className="flex flex-wrap items-center gap-3">
@@ -118,7 +119,7 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             scale="medium"
                             onClick={() => setBulkOpen(true)}
                         >
-                            <ListPlus size={18} /> Add several
+                            <ListPlus size={18} /> {t('actions.addSeveral')}
                         </MyButton>
                         <MyButton
                             type="button"
@@ -129,7 +130,7 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                 setDialogOpen(true);
                             }}
                         >
-                            <Plus size={18} /> Add holiday
+                            <Plus size={18} /> {t('actions.addHoliday')}
                         </MyButton>
                     </div>
                 )}
@@ -144,7 +145,7 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                     />
                 </div>
                 <span className="text-caption text-muted-foreground">
-                    {total} {total === 1 ? 'holiday' : 'holidays'} in {year}
+                    {t('count', { count: total, year })}
                 </span>
             </div>
 
@@ -152,14 +153,14 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                 <HrLoadingRows rows={3} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Couldn't load the holiday calendar."
+                    message={t('errors.loadFailed')}
                     onRetry={() => void query.refetch()}
                 />
             ) : grouped.length === 0 ? (
                 <HrEmptyState
                     icon={<CalendarX size={36} className="text-muted-foreground" />}
-                    title={`No holidays set for ${year}`}
-                    description="Publish the year's calendar here — attendance and payroll both read it."
+                    title={t('empty.title', { year })}
+                    description={t('empty.description')}
                 >
                     {isHrAdmin && (
                         <MyButton
@@ -168,7 +169,7 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             scale="medium"
                             onClick={() => setBulkOpen(true)}
                         >
-                            <ListPlus size={18} /> Add the year&apos;s holidays
+                            <ListPlus size={18} /> {t('actions.addYearsHolidays')}
                         </MyButton>
                     )}
                 </HrEmptyState>
@@ -177,7 +178,9 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                     {grouped.map((group) => (
                         <Card key={group.month} className="flex flex-col gap-3 p-4">
                             <h3 className="text-subtitle font-medium text-foreground">
-                                {MONTH_NAMES[group.month - 1] ?? `Month ${group.month}`}
+                                {MONTH_KEYS[group.month - 1]
+                                    ? t(`months.${MONTH_KEYS[group.month - 1]}`)
+                                    : t('months.unknown', { month: group.month })}
                             </h3>
                             <ul className="flex flex-col gap-3">
                                 {group.holidays.map((holiday) => (
@@ -187,7 +190,7 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                     >
                                         <div className="flex min-w-0 flex-col gap-1">
                                             <span className="truncate text-body font-semibold text-foreground">
-                                                {holiday.name || 'Holiday'}
+                                                {holiday.name || t('holiday.defaultName')}
                                             </span>
                                             <span className="text-caption text-muted-foreground">
                                                 {holiday.date ? formatDate(holiday.date) : '—'}
@@ -203,7 +206,7 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                                 )}
                                                 {holiday.is_optional && (
                                                     <StatusChip
-                                                        text="Optional"
+                                                        text={t('holiday.optional')}
                                                         textSize="text-caption"
                                                         status="WARNING"
                                                         showIcon={false}
@@ -223,7 +226,9 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                                     buttonType="text"
                                                     scale="small"
                                                     layoutVariant="icon"
-                                                    aria-label={`Edit ${holiday.name ?? 'holiday'}`}
+                                                    aria-label={t('actions.edit', {
+                                                        name: holiday.name ?? t('actions.editFallback'),
+                                                    })}
                                                     onClick={() => {
                                                         setEditing(holiday);
                                                         setDialogOpen(true);
@@ -236,7 +241,9 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                                     buttonType="text"
                                                     scale="small"
                                                     layoutVariant="icon"
-                                                    aria-label={`Remove ${holiday.name ?? 'holiday'}`}
+                                                    aria-label={t('actions.remove', {
+                                                        name: holiday.name ?? t('actions.editFallback'),
+                                                    })}
                                                     onClick={() => setPendingDelete(holiday)}
                                                 >
                                                     <Trash size={15} className="text-danger-600" />
@@ -266,21 +273,22 @@ export const HolidaysTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                     >
                         <AlertDialogContent>
                             <AlertDialogHeader>
-                                <AlertDialogTitle>Remove this holiday?</AlertDialogTitle>
+                                <AlertDialogTitle>{t('deleteDialog.title')}</AlertDialogTitle>
                                 <AlertDialogDescription>
                                     {pendingDelete
-                                        ? `${pendingDelete.name ?? 'This holiday'} on ${
-                                              pendingDelete.date
+                                        ? t('deleteDialog.description', {
+                                              name: pendingDelete.name ?? t('deleteDialog.defaultName'),
+                                              date: pendingDelete.date
                                                   ? formatDate(pendingDelete.date)
-                                                  : 'an unknown date'
-                                          } becomes an ordinary working day. Attendance already recorded for it is not changed.`
+                                                  : t('deleteDialog.unknownDate'),
+                                          })
                                         : ''}
                                 </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                                <AlertDialogCancel>Keep it</AlertDialogCancel>
+                                <AlertDialogCancel>{t('actions.keepIt')}</AlertDialogCancel>
                                 <AlertDialogAction onClick={() => void confirmDelete()}>
-                                    Remove
+                                    {t('actions.removeConfirm')}
                                 </AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>

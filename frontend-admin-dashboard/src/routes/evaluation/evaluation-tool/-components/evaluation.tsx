@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
     Table,
@@ -56,6 +57,7 @@ export default function Evaluation({
     totalPages,
     pagesVisited,
 }: EvaluationProps) {
+    const { t } = useTranslation('evaluationTool');
     const [activeSection, setActiveSection] = useState<string>(Object.keys(questionData)[0] || '');
     const { elapsedTime } = useTimerStore();
     const { addOrUpdateMark, setQuestionFeedback, marksData, feedbackByQuestion } = useMarksStore();
@@ -143,7 +145,7 @@ export default function Evaluation({
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
-        return `${mins}m ${secs}s`;
+        return t('timeFormat', { mins, secs });
     };
 
     return (
@@ -153,7 +155,7 @@ export default function Evaluation({
         <div className="flex w-full flex-col gap-4">
             {/* Running total — the figure the evaluator most wants to track */}
             <div className="flex items-center justify-between rounded-md border border-primary-100 bg-primary-50 px-3 py-2">
-                <span className="text-xs font-medium text-neutral-600">Total awarded</span>
+                <span className="text-xs font-medium text-neutral-600">{t('totalAwarded')}</span>
                 <span className="text-sm font-bold tabular-nums text-primary-500">
                     {totals.scored} <span className="text-neutral-400">/ {totals.max}</span>
                 </span>
@@ -164,14 +166,16 @@ export default function Evaluation({
             {isSingleQuestion && primaryQuestion ? (
                 <div className="space-y-2 rounded-lg border border-neutral-200 p-3">
                     <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-neutral-700">Marks awarded</span>
+                        <span className="text-sm font-medium text-neutral-700">
+                            {t('marksAwarded')}
+                        </span>
                         {primaryQuestion.content && (
                             <button
                                 type="button"
                                 onClick={() => setPreviewQuestionContent(primaryQuestion.content)}
                                 className="flex items-center gap-1 text-xs text-primary-500 hover:text-primary-400"
                             >
-                                <ArrowSquareOut className="size-3.5" /> View task
+                                <ArrowSquareOut className="size-3.5" /> {t('viewTask')}
                             </button>
                         )}
                     </div>
@@ -197,13 +201,10 @@ export default function Evaluation({
                             className="w-24 text-center"
                         />
                         <span className="text-sm text-neutral-500">
-                            out of {primaryQuestion.maxMarks}
+                            {t('outOf', { max: primaryQuestion.maxMarks })}
                         </span>
                     </div>
-                    <p className="text-xs text-neutral-400">
-                        Enter the overall score for this submission. 0 is a valid score — type it in
-                        to submit a zero.
-                    </p>
+                    <p className="text-xs text-neutral-400">{t('enterOverallScoreHint')}</p>
                 </div>
             ) : (
                 <Tabs>
@@ -214,7 +215,7 @@ export default function Evaluation({
                                 onClick={() => setActiveSection(section.sectionId)}
                                 value={section.sectionId}
                             >
-                                Section {index + 1}
+                                {t('sectionNumber', { number: index + 1 })}
                             </TabsTrigger>
                         ))}
                     </TabsList>
@@ -229,11 +230,15 @@ export default function Evaluation({
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead className="w-fit">Question No</TableHead>
-                                            <TableHead className="text-center">
-                                                Scored Marks
+                                            <TableHead className="w-fit">
+                                                {t('questionNo')}
                                             </TableHead>
-                                            <TableHead className="text-center">Max Marks</TableHead>
+                                            <TableHead className="text-center">
+                                                {t('scoredMarks')}
+                                            </TableHead>
+                                            <TableHead className="text-center">
+                                                {t('maxMarks')}
+                                            </TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -286,11 +291,11 @@ export default function Evaluation({
                 collapses into / overlaps the stats footer on short screens; the
                 panel body scrolls when everything doesn't fit. */}
             <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
-                <span className="text-sm font-medium text-neutral-700">Remarks</span>
+                <span className="text-sm font-medium text-neutral-700">{t('remarks')}</span>
                 <Textarea
                     value={primaryFeedback}
                     onChange={(e) => handleFeedbackChange(e.target.value)}
-                    placeholder="Add remarks…"
+                    placeholder={t('addRemarksPlaceholder')}
                     disabled={!primaryQuestion}
                     className="min-h-24 resize-none"
                 />
@@ -299,31 +304,31 @@ export default function Evaluation({
             {/* Evaluation meta — de-emphasised */}
             <div className="space-y-1.5 rounded-lg bg-neutral-50 p-3 text-xs text-neutral-500">
                 <div className="flex items-center justify-between">
-                    <span>Pages reviewed</span>
+                    <span>{t('pagesReviewed')}</span>
                     <span className="font-medium text-neutral-700">
                         {pageData.pagesVisited.size} / {pageData.totalPages}
                     </span>
                 </div>
                 {pageData.pagesNotVisited.length > 0 && (
                     <div className="flex items-center justify-between">
-                        <span>Not visited</span>
+                        <span>{t('notVisited')}</span>
                         <span className="text-neutral-600">
                             {pageData.pagesNotVisited.join(', ')}
                         </span>
                     </div>
                 )}
                 <div className="flex items-center justify-between">
-                    <span>Time on evaluation</span>
+                    <span>{t('timeOnEvaluation')}</span>
                     <span className="font-medium text-neutral-700">{formatTime(elapsedTime)}</span>
                 </div>
             </div>
 
             <MyDialog
-                heading="Preview Question"
+                heading={t('previewQuestionHeading')}
                 open={!!previewQuestionContent}
                 onOpenChange={() => setPreviewQuestionContent('')}
             >
-                <strong className="-mt-10">Question :</strong>
+                <strong className="-mt-10">{t('questionLabel')}</strong>
                 <div
                     className="mb-5 mt-2 text-sm"
                     dangerouslySetInnerHTML={{ __html: previewQuestionContent }}

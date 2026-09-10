@@ -1,0 +1,203 @@
+{
+    "page": {
+        "titleEdit": "تعديل حملة البريد الإلكتروني المجدولة",
+        "titleCreate": "حملة البريد الإلكتروني",
+        "navHeadingEdit": "تعديل الحملة المجدولة",
+        "navHeadingCreate": "حملة البريد الإلكتروني",
+        "editingBadge": "جارٍ تعديل الحملة المجدولة",
+        "cancel": "إلغاء"
+    },
+    "common": {
+        "tryAgain": "حاول مرة أخرى"
+    },
+    "toast": {
+        "prefillErrorTitle": "تعذر تحميل الحملة للتعديل",
+        "templateLoadErrorTitle": "خطأ",
+        "templateLoadErrorDescription": "فشل تحميل محتوى القالب. يرجى المحاولة مرة أخرى.",
+        "missingFieldsTitle": "حقول مطلوبة مفقودة",
+        "selectTagTitle": "حدد وسمًا واحدًا على الأقل",
+        "selectTagDescription": "لديك مستلم من نوع TAG بدون أي وسوم محددة.",
+        "instituteRequiredTitle": "المؤسسة مطلوبة",
+        "instituteRequiredDescription": "يجب اختيار مؤسسة لاستهداف مستلمي TAG.",
+        "configureCustomFieldFiltersTitle": "قم بتكوين مرشحات الحقول المخصصة",
+        "configureCustomFieldFiltersDescription": "لديك مستلم من نوع مرشح حقل مخصص بدون أي مرشحات مكوَّنة.",
+        "updateSuccess": "تم تحديث حملة البريد الإلكتروني بنجاح",
+        "createSuccess": "تم إنشاء حملة البريد الإلكتروني بنجاح",
+        "fixHighlightedFieldsTitle": "يرجى تصحيح الحقول المميزة",
+        "failedToCreateTitle": "فشل الإنشاء"
+    },
+    "validation": {
+        "campaignNameRequired": "اسم الحملة مطلوب",
+        "emailSubjectRequired": "موضوع البريد الإلكتروني مطلوب",
+        "contentRequired": "المحتوى مطلوب",
+        "priorityRequired": "الأولوية مطلوبة",
+        "scheduleRunTimeRequired": "الجدولة: وقت التشغيل مطلوب",
+        "runTimeRequired": "وقت التشغيل مطلوب",
+        "scheduleCronRequired": "الجدولة: تعبير cron مطلوب للتكرار",
+        "cronRequired": "تعبير cron مطلوب"
+    },
+    "templatesLoadError": "فشل تحميل قوالب البريد الإلكتروني. يرجى المحاولة مرة أخرى.",
+    "reviewDialog": {
+        "title": "مراجعة حملة البريد الإلكتروني",
+        "description": "قم بتأكيد التفاصيل قبل الإنشاء.",
+        "campaignName": "اسم الحملة",
+        "emailSubject": "موضوع البريد الإلكتروني",
+        "mode": "الوضع",
+        "modeSystemAlert": "SYSTEM_ALERT (إعلان عام)",
+        "medium": "الوسيلة",
+        "audience": "الجمهور",
+        "schedule": "الجدولة",
+        "back": "رجوع",
+        "confirmUpdate": "تأكيد والتحديث",
+        "confirmCreate": "تأكيد والإنشاء"
+    },
+    "previewDialog": {
+        "title": "معاينة البريد الإلكتروني",
+        "description": "هكذا سيظهر البريد الإلكتروني في صندوق وارد المستلم.",
+        "mobile": "الهاتف المحمول",
+        "tablet": "الجهاز اللوحي",
+        "laptop": "الحاسوب المحمول",
+        "from": "من: مؤسستك",
+        "to": "إلى: recipient@email.com",
+        "noSubject": "(بدون موضوع)",
+        "noContentBody": "لا يوجد محتوى للبريد الإلكتروني"
+    },
+    "basic": {
+        "campaignNameLabel": "اسم الحملة",
+        "campaignNameHint": "(داخلي — يُستخدم لتحديد هذه الحملة في لوحة التحكم الخاصة بك)",
+        "campaignNamePlaceholder": "مثال: تهيئة ربيع 2026 — الدفعة أ",
+        "emailSubjectLabel": "موضوع البريد الإلكتروني",
+        "emailSubjectHint": "(ما يراه المستلمون في صندوق الوارد الخاص بهم)",
+        "emailSubjectPlaceholder": "سطر موضوع البريد الإلكتروني",
+        "previewTextLabel": "نص المعاينة",
+        "previewTextHint": "(يظهر في صندوق الوارد قبل الفتح)",
+        "previewTextPlaceholder": "أدخل نص المعاينة...",
+        "emailContentLabel": "محتوى البريد الإلكتروني",
+        "richEditor": "المحرر المنسق",
+        "htmlSource": "مصدر HTML",
+        "preview": "معاينة",
+        "contentPlaceholder": "اكتب محتوى البريد الإلكتروني",
+        "htmlSourcePlaceholder": "مصدر HTML"
+    },
+    "template": {
+        "heading": "قالب البريد الإلكتروني",
+        "useTemplate": "استخدام قالب بريد إلكتروني",
+        "selectTemplate": "اختر القالب",
+        "placeholder": "اختر قالبًا",
+        "searchPlaceholder": "ابحث عن القوالب...",
+        "emptyText": "لم يتم العثور على قوالب.",
+        "addNew": "إضافة قالب جديد",
+        "selected": "القالب المحدد: {{name}}",
+        "fromEmailLabel": "البريد الإلكتروني للمرسل",
+        "fromEmailLoading": "جارٍ تحميل إعدادات البريد الإلكتروني...",
+        "fromEmailPlaceholder": "اختر بريد المرسل",
+        "fromEmailNoConfigs": "لا توجد إعدادات بريد إلكتروني متاحة",
+        "fromPrefix": "من: {{email}}",
+        "helperUseTemplate": "سيتم تطبيق محتوى القالب على العنوان والمحتوى أعلاه.",
+        "helperNoTemplate": "سيستخدم الموضوع والنص العنوان والمحتوى المقدمين أعلاه."
+    },
+    "audience": {
+        "heading": "الجمهور",
+        "description": "حدد من يجب أن يتلقى حملة البريد الإلكتروني هذه.",
+        "addAllStudents": "+ جميع الطلاب",
+        "addAllTeachers": "+ جميع المعلمين",
+        "addBatch": "+ {{batchTerm}}",
+        "addTag": "+ وسم",
+        "addUser": "+ مستخدم محدد",
+        "addCampaign": "+ حملة"
+    },
+    "recipientType": {
+        "role": "الدور",
+        "user": "مستخدم",
+        "tag": "وسم",
+        "campaign": "حملة"
+    },
+    "role": {
+        "student": "طالب",
+        "teacher": "معلم",
+        "admin": "مسؤول",
+        "learner": "متعلم",
+        "selectPlaceholder": "اختر الدور"
+    },
+    "userIdPlaceholder": "معرّف المستخدم أو البريد الإلكتروني",
+    "batch": {
+        "selectPlaceholder": "اختر الدفعة",
+        "searchPlaceholder": "ابحث عن الدفعات...",
+        "emptyText": "لم يتم العثور على دفعات."
+    },
+    "tag": {
+        "loading": "جارٍ تحميل الوسوم…",
+        "selectPlaceholder": "اختر وسمًا واحدًا أو أكثر",
+        "helper": "تستهدف الوسوم المستخدمين المرتبطين بالوسوم المحددة.",
+        "estimatedForRow": "المستخدمون المقدَّرون لهذا الصف: {{count}}",
+        "selectTagPlaceholder": "اختر وسمًا",
+        "removeAriaLabel": "إزالة الوسم"
+    },
+    "campaign": {
+        "loading": "جارٍ تحميل الحملات…",
+        "selectPlaceholder": "اختر حملة",
+        "noneAvailable": "لا توجد حملات متاحة"
+    },
+    "customFieldFilter": {
+        "helper": "قم بتصفية المستخدمين استنادًا إلى قيم الحقول المخصصة. أضف عدة مرشحات لتضييق نطاق الجمهور.",
+        "selectFieldPlaceholder": "اختر حقلاً مخصصًا",
+        "operatorEquals": "يساوي",
+        "operatorContains": "يحتوي على",
+        "operatorStartsWith": "يبدأ بـ",
+        "operatorEndsWith": "ينتهي بـ",
+        "valuePlaceholder": "أدخل قيمة المرشح",
+        "selectValuesPlaceholder": "اختر القيم",
+        "numberPlaceholder": "أدخل رقمًا",
+        "addFilter": "+ إضافة مرشح"
+    },
+    "recipientRow": {
+        "remove": "إزالة",
+        "removeRecipientAriaLabel": "إزالة المستلم"
+    },
+    "exclusions": {
+        "label": "الاستثناءات",
+        "addExclusion": "+ إضافة استثناء",
+        "none": "لم تتم إضافة أي استثناءات بعد"
+    },
+    "customFieldsSection": {
+        "label": "مرشحات الحقول المخصصة",
+        "addCustomField": "+ إضافة حقل مخصص",
+        "none": "لم تتم إضافة أي مرشحات حقول مخصصة بعد"
+    },
+    "estimatedUsers": {
+        "estimating": "جارٍ تقدير عدد المستخدمين…",
+        "countLabel": "المستخدمون المقدَّرون (أي من الوسوم المحددة): {{count}}"
+    },
+    "settings": {
+        "heading": "إعدادات الحملة",
+        "description": "قم بتكوين الأولوية وتاريخ انتهاء الصلاحية لحملة البريد الإلكتروني هذه.",
+        "priorityExpiration": "الأولوية وانتهاء الصلاحية",
+        "priorityLabel": "الأولوية",
+        "priorityPlaceholder": "الأولوية",
+        "expiresAt": "تنتهي في (اختياري)"
+    },
+    "scheduling": {
+        "heading": "الجدولة",
+        "typePlaceholder": "نوع الجدولة",
+        "timezonePlaceholder": "المنطقة الزمنية",
+        "quickPicks": "اختيارات سريعة:",
+        "now": "الآن",
+        "plus1h": "+ساعة واحدة",
+        "tomorrow9am": "غدًا 9 صباحًا",
+        "monday9am": "الاثنين 9 صباحًا",
+        "runAt": "وقت التشغيل",
+        "cronExpressionLabel": "تعبير cron",
+        "cronPlaceholder": "0 0 9 * * ?",
+        "daily9am": "يوميًا 9 صباحًا",
+        "monday9amTemplate": "الاثنين 9 صباحًا",
+        "hourly": "كل ساعة"
+    },
+    "submit": {
+        "updating": "جارٍ التحديث…",
+        "sending": "جارٍ الإرسال…",
+        "updateCampaign": "تحديث الحملة المجدولة",
+        "sendCampaign": "إرسال حملة البريد الإلكتروني",
+        "reviewAndUpdate": "مراجعة وتحديث",
+        "reviewAndSend": "مراجعة وإرسال"
+    }
+}

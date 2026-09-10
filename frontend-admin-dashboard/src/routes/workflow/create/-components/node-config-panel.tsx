@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,6 +37,7 @@ import {
  * come from EventEntityPicker, the same control the wizard uses.</p>
  */
 function TriggerScopeSection({ instituteId }: { instituteId: string }) {
+    const { t } = useTranslation('workflowNodeConfigPanel');
     const { triggerConfig, setTriggerConfig } = useWorkflowBuilderStore();
     const appliedType = triggerConfig.eventAppliedType;
 
@@ -44,7 +46,7 @@ function TriggerScopeSection({ instituteId }: { instituteId: string }) {
     if (!appliedType || !SCOPED_APPLIED_TYPES.includes(appliedType)) {
         return (
             <p className="mt-2 text-caption text-gray-400">
-                This event fires for the whole institute — there is nothing to scope it to.
+                {t('triggerScope.noScope')}
             </p>
         );
     }
@@ -79,6 +81,7 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId, institute
     nodes: Array<{ id: string; data: Record<string, unknown> }>;
     selectedNodeId: string;
 }) {
+    const { t } = useTranslation('workflowNodeConfigPanel');
     // Auto-fill instituteId on mount
     useEffect(() => {
         if (params.includes('instituteId') && !config['instituteId']) {
@@ -101,7 +104,7 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId, institute
 
     return (
         <div className="space-y-2 border-t pt-2 mt-2">
-            <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
+            <Label className="text-[10px] uppercase text-gray-400">{t('common.requiredParameters')}</Label>
             {params.map((param) => {
                 const isSystemParam = param === 'instituteId';
                 const entityType = entityTypeMap[param];
@@ -112,7 +115,7 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId, institute
                         {isSystemParam ? (
                             <div className="mt-1">
                                 <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-                                    Auto-filled from workflow context
+                                    {t('common.autoFilled')}
                                 </div>
                             </div>
                         ) : entityType ? (
@@ -128,7 +131,7 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId, institute
                             <VariablePicker
                                 value={(config[param] as string) ?? ''}
                                 onChange={(v) => onConfigChange(param, v)}
-                                placeholder={`Pick or type value for ${param}...`}
+                                placeholder={t('common.pickOrTypeValueFor', { param })}
                                 nodeId={nodeId}
                             />
                         ) : (
@@ -136,7 +139,7 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId, institute
                                 value={(config[param] as string) ?? ''}
                                 onChange={(e) => onConfigChange(param, e.target.value)}
                                 className="mt-1"
-                                placeholder={`Enter ${param}...`}
+                                placeholder={t('common.enterParam', { param })}
                             />
                         )}
                     </div>
@@ -147,6 +150,7 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId, institute
 }
 
 export function NodeConfigPanel() {
+    const { t } = useTranslation('workflowNodeConfigPanel');
     const selectedNodeId = useWorkflowBuilderStore((s) => s.selectedNodeId);
     const nodes = useWorkflowBuilderStore((s) => s.nodes);
     const edges = useWorkflowBuilderStore((s) => s.edges);
@@ -176,7 +180,7 @@ export function NodeConfigPanel() {
     if (!selectedNode) {
         return (
             <div className="flex h-full items-center justify-center p-4 text-sm text-gray-400">
-                Select a node to configure
+                {t('common.selectANode')}
             </div>
         );
     }
@@ -231,21 +235,21 @@ export function NodeConfigPanel() {
                 })()}
 
                 <div>
-                    <Label className="text-xs">Node Name</Label>
+                    <Label className="text-xs">{t('common.nodeName')}</Label>
                     <Input
                         value={data.name}
                         onChange={(e) =>
                             updateNodeName(selectedNode.id, e.target.value)
                         }
                         className="mt-1"
-                        placeholder="Enter node name"
+                        placeholder={t('common.nodeNamePlaceholder')}
                     />
                 </div>
 
                 {/* Trigger-specific config — upgraded with catalog dropdown */}
                 {data.nodeType === 'TRIGGER' && (
                     <div>
-                        <Label className="text-xs">Trigger Event</Label>
+                        <Label className="text-xs">{t('trigger.triggerEvent')}</Label>
                         <select
                             className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                             value={(data.config.triggerEvent as string) ?? ''}
@@ -253,7 +257,7 @@ export function NodeConfigPanel() {
                                 handleConfigChange('triggerEvent', e.target.value)
                             }
                         >
-                            <option value="">Select event...</option>
+                            <option value="">{t('trigger.selectEvent')}</option>
                             {triggerEvents?.map((ev) => (
                                 <option key={ev.key} value={ev.key}>
                                     {ev.label}
@@ -284,20 +288,20 @@ export function NodeConfigPanel() {
 
                         if (uType === 'TRIGGER') {
                             dataSources.push(
-                                { label: 'Respondent emails (from trigger)', value: "#ctx['respondentEmailRequests']", description: 'Pre-built email with to/subject/body from the form submission' },
-                                { label: 'Admin emails (from trigger)', value: "#ctx['adminEmailRequests']", description: 'Email notifications for admins' },
+                                { label: t('email.respondentEmails'), value: "#ctx['respondentEmailRequests']", description: t('email.respondentEmailsDesc') },
+                                { label: t('email.adminEmails'), value: "#ctx['adminEmailRequests']", description: t('email.adminEmailsDesc') },
                             );
                         }
                         if (uType === 'QUERY') {
                             const queryKey = uConfig?.prebuiltKey as string;
                             if (queryKey === 'fetch_audience_responses_filtered') {
-                                dataSources.push({ label: 'Audience leads (from query)', value: "#ctx['leads']", description: 'List of leads with custom field data' });
+                                dataSources.push({ label: t('email.audienceLeads'), value: "#ctx['leads']", description: t('email.audienceLeadsDesc') });
                             } else if (queryKey === 'fetch_batch_attendance_report' || queryKey === 'fetch_students_by_batch') {
-                                dataSources.push({ label: 'Students (from query)', value: "#ctx['students']", description: 'List of students with name, email, phone' });
+                                dataSources.push({ label: t('email.students'), value: "#ctx['students']", description: t('email.studentsDesc') });
                             } else if (queryKey === 'fetch_ssigm_by_package' || queryKey === 'getSSIGMByStatusAndPackageSessionIds') {
-                                dataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigm_list']", description: 'List of enrolled students with name, email, mobile' });
+                                dataSources.push({ label: t('email.enrolledStudents'), value: "#ctx['ssigm_list']", description: t('email.enrolledStudentsDesc') });
                             } else if (queryKey) {
-                                dataSources.push({ label: `Query results (${queryKey})`, value: "#ctx['queryResult']", description: 'Results from the query node' });
+                                dataSources.push({ label: t('email.queryResults', { queryKey }), value: "#ctx['queryResult']", description: t('email.queryResultsDesc') });
                             }
                         }
                     }
@@ -309,7 +313,7 @@ export function NodeConfigPanel() {
                         <>
                             {/* Send to — smart dropdown */}
                             <div>
-                                <Label className="text-xs">Send emails to</Label>
+                                <Label className="text-xs">{t('email.sendEmailsTo')}</Label>
                                 {dataSources.length > 0 ? (
                                     <>
                                         <select
@@ -324,7 +328,7 @@ export function NodeConfigPanel() {
                                                 });
                                             }}
                                         >
-                                            <option value="">Select data source...</option>
+                                            <option value="">{t('email.selectDataSource')}</option>
                                             {dataSources.map((ds) => (
                                                 <option key={ds.value} value={ds.value}>{ds.label}</option>
                                             ))}
@@ -342,7 +346,7 @@ export function NodeConfigPanel() {
                                 ) : (
                                     <>
                                         <p className="mt-1 text-[10px] text-gray-400 mb-1.5">
-                                            Connect a Trigger or Query node upstream to auto-detect data sources.
+                                            {t('email.connectUpstreamData')}
                                         </p>
                                         <VariablePicker
                                             value={currentOn}
@@ -353,7 +357,7 @@ export function NodeConfigPanel() {
                                                     forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
                                                 });
                                             }}
-                                            placeholder="Pick a list of recipients..."
+                                            placeholder={t('email.pickRecipients')}
                                             nodeId={selectedNode.id}
                                         />
                                     </>
@@ -362,7 +366,7 @@ export function NodeConfigPanel() {
 
                             {/* Email template */}
                             <div>
-                                <Label className="text-xs">Email Template <span className="text-gray-300 text-[10px]">(optional — skip to use pre-built email from data source)</span></Label>
+                                <Label className="text-xs">{t('email.emailTemplate')} <span className="text-gray-300 text-[10px]">{t('email.emailTemplateOptional')}</span></Label>
                                 <TemplateSearchableSelect
                                     className="mt-1"
                                     options={toTemplateOptions(emailTemplates ?? [])}
@@ -380,29 +384,29 @@ export function NodeConfigPanel() {
                                             _templateParams: templateParams,
                                         });
                                     }}
-                                    placeholder="No template (use data source's subject/body)"
-                                    emptyText="No email template matches your search."
+                                    placeholder={t('email.noTemplatePlaceholder')}
+                                    emptyText={t('email.noTemplateSearchEmpty')}
                                     noneOption={{
                                         value: '__none__',
-                                        label: "No template (use data source's subject/body)",
+                                        label: t('email.noTemplatePlaceholder'),
                                     }}
                                 />
                             </div>
 
                             {/* Recipient email field — for choosing which email to send to */}
                             <div>
-                                <Label className="text-xs">Send to field <span className="text-gray-300 text-[10px]">(which email field from each item)</span></Label>
+                                <Label className="text-xs">{t('email.sendToField')} <span className="text-gray-300 text-[10px]">{t('email.sendToFieldHint')}</span></Label>
                                 <select
                                     className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                     value={(data.config.recipientField as string) ?? ''}
                                     onChange={(e) => handleConfigChange('recipientField', e.target.value)}
                                 >
-                                    <option value="">Auto-detect (to, email)</option>
-                                    <option value="email">Student Email</option>
-                                    <option value="parentsEmail">Father/Parent Email</option>
-                                    <option value="guardianEmail">Guardian Email</option>
-                                    <option value="motherEmail">Mother Email</option>
-                                    <option value="to">To (pre-built recipient)</option>
+                                    <option value="">{t('email.autoDetectToEmail')}</option>
+                                    <option value="email">{t('email.studentEmail')}</option>
+                                    <option value="parentsEmail">{t('email.fatherParentEmail')}</option>
+                                    <option value="guardianEmail">{t('email.guardianEmail')}</option>
+                                    <option value="motherEmail">{t('email.motherEmail')}</option>
+                                    <option value="to">{t('email.toPrebuiltRecipient')}</option>
                                 </select>
                             </div>
 
@@ -412,65 +416,65 @@ export function NodeConfigPanel() {
                                 const onExpr = (data.config.on as string) ?? '';
                                 const FIELD_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
                                     "#ctx['respondentEmailRequests']": [
-                                        { value: 'to', label: 'Recipient Email' },
-                                        { value: 'subject', label: 'Email Subject' },
+                                        { value: 'to', label: t('email.field.recipientEmail') },
+                                        { value: 'subject', label: t('email.field.emailSubject') },
                                         // customFields are checked separately
                                     ],
                                     "#ctx['leads']": [
-                                        { value: 'email', label: 'Email' },
-                                        { value: 'parentEmail', label: 'Parent Email' },
-                                        { value: 'parentName', label: 'Parent Name' },
-                                        { value: 'mobileNumber', label: 'Mobile Number' },
-                                        { value: 'userId', label: 'User ID' },
+                                        { value: 'email', label: t('email.field.email') },
+                                        { value: 'parentEmail', label: t('email.field.parentEmail') },
+                                        { value: 'parentName', label: t('email.field.parentName') },
+                                        { value: 'mobileNumber', label: t('email.field.mobileNumber') },
+                                        { value: 'userId', label: t('email.field.userId') },
                                     ],
                                     "#ctx['students']": [
-                                        { value: 'fullName', label: 'Student Name' },
-                                        { value: 'email', label: 'Student Email' },
-                                        { value: 'mobileNumber', label: 'Mobile Number' },
-                                        { value: 'enrollmentNumber', label: 'Enrollment Number' },
-                                        { value: 'attendancePercentage', label: 'Attendance %' },
-                                        { value: 'totalDurationMinutes', label: 'Total Duration (min)' },
-                                        { value: 'totalChats', label: 'Chat Count' },
-                                        { value: 'totalHandRaises', label: 'Hand Raise Count' },
-                                        { value: 'sessionsAttended', label: 'Sessions Attended' },
-                                        { value: 'parentsEmail', label: 'Parent Email' },
-                                        { value: 'guardianEmail', label: 'Guardian Email' },
-                                        { value: 'startDate', label: 'Report Start Date' },
-                                        { value: 'endDate', label: 'Report End Date' },
+                                        { value: 'fullName', label: t('email.field.studentName') },
+                                        { value: 'email', label: t('email.field.studentEmail') },
+                                        { value: 'mobileNumber', label: t('email.field.mobileNumber') },
+                                        { value: 'enrollmentNumber', label: t('email.field.enrollmentNumber') },
+                                        { value: 'attendancePercentage', label: t('email.field.attendancePercentage') },
+                                        { value: 'totalDurationMinutes', label: t('email.field.totalDuration') },
+                                        { value: 'totalChats', label: t('email.field.chatCount') },
+                                        { value: 'totalHandRaises', label: t('email.field.handRaiseCount') },
+                                        { value: 'sessionsAttended', label: t('email.field.sessionsAttended') },
+                                        { value: 'parentsEmail', label: t('email.field.parentEmail') },
+                                        { value: 'guardianEmail', label: t('email.guardianEmail') },
+                                        { value: 'startDate', label: t('email.field.reportStartDate') },
+                                        { value: 'endDate', label: t('email.field.reportEndDate') },
                                     ],
                                     "#ctx['ssigm_list']": [
-                                        { value: 'full_name', label: 'Full Name' },
-                                        { value: 'email', label: 'Email' },
-                                        { value: 'mobile_number', label: 'Mobile Number' },
-                                        { value: 'user_id', label: 'User ID' },
-                                        { value: 'username', label: 'Username' },
-                                        { value: 'package_session_id', label: 'Batch ID' },
+                                        { value: 'full_name', label: t('email.field.fullName') },
+                                        { value: 'email', label: t('email.field.email') },
+                                        { value: 'mobile_number', label: t('email.field.mobileNumber') },
+                                        { value: 'user_id', label: t('email.field.userId') },
+                                        { value: 'username', label: t('email.field.username') },
+                                        { value: 'package_session_id', label: t('email.field.batchId') },
                                     ],
                                 };
                                 // SpEL context fields (available for all trigger types).
                                 // Grouped by source so the dropdown is readable when there are many.
                                 const CONTEXT_FIELDS = [
                                     // Institute (always populated by the engine)
-                                    { value: "#ctx['instituteName']", label: 'Institute Name (auto)' },
-                                    { value: "#ctx['instituteId']", label: 'Institute ID (auto)' },
+                                    { value: "#ctx['instituteName']", label: t('email.context.instituteName') },
+                                    { value: "#ctx['instituteId']", label: t('email.context.instituteId') },
 
                                     // User fields — populated for LEARNER_BATCH_ENROLLMENT and other
                                     // user-centric triggers. Bracket-style for `user` (it's a UserDTO
                                     // bean, so SpEL bean accessor resolves the property).
-                                    { value: "#ctx['user'].username", label: 'Learner Username (from trigger)' },
-                                    { value: "#ctx['user'].password", label: 'Learner Password (from trigger)' },
-                                    { value: "#ctx['user'].fullName", label: 'Learner Full Name (from trigger)' },
-                                    { value: "#ctx['user'].email", label: 'Learner Email (from trigger)' },
-                                    { value: "#ctx['user'].mobileNumber", label: 'Learner Mobile (from trigger)' },
+                                    { value: "#ctx['user'].username", label: t('email.context.learnerUsername') },
+                                    { value: "#ctx['user'].password", label: t('email.context.learnerPassword') },
+                                    { value: "#ctx['user'].fullName", label: t('email.context.learnerFullName') },
+                                    { value: "#ctx['user'].email", label: t('email.context.learnerEmail') },
+                                    { value: "#ctx['user'].mobileNumber", label: t('email.context.learnerMobile') },
 
                                     // Live session fields (LIVE_SESSION_* triggers)
-                                    { value: "#ctx['liveSession'].title", label: 'Live Session Title (from trigger)' },
-                                    { value: "#ctx['liveSession'].startTime", label: 'Session Start Time (from trigger)' },
-                                    { value: "#ctx['liveSession'].defaultMeetLink", label: 'Session Meet Link (from trigger)' },
+                                    { value: "#ctx['liveSession'].title", label: t('email.context.liveSessionTitle') },
+                                    { value: "#ctx['liveSession'].startTime", label: t('email.context.sessionStartTime') },
+                                    { value: "#ctx['liveSession'].defaultMeetLink", label: t('email.context.sessionMeetLink') },
 
                                     // Audience / campaign fields
-                                    { value: "#ctx['campaignName']", label: 'Campaign Name (from trigger)' },
-                                    { value: "#ctx['submissionTime']", label: 'Submission Time (from trigger)' },
+                                    { value: "#ctx['campaignName']", label: t('email.context.campaignName') },
+                                    { value: "#ctx['submissionTime']", label: t('email.context.submissionTime') },
                                 ];
 
                                 const availableFields = FIELD_OPTIONS[onExpr] ?? [];
@@ -479,9 +483,9 @@ export function NodeConfigPanel() {
 
                                 return (
                                     <div className="space-y-2 border-t pt-2 mt-2">
-                                        <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
+                                        <Label className="text-[10px] uppercase text-gray-400">{t('common.templateVariables')}</Label>
                                         <p className="text-[10px] text-gray-400">
-                                            Map each template placeholder to a data field. Select from dropdown or type a custom field name.
+                                            {t('email.templateVariablesHint')}
                                         </p>
                                         {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => {
                                             const currentValue = ((data.config.templateVars as Record<string, string>)?.[key]) ?? '';
@@ -499,28 +503,28 @@ export function NodeConfigPanel() {
                                                             handleConfigChange('templateVars', vars);
                                                         }}
                                                     >
-                                                        <option value="">Select a field...</option>
+                                                        <option value="">{t('email.selectAField')}</option>
                                                         {availableFields.length > 0 && (
-                                                            <optgroup label="Item Fields (from list)">
+                                                            <optgroup label={t('email.itemFieldsGroup')}>
                                                                 {availableFields.map((f) => (
                                                                     <option key={f.value} value={f.value}>{f.label} ({f.value})</option>
                                                                 ))}
                                                             </optgroup>
                                                         )}
-                                                        <optgroup label="Context / Trigger Fields">
+                                                        <optgroup label={t('email.contextFieldsGroup')}>
                                                             {CONTEXT_FIELDS.map((f) => (
                                                                 <option key={f.value} value={f.value}>{f.label}</option>
                                                             ))}
                                                         </optgroup>
                                                         {hasCustomFieldsContext && (
-                                                            <optgroup label="Custom Fields (type name manually)">
-                                                                <option value="" disabled>Type the custom field name below</option>
+                                                            <optgroup label={t('email.customFieldsGroup')}>
+                                                                <option value="" disabled>{t('email.typeCustomFieldBelow')}</option>
                                                             </optgroup>
                                                         )}
                                                     </select>
                                                     {/* Allow manual override if dropdown value doesn't fit */}
                                                     {availableFields.length > 0 && !availableFields.some((f) => f.value === currentValue) && currentValue && (
-                                                        <p className="mt-0.5 text-[10px] text-primary-500">Custom: {currentValue}</p>
+                                                        <p className="mt-0.5 text-[10px] text-primary-500">{t('email.customValue', { value: currentValue })}</p>
                                                     )}
                                                     {hasCustomFieldsContext && (
                                                         <Input
@@ -532,7 +536,7 @@ export function NodeConfigPanel() {
                                                                 }
                                                             }}
                                                             className="mt-1"
-                                                            placeholder="Or type custom field name (e.g. Full Name, Phone Number)"
+                                                            placeholder={t('email.customFieldPlaceholder')}
                                                         />
                                                     )}
                                                 </div>
@@ -557,21 +561,21 @@ export function NodeConfigPanel() {
                         const uConfig = upstream.data?.config as Record<string, unknown> | undefined;
                         if (uType === 'TRIGGER') {
                             whatsappDataSources.push({
-                                label: 'Lead submitter (from trigger)',
+                                label: t('whatsapp.leadSubmitter'),
                                 value: "{#ctx['user']}",
-                                description: 'The single user who submitted the form — their mobileNumber is used',
+                                description: t('whatsapp.leadSubmitterDesc'),
                             });
                         }
                         if (uType === 'QUERY') {
                             const queryKey = uConfig?.prebuiltKey as string;
                             if (queryKey === 'fetch_audience_responses_filtered') {
-                                whatsappDataSources.push({ label: 'Audience leads (from query)', value: "#ctx['leads']", description: 'Leads with phone in custom fields' });
+                                whatsappDataSources.push({ label: t('whatsapp.audienceLeads'), value: "#ctx['leads']", description: t('whatsapp.audienceLeadsDesc') });
                             } else if (queryKey === 'fetch_batch_attendance_report' || queryKey === 'fetch_students_by_batch') {
-                                whatsappDataSources.push({ label: 'Students (from query)', value: "#ctx['students']", description: 'Students with mobileNumber' });
+                                whatsappDataSources.push({ label: t('whatsapp.students'), value: "#ctx['students']", description: t('whatsapp.studentsDesc') });
                             } else if (queryKey === 'fetch_ssigm_by_package' || queryKey === 'getSSIGMByStatusAndPackageSessionIds') {
-                                whatsappDataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigm_list']", description: 'Enrolled students with mobileNumber' });
+                                whatsappDataSources.push({ label: t('whatsapp.enrolledStudents'), value: "#ctx['ssigm_list']", description: t('whatsapp.enrolledStudentsDesc') });
                             } else if (queryKey) {
-                                whatsappDataSources.push({ label: `Query results (${queryKey})`, value: "#ctx['queryResult']", description: 'Results from the query node' });
+                                whatsappDataSources.push({ label: t('whatsapp.queryResults', { queryKey }), value: "#ctx['queryResult']", description: t('whatsapp.queryResultsDesc') });
                             }
                         }
                     }
@@ -579,7 +583,7 @@ export function NodeConfigPanel() {
                     return (
                     <>
                         <div>
-                            <Label className="text-xs">WhatsApp Template</Label>
+                            <Label className="text-xs">{t('whatsapp.template')}</Label>
                             <TemplateSearchableSelect
                                 className="mt-1"
                                 options={toTemplateOptions(whatsappTemplates ?? [])}
@@ -597,12 +601,12 @@ export function NodeConfigPanel() {
                                         _templateParams: templateParams,
                                     });
                                 }}
-                                placeholder="Select template..."
-                                emptyText="No WhatsApp template matches your search."
+                                placeholder={t('whatsapp.selectTemplate')}
+                                emptyText={t('whatsapp.noTemplateSearchEmpty')}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Send WhatsApp to</Label>
+                            <Label className="text-xs">{t('whatsapp.sendTo')}</Label>
                             {whatsappDataSources.length > 0 ? (
                                 <>
                                     <select
@@ -616,7 +620,7 @@ export function NodeConfigPanel() {
                                             });
                                         }}
                                     >
-                                        <option value="">Select recipients...</option>
+                                        <option value="">{t('whatsapp.selectRecipients')}</option>
                                         {whatsappDataSources.map((ds) => (
                                             <option key={ds.value} value={ds.value}>{ds.label}</option>
                                         ))}
@@ -633,7 +637,7 @@ export function NodeConfigPanel() {
                             ) : (
                                 <>
                                     <p className="mt-1 text-[10px] text-gray-400 mb-1.5">
-                                        Connect a Trigger or Query node upstream to auto-detect recipients.
+                                        {t('whatsapp.connectUpstreamRecipients')}
                                     </p>
                                     <VariablePicker
                                         value={currentOn}
@@ -644,7 +648,7 @@ export function NodeConfigPanel() {
                                                 forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
                                             });
                                         }}
-                                        placeholder="Pick a list of recipients..."
+                                        placeholder={t('email.pickRecipients')}
                                         nodeId={selectedNode.id}
                                     />
                                 </>
@@ -653,7 +657,7 @@ export function NodeConfigPanel() {
                         {/* Dynamic template parameters */}
                         {data.config._templateParams && typeof data.config._templateParams === 'object' && (
                             <div className="space-y-2 border-t pt-2 mt-2">
-                                <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
+                                <Label className="text-[10px] uppercase text-gray-400">{t('common.templateVariables')}</Label>
                                 {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
                                     <div key={key}>
                                         <Label className="text-xs">{label || key}</Label>
@@ -663,7 +667,7 @@ export function NodeConfigPanel() {
                                                 const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: v };
                                                 handleConfigChange('templateVars', vars);
                                             }}
-                                            placeholder={`Value for ${label || key}...`}
+                                            placeholder={t('whatsapp.valueForField', { field: label || key })}
                                             nodeId={selectedNode.id}
                                         />
                                     </div>
@@ -688,31 +692,31 @@ export function NodeConfigPanel() {
                     return (
                         <>
                             <div>
-                                <Label className="text-xs">Request Type</Label>
+                                <Label className="text-xs">{t('http.requestType')}</Label>
                                 <select
                                     className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                     value={(httpConfig.requestType as string) ?? 'EXTERNAL'}
                                     onChange={(e) => updateHttpConfig('requestType', e.target.value)}
                                 >
-                                    <option value="EXTERNAL">External API</option>
-                                    <option value="INTERNAL">Internal Service</option>
+                                    <option value="EXTERNAL">{t('http.externalApi')}</option>
+                                    <option value="INTERNAL">{t('http.internalService')}</option>
                                 </select>
                             </div>
                             <div>
-                                <Label className="text-xs">URL</Label>
+                                <Label className="text-xs">{t('http.url')}</Label>
                                 <Input
                                     value={(httpConfig.url as string) ?? ''}
                                     onChange={(e) => updateHttpConfig('url', e.target.value)}
                                     className="mt-1"
                                     placeholder={
                                         (httpConfig.requestType as string) === 'INTERNAL'
-                                            ? '/admin-core-service/v1/...'
-                                            : 'https://api.example.com/endpoint'
+                                            ? t('http.internalUrlPlaceholder')
+                                            : t('http.externalUrlPlaceholder')
                                     }
                                 />
                             </div>
                             <div>
-                                <Label className="text-xs">Method</Label>
+                                <Label className="text-xs">{t('http.method')}</Label>
                                 <select
                                     className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                     value={(httpConfig.method as string) ?? 'GET'}
@@ -727,7 +731,7 @@ export function NodeConfigPanel() {
 
                             {/* Headers */}
                             <div>
-                                <Label className="text-xs">Headers <span className="text-gray-300 text-[10px]">(optional)</span></Label>
+                                <Label className="text-xs">{t('http.headers')} <span className="text-gray-300 text-[10px]">{t('http.optional')}</span></Label>
                                 <textarea
                                     className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
                                     rows={3}
@@ -747,7 +751,7 @@ export function NodeConfigPanel() {
                             {/* Query Params — for GET requests */}
                             {((httpConfig.method as string) ?? 'GET') === 'GET' && (
                                 <div>
-                                    <Label className="text-xs">Query Parameters <span className="text-gray-300 text-[10px]">(optional)</span></Label>
+                                    <Label className="text-xs">{t('http.queryParameters')} <span className="text-gray-300 text-[10px]">{t('http.optional')}</span></Label>
                                     <textarea
                                         className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
                                         rows={3}
@@ -768,7 +772,7 @@ export function NodeConfigPanel() {
                             {/* Request Body — for POST/PUT */}
                             {['POST', 'PUT'].includes((httpConfig.method as string) ?? 'GET') && (
                                 <div>
-                                    <Label className="text-xs">Request Body <span className="text-gray-300 text-[10px]">(JSON)</span></Label>
+                                    <Label className="text-xs">{t('http.requestBody')} <span className="text-gray-300 text-[10px]">{t('http.requestBodyJson')}</span></Label>
                                     <textarea
                                         className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
                                         rows={5}
@@ -788,7 +792,7 @@ export function NodeConfigPanel() {
 
                             {/* Result Key */}
                             <div>
-                                <Label className="text-xs">Result Key</Label>
+                                <Label className="text-xs">{t('common.resultKey')}</Label>
                                 <Input
                                     value={(data.config.resultKey as string) ?? 'httpResult'}
                                     onChange={(e) => handleConfigChange('resultKey', e.target.value)}
@@ -796,18 +800,18 @@ export function NodeConfigPanel() {
                                     placeholder="httpResult"
                                 />
                                 <p className="mt-1 text-[10px] text-gray-400">
-                                    Response will be available as #ctx['{(data.config.resultKey as string) || 'httpResult'}']['body']
+                                    {t('http.resultKeyHint', { resultKey: (data.config.resultKey as string) || 'httpResult' })}
                                 </p>
                             </div>
 
                             {/* Condition — optional */}
                             <div>
-                                <Label className="text-xs">Condition <span className="text-gray-300 text-[10px]">(optional — skip request if false)</span></Label>
+                                <Label className="text-xs">{t('http.condition')} <span className="text-gray-300 text-[10px]">{t('http.conditionHint')}</span></Label>
                                 <Input
                                     value={(httpConfig.condition as string) ?? ''}
                                     onChange={(e) => updateHttpConfig('condition', e.target.value)}
                                     className="mt-1"
-                                    placeholder="Leave empty to always execute"
+                                    placeholder={t('http.conditionPlaceholder')}
                                 />
                             </div>
                         </>
@@ -827,13 +831,13 @@ export function NodeConfigPanel() {
                     return (
                     <>
                         <div>
-                            <Label className="text-xs">Query</Label>
+                            <Label className="text-xs">{t('query.query')}</Label>
                             <select
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={(data.config.prebuiltKey as string) ?? ''}
                                 onChange={(e) => handleConfigChange('prebuiltKey', e.target.value)}
                             >
-                                <option value="">Select a query...</option>
+                                <option value="">{t('query.selectQuery')}</option>
                                 {queryKeys?.map((q) => (
                                     <option key={q.key} value={q.key}>
                                         {q.label}
@@ -858,7 +862,7 @@ export function NodeConfigPanel() {
                         {/* Optional params from catalog — also stored under params.{key} */}
                         {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">
-                                <Label className="text-[10px] uppercase text-gray-400">Optional Filters</Label>
+                                <Label className="text-[10px] uppercase text-gray-400">{t('query.optionalFilters')}</Label>
                                 {selectedQueryKey.optional_params.map((param) => {
                                     const entityTypeMap: Record<string, string> = {
                                         audienceId: 'AUDIENCE',
@@ -870,7 +874,7 @@ export function NodeConfigPanel() {
 
                                     return (
                                         <div key={param}>
-                                            <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
+                                            <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">{t('query.optional')}</span></Label>
                                             {entityType ? (
                                                 <div className="mt-1">
                                                     <EventEntityPicker
@@ -890,7 +894,7 @@ export function NodeConfigPanel() {
                                                         : param === 'daysUntilExpiry' ? 'e.g. 7'
                                                         : param === 'status' ? 'e.g. ACTIVE'
                                                         : param.includes('Date') ? 'YYYY-MM-DD'
-                                                        : `Enter ${param}...`
+                                                        : t('common.enterParam', { param })
                                                     }
                                                 />
                                             )}
@@ -900,7 +904,7 @@ export function NodeConfigPanel() {
                             </div>
                         )}
                         <div>
-                            <Label className="text-xs">Result Key</Label>
+                            <Label className="text-xs">{t('common.resultKey')}</Label>
                             <Input
                                 value={(data.config.resultKey as string) ?? 'queryResult'}
                                 onChange={(e) => handleConfigChange('resultKey', e.target.value)}
@@ -943,7 +947,7 @@ export function NodeConfigPanel() {
                     return (
                         <>
                             <div>
-                                <Label className="text-xs">Wait mode</Label>
+                                <Label className="text-xs">{t('delay.waitMode')}</Label>
                                 <select
                                     className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                     value={isUntilWeekday ? 'UNTIL_WEEKDAY' : 'FIXED'}
@@ -960,13 +964,13 @@ export function NodeConfigPanel() {
                                         }
                                     }}
                                 >
-                                    <option value="FIXED">Fixed duration</option>
-                                    <option value="UNTIL_WEEKDAY">Until next weekday</option>
+                                    <option value="FIXED">{t('delay.fixedDuration')}</option>
+                                    <option value="UNTIL_WEEKDAY">{t('delay.untilNextWeekday')}</option>
                                 </select>
                             </div>
                             {!isUntilWeekday && (
                                 <div>
-                                    <Label className="text-xs">Wait for</Label>
+                                    <Label className="text-xs">{t('delay.waitFor')}</Label>
                                     <div className="mt-1 flex items-center gap-2">
                                         <Input
                                             type="number"
@@ -980,15 +984,15 @@ export function NodeConfigPanel() {
                                             value={delayUnit}
                                             onChange={(e) => updateDelay('unit', e.target.value)}
                                         >
-                                            <option value="SECONDS">Seconds</option>
-                                            <option value="MINUTES">Minutes</option>
-                                            <option value="HOURS">Hours</option>
-                                            <option value="DAYS">Days</option>
+                                            <option value="SECONDS">{t('delay.unit.seconds')}</option>
+                                            <option value="MINUTES">{t('delay.unit.minutes')}</option>
+                                            <option value="HOURS">{t('delay.unit.hours')}</option>
+                                            <option value="DAYS">{t('delay.unit.days')}</option>
                                         </select>
                                     </div>
                                     {delayUnit === 'DAYS' && delayValue > 0 && (
                                         <p className="mt-1.5 text-caption text-primary-500">
-                                            Workflow will pause and resume automatically after {delayValue} day{delayValue > 1 ? 's' : ''}.
+                                            {t('delay.pauseResumeAfter', { count: delayValue })}
                                         </p>
                                     )}
                                 </div>
@@ -996,20 +1000,20 @@ export function NodeConfigPanel() {
                             {isUntilWeekday && (
                                 <>
                                     <div>
-                                        <Label className="text-xs">Wait until next</Label>
+                                        <Label className="text-xs">{t('delay.waitUntilNext')}</Label>
                                         <div className="mt-1 flex items-center gap-2">
                                             <select
                                                 className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
                                                 value={delay.dayOfWeek ?? 'MONDAY'}
                                                 onChange={(e) => updateUntil('dayOfWeek', e.target.value)}
                                             >
-                                                <option value="MONDAY">Monday</option>
-                                                <option value="TUESDAY">Tuesday</option>
-                                                <option value="WEDNESDAY">Wednesday</option>
-                                                <option value="THURSDAY">Thursday</option>
-                                                <option value="FRIDAY">Friday</option>
-                                                <option value="SATURDAY">Saturday</option>
-                                                <option value="SUNDAY">Sunday</option>
+                                                <option value="MONDAY">{t('delay.day.monday')}</option>
+                                                <option value="TUESDAY">{t('delay.day.tuesday')}</option>
+                                                <option value="WEDNESDAY">{t('delay.day.wednesday')}</option>
+                                                <option value="THURSDAY">{t('delay.day.thursday')}</option>
+                                                <option value="FRIDAY">{t('delay.day.friday')}</option>
+                                                <option value="SATURDAY">{t('delay.day.saturday')}</option>
+                                                <option value="SUNDAY">{t('delay.day.sunday')}</option>
                                             </select>
                                             <Input
                                                 type="time"
@@ -1020,7 +1024,7 @@ export function NodeConfigPanel() {
                                         </div>
                                     </div>
                                     <div>
-                                        <Label className="text-xs">Timezone</Label>
+                                        <Label className="text-xs">{t('delay.timezone')}</Label>
                                         <Input
                                             value={delay.timezone ?? 'Asia/Kolkata'}
                                             onChange={(e) => updateUntil('timezone', e.target.value)}
@@ -1028,8 +1032,10 @@ export function NodeConfigPanel() {
                                             placeholder="Asia/Kolkata"
                                         />
                                         <p className="mt-1.5 text-caption text-primary-500">
-                                            Pauses until the next {(delay.dayOfWeek ?? 'MONDAY').toLowerCase()} at{' '}
-                                            {delay.time ?? '09:00'}. An event on that same weekday waits a full week.
+                                            {t('delay.pausesUntil', {
+                                                day: t(`delay.day.${(delay.dayOfWeek ?? 'MONDAY').toLowerCase()}`),
+                                                time: delay.time ?? '09:00',
+                                            })}
                                         </p>
                                     </div>
                                 </>
@@ -1042,16 +1048,16 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'FILTER' && (
                     <>
                         <div>
-                            <Label className="text-xs">Source List</Label>
+                            <Label className="text-xs">{t('common.sourceList')}</Label>
                             <VariablePicker
                                 value={(data.config.source as string) ?? ''}
                                 onChange={(v) => handleConfigChange('source', v)}
-                                placeholder="Pick a list to filter..."
+                                placeholder={t('filter.pickListToFilter')}
                                 nodeId={selectedNode.id}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Keep items where</Label>
+                            <Label className="text-xs">{t('filter.keepItemsWhere')}</Label>
                             <div className="mt-1.5">
                                 <ConditionBuilder
                                     value={(data.config.condition as string) ?? ''}
@@ -1062,7 +1068,7 @@ export function NodeConfigPanel() {
                             </div>
                         </div>
                         <div>
-                            <Label className="text-xs">Save filtered list as</Label>
+                            <Label className="text-xs">{t('filter.saveFilteredListAs')}</Label>
                             <Input
                                 value={(data.config.outputKey as string) ?? 'filteredList'}
                                 onChange={(e) => handleConfigChange('outputKey', e.target.value)}
@@ -1077,16 +1083,16 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'AGGREGATE' && (
                     <>
                         <div>
-                            <Label className="text-xs">Source List</Label>
+                            <Label className="text-xs">{t('common.sourceList')}</Label>
                             <VariablePicker
                                 value={(data.config.source as string) ?? ''}
                                 onChange={(v) => handleConfigChange('source', v)}
-                                placeholder="Pick a list to aggregate..."
+                                placeholder={t('aggregate.pickListToAggregate')}
                                 nodeId={selectedNode.id}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Operations</Label>
+                            <Label className="text-xs">{t('aggregate.operations')}</Label>
                             <div className="mt-1.5">
                                 <AggregateBuilder
                                     value={(data.config.operations as Array<{ type: string; field?: string; outputKey: string }>) ?? []}
@@ -1101,7 +1107,7 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'CONDITION' && (
                     <>
                         <div>
-                            <Label className="text-xs">Condition</Label>
+                            <Label className="text-xs">{t('http.condition')}</Label>
                             <div className="mt-1.5">
                                 <ConditionBuilder
                                     value={(data.config.condition as string) ?? ''}
@@ -1112,7 +1118,7 @@ export function NodeConfigPanel() {
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
-                                <Label className="text-xs">True Label</Label>
+                                <Label className="text-xs">{t('condition.trueLabel')}</Label>
                                 <Input
                                     value={(data.config.trueLabel as string) ?? 'Yes'}
                                     onChange={(e) => handleConfigChange('trueLabel', e.target.value)}
@@ -1121,7 +1127,7 @@ export function NodeConfigPanel() {
                                 />
                             </div>
                             <div>
-                                <Label className="text-xs">False Label</Label>
+                                <Label className="text-xs">{t('condition.falseLabel')}</Label>
                                 <Input
                                     value={(data.config.falseLabel as string) ?? 'No'}
                                     onChange={(e) => handleConfigChange('falseLabel', e.target.value)}
@@ -1137,16 +1143,16 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'LOOP' && (
                     <>
                         <div>
-                            <Label className="text-xs">Source Expression</Label>
+                            <Label className="text-xs">{t('loop.sourceExpression')}</Label>
                             <VariablePicker
                                 value={(data.config.source as string) ?? ''}
                                 onChange={(v) => handleConfigChange('source', v)}
-                                placeholder="Pick a list variable..."
+                                placeholder={t('loop.pickListVariable')}
                                 nodeId={selectedNode.id}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Item Variable Name</Label>
+                            <Label className="text-xs">{t('loop.itemVariableName')}</Label>
                             <Input
                                 value={(data.config.itemVariable as string) ?? 'item'}
                                 onChange={(e) => handleConfigChange('itemVariable', e.target.value)}
@@ -1154,11 +1160,11 @@ export function NodeConfigPanel() {
                                 placeholder="item"
                             />
                             <p className="mt-1 text-[10px] text-gray-400">
-                                Access each item in downstream nodes as #ctx['{'{'}variableName{'}'}']
+                                {t('loop.itemVariableHint')}
                             </p>
                         </div>
                         <div>
-                            <Label className="text-xs">Output Key</Label>
+                            <Label className="text-xs">{t('loop.outputKey')}</Label>
                             <Input
                                 value={(data.config.outputKey as string) ?? 'loopResults'}
                                 onChange={(e) => handleConfigChange('outputKey', e.target.value)}
@@ -1173,7 +1179,7 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'MERGE' && (
                     <>
                         <div>
-                            <Label className="text-xs">Wait For Node IDs (comma-separated)</Label>
+                            <Label className="text-xs">{t('merge.waitForNodeIds')}</Label>
                             <Input
                                 value={(data.config.waitFor as string) ?? ''}
                                 onChange={(e) => handleConfigChange('waitFor', e.target.value)}
@@ -1181,18 +1187,18 @@ export function NodeConfigPanel() {
                                 placeholder="node-id-1, node-id-2"
                             />
                             <p className="mt-1 text-[10px] text-gray-400">
-                                IDs of upstream nodes whose output must be present before continuing.
+                                {t('merge.waitForHint')}
                             </p>
                         </div>
                         <div>
-                            <Label className="text-xs">Strategy</Label>
+                            <Label className="text-xs">{t('merge.strategy')}</Label>
                             <select
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={(data.config.strategy as string) ?? 'ALL'}
                                 onChange={(e) => handleConfigChange('strategy', e.target.value)}
                             >
-                                <option value="ALL">Wait for ALL upstream nodes</option>
-                                <option value="ANY">Continue when ANY upstream completes</option>
+                                <option value="ALL">{t('merge.waitAll')}</option>
+                                <option value="ANY">{t('merge.waitAny')}</option>
                             </select>
                         </div>
                     </>
@@ -1202,7 +1208,7 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'SCHEDULE_TASK' && (
                     <>
                         <div>
-                            <Label className="text-xs">Delay Duration (ISO-8601)</Label>
+                            <Label className="text-xs">{t('scheduleTask.delayDuration')}</Label>
                             <Input
                                 value={(data.config.delayDuration as string) ?? 'PT1H'}
                                 onChange={(e) => handleConfigChange('delayDuration', e.target.value)}
@@ -1210,20 +1216,20 @@ export function NodeConfigPanel() {
                                 placeholder="PT1H, P3D, PT30M"
                             />
                             <p className="mt-1 text-[10px] text-gray-400">
-                                PT1H = 1 hour, P3D = 3 days, PT30M = 30 minutes
+                                {t('scheduleTask.delayDurationHint')}
                             </p>
                         </div>
                         <div>
-                            <Label className="text-xs">Target Workflow ID (optional)</Label>
+                            <Label className="text-xs">{t('scheduleTask.targetWorkflowId')}</Label>
                             <Input
                                 value={(data.config.workflowId as string) ?? ''}
                                 onChange={(e) => handleConfigChange('workflowId', e.target.value)}
                                 className="mt-1"
-                                placeholder="Leave empty for current workflow"
+                                placeholder={t('scheduleTask.targetWorkflowIdPlaceholder')}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Context Keys to Forward (comma-separated)</Label>
+                            <Label className="text-xs">{t('scheduleTask.contextKeysToForward')}</Label>
                             <Input
                                 value={(data.config.contextForward as string) ?? ''}
                                 onChange={(e) => handleConfigChange('contextForward', e.target.value)}
@@ -1238,13 +1244,13 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'UPDATE_RECORD' && (
                     <>
                         <div>
-                            <Label className="text-xs">Table</Label>
+                            <Label className="text-xs">{t('updateRecord.table')}</Label>
                             <select
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={(data.config.table as string) ?? ''}
                                 onChange={(e) => handleConfigChange('table', e.target.value)}
                             >
-                                <option value="">Select table...</option>
+                                <option value="">{t('updateRecord.selectTable')}</option>
                                 <option value="enrollment">enrollment</option>
                                 <option value="payment">payment</option>
                                 <option value="student_session">student_session</option>
@@ -1255,26 +1261,26 @@ export function NodeConfigPanel() {
                             </select>
                         </div>
                         <div>
-                            <Label className="text-xs">Find records where</Label>
+                            <Label className="text-xs">{t('updateRecord.findRecordsWhere')}</Label>
                             <div className="mt-1.5">
                                 <KeyValueBuilder
                                     value={(data.config.where as Record<string, string>) ?? {}}
                                     onChange={(kv) => handleConfigChange('where', kv)}
                                     nodeId={selectedNode.id}
-                                    keyPlaceholder="column"
-                                    valuePlaceholder="match value"
+                                    keyPlaceholder={t('updateRecord.columnPlaceholder')}
+                                    valuePlaceholder={t('updateRecord.matchValuePlaceholder')}
                                 />
                             </div>
                         </div>
                         <div>
-                            <Label className="text-xs">Set values to</Label>
+                            <Label className="text-xs">{t('updateRecord.setValuesTo')}</Label>
                             <div className="mt-1.5">
                                 <KeyValueBuilder
                                     value={(data.config.set as Record<string, string>) ?? {}}
                                     onChange={(kv) => handleConfigChange('set', kv)}
                                     nodeId={selectedNode.id}
-                                    keyPlaceholder="column"
-                                    valuePlaceholder="new value"
+                                    keyPlaceholder={t('updateRecord.columnPlaceholder')}
+                                    valuePlaceholder={t('updateRecord.newValuePlaceholder')}
                                 />
                             </div>
                         </div>
@@ -1285,35 +1291,35 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'SEND_PUSH_NOTIFICATION' && (
                     <>
                         <div>
-                            <Label className="text-xs">Title</Label>
+                            <Label className="text-xs">{t('pushNotification.title')}</Label>
                             <Input
                                 value={(data.config.title as string) ?? ''}
                                 onChange={(e) => handleConfigChange('title', e.target.value)}
                                 className="mt-1"
-                                placeholder="New assignment posted!"
+                                placeholder={t('pushNotification.titlePlaceholder')}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Body</Label>
+                            <Label className="text-xs">{t('pushNotification.body')}</Label>
                             <textarea
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 rows={2}
                                 value={(data.config.body as string) ?? ''}
                                 onChange={(e) => handleConfigChange('body', e.target.value)}
-                                placeholder="Check out the new assignment in your course"
+                                placeholder={t('pushNotification.bodyPlaceholder')}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Recipient Tokens</Label>
+                            <Label className="text-xs">{t('pushNotification.recipientTokens')}</Label>
                             <VariablePicker
                                 value={(data.config.recipientTokenExpression as string) ?? ''}
                                 onChange={(v) => handleConfigChange('recipientTokenExpression', v)}
-                                placeholder="Pick FCM token list..."
+                                placeholder={t('pushNotification.recipientTokensPlaceholder')}
                                 nodeId={selectedNode.id}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Data Payload (JSON, optional)</Label>
+                            <Label className="text-xs">{t('pushNotification.dataPayload')}</Label>
                             <textarea
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
                                 rows={3}
@@ -1337,13 +1343,13 @@ export function NodeConfigPanel() {
                 {/* Set Lead Status node config */}
                 {data.nodeType === 'SET_LEAD_STATUS' && (
                     <div>
-                        <Label className="text-xs">Lead Status</Label>
+                        <Label className="text-xs">{t('leadStatus.label')}</Label>
                         <select
                             className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                             value={(data.config.statusKey as string) ?? ''}
                             onChange={(e) => handleConfigChange('statusKey', e.target.value)}
                         >
-                            <option value="">Select status...</option>
+                            <option value="">{t('leadStatus.selectStatus')}</option>
                             {leadStatuses.map((s) => (
                                 <option key={s.status_key} value={s.status_key}>
                                     {s.label}
@@ -1359,13 +1365,13 @@ export function NodeConfigPanel() {
                 {data.nodeType === 'CALL_AI' && (
                     <>
                         <div>
-                            <Label className="text-xs">Agent</Label>
+                            <Label className="text-xs">{t('callAi.agent')}</Label>
                             <select
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={(data.config.campaignName as string) ?? ''}
                                 onChange={(e) => handleConfigChange('campaignName', e.target.value)}
                             >
-                                <option value="">Select agent...</option>
+                                <option value="">{t('callAi.selectAgent')}</option>
                                 {[
                                     ...new Set(
                                         aiCampaigns
@@ -1384,22 +1390,23 @@ export function NodeConfigPanel() {
                                 ))}
                             </select>
                             <p className="mt-1 text-xs text-muted-foreground">
-                                Agents are registered in Settings → AI Calling (Campaigns / AI
-                                Agents). The call outcome comes back as{' '}
-                                <code>#ctx[&apos;callOutcome&apos;]</code> (ASSIGN | STOP | RETRY),{' '}
-                                <code>#ctx[&apos;callDisposition&apos;]</code> and{' '}
+                                {t('callAi.infoPrefix')}{' '}
+                                <code>#ctx[&apos;callOutcome&apos;]</code> {t('callAi.infoOutcomeSuffix')}{' '}
+                                <code>#ctx[&apos;callDisposition&apos;]</code> {t('callAi.infoAnd')}{' '}
                                 <code>#ctx[&apos;callAnswers&apos;]</code>.
                             </p>
                         </div>
                         <div>
-                            <Label className="text-xs">Provider (optional)</Label>
+                            <Label className="text-xs">{t('callAi.provider')}</Label>
                             <select
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={(data.config.provider as string) ?? ''}
                                 onChange={(e) => handleConfigChange('provider', e.target.value)}
                             >
                                 <option value="">
-                                    Institute default{aiDefaultProvider ? ` (${aiDefaultProvider})` : ''}
+                                    {aiDefaultProvider
+                                        ? t('callAi.instituteDefaultWithProvider', { provider: aiDefaultProvider })
+                                        : t('callAi.instituteDefault')}
                                 </option>
                                 {[...new Set(aiCampaigns.map((c) => c.provider).filter(Boolean))].map(
                                     (p) => (
@@ -1425,18 +1432,15 @@ export function NodeConfigPanel() {
                                     htmlFor="ignore-assigned-guard"
                                     className="cursor-pointer text-xs"
                                 >
-                                    Also call leads that already have a counsellor
+                                    {t('callAi.ignoreAssignedGuardLabel')}
                                 </Label>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    Off by default: the bot skips leads a counsellor already owns.
-                                    Turn this on for workflows that deliberately target owned leads
-                                    — e.g. re-calling a lead a counsellor just marked DNP — or the
-                                    node will stop without dialling. Daily call caps still apply.
+                                    {t('callAi.ignoreAssignedGuardHint')}
                                 </p>
                             </div>
                         </div>
                         <div>
-                            <Label className="text-xs">Extra metadata for the agent (JSON, optional)</Label>
+                            <Label className="text-xs">{t('callAi.extraMetadata')}</Label>
                             <textarea
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
                                 rows={3}
@@ -1478,7 +1482,7 @@ export function NodeConfigPanel() {
                 ].includes(data.nodeType) && (
                     <div>
                         <Label className="text-xs">
-                            Configuration (JSON)
+                            {t('common.configurationJson')}
                         </Label>
                         <textarea
                             className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
@@ -1510,7 +1514,7 @@ export function NodeConfigPanel() {
                         className="w-full gap-2"
                     >
                         <Trash size={14} />
-                        Delete Node
+                        {t('common.deleteNode')}
                     </Button>
                 </div>
             </div>

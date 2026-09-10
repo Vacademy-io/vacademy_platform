@@ -1,0 +1,19 @@
+{
+    "loadingVideo": "Loading video...",
+    "retry": "Retry",
+    "workInProgress": "Work in progress",
+    "videoBeingGenerated": "Video is being generated...",
+    "generatingHint": "This may take a few minutes. Please check back later.",
+    "vimeoPlayerTitle": "Vimeo video player",
+    "toast": {
+        "jumpedTo": "Video jumped to {{time}}"
+    },
+    "errors": {
+        "refreshFailed": "Failed to refresh video URL",
+        "loadFailed": "Failed to load video",
+        "loadUrlsFailed": "Failed to load video URLs",
+        "urlExpiredRefreshing": "Video URL has expired. Refreshing...",
+        "playbackError": "Video playback error: {{message}}",
+        "unknownError": "Unknown error"
+    }
+}

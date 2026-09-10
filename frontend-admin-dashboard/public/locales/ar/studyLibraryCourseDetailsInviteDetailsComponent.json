@@ -1,0 +1,13 @@
+{
+    "inviteLinks": "روابط الدعوة",
+    "add": "إضافة",
+    "inviteLinksLabel": "روابط الدعوة:",
+    "view": "عرض",
+    "defaultTag": "افتراضي",
+    "makeDefault": "تعيين كافتراضي",
+    "noInviteLinksAvailable": "لا توجد روابط دعوة متاحة.",
+    "invitePage": "صفحة الدعوة",
+    "copyFailed": "فشل النسخ",
+    "failedToSubmitRating": "فشل إرسال التقييم",
+    "unexpectedError": "حدث خطأ غير متوقع"
+}

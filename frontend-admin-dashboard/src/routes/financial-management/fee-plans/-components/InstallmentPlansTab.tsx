@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useState, useMemo } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useCPOFullDetails, useCreateCPO, useInstituteCPOList } from '../-services/cpo-service';
 import type { CPOPackage, CPOFeeType } from '../-types/cpo-types';
@@ -37,6 +38,7 @@ function FeeTypeCard({
     onToggle: () => void;
     isLoadingInstallments?: boolean;
 }) {
+    const { t } = useTranslation('financialManagementInstallmentPlansTab');
     const assigned_fee_value = feeType.assigned_fee_value ?? {
         amount: 0,
         no_of_installments: 0,
@@ -71,19 +73,22 @@ function FeeTypeCard({
                             ₹{assigned_fee_value.amount.toLocaleString('en-IN')}
                         </div>
                         <div className="text-xs text-gray-500">
-                            {assigned_fee_value.no_of_installments} installment
-                            {assigned_fee_value.no_of_installments !== 1 ? 's' : ''}
+                            {t('feeType.installmentCount', {
+                                count: assigned_fee_value.no_of_installments,
+                            })}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
                         {assigned_fee_value.is_refundable && (
                             <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
-                                Refundable
+                                {t('feeType.refundable')}
                             </span>
                         )}
                         {assigned_fee_value.has_penalty && (
                             <span className="rounded-md border border-red-100 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-                                Penalty {assigned_fee_value.penalty_percentage}%
+                                {t('feeType.penalty', {
+                                    percent: assigned_fee_value.penalty_percentage,
+                                })}
                             </span>
                         )}
                     </div>
@@ -105,7 +110,9 @@ function FeeTypeCard({
 
             {/* Installment Details */}
             {isExpanded && isLoadingInstallments && (
-                <div className="px-4 py-3 text-sm text-gray-500">Loading installments...</div>
+                <div className="px-4 py-3 text-sm text-gray-500">
+                    {t('feeType.loadingInstallments')}
+                </div>
             )}
 
             {isExpanded && !isLoadingInstallments && hasInstallments && (
@@ -114,22 +121,22 @@ function FeeTypeCard({
                         <thead>
                             <tr className="border-b border-gray-100">
                                 <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-gray-500">
-                                    #
+                                    {t('feeType.columns.number')}
                                 </th>
                                 <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-gray-500">
-                                    Amount
+                                    {t('feeType.columns.amount')}
                                 </th>
                                 <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-gray-500">
-                                    Start Date
+                                    {t('feeType.columns.startDate')}
                                 </th>
                                 <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-gray-500">
-                                    End Date
+                                    {t('feeType.columns.endDate')}
                                 </th>
                                 <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-gray-500">
-                                    Due Date
+                                    {t('feeType.columns.dueDate')}
                                 </th>
                                 <th className="px-2 py-2 text-left text-xs font-semibold uppercase text-gray-500">
-                                    Status
+                                    {t('feeType.columns.status')}
                                 </th>
                             </tr>
                         </thead>
@@ -188,7 +195,9 @@ function FeeTypeCard({
                         </tbody>
                         <tfoot>
                             <tr className="bg-gray-50">
-                                <td className="px-2 py-2 font-bold text-gray-700">Total</td>
+                                <td className="px-2 py-2 font-bold text-gray-700">
+                                    {t('feeType.total')}
+                                </td>
                                 <td className="px-2 py-2 font-bold text-gray-800">
                                     ₹
                                     {installments
@@ -204,8 +213,9 @@ function FeeTypeCard({
 
             {isExpanded && !isLoadingInstallments && !hasInstallments && (
                 <div className="px-4 py-3 text-sm text-gray-500">
-                    No installment schedule — one-time payment of ₹
-                    {assigned_fee_value.amount.toLocaleString('en-IN')}
+                    {t('feeType.noSchedule', {
+                        amount: `₹${assigned_fee_value.amount.toLocaleString('en-IN')}`,
+                    })}
                 </div>
             )}
         </div>
@@ -213,6 +223,7 @@ function FeeTypeCard({
 }
 
 function PackageCard({ pkg, allBatches = [] }: { pkg: CPOPackage; allBatches?: any[] }) {
+    const { t } = useTranslation('financialManagementInstallmentPlansTab');
     const [expandedFeeTypes, setExpandedFeeTypes] = useState<Set<string>>(new Set());
     const shouldFetchFullDetails = expandedFeeTypes.size > 0;
 
@@ -249,15 +260,18 @@ function PackageCard({ pkg, allBatches = [] }: { pkg: CPOPackage; allBatches?: a
                     </div>
                     <div className="mt-1.5 flex items-center gap-4 text-sm text-gray-500">
                         <span>
-                            <span className="font-semibold text-gray-700">
-                                ₹{totalAmount.toLocaleString('en-IN')}
-                            </span>{' '}
-                            total
+                            <Trans
+                                i18nKey="package.totalLabel"
+                                ns="financialManagementInstallmentPlansTab"
+                                values={{ amount: `₹${totalAmount.toLocaleString('en-IN')}` }}
+                                components={{
+                                    b: <span className="font-semibold text-gray-700" />,
+                                }}
+                            />
                         </span>
                         <span>·</span>
                         <span>
-                            {feeTypesForRender.length} fee type
-                            {feeTypesForRender.length !== 1 ? 's' : ''}
+                            {t('package.feeTypeCount', { count: feeTypesForRender.length })}
                         </span>
                     </div>
                     {/* Linked class badges */}
@@ -312,6 +326,7 @@ function PackageCard({ pkg, allBatches = [] }: { pkg: CPOPackage; allBatches?: a
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
 export default function InstallmentPlansTab() {
+    const { t } = useTranslation('financialManagementInstallmentPlansTab');
     const [selectedSessionId, setSelectedSessionId] = useState<string>('');
     const [selectedPackageSessionId, setSelectedPackageSessionId] = useState<string | null>(null);
     const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -398,10 +413,8 @@ export default function InstallmentPlansTab() {
             <div className="flex flex-wrap items-center justify-between gap-4">
                 {/* Title */}
                 <div>
-                    <h1 className="text-xl font-bold text-gray-900">Fee Plan</h1>
-                    <p className="mt-1 text-sm text-gray-500">
-                        Manage fee plans with fee types and installment schedules.
-                    </p>
+                    <h1 className="text-xl font-bold text-gray-900">{t('header.title')}</h1>
+                    <p className="mt-1 text-sm text-gray-500">{t('header.subtitle')}</p>
                 </div>
 
                 {/* Session filter + Create button */}
@@ -428,7 +441,7 @@ export default function InstallmentPlansTab() {
                             onChange={(e) => setSelectedPackageSessionId(e.target.value || null)}
                             className="w-full cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary-500 focus:ring-1 focus:ring-primary-200"
                         >
-                            <option value="">All Classes</option>
+                            <option value="">{t('filters.allClasses')}</option>
                             {batchOptions.map((opt) => (
                                 <option key={opt.id} value={opt.id}>
                                     {opt.label}
@@ -455,7 +468,7 @@ export default function InstallmentPlansTab() {
                                 d="M12 4v16m8-8H4"
                             />
                         </svg>
-                        Create Plan
+                        {t('actions.createPlan')}
                     </button>
                 </div>
             </div>
@@ -483,7 +496,7 @@ export default function InstallmentPlansTab() {
                                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                             />
                         </svg>
-                        <span className="text-sm font-medium">Loading fee plans...</span>
+                        <span className="text-sm font-medium">{t('loading')}</span>
                     </div>
                 </div>
             )}
@@ -491,8 +504,8 @@ export default function InstallmentPlansTab() {
             {/* ─── Error ────────────────────────────────────────────────────────── */}
             {isError && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                    Failed to load fee plan.{' '}
-                    {error instanceof Error ? error.message : 'Please try again.'}
+                    {t('error.prefix')}{' '}
+                    {error instanceof Error ? error.message : t('error.genericMessage')}
                 </div>
             )}
 
@@ -512,9 +525,14 @@ export default function InstallmentPlansTab() {
                             d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
                         />
                     </svg>
-                    <p className="font-medium text-gray-500">No fee plan found.</p>
+                    <p className="font-medium text-gray-500">{t('empty.title')}</p>
                     <p className="mt-1 text-sm">
-                        Click <strong>Create Plan</strong> to add the first one.
+                        <Trans
+                            i18nKey="empty.hint"
+                            ns="financialManagementInstallmentPlansTab"
+                            values={{ createPlan: t('actions.createPlan') }}
+                            components={{ b: <strong /> }}
+                        />
                     </p>
                 </div>
             )}
@@ -530,7 +548,7 @@ export default function InstallmentPlansTab() {
 
             {cpoPackages.length > 0 && (
                 <div className="text-right text-xs text-gray-400">
-                    Showing {cpoPackages.length} package{cpoPackages.length !== 1 ? 's' : ''}
+                    {t('summary.packageCount', { count: cpoPackages.length })}
                 </div>
             )}
 

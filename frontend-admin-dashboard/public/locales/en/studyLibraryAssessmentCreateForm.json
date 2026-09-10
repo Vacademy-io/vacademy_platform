@@ -1,0 +1,43 @@
+{
+    "errors": {
+        "failedToLinkAssessment": "Failed to link assessment",
+        "enterBothDates": "Enter both a start and end date, or turn off the date range.",
+        "endDateAfterStart": "End date must be after the start date.",
+        "failedToCreate": "Failed to create assessment"
+    },
+    "toasts": {
+        "createdAndPublished": "Assessment created and published."
+    },
+    "createLogic": {
+        "noteHtml_one": "<p>Download the question paper above, and when your answers are ready, click <strong>Start Assessment</strong>.</p><p><strong>Note:</strong> Do not click Start Assessment until you have prepared your answers. After clicking Start Assessment, you will have <strong>{{count}} minute</strong> to upload your answers file.</p>",
+        "noteHtml_other": "<p>Download the question paper above, and when your answers are ready, click <strong>Start Assessment</strong>.</p><p><strong>Note:</strong> Do not click Start Assessment until you have prepared your answers. After clicking Start Assessment, you will have <strong>{{count}} minutes</strong> to upload your answers file.</p>"
+    },
+    "header": {
+        "heading": "Create assessment",
+        "description": "Learners download the question paper, then upload a PDF answer sheet which you evaluate. Available to every batch that shares this chapter — publish it when ready."
+    },
+    "form": {
+        "nameLabel": "Assessment name",
+        "namePlaceholder": "e.g. Chapter 1 Test",
+        "subjectPlaceholder": "Select {{subject}}",
+        "subjectDefaultHint": "Defaults to the {{subject}} this slide sits under. Change it to tag the assessment elsewhere.",
+        "taskDescriptionLabel": "Task description",
+        "taskDescriptionPlaceholder": "Write the task description here — upload the question PDF for learners to download.",
+        "taskDescriptionHint_one": "Upload the question paper here. A standard note (download the paper, then start; you'll have {{count}} minute to upload answers) is added automatically.",
+        "taskDescriptionHint_other": "Upload the question paper here. A standard note (download the paper, then start; you'll have {{count}} minutes to upload answers) is added automatically.",
+        "totalMarksLabel": "Total marks",
+        "durationLabel": "Duration (minutes)",
+        "durationHintBefore": "This is the time learners get to",
+        "durationHintBold": "upload their answer file",
+        "durationHintAfter": "after clicking Start Assessment — not the time to write their answers (they prepare those beforehand from the question paper).",
+        "liveDateRangeHeading": "Live date range",
+        "startDateLabel": "Start date & time",
+        "endDateLabel": "End date & time",
+        "dateRangeLockedHint": "The slide stays locked in the course outside this window — learners can only open the assessment while it is live.",
+        "alwaysAvailableHint": "Always available — no start or end date.",
+        "attemptsLabel": "Attempts allowed",
+        "cancel": "Cancel",
+        "creating": "Creating…",
+        "createAssessment": "Create assessment"
+    }
+}

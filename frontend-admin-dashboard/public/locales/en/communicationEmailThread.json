@@ -1,0 +1,11 @@
+{
+    "loadOlderMessages": "Load older messages",
+    "noMessages": "No messages in this conversation",
+    "backToConversations": "Back to conversations",
+    "reply": "Reply",
+    "fromAddress": "from {{address}}",
+    "sent": "Sent",
+    "received": "Received",
+    "selectConversation": "Select an email conversation",
+    "selectConversationHint": "Click any row on the left to view its thread"
+}

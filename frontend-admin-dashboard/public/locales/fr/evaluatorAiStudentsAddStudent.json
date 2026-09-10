@@ -1,0 +1,71 @@
+{
+    "title": "Liste des étudiants",
+    "enrollTriggerButton": "Inscrire {{term}}",
+    "dialog": {
+        "editHeading": "Modifier l'étudiant",
+        "addHeading": "Inscription de l'étudiant"
+    },
+    "form": {
+        "nameLabel": "Nom",
+        "namePlaceholder": "Nom",
+        "enrollIdLabel": "Identifiant d'inscription",
+        "enrollIdPlaceholder": "Identifiant d'inscription",
+        "replaceResponseLabel": "Remplacer la réponse (facultatif)",
+        "uploadResponseLabel": "Téléverser la réponse (facultatif)",
+        "currentPdfId": "ID PDF actuel : {{pdfId}}",
+        "updateButton": "Mettre à jour",
+        "enrollButton": "Inscrire"
+    },
+    "attemptDialog": {
+        "heading": "Ajouter une nouvelle tentative",
+        "fileLabel": "Téléverser la réponse en PDF",
+        "submitButton": "Ajouter une tentative"
+    },
+    "common": {
+        "uploading": "Téléversement...",
+        "uploadFile": "Téléverser le fichier"
+    },
+    "table": {
+        "name": "Nom",
+        "enrollmentId": "Identifiant d'inscription",
+        "attemptCount": "Nombre de tentatives",
+        "viewPdf": "Voir le PDF",
+        "actions": "Actions",
+        "attemptsCount_one": "{{count}} tentative",
+        "attemptsCount_many": "{{count}} tentatives",
+        "attemptsCount_other": "{{count}} tentatives",
+        "attemptLabel": "Tentative {{number}}",
+        "noFile": "Aucun fichier",
+        "openMenu": "Ouvrir le menu",
+        "edit": "Modifier",
+        "addAttempt": "Ajouter une tentative",
+        "deleteCurrentAttempt": "Supprimer la tentative actuelle",
+        "deleteStudent": "Supprimer l'étudiant",
+        "emptyState": "Aucun étudiant inscrit trouvé.",
+        "submitSelected": "Envoyer la sélection ({{count}})"
+    },
+    "toast": {
+        "fileUploaded": "Fichier téléversé avec succès",
+        "uploadFailed": "Échec du téléversement",
+        "fillAllFields": "Veuillez remplir tous les champs et téléverser un fichier.",
+        "studentUpdated": "Étudiant mis à jour avec succès !",
+        "studentEnrolled": "Étudiant inscrit avec succès !",
+        "failedUpdateStudent": "Échec de la mise à jour de l'étudiant",
+        "failedEnrollStudent": "Échec de l'inscription de l'étudiant",
+        "studentDeleted": "Étudiant supprimé avec succès !",
+        "noFileAvailable": "Aucun fichier disponible",
+        "noFileIdAvailable": "Aucun identifiant de fichier disponible",
+        "couldNotRetrievePdfUrl": "Impossible de récupérer l'URL du PDF",
+        "failedRetrievePdf": "Échec de la récupération du PDF",
+        "uploadRequired": "Veuillez téléverser un fichier.",
+        "attemptAdded": "Nouvelle tentative ajoutée avec succès !",
+        "failedAddAttempt": "Échec de l'ajout de la tentative",
+        "studentNotFound": "Étudiant introuvable.",
+        "cannotDeleteOnlyAttempt": "Impossible de supprimer la seule tentative. Supprimez plutôt l'étudiant.",
+        "attemptDeleted": "Tentative supprimée avec succès !",
+        "selectAtLeastOneStudent": "Veuillez sélectionner au moins un étudiant",
+        "submittedStudents_one": "{{count}} étudiant envoyé",
+        "submittedStudents_many": "{{count}} étudiants envoyés",
+        "submittedStudents_other": "{{count}} étudiants envoyés"
+    }
+}

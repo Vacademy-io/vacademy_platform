@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { getInstituteId } from '@/constants/helper';
 import { fetchEmployees, hrKeys } from '@/routes/erp/-shared/hr-service';
 import type { EmployeeProfileDTO } from '@/routes/erp/-shared/hr-types';
 import { cn } from '@/lib/utils';
+import i18n from '@/i18n';
 
 /** How many employees one page of the picker holds. See the note on search below. */
 const PICKER_PAGE_SIZE = 50;
@@ -32,7 +34,7 @@ export interface EmployeePickerProps {
 
 /** `EMP001 — Jane Doe (Senior Teacher)`, degrading gracefully when fields are absent. */
 export function formatEmployeeLabel(employee: EmployeeProfileDTO): string {
-    const name = employee.full_name?.trim() || 'Unnamed employee';
+    const name = employee.full_name?.trim() || i18n.t('erpEmployeePicker:unnamedEmployee');
     const code = employee.employee_code?.trim();
     const designation = employee.designation_name?.trim();
     return [code ? `${code} — ${name}` : name, designation ? `(${designation})` : '']
@@ -59,11 +61,12 @@ export const EmployeePicker = ({
     value,
     onChange,
     disabled = false,
-    placeholder = 'Select employee',
+    placeholder,
     filterStatus = 'ACTIVE',
     portal = true,
     className,
 }: EmployeePickerProps) => {
+    const { t } = useTranslation('erpEmployeePicker');
     const instituteId = getInstituteId();
     const filters = useMemo(
         () => ({ size: PICKER_PAGE_SIZE, status: filterStatus ?? undefined }),
@@ -90,6 +93,7 @@ export const EmployeePicker = ({
     const loadedCount = options.length;
     const totalCount = data?.total_elements ?? loadedCount;
     const isTruncated = totalCount > loadedCount;
+    const resolvedPlaceholder = placeholder ?? t('placeholder.default');
 
     return (
         <div className={cn('flex w-full flex-col gap-1', className)}>
@@ -101,29 +105,25 @@ export const EmployeePicker = ({
                 portal={portal}
                 placeholder={
                     isLoading
-                        ? 'Loading employees…'
+                        ? t('placeholder.loading')
                         : isError
-                          ? 'Employees unavailable'
-                          : placeholder
+                          ? t('placeholder.unavailable')
+                          : resolvedPlaceholder
                 }
-                searchPlaceholder="Search by code, name or designation"
-                emptyText="No employees match"
+                searchPlaceholder={t('searchPlaceholder')}
+                emptyText={t('emptyText')}
             />
-            {isError && (
-                <p className="text-caption text-danger-600">
-                    Could not load employees. Reload the page and try again.
-                </p>
-            )}
+            {isError && <p className="text-caption text-danger-600">{t('errorHint')}</p>}
             {!isLoading && !isError && loadedCount === 0 && (
                 <p className="text-caption text-neutral-500">
-                    No {filterStatus ? `${filterStatus.toLowerCase()} ` : ''}employees yet — add
-                    them under ERP → People first.
+                    {filterStatus
+                        ? t('noneForStatus', { status: filterStatus.toLowerCase() })
+                        : t('noneAtAll')}
                 </p>
             )}
             {!isLoading && !isError && isTruncated && (
                 <p className="text-caption text-neutral-500">
-                    Showing the first {loadedCount} of {totalCount} employees. Search matches only
-                    these.
+                    {t('truncatedHint', { loadedCount, totalCount })}
                 </p>
             )}
         </div>

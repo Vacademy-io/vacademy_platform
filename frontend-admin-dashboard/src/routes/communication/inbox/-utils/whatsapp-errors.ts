@@ -6,7 +6,17 @@
  * to do next. This maps the codes we can identify with certainty onto a sentence they can act on,
  * and leaves everything else showing the provider's exact words: a wrong explanation for a real
  * failure is worse than an unexplained one.
+ *
+ * This module is imported from plain (non-React) call sites, so it cannot call the
+ * `useTranslation()` hook. The display strings below (`title`/`detail`, and the generic
+ * fallback strings in `describeApiError`) are looked up via the i18next singleton at the
+ * point of use instead. The `match` substrings in BY_TEXT and the numeric codes in BY_CODE are
+ * NOT translated — they are compared against the WhatsApp provider's own (always-English) error
+ * text, not shown to anyone.
  */
+import i18n from '@/i18n';
+
+const NS = 'communicationWhatsappErrors';
 
 export interface FailureExplanation {
     /** Headline: what happened, in five words. */
@@ -23,160 +33,83 @@ export interface FailureExplanation {
 }
 
 interface KnownFailure {
-    title: string;
-    detail: string;
+    /** i18n key (under `byCode.*`/`byText.*`) whose `.title`/`.detail` hold the display text. */
+    key: string;
     accountLevel?: boolean;
+}
+
+/** Reads `${NS}:<key>.title` / `.detail` from the active locale. */
+function resolve(known: KnownFailure): { title: string; detail: string } {
+    return {
+        title: i18n.t(`${NS}:${known.key}.title`),
+        detail: i18n.t(`${NS}:${known.key}.detail`),
+    };
 }
 
 /**
  * WhatsApp Cloud API error codes. Recipient-level entries explain a single undelivered message;
  * account-level entries mean the number itself cannot send until someone fixes it.
+ *
+ * The keys of this object (error codes) are the provider's own vocabulary — lookup keys, never
+ * shown to anyone, and never translated. Only `resolve()` above produces display text.
  */
 const BY_CODE: Record<string, KnownFailure> = {
     // --- Recipient-level: this message, this person ---
-    '131047': {
-        title: '24-hour reply window closed',
-        detail: 'This person last messaged you more than 24 hours ago, so WhatsApp no longer allows a free-form reply. Send an approved template to re-open the conversation.',
-    },
-    '131026': {
-        title: 'Message undeliverable',
-        detail: 'WhatsApp could not deliver to this number — it may not be on WhatsApp, may have been typed wrongly, or the person has never accepted messages from this business.',
-    },
-    '131049': {
-        title: 'Held back by WhatsApp',
-        detail: 'WhatsApp limits how many marketing messages one person receives. Nothing is broken — try again later, or use a utility template if the message is transactional.',
-    },
-    '130472': {
-        title: 'Excluded by a WhatsApp experiment',
-        detail: 'This number is in a Meta experiment group that does not receive marketing messages. Utility and authentication templates are unaffected.',
-    },
-    '131021': {
-        title: 'Cannot message this number',
-        detail: 'The recipient is the same as the sender, or the number cannot receive messages from this account.',
-    },
-    '131051': {
-        title: 'Unsupported message type',
-        detail: 'WhatsApp does not accept this kind of message on this account.',
-    },
-    '131052': {
-        title: 'Media could not be downloaded',
-        detail: 'WhatsApp could not fetch the attachment from its URL. Check the file is still public and re-send.',
-    },
-    '131053': {
-        title: 'Media could not be uploaded',
-        detail: 'WhatsApp rejected the attachment — usually the format or the file size. Re-send it as a supported type under the size limit.',
-    },
+    '131047': { key: 'byCode.131047' },
+    '131026': { key: 'byCode.131026' },
+    '131049': { key: 'byCode.131049' },
+    '130472': { key: 'byCode.130472' },
+    '131021': { key: 'byCode.131021' },
+    '131051': { key: 'byCode.131051' },
+    '131052': { key: 'byCode.131052' },
+    '131053': { key: 'byCode.131053' },
 
     // --- Account-level: every send on this number is affected ---
-    '131042': {
-        title: 'Billing problem on the WhatsApp account',
-        detail: 'Meta has no working payment method for this WhatsApp Business Account, so every message on this number is being refused. Fix the card in WhatsApp Manager → Billing.',
-        accountLevel: true,
-    },
-    '131031': {
-        title: 'WhatsApp account restricted',
-        detail: 'Meta has locked or restricted this WhatsApp Business Account, usually for a policy or quality reason. Check the account quality page in WhatsApp Manager.',
-        accountLevel: true,
-    },
-    '131045': {
-        title: 'Number not registered correctly',
-        detail: 'This WhatsApp number is not fully registered with Meta, or its certificate is wrong. Re-register it in Settings → WhatsApp.',
-        accountLevel: true,
-    },
-    '133010': {
-        title: 'Number not registered',
-        detail: 'This WhatsApp number has not completed registration with Meta and cannot send anything yet.',
-        accountLevel: true,
-    },
-    '190': {
-        title: 'WhatsApp access token expired',
-        detail: 'The Meta access token for this institute is no longer valid, so no message can be sent. Update it in Settings → WhatsApp.',
-        accountLevel: true,
-    },
-    '368': {
-        title: 'Account temporarily blocked',
-        detail: 'Meta has temporarily blocked this account for policy reasons. Sending resumes only once the block expires or is appealed.',
-        accountLevel: true,
-    },
+    '131042': { key: 'byCode.131042', accountLevel: true },
+    '131031': { key: 'byCode.131031', accountLevel: true },
+    '131045': { key: 'byCode.131045', accountLevel: true },
+    '133010': { key: 'byCode.133010', accountLevel: true },
+    '190': { key: 'byCode.190', accountLevel: true },
+    '368': { key: 'byCode.368', accountLevel: true },
 
     // --- Template problems ---
-    '132000': {
-        title: 'Wrong number of template values',
-        detail: 'The template was filled with a different number of values than it has placeholders.',
-    },
-    '132001': {
-        title: 'Template not found',
-        detail: 'No approved template with this name and language exists on the account. Sync templates, or pick another one.',
-    },
-    '132005': {
-        title: 'Template text too long',
-        detail: 'The filled-in template exceeds the length WhatsApp allows. Shorten the values.',
-    },
-    '132007': {
-        title: 'Template content rejected',
-        detail: 'The values broke WhatsApp’s formatting rules — usually a newline, a tab, or four spaces in a row inside a placeholder.',
-    },
-    '132012': {
-        title: 'Template value format mismatch',
-        detail: 'One of the values does not match the format the template was approved with.',
-    },
-    '132015': {
-        title: 'Template paused for low quality',
-        detail: 'WhatsApp paused this template because recipients marked it as unwanted. Use a different template until it recovers.',
-    },
-    '132016': {
-        title: 'Template disabled',
-        detail: 'WhatsApp permanently disabled this template for quality reasons. It cannot be used again.',
-    },
+    '132000': { key: 'byCode.132000' },
+    '132001': { key: 'byCode.132001' },
+    '132005': { key: 'byCode.132005' },
+    '132007': { key: 'byCode.132007' },
+    '132012': { key: 'byCode.132012' },
+    '132015': { key: 'byCode.132015' },
+    '132016': { key: 'byCode.132016' },
 
     // --- Throttling ---
-    '130429': {
-        title: 'Rate limit reached',
-        detail: 'This account is sending faster than WhatsApp allows right now. The message can be retried shortly.',
-    },
-    '131056': {
-        title: 'Too many messages to this person',
-        detail: 'WhatsApp throttled the number of messages between this account and this recipient. Try again later.',
-    },
-    '80007': {
-        title: 'Rate limit reached',
-        detail: 'This account has hit its WhatsApp request limit. Wait a few minutes and retry.',
-    },
-    '4': {
-        title: 'Rate limit reached',
-        detail: 'This account has hit its WhatsApp request limit. Wait a few minutes and retry.',
-    },
+    '130429': { key: 'byCode.rateLimit' },
+    '131056': { key: 'byCode.131056' },
+    '80007': { key: 'byCode.rateLimit' },
+    '4': { key: 'byCode.rateLimit' },
 };
 
 /**
  * Failures whose provider text carries no usable code. Matched on a lowercased substring of the
  * whole message, so the phrase has to be specific enough that it cannot match anything else.
+ *
+ * `match` is compared against the WhatsApp/WATI provider's own error text, which always arrives
+ * in English regardless of the admin's chosen language — it is a protocol sentinel, not display
+ * text, and must NOT be translated.
  */
 const BY_TEXT: Array<{ match: string; failure: KnownFailure }> = [
     {
         // WATI answers an exhausted wallet with prose, not a code — a three-day outage once hid
         // behind "unknown error" because of it.
         match: 'insufficient',
-        failure: {
-            title: 'Out of WhatsApp credits',
-            detail: 'The messaging account has run out of credits. Top it up with the provider before sending again.',
-            accountLevel: true,
-        },
+        failure: { key: 'byText.outOfCredits', accountLevel: true },
     },
     {
         match: 'out of credit',
-        failure: {
-            title: 'Out of WhatsApp credits',
-            detail: 'The messaging account has run out of credits. Top it up with the provider before sending again.',
-            accountLevel: true,
-        },
+        failure: { key: 'byText.outOfCredits', accountLevel: true },
     },
     {
         match: '24 hour',
-        failure: {
-            title: '24-hour reply window closed',
-            detail: 'This person last messaged you more than 24 hours ago, so only an approved template can reach them now.',
-        },
+        failure: { key: 'byText.sessionWindowClosed' },
     },
 ];
 
@@ -213,22 +146,24 @@ export function explainWhatsAppFailure(raw?: string | null): FailureExplanation 
 
     const known = code ? BY_CODE[code] : undefined;
     if (known) {
-        return { title: known.title, detail: known.detail, code, accountLevel: known.accountLevel };
+        const { title, detail } = resolve(known);
+        return { title, detail, code, accountLevel: known.accountLevel };
     }
 
     const lower = text.toLowerCase();
     const matched = BY_TEXT.find((entry) => lower.includes(entry.match));
     if (matched) {
+        const { title, detail } = resolve(matched.failure);
         return {
-            title: matched.failure.title,
-            detail: matched.failure.detail,
+            title,
+            detail,
             code,
             accountLevel: matched.failure.accountLevel,
         };
     }
 
     const provider = withoutCode(text);
-    return { title: provider ? truncate(provider) : 'Not delivered', code };
+    return { title: provider ? truncate(provider) : i18n.t(`${NS}:notDelivered`), code };
 }
 
 export interface ApiErrorInfo {
@@ -275,12 +210,15 @@ export function describeApiError(err: unknown, fallback: string): ApiErrorInfo {
     const status = error.response?.status;
     if (status === undefined) {
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-            return { title: 'You are offline', detail: 'Reconnect and try again.' };
+            return {
+                title: i18n.t(`${NS}:offline.title`),
+                detail: i18n.t(`${NS}:offline.detail`),
+            };
         }
         if (error.code === 'ECONNABORTED') {
             return {
-                title: 'The request timed out',
-                detail: 'The server took too long to answer. Try again.',
+                title: i18n.t(`${NS}:timedOut.title`),
+                detail: i18n.t(`${NS}:timedOut.detail`),
             };
         }
         // A request that never reached the network and one that threw while we were handling the
@@ -290,35 +228,41 @@ export function describeApiError(err: unknown, fallback: string): ApiErrorInfo {
         return transportFailure
             ? {
                   title: fallback,
-                  detail: 'Could not reach the server. Check your connection and try again.',
+                  detail: i18n.t(`${NS}:couldNotReachServer`),
               }
-            : { title: fallback, detail: `Unexpected error: ${truncate(error.message ?? '')}` };
+            : {
+                  title: fallback,
+                  detail: i18n.t(`${NS}:unexpectedError`, { message: truncate(error.message ?? '') }),
+              };
     }
 
     if (status === 401 || status === 403) {
         return {
-            title: 'You do not have access to this inbox',
-            detail: 'Your session may have expired — reload the page and sign in again.',
+            title: i18n.t(`${NS}:noAccess.title`),
+            detail: i18n.t(`${NS}:noAccess.detail`),
         };
     }
     if (status === 404) {
-        return { title: fallback, detail: 'The server does not have this conversation any more.' };
+        return { title: fallback, detail: i18n.t(`${NS}:conversationGone`) };
     }
     if (status === 413) {
         return {
-            title: 'That file is too large',
-            detail: 'WhatsApp rejects attachments over its size limit.',
+            title: i18n.t(`${NS}:fileTooLarge.title`),
+            detail: i18n.t(`${NS}:fileTooLarge.detail`),
         };
     }
     if (status === 429) {
-        return { title: 'Too many requests', detail: 'Slow down for a moment, then try again.' };
+        return {
+            title: i18n.t(`${NS}:tooManyRequests.title`),
+            detail: i18n.t(`${NS}:tooManyRequests.detail`),
+        };
     }
     if (status >= 500) {
         return {
             title: fallback,
-            detail: `The server returned an error (${status}). Try again in a moment.`,
+            detail: i18n.t(`${NS}:serverError`, { status }),
         };
     }
 
-    return { title: fallback, detail: `Request failed with status ${status}.` };
+    return { title: fallback, detail: i18n.t(`${NS}:requestFailed`, { status }) };
 }

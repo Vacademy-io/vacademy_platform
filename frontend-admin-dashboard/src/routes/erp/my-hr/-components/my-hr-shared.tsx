@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { IdentificationBadge } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -173,13 +174,16 @@ export const MyHrDetail = ({ label, value }: { label: string; value: ReactNode }
  * fetcher on these screens needs an employee id to ask for anything. There is no
  * self-serve fix, so this points at the only person who can create the record.
  */
-export const MyHrNoProfileState = () => (
-    <HrEmptyState
-        icon={<IdentificationBadge size={40} className="text-muted-foreground" />}
-        title="You don't have an employee profile here"
-        description="My HR shows your own attendance, leave, payslips and claims — all of which hang off an employee record in this institute, and you don't have one yet. Ask your HR team to add you, and this section fills itself in."
-    />
-);
+export const MyHrNoProfileState = () => {
+    const { t } = useTranslation('erpMyHrShared');
+    return (
+        <HrEmptyState
+            icon={<IdentificationBadge size={40} className="text-muted-foreground" />}
+            title={t('noProfile.title')}
+            description={t('noProfile.description')}
+        />
+    );
+};
 
 /** Card-shaped skeleton for the tile grids, so a slow load doesn't flash empty. */
 export const MyHrLoadingCards = ({ count = 3 }: { count?: number }) => (

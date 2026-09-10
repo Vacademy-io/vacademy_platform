@@ -1,8 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Switch } from '@/components/ui/switch';
@@ -20,24 +22,25 @@ import type { ShiftDTO } from '@/routes/erp/-shared/hr-types';
 import { useSaveShift } from '../-hooks/use-attendance';
 import { toBackendTime, toNumber, toTimeInput } from './attendance-meta';
 
-const schema = z.object({
-    name: z.string().trim().min(1, 'Give the shift a name'),
-    code: z
-        .string()
-        .trim()
-        .min(2, 'Codes are at least 2 characters')
-        .regex(/^[A-Z0-9_]+$/, 'Uppercase letters, digits and underscores only — no spaces'),
-    start_time: z.string().min(1, 'A start time is required'),
-    end_time: z.string().min(1, 'An end time is required'),
-    break_duration_min: z.string().regex(/^\d*$/, 'Whole minutes only'),
-    grace_period_min: z.string().regex(/^\d*$/, 'Whole minutes only'),
-    min_hours_full_day: z.string().regex(/^\d*\.?\d*$/, 'Hours, e.g. 8 or 7.5'),
-    min_hours_half_day: z.string().regex(/^\d*\.?\d*$/, 'Hours, e.g. 4'),
-    is_night_shift: z.boolean(),
-    is_default: z.boolean(),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        name: z.string().trim().min(1, t('validation.nameRequired')),
+        code: z
+            .string()
+            .trim()
+            .min(2, t('validation.codeMinLength'))
+            .regex(/^[A-Z0-9_]+$/, t('validation.codeFormat')),
+        start_time: z.string().min(1, t('validation.startTimeRequired')),
+        end_time: z.string().min(1, t('validation.endTimeRequired')),
+        break_duration_min: z.string().regex(/^\d*$/, t('validation.wholeMinutesOnly')),
+        grace_period_min: z.string().regex(/^\d*$/, t('validation.wholeMinutesOnly')),
+        min_hours_full_day: z.string().regex(/^\d*\.?\d*$/, t('validation.hoursExampleFull')),
+        min_hours_half_day: z.string().regex(/^\d*\.?\d*$/, t('validation.hoursExampleHalf')),
+        is_night_shift: z.boolean(),
+        is_default: z.boolean(),
+    });
 
-type ShiftForm = z.infer<typeof schema>;
+type ShiftForm = z.infer<ReturnType<typeof buildSchema>>;
 
 const emptyValues: ShiftForm = {
     name: '',
@@ -101,8 +104,11 @@ interface ShiftDialogProps {
  * thresholds produces days no rule can classify.
  */
 export const ShiftDialog = ({ open, onOpenChange, shift }: ShiftDialogProps) => {
+    const { t } = useTranslation('erpShiftDialog');
     const mutation = useSaveShift();
     const isEdit = !!shift?.id;
+
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const form = useForm<ShiftForm>({
         resolver: zodResolver(schema),
@@ -169,20 +175,20 @@ export const ShiftDialog = ({ open, onOpenChange, shift }: ShiftDialogProps) => 
                 // Preserved so an edit never silently retires a shift employees are on.
                 status: shift?.status ?? 'ACTIVE',
             });
-            toast.success(isEdit ? 'Shift updated' : 'Shift created');
+            toast.success(isEdit ? t('toast.updated') : t('toast.created'));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-attendance',
                 tags: { action: isEdit ? 'update-shift' : 'create-shift' },
-                fallbackMessage: 'Could not save the shift.',
+                fallbackMessage: t('errors.save'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading={isEdit ? 'Edit shift' : 'Add shift'}
+            heading={isEdit ? t('dialog.editHeading') : t('dialog.addHeading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-2xl"
@@ -194,16 +200,16 @@ export const ShiftDialog = ({ open, onOpenChange, shift }: ShiftDialogProps) => 
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Saving…"
+                        loadingText={t('saving')}
                     >
-                        {isEdit ? 'Save changes' : 'Create shift'}
+                        {isEdit ? t('dialog.saveChanges') : t('dialog.createShift')}
                     </MyButton>
                 </div>
             }
@@ -214,56 +220,56 @@ export const ShiftDialog = ({ open, onOpenChange, shift }: ShiftDialogProps) => 
                         <HrTextField
                             control={form.control}
                             name="name"
-                            label="Name"
+                            label={t('fields.name')}
                             required
-                            placeholder="General shift"
+                            placeholder={t('fields.namePlaceholder')}
                         />
                         <HrTextField
                             control={form.control}
                             name="code"
-                            label="Code"
+                            label={t('fields.code')}
                             required
-                            placeholder="GEN"
-                            description="Uppercase, no spaces — used when assigning employees in bulk."
+                            placeholder={t('fields.codePlaceholder')}
+                            description={t('fields.codeDescription')}
                         />
                         <HrTextField
                             control={form.control}
                             name="start_time"
-                            label="Start time"
+                            label={t('fields.startTime')}
                             inputType="time"
                             required
                         />
                         <HrTextField
                             control={form.control}
                             name="end_time"
-                            label="End time"
+                            label={t('fields.endTime')}
                             inputType="time"
                             required
                         />
                         <HrTextField
                             control={form.control}
                             name="break_duration_min"
-                            label="Break (minutes)"
+                            label={t('fields.breakMinutes')}
                             inputType="number"
-                            description="Deducted from the hours worked."
+                            description={t('fields.breakDescription')}
                         />
                         <HrTextField
                             control={form.control}
                             name="grace_period_min"
-                            label="Grace period (minutes)"
+                            label={t('fields.gracePeriodMinutes')}
                             inputType="number"
-                            description="How late someone can check in before the day counts as late."
+                            description={t('fields.gracePeriodDescription')}
                         />
                         <HrTextField
                             control={form.control}
                             name="min_hours_full_day"
-                            label="Minimum hours for a full day"
+                            label={t('fields.minHoursFullDay')}
                             inputType="number"
                         />
                         <HrTextField
                             control={form.control}
                             name="min_hours_half_day"
-                            label="Minimum hours for a half day"
+                            label={t('fields.minHoursHalfDay')}
                             inputType="number"
                         />
                     </div>
@@ -271,14 +277,14 @@ export const ShiftDialog = ({ open, onOpenChange, shift }: ShiftDialogProps) => 
                     <SwitchRow
                         control={form.control}
                         name="is_night_shift"
-                        label="Night shift"
-                        description="The shift crosses midnight — a check-out after 00:00 still belongs to the day it started on."
+                        label={t('switches.nightShiftLabel')}
+                        description={t('switches.nightShiftDescription')}
                     />
                     <SwitchRow
                         control={form.control}
                         name="is_default"
-                        label="Default shift"
-                        description="Employees with no shift assignment are treated as being on this one."
+                        label={t('switches.defaultShiftLabel')}
+                        description={t('switches.defaultShiftDescription')}
                     />
                 </form>
             </Form>

@@ -1,0 +1,13 @@
+{
+    "inviteLinks": "Liens d'invitation",
+    "add": "Ajouter",
+    "inviteLinksLabel": "Liens d'invitation :",
+    "view": "Afficher",
+    "defaultTag": "PAR DÉFAUT",
+    "makeDefault": "Définir par défaut",
+    "noInviteLinksAvailable": "Aucun lien d'invitation disponible.",
+    "invitePage": "Page d'invitation",
+    "copyFailed": "Échec de la copie",
+    "failedToSubmitRating": "Échec de l'envoi de la note",
+    "unexpectedError": "Une erreur inattendue s'est produite"
+}

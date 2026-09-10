@@ -1,0 +1,18 @@
+{
+    "noPdfSubmissionFound": "इस छात्र के लिए कोई PDF सबमिशन नहीं मिला",
+    "couldNotRetrievePdfUrl": "PDF URL प्राप्त नहीं किया जा सका",
+    "failedToRetrievePdf": "PDF प्राप्त करने में विफल",
+    "columnId": "ID",
+    "columnName": "नाम",
+    "columnSubmission": "सबमिशन",
+    "columnMarks": "अंक",
+    "columnDetails": "विवरण",
+    "columnStatus": "स्थिति",
+    "loading": "लोड हो रहा है...",
+    "preview": "पूर्वावलोकन",
+    "details": "विवरण",
+    "extractedResponsesOf": "{{student}} की निकाली गई प्रतिक्रियाएं",
+    "confirmReEvaluation": "पुनर्मूल्यांकन की पुष्टि करें",
+    "confirmReEvaluateStudent": "क्या आप वाकई इस छात्र का पुनर्मूल्यांकन करना चाहते हैं?",
+    "goAhead": "आगे बढ़ें"
+}

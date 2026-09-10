@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { CurrencyCircleDollar } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { MyTable } from '@/components/design-system/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,14 +24,16 @@ import { HrEmptyState, HrErrorState, HrLoadingRows } from './HrStates';
  * a second write path here would be two sources of truth for the same record.
  */
 
-const GROUPS: Array<{
+const buildGroups = (
+    t: TFunction
+): Array<{
     type: ComponentType;
     label: string;
     tone: 'earning' | 'deduction' | 'default';
-}> = [
-    { type: 'EARNING', label: 'Earnings', tone: 'earning' },
-    { type: 'DEDUCTION', label: 'Deductions', tone: 'deduction' },
-    { type: 'EMPLOYER_CONTRIBUTION', label: 'Employer contributions', tone: 'default' },
+}> => [
+    { type: 'EARNING', label: t('groups.earnings'), tone: 'earning' },
+    { type: 'DEDUCTION', label: t('groups.deductions'), tone: 'deduction' },
+    { type: 'EMPLOYER_CONTRIBUTION', label: t('groups.employerContributions'), tone: 'default' },
 ];
 
 /**
@@ -59,11 +63,12 @@ function ComponentGroupTable({
     currency: string;
     tone: 'earning' | 'deduction' | 'default';
 }) {
+    const { t } = useTranslation('erpEmployeeSalaryTab');
     const columns = useMemo<ColumnDef<EmployeeSalaryComponentDTO>[]>(
         () => [
             {
                 id: 'component',
-                header: 'Component',
+                header: t('table.columns.component'),
                 size: 240,
                 cell: ({ row }) => (
                     <div className="flex min-w-0 flex-col">
@@ -72,7 +77,7 @@ function ComponentGroupTable({
                         </span>
                         {row.original.is_overridden && (
                             <span className="text-caption text-warning-600">
-                                Overridden for this employee
+                                {t('table.overridden')}
                             </span>
                         )}
                     </div>
@@ -80,7 +85,7 @@ function ComponentGroupTable({
             },
             {
                 id: 'calculation',
-                header: 'Calculation',
+                header: t('table.columns.calculation'),
                 size: 180,
                 cell: ({ row }) => {
                     const type = humanizeToken(row.original.calculation_type);
@@ -95,7 +100,7 @@ function ComponentGroupTable({
             },
             {
                 id: 'monthly',
-                header: 'Monthly',
+                header: t('table.columns.monthly'),
                 size: 140,
                 cell: ({ row }) => (
                     <MoneyCell
@@ -108,14 +113,14 @@ function ComponentGroupTable({
             },
             {
                 id: 'annual',
-                header: 'Annual',
+                header: t('table.columns.annual'),
                 size: 140,
                 cell: ({ row }) => (
                     <MoneyCell value={row.original.annual_amount} currency={currency} dashOnZero />
                 ),
             },
         ],
-        [currency, tone]
+        [currency, tone, t]
     );
 
     if (rows.length === 0) return null;
@@ -146,6 +151,7 @@ function ComponentGroupTable({
 }
 
 export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
+    const { t } = useTranslation('erpEmployeeSalaryTab');
     const { data, isLoading, isError, refetch } = useSalaryStructures(employeeId);
     // Memoized so the derived current/history values below don't recompute (and
     // resort) on every render just because `data ?? []` made a fresh array.
@@ -165,7 +171,7 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
     if (isError) {
         return (
             <HrErrorState
-                message="Couldn't load this employee's salary structure."
+                message={t('errors.loadFailed')}
                 onRetry={() => refetch()}
             />
         );
@@ -175,8 +181,8 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
         return (
             <HrEmptyState
                 icon={<CurrencyCircleDollar size={36} className="text-muted-foreground" />}
-                title="No salary structure assigned yet"
-                description="Assign one from ERP → Salary. Until then this employee is skipped by payroll runs."
+                title={t('empty.noStructure.title')}
+                description={t('empty.noStructure.description')}
             />
         );
     }
@@ -189,13 +195,13 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
             <Card>
                 <CardHeader className="pb-2">
                     <CardTitle className="text-title">
-                        {current.template_name || 'Current salary structure'}
+                        {current.template_name || t('card.defaultStructureName')}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <DetailField
-                            label="CTC (annual)"
+                            label={t('fields.ctcAnnual')}
                             value={
                                 <MoneyCell
                                     value={current.ctc_annual}
@@ -205,7 +211,7 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
                             }
                         />
                         <DetailField
-                            label="CTC (monthly)"
+                            label={t('fields.ctcMonthly')}
                             value={
                                 <MoneyCell
                                     value={current.ctc_monthly}
@@ -215,7 +221,7 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
                             }
                         />
                         <DetailField
-                            label="Gross (monthly)"
+                            label={t('fields.grossMonthly')}
                             value={
                                 <MoneyCell
                                     value={current.gross_monthly}
@@ -225,7 +231,7 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
                             }
                         />
                         <DetailField
-                            label="Net (monthly)"
+                            label={t('fields.netMonthly')}
                             value={
                                 <MoneyCell
                                     value={current.net_monthly}
@@ -235,13 +241,13 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
                             }
                         />
                         <DetailField
-                            label="Effective from"
+                            label={t('fields.effectiveFrom')}
                             value={current.effective_from ? formatDate(current.effective_from) : ''}
                         />
-                        <DetailField label="Currency" value={currency.toUpperCase()} />
-                        <DetailField label="Status" value={humanizeToken(current.status)} />
+                        <DetailField label={t('fields.currency')} value={currency.toUpperCase()} />
+                        <DetailField label={t('fields.status')} value={humanizeToken(current.status)} />
                         <DetailField
-                            label="Revision reason"
+                            label={t('fields.revisionReason')}
                             value={current.revision_reason}
                             className="sm:col-span-2 lg:col-span-1"
                         />
@@ -251,16 +257,16 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
 
             <Card>
                 <CardHeader className="pb-2">
-                    <CardTitle className="text-title">Component breakdown</CardTitle>
+                    <CardTitle className="text-title">{t('card.componentBreakdown')}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-6">
                     {components.length === 0 ? (
                         <HrEmptyState
-                            title="This structure has no components"
-                            description="Add components to the salary template so payroll can compute a payslip."
+                            title={t('empty.noComponents.title')}
+                            description={t('empty.noComponents.description')}
                         />
                     ) : (
-                        GROUPS.map((group) => (
+                        buildGroups(t).map((group) => (
                             <ComponentGroupTable
                                 key={group.type}
                                 label={group.label}
@@ -275,12 +281,12 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
 
             <Card>
                 <CardHeader className="pb-2">
-                    <CardTitle className="text-title">Revision history</CardTitle>
+                    <CardTitle className="text-title">{t('card.revisionHistory')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {history.length === 0 ? (
                         <p className="text-body text-muted-foreground">
-                            No earlier structures — this is the first one assigned.
+                            {t('card.noEarlierStructures')}
                         </p>
                     ) : (
                         <ul className="flex flex-col gap-3">
@@ -291,7 +297,7 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
                                 >
                                     <div className="flex min-w-0 flex-col">
                                         <span className="truncate text-body text-foreground">
-                                            {structure.template_name || 'Salary structure'}
+                                            {structure.template_name || t('card.defaultRevisionName')}
                                         </span>
                                         <span className="text-caption text-muted-foreground">
                                             {structure.effective_from
@@ -300,7 +306,7 @@ export function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
                                             {' → '}
                                             {structure.effective_to
                                                 ? formatDate(structure.effective_to)
-                                                : 'open'}
+                                                : t('history.open')}
                                             {structure.revision_reason
                                                 ? ` · ${structure.revision_reason}`
                                                 : ''}

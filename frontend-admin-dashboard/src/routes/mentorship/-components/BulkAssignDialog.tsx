@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Check, WarningCircle } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { cn } from '@/lib/utils';
@@ -18,7 +20,8 @@ interface BulkAssignDialogProps {
     onOpenChange: (open: boolean) => void;
 }
 
-const mentorName = (m: MentorDTO) => m.display_name || m.name || 'Mentor';
+const mentorName = (m: MentorDTO, t: TFunction) =>
+    m.display_name || m.name || t('mentorFallback');
 
 /** Bulk-assign selected students across selected mentors, distributed evenly (round-robin). */
 export function BulkAssignDialog({
@@ -27,6 +30,7 @@ export function BulkAssignDialog({
     open,
     onOpenChange,
 }: BulkAssignDialogProps) {
+    const { t } = useTranslation('mentorshipBulkAssignDialog');
     const [selectedStudents, setSelectedStudents] = useState<StudentRow[]>([]);
     const [selectedMentorIds, setSelectedMentorIds] = useState<string[]>([]);
     const [submitting, setSubmitting] = useState(false);
@@ -64,7 +68,7 @@ export function BulkAssignDialog({
 
     const submit = async () => {
         if (!selectedStudents.length || !selectedMentorIds.length) {
-            toast.error('Pick at least one mentor and one student');
+            toast.error(t('toastPickAtLeastOne'));
             return;
         }
         setSubmitting(true);
@@ -88,7 +92,7 @@ export function BulkAssignDialog({
                     mentorCount: selectedMentorIds.length,
                     studentCount: selectedStudents.length,
                 },
-                fallbackMessage: 'Failed to distribute assignments',
+                fallbackMessage: t('fallbackMessageDistribute'),
             });
         } finally {
             setSubmitting(false);
@@ -97,7 +101,7 @@ export function BulkAssignDialog({
 
     return (
         <MyDialog
-            heading="Bulk assign students to mentors"
+            heading={t('dialogHeading')}
             open={open}
             onOpenChange={(o) => {
                 if (!o) reset();
@@ -107,8 +111,11 @@ export function BulkAssignDialog({
             footer={
                 <div className="flex w-full flex-wrap items-center justify-between gap-2">
                     <span className="text-caption text-neutral-500">
-                        {selectedStudents.length} students · {selectedMentorIds.length} mentors
-                        {perMentor ? ` · ~${perMentor} each` : ''}
+                        {t('footerStudentsCount', { count: selectedStudents.length })} ·{' '}
+                        {t('footerMentorsCount', { count: selectedMentorIds.length })}
+                        {perMentor
+                            ? ` · ${t('footerPerMentorApprox', { count: perMentor })}`
+                            : ''}
                     </span>
                     <div className="flex gap-2">
                         <MyButton
@@ -117,7 +124,7 @@ export function BulkAssignDialog({
                             scale="medium"
                             onClick={() => onOpenChange(false)}
                         >
-                            Cancel
+                            {t('cancelButton')}
                         </MyButton>
                         <MyButton
                             type="button"
@@ -126,24 +133,22 @@ export function BulkAssignDialog({
                             onClick={submit}
                             disable={submitting}
                         >
-                            {submitting ? 'Distributing…' : 'Distribute'}
+                            {submitting ? t('distributingButton') : t('distributeButton')}
                         </MyButton>
                     </div>
                 </div>
             }
         >
             <div className="flex flex-col gap-4">
-                <p className="text-caption text-neutral-500">
-                    Pick the mentors to share the load, then pick the students. They are split
-                    evenly across those mentors (round-robin), skipping anyone already assigned to
-                    that mentor.
-                </p>
+                <p className="text-caption text-neutral-500">{t('introParagraph')}</p>
 
                 <div className="flex flex-col gap-2">
                     <div className="flex w-full flex-wrap items-center justify-between gap-2">
                         <span className="text-caption font-medium text-neutral-600">
-                            Step 1 · Mentors ({selectedMentorIds.length} of{' '}
-                            {selectableMentors.length} selected)
+                            {t('mentorsStepHeading', {
+                                selected: selectedMentorIds.length,
+                                total: selectableMentors.length,
+                            })}
                         </span>
                         {selectableMentors.length > 1 && (
                             <button
@@ -158,16 +163,16 @@ export function BulkAssignDialog({
                                 }
                             >
                                 {selectedMentorIds.length === selectableMentors.length
-                                    ? 'Clear'
-                                    : 'Select all mentors'}
+                                    ? t('clearButton')
+                                    : t('selectAllMentorsButton')}
                             </button>
                         )}
                     </div>
                     {selectableMentors.length === 0 ? (
                         <span className="text-caption text-neutral-400">
                             {mentors.length === 0
-                                ? 'No mentors yet — add a mentor first.'
-                                : 'Every mentor is at their limit. Raise a capacity to assign more.'}
+                                ? t('noMentorsYet')
+                                : t('everyMentorAtLimit')}
                         </span>
                     ) : (
                         <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
@@ -187,10 +192,10 @@ export function BulkAssignDialog({
                                         )}
                                     >
                                         {sel && <Check size={14} weight="bold" />}
-                                        <span>{mentorName(m)}</span>
+                                        <span>{mentorName(m, t)}</span>
                                         {seatsLeft(m) !== null && (
                                             <span className="text-caption text-neutral-400">
-                                                {seatsLeft(m)} free
+                                                {t('seatsFree', { count: seatsLeft(m) })}
                                             </span>
                                         )}
                                     </button>
@@ -200,9 +205,10 @@ export function BulkAssignDialog({
                     )}
                     {fullMentors.length > 0 && (
                         <span className="text-caption text-neutral-400">
-                            {fullMentors.length}{' '}
-                            {fullMentors.length === 1 ? 'mentor is' : 'mentors are'} at their limit
-                            and can&apos;t take anyone: {fullMentors.map(mentorName).join(', ')}
+                            {t('fullMentorsWarning', {
+                                count: fullMentors.length,
+                                names: fullMentors.map((m) => mentorName(m, t)).join(', '),
+                            })}
                         </span>
                     )}
                 </div>
@@ -215,16 +221,18 @@ export function BulkAssignDialog({
                             className="mt-0.5 shrink-0 text-warning-600"
                         />
                         <span>
-                            These mentors have {seats} {seats === 1 ? 'seat' : 'seats'} between
-                            them, so {shortBy} of the {selectedStudents.length} selected students
-                            will be left unassigned. Add another mentor or raise a capacity.
+                            {t('shortByWarning', {
+                                count: seats,
+                                shortBy,
+                                total: selectedStudents.length,
+                            })}
                         </span>
                     </p>
                 )}
 
                 <div className="flex flex-col gap-2">
                     <span className="text-caption font-medium text-neutral-600">
-                        Step 2 · Students
+                        {t('studentsStepHeading')}
                     </span>
                     <MenteePicker
                         instituteId={instituteId}

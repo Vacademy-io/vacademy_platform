@@ -1,10 +1,7 @@
 import { Check, Prohibit } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import {
-    RUN_STATUS_LABELS,
-    RUN_STEPS,
-    type PayrollRunStatus,
-} from '@/routes/erp/-shared/payroll-status';
+import { RUN_STEPS, type PayrollRunStatus } from '@/routes/erp/-shared/payroll-status';
 
 interface RunStatusStepperProps {
     status: string | null | undefined;
@@ -20,7 +17,17 @@ interface RunStatusStepperProps {
  * milestone); CANCELLED replaces the rail entirely, because a cancelled run has
  * no position on the happy path.
  */
+const STEP_LABEL_KEYS: Record<PayrollRunStatus, string> = {
+    DRAFT: 'steps.draft',
+    PROCESSING: 'steps.processing',
+    PROCESSED: 'steps.processed',
+    APPROVED: 'steps.approved',
+    PAID: 'steps.paid',
+    CANCELLED: 'steps.cancelled',
+};
+
 export const RunStatusStepper = ({ status, className }: RunStatusStepperProps) => {
+    const { t } = useTranslation('erpRunStatusStepper');
     const current = (status ?? '').toUpperCase();
 
     if (current === 'CANCELLED') {
@@ -32,10 +39,7 @@ export const RunStatusStepper = ({ status, className }: RunStatusStepperProps) =
                 )}
             >
                 <Prohibit size={18} />
-                <span>
-                    Cancelled — its loan deductions and reimbursements were released back. Create a
-                    new run for this month when you are ready.
-                </span>
+                <span>{t('cancelledMessage')}</span>
             </div>
         );
     }
@@ -75,7 +79,7 @@ export const RunStatusStepper = ({ status, className }: RunStatusStepperProps) =
                                     !isDone && !isCurrent && 'text-neutral-400'
                                 )}
                             >
-                                {isBusy ? 'Processing…' : RUN_STATUS_LABELS[step]}
+                                {isBusy ? t('processing') : t(STEP_LABEL_KEYS[step])}
                             </span>
                         </div>
                         {index < RUN_STEPS.length - 1 && (

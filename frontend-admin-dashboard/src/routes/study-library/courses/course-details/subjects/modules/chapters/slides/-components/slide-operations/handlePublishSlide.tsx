@@ -57,13 +57,10 @@ export const handlePublishSlide = async (
     addUpdateAudioSlide: UseMutateAsyncFunction<SlideResponse, Error, AudioSlidePayload, unknown>,
     addUpdateScormSlide: UseMutateAsyncFunction<SlideResponse, Error, ScormSlidePayload, unknown>,
     SaveDraft: (activeItem: Slide) => Promise<void>,
-    playerRef?: RefObject<YTPlayer>, // Optional YouTube player ref
-    addUpdateAssessmentSlide?: UseMutateAsyncFunction<
-        SlideResponse,
-        Error,
-        AssessmentSlidePayload,
-        unknown
-    >,
+    playerRef: RefObject<YTPlayer> | undefined, // YouTube player ref (may be undefined)
+    addUpdateAssessmentSlide:
+        | UseMutateAsyncFunction<SlideResponse, Error, AssessmentSlidePayload, unknown>
+        | undefined,
     /** Called only after the publish network call SUCCEEDS (e.g. to clear the local draft). */
     onPublishSuccess: (() => void) | undefined,
     /** Translation function bound to the caller's `studyLibraryHandlePublishSlide` namespace. */

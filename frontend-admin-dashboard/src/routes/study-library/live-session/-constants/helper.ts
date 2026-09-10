@@ -494,7 +494,14 @@ export function transformFormToDTOStep2(
     formData: FormData,
     sessionId: string,
     packageSessionIds: string[],
-    previousSchedule?: PreviousScheduleInput | null
+    previousSchedule?: PreviousScheduleInput | null,
+    /**
+     * Batches the admin unlinked during this edit. `linkParticipants` on the
+     * backend is purely additive apart from this list — it deletes ONLY the ids
+     * named here — so leaving it empty (as this used to) meant a deselected
+     * batch stayed linked and kept showing up under the class.
+     */
+    deletedPackageSessionIds: string[] = []
 ): LiveSessionStep2RequestDTO {
     const {
         accessType,
@@ -608,7 +615,7 @@ export function transformFormToDTOStep2(
         session_id: sessionId,
         access_type: accessType,
         package_session_ids: batchSelectionType === 'batch' ? packageSessionIds : [],
-        deleted_package_session_ids: [],
+        deleted_package_session_ids: batchSelectionType === 'batch' ? deletedPackageSessionIds : [],
         join_link: joinLink,
         old_meeting_date,
         old_start_time,

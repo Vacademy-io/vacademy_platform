@@ -189,7 +189,9 @@ const SlideItem = ({
         if (slide.source_type === 'ASSESSMENT') {
             return (
                 slide?.title ||
-                t('slideTitle.assessmentFallback', { ordinal: assessmentOrdinal ?? '' }).trim()
+                t('slideTitle.assessmentFallback', {
+                    replace: { ordinal: assessmentOrdinal ?? '' },
+                }).trim()
             );
         }
         return (

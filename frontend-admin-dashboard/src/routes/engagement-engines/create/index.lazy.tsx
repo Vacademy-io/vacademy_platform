@@ -23,7 +23,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { TIMEZONE_OPTIONS } from '@/routes/study-library/live-session/schedule/-constants/options';
+import { buildTimezoneOptions } from '@/routes/study-library/live-session/schedule/-constants/options';
+import { useTranslation } from 'react-i18next';
 import { useCampaignsList } from '@/routes/audience-manager/list/-hooks/useCampaignsList';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -78,6 +79,10 @@ function StepRail({ current }: { current: number }) {
 
 function CreateEnginePage() {
     const navigate = useNavigate();
+    // Timezone labels are translated, so the list is built from the shared
+    // options namespace rather than being a module-level constant.
+    const { t: tOptions } = useTranslation('studyLibraryOptions');
+    const TIMEZONE_OPTIONS = buildTimezoneOptions(tOptions);
     const { setNavHeading } = useNavHeadingStore();
     const instituteId = getInstituteId() || '';
     const createEngine = useCreateEngine();

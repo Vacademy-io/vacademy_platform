@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useTranslation, type TFunction } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useQuery } from '@tanstack/react-query';
 import { CaretDown, CaretRight, Users } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';

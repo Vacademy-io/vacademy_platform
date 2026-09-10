@@ -891,11 +891,13 @@ function RouteComponent() {
                         <DialogTitle>{t('regenerationLimitWarningTitle')}</DialogTitle>
                         <DialogDescription>
                             {t('regenerationLimitWarningDescription', {
-                                ordinal:
-                                    slides.find((s) => s.id === pendingRegenerateSlideId)
-                                        ?.regenerationCount === 0
-                                        ? t('ordinalFirst')
-                                        : t('ordinalSecond'),
+                                replace: {
+                                    ordinal:
+                                        slides.find((s) => s.id === pendingRegenerateSlideId)
+                                            ?.regenerationCount === 0
+                                            ? t('ordinalFirst')
+                                            : t('ordinalSecond'),
+                                },
                             })}
                         </DialogDescription>
                     </DialogHeader>
@@ -967,10 +969,12 @@ function RouteComponent() {
                                                 </h4>
                                                 <p className="text-sm text-amber-700">
                                                     {t('regenerationLimitWarningInline', {
-                                                        ordinal:
-                                                            regenerationCount === 0
-                                                                ? t('ordinalFirst')
-                                                                : t('ordinalSecond'),
+                                                        replace: {
+                                                            ordinal:
+                                                                regenerationCount === 0
+                                                                    ? t('ordinalFirst')
+                                                                    : t('ordinalSecond'),
+                                                        },
                                                     })}
                                                 </p>
                                             </div>

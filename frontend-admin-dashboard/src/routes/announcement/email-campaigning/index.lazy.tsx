@@ -41,7 +41,7 @@ import { Smartphone, Tablet, Laptop, Plus } from 'lucide-react';
 import { MultiSelect, type OptionType } from '@/components/design-system/multi-select';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { AsyncSearchableSelect } from '@/components/design-system/async-searchable-select';
-import { TIMEZONE_OPTIONS } from '@/routes/study-library/live-session/schedule/-constants/options';
+import { buildTimezoneOptions } from '@/routes/study-library/live-session/schedule/-constants/options';
 import { getInstituteTags, getUserCountsByTags, type TagItem } from '@/services/tag-management';
 import { getInstituteId } from '@/constants/helper';
 import { getUserRoleForInstitute } from '@/lib/auth/instituteUtils';
@@ -73,6 +73,8 @@ export const Route = createLazyFileRoute('/announcement/email-campaigning/')({
 
 function EmailCampaigningPage() {
     const { t } = useTranslation('announcementEmailCampaigningIndex');
+    const { t: tOptions } = useTranslation('studyLibraryOptions');
+    const TIMEZONE_OPTIONS = buildTimezoneOptions(tOptions);
     const { setNavHeading } = useNavHeadingStore();
     const { toast } = useToast();
     const navigate = useNavigate();

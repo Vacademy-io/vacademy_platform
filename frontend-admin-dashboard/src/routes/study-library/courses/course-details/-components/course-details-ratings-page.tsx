@@ -107,7 +107,7 @@ export function CourseDetailsRatingsComponent({
 
     // Transform API data to reviews format and filter out deleted
     const reviews: Review[] = (
-        ratingData?.content?.map((rating) => transformRatingToReview(rating, t)) || []
+        ratingData?.content?.map((rating: Rating) => transformRatingToReview(rating, t)) || []
     ).filter((review: Review) => review.status !== 'DELETED');
     const totalPages = ratingData?.totalPages || 0;
 

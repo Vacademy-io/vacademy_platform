@@ -23,6 +23,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Sidebar, SidebarContent, useSidebar } from '@/components/ui/sidebar';
 import {
     SidebarStateType,
@@ -112,6 +113,12 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     // Subscribe to naming-settings changes so the sidebar re-renders with
     // the new terms the moment they are saved on the settings page.
     useNamingSettingsVersion();
+
+    // Same rationale for language: getSidebarItemsData() resolves its labels
+    // through the i18next singleton, so without a subscription here the nav
+    // would keep the old language until some unrelated state change forced a
+    // re-render.
+    useTranslation('sidebar');
 
     // IMPORTANT: use the *validated* selector here. The plain getter returns
     // whatever's in localStorage, which can be a stale id from a previous session

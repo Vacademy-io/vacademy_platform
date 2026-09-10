@@ -24,7 +24,7 @@ import {
 } from '@/routes/study-library/live-session/-hooks/useSessionDetails';
 import { useLiveSessionReport } from '@/routes/study-library/live-session/-hooks/useLiveSessionReport';
 import {
-    registrationColumns,
+    buildRegistrationColumns,
     REGISTRATION_WIDTH,
     RegistrationTableData,
 } from '@/routes/study-library/live-session/-constants/reportTable';
@@ -41,7 +41,7 @@ import Papa from 'papaparse';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
-    reportColumns,
+    buildReportColumns,
     REPORT_WIDTH,
     ReportTableData,
 } from '@/routes/study-library/live-session/-constants/reportTable';
@@ -56,6 +56,11 @@ interface LiveClassesWidgetProps {
 
 const LiveClassesWidget: React.FC<LiveClassesWidgetProps> = ({ instituteId }) => {
     const { t } = useTranslation('dashboardLiveClassesWidget');
+    // Column headers are translated, so the definitions are built from the
+    // report-table namespace (same pattern as live-session-card).
+    const { t: tReportTable } = useTranslation('studyLibraryLiveSessionReportTable');
+    const registrationColumns = buildRegistrationColumns(tReportTable);
+    const reportColumns = buildReportColumns(tReportTable);
     const navigate = useNavigate();
     const { data: upcomingData } = useUpcomingSessions(instituteId);
     const queryClient = useQueryClient();

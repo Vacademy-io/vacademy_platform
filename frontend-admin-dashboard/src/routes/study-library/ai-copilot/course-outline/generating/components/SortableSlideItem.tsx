@@ -156,6 +156,9 @@ export const SortableSlideItem = React.memo(
     }: SortableSlideItemProps) => {
         // All hooks must be called before any conditional returns
         const { t } = useTranslation('studyLibrarySortableSlideItem');
+        // executeCode renders its own error/status strings, so it needs a `t`
+        // bound to its own namespace plus the active locale.
+        const { t: tCodeEditorUtils, i18n } = useTranslation('studyLibraryCodeEditorUtils');
         const [isEditing, setIsEditing] = useState(false);
         const [isExpanded, setIsExpanded] = useState(false);
         const [editValue, setEditValue] = useState(slide?.slideTitle || '');
@@ -2335,7 +2338,10 @@ export const SortableSlideItem = React.memo(
                                                                 : 'python';
                                                         const result = await executeCode(
                                                             currentCode,
-                                                            normalizedLanguage as any
+                                                            normalizedLanguage as any,
+                                                            {},
+                                                            tCodeEditorUtils,
+                                                            i18n.language
                                                         );
                                                         setLocalRunning((prev) => ({
                                                             ...prev,
@@ -2682,7 +2688,10 @@ export const SortableSlideItem = React.memo(
                                                                 : 'python';
                                                         const result = await executeCode(
                                                             currentCode,
-                                                            normalizedLanguage as any
+                                                            normalizedLanguage as any,
+                                                            {},
+                                                            tCodeEditorUtils,
+                                                            i18n.language
                                                         );
                                                         setLocalRunning((prev) => ({
                                                             ...prev,

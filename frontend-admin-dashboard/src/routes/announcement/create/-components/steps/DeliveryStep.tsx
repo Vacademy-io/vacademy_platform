@@ -11,7 +11,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { TIMEZONE_OPTIONS } from '@/routes/study-library/live-session/schedule/-constants/options';
+import { buildTimezoneOptions } from '@/routes/study-library/live-session/schedule/-constants/options';
 import type { MediumType } from '@/services/announcement';
 import type { MessageTemplate } from '@/types/message-template-types';
 import type { EmailConfiguration } from '@/services/email-configuration-service';
@@ -82,6 +82,10 @@ const toLocalInput = (date: Date) =>
 export function DeliveryStep(props: DeliveryStepProps) {
     const { t } = useTranslation('announcementDeliveryStep');
     const { t: tConstants } = useTranslation('announcementCreateConstants');
+    // Option labels are translated, so the list is built from this screen's own
+    // `t` bound to the shared options namespace.
+    const { t: tOptions } = useTranslation('studyLibraryOptions');
+    const TIMEZONE_OPTIONS = buildTimezoneOptions(tOptions);
     const { errors, showErrors } = props;
     const err = (key: string) => (showErrors ? errors[key] : undefined);
     const mediumMeta = buildMediumMeta(tConstants);

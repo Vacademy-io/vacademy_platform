@@ -2260,9 +2260,11 @@ function RouteComponent() {
                         <DialogTitle>{t('regenerateWarningDialog.title')}</DialogTitle>
                         <DialogDescription>
                             {t('regenerateWarningDialog.description', {
-                                ordinal: slides.find(s => s.id === pendingRegenerateSlideId)?.regenerationCount === 0
-                                    ? t('ordinal.first')
-                                    : t('ordinal.second'),
+                                replace: {
+                                    ordinal: slides.find(s => s.id === pendingRegenerateSlideId)?.regenerationCount === 0
+                                        ? t('ordinal.first')
+                                        : t('ordinal.second'),
+                                },
                             })}
                         </DialogDescription>
                     </DialogHeader>
@@ -2334,7 +2336,9 @@ function RouteComponent() {
                                                 </h4>
                                                 <p className="text-sm text-amber-700">
                                                     {t('regenerateDialog.warningBody', {
-                                                        ordinal: regenerationCount === 0 ? t('ordinal.first') : t('ordinal.second'),
+                                                        replace: {
+                                                            ordinal: regenerationCount === 0 ? t('ordinal.first') : t('ordinal.second'),
+                                                        },
                                                     })}
                                                 </p>
                                             </div>

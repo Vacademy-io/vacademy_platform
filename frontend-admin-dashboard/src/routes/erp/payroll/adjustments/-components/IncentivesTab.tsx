@@ -117,7 +117,7 @@ export const IncentivesTab = () => {
         }
         toast.success(
             t('toast.previewReady', {
-                count: formatCount(result.data?.counsellor_count),
+                count: result.data?.counsellor_count ?? 0,
                 month: formatMonthValue(earningMonth),
             })
         );

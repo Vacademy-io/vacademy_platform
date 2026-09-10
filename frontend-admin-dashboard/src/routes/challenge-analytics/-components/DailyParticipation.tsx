@@ -217,10 +217,10 @@ export function DailyParticipation({ data, isLoading }: DailyParticipationProps)
                                                                 </p>
                                                                 <div className="mt-1 space-y-1">
                                                                     <p className="text-sm text-blue-600">
-                                                                        {t('charts.outgoingLabel')}: {t('charts.messagesCount', { count: payload[0]?.value ?? 0 })}
+                                                                        {t('charts.outgoingLabel')}: {t('charts.messagesCount', { count: Number(payload[0]?.value ?? 0) })}
                                                                     </p>
                                                                     <p className="text-sm text-emerald-600">
-                                                                        {t('charts.incomingLabel')}: {t('charts.messagesCount', { count: payload[1]?.value ?? 0 })}
+                                                                        {t('charts.incomingLabel')}: {t('charts.messagesCount', { count: Number(payload[1]?.value ?? 0) })}
                                                                     </p>
                                                                 </div>
                                                             </div>

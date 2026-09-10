@@ -162,7 +162,7 @@ function WhatsAppPreview({
             default:
                 return (
                     binding.customValue ||
-                    WHATSAPP_VALUE_SOURCES.find((s) => s.value === binding.source)?.label ||
+                    buildWhatsAppValueSources(t).find((s) => s.value === binding.source)?.label ||
                     `{{${name}}}`
                 );
         }

@@ -195,7 +195,7 @@ export function BulkAssignDialog({
                                         <span>{mentorName(m, t)}</span>
                                         {seatsLeft(m) !== null && (
                                             <span className="text-caption text-neutral-400">
-                                                {t('seatsFree', { count: seatsLeft(m) })}
+                                                {t('seatsFree', { count: seatsLeft(m) ?? 0 })}
                                             </span>
                                         )}
                                     </button>
@@ -222,7 +222,7 @@ export function BulkAssignDialog({
                         />
                         <span>
                             {t('shortByWarning', {
-                                count: seats,
+                                count: seats ?? 0,
                                 shortBy,
                                 total: selectedStudents.length,
                             })}

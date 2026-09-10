@@ -1975,7 +1975,7 @@ function EmailCampaigningPage() {
                                                     (tagSelections[idx]?.length ?? 0) > 0 && (
                                                         <div className="mt-1 text-xs text-neutral-600">
                                                             {t('tag.estimatedForRow', {
-                                                                count: rowTagEstimates[idx] ?? '—',
+                                                                count: rowTagEstimates[idx] ?? 0,
                                                             })}
                                                         </div>
                                                     )}
@@ -2915,7 +2915,7 @@ function EmailCampaigningPage() {
                             {estimatingUsers
                                 ? t('estimatedUsers.estimating')
                                 : t('estimatedUsers.countLabel', {
-                                      count: estimatedUsers ?? '—',
+                                      count: estimatedUsers ?? 0,
                                   })}
                         </div>
                     )}

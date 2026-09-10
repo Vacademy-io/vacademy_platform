@@ -1,0 +1,11 @@
+{
+    "fallback": {
+        "textMessage": "टेक्स्ट संदेश",
+        "anyMessage": "कोई भी संदेश",
+        "ai": "AI"
+    },
+    "branch": {
+        "default": "डिफ़ॉल्ट",
+        "numbered": "शाखा {{number}}"
+    }
+}

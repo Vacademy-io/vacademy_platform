@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Plus, Copy, Trash, Play, Pause, ChartBar, Warning } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
     listChatbotFlows,
     deleteChatbotFlow,
@@ -16,6 +17,7 @@ import { SessionViewer } from './session-viewer';
 import { FlowAiUsagePanel } from './flow-ai-usage-panel';
 
 export function FlowListPage() {
+    const { t, i18n } = useTranslation('automationFlowListPage');
     const [flows, setFlows] = useState<ChatbotFlowDTO[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewingSessionsFlow, setViewingSessionsFlow] = useState<ChatbotFlowDTO | null>(null);
@@ -35,7 +37,7 @@ export function FlowListPage() {
             const data = await listChatbotFlows(instituteId);
             setFlows(data);
         } catch (err) {
-            toast.error('Failed to load flows');
+            toast.error(t('toast.loadFailed'));
         } finally {
             setLoading(false);
         }
@@ -61,21 +63,21 @@ export function FlowListPage() {
     const handleDuplicate = async (flowId: string) => {
         try {
             await duplicateChatbotFlow(flowId);
-            toast.success('Flow duplicated');
+            toast.success(t('toast.duplicated'));
             loadFlows();
         } catch {
-            toast.error('Failed to duplicate');
+            toast.error(t('toast.duplicateFailed'));
         }
     };
 
     const handleDelete = async (flowId: string) => {
-        if (!confirm('Archive this flow?')) return;
+        if (!confirm(t('confirmArchive'))) return;
         try {
             await deleteChatbotFlow(flowId);
-            toast.success('Flow archived');
+            toast.success(t('toast.archived'));
             loadFlows();
         } catch {
-            toast.error('Failed to archive');
+            toast.error(t('toast.archiveFailed'));
         }
     };
 
@@ -83,14 +85,14 @@ export function FlowListPage() {
         try {
             if (flow.status === 'ACTIVE') {
                 await deactivateChatbotFlow(flow.id!);
-                toast.success('Flow deactivated');
+                toast.success(t('toast.deactivated'));
             } else {
                 await activateChatbotFlow(flow.id!);
-                toast.success('Flow activated');
+                toast.success(t('toast.activated'));
             }
             loadFlows();
         } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'Failed';
+            const msg = err instanceof Error ? err.message : t('toast.toggleFailed');
             toast.error(msg);
         }
     };
@@ -124,9 +126,9 @@ export function FlowListPage() {
         <div className="p-4 sm:p-6 w-full max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Chatbot Flows</h1>
+                    <h1 className="text-2xl font-bold text-gray-800">{t('title')}</h1>
                     <p className="text-sm text-gray-500 mt-1">
-                        Create automated WhatsApp conversation flows
+                        {t('subtitle')}
                     </p>
                 </div>
                 <button
@@ -134,7 +136,7 @@ export function FlowListPage() {
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                 >
                     <Plus size={18} />
-                    New Flow
+                    {t('newFlow')}
                 </button>
             </div>
 
@@ -143,17 +145,15 @@ export function FlowListPage() {
                     <Warning size={18} className="mt-0.5 shrink-0 text-amber-600" />
                     <div className="text-sm text-amber-800">
                         <p className="font-medium">
-                            AI Reply steps are paused — this institute has no AI credits.
+                            {t('aiPaused.title')}
                         </p>
                         <p className="mt-0.5 text-amber-700">
-                            The rest of every flow still runs. AI Reply steps stop calling the model
-                            and hand the conversation to a human in the WhatsApp Inbox until you top
-                            up.{' '}
+                            {t('aiPaused.body')}{' '}
                             <button
                                 onClick={() => setTab('usage')}
                                 className="font-medium underline underline-offset-2"
                             >
-                                See AI usage
+                                {t('aiPaused.seeUsage')}
                             </button>
                         </p>
                     </div>
@@ -163,8 +163,8 @@ export function FlowListPage() {
             <div className="mb-4 flex gap-1 border-b">
                 {(
                     [
-                        ['flows', 'Flows'],
-                        ['usage', 'AI Usage'],
+                        ['flows', t('tabs.flows')],
+                        ['usage', t('tabs.usage')],
                     ] as const
                 ).map(([key, label]) => (
                     <button
@@ -184,15 +184,15 @@ export function FlowListPage() {
             {tab === 'usage' ? (
                 <FlowAiUsagePanel />
             ) : loading ? (
-                <div className="text-center py-12 text-gray-400">Loading...</div>
+                <div className="text-center py-12 text-gray-400">{t('loading')}</div>
             ) : flows.length === 0 ? (
                 <div className="text-center py-12">
-                    <p className="text-gray-400 mb-4">No flows yet. Create your first chatbot flow!</p>
+                    <p className="text-gray-400 mb-4">{t('empty.message')}</p>
                     <button
                         onClick={handleCreate}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     >
-                        Create Flow
+                        {t('empty.cta')}
                     </button>
                 </div>
             ) : (
@@ -213,14 +213,18 @@ export function FlowListPage() {
                                     <p className="text-sm text-gray-500 mt-1">{flow.description}</p>
                                 )}
                                 <p className="text-xs text-gray-400 mt-1">
-                                    Updated: {flow.updatedAt ? new Date(flow.updatedAt).toLocaleString() : 'N/A'}
+                                    {t('updated', {
+                                        date: flow.updatedAt
+                                            ? new Date(flow.updatedAt).toLocaleString(i18n.language)
+                                            : t('notAvailable'),
+                                    })}
                                 </p>
                             </div>
                             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     onClick={() => handleToggleStatus(flow)}
                                     className="p-2 rounded hover:bg-gray-100"
-                                    title={flow.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                                    title={flow.status === 'ACTIVE' ? t('actions.deactivate') : t('actions.activate')}
                                 >
                                     {flow.status === 'ACTIVE' ? (
                                         <Pause size={16} className="text-yellow-600" />
@@ -231,21 +235,21 @@ export function FlowListPage() {
                                 <button
                                     onClick={() => setViewingSessionsFlow(flow)}
                                     className="p-2 rounded hover:bg-gray-100"
-                                    title="Sessions & Analytics"
+                                    title={t('actions.sessionsAndAnalytics')}
                                 >
                                     <ChartBar size={16} className="text-blue-500" />
                                 </button>
                                 <button
                                     onClick={() => handleDuplicate(flow.id!)}
                                     className="p-2 rounded hover:bg-gray-100"
-                                    title="Duplicate"
+                                    title={t('actions.duplicate')}
                                 >
                                     <Copy size={16} className="text-gray-500" />
                                 </button>
                                 <button
                                     onClick={() => handleDelete(flow.id!)}
                                     className="p-2 rounded hover:bg-gray-100"
-                                    title="Archive"
+                                    title={t('actions.archive')}
                                 >
                                     <Trash size={16} className="text-red-500" />
                                 </button>

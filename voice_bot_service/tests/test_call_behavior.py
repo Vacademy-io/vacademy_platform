@@ -2873,3 +2873,190 @@ async def test_a_yes_over_a_statement_still_carries_on():
     cues = _cue_texts(rec)
     assert any("carry on" in c for c in cues), cues
     assert not any("their ANSWER" in c for c in cues), cues
+
+
+# ── Disposition fidelity: institute 3716991c, 2026-09-09 (77-call audit) ──────
+#
+# The classifier was inventing conversations. On a transcript whose only caller
+# turn was "Hello." it returned Demo_Booked plus the facts that would justify it —
+# a name, a member count, a platform and a meeting time, none of them spoken — and
+# because it fabricated meetingRequested + meetingDatetimeIso in the same response
+# it also walked past _drop_unevidenced_booking. 13 of 31 near-silent calls got a
+# decisive label; of 5 Demo_Booked, 1 was pure fabrication and 1 had no agreed time.
+
+
+def test_has_substance_rejects_greeting_only_but_keeps_refusals():
+    # ee49966e: 8s, the entire caller contribution, stamped Demo_Booked.
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "assistant", "text": "Hi, is this Shweta? Aarushi from Vacademy — we"},
+        {"role": "user", "text": "Hello."}])) is False
+    # 0519330a: 24s of pure acknowledgement, stamped Demo_Booked with no agreed time.
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "user", "text": "Hello."}, {"role": "user", "text": "Okay."},
+        {"role": "user", "text": "Yes."}, {"role": "user", "text": "Yeah."},
+        {"role": "user", "text": "Yes."}])) is False
+    # Hinglish/Devanagari equivalents, with the danda Sarvam appends to every final.
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "user", "text": "हेलो।"}, {"role": "user", "text": "हाँ जी।"}])) is False
+    assert rpt._has_substance(_ConvOutcome([{"role": "user", "text": "kaun?"}])) is False
+
+    # CRITICAL, mirrors _is_conversation's own guarantee: a REFUSAL is thin evidence
+    # but it is still evidence. Negations are in neither filler set, so a bare "no"
+    # still classifies — otherwise a terminal refusal becomes a retry and we re-dial
+    # someone who already said stop.
+    assert rpt._has_substance(_ConvOutcome([{"role": "user", "text": "no"}])) is True
+    assert rpt._has_substance(_ConvOutcome([{"role": "user", "text": "nahi."}])) is True
+    assert rpt._has_substance(_ConvOutcome([{"role": "user", "text": "नहीं।"}])) is True
+    # Anything with real content passes, including one substantive word among fillers.
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "user", "text": "Hello."},
+        {"role": "user", "text": "Hybrid."}])) is True
+    # Synthetic bracketed cues are not caller words at all (via _caller_turns).
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "user", "text": "[unclear sound from the caller]"}])) is False
+
+
+@pytest.mark.asyncio
+async def test_greeting_only_call_never_reaches_the_classifier(monkeypatch):
+    """The ee49966e end-to-end: a fabricated Demo_Booked must not be postable."""
+    analysed = []
+
+    async def spy_analyze(o):
+        analysed.append(1)
+        return {"disposition": "Demo_Booked", "meetingRequested": True,
+                "meetingDatetimeIso": "2026-09-10T16:00:00+05:30", "leadRating": 7}
+
+    posted = {}
+
+    async def capture(inst, tok, payload):
+        posted.update(payload)
+        return True
+
+    monkeypatch.setattr(rpt, "_analyze", spy_analyze)
+    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
+    o = _ConvOutcome([
+        {"role": "assistant", "text": "Hi, is this Shweta? Aarushi from Vacademy — we"},
+        {"role": "user", "text": "Hello."}])
+    assert await rpt.build_and_post_report(o, "cu") is True
+    assert analysed == [], "the classifier judged a call with only a greeting"
+    assert posted["disposition"] == "Incomplete"
+    # The caller DID speak, so this is a connect — status must stay honest even
+    # though we refuse to judge the call.
+    assert posted["status"] == "completed"
+    # No meeting evidence may survive: admin_core auto-books off these two fields
+    # independently of the disposition.
+    assert posted["meetingRequested"] is False
+    assert posted["meetingDatetimeIso"] is None
+    assert "substantive" in posted["summary"], posted["summary"]
+
+
+def test_booking_label_requires_both_agreement_and_a_time():
+    # 0519330a: half the evidence was enough to keep the label under the first cut
+    # of this guard, because it early-returned on EITHER signal.
+    a = {"disposition": "Demo_Booked", "meetingRequested": True,
+         "meetingDatetimeIso": None}
+    rpt._drop_unevidenced_booking(a, "c")
+    assert a["disposition"] == "Incomplete"
+    assert a["dispositionDowngradedFrom"] == "Demo_Booked"
+    assert a["meetingRequested"] is False and a["meetingDatetimeIso"] is None
+
+    # 775ac5ac (2026-08-14), the original incident: neither signal.
+    b2 = {"disposition": "Demo_Booked", "meetingRequested": False,
+          "meetingDatetimeIso": ""}
+    rpt._drop_unevidenced_booking(b2, "c")
+    assert b2["disposition"] == "Incomplete"
+
+    # A time with no agreement is equally not a booking.
+    c2 = {"disposition": "Counselling_Scheduled", "meetingRequested": False,
+          "meetingDatetimeIso": "2026-09-11T15:00:00+05:30"}
+    rpt._drop_unevidenced_booking(c2, "c")
+    assert c2["disposition"] == "Incomplete"
+
+
+def test_fully_evidenced_booking_and_soft_labels_survive():
+    # d0b5d7a8: 152s, 34 caller words, a real agreed slot. Must be untouched.
+    ok = {"disposition": "Demo_Booked", "meetingRequested": True,
+          "meetingDatetimeIso": "2026-09-11T15:00:00+05:30"}
+    rpt._drop_unevidenced_booking(ok, "c")
+    assert ok["disposition"] == "Demo_Booked"
+    assert "dispositionDowngradedFrom" not in ok
+    assert ok["meetingRequested"] is True
+
+    # Labels that do not CLAIM a secured slot are out of scope for this guard,
+    # however thin their evidence — "callback" must not trip the "book" hint.
+    for label in ("Interested_Callback", "Not_Interested", "Wrong_Person",
+                  "Overview_Sent", "Language_Barrier"):
+        a = {"disposition": label, "meetingRequested": False, "meetingDatetimeIso": None}
+        rpt._drop_unevidenced_booking(a, "c")
+        assert a["disposition"] == label, label
+
+
+def test_out_of_vocabulary_label_is_recovered_or_preserved():
+    vocab = ["Demo_Booked", "Interested_Callback", "Not_Interested", "Incomplete"]
+
+    # Case/separator drift is the model restyling OUR label — recover it silently
+    # instead of throwing the judgement away.
+    for spelled in ("demo_booked", "Demo Booked", "DemoBooked", "  demo booked  "):
+        p = {"disposition": spelled}
+        rpt._coerce_disposition(p, vocab, "c")
+        assert p["disposition"] == "Demo_Booked", spelled
+        assert "dispositionRawLabel" not in p
+
+    # A genuinely unknown label is still coerced (admin_core keys retry and lead
+    # status off this string) but is no longer FORGOTTEN — that silent overwrite is
+    # why 5 real conversations became Incomplete with no way to see what was meant.
+    p = {"disposition": "Very_Warm_Lead"}
+    rpt._coerce_disposition(p, vocab, "c")
+    assert p["disposition"] == "Incomplete"
+    assert p["dispositionRawLabel"] == "Very_Warm_Lead"
+
+    # A missing/blank label leaves no raw field to report.
+    for empty in ({}, {"disposition": None}, {"disposition": "  "}):
+        rpt._coerce_disposition(empty, vocab, "c")
+        assert empty["disposition"] == "Incomplete"
+        assert "dispositionRawLabel" not in empty
+
+
+@pytest.mark.asyncio
+async def test_classifier_is_always_offered_an_insufficient_option(monkeypatch):
+    """The root cause: agent vocabularies are pure outcome labels, so the model had
+    no legal way to say "this call had no outcome" — and invented one instead."""
+    sent = []
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"disposition": "Incomplete"}'}}]}
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            sent.append(json)
+            return _Resp()
+
+    monkeypatch.setattr(rpt.httpx, "AsyncClient", lambda *a, **k: _Client())
+
+    o = _ConvOutcome([{"role": "user", "text": "we run hybrid yoga classes"}])
+    # The audited agent's vocabulary — no "Incomplete" anywhere in it.
+    o.context = {"agent": {"dispositions": ["Demo_Booked", "Interested_Callback",
+                                            "Overview_Sent", "Not_Interested",
+                                            "Wrong_Person", "Language_Barrier",
+                                            "Incomplete_Call"]},
+                 "instituteId": "i"}
+    out = await rpt._analyze(o)
+    assert out["disposition"] == "Incomplete"
+    prompt = sent[0]["messages"][0]["content"]
+    assert "Incomplete" in prompt, "no insufficient-evidence option was offered"
+    assert "EVIDENCE RULES" in prompt
+    # The admin's own labels must still all be on offer.
+    for label in ("Demo_Booked", "Wrong_Person", "Incomplete_Call"):
+        assert label in prompt, label
+    # And the anti-fabrication instructions the audit turned on.
+    assert "did not actually say" in prompt

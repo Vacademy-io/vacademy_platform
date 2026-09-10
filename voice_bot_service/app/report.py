@@ -34,9 +34,32 @@ logger = logging.getLogger(__name__)
 
 _ANALYSIS_TIMEOUT = httpx.Timeout(20.0, connect=5.0)
 
+# The "I cannot judge this call" label. Every degraded path already wrote this
+# string; it is named here because it now has a THIRD job beyond the sentinel and
+# the heuristic fallback: it is offered to the model as an explicit, legal answer
+# (see _analyze), so a thin transcript has somewhere to go other than a guess.
+#
+# It is deliberately the same label admin_core's classifier routes to RETRY. An
+# unjudgeable call should be re-dialled, never closed.
+_INSUFFICIENT = "Incomplete"
+
 
 def _transcript_text(transcript: List[Dict[str, str]]) -> str:
     return "\n".join(f"{t['role']}: {t['text']}" for t in transcript if t.get("text"))
+
+
+def _now_stamp(now: dt.datetime) -> str:
+    """"Wednesday, 9 September 2026, 4:00 PM" — the un-padded day and hour the
+    analyser is given to resolve "tomorrow 3pm" against.
+
+    Assembled by hand rather than with strftime("%A, %-d %B %Y, %-I:%M %p"): the
+    `%-d` / `%-I` no-padding modifiers are a glibc extension and raise
+    ValueError("Invalid format string") on Windows, which made _analyze — and so
+    every prompt assertion about it — impossible to unit-test off the container.
+    Output is byte-identical to the glibc format on Linux.
+    """
+    return (f"{now.strftime('%A')}, {now.day} {now.strftime('%B')} {now.year}, "
+            f"{now.hour % 12 or 12}:{now.strftime('%M')} {now.strftime('%p')}")
 
 
 def _llm_target(s):
@@ -67,8 +90,21 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     s = get_settings()
     agent = outcome.context.get("agent") or {}
     dispositions = agent.get("dispositions") or [
-        "Interested", "Likely_Interested", "Callback", "Not_Interested", "Incomplete",
+        "Interested", "Likely_Interested", "Callback", "Not_Interested", _INSUFFICIENT,
     ]
+    # The model MUST have a legal way to say "the transcript does not support any of
+    # these". Most agent vocabularies are pure outcome labels (Demo_Booked, Not_
+    # Interested, Wrong_Person, …) with no such option, so the model was being asked
+    # to pick an outcome for a call that had none — and it obliged, inventing the
+    # conversation that would justify its pick. Observed on institute 3716991c
+    # (2026-09-09): 13 of 31 near-silent calls got a decisive label, one of them a
+    # Demo_Booked with a fabricated name, member count, platform and meeting time
+    # from a transcript whose only caller turn was "Hello."
+    #
+    # Appended, never substituted: the admin's own vocabulary is untouched, and the
+    # membership check below already treats this label as valid on every agent.
+    if _INSUFFICIENT not in dispositions:
+        dispositions = [*dispositions, _INSUFFICIENT]
     questions = agent.get("extractionQuestions") or []
     transcript = _transcript_text(outcome.transcript)
     if not transcript.strip():
@@ -86,7 +122,7 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         now = dt.datetime.now(ZoneInfo(tzname))
     except Exception:
         tzname, now = "Asia/Kolkata", dt.datetime.now(ZoneInfo("Asia/Kolkata"))
-    now_stamp = now.strftime("%A, %-d %B %Y, %-I:%M %p")
+    now_stamp = _now_stamp(now)
     now_offset = now.strftime("%z")
     now_offset = f"{now_offset[:3]}:{now_offset[3:]}" if now_offset else "+05:30"
 
@@ -125,9 +161,34 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
 
     prompt = (
         "You analyse a phone call transcript between an assistant and a caller.\n"
+        # Evidence discipline. Without this the model was handed a bare list of labels
+        # with no definitions and no requirement to show its work, so on a transcript
+        # of "Hello." it picked a plausible-sounding outcome and then wrote the
+        # supporting facts to match — including the meetingRequested/meetingDatetimeIso
+        # pair that _drop_unevidenced_booking cross-checks, defeating that guard from
+        # inside the same JSON response.
+        "EVIDENCE RULES — these override every other instruction below:\n"
+        "1. Judge ONLY what the transcript literally contains. Never infer, complete or "
+        "imagine a turn that is not there. A transcript often ends mid-sentence because "
+        "the caller hung up — that is not a conversation for you to finish on their "
+        "behalf.\n"
+        f"2. If the transcript does not clearly support any other label, answer "
+        f"\"{_INSUFFICIENT}\". A greeting, a silence, or a bare 'yes'/'haan'/'ok' with no "
+        "further content is NOT evidence of interest, identity, refusal or a booking. "
+        f"\"{_INSUFFICIENT}\" is a CORRECT and expected answer on a short or one-sided "
+        "call — always prefer it to a guess.\n"
+        "3. Never state a name, phone number, platform, member count, price, place or "
+        "time the caller did not actually say. In extractedQa use null for every "
+        "question the caller did not answer; do not fill one in from what a business "
+        "like theirs would probably say.\n"
+        "4. A booking/demo/meeting/callback label requires BOTH that the caller agreed "
+        "AND that a specific day or time was spoken on the call. If no time was agreed, "
+        "the label is not a booking, meetingRequested is false and meetingDatetimeIso "
+        "is null.\n"
         f"RIGHT NOW it is {now_stamp} ({tzname}, UTC offset {now_offset}). Use this to resolve any "
         "relative day the caller mentioned into an exact date.\n"
-        f"Return STRICT JSON with keys: disposition (one of {dispositions}), "
+        f"Return STRICT JSON with keys: disposition (exactly one of {dispositions} — "
+        f"\"{_INSUFFICIENT}\" whenever the evidence is thin), "
         "summary (2-3 sentences), leadRating (integer 1-10 interest score or null), "
         "extractedQa (object: question -> answer, only what was actually said"
         + (f"; questions of interest: {questions}" if questions else "")
@@ -167,15 +228,64 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
             content = resp.json()["choices"][0]["message"].get("content") or ""
         match = re.search(r"\{.*\}", content, re.DOTALL)
         parsed = json.loads(match.group(0)) if match else {}
-        if parsed.get("disposition") not in dispositions:
-            parsed["disposition"] = "Incomplete"
+        _coerce_disposition(parsed, dispositions, outcome.corr)
         return parsed
     except Exception:
         logger.exception("analysis failed corr=%s — degrading to heuristic", outcome.corr)
-        return {"disposition": "Incomplete",
+        return {"disposition": _INSUFFICIENT,
                 "summary": "Automatic analysis unavailable; see transcript.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
                 "callbackTimeText": None, **_NO_SENDS}
+
+
+def _norm_label(s: Any) -> str:
+    """Alphanumerics only, casefolded — so "Demo_Booked", "demo booked" and
+    "DemoBooked" are one label. Separator and case drift is the model restyling a
+    label we gave it, not choosing a different one."""
+    return "".join(ch for ch in str(s).casefold() if ch.isalnum())
+
+
+def _coerce_disposition(parsed: Dict[str, Any], dispositions: List[str], corr: str) -> None:
+    """Force the model's label into the agent's vocabulary, recovering near-misses.
+
+    The membership check this replaces was exact-match, and a label that missed was
+    overwritten with the sentinel and then FORGOTTEN — no log, no field, nothing.
+    That silently destroyed real judgements: in the 2026-09-09 audit of institute
+    3716991c, five substantive conversations (one 230s call where the prospect spelled
+    out that he tracks attendance and payments by hand — a textbook qualified lead)
+    all landed on Incomplete and were routed to retry instead of to a human, and the
+    label the model had actually chosen was unrecoverable after the fact.
+
+    Two changes. Case/separator drift is now RECOVERED rather than discarded, and a
+    label that genuinely is not in the vocabulary is logged and preserved on
+    `dispositionRawLabel` so the next occurrence is diagnosable from the report
+    instead of requiring a transcript read.
+
+    Still coerces rather than trusting an unknown label: admin_core keys retry,
+    assignment and lead status off this string, so a label it has no rule for must
+    not reach it. The sentinel routes to retry, which is the recoverable direction.
+    """
+    label = parsed.get("disposition")
+    raw = str(label).strip() if label is not None else ""
+    if raw in dispositions:
+        return
+
+    target = _norm_label(raw)
+    if target:
+        for d in dispositions:
+            if _norm_label(d) == target:
+                if d != raw:
+                    logger.info("report: disposition %r normalised to %r corr=%s", raw, d, corr)
+                parsed["disposition"] = d
+                return
+
+    if raw:
+        parsed["dispositionRawLabel"] = raw
+        logger.warning(
+            "report: disposition %r is not in this agent's vocabulary %s — coercing to "
+            "%s (lead goes to retry, not closed) corr=%s",
+            raw, dispositions, _INSUFFICIENT, corr)
+    parsed["disposition"] = _INSUFFICIENT
 
 
 # Disposition labels that assert a MEETING WAS SECURED. Substring match on a
@@ -206,28 +316,42 @@ def _drop_unevidenced_booking(analysis: Dict[str, Any], corr: str) -> None:
     and if the agent carries a booking_page_id admin_core's auto-book will
     create a real calendar entry off it.
 
-    Only fires on a DIRECT self-contradiction: a booking-shaped label with
-    meetingRequested false AND no resolved datetime. An agent whose vocabulary
-    has a softer label ("Demo_Requested") is untouched as long as the model
-    supplied evidence for it. Degrades to Incomplete, which routes the lead to
-    retry rather than closing it — the same fallback _analyze already uses when
-    it cannot judge a call at all.
+    A booking-shaped label now requires BOTH halves of the evidence: the caller
+    agreed (meetingRequested) AND a concrete time was resolved
+    (meetingDatetimeIso). The first cut of this guard early-returned on EITHER
+    signal, so half-evidence was enough to keep the label — and prod call
+    0519330a (2026-09-09, institute 3716991c) walked straight through it:
+    24 seconds, the caller's entire contribution was "Hello / Okay / Yes / Yeah /
+    Yes", the model returned meetingRequested=true with meetingDatetimeIso=None,
+    and the lead was stamped Demo_Booked. A demo with no time is not a booking,
+    whatever the model asserts about the caller's enthusiasm.
+
+    An agent whose vocabulary has a softer label ("Demo_Requested") is untouched:
+    the hints below only match labels that CLAIM a secured slot. Degrades to
+    Incomplete, which routes the lead to retry rather than closing it — the same
+    fallback _analyze already uses when it cannot judge a call at all.
     """
     try:
         label = str(analysis.get("disposition") or "")
-        norm = "".join(ch for ch in label.casefold() if ch.isalnum())
+        norm = _norm_label(label)
         if not norm or not any(h in norm for h in _BOOKING_LABEL_HINTS):
             return
-        if analysis.get("meetingRequested"):
-            return
-        if str(analysis.get("meetingDatetimeIso") or "").strip():
+        agreed = bool(analysis.get("meetingRequested"))
+        when = str(analysis.get("meetingDatetimeIso") or "").strip()
+        if agreed and when:
             return
         logger.warning(
             "report: disposition %r claims a booking but the analyser reported "
-            "meetingRequested=%s and no meeting time — degrading to Incomplete "
-            "corr=%s", label, analysis.get("meetingRequested"), corr)
-        analysis["disposition"] = "Incomplete"
+            "meetingRequested=%s and meeting time %r — degrading to %s corr=%s",
+            label, analysis.get("meetingRequested"), when or None, _INSUFFICIENT, corr)
+        analysis["disposition"] = _INSUFFICIENT
         analysis["dispositionDowngradedFrom"] = label
+        # A label we just refused must not leave its own evidence standing —
+        # admin_core auto-books off meetingRequested + meetingDatetimeIso
+        # independently of the disposition, so leaving them would create the very
+        # calendar entry this guard exists to prevent.
+        analysis["meetingRequested"] = False
+        analysis["meetingDatetimeIso"] = None
     except Exception:
         # Never cost the report: an unexpected shape here must leave the
         # analysis exactly as the model returned it.
@@ -426,6 +550,58 @@ def _is_conversation(outcome: CallOutcome) -> bool:
     return len(_caller_turns(outcome)) >= 1
 
 
+# Caller words that carry NO classifiable content on their own: greetings, openers,
+# backchannel and forms of address. Bare AFFIRMATIONS count as contentless too and
+# are reused from _AFFIRMATIVE_WORDS above rather than duplicated — "yes" in answer
+# to "do you have two minutes?" says nothing about interest, identity or a booking.
+#
+# NEGATIONS are deliberately ABSENT from both sets, so a caller whose only word was
+# "no" / "nahi" / "नहीं" still reaches the classifier. That is the case
+# _is_conversation's docstring protects: forcing a refusal to Incomplete flips a STOP
+# into retry and re-dials someone who already said no. Thin evidence of a refusal is
+# still evidence, and honouring it errs toward not calling back.
+#
+# WHOLE WORDS after stripping punctuation, per the "ha" / "kaun bol raha hai" trap
+# documented on _AFFIRMATIVE_WORDS.
+_GREETING_WORDS = frozenset({
+    "hello", "helo", "hallo", "hi", "hey", "namaste", "namaskar", "salaam", "sat",
+    "sriakal", "sir", "madam", "maam", "mam", "ji", "hmm", "hm", "mm", "mmm", "uh",
+    "um", "uhh", "huh", "eh", "aa", "haa", "speaking", "who", "kaun", "kon", "boliye",
+    "bolo", "bol", "kahiye", "hn",
+    "हेलो", "हैलो", "नमस्ते", "नमस्कार", "सर", "मैडम", "जी", "कौन", "बोलिए", "बोलो",
+    "कहिए", "हम्म", "हूँ", "हूं",
+})
+
+
+def _has_substance(outcome: CallOutcome) -> bool:
+    """Did the caller contribute anything a disposition could actually rest on?
+
+    _is_conversation asks whether the caller spoke AT ALL; this asks whether what
+    they said carries meaning. The gap between those two questions is where the
+    fabrications lived: a bare "Hello." is one caller turn, so it passed that gate,
+    reached the classifier, and the classifier — asked to pick an outcome label for a
+    call that had no outcome — invented one along with the conversation that would
+    justify it.
+
+    Measured on institute 3716991c, 2026-09-09: 31 of 77 calls had the caller
+    contributing three words or fewer, and 13 of those were stamped with a decisive
+    disposition. Call ee49966e is the limit case — 8 seconds, caller said only
+    "Hello.", the bot's own opening line still mid-sentence, and the report claimed a
+    named prospect had agreed to a demo at a specific time, ran 50 members on Zoom and
+    distributed links by hand. Every one of those facts was generated, and the
+    fabricated meetingRequested/meetingDatetimeIso pair also walked it past
+    _drop_unevidenced_booking.
+
+    A call failing this test is NOT a judgement that the lead is uninterested — it is
+    a refusal to guess. It routes to Incomplete and therefore to retry, which is what
+    should happen to someone who picked up and never got a word in.
+    """
+    words = [w.strip(_WORD_STRIP) for w in
+             " ".join(_caller_turns(outcome)).casefold().split()]
+    return any(w and w not in _GREETING_WORDS and w not in _AFFIRMATIVE_WORDS
+               for w in words)
+
+
 def _status(outcome: CallOutcome) -> str:
     # The lead answered (the WS only opens on answer); "completed" iff they
     # actually spoke — a dead-air pickup classifies as no-answer downstream.
@@ -615,15 +791,32 @@ async def _ladder_tts_cache(outcome: CallOutcome, diag_blob) -> None:
 async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) -> bool:
     ctx = outcome.context
     # Never let the classifier judge a call the caller never took part in — see
-    # _is_conversation. Skipping _analyze also saves the LLM round trip on the
-    # 17% of dials that are answering machines.
-    if get_settings().report_require_conversation and not _is_conversation(outcome):
-        logger.info("report: no two-sided conversation corr=%s (%d caller turns) — "
-                    "forcing Incomplete, skipping analysis",
-                    outcome.corr, len(_caller_turns(outcome)))
+    # _is_conversation — nor one where their only words were a greeting or a bare
+    # "yes" — see _has_substance. Skipping _analyze also saves the LLM round trip on
+    # the 17% of dials that are answering machines.
+    #
+    # Two independent kill-switches because the gates carry different risk: the
+    # caller-turn test has been live for months, the substance floor is newer and
+    # strictly stricter. REPORT_REQUIRE_SUBSTANCE=false reverts only the new gate.
+    s = get_settings()
+    no_turn = s.report_require_conversation and not _is_conversation(outcome)
+    no_substance = s.report_require_substance and not _has_substance(outcome)
+    if no_turn or no_substance:
+        # Distinct summaries on purpose: these two reasons are told apart by
+        # fingerprinting ai_summary when auditing a batch, and collapsing them would
+        # hide which gate is carrying the volume.
+        if no_turn:
+            reason = "no caller turn captured"
+            summary = "No two-sided conversation took place (no caller turn captured)."
+        else:
+            reason = "caller said nothing beyond a greeting or bare acknowledgement"
+            summary = ("No substantive conversation took place (caller said nothing "
+                       "beyond a greeting or bare acknowledgement).")
+        logger.info("report: %s corr=%s (%d caller turns) — forcing %s, skipping analysis",
+                    reason, outcome.corr, len(_caller_turns(outcome)), _INSUFFICIENT)
         analysis = {
-            "disposition": "Incomplete",
-            "summary": "No two-sided conversation took place (no caller turn captured).",
+            "disposition": _INSUFFICIENT,
+            "summary": summary,
             "leadRating": None, "extractedQa": {}, "callbackRequested": False,
             "callbackTimeText": None, "meetingRequested": False,
             "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None,
@@ -647,6 +840,13 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
             outcome.connected_at, tz=dt.timezone.utc
         ).isoformat().replace("+00:00", "Z"),
         "disposition": analysis.get("disposition"),
+        # Diagnosis only. Set when a guard overrode the model (dispositionRawLabel = a
+        # label outside the agent's vocabulary, dispositionDowngradedFrom = a booking
+        # claim we refused). admin_core's parser reads named keys and ignores the rest,
+        # so these ride along in raw_payload and answer "what did the model actually
+        # say before we overruled it?" without a schema change or a transcript read.
+        "dispositionRawLabel": analysis.get("dispositionRawLabel"),
+        "dispositionDowngradedFrom": analysis.get("dispositionDowngradedFrom"),
         "leadRating": analysis.get("leadRating"),
         "summary": analysis.get("summary"),
         "extractedQa": analysis.get("extractedQa") or {},

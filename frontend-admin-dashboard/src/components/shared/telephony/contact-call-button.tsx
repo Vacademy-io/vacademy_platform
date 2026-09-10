@@ -77,13 +77,16 @@ export function ContactCallButton({
     // be clutter that reads like a bug.
     if (!availability.enabled || (!userId && !responseId) || !hasPhone) return null;
 
-    // Caller-level not set up → keep the button but disable it and say why. This
-    // is the admin-without-an-extension case, and it IS actionable ("ask an admin
-    // to add one"), so hiding it would leave them with no idea calling exists.
+    // Caller-level not set up → say so in the tooltip, but do NOT disable. The
+    // probe is advisory (see OutboundOriginationResolver#callerBlockedReason);
+    // treating it as a veto is what let one inverted Optional chain silence
+    // calling for every correctly-configured Airtel user. A wrong "blocked"
+    // would cost them calling entirely; a wrong "ready" costs one click and the
+    // same error toast as before. The backend decides at dial time.
     const notReady = !availability.callerReady;
-    const disabled = notReady || placeCall.isPending;
+    const disabled = placeCall.isPending;
     const reason = notReady
-        ? availability.reason ?? 'Your account is not set up to place calls yet'
+        ? availability.reason ?? 'Your account may not be set up to place calls yet'
         : undefined;
 
     return (

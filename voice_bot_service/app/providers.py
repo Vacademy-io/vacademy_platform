@@ -16,6 +16,7 @@ from pipecat.services.tts_service import InterruptibleTTSService, TTSService
 from .config import get_settings
 
 import asyncio
+import json
 import logging
 import re
 
@@ -171,6 +172,82 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     )
 
 
+class _PersistentClientSession:
+    """Wraps an aiobotocore session so `create_client(...)` hands back ONE
+    long-lived client instead of building a new one per request.
+
+    pipecat 1.4's AWSBedrockLLMService opens `async with
+    session.create_client(...)` inside every generation. Measured from the
+    Mumbai box (2026-09-10): that costs 2.0-2.2s PER TURN before the request
+    even leaves — with a reused client the same call answers in 0.2-0.4s. For
+    a voice agent that difference is the whole product, so the client is
+    created once and closed when the service stops."""
+
+    def __init__(self, session):
+        self._session = session
+        self._client = None
+        self._cm = None
+        self._lock = asyncio.Lock()
+
+    def create_client(self, service_name, **kwargs):
+        outer = self
+
+        class _Reuse:
+            async def __aenter__(self_):
+                async with outer._lock:
+                    if outer._client is None:
+                        outer._cm = outer._session.create_client(service_name, **kwargs)
+                        outer._client = await outer._cm.__aenter__()
+                return outer._client
+
+            async def __aexit__(self_, *exc):
+                return False          # keep it open; close() ends it
+
+        return _Reuse()
+
+    async def close(self):
+        cm, self._cm, self._client = self._cm, None, None
+        if cm is not None:
+            try:
+                await cm.__aexit__(None, None, None)
+            except Exception:
+                logger.debug("bedrock: client close failed", exc_info=True)
+
+
+def _build_bedrock(s):
+    from pipecat.services.aws.llm import AWSBedrockLLMService
+
+    try:
+        extra = json.loads(s.bedrock_extra_json) if s.bedrock_extra_json.strip() else {}
+        if not isinstance(extra, dict):
+            raise ValueError("BEDROCK_EXTRA_JSON must be a JSON object")
+    except Exception:
+        logger.warning("bedrock: BEDROCK_EXTRA_JSON invalid — sending no extra fields")
+        extra = {}
+
+    class _BedrockLLM(AWSBedrockLLMService):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self._aws_session = _PersistentClientSession(self._aws_session)
+
+        async def stop(self, frame):
+            await super().stop(frame)
+            await self._aws_session.close()
+
+        async def cancel(self, frame):
+            await super().cancel(frame)
+            await self._aws_session.close()
+
+    svc = _BedrockLLM(
+        model=s.bedrock_model,
+        aws_region=s.bedrock_region,
+        params=AWSBedrockLLMService.InputParams(
+            temperature=0.35, max_tokens=300,
+            additional_model_request_fields=extra),
+    )
+    return _tag_engine(svc, "bedrock", s.bedrock_model)
+
+
 def build_llm(provider: str | None = None):
     """`provider` overrides LLM_PROVIDER for one call (per-agent POC routing —
     see Settings.sarvam_llm_agents). None = the configured default."""
@@ -236,6 +313,9 @@ def build_llm(provider: str | None = None):
             model=s.openrouter_model,
             params=OpenRouterLLMService.InputParams(temperature=0.35, max_tokens=300),
         )
+    if prov == "bedrock":
+        # Amazon Bedrock in Mumbai (see config.bedrock_model for the POC data).
+        return _build_bedrock(s)
     # Sarvam's OpenAI-compatible chat API. reasoning_effort MUST be the literal
     # JSON null (Python None inside extra_body — the SDK drops None kwargs but
     # keeps them in extra_body): the ONLY value that disables hybrid thinking.

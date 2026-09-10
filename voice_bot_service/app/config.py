@@ -123,6 +123,35 @@ class Settings:
     sarvam_llm_institutes: tuple = field(
         default_factory=lambda: tuple(
             a.strip() for a in _env("SARVAM_LLM_INSTITUTES").split(",") if a.strip()))
+    # ── Amazon Bedrock, Mumbai (ap-south-1) — LLM_PROVIDER="bedrock" ─────────
+    # POC 2026-09-10 (founder: "models available in India region, more
+    # intelligent than gemini 2.5 flash, up to 2x the cost"). Measured from the
+    # box with the real 25K-char prompt and the 10-scenario call eval:
+    #   moonshotai.kimi-k2.5   TTFT 0.48s, 10/10 + 9/9 repeats clean (never
+    #                          invented a price or a time, right weekday 3/3,
+    #                          on-script Hindi) — $0.72/$3.60 per 1M in Mumbai
+    #                          ≈ 2.2x Gemini per call
+    #   qwen.qwen3-235b-…      0.64s, invented a time 1/3, ≈1.7x
+    #   zai.glm-4.7-flash      0.53s, ≈0.25x, but wrong weekday 2/3, answered a
+    #                          Hindi caller in English 2/3, hung up on a
+    #                          wrong-person turn — not for a sales agent
+    #   deepseek/mistral/qwen3-32b invented prices; minimax 1.5s TTFT;
+    #   Claude/Nova Pro only via global profiles (1-1.8s) and over budget.
+    # Auth: a Bedrock API key in AWS_BEARER_TOKEN_BEDROCK (boto/aiobotocore
+    # read it natively) — or the usual AWS_ACCESS_KEY_ID / SECRET.
+    bedrock_model: str = field(
+        default_factory=lambda: _env("BEDROCK_MODEL", "moonshotai.kimi-k2.5"))
+    bedrock_region: str = field(default_factory=lambda: _env("BEDROCK_REGION", "ap-south-1"))
+    # Model-specific request fields as JSON. Kimi/GLM/DeepSeek THINK by default
+    # (seconds before the first spoken token) — off for a scripted sales call.
+    bedrock_extra_json: str = field(
+        default_factory=lambda: _env("BEDROCK_EXTRA_JSON", '{"thinking": {"type": "disabled"}}'))
+    bedrock_llm_agents: tuple = field(
+        default_factory=lambda: tuple(
+            a.strip() for a in _env("BEDROCK_LLM_AGENTS").split(",") if a.strip()))
+    bedrock_llm_institutes: tuple = field(
+        default_factory=lambda: tuple(
+            a.strip() for a in _env("BEDROCK_LLM_INSTITUTES").split(",") if a.strip()))
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")
     )

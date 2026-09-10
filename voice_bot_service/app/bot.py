@@ -2840,16 +2840,20 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # every institute's calls at once. Recorded on the report as llm.vendor.
     _agent_id = str(agent.get("id") or "")
     _inst_id = str(context.get("instituteId") or "")
-    _llm_provider = ("sarvam" if ((_agent_id and _agent_id in settings.sarvam_llm_agents)
-                                  or (_inst_id and _inst_id in settings.sarvam_llm_institutes))
-                     else None)
+    _llm_provider = None
+    if ((_agent_id and _agent_id in settings.bedrock_llm_agents)
+            or (_inst_id and _inst_id in settings.bedrock_llm_institutes)):
+        _llm_provider = "bedrock"
+    elif ((_agent_id and _agent_id in settings.sarvam_llm_agents)
+            or (_inst_id and _inst_id in settings.sarvam_llm_institutes)):
+        _llm_provider = "sarvam"
     llm = await asyncio.to_thread(build_llm, _llm_provider)
     _eff_provider = _llm_provider or settings.llm_provider
     diag.llm_vendor = "%s/%s" % (
         _eff_provider,
-        settings.sarvam_llm_model if _eff_provider == "sarvam"
-        else (settings.vertex_model if _eff_provider == "vertex"
-              else getattr(llm, "model_name", "") or ""))
+        {"sarvam": settings.sarvam_llm_model, "vertex": settings.vertex_model,
+         "bedrock": settings.bedrock_model}.get(
+            _eff_provider, getattr(llm, "model_name", "") or ""))
     logger.info("llm: %s corr=%s%s", diag.llm_vendor, corr,
                 " (per-agent POC override)" if _llm_provider else "")
     tts = build_tts(settings.sample_rate, voice=_agent_voice(agent),

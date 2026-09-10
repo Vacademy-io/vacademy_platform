@@ -3216,3 +3216,61 @@ async def test_single_bracket_send_fires_and_is_never_spoken():
     spoken = "".join(out)
     assert "<" not in spoken and "SEND" not in spoken, spoken
     assert "भेज दूँ?" in spoken and "ठीक है।" in spoken
+
+
+# ── Bedrock (Mumbai) LLM POC, 2026-09-10 ───────────────────────────────────────
+# pipecat's stock AWSBedrockLLMService opens a NEW aiobotocore client inside
+# every generation: measured 2.0-2.2s per turn on the box vs 0.2-0.4s with one
+# reused client. The wrapper below is what makes Bedrock usable for voice.
+
+
+@pytest.mark.asyncio
+async def test_persistent_client_session_creates_one_client_and_closes_once():
+    enters, exits = [], []
+
+    class _FakeCM:
+        async def __aenter__(self):
+            enters.append(1)
+            return "CLIENT"
+
+        async def __aexit__(self, *exc):
+            exits.append(1)
+            return False
+
+    class _FakeSession:
+        def create_client(self, service_name, **kw):
+            assert service_name == "bedrock-runtime"
+            return _FakeCM()
+
+    ps = pv._PersistentClientSession(_FakeSession())
+    for _ in range(3):                       # three "requests", as the service does
+        async with ps.create_client("bedrock-runtime", region_name="ap-south-1") as c:
+            assert c == "CLIENT"
+    assert enters == [1] and exits == []     # one client, never torn down mid-call
+    await ps.close()
+    assert exits == [1]
+    await ps.close()                          # idempotent
+    assert exits == [1]
+
+
+def test_bedrock_settings_and_routing():
+    from app.config import Settings, get_settings as _gs
+    import inspect, os
+    os.environ["BEDROCK_LLM_AGENTS"] = "b6337c6e-x"
+    os.environ["BEDROCK_LLM_INSTITUTES"] = ""
+    _gs.cache_clear()
+    try:
+        s = Settings()
+        assert s.bedrock_model == "moonshotai.kimi-k2.5"
+        assert s.bedrock_region == "ap-south-1"
+        assert s.bedrock_llm_agents == ("b6337c6e-x",)
+        import json
+        assert json.loads(s.bedrock_extra_json) == {"thinking": {"type": "disabled"}}
+    finally:
+        os.environ.pop("BEDROCK_LLM_AGENTS", None); os.environ.pop("BEDROCK_LLM_INSTITUTES", None)
+        _gs.cache_clear()
+    src = inspect.getsource(b.run_bot)
+    # Bedrock lists win over Sarvam lists, both over the default.
+    assert src.index("settings.bedrock_llm_agents") < src.index("settings.sarvam_llm_agents")
+    assert 'if prov == "bedrock":' in inspect.getsource(pv.build_llm)
+    assert "aws]" in open(os.path.join(os.path.dirname(pv.__file__), "..", "requirements.txt")).read()

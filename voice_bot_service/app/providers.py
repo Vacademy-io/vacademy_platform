@@ -217,6 +217,15 @@ class _PersistentClientSession:
 def _build_bedrock(s):
     from pipecat.services.aws.llm import AWSBedrockLLMService
 
+    # Not on EC2. With a bearer token and no static keys, botocore's credential
+    # chain probes the instance-metadata address and waits for it to time out:
+    # measured 2.21s per service construction on the Mumbai box vs 0.02s with
+    # the probe disabled (calls 09c5279a / f225f71e opened at +4.5-4.8s
+    # instead of +1-2s). The token is read from AWS_BEARER_TOKEN_BEDROCK
+    # regardless, so nothing is lost by skipping the probe.
+    import os
+    os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
+
     try:
         extra = json.loads(s.bedrock_extra_json) if s.bedrock_extra_json.strip() else {}
         if not isinstance(extra, dict):
@@ -230,11 +239,7 @@ def _build_bedrock(s):
             super().__init__(**kw)
             self._aws_session = _PersistentClientSession(self._aws_session)
 
-        async def start(self, frame):
-            # Open the client at pipeline start, while the greeting is still
-            # being spoken — otherwise the FIRST reply of every call pays the
-            # ~2s client creation (measured 2.93s TTFT on turn 1 vs 0.56s after).
-            await super().start(frame)
+        async def _warm(self):
             try:
                 async with self._aws_session.create_client(
                         service_name="bedrock-runtime", **self._aws_params):
@@ -242,6 +247,16 @@ def _build_bedrock(s):
             except Exception:
                 logger.warning("bedrock: client warm-up failed — first turn will open it",
                                exc_info=True)
+
+        async def start(self, frame):
+            # Open the client at pipeline start, while the greeting is still
+            # being spoken — otherwise the FIRST reply of every call pays the
+            # ~2s client creation (measured 2.93s TTFT on turn 1 vs 0.56s after).
+            # In the BACKGROUND: awaiting it here held the StartFrame, so the
+            # whole pipeline (and the greeting audio) waited for it — call
+            # 09c5279a was ready at +7.1s and the caller's hello sat unanswered.
+            await super().start(frame)
+            self._warm_task = asyncio.get_running_loop().create_task(self._warm())
 
         async def stop(self, frame):
             await super().stop(frame)

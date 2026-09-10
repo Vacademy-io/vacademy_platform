@@ -3027,10 +3027,19 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # ONE re-say per call. If the caller talks over the re-delivered opening
     # too, the normal continuation path takes it from there — never a loop.
     _opening_resaid = False
+    _greet_queued_t = 0.0      # stamped by _greet_when_ready when it queues the opening
 
     async def _resay_opening(text) -> bool:
         nonlocal _opening_resaid
         if _opening_resaid or diag.greet_path != "scripted":
+            return False
+        # Only when something actually KILLED the queued opening: an
+        # interruption after it was queued. Call 09c5279a (2026-09-10): the
+        # caller's "Hello" arrived 0.85s after the greet was queued but before
+        # the pipeline had even started playing it; nothing had cancelled it,
+        # the re-say queued a second copy, and the caller heard the whole
+        # introduction twice back to back.
+        if not (_greet_queued_t and flags["last_cut_t"] > _greet_queued_t):
             return False
         if not _opening_barely_heard(_opening_for_cache, outcome.transcript,
                                      flags["reply_started_t"]):
@@ -3325,6 +3334,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                "instructions specify, then ask your first question. Do NOT "
                                "greet again and do not repeat that word.]"}],
                     run_llm=True))
+            nonlocal _greet_queued_t
+            _greet_queued_t = time.time()
             await task.queue_frames(_frames)
 
             # THE PRE-APPEND ABOVE CLAIMS THE WHOLE OPENING REACHED THE CALLER.

@@ -3283,7 +3283,12 @@ def test_bedrock_client_is_warmed_at_start_not_on_first_turn():
     src = inspect.getsource(pv._build_bedrock)
     start = src[src.index("async def start(self, frame):"):src.index("async def stop(self, frame):")]
     assert "await super().start(frame)" in start
-    assert 'create_client(' in start and 'service_name="bedrock-runtime"' in start
+    # In the background: awaiting the warm-up held the StartFrame (call 09c5279a).
+    assert "create_task(self._warm())" in start
+    warm = src[src.index("async def _warm(self):"):src.index("async def start(self, frame):")]
+    assert 'create_client(' in warm and 'service_name="bedrock-runtime"' in warm
+    # Off EC2, botocore probes the metadata endpoint for ~2s per construction.
+    assert 'os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")' in src
 
 
 # ── Room tone under every call (2026-09-10) ──────────────────────────────────
@@ -3367,3 +3372,16 @@ def test_ambience_is_wired_into_transport_and_pipeline():
     root = os.path.join(os.path.dirname(b.__file__), "..")
     assert "COPY assets ./assets" in open(os.path.join(root, "Dockerfile")).read()
     assert "soundfile" in open(os.path.join(root, "requirements.txt")).read()
+
+
+
+def test_resay_requires_an_interruption_after_the_greet_was_queued():
+    """Call 09c5279a (2026-09-10): the re-say fired before the queued opening
+    had played and nothing had cancelled it -> the caller heard the intro twice."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    resay = src[src.index("async def _resay_opening(text)"):src.index("_opening_resaid = True")]
+    assert 'flags["last_cut_t"] > _greet_queued_t' in resay
+    greet = src[src.index("async def _greet_when_ready"):]
+    assert "_greet_queued_t = time.time()" in greet
+    assert greet.index("_greet_queued_t = time.time()") < greet.index("await task.queue_frames(_frames)")

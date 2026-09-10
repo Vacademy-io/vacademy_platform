@@ -489,6 +489,7 @@ export default defineConfig(({ mode }) => {
                 'src/routes/**/*.test.{ts,tsx}',
                 'src/services/**/*.test.{ts,tsx}',
                 'src/constants/**/*.test.{ts,tsx}',
+                'src/lib/**/*.test.{ts,tsx}',
                 'src/components/templates/**/*.test.{ts,tsx}',
             ],
         },

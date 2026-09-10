@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import type { RoleDisplayPanelProps } from './panel-props';
+import { applyRoleConstraints } from '@/lib/display-settings/role-constraints';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
@@ -265,7 +267,7 @@ function getLearnerManagementOptions(
     ];
 }
 
-export default function TeacherDisplaySettings() {
+export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPanelProps = {}) {
     const { t } = useTranslation('settingsTeacherDisplay');
     const TEACHER_DISPLAY_SECTIONS = getTeacherDisplaySections(t);
     const STUDENT_SIDE_VIEW_OPTIONS = getStudentSideViewOptions(t);
@@ -273,6 +275,13 @@ export default function TeacherDisplaySettings() {
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+
+    // Surface unsaved state to the page header so "Copy to other roles" can block
+    // on it — copying while dirty would send the last saved settings, not what the
+    // admin is looking at.
+    useEffect(() => {
+        onDirtyChange?.(hasChanges);
+    }, [hasChanges, onDirtyChange]);
     const [activeCategory, setActiveCategory] = useState<SidebarCategory>('CRM');
 
     // Master switch behind the Downloads course-details tab: off locks that row
@@ -490,17 +499,9 @@ export default function TeacherDisplaySettings() {
         if (!settings) return;
         setIsSaving(true);
         try {
-            // Enforce teacher constraints before save
-            const fixed: DisplaySettingsData = {
-                ...settings,
-                sidebar: settings.sidebar.filter((t) => t.id !== 'settings'),
-                permissions: {
-                    ...settings.permissions,
-                    canViewInstituteDetails: settings.permissions.canViewInstituteDetails ?? false,
-                    canEditInstituteDetails: false,
-                    canEditProfileDetails: settings.permissions.canEditProfileDetails ?? false,
-                },
-            };
+            // Shared with the "copy to other roles" action, so a rule added here
+            // applies however these settings are written.
+            const fixed: DisplaySettingsData = applyRoleConstraints(settings, 'teacher');
             await saveDisplaySettings(TEACHER_DISPLAY_SETTINGS_KEY, fixed);
             // Reflect the persisted (constrained) version locally so future
             // discards return to the same baseline.

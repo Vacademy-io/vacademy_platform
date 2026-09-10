@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import type { RoleDisplayPanelProps } from './panel-props';
+import { applyRoleConstraints } from '@/lib/display-settings/role-constraints';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
@@ -263,7 +265,8 @@ const buildLearnerManagementOptions = (
 export default function CustomRoleDisplaySettings({
     roleId,
     roleName,
-}: {
+    onDirtyChange,
+}: RoleDisplayPanelProps & {
     roleId: string;
     roleName?: string;
 }) {
@@ -271,6 +274,13 @@ export default function CustomRoleDisplaySettings({
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+
+    // Surface unsaved state to the page header so "Copy to other roles" can block
+    // on it — copying while dirty would send the last saved settings, not what the
+    // admin is looking at.
+    useEffect(() => {
+        onDirtyChange?.(hasChanges);
+    }, [hasChanges, onDirtyChange]);
     const [activeCategory, setActiveCategory] = useState<SidebarCategory>('CRM');
 
     // Recomputed every render (cheap arrays) so labels stay in sync with the
@@ -495,17 +505,9 @@ export default function CustomRoleDisplaySettings({
         if (!settings) return;
         setIsSaving(true);
         try {
-            // Enforce teacher constraints before save
-            const fixed: DisplaySettingsData = {
-                ...settings,
-                sidebar: settings.sidebar.filter((t) => t.id !== 'settings'),
-                permissions: {
-                    ...settings.permissions,
-                    canViewInstituteDetails: settings.permissions.canViewInstituteDetails ?? false,
-                    canEditInstituteDetails: false,
-                    canEditProfileDetails: settings.permissions.canEditProfileDetails ?? false,
-                },
-            };
+            // Shared with the "copy to other roles" action, so a rule added here
+            // applies however these settings are written.
+            const fixed: DisplaySettingsData = applyRoleConstraints(settings, 'custom');
             await saveDisplaySettings(displaySettingsKey, fixed);
             // Reflect the persisted (constrained) version locally so future
             // discards return to the same baseline.

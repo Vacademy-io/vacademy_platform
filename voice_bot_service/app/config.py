@@ -115,6 +115,14 @@ class Settings:
     sarvam_llm_agents: tuple = field(
         default_factory=lambda: tuple(
             a.strip() for a in _env("SARVAM_LLM_AGENTS").split(",") if a.strip()))
+    # Same routing by INSTITUTE id — founder decision 2026-09-10 after the POC
+    # ("move the sales agents to sarvam-105b"): every agent of a listed institute
+    # (Vacademy's own outbound sales agents) uses Sarvam, so a new agent under
+    # that institute cannot silently land back on Gemini. Customer institutes
+    # stay on LLM_PROVIDER until they are listed here.
+    sarvam_llm_institutes: tuple = field(
+        default_factory=lambda: tuple(
+            a.strip() for a in _env("SARVAM_LLM_INSTITUTES").split(",") if a.strip()))
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")
     )

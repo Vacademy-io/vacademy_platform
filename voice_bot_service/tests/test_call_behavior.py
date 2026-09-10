@@ -3113,3 +3113,19 @@ def test_now_line_lists_the_coming_week_as_a_lookup():
     # A full week is listed, so "next Monday"/"this weekend" are lookups too.
     assert (now + timedelta(days=6)).strftime("%A %-d %B") in line
     assert "Never state a clock time the caller did not say" in line
+
+
+def test_sarvam_llm_routing_also_keys_on_institute(monkeypatch):
+    """Founder 2026-09-10: "move the sales agents to sarvam-105b" — every agent
+    of Vacademy's institute, including ones created later."""
+    import inspect
+    from app.config import Settings, get_settings as _gs
+    monkeypatch.setenv("SARVAM_LLM_INSTITUTES", "3716991c-x, ")
+    _gs.cache_clear()
+    try:
+        assert Settings().sarvam_llm_institutes == ("3716991c-x",)
+    finally:
+        _gs.cache_clear()
+    src = inspect.getsource(b.run_bot)
+    assert '_inst_id in settings.sarvam_llm_institutes' in src
+    assert 'context.get("instituteId")' in src

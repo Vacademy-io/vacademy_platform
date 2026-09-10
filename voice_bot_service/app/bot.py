@@ -2798,7 +2798,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # the listed agents leave the configured provider, so a test never moves
     # every institute's calls at once. Recorded on the report as llm.vendor.
     _agent_id = str(agent.get("id") or "")
-    _llm_provider = ("sarvam" if _agent_id and _agent_id in settings.sarvam_llm_agents
+    _inst_id = str(context.get("instituteId") or "")
+    _llm_provider = ("sarvam" if ((_agent_id and _agent_id in settings.sarvam_llm_agents)
+                                  or (_inst_id and _inst_id in settings.sarvam_llm_institutes))
                      else None)
     llm = await asyncio.to_thread(build_llm, _llm_provider)
     diag.llm_vendor = "%s/%s" % (

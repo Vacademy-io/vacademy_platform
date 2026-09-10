@@ -3175,3 +3175,44 @@ async def test_a_scrap_before_any_greet_is_still_dropped():
     tc = await _pre_speech_collector(rec, resay)
     await _feed(tc, "Please.")
     assert not any(getattr(f, "messages", None) for f in rec.frames), rec.frames
+
+
+# ── call 4565478b (2026-09-10, first day on sarvam-105b): the model wrote
+#    "<SEND:scholarship_quiz>" (single brackets, 4 of 18 markers that day); the
+#    sentinel did not recognise it, the link was never sent, and the TTS read
+#    the marker aloud — the caller said "हैं?" ──────────────────────────────────
+
+
+def test_loose_markers_are_canonicalised():
+    assert b._canonical_markers("ok <SEND:scholarship_quiz> bye") == "ok <<SEND:scholarship_quiz>> bye"
+    assert b._canonical_markers("bye <END_CALL>") == "bye <<END_CALL>>"
+    assert b._canonical_markers("<TRANSFER>") == "<<TRANSFER>>"
+    # Already canonical: untouched (no <<<...>>> mangling).
+    assert b._canonical_markers("<<SEND:x>> <<END_CALL>>") == "<<SEND:x>> <<END_CALL>>"
+    # A half-streamed single-bracket marker is left alone for _split_safe to hold.
+    assert b._canonical_markers("link <SEND:schol") == "link <SEND:schol"
+
+
+@pytest.mark.asyncio
+async def test_single_bracket_send_fires_and_is_never_spoken():
+    from pipecat.frames.frames import (LLMFullResponseStartFrame, LLMFullResponseEndFrame,
+                                       LLMTextFrame)
+    sent, out = [], []
+    sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None,
+                        on_send=sent.append)
+
+    async def _push(frame, direction=None):
+        t = getattr(frame, "text", None)
+        if t:
+            out.append(t)
+    sg.push_frame = _push
+    b.FrameProcessor.process_frame = _noop_super
+    d = b.FrameDirection.DOWNSTREAM
+    await sg.process_frame(LLMFullResponseStartFrame(), d)
+    for chunk in ("क्या मैं ये link भेज दूँ? <SEND:schol", "arship_quiz> ठीक है।"):
+        await sg.process_frame(LLMTextFrame(chunk), d)
+    await sg.process_frame(LLMFullResponseEndFrame(), d)
+    assert sent == ["scholarship_quiz"], sent
+    spoken = "".join(out)
+    assert "<" not in spoken and "SEND" not in spoken, spoken
+    assert "भेज दूँ?" in spoken and "ठीक है।" in spoken

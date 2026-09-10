@@ -114,6 +114,21 @@ _SEND_KEY_CHARS = frozenset(
 def _valid_send_key(key: str) -> bool:
     return bool(key) and len(key) <= 64 and all(c in _SEND_KEY_CHARS for c in key)
 
+
+# sarvam-105b writes the markers with SINGLE angle brackets about a fifth of the
+# time (2026-09-10, first day as the default LLM: 14x "<<SEND:…>>", 4x
+# "<SEND:…>"; Gemini never did). Call 4565478b: "<SEND:scholarship_quiz>" was
+# not recognised, the link was never sent, and the TTS READ THE MARKER ALOUD —
+# the caller said "हैं?". Normalise the loose form to the canonical one before
+# any marker scan. Complete tokens only: a half-streamed "<SEND:schol" is held
+# back by _split_safe until its closing bracket arrives.
+_LOOSE_MARKER_RE = re.compile(r"(?<!<)<\s*(SEND:[^<>]+|END_CALL|TRANSFER)\s*>(?!>)")
+_LOOSE_MARKER_PREFIXES = ("<SEND:", "<END_CALL>", "<TRANSFER>")
+
+
+def _canonical_markers(text: str) -> str:
+    return _LOOSE_MARKER_RE.sub(lambda m: f"<<{m.group(1).strip()}>>", text)
+
 # If a graceful stop (stop_when_done) hasn't ended the runner within this many
 # seconds, hard-cancel — a chatty caller can otherwise starve the drain forever.
 _GRACEFUL_STOP_DEADLINE_SECS = 25.0
@@ -976,6 +991,11 @@ class NoRepeatGate(FrameProcessor):
         # style in later replies (call c9aa4062, 2026-09-09).
         if self._emitted and text and not text[0].isspace():
             text = " " + text
+        # A 10-digit run is a phone number, and a TTS reads "9425677707" as a
+        # nine-billion numeral (call 4565478b, 2026-09-10: "क्या मैं ये link आपके
+        # WhatsApp number 9425677707 पर भेज दूँ?"). Space the digits so it is
+        # read out one by one, which is also how the prompt asks for numbers.
+        text = re.sub(r"(?<!\d)(\d{10})(?!\d)", lambda m: " ".join(m.group(1)), text)
         norm = normalize_spoken(text)
         self._spoken.append(norm)
         topic = question_topic(text)
@@ -1375,6 +1395,8 @@ class SentinelGate(FrameProcessor):
             self._on_activity(user=False)
             self._response_active = True
             self._buffer += frame.text or ""
+            if "<" in self._buffer:
+                self._buffer = _canonical_markers(self._buffer)
             if TRANSFER_MARKER in self._buffer:
                 self._outcome.transfer_requested = True
                 self._buffer = self._buffer.replace(TRANSFER_MARKER, "")
@@ -1554,7 +1576,13 @@ class SentinelGate(FrameProcessor):
         idx = buffer.rfind(SEND_MARKER_OPEN)
         if idx != -1 and SEND_MARKER_CLOSE not in buffer[idx:]:
             return buffer[:idx], buffer[idx:]
-        for marker in (END_MARKER, TRANSFER_MARKER, SEND_MARKER_OPEN):
+        # The single-bracket form sarvam-105b sometimes writes: hold back an
+        # unterminated "<SEND:…" too, or its first half is spoken.
+        m = re.search(r"(?<!<)<SEND:[^<>]*$", buffer)
+        if m:
+            return buffer[:m.start()], buffer[m.start():]
+        for marker in (END_MARKER, TRANSFER_MARKER, SEND_MARKER_OPEN,
+                       *_LOOSE_MARKER_PREFIXES):
             for i in range(min(len(marker) - 1, len(buffer)), 0, -1):
                 if buffer.endswith(marker[:i]):
                     return buffer[:-i], buffer[-i:]
@@ -2816,10 +2844,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                   or (_inst_id and _inst_id in settings.sarvam_llm_institutes))
                      else None)
     llm = await asyncio.to_thread(build_llm, _llm_provider)
+    _eff_provider = _llm_provider or settings.llm_provider
     diag.llm_vendor = "%s/%s" % (
-        _llm_provider or settings.llm_provider,
-        settings.sarvam_llm_model if _llm_provider == "sarvam"
-        else (settings.vertex_model if settings.llm_provider == "vertex"
+        _eff_provider,
+        settings.sarvam_llm_model if _eff_provider == "sarvam"
+        else (settings.vertex_model if _eff_provider == "vertex"
               else getattr(llm, "model_name", "") or ""))
     logger.info("llm: %s corr=%s%s", diag.llm_vendor, corr,
                 " (per-agent POC override)" if _llm_provider else "")

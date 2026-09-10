@@ -15,7 +15,7 @@
     "scripts": {
         "dev": "vite",
         "build": "pnpm run build:tsc && pnpm run build:vite",
-        "build:tsc": "cross-env NODE_OPTIONS=--max-old-space-size=4608 tsc",
+        "build:tsc": "cross-env NODE_OPTIONS=--max-old-space-size=6144 tsc",
         "build:vite": "cross-env NODE_OPTIONS=--max-old-space-size=8192 vite build",
         "serve": "vite preview",
         "test": "vitest",

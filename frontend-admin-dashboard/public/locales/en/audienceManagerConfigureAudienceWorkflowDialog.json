@@ -46,7 +46,8 @@
             "label": "WhatsApp template",
             "placeholder": "-- Select a WhatsApp template --",
             "noneFound": "No approved WhatsApp templates found. They sync from Meta — open Communication → WhatsApp Templates and sync, or get the template approved in Meta first.",
-            "helper": "Its variables auto-fill from each lead's fields."
+            "helper": "Its variables auto-fill from each lead's fields.",
+            "unmappedVars": "This template needs values for {{vars}}, which cannot be filled in automatically. Create the workflow, then map them in the workflow builder — WhatsApp rejects the message while any is left unfilled."
         }
     },
     "nameSuggestion": {

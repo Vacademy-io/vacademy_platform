@@ -16,9 +16,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { INIT_INSTITUTE, AUDIENCE_CAMPAIGNS_LIST, CREATE_MESSAGE_TEMPLATE, MESSAGE_TEMPLATE_EXISTS } from '@/constants/urls';
 import { getMessageTemplates } from '@/services/message-template-service';
-import { getTemplatesByTypeQuery, type TemplateItem } from '@/services/workflow-service';
+import { getTemplatesByTypeQuery, whatsappTemplateParamKeys, type TemplateItem } from '@/services/workflow-service';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
-import { getTemplatesForTrigger, type UseCaseTemplate, type WizardQuestion } from './use-case-templates';
+import { declaredParamsKey, getTemplatesForTrigger, type UseCaseTemplate, type WizardQuestion } from './use-case-templates';
 import { buildSampleTemplates } from './sample-email-templates';
 import { getInstituteId } from '@/constants/helper';
 
@@ -123,13 +123,15 @@ function useWhatsappTemplateOptions(instituteId: string, t: TFunction) {
     const { data, isLoading } = useQuery(getTemplatesByTypeQuery(instituteId, 'WHATSAPP'));
     const options = useMemo(() => {
         const seen = new Set<string>();
-        const list: Array<{ value: string; label: string }> = [];
+        const list: Array<{ value: string; label: string; params: string[] }> = [];
         for (const tmpl of (data ?? []) as TemplateItem[]) {
             // SEND_WHATSAPP sends by template NAME, so that is the answer value.
             const value = tmpl.name ?? tmpl.id ?? '';
             if (!value || seen.has(value)) continue;
             seen.add(value);
-            list.push({ value, label: tmpl.name ?? t('untitled') });
+            // Carry the declared body placeholders so the generator can trim
+            // its templateVars to them — Meta rejects a mismatched count.
+            list.push({ value, label: tmpl.name ?? t('untitled'), params: whatsappTemplateParamKeys(tmpl) });
         }
         return list;
     }, [data, t]);
@@ -147,7 +149,12 @@ function QuestionField({
 }: {
     question: WizardQuestion;
     value: string | number | string[] | undefined;
-    onChange: (val: string | number | string[]) => void;
+    /**
+     * `extras` lets a question record derived answers alongside its own value
+     * — the WhatsApp picker uses it to stash the template's declared body
+     * placeholders, which the generator needs and the name alone can't carry.
+     */
+    onChange: (val: string | number | string[], extras?: Record<string, string | number | string[]>) => void;
     instituteId: string;
     useCaseId?: string;
 }) {
@@ -371,16 +378,49 @@ function QuestionField({
                 </div>
                 );
             })()}
-            {question.type === 'whatsapp_template_select' && (
+            {question.type === 'whatsapp_template_select' && (() => {
+                const selected = waTemplateOptions.find((opt) => opt.value === value);
+                return (
                 <div className="space-y-1">
-                    {renderDropdown(waTemplateOptions, waTemplateLoading, t('template.whatsappPlaceholder'))}
+                    {/* Not renderDropdown: picking a template also records the
+                        body placeholders it declares, which the generator needs
+                        to keep Meta's parameter count exact. */}
+                    <select
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                        value={(value as string) ?? ''}
+                        onChange={(e) => {
+                            const opt = waTemplateOptions.find((o) => o.value === e.target.value);
+                            onChange(e.target.value, {
+                                [declaredParamsKey(question.id)]: opt?.params ?? [],
+                            });
+                        }}
+                    >
+                        <option value="">{t('template.whatsappPlaceholder')}</option>
+                        {waTemplateLoading && <option disabled>{t('dropdown.loading')}</option>}
+                        {waTemplateOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                    </select>
                     {!waTemplateLoading && waTemplateOptions.length === 0 && (
                         <p className="text-caption text-gray-400">
                             {t('template.noWhatsappTemplates')}
                         </p>
                     )}
+                    {selected && selected.params.length > 0 && (
+                        // Meta needs a value for every declared placeholder and
+                        // rejects the send if the count is off. The generator
+                        // fills the ones it recognises by name; positional ones
+                        // ({{1}}, {{2}}) it cannot guess without putting wrong
+                        // text in front of a real person.
+                        <p className="text-caption text-amber-600">
+                            {t('template.whatsappVarsNeedMapping', {
+                                vars: selected.params.map((p) => `{{${p}}}`).join(', '),
+                            })}
+                        </p>
+                    )}
                 </div>
-            )}
+                );
+            })()}
             {question.type === 'live_session_select' && renderDropdown([], false, t('template.livesessionPlaceholder'), !question.required)}
             {question.type === 'invite_select' && renderDropdown([], false, t('template.invitePlaceholder'), !question.required)}
 
@@ -684,7 +724,7 @@ export function UseCaseWizardStep({
                         key={q.id}
                         question={q}
                         value={answers[q.id]}
-                        onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
+                        onChange={(val, extras) => setAnswers((prev) => ({ ...prev, [q.id]: val, ...(extras ?? {}) }))}
                         instituteId={instituteId}
                         useCaseId={selectedTemplate.id}
                     />

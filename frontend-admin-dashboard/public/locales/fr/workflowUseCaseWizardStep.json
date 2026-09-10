@@ -30,7 +30,8 @@
         "creating": "Création...",
         "useSample": "Utiliser l'exemple : « {{name}} »",
         "useSampleHint": "Modèle prédéfini avec les bonnes variables — ajouté à votre bibliothèque de modèles",
-        "noWhatsappTemplates": "Aucun modèle WhatsApp approuvé trouvé. Ils sont synchronisés depuis Meta — ouvrez Communication → Modèles WhatsApp et lancez la synchronisation, ou faites d'abord approuver le modèle dans Meta."
+        "noWhatsappTemplates": "Aucun modèle WhatsApp approuvé trouvé. Ils sont synchronisés depuis Meta — ouvrez Communication → Modèles WhatsApp et lancez la synchronisation, ou faites d'abord approuver le modèle dans Meta.",
+        "whatsappVarsNeedMapping": "Ce modèle utilise {{vars}}. Les variables nommées d'après un champ du prospect sont renseignées automatiquement ; les variables numérotées doivent être mappées dans le générateur après la création — WhatsApp rejette le message si l'une d'elles reste vide."
     },
     "jsonPayload": {
         "invalidObject": "Le contenu doit être un objet JSON (pas un tableau ni une valeur primitive).",

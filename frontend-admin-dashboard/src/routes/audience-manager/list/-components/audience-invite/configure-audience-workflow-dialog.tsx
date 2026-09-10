@@ -17,7 +17,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { createWorkflow, getTemplatesByTypeQuery, type TemplateItem } from '@/services/workflow-service';
+import {
+    createWorkflow,
+    getTemplatesByTypeQuery,
+    restrictVarsToWhatsappTemplate,
+    whatsappTemplateParamKeys,
+    type TemplateItem,
+} from '@/services/workflow-service';
 import { getMessageTemplates } from '@/services/message-template-service';
 import { getUserId } from '@/utils/userDetails';
 import type { WorkflowBuilderDTO, WorkflowBuilderEdge, WorkflowBuilderNode } from '@/types/workflow/workflow-types';
@@ -32,6 +38,28 @@ interface ConfigureAudienceWorkflowDialogProps {
 
 type WorkflowKind = 'confirmation' | 'followup';
 type Channel = 'EMAIL' | 'WHATSAPP' | 'BOTH';
+
+/**
+ * Placeholder → source-field mappings for a lead. Resolution order in the send
+ * handlers is: item field → context field → customFields[<value>] → SpEL →
+ * literal, so 'Full Name' here means customFields["Full Name"].
+ *
+ * Mirrors the wizard's audience_lead_confirmation use case, so the same email
+ * templates work without manual mapping. For WhatsApp these are only ever
+ * applied to placeholders the chosen Meta template actually declares — see
+ * restrictVarsToWhatsappTemplate.
+ */
+const LEAD_TEMPLATE_VARS: Record<string, string> = {
+    parentName: 'Full Name',
+    fullName: 'Full Name',
+    // Canonical spelling — the default template scaffold and most hand-written
+    // templates use {{name}}. notification-service aliases it too, but mapping
+    // it here keeps the config tab's template/variable drift check quiet.
+    name: 'Full Name',
+    email: 'Email',
+    mobileNumber: 'Phone Number',
+    instituteName: 'instituteName',
+};
 
 /**
  * Inline form for creating a simple audience workflow without taking the user
@@ -130,11 +158,25 @@ export function ConfigureAudienceWorkflowDialog({
         return options;
     }, [waTemplates, t]);
 
+    // Which body placeholders the chosen WhatsApp template declares. Meta
+    // rejects the whole send when the parameter count is off, so the generated
+    // node must map exactly these — no more, no less.
+    const waParamKeys = useMemo(
+        () => whatsappTemplateParamKeys(
+            ((waTemplates ?? []) as TemplateItem[]).find((tpl) => tpl.name === waTemplateName)
+        ),
+        [waTemplates, waTemplateName]
+    );
+    const waUnmapped = useMemo(
+        () => restrictVarsToWhatsappTemplate(LEAD_TEMPLATE_VARS, waParamKeys).unmapped,
+        [waParamKeys]
+    );
+
     const createMutation = useMutation({
         mutationFn: async () => {
             const common = {
                 name, description, instituteId, audienceId, audienceName,
-                channel, templateName, waTemplateName,
+                channel, templateName, waTemplateName, waParamKeys,
             };
             const dto = kind === 'confirmation'
                 ? buildConfirmationDTO(t, common)
@@ -315,6 +357,16 @@ export function ConfigureAudienceWorkflowDialog({
                                 <p className="text-2xs text-amber-600">
                                     {t('fields.whatsappTemplate.noneFound')}
                                 </p>
+                            ) : waUnmapped.length > 0 ? (
+                                // Meta rejects the send unless every declared
+                                // placeholder gets a value, and guessing what
+                                // {{2}} means would put wrong text in front of
+                                // a real person — so say so instead.
+                                <p className="text-2xs text-amber-600">
+                                    {t('fields.whatsappTemplate.unmappedVars', {
+                                        vars: waUnmapped.map((v) => `{{${v}}}`).join(', '),
+                                    })}
+                                </p>
                             ) : (
                                 <p className="text-2xs text-gray-400">{t('fields.whatsappTemplate.helper')}</p>
                             )}
@@ -389,6 +441,8 @@ interface ConfirmationOpts {
     channel: Channel;
     templateName: string;
     waTemplateName: string;
+    /** Body placeholders the chosen WhatsApp template declares. */
+    waParamKeys: string[];
 }
 
 /**
@@ -400,6 +454,12 @@ interface ConfirmationOpts {
  * `waOn` matters: the two channels do not always iterate the same list. The
  * confirmation flow's respondentEmailRequests items carry only to/subject/body
  * (no phone), so WhatsApp has to iterate the lead's UserDTO instead.
+ *
+ * So does the split between `templateVars` and the WhatsApp node's own vars.
+ * Email templates ignore placeholders they don't use; Meta counts them and
+ * rejects the send outright if the number is wrong, so the WhatsApp node gets
+ * only the placeholders its template declares (`waParamKeys`), and none at all
+ * when it declares none.
  */
 function buildSendNodes(
     t: TFunction,
@@ -412,10 +472,16 @@ function buildSendNodes(
         x: number;
         y: number;
         templateVars?: Record<string, string>;
+        /** Body placeholders the chosen WhatsApp template declares. */
+        waParamKeys?: string[];
     }
 ): { nodes: WorkflowBuilderNode[]; edges: WorkflowBuilderEdge[] } {
     const nodes: WorkflowBuilderNode[] = [];
     let y = opts.y;
+    const waVars = restrictVarsToWhatsappTemplate(
+        LEAD_TEMPLATE_VARS,
+        opts.waParamKeys ?? []
+    ).templateVars;
 
     if (opts.channel === 'EMAIL' || opts.channel === 'BOTH') {
         nodes.push({
@@ -445,7 +511,7 @@ function buildSendNodes(
                 templateName: opts.waTemplateName,
                 on: opts.waOn ?? opts.on,
                 forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
-                ...(opts.templateVars ? { templateVars: opts.templateVars } : {}),
+                ...(waVars ? { templateVars: waVars } : {}),
             },
             position_x: opts.x,
             position_y: y,
@@ -483,21 +549,8 @@ function buildConfirmationDTO(t: TFunction, opts: ConfirmationOpts): WorkflowBui
         waOn: "{#ctx['user']}",
         x: 250,
         y: 230,
-        // Pre-populated templateVars — mirrors the wizard's
-        // audience_lead_confirmation use case so the same templates
-        // work without manual mapping.
-        templateVars: {
-            parentName: 'Full Name',
-            fullName: 'Full Name',
-            // Canonical spelling — the default template scaffold and most
-            // hand-written templates use {{name}}. notification-service
-            // aliases it too, but mapping it here keeps the config tab's
-            // template/variable drift check quiet.
-            name: 'Full Name',
-            email: 'Email',
-            mobileNumber: 'Phone Number',
-            instituteName: 'instituteName',
-        },
+        templateVars: LEAD_TEMPLATE_VARS,
+        waParamKeys: opts.waParamKeys,
     });
     const firstSend = send.nodes[0]!;
     return {
@@ -554,6 +607,7 @@ function buildFollowupDTO(t: TFunction, opts: FollowupOpts): WorkflowBuilderDTO 
         on: "#ctx['leads']",
         x: 250,
         y: 230,
+        waParamKeys: opts.waParamKeys,
     });
     const firstSend = send.nodes[0]!;
     return {

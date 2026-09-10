@@ -46,7 +46,8 @@
             "label": "Modèle WhatsApp",
             "placeholder": "-- Sélectionner un modèle WhatsApp --",
             "noneFound": "Aucun modèle WhatsApp approuvé trouvé. Ils sont synchronisés depuis Meta — ouvrez Communication → Modèles WhatsApp et lancez la synchronisation, ou faites d'abord approuver le modèle dans Meta.",
-            "helper": "Ses variables sont renseignées automatiquement à partir des champs de chaque prospect."
+            "helper": "Ses variables sont renseignées automatiquement à partir des champs de chaque prospect.",
+            "unmappedVars": "Ce modèle nécessite des valeurs pour {{vars}}, qui ne peuvent pas être renseignées automatiquement. Créez le workflow, puis mappez-les dans le générateur de workflow — WhatsApp rejette le message tant que l'une d'elles reste vide."
         }
     },
     "nameSuggestion": {

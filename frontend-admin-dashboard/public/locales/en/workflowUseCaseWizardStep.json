@@ -29,7 +29,8 @@
         "creating": "Creating...",
         "useSample": "Use sample: \"{{name}}\"",
         "useSampleHint": "Pre-built template with the right variables — added to your template library",
-        "noWhatsappTemplates": "No approved WhatsApp templates found. They sync from Meta — open Communication → WhatsApp Templates and sync, or get the template approved in Meta first."
+        "noWhatsappTemplates": "No approved WhatsApp templates found. They sync from Meta — open Communication → WhatsApp Templates and sync, or get the template approved in Meta first.",
+        "whatsappVarsNeedMapping": "This template uses {{vars}}. Variables named after a lead field fill in automatically; numbered ones must be mapped in the builder after generating — WhatsApp rejects the message if any is left unfilled."
     },
     "jsonPayload": {
         "invalidObject": "Payload must be a JSON object (not an array or primitive).",

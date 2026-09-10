@@ -29,6 +29,7 @@ import { whatsappTemplateService } from '@/services/whatsapp-template-service';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchEmailTemplates } from '@/routes/calling/ai-agents/-services/ai-agents';
 import type { AiCallActionRule } from '@/routes/settings/-components/AiAgentsCard';
+import type { MetaWhatsAppTemplate } from '@/types/message-template-types';
 
 type TriggerKind = 'promised' | 'declined' | 'custom' | 'disposition' | 'meeting' | 'extracted';
 
@@ -74,7 +75,10 @@ function triggerKindOf(rule: AiCallActionRule): TriggerKind {
  * the admin saw a configured rule, the agent offered the link on a live call, and
  * nothing was ever sent.
  */
-function ruleProblems(rule: AiCallActionRule): string[] {
+function ruleProblems(
+    rule: AiCallActionRule,
+    templates: MetaWhatsAppTemplate[] = []
+): string[] {
     const problems: string[] = [];
     if (!rule.artefact || !rule.artefact.trim()) {
         problems.push('Give this rule a name — the AI needs one to refer to it.');
@@ -98,6 +102,37 @@ function ruleProblems(rule: AiCallActionRule): string[] {
         problems.push('Choose an approved WhatsApp template.');
     } else if (rule.channel === 'EMAIL' && !rule.messageBody) {
         problems.push('Write the email message.');
+    }
+    // Rules saved BEFORE the swap handler cleared stale params still carry the wrong
+    // count, and nothing on screen says so — the editor renders the current template's
+    // blanks while the rule holds the old array. Meta rejects that send outright, so
+    // surface it here rather than letting it fail silently on a live call.
+    if (rule.actionType !== 'BOOK_MEETING' && rule.channel === 'WHATSAPP' && rule.template) {
+        const chosen = templates.find((t) => t.name === rule.template);
+        if (chosen) {
+            // A media header needs an image/video/document supplied per send, and the
+            // AI-call path has nowhere to put one: EngagementDispatcher sets only
+            // source and sourceId on SendOptions, never headerUrl. Meta answers 132012,
+            // "header: Format mismatch, expected IMAGE, received UNKNOWN" — which is
+            // what sn_unlockx did on every Shikshanation call once its body params were
+            // fixed. The template can never succeed here, so say so while it is being
+            // chosen rather than on a live call.
+            const headerFormat = chosen.components?.find((c) => c.type === 'HEADER')?.format;
+            if (headerFormat && headerFormat !== 'TEXT') {
+                problems.push(
+                    `"${rule.template}" has a ${headerFormat.toLowerCase()} header. An AI call cannot attach one, so Meta rejects the send — choose a template whose header is text-only, or none.`
+                );
+            }
+            const need = templateParamCount(chosen);
+            const have = (rule.templateParams || []).length;
+            if (have !== need) {
+                problems.push(
+                    need === 0
+                        ? `"${rule.template}" takes no variables, but ${have} value${have === 1 ? '' : 's'} from a previous template ${have === 1 ? 'is' : 'are'} still saved. Pick the template again to clear them.`
+                        : `"${rule.template}" needs exactly ${need} value${need === 1 ? '' : 's'}, but ${have} ${have === 1 ? 'is' : 'are'} saved. Pick the template again to reset them.`
+                );
+            }
+        }
     }
     // The question IS the trigger for a "caller says yes" rule: with no question the
     // agent never offers it, so nothing can be agreed to and the rule sits idle.
@@ -131,6 +166,12 @@ function templatePlaceholders(bodyText: string): number {
         m = re.exec(bodyText || '');
     }
     return found.size;
+}
+
+/** How many values the chosen template needs. 0 when we cannot see its body. */
+function templateParamCount(t?: MetaWhatsAppTemplate): number {
+    const body = t?.components?.find((c) => c.type === 'BODY')?.text || '';
+    return templatePlaceholders(body);
 }
 
 /** The variables a call can always fill, offered as a hint next to each parameter. */
@@ -474,9 +515,31 @@ export function SendRulesEditor({
                                         value={rule.template || ''}
                                         onValueChange={(v) => {
                                             const t = templates.find((x) => x.name === v);
+                                            // Meta parameters are positional and the count must
+                                            // match EXACTLY, so the params belong to the template
+                                            // that is chosen now — not to the one it replaced.
+                                            // Leaving them behind is silent: the editor renders
+                                            // the new template's blanks (or "takes no variables")
+                                            // while the rule still carries the old array, and the
+                                            // mismatch only surfaces mid-call, as Meta error 132000.
+                                            // Shikshanation's quiz rule kept two params from
+                                            // hello_utility_confirmation after being pointed at
+                                            // sn_unlockx, which declares none, and every send
+                                            // failed. Values for positions the new template still
+                                            // has are kept, so swapping between two 2-variable
+                                            // templates does not make the admin retype them.
+                                            const count = templateParamCount(t);
+                                            const prev = rule.templateParams || [];
                                             update(i, {
                                                 template: v,
                                                 templateLanguage: t?.language || undefined,
+                                                templateParams:
+                                                    count === 0
+                                                        ? []
+                                                        : Array.from(
+                                                              { length: count },
+                                                              (_x, k) => prev[k] || ''
+                                                          ),
                                             });
                                         }}
                                     >
@@ -641,9 +704,9 @@ Namaste {{name}}, ...`}
                             <div />
                         </div>
 
-                        {ruleProblems(rule).length > 0 && (
+                        {ruleProblems(rule, templates).length > 0 && (
                             <div className="rounded-md bg-warning-50 p-2">
-                                {ruleProblems(rule).map((problem) => (
+                                {ruleProblems(rule, templates).map((problem) => (
                                     <p key={problem} className="text-caption text-warning-600">
                                         {problem}
                                     </p>

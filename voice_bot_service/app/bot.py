@@ -244,6 +244,19 @@ class TranscriptCollector(FrameProcessor):
                                     else s.filler_phrases)
         self._filler_probability = max(0.0, min(1.0, s.filler_probability))
 
+    def _played_ended_with_question(self) -> bool:
+        """Did the bot's most recent PLAYED speech — since the caller last spoke —
+        end in a question? The caller's own final has just been appended, so the
+        entry before it must be assistant text (a user entry there means the cut
+        reply never reached the line) ending with '?'."""
+        t = self._outcome.transcript
+        if len(t) < 2 or t[-1].get("role") != "user":
+            return False
+        prev = t[-2]
+        if prev.get("role") != "assistant":
+            return False
+        return (prev.get("text") or "").rstrip().endswith(("?", "？"))
+
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         # VAD user-speech frames re-arm the idle clock. Sarvam STT emits FINAL
@@ -396,6 +409,25 @@ class TranscriptCollector(FrameProcessor):
                         # not "carry on"; the caller repeats the greeting.
                         if (self._resay_opening is not None
                                 and await self._resay_opening(text)):
+                            return
+                        # Call 7003c36a (2026-09-09): "Actually I am busy for
+                        # classes" -> "No problem. When would be a better time
+                        # for me to call you back today?" -> caller: "Yeah." —
+                        # spoken over the last word of the question, so it
+                        # landed here as a backchannel and the carry-on cue
+                        # below marched the model into the pitch. A "yes" right
+                        # after a question the caller HEARD is the answer to it.
+                        if self._played_ended_with_question():
+                            logger.info("turn-gate: %r answers the question just "
+                                        "asked — not a carry-on", text[:20])
+                            await self.push_frame(LLMMessagesAppendFrame(
+                                messages=[{"role": "user", "content":
+                                           "[That was their ANSWER to the question you "
+                                           "had just finished asking — respond to that "
+                                           "answer only. Do not carry on with your "
+                                           "script. If they agreed to a callback or "
+                                           "asked to end, close politely.]"}],
+                                run_llm=True), direction)
                             return
                         # The VAD onset already cancelled the reply, and a
                         # cancelled reply cannot be un-cancelled — so ask for the

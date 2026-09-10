@@ -2828,3 +2828,48 @@ def test_watchdog_speaks_the_bridge_line_on_llm_bridge():
     handler = handler[:handler.index("continue")]
     assert "TTSSpeakFrame(bridge_line, append_to_context=False)" in handler
     assert 'diag.bump("llm_bridges")' in handler
+
+
+# ── call 7003c36a (2026-09-09): "I am busy" → "When would be a better time to
+#    call you back today?" → caller "Yeah." over the last word → absorbed as a
+#    backchannel → "carry on" cue → the model carried on INTO THE PITCH ──────────
+
+
+async def _collector_with_transcript(rec, played_assistant_text):
+    out = FakeOutcome()
+    out.transcript.append({"role": "assistant", "text": played_assistant_text})
+    tc = b.TranscriptCollector(
+        out, lambda user=True: None,
+        is_bot_speaking=lambda: True, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = _noop_broadcast
+    return tc
+
+
+@pytest.mark.asyncio
+async def test_a_yes_right_after_a_played_question_is_its_answer():
+    rec = _Rec()
+    tc = await _collector_with_transcript(
+        rec, "No problem at all, Shiv. When would be a better time for me to call you back today?")
+    await _feed(tc, "Yeah.")
+    cues = _cue_texts(rec)
+    assert any("their ANSWER to the question" in c for c in cues), cues
+    assert not any("carry on from where you were interrupted" in c for c in cues), cues
+
+
+@pytest.mark.asyncio
+async def test_a_yes_over_a_statement_still_carries_on():
+    rec = _Rec()
+    tc = await _collector_with_transcript(
+        rec, "We work with yoga trainers on everything around their online sessions.")
+    await _feed(tc, "Yeah.")
+    cues = _cue_texts(rec)
+    assert any("carry on" in c for c in cues), cues
+    assert not any("their ANSWER" in c for c in cues), cues

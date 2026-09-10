@@ -10,7 +10,10 @@
     "multiSelect": {
         "selectedCount_one": "{{count}} sélectionné(e)",
         "selectedCount_many": "{{count}} sélectionné(e)s",
-        "selectedCount_other": "{{count}} sélectionné(e)s"
+        "selectedCount_other": "{{count}} sélectionné(e)s",
+        "searchPlaceholder": "Rechercher...",
+        "noMatches": "Aucun résultat pour « {{search}} ».",
+        "someHiddenBySearch": "certains éléments sélectionnés sont masqués par la recherche"
     },
     "batch": {
         "selectPlaceholder": "-- Sélectionner un groupe --",

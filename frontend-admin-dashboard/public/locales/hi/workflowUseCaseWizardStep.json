@@ -9,7 +9,10 @@
     },
     "multiSelect": {
         "selectedCount_one": "{{count}} चयनित",
-        "selectedCount_other": "{{count}} चयनित"
+        "selectedCount_other": "{{count}} चयनित",
+        "searchPlaceholder": "खोजें...",
+        "noMatches": "“{{search}}” से कुछ भी मेल नहीं खाता।",
+        "someHiddenBySearch": "कुछ चयनित आइटम खोज के कारण छिपे हैं"
     },
     "batch": {
         "selectPlaceholder": "-- एक बैच चुनें --",

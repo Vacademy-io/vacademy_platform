@@ -585,6 +585,15 @@ public class AiCallActionService {
                     positional.put(String.valueOf(i++), resolveParam(param, vars));
                 }
             }
+            // A media-header template renders an image/document above the body and is
+            // rejected outright without one: "(#132012) ... header: Format mismatch,
+            // expected IMAGE, received UNKNOWN" - sn_unlockx on every Shikshanation call.
+            // UnifiedSendService reads _headerUrl per recipient, and both provider paths
+            // filter "_"-prefixed keys out of the body parameters, so this cannot disturb
+            // the positional count above - the very thing (#132000) punishes.
+            if (notBlank(rule.getTemplateHeaderUrl())) {
+                positional.put("_headerUrl", resolveParam(rule.getTemplateHeaderUrl(), vars));
+            }
             return mapper.writeValueAsString(positional);
         } catch (Exception e) {
             return "{}";

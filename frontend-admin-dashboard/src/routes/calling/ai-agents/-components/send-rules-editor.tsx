@@ -110,17 +110,26 @@ function ruleProblems(
     if (rule.actionType !== 'BOOK_MEETING' && rule.channel === 'WHATSAPP' && rule.template) {
         const chosen = templates.find((t) => t.name === rule.template);
         if (chosen) {
-            // A media header needs an image/video/document supplied per send, and the
-            // AI-call path has nowhere to put one: EngagementDispatcher sets only
-            // source and sourceId on SendOptions, never headerUrl. Meta answers 132012,
-            // "header: Format mismatch, expected IMAGE, received UNKNOWN" — which is
-            // what sn_unlockx did on every Shikshanation call once its body params were
-            // fixed. The template can never succeed here, so say so while it is being
-            // chosen rather than on a live call.
+            // A media-header template renders a file above the body and is rejected
+            // outright without one — Meta answers 132012, "header: Format mismatch,
+            // expected IMAGE, received UNKNOWN". That is what sn_unlockx did on every
+            // Shikshanation call once its body parameters were fixed.
+            //
+            // Image and document travel as the _headerUrl variable, which
+            // UnifiedSendService reads per recipient. Video does NOT: it needs
+            // options.headerType="video" on the send request, and the AI-call dispatcher
+            // sets only source and sourceId — so a video template cannot work here.
             const headerFormat = chosen.components?.find((c) => c.type === 'HEADER')?.format;
-            if (headerFormat && headerFormat !== 'TEXT') {
+            if (headerFormat === 'VIDEO') {
                 problems.push(
-                    `"${rule.template}" has a ${headerFormat.toLowerCase()} header. An AI call cannot attach one, so Meta rejects the send — choose a template whose header is text-only, or none.`
+                    `"${rule.template}" has a video header, which an AI call cannot attach — Meta rejects the send. Choose a template with an image, document or text header.`
+                );
+            } else if (
+                (headerFormat === 'IMAGE' || headerFormat === 'DOCUMENT') &&
+                !(rule.templateHeaderUrl || '').trim()
+            ) {
+                problems.push(
+                    `"${rule.template}" shows ${headerFormat === 'IMAGE' ? 'an image' : 'a document'} above the message, so it needs a link to that file — Meta rejects the send without one.`
                 );
             }
             const need = templateParamCount(chosen);
@@ -172,6 +181,12 @@ function templatePlaceholders(bodyText: string): number {
 function templateParamCount(t?: MetaWhatsAppTemplate): number {
     const body = t?.components?.find((c) => c.type === 'BODY')?.text || '';
     return templatePlaceholders(body);
+}
+
+/** IMAGE / DOCUMENT / VIDEO when the template shows a file above the body, else undefined. */
+function mediaHeaderFormat(t?: MetaWhatsAppTemplate): 'IMAGE' | 'DOCUMENT' | 'VIDEO' | undefined {
+    const f = t?.components?.find((c) => c.type === 'HEADER')?.format;
+    return f === 'IMAGE' || f === 'DOCUMENT' || f === 'VIDEO' ? f : undefined;
 }
 
 /** The variables a call can always fill, offered as a hint next to each parameter. */
@@ -540,6 +555,15 @@ export function SendRulesEditor({
                                                               { length: count },
                                                               (_x, k) => prev[k] || ''
                                                           ),
+                                                // The header file belongs to the old template's
+                                                // header, so it is dropped unless the new one
+                                                // also shows one. Same staleness trap as the
+                                                // params, with a worse failure: a leftover link
+                                                // on a text-header template is sent as a header
+                                                // Meta is not expecting.
+                                                templateHeaderUrl: mediaHeaderFormat(t)
+                                                    ? rule.templateHeaderUrl
+                                                    : undefined,
                                             });
                                         }}
                                     >
@@ -617,6 +641,44 @@ Namaste {{name}}, ...`}
                                 )}
                             </div>
                         </div>
+
+                        {isWhatsApp &&
+                            rule.template &&
+                            (() => {
+                                const chosen = templates.find((t) => t.name === rule.template);
+                                const fmt = mediaHeaderFormat(chosen);
+                                if (!chosen || !fmt) return null;
+                                if (fmt === 'VIDEO') {
+                                    return (
+                                        <p className="text-caption text-warning-600">
+                                            This template has a video header, which an AI call
+                                            cannot attach. Pick one with an image, document or text
+                                            header.
+                                        </p>
+                                    );
+                                }
+                                return (
+                                    <div className="space-y-1.5">
+                                        <Label className="text-caption">
+                                            Link to the {fmt === 'IMAGE' ? 'image' : 'document'}{' '}
+                                            shown above the message
+                                        </Label>
+                                        <Input
+                                            className="h-8"
+                                            placeholder="https://… — a public link to the file"
+                                            value={rule.templateHeaderUrl || ''}
+                                            onChange={(e) =>
+                                                update(i, { templateHeaderUrl: e.target.value })
+                                            }
+                                        />
+                                        <p className="text-caption text-neutral-500">
+                                            This template shows{' '}
+                                            {fmt === 'IMAGE' ? 'an image' : 'a document'} above the
+                                            text. Meta rejects the send without one.
+                                        </p>
+                                    </div>
+                                );
+                            })()}
 
                         {isWhatsApp && rule.template && (() => {
                             const chosen = templates.find((t) => t.name === rule.template);

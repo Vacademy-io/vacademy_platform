@@ -82,6 +82,27 @@ public class AiCallActionRule {
     private String templateLanguage;
 
     /**
+     * WhatsApp only: the image or document a media-header template renders above its body.
+     *
+     * <p>A template whose HEADER format is IMAGE or DOCUMENT will not send without one —
+     * Meta answers "(#132012) Parameter format does not match format in the created
+     * template ... header: Format mismatch, expected IMAGE, received UNKNOWN". That is
+     * what sn_unlockx did on every Shikshanation call once its body parameters were
+     * corrected: the caller agreed on the call and the promised WhatsApp never arrived.
+     *
+     * <p>Travels to the action as the {@code _headerUrl} entry in variables_json.
+     * UnifiedSendService reads that key per recipient, and both provider paths
+     * (WhatsAppService, WatiService) filter {@code _}-prefixed keys out of the body
+     * parameters, so it cannot disturb the positional count that {@link #templateParams}
+     * has to match exactly.
+     *
+     * <p>VIDEO headers are NOT supported here: they need options.headerType="video" on the
+     * send request, which the AI-call dispatcher does not set. IMAGE and DOCUMENT both
+     * take the default link path, which is why they work without one.
+     */
+    private String templateHeaderUrl;
+
+    /**
      * EMAIL only: what the person actually receives.
      *
      * <p>Email has no Meta template — EngagementDispatcher emails {@code draft_body}

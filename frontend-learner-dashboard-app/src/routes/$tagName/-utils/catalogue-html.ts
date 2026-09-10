@@ -20,14 +20,24 @@
  */
 import DOMPurify from 'dompurify';
 
-/** Structural/text tags only — no script/style/iframe/svg/media/form inputs. */
+/** Structural/text tags only — no script/style/iframe/svg/media/form inputs.
+ *
+ *  del/ins/strike are here for one reason: a struck-through original price is
+ *  the single most common thing a marketing page needs, and `<del>` is what
+ *  every author (human or AI) writes for it. Leaving it out did not fail
+ *  loudly — DOMPurify keeps the CHILDREN of a disallowed tag, so
+ *  `<del>₹1,599</del>` rendered as bare `₹1,599`, and the `.price del { … }`
+ *  rule in the same blob matched nothing. The page looked like it had simply
+ *  ignored the edit, so it got "fixed" by hand over and over. They are
+ *  presentational text-level elements with no scripting surface; their `cite`
+ *  attribute is deliberately NOT allowed (it is a URL). */
 const ALLOWED_TAGS = [
     'a', 'article', 'aside', 'b', 'blockquote', 'br', 'button', 'caption',
-    'cite', 'code', 'dd', 'div', 'dl', 'dt', 'em', 'figcaption', 'figure',
-    'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'i', 'img',
-    'li', 'mark', 'nav', 'ol', 'p', 'pre', 's', 'section', 'small', 'span',
-    'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead',
-    'time', 'tr', 'u', 'ul',
+    'cite', 'code', 'dd', 'del', 'div', 'dl', 'dt', 'em', 'figcaption',
+    'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr',
+    'i', 'img', 'ins', 'li', 'mark', 'nav', 'ol', 'p', 'pre', 's', 'section',
+    'small', 'span', 'strike', 'strong', 'sub', 'sup', 'table', 'tbody', 'td',
+    'tfoot', 'th', 'thead', 'time', 'tr', 'u', 'ul',
 ];
 
 const ALLOWED_ATTR = [

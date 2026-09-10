@@ -97,13 +97,19 @@ def _sanitize_html(value: str) -> str:
 # structural/text tags only, class-based styling via a separate scrubbed CSS
 # blob, images only from vetted URLs, no scripts/iframes/svg/forms/media.
 
+# del/ins/strike: a struck-through original price is the commonest thing a
+# marketing section needs and <del> is what authors write for it. nh3 keeps a
+# disallowed tag's CHILDREN, so omitting it turned "<del>₹1,599</del>" into
+# bare "₹1,599" and left the matching `del { … }` CSS rule dead — a silent
+# no-op that reads as "the edit did not save". No scripting surface; their
+# "cite" attribute stays disallowed (it is a URL).
 _CUSTOM_HTML_TAGS = {
     "a", "article", "aside", "b", "blockquote", "br", "button", "caption",
-    "cite", "code", "dd", "div", "dl", "dt", "em", "figcaption", "figure",
-    "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "i", "img",
-    "li", "mark", "nav", "ol", "p", "pre", "s", "section", "small", "span",
-    "strong", "sub", "sup", "table", "tbody", "td", "tfoot", "th", "thead",
-    "time", "tr", "u", "ul",
+    "cite", "code", "dd", "del", "div", "dl", "dt", "em", "figcaption",
+    "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr",
+    "i", "img", "ins", "li", "mark", "nav", "ol", "p", "pre", "s", "section",
+    "small", "span", "strike", "strong", "sub", "sup", "table", "tbody", "td",
+    "tfoot", "th", "thead", "time", "tr", "u", "ul",
 }
 _CUSTOM_HTML_ATTRS = {
     "*": {"class", "id", "style", "title", "role", "aria-label", "aria-hidden"},

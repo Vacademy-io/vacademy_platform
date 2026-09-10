@@ -164,13 +164,34 @@ export const resolveLocalizedTerm = (
 // seeded, which predates i18n and is therefore always English.
 let useSystemDefaultsFlag = false;
 
+/** `sidebar:aiLecturePlanning` -> `Ai Lecture Planning`. Last-resort only. */
+const humanizeSidebarKey = (key: string): string => {
+    const leaf = key.slice(key.indexOf(':') + 1);
+    const spaced = leaf
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/[._-]+/g, ' ')
+        .trim();
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+};
+
 // English is always loaded (it is the fallbackLng), so forcing it here never
 // yields a raw key even when another language is active.
-const sidebarT = (key: string, options?: Record<string, unknown>): string =>
-    i18next.t(key, {
+//
+// The fallback below is not decoration. i18next.t() returns `undefined` until
+// init() has run and the bare key until the namespace is seeded, and these
+// labels feed BOTH the nav and the Tab Name / Label boxes in Display Settings —
+// which is how an editor full of blank name fields next to filled-in routes
+// shipped. A nameless sidebar entry is never the right answer, so degrade to a
+// readable form of the key rather than to nothing.
+const sidebarT = (key: string, options?: Record<string, unknown>): string => {
+    const value = i18next.t(key, {
         ...(options ?? {}),
         ...(useSystemDefaultsFlag ? { lng: DEFAULT_LOCALE } : {}),
-    }) as string;
+    }) as string | undefined;
+    const leaf = key.slice(key.indexOf(':') + 1);
+    if (!value || value === key || value === leaf) return humanizeSidebarKey(key);
+    return value;
+};
 
 export const withSystemDefaults = <T>(fn: () => T): T => {
     const prev = useSystemDefaultsFlag;

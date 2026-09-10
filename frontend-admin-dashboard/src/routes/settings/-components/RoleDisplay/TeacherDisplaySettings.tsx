@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RoleDisplayPanelProps } from './panel-props';
 import { applyRoleConstraints } from '@/lib/display-settings/role-constraints';
 import { useTranslation } from 'react-i18next';
+import { useNamingSettingsVersion } from '@/hooks/useNamingSettingsVersion';
 import type { TFunction } from 'i18next';
 import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
+import { getSidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,7 +28,7 @@ import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
-import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import {
     DEFAULT_HIDDEN_COURSE_DETAILS_TABS,
     OFFLINE_GATED_COURSE_DETAILS_TABS,
@@ -269,6 +270,22 @@ function getLearnerManagementOptions(
 
 export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPanelProps = {}) {
     const { t } = useTranslation('settingsTeacherDisplay');
+    // Built-in tab names come from getSidebarItemsData(), which resolves them
+    // through the i18next singleton and through the institute's naming settings.
+    // Neither is available while modules are being evaluated, so this has to be
+    // read during render — a value captured at module scope is simply blank, and
+    // that is what left every Tab Name / Label box in this editor empty.
+    //
+    // `ready` flips when the sidebar catalog lands and `namingVersion` bumps on a
+    // rename or a language switch; between them the memo can never hold on to
+    // stale labels, and the lookup stays off the per-keystroke render path (it
+    // re-reads localStorage once per built-in entry).
+    const { ready: sidebarCatalogReady } = useTranslation('sidebar');
+    const namingVersion = useNamingSettingsVersion();
+    const sidebarItems = useMemo(
+        () => getSidebarItemsData(),
+        [sidebarCatalogReady, namingVersion]
+    );
     const TEACHER_DISPLAY_SECTIONS = getTeacherDisplaySections(t);
     const STUDENT_SIDE_VIEW_OPTIONS = getStudentSideViewOptions(t);
     const LEARNER_MANAGEMENT_OPTIONS = getLearnerManagementOptions(t);
@@ -444,7 +461,7 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
         updateSettings((prev) => {
             const categoryTabs = prev.sidebar
                 .filter((t) => {
-                    const baseItem = SidebarItemsData.find((i) => i.id === t.id);
+                    const baseItem = sidebarItems.find((i) => i.id === t.id);
                     const cat = baseItem?.category || t.category || 'CRM';
                     return cat === activeCategory;
                 })
@@ -532,7 +549,7 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                     <MyButton
                         buttonType="secondary"
                         scale="small"
-                        onClick={() => setSettings(DEFAULT_TEACHER_DISPLAY_SETTINGS)}
+                        onClick={() => setSettings(getDefaultTeacherDisplaySettings())}
                     >
                         {t('resetToDefaults')}
                     </MyButton>
@@ -1647,13 +1664,15 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                         {(() => {
                             const categoryTabs = settings.sidebar
                                 .filter((tab) => {
-                                    const baseItem = SidebarItemsData.find((i) => i.id === tab.id);
+                                    const baseItem = sidebarItems.find((i) => i.id === tab.id);
                                     const cat = baseItem?.category || tab.category || 'CRM';
                                     return cat === activeCategory;
                                 })
                                 .sort((a, b) => a.order - b.order);
 
-                            return categoryTabs.map((tab, tabIdx) => (
+                            return categoryTabs.map((tab, tabIdx) => {
+                                const baseItem = sidebarItems.find((i) => i.id === tab.id);
+                                return (
                                 <div key={tab.id} className="mb-3 rounded border p-3">
                                     <div className="flex items-start gap-3">
                                         {/* Move up/down buttons */}
@@ -1688,7 +1707,7 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                                                 <div className="col-span-2">
                                                     <Label>{t('cards.sidebarTabs.tabName')}</Label>
                                                     <Input
-                                                        value={tab.label || ''}
+                                                        value={tab.label || baseItem?.title || ''}
                                                         onChange={(e) =>
                                                             updateSettings((prev) => ({
                                                                 ...prev,
@@ -1790,7 +1809,12 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                                                         .slice()
                                                         .sort((a, b) => a.order - b.order);
 
-                                                    return sortedSubs.map((sub, subIdx) => (
+                                                    return sortedSubs.map((sub, subIdx) => {
+                                                    const baseSub = baseItem?.subItems?.find(
+                                                        (i) =>
+                                                            (i.subItemId || i.subItem) === sub.id
+                                                    );
+                                                    return (
                                                         <div
                                                             key={sub.id}
                                                             className="flex items-center gap-3 rounded border p-2"
@@ -1828,7 +1852,11 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                                                             <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-4 md:items-center">
                                                                 <div className="col-span-2">
                                                                     <Input
-                                                                        value={sub.label || ''}
+                                                                        value={
+                                                                            sub.label ||
+                                                                            baseSub?.subItem ||
+                                                                            ''
+                                                                        }
                                                                         placeholder={t('cards.sidebarTabs.labelPlaceholder')}
                                                                         onChange={(e) =>
                                                                             updateSettings((prev) => ({
@@ -1985,13 +2013,15 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    ));
+                                                    );
+                                                    });
                                                 })()}
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            ));
+                            );
+                            });
                         })()}
                     </Tabs>
                     <div className="pt-2">

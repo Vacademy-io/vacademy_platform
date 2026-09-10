@@ -64,8 +64,8 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { PagedResponse, SystemAlertItem } from '@/services/notifications/system-alerts';
-import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
-import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { getDefaultAdminDisplaySettings } from '@/constants/display-settings/admin-defaults';
+import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import { MyButton } from '@/components/design-system/button';
 import { ClearAllAlertsButton } from '@/components/common/notifications/ClearAllAlertsButton';
 import { DismissAlertButton } from '@/components/common/notifications/DismissAlertButton';
@@ -132,9 +132,17 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const isAdminRoleForDS = roles.includes('ADMIN');
     const roleKeyForDS = getActiveRoleDisplaySettingsKey();
     const cachedDS = getDisplaySettingsFromCache(roleKeyForDS);
-    const defaultDS = isAdminRoleForDS
-        ? DEFAULT_ADMIN_DISPLAY_SETTINGS
-        : DEFAULT_TEACHER_DISPLAY_SETTINGS;
+    // Only the permission flags and `ui` are read from this fallback, and neither
+    // depends on the sidebar labels the getters resolve through i18n — so the
+    // role is the whole dependency. Memoized because the navbar is always
+    // mounted and building the defaults walks every sidebar entry.
+    const defaultDS = useMemo(
+        () =>
+            isAdminRoleForDS
+                ? getDefaultAdminDisplaySettings()
+                : getDefaultTeacherDisplaySettings(),
+        [isAdminRoleForDS]
+    );
     const effectiveDS = cachedDS || defaultDS;
     const canViewProfile = effectiveDS.permissions.canViewProfileDetails;
     const canEditProfile = effectiveDS.permissions.canEditProfileDetails;

@@ -714,6 +714,55 @@ export async function syncWhatsAppTemplatesFromMeta(instituteId: string): Promis
     return Number(response.data?.synced ?? 0);
 }
 
+/**
+ * The body placeholders a WhatsApp template actually declares, in order.
+ *
+ * Meta validates the parameter COUNT exactly: send six body params to a
+ * template that declares none and the whole send fails with
+ * `(#132000) number of localizable_params (6) does not match the expected
+ * number of params (0)`. So anything auto-filling templateVars for a
+ * SEND_WHATSAPP node has to intersect its guesses with this list first.
+ *
+ * Returns [] for a template with no body variables, which is a meaningful
+ * answer ("send no params"), not a failure.
+ */
+export function whatsappTemplateParamKeys(template: TemplateItem | undefined): string[] {
+    if (!template?.dynamic_parameters) return [];
+    try {
+        const parsed = JSON.parse(template.dynamic_parameters) as Record<string, string>;
+        return Object.keys(parsed);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Narrow a set of placeholder→field mappings to only the placeholders a given
+ * WhatsApp template declares. Returns undefined when nothing is left, so the
+ * caller can omit `templateVars` from the node config entirely.
+ *
+ * Placeholders the template declares but we have no mapping for are reported
+ * in `unmapped` — Meta needs a value for every one of them, so the caller
+ * should tell the admin to finish the mapping in the workflow builder rather
+ * than guess (a wrong guess sends real, wrong text to a real person).
+ */
+export function restrictVarsToWhatsappTemplate(
+    vars: Record<string, string> | undefined,
+    paramKeys: string[]
+): { templateVars?: Record<string, string>; unmapped: string[] } {
+    const mapped: Record<string, string> = {};
+    const unmapped: string[] = [];
+    for (const key of paramKeys) {
+        const value = vars?.[key];
+        if (value) mapped[key] = value;
+        else unmapped.push(key);
+    }
+    return {
+        templateVars: Object.keys(mapped).length > 0 ? mapped : undefined,
+        unmapped,
+    };
+}
+
 /** Templates for read-only preview — includes ones still awaiting Meta approval. */
 export function getWhatsAppTemplatesForPreviewQuery(instituteId: string) {
     return queryOptions({

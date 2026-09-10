@@ -136,6 +136,37 @@ function whatsappTemplateQuestion(overrides: Partial<WizardQuestion> = {}): Wiza
 }
 
 /**
+ * Answer key under which the wizard records the body placeholders a chosen
+ * WhatsApp template declares, alongside the template name itself. Kept next to
+ * the name so a use-case with two WhatsApp templates keeps them apart.
+ */
+export function declaredParamsKey(waTemplateAnswerKey: string): string {
+    return `${waTemplateAnswerKey}__declaredParams`;
+}
+
+/**
+ * Narrow placeholder mappings to the ones a WhatsApp template declares.
+ * Returns undefined when nothing survives, so the caller omits templateVars
+ * entirely (the right config for a template with no body variables).
+ *
+ * A missing/!array `declared` means the picker never recorded the template's
+ * params — fall back to the previous behaviour rather than silently stripping
+ * a mapping the admin may be relying on.
+ */
+function restrictToDeclaredParams(
+    vars: Record<string, string> | undefined,
+    declared: unknown
+): Record<string, string> | undefined {
+    if (!Array.isArray(declared)) return vars;
+    const mapped: Record<string, string> = {};
+    for (const key of declared as string[]) {
+        const value = vars?.[key];
+        if (value) mapped[key] = value;
+    }
+    return Object.keys(mapped).length > 0 ? mapped : undefined;
+}
+
+/**
  * Build the SEND_EMAIL and/or SEND_WHATSAPP node(s) for the chosen channel,
  * chained vertically starting at (x, y). Connect the upstream node to
  * `nodes[0]`; internal chaining edges are returned in `edges`.
@@ -176,12 +207,23 @@ function makeChannelSendNodes(
         y += 180;
     }
     if (channel === 'WHATSAPP' || channel === 'BOTH') {
-        const waTemplate = answers[opts.waTemplateAnswerKey ?? 'waTemplateName'] as string;
+        const waAnswerKey = opts.waTemplateAnswerKey ?? 'waTemplateName';
+        const waTemplate = answers[waAnswerKey] as string;
+        // Email templates ignore placeholders they don't use, but Meta counts
+        // them: six params on a template that declares none fails the whole
+        // send with "(#132000) number of localizable_params (6) does not match
+        // the expected number of params (0)". So pass on only the placeholders
+        // this template actually declares — the picker records them alongside
+        // the name — and none at all when it declares none.
+        const waVars = restrictToDeclaredParams(
+            opts.templateVars,
+            answers[declaredParamsKey(waAnswerKey)]
+        );
         nodes.push(makeNode('SEND_WHATSAPP', `WhatsApp: ${waTemplate}`, {
             templateName: waTemplate,
             on: opts.waOn ?? opts.on,
             forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
-            ...(opts.templateVars ? { templateVars: opts.templateVars } : {}),
+            ...(waVars ? { templateVars: waVars } : {}),
         }, opts.x, y));
     }
     for (let i = 0; i < nodes.length - 1; i++) {

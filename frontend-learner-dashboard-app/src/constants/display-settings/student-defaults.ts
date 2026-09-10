@@ -120,6 +120,11 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     { id: "exploreBooks", visible: true },
     // Declared LAST on purpose — see FRACTIONAL_ORDERS below.
     { id: "enrolledCourses", visible: true },
+    // On by default. It self-hides for any institute with no app link on its
+    // domain-routing row, so the only institutes it reaches are the ones that
+    // actually ship an app. Note this means those institutes advertise the
+    // downloads twice until they turn `sidebar.appLinks` off.
+    { id: "getApp", visible: true },
   ];
   // Widgets added after this list shipped cannot simply be spliced in: order
   // comes from the array index, and an institute that saved earlier already
@@ -134,7 +139,13 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
   // belongs, and can never equal an integer order a saved institute holds.
   // Swapping preserves the set of orders, so reordering cannot create a
   // duplicate either.
-  const FRACTIONAL_ORDERS: Record<string, number> = { enrolledCourses: 2.5 };
+  // `getApp` is a rail widget. 12.5 puts it last in the rail — after
+  // upcomingLiveClasses (10), myMentors (11) and thisWeekAttendance (12) —
+  // without colliding with gamification (13) in the main column.
+  const FRACTIONAL_ORDERS: Record<string, number> = {
+    enrolledCourses: 2.5,
+    getApp: 12.5,
+  };
   return defaults.map((w, idx) => ({
     ...w,
     order: FRACTIONAL_ORDERS[w.id] ?? idx + 1,
@@ -142,7 +153,7 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
 }
 
 export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
-  sidebar: { visible: true, tabs: defaultSidebarTabs() },
+  sidebar: { visible: true, tabs: defaultSidebarTabs(), appLinks: true },
   dashboard: { widgets: defaultDashboardWidgets() },
   ui: { type: "default" },
   signup: {

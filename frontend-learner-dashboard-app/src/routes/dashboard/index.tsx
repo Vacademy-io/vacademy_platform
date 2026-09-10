@@ -85,6 +85,7 @@ import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidg
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
 import { MyMentorsWidget } from "./-components/MyMentorsWidget";
+import { GetAppWidget } from "./-components/GetAppWidget";
 import cleanerIconCourses from "@/assets/cleaner-play/icon-courses.webp";
 import cleanerIconAssessments from "@/assets/cleaner-play/icon-assessments.webp";
 import cleanerIconLive from "@/assets/cleaner-play/icon-live-sessions.webp";
@@ -996,6 +997,14 @@ export function DashboardComponent() {
       order: getWidgetOrder("myMentors"),
       visible: isWidgetVisible("myMentors"),
       render: <MyMentorsWidget />,
+    },
+    {
+      id: "getApp" as const,
+      order: getWidgetOrder("getApp"),
+      visible: isWidgetVisible("getApp"),
+      // Self-hides when the institute has no app link configured, so an
+      // institute can leave this on without it ever showing an empty card.
+      render: <GetAppWidget />,
     },
   ]
     .filter((w) => w.visible)

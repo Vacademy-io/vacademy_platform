@@ -364,6 +364,22 @@ export default function StudentDisplaySettings(): JSX.Element {
                         />
                         <Label>{t('sidebar.visibleLabel')}</Label>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            // Undefined means "not saved yet", which the learner app
+                            // reads as on — so the switch must show on for it too.
+                            checked={settings.sidebar.appLinks !== false}
+                            onCheckedChange={(v) =>
+                                update('sidebar', { ...settings.sidebar, appLinks: v })
+                            }
+                        />
+                        <div>
+                            <Label>{t('sidebar.appLinksLabel')}</Label>
+                            <p className="text-caption text-neutral-500">
+                                {t('sidebar.appLinksHelp')}
+                            </p>
+                        </div>
+                    </div>
                     <div className="mb-3 flex items-center gap-2">
                         <Button type="button" onClick={addCustomTab} size="sm" variant="secondary">
                             {t('sidebar.addCustomTab')}

@@ -9,8 +9,8 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { StorageKey } from '@/constants/storage/storage';
-import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
-import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { getDefaultAdminDisplaySettings } from '@/constants/display-settings/admin-defaults';
+import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
 
 import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
@@ -252,9 +252,9 @@ function getLocalStorageKey(role: RoleKey, instituteId?: string | null): string 
 }
 
 function getDefaults(role: RoleKey): DisplaySettingsData {
-    if (role === ADMIN_DISPLAY_SETTINGS_KEY) return DEFAULT_ADMIN_DISPLAY_SETTINGS;
+    if (role === ADMIN_DISPLAY_SETTINGS_KEY) return getDefaultAdminDisplaySettings();
     // Both teacher and custom role can use teacher defaults as baseline
-    return DEFAULT_TEACHER_DISPLAY_SETTINGS;
+    return getDefaultTeacherDisplaySettings();
 }
 
 function mergeArrayById<T extends { id: string }>(

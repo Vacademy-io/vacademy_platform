@@ -1,4 +1,4 @@
-import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
+import { getSidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
 import type { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 import type {
     DisplaySettingsData,
@@ -37,10 +37,21 @@ const OPT_IN_TAB_IDS = new Set<string>([
     // one deliberate switch is the gate, not eight.
 ]);
 
+// NOTE: built-in tabs are deliberately seeded WITHOUT a `label`.
+//
+// mySidebar treats a saved label as a user customization unless it still matches
+// the built-in name, and then renders it verbatim forever. Seeding the name that
+// i18n/naming-settings resolve to TODAY would therefore freeze it: an institute
+// that saves while the UI is in French, or before renaming "Course" to
+// "Program", would keep the old wording in the nav after the switch. Leaving the
+// label unset keeps every built-in tab on the live, translated name.
+//
+// Display Settings shows these names by falling back to the sidebar entry for
+// display only (see AdminDisplaySettings), which is what fills the Tab Name
+// boxes without writing anything into the saved config.
 function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu.map((item, index) => ({
         id: item.id,
-        label: item.title,
         route: item.to,
         order: index + 1,
         visible:
@@ -52,7 +63,6 @@ function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
                 const id = sub.subItemId || sub.subItem || `${item.id}-${subIndex + 1}`;
                 return {
                     id,
-                    label: sub.subItem,
                     route: sub.subItemLink || '#',
                     order: subIndex + 1,
                     visible: !SUB_ITEMS_HIDDEN_BY_DEFAULT.has(id),
@@ -128,8 +138,11 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
     return ids.map((id, idx) => ({ id, order: idx + 1, visible: !defaultOff.has(id) }));
 }
 
-export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
-    sidebar: mapSidebarToConfig(SidebarItemsData),
+// Everything except `sidebar`, which is built per call below rather than here:
+// anything read off the sidebar entries at module-evaluation time predates
+// i18next.init() (src/index.tsx imports the route tree before ./i18n), and this
+// file is in the route graph.
+const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
     dashboard: {
         widgets: defaultDashboardWidgetsAdmin(),
     },
@@ -328,3 +341,17 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
     leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',
 };
+
+/**
+ * Default admin display settings.
+ *
+ * Call this rather than caching the result at module scope — the sidebar entries
+ * it reads resolve through i18n and the institute's naming settings, neither of
+ * which exists while modules are still being evaluated.
+ */
+export function getDefaultAdminDisplaySettings(): DisplaySettingsData {
+    return {
+        ...ADMIN_DEFAULTS_BASE,
+        sidebar: mapSidebarToConfig(getSidebarItemsData()),
+    };
+}

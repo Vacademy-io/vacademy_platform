@@ -58,6 +58,11 @@ export type StudentDashboardWidgetId =
   // widget and the "go buy more" button can be controlled independently.
   | "exploreMemberships"
   | "exploreBooks"
+  // "Get the app" download card. Shows the store/download links configured on
+  // the institute's domain-routing row — the same source the sidebar footer
+  // uses, so an institute can carry them in the sidebar, the dashboard, both,
+  // or neither (see `sidebar.appLinks`). Self-hides when no link is set.
+  | "getApp"
   | "custom";
 
 export interface StudentDashboardWidgetConfig {
@@ -393,7 +398,16 @@ export interface ConcentrationSettings {
 
 // Root
 export interface StudentDisplaySettingsData {
-  sidebar: { visible: boolean; tabs: StudentSidebarTabConfig[] };
+  sidebar: {
+    visible: boolean;
+    tabs: StudentSidebarTabConfig[];
+    /**
+     * Whether the sidebar footer carries the "Apps & Portals" download row.
+     * Defaults to true (the historical behaviour). Turn it off to move those
+     * links to the dashboard's `getApp` widget instead of showing both.
+     */
+    appLinks?: boolean;
+  };
   dashboard: { widgets: StudentDashboardWidgetConfig[] };
   signup: StudentSignupSettings;
   permissions: StudentPermissions;

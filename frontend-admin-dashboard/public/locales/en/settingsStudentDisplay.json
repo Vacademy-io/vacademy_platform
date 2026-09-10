@@ -21,6 +21,8 @@
         "selectDefaultTab": "Select default tab"
     },
     "sidebar": {
+        "appLinksLabel": "Show app download links in the sidebar",
+        "appLinksHelp": "Turn this off to move the app downloads to the dashboard “Get the app” widget instead. Links come from the domain routing settings.",
         "cardTitle": "Sidebar",
         "cardDescription": "Toggle entire sidebar and configure tabs, order and visibility",
         "visibleLabel": "Sidebar Visible",

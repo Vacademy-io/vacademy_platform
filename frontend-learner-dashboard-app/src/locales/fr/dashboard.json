@@ -432,5 +432,14 @@
             "viewAllClassesButton": "Voir tous les cours",
             "dateAtTime": "{{date}} à {{time}}"
         }
+    },
+    "getApp": {
+        "title": "Obtenir l’application",
+        "subtitle": "Apprenez où que vous soyez — téléchargez notre application.",
+        "android": "Application Android",
+        "ios": "Application iPhone et iPad",
+        "windows": "Application Windows",
+        "mac": "Application Mac",
+        "webPortal": "Portail web"
     }
 }

@@ -421,5 +421,14 @@
             "viewAllClassesButton": "सभी कक्षाएं देखें",
             "dateAtTime": "{{date}} को {{time}} बजे"
         }
+    },
+    "getApp": {
+        "title": "ऐप डाउनलोड करें",
+        "subtitle": "कहीं भी सीखें — अपने डिवाइस के लिए हमारा ऐप डाउनलोड करें।",
+        "android": "एंड्रॉइड ऐप",
+        "ios": "iPhone और iPad ऐप",
+        "windows": "विंडोज ऐप",
+        "mac": "मैक ऐप",
+        "webPortal": "वेब पोर्टल"
     }
 }

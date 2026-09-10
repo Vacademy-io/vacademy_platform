@@ -421,5 +421,14 @@
             "viewAllClassesButton": "View All Classes",
             "dateAtTime": "{{date}} at {{time}}"
         }
+    },
+    "getApp": {
+        "title": "Get the app",
+        "subtitle": "Learn on the go — download our app for your device.",
+        "android": "Android app",
+        "ios": "iPhone & iPad app",
+        "windows": "Windows app",
+        "mac": "Mac app",
+        "webPortal": "Web portal"
     }
 }

@@ -60,6 +60,11 @@ export type StudentDashboardWidgetId =
     // widget and the "go buy more" button can be controlled independently.
     | 'exploreMemberships'
     | 'exploreBooks'
+    // "Get the app" download card. Shows the store links configured on the
+    // institute's domain-routing row — the same source the learner sidebar
+    // footer uses, so an institute can carry them in the sidebar, the
+    // dashboard, both, or neither (see `sidebar.appLinks`).
+    | 'getApp'
     | 'custom';
 
 /**
@@ -94,6 +99,7 @@ export const WIDGET_LABELS: Record<string, string> = {
     gamification: 'Gamification (XP, streak, badges)',
     exploreMemberships: 'Explore Memberships (button)',
     exploreBooks: 'Explore Books (button)',
+    getApp: 'Get the app (download links card)',
     custom: 'Custom',
 };
 
@@ -431,6 +437,13 @@ export interface StudentDisplaySettingsData {
     sidebar: {
         visible: boolean; // toggle to show/hide entire sidebar
         tabs: StudentSidebarTabConfig[];
+        /**
+         * Whether the learner sidebar footer carries the "Apps & Portals"
+         * download row. Defaults to true (the historical behaviour). Turn it
+         * off to move those links to the dashboard's getApp widget instead of
+         * showing both.
+         */
+        appLinks?: boolean;
     };
     dashboard: {
         widgets: StudentDashboardWidgetConfig[];

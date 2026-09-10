@@ -99,6 +99,13 @@ export interface AiCallActionRule {
      */
     templateParams?: string[];
     /**
+     * WhatsApp only: the image or document a media-header template shows above its body.
+     * Required for such a template — without it Meta rejects the send with 132012,
+     * "header: Format mismatch, expected IMAGE, received UNKNOWN". Travels to the send as
+     * the `_headerUrl` variable, which both provider paths keep out of the body params.
+     */
+    templateHeaderUrl?: string;
+    /**
      * EMAIL only: the message the person receives. Email has no template layer — it is
      * sent verbatim and its FIRST LINE becomes the subject. Supports {{name}}.
      */

@@ -35,6 +35,7 @@ import {
     Clock,
     CaretDown,
     Trash,
+    ArrowsLeftRight,
     Phone,
     CircleNotch,
 } from '@phosphor-icons/react';
@@ -85,6 +86,7 @@ import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
+import { MigrateLeadsDialog } from '@/components/shared/leads/migrate-leads-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import {
     LeadEmptyState,
@@ -582,6 +584,7 @@ const CampaignUsersContent = ({
     const selectedResponseIds = useMemo(() => Array.from(selectedLeads.keys()), [selectedLeads]);
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const [bulkMigrateOpen, setBulkMigrateOpen] = useState(false);
     const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
@@ -1345,9 +1348,17 @@ const CampaignUsersContent = ({
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
-                                        // Delete is admin-only, matching the endpoint's own check.
+                                        // Move and delete are admin-only, matching those
+                                        // endpoints' own checks.
                                         ...(canDeleteLeads
                                             ? [
+                                                  {
+                                                      label: t('bulkToolbar.moveLeads'),
+                                                      value: 'migrate',
+                                                      icon: (
+                                                          <ArrowsLeftRight className="size-4" />
+                                                      ),
+                                                  },
                                                   {
                                                       label: t('bulkToolbar.deleteLeads'),
                                                       value: 'delete',
@@ -1365,6 +1376,10 @@ const CampaignUsersContent = ({
                                         }
                                         if (value === 'delete') {
                                             setBulkDeleteOpen(true);
+                                            return;
+                                        }
+                                        if (value === 'migrate') {
+                                            setBulkMigrateOpen(true);
                                             return;
                                         }
                                         setBulkActionMode(
@@ -1445,6 +1460,19 @@ const CampaignUsersContent = ({
                     onOpenChange={setBulkDeleteOpen}
                     instituteId={instituteId ?? ''}
                     responseIds={Array.from(selectedLeads.keys())}
+                    onSuccess={() => {
+                        setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
+                />
+
+                <MigrateLeadsDialog
+                    open={bulkMigrateOpen}
+                    onOpenChange={setBulkMigrateOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    // This view is one list, so exclude it from the picker.
+                    currentAudienceId={campaignId}
                     onSuccess={() => {
                         setSelectedLeads(new Map());
                         handleStatusUpdated();

@@ -290,6 +290,33 @@ public class AudienceController {
     }
 
     /**
+     * Move leads from one lead list to another. ADMIN only.
+     *
+     * <p>Body-based for the same reasons as {@link #deleteLeads} — an id LIST, a {@code scope},
+     * and the {@code institute_id} the ADMIN check runs against — plus the target list and how the
+     * move should treat that list's automation.</p>
+     *
+     * <p>Partial success: the response reports how many moved and which were skipped, with a
+     * reason each. Merging two lists collides by definition, so refusing the whole batch over one
+     * collision would make the operation unusable.</p>
+     */
+    @PostMapping("/leads/migrate")
+    @Auditable(
+            entityType = "LEAD",
+            action = "MIGRATE",
+            entityIdExpr = "#request?.responseIds != null and #request.responseIds.size() == 1 "
+                    + "? #request.responseIds[0] : null",
+            // A migration that moved nothing still returns 200 (every lead was skipped);
+            // logging it would claim leads changed list when none did.
+            conditionExpr = "#result?.body != null and #result.body.migrated > 0",
+            descriptionExpr = "'moved lead ' + @crmAuditNarrator.leadsFor(#request?.responseIds)")
+    public ResponseEntity<MigrateLeadsResponseDTO> migrateLeads(
+            @RequestBody MigrateLeadsRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(audienceService.migrateLeads(request, user));
+    }
+
+    /**
      * Edit a lead's profile from the CRM. The learner-profile endpoint cannot serve
      * a lead: it resolves the caller against the {@code student} table, and a lead
      * that never enrolled has no row there. This writes only where a lead is actually

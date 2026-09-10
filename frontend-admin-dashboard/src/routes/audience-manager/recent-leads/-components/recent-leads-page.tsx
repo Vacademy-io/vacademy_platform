@@ -87,9 +87,11 @@ import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
+import { MigrateLeadsDialog } from '@/components/shared/leads/migrate-leads-dialog';
 import { restoreAudienceLeads } from '@/routes/audience-manager/list/-services/delete-audience-lead';
 import {
     ArrowCounterClockwise,
+    ArrowsLeftRight,
     CaretDown,
     CircleNotch,
     Trash,
@@ -658,6 +660,7 @@ const RecentLeadsContent = () => {
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
 
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const [bulkMigrateOpen, setBulkMigrateOpen] = useState(false);
     const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
@@ -1556,8 +1559,24 @@ const RecentLeadsContent = () => {
                                                         },
                                               ]
                                             : []),
+                                        // Moving a deleted lead is refused server-side (restore it
+                                        // first), so the action is hidden in the deleted view
+                                        // rather than offered and then skipped.
+                                        ...(canDeleteLeads && !showDeleted
+                                            ? [
+                                                  {
+                                                      label: t('bulk.moveLeads'),
+                                                      value: 'migrate',
+                                                      icon: <ArrowsLeftRight className="size-4" />,
+                                                  },
+                                              ]
+                                            : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'migrate') {
+                                            setBulkMigrateOpen(true);
+                                            return;
+                                        }
                                         if (value === 'delete') {
                                             setBulkDeleteOpen(true);
                                             return;
@@ -1635,6 +1654,19 @@ const RecentLeadsContent = () => {
                     onOpenChange={setBulkDeleteOpen}
                     instituteId={instituteId ?? ''}
                     responseIds={Array.from(selectedLeads.keys())}
+                    onSuccess={() => {
+                        setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
+                />
+
+                <MigrateLeadsDialog
+                    open={bulkMigrateOpen}
+                    onOpenChange={setBulkMigrateOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    // Recent Leads spans every list, so the selection can come from several —
+                    // there is no single "current" list to exclude from the picker.
                     onSuccess={() => {
                         setSelectedLeads(new Map());
                         handleStatusUpdated();

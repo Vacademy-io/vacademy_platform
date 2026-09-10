@@ -29,7 +29,7 @@
         "creating": "Creating...",
         "useSample": "Use sample: \"{{name}}\"",
         "useSampleHint": "Pre-built template with the right variables — added to your template library",
-        "noWhatsappTemplates": "No WhatsApp templates found. Create one in Settings → Templates (type WHATSAPP) first."
+        "noWhatsappTemplates": "No approved WhatsApp templates found. They sync from Meta — open Communication → WhatsApp Templates and sync, or get the template approved in Meta first."
     },
     "jsonPayload": {
         "invalidObject": "Payload must be a JSON object (not an array or primitive).",

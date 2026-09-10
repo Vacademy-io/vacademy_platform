@@ -274,7 +274,6 @@ def cache_key(*, engine: str, model: str, voice: str, pace, temperature,
 
 # ── the store ───────────────────────────────────────────────────────────────
 
-@dataclass
 def plausible_duration(text: str, duration_ms: int, chars_per_sec: float = 12.0,
                        slack: float = 5.0, floor_ms: int = 4000) -> bool:
     """Could `text` really take `duration_ms` to say?
@@ -291,6 +290,7 @@ def plausible_duration(text: str, duration_ms: int, chars_per_sec: float = 12.0,
     return duration_ms <= max(floor_ms, slack * expected_ms)
 
 
+@dataclass
 class Entry:
     """One rendered blob, as held in the RAM index."""
     key: str

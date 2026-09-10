@@ -1,0 +1,68 @@
+{
+    "poweredBy": "द्वारा संचालित",
+    "logout": "लॉगआउट",
+    "aria": {
+        "goBack": "वापस जाएं",
+        "openMenu": "मेनू खोलें",
+        "openProfileMenu": "प्रोफ़ाइल मेनू खोलें"
+    },
+    "appsMenu": {
+        "instructorSection": "इंस्ट्रक्टर सेक्शन",
+        "instructorPortal": "इंस्ट्रक्टर पोर्टल",
+        "learnerSection": "लर्नर सेक्शन",
+        "learnerPortal": "लर्नर पोर्टल",
+        "portal": "पोर्टल",
+        "googlePlayStore": "गूगल प्ले स्टोर",
+        "android": "एंड्रॉइड",
+        "appStore": "ऐप स्टोर",
+        "ios": "आईओएस",
+        "windowsApp": "विंडोज़ ऐप",
+        "windows": "विन",
+        "macApp": "मैक ऐप",
+        "mac": "मैक"
+    },
+    "notifications": {
+        "followUpsDue_one": "{{count}} फॉलो-अप देय",
+        "followUpsDue_other": "{{count}} फॉलो-अप देय",
+        "viewAll": "सभी देखें",
+        "lead": "लीड",
+        "moreDue_one": "+{{count}} और देय",
+        "moreDue_other": "+{{count}} और देय",
+        "systemAlerts": "सिस्टम अलर्ट",
+        "seeAll": "सभी देखें",
+        "sentBy": "{{name}} द्वारा भेजा गया",
+        "system": "सिस्टम",
+        "noAlerts": "कोई अलर्ट नहीं",
+        "seeAllNotifications": "सभी सूचनाएं देखें",
+        "loadMore": "और लोड करें",
+        "loading": "लोड हो रहा है...",
+        "noAlertsFound": "कोई अलर्ट नहीं मिला"
+    },
+    "profile": {
+        "logo": "लोगो",
+        "viewProfileDetails": "प्रोफ़ाइल विवरण देखें",
+        "profileDetails": "प्रोफ़ाइल विवरण",
+        "roleType": "भूमिका प्रकार",
+        "accountInformation": "खाता जानकारी",
+        "editDetails": "विवरण संपादित करें",
+        "username": "उपयोगकर्ता नाम:",
+        "contactInformation": "संपर्क जानकारी",
+        "email": "ईमेल:",
+        "mobile": "मोबाइल:"
+    },
+    "institute": {
+        "viewInstituteDetails": "संस्थान विवरण देखें",
+        "instituteDetails": "संस्थान विवरण",
+        "instituteType": "संस्थान प्रकार",
+        "contactInformation": "संपर्क जानकारी",
+        "instituteEmail": "संस्थान ईमेल:",
+        "instituteMobile": "संस्थान मोबाइल:",
+        "instituteWebsite": "संस्थान वेबसाइट:",
+        "locationDetails": "स्थान विवरण",
+        "address": "पता:",
+        "cityVillage": "शहर/गांव:",
+        "state": "राज्य:",
+        "country": "देश:",
+        "pincode": "पिनकोड:"
+    }
+}

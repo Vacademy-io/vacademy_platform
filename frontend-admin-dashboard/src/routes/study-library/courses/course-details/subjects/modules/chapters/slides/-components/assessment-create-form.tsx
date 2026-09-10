@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ListChecks } from '@phosphor-icons/react';
 
@@ -45,6 +46,7 @@ import {
 // publish without the wizard. The learner uploads a PDF answer sheet, which the
 // admin evaluates.
 const AssessmentCreateForm = () => {
+    const { t } = useTranslation('studyLibraryAssessmentCreateForm');
     const router = useRouter();
     const { courseId, levelId, chapterId, moduleId, subjectId, sessionId } =
         router.state.location.search;
@@ -155,7 +157,7 @@ const AssessmentCreateForm = () => {
         };
 
         const response = await addUpdateAssessmentSlide(payload);
-        if (!response) throw new Error('Failed to link assessment');
+        if (!response) throw new Error(t('errors.failedToLinkAssessment'));
 
         const currentSlides = (items as Slide[]) || [];
         const reordered = buildAppendReorderPayload(slideId, currentSlides);
@@ -196,11 +198,11 @@ const AssessmentCreateForm = () => {
         const trimmed = name.trim();
         if (!trimmed || isCreating) return;
         if (hasDateRange && (!startDate || !endDate)) {
-            toast.error('Enter both a start and end date, or turn off the date range.');
+            toast.error(t('errors.enterBothDates'));
             return;
         }
         if (hasDateRange && new Date(endDate) <= new Date(startDate)) {
-            toast.error('End date must be after the start date.');
+            toast.error(t('errors.endDateAfterStart'));
             return;
         }
 
@@ -218,10 +220,7 @@ const AssessmentCreateForm = () => {
                 : new Date('9999-12-31T23:59:59.999Z').toISOString();
 
             // Standard learner-facing note appended after the admin's description.
-            const noteHtml =
-                `<p>Download the question paper above, and when your answers are ready, click <strong>Start Assessment</strong>.</p>` +
-                `<p><strong>Note:</strong> Do not click Start Assessment until you have prepared your answers. ` +
-                `After clicking Start Assessment, you will have <strong>${durationMin} minutes</strong> to upload your answers file.</p>`;
+            const noteHtml = t('createLogic.noteHtml', { count: durationMin });
             const instructionsHtml = `${description || ''}${noteHtml}`;
 
             // Step 1 — basic info (DRAFT / INCOMPLETE), always MANUAL.
@@ -369,10 +368,10 @@ const AssessmentCreateForm = () => {
             // when more than one attempt is permitted.
             await linkAssessmentAsSlide(newAssessmentId, trimmed, reattempts > 1);
 
-            toast.success('Assessment created and published.');
+            toast.success(t('toasts.createdAndPublished'));
         } catch (err) {
             console.error('Failed to create assessment from slide', err);
-            toast.error((err as Error)?.message || 'Failed to create assessment');
+            toast.error((err as Error)?.message || t('errors.failedToCreate'));
         } finally {
             setIsCreating(false);
         }
@@ -386,21 +385,19 @@ const AssessmentCreateForm = () => {
                 </div>
                 <div className="flex flex-col">
                     <h3 className="text-base font-semibold text-neutral-900">
-                        Create assessment
+                        {t('header.heading')}
                     </h3>
                     <p className="text-sm text-neutral-500">
-                        Learners download the question paper, then upload a PDF answer sheet which
-                        you evaluate. Available to every batch that shares this chapter — publish it
-                        when ready.
+                        {t('header.description')}
                     </p>
                 </div>
             </div>
 
             <MyInput
                 inputType="text"
-                label="Assessment name"
+                label={t('form.nameLabel')}
                 required
-                inputPlaceholder="e.g. Chapter 1 Test"
+                inputPlaceholder={t('form.namePlaceholder')}
                 input={name}
                 onChangeFunction={(e) => setName(e.target.value)}
                 size="large"
@@ -416,43 +413,45 @@ const AssessmentCreateForm = () => {
                         options={subjectOptions}
                         value={selectedSubjectId}
                         onChange={setSelectedSubjectId}
-                        placeholder={`Select ${getTerminology(
-                            ContentTerms.Subjects,
-                            SystemTerms.Subjects
-                        ).toLowerCase()}`}
+                        placeholder={t('form.subjectPlaceholder', {
+                            subject: getTerminology(
+                                ContentTerms.Subjects,
+                                SystemTerms.Subjects
+                            ).toLowerCase(),
+                        })}
                         className="w-full"
                         triggerClassName="w-full"
                     />
                     <span className="text-xs text-neutral-500">
-                        Defaults to the{' '}
-                        {getTerminology(
-                            ContentTerms.Subjects,
-                            SystemTerms.Subjects
-                        ).toLowerCase()}{' '}
-                        this slide sits under. Change it to tag the assessment elsewhere.
+                        {t('form.subjectDefaultHint', {
+                            subject: getTerminology(
+                                ContentTerms.Subjects,
+                                SystemTerms.Subjects
+                            ).toLowerCase(),
+                        })}
                     </span>
                 </div>
             )}
 
             <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-neutral-700">Task description</span>
+                <span className="text-sm font-medium text-neutral-700">{t('form.taskDescriptionLabel')}</span>
                 <RichTextEditor
                     value={description}
                     onChange={setDescription}
-                    placeholder="Write the task description here — upload the question PDF for learners to download."
+                    placeholder={t('form.taskDescriptionPlaceholder')}
                     minHeight={180}
                 />
                 <span className="text-xs text-neutral-500">
-                    Upload the question paper here. A standard note (download the paper, then start;
-                    you&apos;ll have {Math.max(1, parseInt(duration, 10) || 15)} minutes to upload
-                    answers) is added automatically.
+                    {t('form.taskDescriptionHint', {
+                        count: Math.max(1, parseInt(duration, 10) || 15),
+                    })}
                 </span>
             </div>
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                 <MyInput
                     inputType="number"
-                    label="Total marks"
+                    label={t('form.totalMarksLabel')}
                     inputPlaceholder="100"
                     input={totalMarks}
                     onChangeFunction={(e) => setTotalMarks(e.target.value)}
@@ -467,7 +466,7 @@ const AssessmentCreateForm = () => {
                 <div className="flex w-full flex-col gap-1.5">
                     <MyInput
                         inputType="number"
-                        label="Duration (minutes)"
+                        label={t('form.durationLabel')}
                         inputPlaceholder="15"
                         input={duration}
                         onChangeFunction={(e) => setDuration(e.target.value)}
@@ -480,9 +479,8 @@ const AssessmentCreateForm = () => {
                         onWheel={(e) => e.currentTarget.blur()}
                     />
                     <span className="text-xs text-neutral-500">
-                        This is the time learners get to <strong>upload their answer file</strong>{' '}
-                        after clicking Start Assessment — not the time to write their answers (they
-                        prepare those beforehand from the question paper).
+                        {t('form.durationHintBefore')} <strong>{t('form.durationHintBold')}</strong>{' '}
+                        {t('form.durationHintAfter')}
                     </span>
                 </div>
             </div>
@@ -491,7 +489,7 @@ const AssessmentCreateForm = () => {
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3">
                     <span className="text-sm font-semibold text-neutral-800">
-                        Live date range
+                        {t('form.liveDateRangeHeading')}
                     </span>
                     <Switch
                         checked={hasDateRange}
@@ -509,7 +507,7 @@ const AssessmentCreateForm = () => {
                         <div className="flex flex-col gap-4 sm:flex-row">
                             <MyInput
                                 inputType="datetime-local"
-                                label="Start date & time"
+                                label={t('form.startDateLabel')}
                                 required
                                 input={startDate}
                                 onChangeFunction={(e) => setStartDate(e.target.value)}
@@ -518,7 +516,7 @@ const AssessmentCreateForm = () => {
                             />
                             <MyInput
                                 inputType="datetime-local"
-                                label="End date & time"
+                                label={t('form.endDateLabel')}
                                 required
                                 input={endDate}
                                 onChangeFunction={(e) => setEndDate(e.target.value)}
@@ -527,13 +525,12 @@ const AssessmentCreateForm = () => {
                             />
                         </div>
                         <p className="text-xs text-neutral-500">
-                            The slide stays locked in the course outside this window — learners
-                            can only open the assessment while it is live.
+                            {t('form.dateRangeLockedHint')}
                         </p>
                     </div>
                 ) : (
                     <p className="text-xs text-neutral-500">
-                        Always available — no start or end date.
+                        {t('form.alwaysAvailableHint')}
                     </p>
                 )}
             </div>
@@ -541,7 +538,7 @@ const AssessmentCreateForm = () => {
             {/* Attempts */}
             <MyInput
                 inputType="number"
-                label="Attempts allowed"
+                label={t('form.attemptsLabel')}
                 inputPlaceholder="2"
                 input={reattemptCount}
                 onChangeFunction={(e) => setReattemptCount(e.target.value)}
@@ -561,7 +558,7 @@ const AssessmentCreateForm = () => {
                     onClick={() => setAssessmentCreateMode(false)}
                     disable={isCreating}
                 >
-                    Cancel
+                    {t('form.cancel')}
                 </MyButton>
                 <MyButton
                     buttonType="primary"
@@ -569,7 +566,7 @@ const AssessmentCreateForm = () => {
                     onClick={handleCreate}
                     disable={!name.trim() || isCreating}
                 >
-                    {isCreating ? 'Creating…' : 'Create assessment'}
+                    {isCreating ? t('form.creating') : t('form.createAssessment')}
                 </MyButton>
             </div>
         </div>

@@ -50,7 +50,7 @@ import { TranslateCourseDialog } from './translate-course-dialog';
 import { OfflineSettingsDialog } from './OfflineSettingsDialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { CourseDetailsFormValues, courseDetailsSchema } from './course-details-schema';
+import { CourseDetailsFormValues, buildCourseDetailsSchema } from './course-details-schema';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { useGetPackageSessionId } from '@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getPackageSessionId';
 import { useGetPackageSessionIdFromCourseInit } from '@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getPackageSessionIdFromCourseInit';
@@ -365,7 +365,7 @@ const AdvancedIdsMenu = ({ items }: { items: AdvancedIdItem[] }) => {
 
 export const CourseDetailsPage = () => {
     const router = useRouter();
-    const { t } = useTranslation(['common', 'courseDetails']);
+    const { t } = useTranslation(['common', 'courseDetails', 'studyLibraryCourseDetailsSchema']);
     const searchParams = router.state.location.search;
     const queryClient = useQueryClient();
     const courseId = searchParams.courseId ?? '';
@@ -441,7 +441,7 @@ export const CourseDetailsPage = () => {
     }, [courseDetailsData, courseId, setStudyLibraryData]);
 
     const form = useForm<CourseDetailsFormValues>({
-        resolver: zodResolver(courseDetailsSchema),
+        resolver: zodResolver(buildCourseDetailsSchema(t)),
         defaultValues: {
             courseData: {
                 id: '',

@@ -1,5 +1,7 @@
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     Select,
     SelectContent,
@@ -38,16 +40,21 @@ import { toast } from 'sonner';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
-const formSchema = z.object({
-    course: z.string().min(1, 'Course is required'),
-    session: z.string().min(1, 'Session is required'),
-    level: z.string().min(1, 'Level is required'),
-    student: z.string().min(1, 'Level is required'),
-});
+const buildFormSchema = (t: TFunction) =>
+    z.object({
+        course: z.string().min(1, t('validation.courseRequired')),
+        session: z.string().min(1, t('validation.sessionRequired')),
+        level: z.string().min(1, t('validation.levelRequired')),
+        // NOTE: preserves pre-existing behavior — this field reused the
+        // "Level is required" copy in the original hardcoded strings.
+        student: z.string().min(1, t('validation.levelRequired')),
+    });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<ReturnType<typeof buildFormSchema>>;
 
 export default function ProgressReports() {
+    const { t } = useTranslation('studyLibraryReportsProgressReports');
+    const formSchema = buildFormSchema(t);
     const {
         getCourseFromPackage,
         getSessionFromPackage,
@@ -257,11 +264,12 @@ export default function ProgressReports() {
                     subjectTerm: getTerminology(ContentTerms.Subject, SystemTerms.Subject),
                     batchTerm: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
                 },
-                subjectReportData
+                subjectReportData,
+                t
             );
-            toast.success('Report exported');
+            toast.success(t('toast.exportSuccess'));
         } catch {
-            toast.error('Failed to export PDF');
+            toast.error(t('toast.exportFailed'));
         } finally {
             setIsExporting(false);
         }
@@ -337,14 +345,12 @@ export default function ProgressReports() {
                                 }))}
                                 value={selectedCourse}
                                 onChange={(value) => setValue('course', value)}
-                                placeholder={`Select a ${getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                )}`}
-                                searchPlaceholder={`Search ${getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                )}...`}
+                                placeholder={t('form.selectA', {
+                                    term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                })}
+                                searchPlaceholder={t('form.searchTerm', {
+                                    term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                })}
                                 triggerClassName="h-9 text-sm"
                             />
                         </div>
@@ -362,7 +368,12 @@ export default function ProgressReports() {
                             >
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue
-                                        placeholder={`Select a ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
+                                        placeholder={t('form.selectA', {
+                                            term: getTerminology(
+                                                ContentTerms.Session,
+                                                SystemTerms.Session
+                                            ),
+                                        })}
                                     />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -387,7 +398,12 @@ export default function ProgressReports() {
                             >
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue
-                                        placeholder={`Select a ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`}
+                                        placeholder={t('form.selectA', {
+                                            term: getTerminology(
+                                                ContentTerms.Level,
+                                                SystemTerms.Level
+                                            ),
+                                        })}
                                     />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -404,7 +420,7 @@ export default function ProgressReports() {
                     {/* Student Selection Row */}
                     <div>
                         <label className="text-xs font-medium text-neutral-700 mb-1 block">
-                            Name <span className="text-red-500 ml-1">*</span>
+                            {t('form.nameLabel')} <span className="text-red-500 ms-1">*</span>
                         </label>
                         <Select
                             onValueChange={(value) => setValue('student', value)}
@@ -416,12 +432,12 @@ export default function ProgressReports() {
                             disabled={!studentList.length}
                         >
                             <SelectTrigger className="h-9 text-sm">
-                                <SelectValue placeholder="Select Student" />
+                                <SelectValue placeholder={t('form.selectStudent')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <Command>
                                     <CommandInput
-                                        placeholder="Search Student..."
+                                        placeholder={t('form.searchStudent')}
                                         value={searchTerm}
                                         onValueChange={setSearchTerm}
                                     />
@@ -439,7 +455,7 @@ export default function ProgressReports() {
                                                 </SelectItem>
                                             ))
                                         ) : (
-                                            <div className="p-2 text-gray-500">No students found</div>
+                                            <div className="p-2 text-gray-500">{t('form.noStudentsFound')}</div>
                                         )}
                                     </CommandList>
                                 </Command>
@@ -454,7 +470,7 @@ export default function ProgressReports() {
                             buttonType="primary" 
                             className="h-9 px-4 text-sm font-medium focus:!bg-primary-600 focus:!border-primary-600 focus:!text-white active:!bg-primary-600 active:!border-primary-600 active:!text-white focus:!outline-none focus:!ring-0"
                         >
-                            Generate Report
+                            {t('form.generateReport')}
                         </MyButton>
                     </div>
 
@@ -462,7 +478,7 @@ export default function ProgressReports() {
                     {Object.keys(errors).length > 0 && (
                         <div className="rounded-md bg-red-50 border border-red-200 p-3">
                             <div className="text-sm text-red-800">
-                                <p className="font-medium mb-1">Please fix the following errors:</p>
+                                <p className="font-medium mb-1">{t('form.fixErrorsPrefix')}</p>
                                 <ul className="space-y-1">
                                     {Object.entries(errors)?.map(([key, error]) => (
                                         <li key={key} className="text-xs">• {error.message}</li>
@@ -497,14 +513,14 @@ export default function ProgressReports() {
                                     {isExporting ? (
                                         <div className="flex items-center gap-2">
                                             <div className="h-3 w-3 animate-spin rounded-full border border-neutral-300 border-t-primary-500"></div>
-                                            <span>Exporting...</span>
+                                            <span>{t('report.exporting')}</span>
                                         </div>
                                     ) : (
                                         <>
                                             <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                             </svg>
-                                            Export PDF
+                                            {t('report.exportPdf')}
                                         </>
                                     )}
                                 </MyButton>
@@ -516,7 +532,7 @@ export default function ProgressReports() {
                     <div className="bg-white rounded-lg border border-neutral-200 p-4 shadow-sm">
                         <div className="space-y-4">
                             <h4 className="text-base font-semibold text-primary-600">
-                                Subject-wise Progress Report
+                                {t('report.subjectWiseHeading')}
                             </h4>
                             <div className="!min-w-full overflow-x-auto [&_table]:!w-full [&_table]:!min-w-full [&_td]:!whitespace-nowrap [&_th]:!whitespace-nowrap">
                                 <MyTable

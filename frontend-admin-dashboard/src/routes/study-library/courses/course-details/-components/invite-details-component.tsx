@@ -34,6 +34,7 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { useTranslation } from 'react-i18next';
 
 const InviteDetailsComponent = ({
     form,
@@ -42,6 +43,7 @@ const InviteDetailsComponent = ({
     form: UseFormReturn<CourseDetailsFormValues>;
     selectedBatchId?: string;
 }) => {
+    const { t } = useTranslation('studyLibraryCourseDetailsInviteDetailsComponent');
     const sessionsData = form.getValues('courseData.sessions');
     const queryClient = useQueryClient();
     const navigate = useNavigate();
@@ -75,7 +77,7 @@ const InviteDetailsComponent = ({
                 setCopiedShortUrl(url);
                 setTimeout(() => setCopiedShortUrl(null), 2000);
             })
-            .catch(() => toast.error('Copy failed'));
+            .catch(() => toast.error(t('copyFailed')));
     };
 
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -161,12 +163,12 @@ const InviteDetailsComponent = ({
         },
         onError: (error: unknown) => {
             if (error instanceof AxiosError) {
-                toast.error(error?.response?.data?.ex || 'Failed to submit rating', {
+                toast.error(error?.response?.data?.ex || t('failedToSubmitRating'), {
                     className: 'error-toast',
                     duration: 2000,
                 });
             } else {
-                toast.error('An unexpected error occurred', {
+                toast.error(t('unexpectedError'), {
                     className: 'error-toast',
                     duration: 2000,
                 });
@@ -208,14 +210,14 @@ const InviteDetailsComponent = ({
                         className="flex items-center gap-1"
                     >
                         <Plus size={16} />
-                        Invite Links
+                        {t('inviteLinks')}
                     </MyButton>
                 </DialogTrigger>
                 <DialogContent className="!w-[80vw] max-w-[80vw] p-0">
                     <DialogHeader className="rounded-t-lg bg-primary-50 p-4">
                         <DialogTitle className="font-normal text-primary-500">
                             📨
-                            <span className="ml-2">Invite Links</span>
+                            <span className="ms-2">{t('inviteLinks')}</span>
                         </DialogTitle>
                     </DialogHeader>
                     <div
@@ -266,14 +268,14 @@ const InviteDetailsComponent = ({
                                                     );
                                                 }}
                                             >
-                                                Add
+                                                {t('add')}
                                             </MyButton>
                                         </div>
 
                                         {/* Invite links section for this package session */}
                                         <div className="border-t border-neutral-100 pt-2">
                                             <div className="mb-2 text-xs font-medium text-neutral-600">
-                                                Invite Links:
+                                                {t('inviteLinksLabel')}
                                             </div>
                                             <div className="flex flex-col gap-2">
                                                 {inviteLinksArr.map(
@@ -301,7 +303,7 @@ const InviteDetailsComponent = ({
                                                                             )
                                                                         }
                                                                     >
-                                                                        View
+                                                                        {t('view')}
                                                                     </MyButton>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
@@ -315,9 +317,9 @@ const InviteDetailsComponent = ({
                                                                     'DEFAULT' ? (
                                                                         <Badge
                                                                             variant="default"
-                                                                            className="ml-1 border border-gray-500 bg-green-200 text-gray-600 shadow-none"
+                                                                            className="ms-1 border border-gray-500 bg-green-200 text-gray-600 shadow-none"
                                                                         >
-                                                                            DEFAULT
+                                                                            {t('defaultTag')}
                                                                         </Badge>
                                                                     ) : (
                                                                         <MyButton
@@ -330,9 +332,9 @@ const InviteDetailsComponent = ({
                                                                                     inviteLink.id
                                                                                 )
                                                                             }
-                                                                            className="ml-1"
+                                                                            className="ms-1"
                                                                         >
-                                                                            Make Default
+                                                                            {t('makeDefault')}
                                                                         </MyButton>
                                                                     )}
                                                                 </div>
@@ -386,7 +388,7 @@ const InviteDetailsComponent = ({
                             )
                         ) : (
                             <div className="py-8 text-center text-neutral-500">
-                                No invite links available.
+                                {t('noInviteLinksAvailable')}
                             </div>
                         )}
                         {shouldFetch && (inviteLinks?.content?.length ?? 0) > 0 && (
@@ -409,7 +411,7 @@ const InviteDetailsComponent = ({
                             }}
                         >
                             <ArrowRight size={18} />
-                            Invite Page
+                            {t('invitePage')}
                         </MyButton>
                     </div>
                 </DialogContent>

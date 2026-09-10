@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 
@@ -21,6 +22,7 @@ interface QuizSettingsPanelProps {
 }
 
 const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSettingsPanelProps) => {
+    const { t } = useTranslation('studyLibraryQuizSettingsPanel');
     const update = (patch: Partial<QuizSettings>) => onChange({ ...settings, ...patch });
 
     return (
@@ -35,7 +37,7 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                     onChange={(e) => update({ timeLimitEnabled: e.target.checked })}
                 />
                 <label htmlFor="qs-time-limit" className="font-medium text-neutral-700 select-none cursor-pointer">
-                    ⏱ Time Limit
+                    {t('timeLimit')}
                 </label>
                 {settings.timeLimitEnabled && (
                     <div className="flex items-center gap-1">
@@ -48,7 +50,7 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                             className="!w-16 text-center"
                             inputPlaceholder="30"
                         />
-                        <span className="text-neutral-500">min</span>
+                        <span className="text-neutral-500">{t('minutesAbbrev')}</span>
                     </div>
                 )}
             </div>
@@ -57,7 +59,7 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
 
             {/* Marks per Question */}
             <div className="flex items-center gap-2">
-                <label className="font-medium text-neutral-700">★ Marks/Q</label>
+                <label className="font-medium text-neutral-700">{t('marksPerQuestion')}</label>
                 <MyInput
                     inputType="number"
                     input={String(settings.marksPerQuestion)}
@@ -81,7 +83,7 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                     onChange={(e) => update({ negativeMarkingEnabled: e.target.checked })}
                 />
                 <label htmlFor="qs-neg-marking" className="font-medium text-neutral-700 select-none cursor-pointer">
-                    − Negative
+                    {t('negativeMarking')}
                 </label>
                 {settings.negativeMarkingEnabled && (
                     <MyInput
@@ -108,7 +110,7 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                     onChange={(e) => update({ passPercentageEnabled: e.target.checked })}
                 />
                 <label htmlFor="qs-pass-pct" className="font-medium text-neutral-700 select-none cursor-pointer">
-                    🎯 Pass %
+                    {t('passPercentage')}
                 </label>
                 {settings.passPercentageEnabled && (
                     <div className="flex items-center gap-1">
@@ -138,7 +140,7 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                     onChange={(e) => update({ reAttemptCountEnabled: e.target.checked })}
                 />
                 <label htmlFor="qs-reattempt" className="font-medium text-neutral-700 select-none cursor-pointer">
-                    Attempts
+                    {t('attempts')}
                 </label>
                 {settings.reAttemptCountEnabled && (
                     <MyInput
@@ -162,7 +164,7 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                     onClick={onSave}
                     disabled={isSaving}
                 >
-                    {isSaving ? 'Saving…' : 'Save Settings'}
+                    {isSaving ? t('savingEllipsis') : t('saveSettings')}
                 </MyButton>
             </div>
         </div>

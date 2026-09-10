@@ -20,7 +20,7 @@ import { useUpdateSubjectOrder } from '@/routes/study-library/courses/course-det
 // import { StudyLibraryIntroKey } from '@/constants/storage/introKey';
 // import { studyLibrarySteps } from '@/constants/intro/steps';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { tabs, TabType, DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '../-constants/constant';
+import { buildTabs, TabType, DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '../-constants/constant';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { fetchModulesWithChapters } from '../../../-services/getModulesWithChapters';
 import {
@@ -968,7 +968,7 @@ export const SubjectMaterial = () => {
                         className="h-auto min-w-max flex-nowrap bg-transparent p-0"
                         style={{ display: 'flex', justifyContent: 'left' }}
                     >
-                        {tabs
+                        {buildTabs(t)
                             .filter(
                                 (tab) =>
                                     tab.value !== TabType.DISCUSSION &&

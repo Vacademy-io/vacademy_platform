@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { DownloadSimple, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { MyTable, type TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { MyButton } from '@/components/design-system/button';
@@ -22,22 +24,23 @@ import {
 
 type LearnerFilter = 'ALL' | 'ATTEMPTED' | 'NOT_ATTEMPTED' | 'PASSED' | 'FAILED';
 
-const FILTERS: { value: LearnerFilter; label: string }[] = [
-    { value: 'ALL', label: 'Everyone' },
-    { value: 'ATTEMPTED', label: 'Attempted' },
-    { value: 'NOT_ATTEMPTED', label: 'Not attempted' },
-    { value: 'PASSED', label: 'Passed' },
-    { value: 'FAILED', label: 'Failed' },
+const buildFilters = (t: TFunction): { value: LearnerFilter; label: string }[] => [
+    { value: 'ALL', label: t('filters.everyone') },
+    { value: 'ATTEMPTED', label: t('filters.attempted') },
+    { value: 'NOT_ATTEMPTED', label: t('filters.notAttempted') },
+    { value: 'PASSED', label: t('filters.passed') },
+    { value: 'FAILED', label: t('filters.failed') },
 ];
 
-const SORTS = [
-    'Highest score',
-    'Lowest score',
-    'Name (A–Z)',
-    'Most recent attempt',
-    'Most attempts',
-] as const;
-type LearnerSort = (typeof SORTS)[number];
+type LearnerSort = 'HIGHEST_SCORE' | 'LOWEST_SCORE' | 'NAME_AZ' | 'MOST_RECENT_ATTEMPT' | 'MOST_ATTEMPTS';
+
+const buildSorts = (t: TFunction): { value: LearnerSort; label: string }[] => [
+    { value: 'HIGHEST_SCORE', label: t('sorts.highestScore') },
+    { value: 'LOWEST_SCORE', label: t('sorts.lowestScore') },
+    { value: 'NAME_AZ', label: t('sorts.nameAz') },
+    { value: 'MOST_RECENT_ATTEMPT', label: t('sorts.mostRecentAttempt') },
+    { value: 'MOST_ATTEMPTS', label: t('sorts.mostAttempts') },
+];
 
 const matchesFilter = (learner: QuizLearnerRow, filter: LearnerFilter): boolean => {
     switch (filter) {
@@ -54,21 +57,21 @@ const matchesFilter = (learner: QuizLearnerRow, filter: LearnerFilter): boolean 
     }
 };
 
-const CSV_HEADERS = [
-    'Name',
-    'Email',
-    'Mobile',
-    'Status',
-    'Attempts',
-    'Marks obtained',
-    'Total marks',
-    'Score %',
-    'Correct',
-    'Wrong',
-    'Skipped',
-    'Unanswered',
-    'Time spent (s)',
-    'Last attempt',
+const buildCsvHeaders = (t: TFunction) => [
+    t('csv.name'),
+    t('csv.email'),
+    t('csv.mobile'),
+    t('csv.status'),
+    t('csv.attempts'),
+    t('csv.marksObtained'),
+    t('csv.totalMarks'),
+    t('csv.scorePercent'),
+    t('csv.correct'),
+    t('csv.wrong'),
+    t('csv.skipped'),
+    t('csv.unanswered'),
+    t('csv.timeSpentSeconds'),
+    t('csv.lastAttempt'),
 ];
 
 /** Escapes a CSV cell — a learner name with a comma must not split the row. */
@@ -93,18 +96,21 @@ export default function QuizLearnersPanel({
     learners: QuizLearnerRow[];
     truncated: boolean;
 }) {
+    const { t } = useTranslation('studyLibraryQuizLearnersPanel');
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<LearnerFilter>('ALL');
-    const [sort, setSort] = useState<LearnerSort>('Highest score');
+    const [sort, setSort] = useState<LearnerSort>('HIGHEST_SCORE');
     const [page, setPage] = useState(0);
 
     const hasPassMark = quiz.passPercentage != null;
+    const allFilters = useMemo(() => buildFilters(t), [t]);
+    const sorts = useMemo(() => buildSorts(t), [t]);
     const filters = useMemo(
         () =>
-            FILTERS.filter(
+            allFilters.filter(
                 (option) => hasPassMark || (option.value !== 'PASSED' && option.value !== 'FAILED')
             ),
-        [hasPassMark]
+        [allFilters, hasPassMark]
     );
 
     const visible = useMemo(() => {
@@ -121,18 +127,18 @@ export default function QuizLearnersPanel({
 
         const sorted = [...filtered];
         switch (sort) {
-            case 'Lowest score':
+            case 'LOWEST_SCORE':
                 sorted.sort((a, b) => (a.scorePercent ?? -1) - (b.scorePercent ?? -1));
                 break;
-            case 'Name (A–Z)':
+            case 'NAME_AZ':
                 sorted.sort((a, b) => (a.fullName ?? '').localeCompare(b.fullName ?? ''));
                 break;
-            case 'Most recent attempt':
+            case 'MOST_RECENT_ATTEMPT':
                 sorted.sort(
                     (a, b) => (b.lastAttemptAtEpochMillis ?? 0) - (a.lastAttemptAtEpochMillis ?? 0)
                 );
                 break;
-            case 'Most attempts':
+            case 'MOST_ATTEMPTS':
                 sorted.sort((a, b) => b.attemptCount - a.attemptCount);
                 break;
             default:
@@ -157,7 +163,7 @@ export default function QuizLearnersPanel({
 
     const exportCsv = () => {
         if (visible.length === 0) {
-            toast.error('Nothing to export with these filters.');
+            toast.error(t('toast.nothingToExport'));
             return;
         }
         const rows = visible.map((learner) =>
@@ -182,7 +188,7 @@ export default function QuizLearnersPanel({
                 .map(csvCell)
                 .join(',')
         );
-        const csv = [CSV_HEADERS.join(','), ...rows].join('\n');
+        const csv = [buildCsvHeaders(t).join(','), ...rows].join('\n');
         // BOM so Excel opens UTF-8 names correctly.
         const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -191,14 +197,14 @@ export default function QuizLearnersPanel({
         link.download = `${(quiz.title || 'quiz').replace(/[^\w\s-]/g, '').trim() || 'quiz'}-results.csv`;
         link.click();
         URL.revokeObjectURL(url);
-        toast.success(`Exported ${visible.length} rows`);
+        toast.success(t('toast.exported', { count: visible.length }));
     };
 
     const columns = useMemo<ColumnDef<QuizLearnerRow>[]>(
         () => [
             {
                 id: 'learner',
-                header: 'Learner',
+                header: t('table.learner'),
                 size: 260,
                 accessorFn: (row) => row.fullName ?? '',
                 cell: ({ row }) => {
@@ -225,7 +231,7 @@ export default function QuizLearnersPanel({
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('table.status'),
                 size: 130,
                 accessorFn: (row) => row.status,
                 cell: ({ row }) => (
@@ -234,7 +240,7 @@ export default function QuizLearnersPanel({
             },
             {
                 id: 'score',
-                header: 'Score',
+                header: t('table.score'),
                 size: 170,
                 accessorFn: (row) => row.scorePercent ?? -1,
                 cell: ({ row }) => {
@@ -253,7 +259,7 @@ export default function QuizLearnersPanel({
             },
             {
                 id: 'breakdown',
-                header: 'Responses',
+                header: t('table.responses'),
                 size: 190,
                 accessorFn: (row) => row.correctCount,
                 cell: ({ row }) => {
@@ -265,20 +271,24 @@ export default function QuizLearnersPanel({
                     // by a colour-blind reader, and the counts are the point anyway.
                     return (
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-caption tabular-nums">
-                            <span className="text-success-700">{learner.correctCount} correct</span>
+                            <span className="text-success-700">
+                                {t('breakdown.correct', { count: learner.correctCount })}
+                            </span>
                             {/* "0 wrong" in red next to a perfect score reads as an
                                 error; a clean sheet just says nothing. */}
                             {learner.wrongCount > 0 && (
-                                <span className="text-danger-600">{learner.wrongCount} wrong</span>
+                                <span className="text-danger-600">
+                                    {t('breakdown.wrong', { count: learner.wrongCount })}
+                                </span>
                             )}
                             {learner.skippedCount > 0 && (
                                 <span className="text-neutral-500">
-                                    {learner.skippedCount} skipped
+                                    {t('breakdown.skipped', { count: learner.skippedCount })}
                                 </span>
                             )}
                             {learner.unansweredCount > 0 && (
                                 <span className="text-neutral-400">
-                                    {learner.unansweredCount} unanswered
+                                    {t('breakdown.unanswered', { count: learner.unansweredCount })}
                                 </span>
                             )}
                         </div>
@@ -287,7 +297,7 @@ export default function QuizLearnersPanel({
             },
             {
                 id: 'attempts',
-                header: 'Attempts',
+                header: t('table.attempts'),
                 size: 90,
                 accessorFn: (row) => row.attemptCount,
                 cell: ({ row }) => (
@@ -298,7 +308,7 @@ export default function QuizLearnersPanel({
             },
             {
                 id: 'time',
-                header: 'Time spent',
+                header: t('table.timeSpent'),
                 size: 110,
                 accessorFn: (row) => row.timeSpentSeconds ?? -1,
                 cell: ({ row }) => (
@@ -309,7 +319,7 @@ export default function QuizLearnersPanel({
             },
             {
                 id: 'last',
-                header: 'Last attempt',
+                header: t('table.lastAttempt'),
                 size: 130,
                 accessorFn: (row) => row.lastAttemptAtEpochMillis ?? 0,
                 cell: ({ row }) => (
@@ -319,22 +329,21 @@ export default function QuizLearnersPanel({
                 ),
             },
         ],
-        [quiz.passPercentage]
+        [quiz.passPercentage, t]
     );
 
     return (
         <div className="flex flex-col gap-3">
             {truncated && (
                 <p className="rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-caption text-warning-700">
-                    This batch has more learners than the report returns at once — the list below is
-                    capped, so totals may be incomplete.
+                    {t('truncatedNotice')}
                 </p>
             )}
 
             <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
                     <MagnifyingGlass
-                        className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-neutral-400"
+                        className="pointer-events-none absolute start-3 top-1/2 z-10 size-4 -translate-y-1/2 text-neutral-400"
                         aria-hidden="true"
                     />
                     <MyInput
@@ -344,16 +353,16 @@ export default function QuizLearnersPanel({
                             setSearch(event.target.value);
                             setPage(0);
                         }}
-                        inputPlaceholder="Search learners"
+                        inputPlaceholder={t('searchPlaceholder')}
                         size="medium"
-                        className="w-full pl-9 sm:w-64"
+                        className="w-full ps-9 sm:w-64"
                     />
                 </div>
 
                 <div
                     className="flex flex-wrap items-center gap-1.5"
                     role="group"
-                    aria-label="Filter learners"
+                    aria-label={t('filterLearnersAriaLabel')}
                 >
                     {filters.map((option) => {
                         const isActive = filter === option.value;
@@ -380,23 +389,23 @@ export default function QuizLearnersPanel({
                     })}
                 </div>
 
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ms-auto flex items-center gap-2">
                     <MyDropdown
                         currentValue={sort}
-                        dropdownList={[...SORTS]}
+                        dropdownList={sorts}
                         handleChange={(value) => setSort(value as LearnerSort)}
                     />
                     <MyButton buttonType="secondary" scale="medium" onClick={exportCsv}>
                         <DownloadSimple className="size-4" aria-hidden="true" />
-                        Export CSV
+                        {t('actions.exportCsv')}
                     </MyButton>
                 </div>
             </div>
 
             {visible.length === 0 ? (
                 <QuizResultsMessage
-                    title="No learners match these filters"
-                    subtitle="Try a different search term, or switch back to Everyone."
+                    title={t('empty.noMatchTitle')}
+                    subtitle={t('empty.noMatchSubtitle')}
                     action={
                         <MyButton
                             buttonType="secondary"
@@ -406,7 +415,7 @@ export default function QuizLearnersPanel({
                                 setFilter('ALL');
                             }}
                         >
-                            Clear filters
+                            {t('actions.clearFilters')}
                         </MyButton>
                     }
                 />
@@ -431,13 +440,15 @@ export default function QuizLearnersPanel({
                         />
                     )}
                     <p className="text-caption text-neutral-400">
-                        Showing {visible.length} of {learners.length} enrolled learners ·{' '}
-                        {formatPercent(
-                            quiz.enrolledLearners
-                                ? (quiz.attemptedLearners * 100) / quiz.enrolledLearners
-                                : null
-                        )}{' '}
-                        of the batch has attempted this quiz.
+                        {t('footer.summary', {
+                            visible: visible.length,
+                            total: learners.length,
+                            percent: formatPercent(
+                                quiz.enrolledLearners
+                                    ? (quiz.attemptedLearners * 100) / quiz.enrolledLearners
+                                    : null
+                            ),
+                        })}
                     </p>
                 </>
             )}

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Doubt } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-types/get-doubts-type';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { CaretLeft } from '@phosphor-icons/react';
@@ -27,13 +28,14 @@ export const ConversationPane = ({
     learnerName?: string;
     onBack: () => void;
 }) => {
+    const { t } = useTranslation('studyLibraryConversationPane');
     const isAdmin = isUserAdmin();
     const isTeacher = isUserTeacher();
     const userId = getUserId();
     const { instituteDetails } = useInstituteDetailsStore();
     // Logged-out (guest) queries have no user_id — show the contact the guest left.
     const isGuest = !doubt.user_id && !!doubt.guest_name;
-    const name = isGuest ? doubt.guest_name! : learnerName ?? 'Anonymous';
+    const name = isGuest ? doubt.guest_name! : learnerName ?? t('anonymous');
 
     const batch = instituteDetails?.batches_for_sessions?.find((b) => b.id === doubt.batch_id);
     const batchName = batch
@@ -56,7 +58,7 @@ export const ConversationPane = ({
                 <button
                     type="button"
                     onClick={onBack}
-                    aria-label="Back to list"
+                    aria-label={t('backToList')}
                     className="flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 sm:hidden"
                 >
                     <CaretLeft size={18} />
@@ -73,7 +75,7 @@ export const ConversationPane = ({
                         </span>
                         {isGuest && (
                             <span className="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-neutral-500">
-                                Guest
+                                {t('guest')}
                             </span>
                         )}
                     </div>
@@ -96,7 +98,9 @@ export const ConversationPane = ({
             {/* Assignee */}
             {isAdmin && (
                 <div className="flex items-center gap-2 border-b border-neutral-200 bg-neutral-50 px-4 py-2">
-                    <span className="shrink-0 text-xs font-medium text-neutral-500">Assigned</span>
+                    <span className="shrink-0 text-xs font-medium text-neutral-500">
+                        {t('assigned')}
+                    </span>
                     <AssigneeCell doubt={doubt} />
                 </div>
             )}
@@ -106,7 +110,7 @@ export const ConversationPane = ({
                 <div className="rounded-lg border border-primary-100 bg-primary-50/40 p-3">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold text-neutral-700">
-                            {name} · asked
+                            {t('nameAsked', { name })}
                         </span>
                         <span className="shrink-0 text-caption text-neutral-400">
                             {formatISODateTimeReadable(doubt.raised_time)}
@@ -134,7 +138,7 @@ export const ConversationPane = ({
                     <AddReply parent={doubt} refetch={refetch} />
                 ) : (
                     <p className="px-1 text-center text-xs text-neutral-400">
-                        You do not have permission to reply to this doubt.
+                        {t('noPermissionToReply')}
                     </p>
                 )}
             </div>

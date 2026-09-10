@@ -17,6 +17,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -80,6 +81,7 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
     const navigate = useNavigate();
     const currentRoute = router.state.location.pathname;
     const colors = getCategoryColors(category);
+    const { t } = useTranslation('collapsedCategoryFlyout');
 
     return (
         <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -99,7 +101,11 @@ export const CategoryFlyoutMenu: React.FC<CategoryFlyoutMenuProps> = ({
                 {/* Category header */}
                 <div className={cn('border-b px-3 py-2')}>
                     <p className={cn('text-sm font-semibold', colors.text)}>
-                        {category === 'AI' ? 'AI Tools' : category}
+                        {category === 'AI'
+                            ? t('categoryLabels.aiTools')
+                            : category === 'CRM'
+                              ? t('categoryLabels.crm')
+                              : t('categoryLabels.lms')}
                     </p>
                 </div>
 

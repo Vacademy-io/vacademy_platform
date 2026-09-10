@@ -1,5 +1,7 @@
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     Select,
     SelectContent,
@@ -32,13 +34,14 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { convertCapitalToTitleCase } from '@/lib/utils';
 import { toast } from 'sonner';
 
-const formSchema = z.object({
-    course: z.string().min(1, 'Course is required'),
-    session: z.string().min(1, 'Session is required'),
-    level: z.string().min(1, 'Level is required'),
-});
+const buildFormSchema = (t: TFunction) =>
+    z.object({
+        course: z.string().min(1, t('validation.courseRequired')),
+        session: z.string().min(1, t('validation.sessionRequired')),
+        level: z.string().min(1, t('validation.levelRequired')),
+    });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<ReturnType<typeof buildFormSchema>>;
 
 interface ProgressReportsProps {
     /**
@@ -55,6 +58,8 @@ export default function ProgressReports({
     fixedPackageSessionId,
     fixedCourseId,
 }: ProgressReportsProps = {}) {
+    const { t } = useTranslation('studyLibraryBatchProgressReports');
+    const formSchema = buildFormSchema(t);
     const isBatchFixed = Boolean(fixedPackageSessionId);
     const {
         getCourseFromPackage,
@@ -132,7 +137,7 @@ export default function ProgressReports({
     const [isExporting, setIsExporting] = useState(false);
     const handleExportPDF = async () => {
         if (!subjectReportData?.length) {
-            toast.error('No data to export yet');
+            toast.error(t('toast.noDataToExport'));
             return;
         }
         setIsExporting(true);
@@ -155,11 +160,12 @@ export default function ProgressReports({
                     batchTerm: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
                     variant: 'batch',
                 },
-                subjectReportData
+                subjectReportData,
+                t
             );
-            toast.success('Report exported');
+            toast.success(t('toast.exportSuccess'));
         } catch {
-            toast.error('Failed to export PDF');
+            toast.error(t('toast.exportFailed'));
         } finally {
             setIsExporting(false);
         }
@@ -261,14 +267,12 @@ export default function ProgressReports({
                                 }))}
                                 value={selectedCourse}
                                 onChange={(value) => setValue('course', value)}
-                                placeholder={`Select a ${getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                )}`}
-                                searchPlaceholder={`Search ${getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                )}...`}
+                                placeholder={t('form.selectA', {
+                                    term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                })}
+                                searchPlaceholder={t('form.searchTerm', {
+                                    term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                })}
                                 triggerClassName="h-9 text-sm"
                             />
                         </div>
@@ -285,10 +289,12 @@ export default function ProgressReports({
                             >
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue
-                                        placeholder={`Select a ${getTerminology(
-                                            ContentTerms.Session,
-                                            SystemTerms.Session
-                                        )}`}
+                                        placeholder={t('form.selectA', {
+                                            term: getTerminology(
+                                                ContentTerms.Session,
+                                                SystemTerms.Session
+                                            ),
+                                        })}
                                     />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -316,10 +322,12 @@ export default function ProgressReports({
                             >
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue
-                                        placeholder={`Select a ${getTerminology(
-                                            ContentTerms.Level,
-                                            SystemTerms.Level
-                                        )}`}
+                                        placeholder={t('form.selectA', {
+                                            term: getTerminology(
+                                                ContentTerms.Level,
+                                                SystemTerms.Level
+                                            ),
+                                        })}
                                     />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -340,7 +348,7 @@ export default function ProgressReports({
                             buttonType="primary" 
                             className="h-9 px-4 text-sm font-medium focus:!bg-primary-600 focus:!border-primary-600 focus:!text-white active:!bg-primary-600 active:!border-primary-600 active:!text-white focus:!outline-none focus:!ring-0"
                         >
-                            Generate Report
+                            {t('form.generateReport')}
                         </MyButton>
                     </div>
                 </form>
@@ -370,14 +378,14 @@ export default function ProgressReports({
                                 {isExporting ? (
                                     <div className="flex items-center gap-2">
                                         <div className="h-3 w-3 animate-spin rounded-full border border-neutral-300 border-t-primary-500"></div>
-                                        <span>Exporting...</span>
+                                        <span>{t('report.exporting')}</span>
                                     </div>
                                 ) : (
                                     <>
                                         <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                         </svg>
-                                        Export PDF
+                                        {t('report.exportPdf')}
                                     </>
                                 )}
                             </MyButton>
@@ -388,7 +396,9 @@ export default function ProgressReports({
                     <div className="bg-white rounded-lg border border-neutral-200 p-4 shadow-sm">
                         <div className="space-y-4">
                             <h4 className="text-base font-semibold text-primary-600">
-                                {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}-wise Overview
+                                {t('report.subjectWiseOverview', {
+                                    term: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
+                                })}
                             </h4>
                             <div className="!min-w-full overflow-x-auto [&_table]:!w-full [&_table]:!min-w-full [&_td]:!whitespace-nowrap [&_th]:!whitespace-nowrap">
                                 <MyTable

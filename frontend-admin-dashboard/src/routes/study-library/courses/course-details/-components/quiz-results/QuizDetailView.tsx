@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation, type TFunction } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowClockwise, ArrowLeft, Info } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -18,9 +19,9 @@ import {
 
 type DetailView = 'LEARNERS' | 'QUESTIONS';
 
-const VIEWS: { value: DetailView; label: string }[] = [
-    { value: 'LEARNERS', label: 'Learners' },
-    { value: 'QUESTIONS', label: 'Question analysis' },
+const buildViews = (t: TFunction): { value: DetailView; label: string }[] => [
+    { value: 'LEARNERS', label: t('views.learners') },
+    { value: 'QUESTIONS', label: t('views.questionAnalysis') },
 ];
 
 /** One quiz: its headline numbers, the score spread, and the two drill-downs. */
@@ -33,10 +34,12 @@ export default function QuizDetailView({
     slideId: string;
     onBack: () => void;
 }) {
+    const { t } = useTranslation('studyLibraryQuizResultsDetailView');
     const [view, setView] = useState<DetailView>('LEARNERS');
     const { data, isLoading, isFetching, error, refetch } = useQuery(
         quizLearnerResultsQueryOptions(batchId, slideId)
     );
+    const VIEWS = buildViews(t);
 
     if (isLoading) {
         return (
@@ -49,14 +52,14 @@ export default function QuizDetailView({
     if (error || !data) {
         return (
             <div className="flex flex-col gap-3">
-                <BackLink onBack={onBack} />
+                <BackLink onBack={onBack} t={t} />
                 <QuizResultsMessage
                     tone="danger"
-                    title="Could not load this quiz's results"
-                    subtitle="The request failed. Check your connection and try again."
+                    title={t('loadErrorTitle')}
+                    subtitle={t('loadErrorSubtitle')}
                     action={
                         <MyButton buttonType="secondary" scale="medium" onClick={() => refetch()}>
-                            Retry
+                            {t('retry')}
                         </MyButton>
                     }
                 />
@@ -71,21 +74,25 @@ export default function QuizDetailView({
         <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <BackLink onBack={onBack} />
+                    <BackLink onBack={onBack} t={t} />
                     <h2 className="mt-1 truncate text-h3-semibold text-neutral-700">
-                        {quiz.title || 'Untitled quiz'}
+                        {quiz.title || t('untitledQuiz')}
                     </h2>
                     <p className="truncate text-caption text-neutral-400">
-                        {path || 'Not mapped to a chapter'}
-                        {quiz.timeLimitInMinutes ? ` · ${quiz.timeLimitInMinutes} min limit` : ''}
-                        {quiz.reAttemptCount ? ` · ${quiz.reAttemptCount} re-attempts allowed` : ''}
+                        {path || t('notMappedToChapter')}
+                        {quiz.timeLimitInMinutes
+                            ? ` · ${t('timeLimitSuffix', { count: quiz.timeLimitInMinutes })}`
+                            : ''}
+                        {quiz.reAttemptCount
+                            ? ` · ${t('reAttemptsSuffix', { count: quiz.reAttemptCount })}`
+                            : ''}
                     </p>
                 </div>
                 <MyButton
                     buttonType="secondary"
                     scale="medium"
                     layoutVariant="icon"
-                    aria-label="Refresh this quiz's results"
+                    aria-label={t('refreshAriaLabel')}
                     onClick={() => refetch()}
                     disable={isFetching}
                 >
@@ -95,21 +102,22 @@ export default function QuizDetailView({
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <StatTile
-                    label="Attempted"
+                    label={t('stats.attempted')}
                     value={`${quiz.attemptedLearners} / ${quiz.enrolledLearners}`}
-                    hint={`${quiz.totalAttempts} attempts in total`}
+                    hint={t('stats.attemptsInTotal', { count: quiz.totalAttempts })}
                     accent="bg-info-500"
                 />
                 <StatTile
-                    label="Average score"
+                    label={t('stats.averageScore')}
                     value={formatPercent(quiz.avgScorePercent)}
-                    hint={`Median ${formatPercent(quiz.medianScorePercent)} · out of ${
-                        quiz.totalMarks
-                    } marks`}
+                    hint={t('stats.medianOutOfMarks', {
+                        median: formatPercent(quiz.medianScorePercent),
+                        total: quiz.totalMarks,
+                    })}
                     accent="bg-primary-500"
                 />
                 <StatTile
-                    label={quiz.passPercentage != null ? 'Passed' : 'Score range'}
+                    label={quiz.passPercentage != null ? t('stats.passed') : t('stats.scoreRange')}
                     value={
                         quiz.passPercentage != null
                             ? `${formatNumber(quiz.passedLearners)} / ${quiz.attemptedLearners}`
@@ -119,15 +127,15 @@ export default function QuizDetailView({
                     }
                     hint={
                         quiz.passPercentage != null
-                            ? `Pass mark ${quiz.passPercentage}%`
-                            : 'This quiz has no pass mark'
+                            ? t('stats.passMark', { percent: quiz.passPercentage })
+                            : t('stats.noPassMark')
                     }
                     accent="bg-success-500"
                 />
                 <StatTile
-                    label="Average time"
+                    label={t('stats.averageTime')}
                     value={formatDuration(quiz.avgTimeSeconds)}
-                    hint="Per learner, latest attempt"
+                    hint={t('stats.perLearnerLatestAttempt')}
                     accent="bg-neutral-400"
                 />
             </div>
@@ -143,20 +151,14 @@ export default function QuizDetailView({
             {quiz.ungradedResponses > 0 && (
                 <p className="flex items-start gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-caption text-neutral-600">
                     <Info className="mt-0.5 size-4 shrink-0 text-neutral-400" aria-hidden="true" />
-                    <span>
-                        {quiz.ungradedResponses} answer
-                        {quiz.ungradedResponses === 1 ? '' : 's'} need marking by hand (free-text or
-                        manually-evaluated questions). They are left out of the scores above rather
-                        than counted as wrong, so the percentages here cover only what could be
-                        marked automatically.
-                    </span>
+                    <span>{t('ungradedNotice', { count: quiz.ungradedResponses })}</span>
                 </p>
             )}
 
             <div
                 className="inline-flex w-fit gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-1"
                 role="tablist"
-                aria-label="Quiz result views"
+                aria-label={t('resultViewsAriaLabel')}
             >
                 {VIEWS.map((option) => (
                     <button
@@ -196,7 +198,7 @@ export default function QuizDetailView({
     );
 }
 
-function BackLink({ onBack }: { onBack: () => void }) {
+function BackLink({ onBack, t }: { onBack: () => void; t: TFunction }) {
     return (
         <button
             type="button"
@@ -204,7 +206,7 @@ function BackLink({ onBack }: { onBack: () => void }) {
             className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-caption text-neutral-500 transition-colors duration-200 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
         >
             <ArrowLeft className="size-3.5" aria-hidden="true" />
-            All quizzes
+            {t('allQuizzes')}
         </button>
     );
 }

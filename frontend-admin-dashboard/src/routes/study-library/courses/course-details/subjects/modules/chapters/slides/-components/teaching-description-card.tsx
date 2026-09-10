@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ChalkboardTeacher, CircleNotch, FloppyDisk } from '@phosphor-icons/react';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,6 +17,7 @@ interface TeachingDescriptionCardProps {
  * course page's "Prepare for teaching" compiles it (design §4.2).
  */
 export const TeachingDescriptionCard: React.FC<TeachingDescriptionCardProps> = ({ slideId, kind }) => {
+    const { t } = useTranslation('studyLibraryTeachingDescriptionCard');
     const [open, setOpen] = useState(false);
     const [text, setText] = useState('');
     const [saved, setSaved] = useState('');
@@ -48,15 +50,16 @@ export const TeachingDescriptionCard: React.FC<TeachingDescriptionCardProps> = (
         try {
             await putTutorSourceDescription(slideId, text.trim());
             setSaved(text.trim());
-            toast.success('Saved. Open the course’s Tutor Mode tab and press “Prepare for teaching”.');
+            toast.success(t('toast.saved'));
         } catch (e: unknown) {
-            toast.error(e instanceof Error ? e.message : 'Could not save');
+            toast.error(e instanceof Error ? e.message : t('toast.saveError'));
         } finally {
             setSaving(false);
         }
     };
 
-    const what = kind === 'video' ? 'video' : 'PDF';
+    const what = kind === 'video' ? t('kind.video') : t('kind.pdf');
+    const action = kind === 'video' ? t('action.watch') : t('action.read');
     return (
         <div className="mt-3 rounded-md border border-neutral-200 bg-white">
             <button
@@ -65,28 +68,28 @@ export const TeachingDescriptionCard: React.FC<TeachingDescriptionCardProps> = (
                 onClick={() => setOpen((v) => !v)}
             >
                 <ChalkboardTeacher className="size-4 text-primary-500" />
-                AI teacher: what this {what} teaches
+                {t('toggle.title', { what })}
                 {loading ? (
                     <CircleNotch className="size-3 animate-spin text-neutral-400" />
                 ) : saved ? (
-                    <span className="text-xs font-normal text-success-700">described</span>
+                    <span className="text-xs font-normal text-success-700">{t('toggle.described')}</span>
                 ) : (
-                    <span className="text-xs font-normal text-warning-700">not described yet</span>
+                    <span className="text-xs font-normal text-warning-700">{t('toggle.notDescribedYet')}</span>
                 )}
-                <span className="ml-auto text-xs font-normal text-neutral-500">{open ? 'Hide' : 'Edit'}</span>
+                <span className="ms-auto text-xs font-normal text-neutral-500">
+                    {open ? t('toggle.hide') : t('toggle.edit')}
+                </span>
             </button>
             {open && (
                 <div className="space-y-2 border-t border-neutral-100 p-3">
                     <p className="text-xs text-neutral-600">
-                        The AI teacher cannot watch or read this {what}. Write the points it covers (3–10
-                        sentences). In tutor mode the teacher asks the learner to {kind === 'video' ? 'watch' : 'read'}{' '}
-                        it, then checks those points before moving on.
+                        {t('description', { what, action })}
                     </p>
                     <Textarea
                         value={text}
                         rows={5}
                         maxLength={8000}
-                        placeholder={`This ${what} explains…`}
+                        placeholder={t('placeholder', { what })}
                         onChange={(e) => setText(e.target.value)}
                     />
                     <div className="flex justify-end">
@@ -98,7 +101,7 @@ export const TeachingDescriptionCard: React.FC<TeachingDescriptionCardProps> = (
                             onClick={() => void save()}
                         >
                             {saving ? <CircleNotch className="size-4 animate-spin" /> : <FloppyDisk className="size-4" />}
-                            Save
+                            {t('save')}
                         </MyButton>
                     </div>
                 </div>

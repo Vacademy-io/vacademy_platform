@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { CircleNotch, UserGear } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +35,7 @@ export const LmsExistingUserPolicyCard: React.FC<LmsExistingUserPolicyCardProps>
     packageId,
     refreshKey,
 }) => {
+    const { t } = useTranslation('studyLibraryLmsExistingUserPolicyCard');
     const [enabled, setEnabled] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -73,15 +75,15 @@ export const LmsExistingUserPolicyCard: React.FC<LmsExistingUserPolicyCardProps>
                 ...current,
                 lms: { ...(current.lms ?? {}), editExistingUser: next },
             };
-            await savePackageSettingKey(packageId, COURSE_SETTING_KEY, merged, 'Course settings');
+            await savePackageSettingKey(packageId, COURSE_SETTING_KEY, merged, t('courseSettings'));
             toast.success(
                 next
-                    ? "Existing LMS users' passwords will be reset on enrolment for this course."
-                    : 'Existing LMS users will be left untouched for this course.'
+                    ? t('passwordsWillBeReset')
+                    : t('existingUsersLeftUntouched')
             );
         } catch {
             setEnabled(!next);
-            toast.error("Couldn't save the setting. Please try again.");
+            toast.error(t('couldNotSaveSetting'));
         } finally {
             setSaving(false);
         }
@@ -92,26 +94,20 @@ export const LmsExistingUserPolicyCard: React.FC<LmsExistingUserPolicyCardProps>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-body font-semibold">
                     <UserGear size={18} weight="duotone" className="text-neutral-500" />
-                    Existing LMS users
+                    {t('existingLmsUsers')}
                 </CardTitle>
             </CardHeader>
             <CardContent>
                 <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
                         <Label htmlFor="lms-edit-existing-user" className="text-sm">
-                            Reset their password on enrolment
+                            {t('resetPasswordOnEnrolment')}
                         </Label>
                         <p className="max-w-2xl text-caption text-neutral-500">
-                            When someone enrols and already has an account on the connected LMS,
-                            overwrite that account's password with the one from here. Leave this off
-                            to enrol them into the course without changing the password they already
-                            have — the safe choice for a migration, where existing accounts must not
-                            be disturbed.
+                            {t('resetPasswordDescription')}
                         </p>
                         <p className="max-w-2xl text-caption text-neutral-400">
-                            Their email is how the LMS account is found, so it is never changed. Only
-                            the password is overwritten — their name and other profile details are
-                            left as-is.
+                            {t('emailUnchangedDescription')}
                         </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2 pt-1">

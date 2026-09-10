@@ -1,11 +1,34 @@
 import { z } from 'zod';
 import { toast } from 'sonner';
+import type { TFunction } from 'i18next';
+import i18n from '@/i18n';
 import { AccessType, RecurringType, WaitingRoomType } from '../../-constants/enums';
 import {
     FieldRole,
     classifyFieldRole,
     hasRequiredIdentityField,
 } from '@/components/common/custom-fields/field-roles';
+
+const NAMESPACE = 'studyLibraryScheduleSchema';
+
+/**
+ * These zod schemas (sessionFormSchema, weeklyClassSchema, addParticipantsSchema,
+ * addCustomFiledSchema) are module-scope singletons whose exact shape is consumed
+ * via `z.infer<typeof X>` across many other files in this route (scheduleStep1.tsx,
+ * scheduleStep2.tsx, BulkScheduleGrid.tsx, LiveSessionParticipantsTab.tsx,
+ * LiveSessionStudentListTab.tsx, sessionIdstore.ts, -constants/helper.ts, and two
+ * test files) — none of which are in this i18n batch. Converting these to
+ * `buildXxx(t)` factories (the guide's usual module-scope-constant convention)
+ * would require touching every one of those type-inference call sites outside
+ * this batch. Instead we use the same "outside a React render tree" fallback the
+ * rollout already established for exactly this situation (see globalT in
+ * manage-students/.../bulk-upload-table.tsx): call the shared i18next singleton
+ * directly with a fixed namespace, so validation copy is still real, translated
+ * text — it just doesn't hot-swap without a reload, same tradeoff already
+ * accepted there.
+ */
+const t: TFunction = ((key: string, options?: Record<string, unknown>) =>
+    i18n.t(key, { ns: NAMESPACE, ...options })) as TFunction;
 
 const weekDaysEnum = z.enum([
     'monday',
@@ -19,10 +42,10 @@ const weekDaysEnum = z.enum([
 
 // Schema for learner button configuration
 const learnerButtonConfigSchema = z.object({
-    text: z.string().min(1, 'Button text is required').max(50, 'Button text must be 50 characters or less'),
-    url: z.string().url('Invalid URL'),
-    background_color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid hex color format'),
-    text_color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid hex color format'),
+    text: z.string().min(1, t('validation.buttonTextRequired')).max(50, t('validation.buttonTextMaxLength')),
+    url: z.string().url(t('validation.invalidUrl')),
+    background_color: z.string().regex(/^#[0-9A-F]{6}$/i, t('validation.invalidHexColor')),
+    text_color: z.string().regex(/^#[0-9A-F]{6}$/i, t('validation.invalidHexColor')),
     visible: z.boolean(),
 }).optional().nullable();
 
@@ -36,7 +59,7 @@ const sessionDetailsSchema = z.object({
                 const num = parseInt(val);
                 return !val || (num >= 0 && num <= 24);
             },
-            { message: 'Hours must be between 0 and 24' }
+            { message: t('validation.hoursRange') }
         )
         .optional(),
     durationMinutes: z
@@ -46,10 +69,10 @@ const sessionDetailsSchema = z.object({
                 const num = parseInt(val);
                 return !val || (num >= 0 && num <= 59);
             },
-            { message: 'Minutes must be between 0 and 59' }
+            { message: t('validation.minutesRange') }
         )
         .optional(),
-    link: z.string().url('Invalid URL').optional().or(z.literal('')),
+    link: z.string().url(t('validation.invalidUrl')).optional().or(z.literal('')),
     countAttendanceDaily: z.boolean().optional(),
     thumbnailFileId: z.string().optional(),
 });
@@ -59,8 +82,8 @@ export const weeklyClassSchema = z.object({
     day: weekDaysEnum,
     isSelect: z.boolean(),
     // Day-level configurations (shared across all sessions on this day)
-    default_class_link: z.string().url('Invalid URL').optional().or(z.literal('')).nullable(),
-    default_class_name: z.string().max(100, 'Class name must be 100 characters or less').optional().nullable(),
+    default_class_link: z.string().url(t('validation.invalidUrl')).optional().or(z.literal('')).nullable(),
+    default_class_name: z.string().max(100, t('validation.classNameMaxLength')).optional().nullable(),
     learner_button_config: learnerButtonConfigSchema,
     sessions: z.array(sessionDetailsSchema),
 });
@@ -68,7 +91,7 @@ export const weeklyClassSchema = z.object({
 export const sessionFormSchema = z
     .object({
         id: z.string().optional(),
-        title: z.string().min(1, 'Title must be at least 1 characters'),
+        title: z.string().min(1, t('validation.titleMinLength')),
         subject: z.string().optional(),
         openWaitingRoomBefore: z.string().optional(),
         // DEFAULT (waiting-room screen) | PRE_JOINING (join live class directly).
@@ -80,23 +103,23 @@ export const sessionFormSchema = z
         allowRewind: z.boolean(),
         allowPause: z.boolean(),
         startTime: z.string({
-            required_error: 'Start time is required',
-            invalid_type_error: 'Invalid date',
+            required_error: t('validation.startTimeRequired'),
+            invalid_type_error: t('validation.invalidDate'),
         }),
         endDate: z
             .string({
-                required_error: 'End date is required',
-                invalid_type_error: 'Invalid date',
+                required_error: t('validation.endDateRequired'),
+                invalid_type_error: t('validation.invalidDate'),
             })
             .optional(),
-        timeZone: z.string().min(1, 'Time zone is required'),
-        events: z.string().regex(/^\d+$/, 'Must be a number'),
+        timeZone: z.string().min(1, t('validation.timeZoneRequired')),
+        events: z.string().regex(/^\d+$/, t('validation.mustBeNumber')),
         description: z.string().optional(),
         durationMinutes: z.string({
-            required_error: 'Duration is required',
+            required_error: t('validation.durationRequired'),
         }),
         durationHours: z.string({
-            required_error: 'Duration is required',
+            required_error: t('validation.durationRequired'),
         }),
         defaultLink: z.string().optional().or(z.literal('')),
         meetingType: z.nativeEnum(RecurringType),
@@ -170,7 +193,7 @@ export const sessionFormSchema = z
         if (!autoGeneratesMeeting && !data.defaultLink) {
             ctx.addIssue({
                 code: 'custom',
-                message: 'Live class link is required',
+                message: t('validation.liveClassLinkRequired'),
                 path: ['defaultLink'],
             });
         }
@@ -180,7 +203,7 @@ export const sessionFormSchema = z
             } catch {
                 ctx.addIssue({
                     code: 'custom',
-                    message: 'Invalid URL',
+                    message: t('validation.invalidUrl'),
                     path: ['defaultLink'],
                 });
             }
@@ -191,7 +214,7 @@ export const sessionFormSchema = z
         if (hours === 0 && minutes === 0) {
             ctx.addIssue({
                 code: 'custom',
-                message: 'Duration must be greater than zero.',
+                message: t('validation.durationGreaterThanZero'),
                 path: ['durationMinutes'],
             });
         }
@@ -199,7 +222,7 @@ export const sessionFormSchema = z
         if (data.meetingType === RecurringType.WEEKLY && !data.endDate) {
             ctx.addIssue({
                 code: 'custom',
-                message: 'End date is required for recurring meetings.',
+                message: t('validation.endDateRequiredRecurring'),
                 path: ['endDate'],
             });
         }
@@ -207,10 +230,10 @@ export const sessionFormSchema = z
         if (data.meetingType === RecurringType.WEEKLY && data.endDate && data.startTime) {
             const startDateStr = data.startTime.split('T')[0];
             if (startDateStr && data.endDate <= startDateStr) {
-                toast.error('End date should be greater than start date.');
+                toast.error(t('validation.endDateAfterStartDate'));
                 ctx.addIssue({
                     code: 'custom',
-                    message: 'End date should be greater than start date.',
+                    message: t('validation.endDateAfterStartDate'),
                     path: ['endDate'],
                 });
             }
@@ -228,7 +251,7 @@ export const addParticipantsSchema = z.object({
         })
     ),
     selectedLearners: z.array(z.string()).optional(),
-    joinLink: z.string().url('Enter a valid URL'),
+    joinLink: z.string().url(t('validation.enterValidUrl')),
     notifyBy: z.object({
         mail: z.boolean(),
         whatsapp: z.boolean(),
@@ -242,7 +265,7 @@ export const addParticipantsSchema = z.object({
         beforeLiveTime: z
             .array(
                 z.object({
-                    time: z.string().min(1, 'Select time'), // e.g., "10 min"
+                    time: z.string().min(1, t('validation.selectTime')), // e.g., "10 min"
                 })
             )
             .optional(),
@@ -252,7 +275,7 @@ export const addParticipantsSchema = z.object({
     fields: z.array(
         z.object({
             id: z.string().optional(),
-            label: z.string().min(1, 'Field label is required').max(100, 'Field label too long'),
+            label: z.string().min(1, t('validation.fieldLabelRequired')).max(100, t('validation.fieldLabelTooLong')),
             required: z.boolean(),
             isDefault: z.boolean(),
             type: z.string(),
@@ -302,14 +325,14 @@ export const addParticipantsSchema = z.object({
         if (!data.paymentPrice || isNaN(price) || price <= 0) {
             ctx.addIssue({
                 code: 'custom',
-                message: 'Enter a price greater than 0 for a paid live class.',
+                message: t('validation.paidClassPriceRequired'),
                 path: ['paymentPrice'],
             });
         }
         if (!data.paymentCurrency) {
             ctx.addIssue({
                 code: 'custom',
-                message: 'Select a currency for the paid live class.',
+                message: t('validation.paidClassCurrencyRequired'),
                 path: ['paymentCurrency'],
             });
         }
@@ -321,8 +344,7 @@ export const addParticipantsSchema = z.object({
         if (!hasRequiredIdentityField(data.fields)) {
             ctx.addIssue({
                 code: 'custom',
-                message:
-                    'Keep either Email or Phone Number required — a registration needs one of them to identify the learner.',
+                message: t('validation.emailOrPhoneRequired'),
                 path: ['fields'],
             });
         }
@@ -345,8 +367,14 @@ export const addParticipantsSchema = z.object({
             ctx.addIssue({
                 code: 'custom',
                 message: label
-                    ? `"${label}" has to stay required ${why}.`
-                    : `This form needs a required ${role === FieldRole.PHONE ? 'Phone Number' : 'Email'} field ${why}.`,
+                    ? t('validation.fieldStaysRequired', { label, why })
+                    : t('validation.fieldRequiredGeneric', {
+                          role:
+                              role === FieldRole.PHONE
+                                  ? t('validation.roleName.phone')
+                                  : t('validation.roleName.email'),
+                          why,
+                      }),
                 path: ['fields'],
             });
         };
@@ -354,14 +382,14 @@ export const addParticipantsSchema = z.object({
         // A channel the form verifies by OTP must be collected, or every learner is stopped at
         // submit over a field the form never asked for.
         if (data.requirePhoneVerification) {
-            demand(FieldRole.PHONE, 'while the WhatsApp OTP verification is on, or turn that verification off');
+            demand(FieldRole.PHONE, t('validation.whyReason.whatsappOtp'));
         }
         if (data.requireEmailVerification) {
-            demand(FieldRole.EMAIL, 'while the email OTP verification is on, or turn that verification off');
+            demand(FieldRole.EMAIL, t('validation.whyReason.emailOtp'));
         }
         // A paid class bills and mails its invoice to the learner's email.
         if (data.paymentEnabled) {
-            demand(FieldRole.EMAIL, 'on a paid class — the invoice is billed and mailed to it');
+            demand(FieldRole.EMAIL, t('validation.whyReason.paidClass'));
         }
     }
     if (
@@ -371,7 +399,7 @@ export const addParticipantsSchema = z.object({
     ) {
         ctx.addIssue({
             code: 'custom',
-            message: 'Select at least one audience list, or turn the toggle off.',
+            message: t('validation.selectAudienceList'),
             path: ['audiencePushAudienceIds'],
         });
     }

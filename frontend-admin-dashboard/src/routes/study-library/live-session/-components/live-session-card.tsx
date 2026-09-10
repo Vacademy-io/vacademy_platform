@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import { fetchSessionDetails, SessionDetailsResponse } from '../-hooks/useSessionDetails';
@@ -27,9 +27,9 @@ import { useSessionDetailsStore } from '../-store/useSessionDetailsStore';
 import { DraftSession, getSessionBySessionId } from '../-services/utils';
 import { LiveSessionReport } from '../-services/utils';
 import {
-    registrationColumns,
+    buildRegistrationColumns,
     REGISTRATION_WIDTH,
-    reportColumns,
+    buildReportColumns,
     REPORT_WIDTH,
 } from '../-constants/reportTable';
 import { MyTable } from '@/components/design-system/table';
@@ -51,6 +51,12 @@ interface LiveSessionCardProps {
 
 export default function LiveSessionCard({ session, isDraft = false }: LiveSessionCardProps) {
     const { t: tHelper } = useTranslation('homeworkCreationCreateAssessmentHelper');
+    const { t: tReportTable } = useTranslation('studyLibraryLiveSessionReportTable');
+    const reportColumns = useMemo(() => buildReportColumns(tReportTable), [tReportTable]);
+    const registrationColumns = useMemo(
+        () => buildRegistrationColumns(tReportTable),
+        [tReportTable]
+    );
     const [openDialog, setOpenDialog] = useState<boolean>(false);
     const [openDeleteDialog, setOpenDeleteDialog] = useState<boolean>(false);
     const [openUtmDialog, setOpenUtmDialog] = useState<boolean>(false);

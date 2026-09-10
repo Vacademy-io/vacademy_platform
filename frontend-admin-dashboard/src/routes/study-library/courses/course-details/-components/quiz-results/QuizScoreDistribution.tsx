@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 import type { QuizScoreBucket } from '../../-types/quiz-results-types';
 
 /**
@@ -21,26 +22,23 @@ export default function QuizScoreDistribution({
     passPercentage: number | null;
     totalLearners: number;
 }) {
+    const { t } = useTranslation('studyLibraryQuizScoreDistribution');
     const peak = Math.max(1, ...buckets.map((bucket) => bucket.learners));
     // The line sits on the boundary between bands, so it is placed by percentage of width.
     const passLeft = passPercentage != null ? Math.max(0, Math.min(100, passPercentage)) : null;
 
     if (totalLearners === 0) {
-        return (
-            <p className="text-caption text-neutral-400">
-                No attempts yet — the score spread appears once learners submit.
-            </p>
-        );
+        return <p className="text-caption text-neutral-400">{t('noAttemptsYet')}</p>;
     }
 
     return (
         <figure className="flex flex-col gap-2">
             <figcaption className="flex items-baseline justify-between gap-2">
                 <span className="text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                    Score spread
+                    {t('scoreSpread')}
                 </span>
                 <span className="text-caption text-neutral-400">
-                    {totalLearners} {totalLearners === 1 ? 'learner' : 'learners'}
+                    {t('learnersCount', { count: totalLearners })}
                 </span>
             </figcaption>
 
@@ -54,9 +52,11 @@ export default function QuizScoreDistribution({
                             <div
                                 key={bucket.from}
                                 className="group flex h-full flex-1 flex-col justify-end"
-                                title={`${bucket.from}–${bucket.to}%: ${bucket.learners} ${
-                                    bucket.learners === 1 ? 'learner' : 'learners'
-                                }`}
+                                title={t('bucketTitle', {
+                                    from: bucket.from,
+                                    to: bucket.to,
+                                    count: bucket.learners,
+                                })}
                             >
                                 {/* The white halo lets the pass-mark line pass behind the
                                     count instead of striking through it. */}
@@ -102,7 +102,7 @@ export default function QuizScoreDistribution({
                                 passLeft > 80 ? 'right-1' : 'left-1'
                             )}
                         >
-                            pass {passPercentage}%
+                            {t('passMark', { percentage: passPercentage })}
                         </span>
                     </div>
                 )}
@@ -117,7 +117,7 @@ export default function QuizScoreDistribution({
             </div>
             {/* Ticks label each band's START, so no trailing 100 — adding one would
                 shrink the flex columns and pull every tick off its bar. */}
-            <p className="text-caption text-neutral-400">Score (%) — each bar covers 10 points</p>
+            <p className="text-caption text-neutral-400">{t('axisCaption')}</p>
         </figure>
     );
 }

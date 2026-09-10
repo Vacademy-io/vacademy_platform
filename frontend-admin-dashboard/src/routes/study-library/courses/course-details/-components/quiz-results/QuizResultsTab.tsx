@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Student, ClipboardText } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import LearnerQuizOverview from './LearnerQuizOverview';
@@ -9,26 +11,26 @@ import { QuizResultsMessage } from './quiz-results-shared';
 
 type ResultsView = 'LEARNER_WISE' | 'QUIZ_WISE';
 
-const VIEWS: {
+const buildViews = (
+    t: TFunction
+): {
     value: ResultsView;
     label: string;
     /** Shown under the switch, not only on hover — a hover tooltip is invisible on touch
         and to anyone who does not think to hover, which is most first-time users. */
     caption: string;
     icon: typeof Student;
-}[] = [
+}[] => [
     {
         value: 'LEARNER_WISE',
-        label: 'By learner',
-        caption:
-            'One row per learner. Click a learner to see every quiz they have taken, their answers, marks and attempts.',
+        label: t('byLearner'),
+        caption: t('byLearnerCaption'),
         icon: Student,
     },
     {
         value: 'QUIZ_WISE',
-        label: 'By quiz',
-        caption:
-            'One row per quiz. Click a quiz to see who took it, how they scored, and which questions the class got wrong.',
+        label: t('byQuiz'),
+        caption: t('byQuizCaption'),
         icon: ClipboardText,
     },
 ];
@@ -49,6 +51,8 @@ const STORAGE_KEY = 'quiz-results-view';
  * course-details tab strip (which owns the URL) is left alone.
  */
 export default function QuizResultsTab({ packageSessionId }: { packageSessionId: string }) {
+    const { t } = useTranslation('studyLibraryQuizResultsTab');
+    const VIEWS = buildViews(t);
     // The course page can hand over a comma-joined list when several batches share the
     // course; results are per batch, so take the first — same rule the Pulse tab uses.
     const batchId = (packageSessionId ?? '').split(',')[0] ?? '';
@@ -79,8 +83,8 @@ export default function QuizResultsTab({ packageSessionId }: { packageSessionId:
     if (!batchId) {
         return (
             <QuizResultsMessage
-                title="Select a batch to see quiz results"
-                subtitle="Quiz results are reported per batch, because the same quiz slide can be shared across several of them."
+                title={t('selectBatchTitle')}
+                subtitle={t('selectBatchSubtitle')}
             />
         );
     }
@@ -93,7 +97,7 @@ export default function QuizResultsTab({ packageSessionId }: { packageSessionId:
                 <div
                     className="inline-flex w-fit gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-1"
                     role="tablist"
-                    aria-label="Quiz result views"
+                    aria-label={t('quizResultViewsAriaLabel')}
                 >
                     {VIEWS.map((option) => {
                         const Icon = option.icon;

@@ -10,6 +10,8 @@ import {
 } from '@phosphor-icons/react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { MyTable, type TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { MyButton } from '@/components/design-system/button';
@@ -31,45 +33,52 @@ import {
 
 type LearnerFilter = 'ALL' | 'ATTEMPTED' | 'NOT_STARTED' | 'AT_RISK';
 
-const FILTERS: { value: LearnerFilter; label: string }[] = [
-    { value: 'ALL', label: 'Everyone' },
-    { value: 'ATTEMPTED', label: 'Has attempted' },
-    { value: 'NOT_STARTED', label: 'Not started' },
-    { value: 'AT_RISK', label: 'At risk' },
+const buildFilters = (t: TFunction): { value: LearnerFilter; label: string }[] => [
+    { value: 'ALL', label: t('filters.everyone') },
+    { value: 'ATTEMPTED', label: t('filters.hasAttempted') },
+    { value: 'NOT_STARTED', label: t('filters.notStarted') },
+    { value: 'AT_RISK', label: t('filters.atRisk') },
 ];
 
-const SORTS = [
-    'Lowest average',
-    'Highest average',
-    'Name (A–Z)',
-    'Most quizzes done',
-    'Fewest quizzes done',
-    'Most recent activity',
-] as const;
-type LearnerSort = (typeof SORTS)[number];
+type LearnerSort =
+    | 'LOWEST_AVERAGE'
+    | 'HIGHEST_AVERAGE'
+    | 'NAME_AZ'
+    | 'MOST_QUIZZES_DONE'
+    | 'FEWEST_QUIZZES_DONE'
+    | 'MOST_RECENT_ACTIVITY';
+
+const buildSorts = (t: TFunction): { value: LearnerSort; label: string }[] => [
+    { value: 'LOWEST_AVERAGE', label: t('sorts.lowestAverage') },
+    { value: 'HIGHEST_AVERAGE', label: t('sorts.highestAverage') },
+    { value: 'NAME_AZ', label: t('sorts.nameAz') },
+    { value: 'MOST_QUIZZES_DONE', label: t('sorts.mostQuizzesDone') },
+    { value: 'FEWEST_QUIZZES_DONE', label: t('sorts.fewestQuizzesDone') },
+    { value: 'MOST_RECENT_ACTIVITY', label: t('sorts.mostRecentActivity') },
+];
 
 /** Attempted something, but averaging under half marks. */
 const atRisk = (row: LearnerQuizRow): boolean =>
     row.quizzesAttempted > 0 && row.avgScorePercent !== null && row.avgScorePercent < 50;
 
-const CSV_HEADERS = [
-    'Name',
-    'Email',
-    'Mobile',
-    'Quizzes attempted',
-    'Quizzes in course',
-    'Total attempts',
-    'Marks obtained',
-    'Max marks (attempted)',
-    'Max marks (course)',
-    'Average %',
-    'Best %',
-    'Lowest %',
-    'Correct',
-    'Wrong',
-    'Skipped',
-    'Quizzes passed',
-    'Last activity',
+const buildCsvHeaders = (t: TFunction) => [
+    t('csv.name'),
+    t('csv.email'),
+    t('csv.mobile'),
+    t('csv.quizzesAttempted'),
+    t('csv.quizzesInCourse'),
+    t('csv.totalAttempts'),
+    t('csv.marksObtained'),
+    t('csv.maxMarksAttempted'),
+    t('csv.maxMarksCourse'),
+    t('csv.averagePercent'),
+    t('csv.bestPercent'),
+    t('csv.lowestPercent'),
+    t('csv.correct'),
+    t('csv.wrong'),
+    t('csv.skipped'),
+    t('csv.quizzesPassed'),
+    t('csv.lastActivity'),
 ];
 
 const csvCell = (value: string | number | null | undefined): string => {
@@ -91,10 +100,14 @@ export default function LearnerQuizOverview({
     batchId: string;
     onOpenLearner: (userId: string) => void;
 }) {
+    const { t } = useTranslation('studyLibraryLearnerQuizOverview');
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<LearnerFilter>('ALL');
-    const [sort, setSort] = useState<LearnerSort>('Lowest average');
+    const [sort, setSort] = useState<LearnerSort>('LOWEST_AVERAGE');
     const [page, setPage] = useState(0);
+
+    const filters = useMemo(() => buildFilters(t), [t]);
+    const sorts = useMemo(() => buildSorts(t), [t]);
 
     const { data, isLoading, isFetching, error, refetch } = useQuery(
         learnerQuizOverviewQueryOptions(batchId, true)
@@ -120,19 +133,19 @@ export default function LearnerQuizOverview({
 
         const sorted = [...filtered];
         switch (sort) {
-            case 'Highest average':
+            case 'HIGHEST_AVERAGE':
                 sorted.sort((a, b) => (b.avgScorePercent ?? -1) - (a.avgScorePercent ?? -1));
                 break;
-            case 'Name (A–Z)':
+            case 'NAME_AZ':
                 sorted.sort((a, b) => (a.fullName ?? '').localeCompare(b.fullName ?? ''));
                 break;
-            case 'Most quizzes done':
+            case 'MOST_QUIZZES_DONE':
                 sorted.sort((a, b) => b.quizzesAttempted - a.quizzesAttempted);
                 break;
-            case 'Fewest quizzes done':
+            case 'FEWEST_QUIZZES_DONE':
                 sorted.sort((a, b) => a.quizzesAttempted - b.quizzesAttempted);
                 break;
-            case 'Most recent activity':
+            case 'MOST_RECENT_ACTIVITY':
                 sorted.sort(
                     (a, b) => (b.lastAttemptAtEpochMillis ?? 0) - (a.lastAttemptAtEpochMillis ?? 0)
                 );
@@ -160,7 +173,7 @@ export default function LearnerQuizOverview({
 
     const exportCsv = () => {
         if (visible.length === 0) {
-            toast.error('Nothing to export with these filters.');
+            toast.error(t('toast.nothingToExport'));
             return;
         }
         const rows = visible.map((r) =>
@@ -188,7 +201,7 @@ export default function LearnerQuizOverview({
                 .map(csvCell)
                 .join(',')
         );
-        const csv = [CSV_HEADERS.join(','), ...rows].join('\n');
+        const csv = [buildCsvHeaders(t).join(','), ...rows].join('\n');
         const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -196,14 +209,14 @@ export default function LearnerQuizOverview({
         link.download = 'quiz-results-by-learner.csv';
         link.click();
         URL.revokeObjectURL(url);
-        toast.success(`Exported ${visible.length} learners`);
+        toast.success(t('toast.exported', { count: visible.length }));
     };
 
     const columns = useMemo<ColumnDef<LearnerQuizRow>[]>(
         () => [
             {
                 id: 'learner',
-                header: 'Learner',
+                header: t('table.learner'),
                 size: 240,
                 accessorFn: (row) => row.fullName ?? '',
                 cell: ({ row }) => {
@@ -230,7 +243,7 @@ export default function LearnerQuizOverview({
             },
             {
                 id: 'progress',
-                header: 'Quizzes done',
+                header: t('table.quizzesDone'),
                 size: 160,
                 accessorFn: (row) => row.quizzesAttempted,
                 cell: ({ row }) => {
@@ -251,13 +264,17 @@ export default function LearnerQuizOverview({
             },
             {
                 id: 'average',
-                header: 'Average score',
+                header: t('table.averageScore'),
                 size: 170,
                 accessorFn: (row) => row.avgScorePercent ?? -1,
                 cell: ({ row }) => {
                     const learner = row.original;
                     if (learner.quizzesAttempted === 0) {
-                        return <span className="text-caption text-neutral-400">Not started</span>;
+                        return (
+                            <span className="text-caption text-neutral-400">
+                                {t('table.notStarted')}
+                            </span>
+                        );
                     }
                     return (
                         <ScoreMeter
@@ -270,20 +287,20 @@ export default function LearnerQuizOverview({
             },
             {
                 id: 'passed',
-                header: () => <div className="text-right">Passed</div>,
+                header: () => <div className="text-end">{t('table.passed')}</div>,
                 size: 90,
                 accessorFn: (row) => row.passedQuizzes,
                 cell: ({ row }) => {
                     const learner = row.original;
                     if (learner.quizzesWithPassMark === 0) {
                         return (
-                            <div className="text-right text-caption text-neutral-400">
-                                No pass mark
+                            <div className="text-end text-caption text-neutral-400">
+                                {t('table.noPassMark')}
                             </div>
                         );
                     }
                     return (
-                        <div className="text-right tabular-nums text-neutral-700">
+                        <div className="text-end tabular-nums text-neutral-700">
                             {learner.passedQuizzes} / {learner.quizzesWithPassMark}
                         </div>
                     );
@@ -291,18 +308,18 @@ export default function LearnerQuizOverview({
             },
             {
                 id: 'attempts',
-                header: () => <div className="text-right">Attempts</div>,
+                header: () => <div className="text-end">{t('table.attempts')}</div>,
                 size: 90,
                 accessorFn: (row) => row.totalAttempts,
                 cell: ({ row }) => (
-                    <div className="text-right tabular-nums text-neutral-700">
+                    <div className="text-end tabular-nums text-neutral-700">
                         {row.original.totalAttempts || '—'}
                     </div>
                 ),
             },
             {
                 id: 'last',
-                header: 'Last activity',
+                header: t('table.lastActivity'),
                 size: 120,
                 accessorFn: (row) => row.lastAttemptAtEpochMillis ?? 0,
                 cell: ({ row }) => (
@@ -312,18 +329,18 @@ export default function LearnerQuizOverview({
                 ),
             },
         ],
-        []
+        [t]
     );
 
     if (error) {
         return (
             <QuizResultsMessage
                 tone="danger"
-                title="Could not load learner results"
-                subtitle="The request failed. Check your connection and try again."
+                title={t('errors.couldNotLoad')}
+                subtitle={t('errors.couldNotLoadSubtitle')}
                 action={
                     <MyButton buttonType="secondary" scale="medium" onClick={() => refetch()}>
-                        Retry
+                        {t('actions.retry')}
                     </MyButton>
                 }
             />
@@ -337,32 +354,36 @@ export default function LearnerQuizOverview({
         <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <StatTile
-                    label="Learners"
+                    label={t('stats.learners')}
                     value={formatNumber(summary?.enrolledLearners ?? 0)}
-                    hint={`${formatNumber(summary?.quizzesInCourse ?? 0)} quizzes in this course`}
+                    hint={t('stats.quizzesInCourse', {
+                        count: summary?.quizzesInCourse ?? 0,
+                    })}
                     icon={UsersThree}
                     accent="bg-primary-500"
                 />
                 <StatTile
-                    label="Have attempted"
+                    label={t('stats.haveAttempted')}
                     value={`${formatNumber(summary?.learnersAttempted ?? 0)} / ${formatNumber(
                         summary?.enrolledLearners ?? 0
                     )}`}
-                    hint={`${formatNumber(summary?.learnersNotStarted ?? 0)} have not started`}
+                    hint={t('stats.haveNotStarted', {
+                        count: summary?.learnersNotStarted ?? 0,
+                    })}
                     icon={Target}
                     accent="bg-info-500"
                 />
                 <StatTile
-                    label="Class average"
+                    label={t('stats.classAverage')}
                     value={formatPercent(summary?.avgScorePercent)}
-                    hint="Of learners who started"
+                    hint={t('stats.ofLearnersWhoStarted')}
                     icon={Target}
                     accent="bg-success-500"
                 />
                 <StatTile
-                    label="At risk"
+                    label={t('stats.atRisk')}
                     value={formatNumber(atRiskCount)}
-                    hint="Averaging under 50%"
+                    hint={t('stats.averagingUnder50')}
                     icon={WarningCircle}
                     accent="bg-danger-500"
                 />
@@ -371,7 +392,7 @@ export default function LearnerQuizOverview({
             <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
                     <MagnifyingGlass
-                        className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-neutral-400"
+                        className="pointer-events-none absolute start-3 top-1/2 z-10 size-4 -translate-y-1/2 text-neutral-400"
                         aria-hidden="true"
                     />
                     <MyInput
@@ -381,18 +402,18 @@ export default function LearnerQuizOverview({
                             setSearch(event.target.value);
                             setPage(0);
                         }}
-                        inputPlaceholder="Search learners"
+                        inputPlaceholder={t('searchPlaceholder')}
                         size="medium"
-                        className="w-full pl-9 sm:w-64"
+                        className="w-full ps-9 sm:w-64"
                     />
                 </div>
 
                 <div
                     className="flex flex-wrap items-center gap-1.5"
                     role="group"
-                    aria-label="Filter learners"
+                    aria-label={t('filterLearnersAriaLabel')}
                 >
-                    {FILTERS.map((option) => {
+                    {filters.map((option) => {
                         const isActive = filter === option.value;
                         return (
                             <button
@@ -417,21 +438,21 @@ export default function LearnerQuizOverview({
                     })}
                 </div>
 
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ms-auto flex items-center gap-2">
                     <MyDropdown
                         currentValue={sort}
-                        dropdownList={[...SORTS]}
+                        dropdownList={sorts}
                         handleChange={(value) => setSort(value as LearnerSort)}
                     />
                     <MyButton buttonType="secondary" scale="medium" onClick={exportCsv}>
                         <DownloadSimple className="size-4" aria-hidden="true" />
-                        Export CSV
+                        {t('actions.exportCsv')}
                     </MyButton>
                     <MyButton
                         buttonType="secondary"
                         scale="medium"
                         layoutVariant="icon"
-                        aria-label="Refresh learner results"
+                        aria-label={t('actions.refreshAriaLabel')}
                         onClick={() => refetch()}
                         disable={isFetching}
                     >
@@ -442,8 +463,7 @@ export default function LearnerQuizOverview({
 
             {data?.truncated && (
                 <p className="rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-caption text-warning-700">
-                    This batch has more learners than the report returns at once — the list below is
-                    capped.
+                    {t('truncatedNotice')}
                 </p>
             )}
 
@@ -451,13 +471,13 @@ export default function LearnerQuizOverview({
                 <QuizResultsMessage
                     title={
                         learners.length === 0
-                            ? 'No learners enrolled in this batch yet'
-                            : 'No learners match these filters'
+                            ? t('empty.noneEnrolledTitle')
+                            : t('empty.noMatchTitle')
                     }
                     subtitle={
                         learners.length === 0
-                            ? 'Once learners are enrolled, their quiz progress shows up here.'
-                            : 'Try a different search term or clear the filters.'
+                            ? t('empty.noneEnrolledSubtitle')
+                            : t('empty.noMatchSubtitle')
                     }
                     action={
                         learners.length > 0 ? (
@@ -469,7 +489,7 @@ export default function LearnerQuizOverview({
                                     setFilter('ALL');
                                 }}
                             >
-                                Clear filters
+                                {t('actions.clearFilters')}
                             </MyButton>
                         ) : undefined
                     }

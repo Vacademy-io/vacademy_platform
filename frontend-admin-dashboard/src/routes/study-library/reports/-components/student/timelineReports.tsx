@@ -1,5 +1,7 @@
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     Select,
     SelectContent,
@@ -15,7 +17,7 @@ import { z } from 'zod';
 import { MyButton } from '@/components/design-system/button';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { CheckCircle, Clock, Brain, ChartLineUp, Export } from '@phosphor-icons/react';
-import { METRIC_INFO } from '../metricInfo';
+import { buildMetricInfo } from '../metricInfo';
 import { ReportHeader, MetricCard, SectionCard } from '../reportUi';
 import ReportRecipientsDialogBox from './reportRecipientsDialogBox';
 import { useMutation } from '@tanstack/react-query';
@@ -50,32 +52,38 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import DateRangeFilter from '@/components/design-system/date-range-filter';
 
-const formSchema = z
-    .object({
-        course: z.string().min(1, 'Course is required'),
-        session: z.string().min(1, 'Session is required'),
-        level: z.string().min(1, 'Level is required'),
-        student: z.string().min(1, 'Student is required'),
-        startDate: z.string().min(1, 'Start Date is required'),
-        endDate: z.string().min(1, 'End Date is required'),
-    })
-    .refine(
-        (data) => {
-            const start = new Date(data.startDate);
-            const end = new Date(data.endDate);
-            const diffInDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-            return diffInDays <= 30;
-        },
-        {
-            message:
-                'The difference between Start Date and End Date should be less than one month.',
-            path: ['startDate'],
-        }
-    );
+const buildFormSchema = (t: TFunction) =>
+    z
+        .object({
+            course: z.string().min(1, t('form.courseRequired')),
+            session: z.string().min(1, t('form.sessionRequired')),
+            level: z.string().min(1, t('form.levelRequired')),
+            student: z.string().min(1, t('form.studentRequired')),
+            startDate: z.string().min(1, t('form.startDateRequired')),
+            endDate: z.string().min(1, t('form.endDateRequired')),
+        })
+        .refine(
+            (data) => {
+                const start = new Date(data.startDate);
+                const end = new Date(data.endDate);
+                const diffInDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+                return diffInDays <= 30;
+            },
+            {
+                message: t('form.dateRangeTooLong'),
+                path: ['startDate'],
+            }
+        );
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<ReturnType<typeof buildFormSchema>>;
 
 export default function TimelineReports() {
+    const { t } = useTranslation([
+        'studyLibraryStudentTimelineReports',
+        'studyLibraryExportLearningPdf',
+        'studyLibraryReportsMetricInfo',
+    ]);
+    const METRIC_INFO = buildMetricInfo(t);
     const {
         getCourseFromPackage,
         getSessionFromPackage,
@@ -124,7 +132,7 @@ export default function TimelineReports() {
         clearErrors,
         formState: { errors },
     } = useForm<FormValues>({
-        resolver: zodResolver(formSchema),
+        resolver: zodResolver(buildFormSchema(t)),
         defaultValues: {
             course: '',
             session: '',
@@ -303,6 +311,7 @@ export default function TimelineReports() {
                     learnerName: studentList.find((s) => s.user_id === selectedStudent)?.full_name,
                 },
                 reportData,
+                t,
                 {
                     slides: slideData ?? [],
                     hideModule: isSlideColumnAllDefault('module_name'),
@@ -311,9 +320,9 @@ export default function TimelineReports() {
                     chapterTerm: getTerminology(ContentTerms.Chapter, SystemTerms.Chapter),
                 }
             );
-            toast.success('Learner report exported');
+            toast.success(t('toast.exportSuccess'));
         } catch {
-            toast.error('Failed to export PDF');
+            toast.error(t('toast.exportFailed'));
         } finally {
             setIsExporting(false);
         }
@@ -371,14 +380,12 @@ export default function TimelineReports() {
                                 }))}
                                 value={selectedCourse}
                                 onChange={(value) => setValue('course', value)}
-                                placeholder={`Select a ${getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                )}`}
-                                searchPlaceholder={`Search ${getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                )}...`}
+                                placeholder={t('form.selectPlaceholder', {
+                                    term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                })}
+                                searchPlaceholder={t('form.searchPlaceholder', {
+                                    term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                })}
                                 triggerClassName="h-9 text-sm"
                             />
                         </div>
@@ -397,10 +404,12 @@ export default function TimelineReports() {
                             >
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue
-                                        placeholder={`Select a ${getTerminology(
-                                            ContentTerms.Session,
-                                            SystemTerms.Session
-                                        )}`}
+                                        placeholder={t('form.selectPlaceholder', {
+                                            term: getTerminology(
+                                                ContentTerms.Session,
+                                                SystemTerms.Session
+                                            ),
+                                        })}
                                     />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -427,10 +436,12 @@ export default function TimelineReports() {
                             >
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue
-                                        placeholder={`Select a ${getTerminology(
-                                            ContentTerms.Level,
-                                            SystemTerms.Level
-                                        )}`}
+                                        placeholder={t('form.selectPlaceholder', {
+                                            term: getTerminology(
+                                                ContentTerms.Level,
+                                                SystemTerms.Level
+                                            ),
+                                        })}
                                     />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -447,7 +458,7 @@ export default function TimelineReports() {
                     {/* Student Selection Row */}
                     <div>
                         <label className="text-xs font-medium text-neutral-700 mb-1 block">
-                            Name <span className="text-red-500 ml-1">*</span>
+                            {t('form.nameLabel')} <span className="text-red-500 ms-1">*</span>
                         </label>
                         <Select
                             onValueChange={(value) => setValue('student', value)}
@@ -459,12 +470,12 @@ export default function TimelineReports() {
                             disabled={!studentList.length}
                         >
                             <SelectTrigger className="h-9 text-sm">
-                                <SelectValue placeholder="Select Student" />
+                                <SelectValue placeholder={t('form.selectStudent')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <Command>
                                     <CommandInput
-                                        placeholder="Search Student..."
+                                        placeholder={t('form.searchStudent')}
                                         value={searchTerm}
                                         onValueChange={setSearchTerm}
                                     />
@@ -482,7 +493,7 @@ export default function TimelineReports() {
                                                 </SelectItem>
                                             ))
                                         ) : (
-                                            <div className="p-2 text-gray-500">No students found</div>
+                                            <div className="p-2 text-gray-500">{t('form.noStudentsFound')}</div>
                                         )}
                                     </CommandList>
                                 </Command>
@@ -515,7 +526,7 @@ export default function TimelineReports() {
                                 buttonType="primary"
                                 className="h-9 px-4 text-sm font-medium focus:!bg-primary-600 focus:!border-primary-600 focus:!text-white active:!bg-primary-600 active:!border-primary-600 active:!text-white focus:!outline-none focus:!ring-0"
                             >
-                                Generate Report
+                                {t('actions.generateReport')}
                             </MyButton>
                         </div>
                     </div>
@@ -524,7 +535,7 @@ export default function TimelineReports() {
                     {Object.keys(errors).length > 0 && (
                         <div className="rounded-md bg-red-50 border border-red-200 p-3">
                             <div className="text-sm text-red-800">
-                                <p className="font-medium mb-1">Please fix the following errors:</p>
+                                <p className="font-medium mb-1">{t('form.errorsHeading')}</p>
                                 <ul className="space-y-1">
                                     {Object.entries(errors)?.map(([key, error]) => (
                                         <li key={key} className="text-xs">• {error.message}</li>
@@ -546,7 +557,7 @@ export default function TimelineReports() {
                         title={studentList.find((s) => s.user_id === selectedStudent)?.full_name || ''}
                         chips={
                             <>
-                                <span className="text-caption text-neutral-500">Duration:</span>
+                                <span className="text-caption text-neutral-500">{t('report.duration')}</span>
                                 <span className="rounded-md bg-primary-50 px-2 py-1 text-caption font-medium text-neutral-700">
                                     {dayjs(appliedDateRange?.start || startDate).format('DD MMM YYYY')}
                                 </span>
@@ -566,7 +577,7 @@ export default function TimelineReports() {
                                     className="h-9 px-4 text-body"
                                 >
                                     <Export className="mr-1.5 size-4" />
-                                    {isExporting ? 'Exporting…' : 'Export PDF'}
+                                    {isExporting ? t('actions.exporting') : t('actions.exportPdf')}
                                 </MyButton>
                             </>
                         }
@@ -576,7 +587,7 @@ export default function TimelineReports() {
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         <MetricCard
                             tone="success"
-                            label={`${getTerminology(ContentTerms.Course, SystemTerms.Course)} Completed`}
+                            label={t('report.courseCompletedLabel', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) })}
                             value={`${formatToTwoDecimalPlaces(
                                 reportData?.learner_progress_report?.percentage_course_completed
                             )}%`}
@@ -588,7 +599,7 @@ export default function TimelineReports() {
                         />
                         <MetricCard
                             tone="primary"
-                            label="Daily Time Spent (Avg)"
+                            label={t('report.dailyTimeSpentAvg')}
                             value={convertMinutesToTimeFormat(
                                 reportData?.learner_progress_report?.avg_time_spent_in_minutes ?? 0
                             )}
@@ -600,7 +611,7 @@ export default function TimelineReports() {
                         />
                         <MetricCard
                             tone="warning"
-                            label="Concentration Score (Avg)"
+                            label={t('report.concentrationScoreAvg')}
                             value={`${formatToTwoDecimalPlaces(
                                 reportData?.learner_progress_report?.percentage_concentration_score || 0
                             )}%`}
@@ -613,8 +624,8 @@ export default function TimelineReports() {
                     </div>
                     {/* Daily Learning Performance */}
                     <SectionCard
-                        title="Daily Learning Performance"
-                        subtitle="Track daily progress and activity patterns"
+                        title={t('report.dailyLearningPerformance')}
+                        subtitle={t('report.trackDailyProgress')}
                         icon={<ChartLineUp className="size-4" />}
                     >
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -628,7 +639,7 @@ export default function TimelineReports() {
                             <div className="lg:col-span-1">
                                 <div className="h-full rounded-lg bg-neutral-50 p-4">
                                     <h4 className="mb-4 text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                                        Activity Summary
+                                        {t('report.activitySummary')}
                                     </h4>
                                     <div className="h-96 overflow-auto">
                                         <div className="!min-w-full [&_table]:!w-full [&_table]:!min-w-full [&_td]:!whitespace-nowrap [&_th]:!whitespace-nowrap">
@@ -650,12 +661,12 @@ export default function TimelineReports() {
                     {slideData && (
                         <div className="flex flex-col gap-6">
                             <div className="text-h3 font-[600] text-primary-500">
-                                Learning Timeline
+                                {t('report.learningTimeline')}
                             </div>
                             {slideData?.map((slide, idx) => (
                                 <div key={idx} className="flex flex-col gap-1">
                                     <div className="flex flex-row gap-1 font-[600]">
-                                        Date:{' '}
+                                        {t('report.dateLabel')}{' '}
                                         <div className="text-primary-500">
                                             {dayjs(slide.date).format('DD-MM-YYYY')}
                                         </div>

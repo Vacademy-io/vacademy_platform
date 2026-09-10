@@ -1,17 +1,18 @@
 import SelectChips from '@/components/design-system/SelectChips';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FilterType } from '../../-types/filter-type';
 import { useDoubtFilters } from '../../-stores/filter-store';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
-const AllBatchOption = {
-    label: 'All',
-    value: '',
-};
-
 export const BatchFilter = () => {
+    const { t } = useTranslation('studyLibraryBatchFilter');
+    const AllBatchOption = {
+        label: t('all'),
+        value: '',
+    };
     const { instituteDetails } = useInstituteDetailsStore();
     const { updateFilters } = useDoubtFilters();
 

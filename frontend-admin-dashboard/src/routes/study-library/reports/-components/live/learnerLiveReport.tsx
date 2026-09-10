@@ -3,6 +3,8 @@ import { ColumnDef } from '@tanstack/react-table';
 import { Link } from '@tanstack/react-router';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     CalendarCheck,
     Presentation,
@@ -40,34 +42,38 @@ interface ClassRow {
     raiseHand: string;
 }
 
-const classColumns: ColumnDef<ClassRow>[] = [
-    { accessorKey: 'date', header: 'Date' },
-    { accessorKey: 'title', header: 'Class' },
-    {
-        accessorKey: 'status',
-        header: 'Status',
-        cell: ({ row }) => {
-            const present = row.original.status === 'PRESENT';
-            return (
-                <StatusChip
-                    text={present ? 'Present' : 'Absent'}
-                    textSize="text-caption"
-                    status={present ? 'SUCCESS' : 'DANGER'}
-                />
-            );
+function buildClassColumns(t: TFunction): ColumnDef<ClassRow>[] {
+    return [
+        { accessorKey: 'date', header: t('table.date') },
+        { accessorKey: 'title', header: t('table.class') },
+        {
+            accessorKey: 'status',
+            header: t('table.status'),
+            cell: ({ row }) => {
+                const present = row.original.status === 'PRESENT';
+                return (
+                    <StatusChip
+                        text={present ? t('table.present') : t('table.absent')}
+                        textSize="text-caption"
+                        status={present ? 'SUCCESS' : 'DANGER'}
+                    />
+                );
+            },
         },
-    },
-    { accessorKey: 'duration', header: 'Duration' },
-    { accessorKey: 'talkTime', header: 'Talk Time' },
-    { accessorKey: 'chats', header: 'Chats' },
-    { accessorKey: 'polls', header: 'Polls' },
-    { accessorKey: 'raiseHand', header: 'Raise Hand' },
-];
+        { accessorKey: 'duration', header: t('table.duration') },
+        { accessorKey: 'talkTime', header: t('table.talkTime') },
+        { accessorKey: 'chats', header: t('table.chats') },
+        { accessorKey: 'polls', header: t('table.polls') },
+        { accessorKey: 'raiseHand', header: t('table.raiseHand') },
+    ];
+}
 
 export default function LearnerLiveReport() {
+    const { t } = useTranslation('studyLibraryLearnerLiveReport');
     const { instituteDetails } = useInstituteDetailsStore();
     const [applied, setApplied] = useState<AppliedLiveFilters | null>(null);
     const [exporting, setExporting] = useState(false);
+    const classColumns = useMemo(() => buildClassColumns(t), [t]);
 
     const { data, isFetching, isError } = useLiveBatchReport(
         applied?.packageSessionId || '',
@@ -109,7 +115,7 @@ export default function LearnerLiveReport() {
                         date: fmtDate(r.meetingDate),
                         title: r.title,
                         status: r.attendanceStatus ?? 'UNMARKED',
-                        duration: formatDuration(r.durationMinutes),
+                        duration: formatDuration(r.durationMinutes, t),
                         talkTime: e ? `${Math.round(e.talkTimeSeconds / 60)}m` : '—',
                         chats: e ? String(e.chats) : '—',
                         polls: e ? String(e.pollVotes) : '—',
@@ -135,15 +141,17 @@ export default function LearnerLiveReport() {
                     courseName: applied.courseName,
                     batchLabel: applied.batchLabel,
                     dateRange: `${fmtDate(applied.startDate)} — ${fmtDate(applied.endDate)}`,
-                    generatedOn: `Generated ${dayjs().format('DD MMM YYYY, HH:mm')}`,
+                    generatedOn: t('export.generatedOn', {
+                        date: dayjs().format('DD MMM YYYY, HH:mm'),
+                    }),
                 },
                 learner,
                 learnerStudent.sessions,
                 batchSummary
             );
-            toast.success('Learner report exported');
+            toast.success(t('export.exportSuccess'));
         } catch {
-            toast.error('Failed to export PDF');
+            toast.error(t('export.exportFailed'));
         } finally {
             setExporting(false);
         }
@@ -159,15 +167,15 @@ export default function LearnerLiveReport() {
 
             {isError && !isFetching && (
                 <div className="rounded-lg border border-danger-200 bg-danger-50 p-6 text-body text-danger-700">
-                    Something went wrong loading the report. Please try again.
+                    {t('errors.loadFailed')}
                 </div>
             )}
 
             {applied && !isFetching && !isError && !hasData && (
                 <div className="rounded-lg border border-neutral-200 bg-white p-10 text-center shadow-sm">
-                    <p className="text-subtitle font-semibold text-neutral-700">No live classes found</p>
+                    <p className="text-subtitle font-semibold text-neutral-700">{t('emptyState.title')}</p>
                     <p className="mt-1 text-body text-neutral-500">
-                        This learner had no live classes scheduled in the selected period.
+                        {t('emptyState.description')}
                     </p>
                 </div>
             )}
@@ -193,8 +201,8 @@ export default function LearnerLiveReport() {
                             <div className="flex flex-wrap items-center gap-2">
                                 <Link to="/study-library/attendance-tracker">
                                     <MyButton buttonType="secondary" className="h-9 px-3 text-body">
-                                        <ArrowSquareOut className="mr-1.5 size-4" />
-                                        Attendance Tracker
+                                        <ArrowSquareOut className="me-1.5 size-4" />
+                                        {t('actions.attendanceTracker')}
                                     </MyButton>
                                 </Link>
                                 <MyButton
@@ -203,8 +211,8 @@ export default function LearnerLiveReport() {
                                     disable={exporting}
                                     className="h-9 px-3 text-body"
                                 >
-                                    <Export className="mr-1.5 size-4" />
-                                    {exporting ? 'Exporting…' : 'Export PDF'}
+                                    <Export className="me-1.5 size-4" />
+                                    {exporting ? t('actions.exporting') : t('actions.exportPdf')}
                                 </MyButton>
                             </div>
                         </div>
@@ -213,35 +221,41 @@ export default function LearnerLiveReport() {
                     {/* Metric cards with batch comparison */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <MetricCard
-                            label="Attendance"
+                            label={t('metrics.attendance')}
                             value={`${learner.attendancePercentage.toFixed(1)}%`}
-                            sub={`Batch ${batchSummary.avgAttendancePct.toFixed(1)}%`}
+                            sub={t('metrics.batchPercentage', {
+                                value: batchSummary.avgAttendancePct.toFixed(1),
+                            })}
                             icon={<CalendarCheck className="size-5" />}
                         />
                         <MetricCard
-                            label="Classes Attended"
+                            label={t('metrics.classesAttended')}
                             value={`${learner.attended}/${learner.total}`}
                             icon={<Presentation className="size-5" />}
                         />
                         <MetricCard
-                            label="Avg Duration / Class"
-                            value={formatDuration(learner.avgDurationMinutes)}
-                            sub={`Batch ${formatDuration(batchSummary.avgDurationMinutes)}`}
+                            label={t('metrics.avgDurationPerClass')}
+                            value={formatDuration(learner.avgDurationMinutes, t)}
+                            sub={t('metrics.batchDuration', {
+                                value: formatDuration(batchSummary.avgDurationMinutes, t),
+                            })}
                             icon={<Timer className="size-5" />}
                         />
                         <MetricCard
-                            label="Engagement"
+                            label={t('metrics.engagement')}
                             value={`${learnerEngagementScore}`}
-                            sub={`Batch ${batchSummary.avgEngagementScore} · out of 100`}
+                            sub={t('metrics.batchEngagement', {
+                                value: batchSummary.avgEngagementScore,
+                            })}
                             icon={<ChatsCircle className="size-5" />}
-                            info="Engagement score (0–100) based on in-class participation — talk time, chats, polls and raise-hands, measured per class. 100 = the most active learner in this batch. Only available for provider-synced (Zoom/BBB) classes."
+                            info={t('metrics.engagementInfo')}
                         />
                     </div>
 
                     {/* Class history */}
                     <SectionCard
-                        title="Class History"
-                        subtitle="Attendance and participation for every class in the period"
+                        title={t('sections.classHistoryTitle')}
+                        subtitle={t('sections.classHistorySubtitle')}
                     >
                         <div className="overflow-auto">
                             <MyTable

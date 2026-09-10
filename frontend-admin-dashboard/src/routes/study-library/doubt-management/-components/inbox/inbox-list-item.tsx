@@ -2,6 +2,7 @@ import { Doubt } from '@/routes/study-library/courses/course-details/subjects/mo
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ChatsCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 import { CategoryCell } from '../doubt-table/category-cell';
 import { getInitials, stripHtml, timeAgo } from './utils';
 
@@ -17,12 +18,13 @@ export const InboxListItem = ({
     onSelect: () => void;
     learnerName?: string;
 }) => {
+    const { t, i18n } = useTranslation('studyLibraryInboxListItem');
     const isResolved = doubt.status === 'RESOLVED';
     const snippet = stripHtml(doubt.html_text);
     const replyCount = doubt.replies?.length ?? 0;
     // Logged-out (guest) queries have no user_id — show the contact the guest left.
     const isGuest = !doubt.user_id && !!doubt.guest_name;
-    const name = isGuest ? doubt.guest_name! : learnerName ?? 'Anonymous';
+    const name = isGuest ? doubt.guest_name! : learnerName ?? t('anonymous');
 
     return (
         <button
@@ -37,7 +39,7 @@ export const InboxListItem = ({
             <div className="flex items-center gap-2">
                 <span
                     aria-hidden
-                    title={isResolved ? 'Resolved' : 'Unresolved'}
+                    title={isResolved ? t('resolved') : t('unresolved')}
                     className={cn(
                         'size-1.5 shrink-0 rounded-full',
                         isResolved ? 'bg-success-500' : 'bg-warning-500'
@@ -52,19 +54,19 @@ export const InboxListItem = ({
                     <span className="truncate text-sm font-medium text-neutral-800">{name}</span>
                     {isGuest && (
                         <span className="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-neutral-500">
-                            Guest
+                            {t('guest')}
                         </span>
                     )}
                 </span>
                 <span className="shrink-0 text-caption text-neutral-400">
-                    {timeAgo(doubt.raised_time)}
+                    {timeAgo(doubt.raised_time, t, i18n.language)}
                 </span>
             </div>
             {isGuest && doubt.guest_email && (
                 <p className="truncate pl-1 text-caption text-neutral-400">{doubt.guest_email}</p>
             )}
             <p className="line-clamp-2 pl-1 text-xs text-neutral-600">
-                {snippet || 'No description'}
+                {snippet || t('noDescription')}
             </p>
             <div className="flex items-center gap-2 pl-1">
                 <CategoryCell doubt={doubt} />

@@ -1,5 +1,7 @@
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     Select,
     SelectContent,
@@ -30,15 +32,17 @@ export interface AppliedLiveFilters {
     learnerName?: string;
 }
 
-const buildSchema = (withLearner: boolean) =>
+const buildSchema = (t: TFunction, withLearner: boolean) =>
     z
         .object({
-            course: z.string().min(1, 'Course is required'),
-            session: z.string().min(1, 'Session is required'),
-            level: z.string().min(1, 'Level is required'),
-            startDate: z.string().min(1, 'Start Date is required'),
-            endDate: z.string().min(1, 'End Date is required'),
-            learner: withLearner ? z.string().min(1, 'Learner is required') : z.string().optional(),
+            course: z.string().min(1, t('validation.courseRequired')),
+            session: z.string().min(1, t('validation.sessionRequired')),
+            level: z.string().min(1, t('validation.levelRequired')),
+            startDate: z.string().min(1, t('validation.startDateRequired')),
+            endDate: z.string().min(1, t('validation.endDateRequired')),
+            learner: withLearner
+                ? z.string().min(1, t('validation.learnerRequired'))
+                : z.string().optional(),
         })
         .refine(
             (data) => {
@@ -48,7 +52,7 @@ const buildSchema = (withLearner: boolean) =>
                 return diffInDays <= 31;
             },
             {
-                message: 'The date range should be within one month.',
+                message: t('validation.dateRangeWithinMonth'),
                 path: ['startDate'],
             }
         );
@@ -60,6 +64,7 @@ interface Props {
 }
 
 export default function LiveReportFilterForm({ withLearner = false, submitting = false, onApply }: Props) {
+    const { t } = useTranslation('studyLibraryLiveReportFilterForm');
     const { getCourseFromPackage, getSessionFromPackage, getLevelsFromPackage2, getPackageSessionId } =
         useInstituteDetailsStore();
     const courseList = getCourseFromPackage();
@@ -75,7 +80,7 @@ export default function LiveReportFilterForm({ withLearner = false, submitting =
         clearErrors,
         formState: { errors },
     } = useForm<FormValues>({
-        resolver: zodResolver(buildSchema(withLearner)),
+        resolver: zodResolver(buildSchema(t, withLearner)),
         defaultValues: { course: '', session: '', level: '', startDate: '', endDate: '', learner: '' },
     });
 
@@ -176,8 +181,12 @@ export default function LiveReportFilterForm({ withLearner = false, submitting =
                                 setValue('course', value);
                                 clearErrors('course');
                             }}
-                            placeholder={`Select a ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}
-                            searchPlaceholder={`Search ${getTerminology(ContentTerms.Course, SystemTerms.Course)}...`}
+                            placeholder={t('selectPlaceholder', {
+                                term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                            })}
+                            searchPlaceholder={t('searchPlaceholder', {
+                                term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                            })}
                             triggerClassName="h-9 text-body"
                         />
                     </div>
@@ -195,7 +204,12 @@ export default function LiveReportFilterForm({ withLearner = false, submitting =
                             >
                                 <SelectTrigger className="h-9 text-body">
                                     <SelectValue
-                                        placeholder={`Select a ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
+                                        placeholder={t('selectPlaceholder', {
+                                            term: getTerminology(
+                                                ContentTerms.Session,
+                                                SystemTerms.Session
+                                            ),
+                                        })}
                                     />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -222,7 +236,12 @@ export default function LiveReportFilterForm({ withLearner = false, submitting =
                             >
                                 <SelectTrigger className="h-9 text-body">
                                     <SelectValue
-                                        placeholder={`Select a ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`}
+                                        placeholder={t('selectPlaceholder', {
+                                            term: getTerminology(
+                                                ContentTerms.Level,
+                                                SystemTerms.Level
+                                            ),
+                                        })}
                                     />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -253,8 +272,12 @@ export default function LiveReportFilterForm({ withLearner = false, submitting =
                                 setValue('learner', value);
                                 clearErrors('learner');
                             }}
-                            placeholder="Select a learner"
-                            searchPlaceholder="Search learner..."
+                            placeholder={t('selectPlaceholder', {
+                                term: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
+                            })}
+                            searchPlaceholder={t('searchPlaceholder', {
+                                term: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
+                            })}
                             disabled={!derivedPackageSessionId || !learners?.length}
                             triggerClassName="h-9 text-body"
                         />
@@ -281,7 +304,7 @@ export default function LiveReportFilterForm({ withLearner = false, submitting =
                     </div>
                     <div className="sm:mb-1">
                         <MyButton type="submit" buttonType="primary" className="h-9 px-4 text-body" disabled={submitting}>
-                            {submitting ? 'Loading…' : 'Generate Report'}
+                            {submitting ? t('loading') : t('generateReport')}
                         </MyButton>
                     </div>
                 </div>
@@ -289,7 +312,7 @@ export default function LiveReportFilterForm({ withLearner = false, submitting =
                 {Object.keys(errors).length > 0 && (
                     <div className="rounded-md border border-danger-200 bg-danger-50 p-3">
                         <p className="mb-1 text-body font-medium text-danger-700">
-                            Please fix the following:
+                            {t('fixFollowing')}
                         </p>
                         <ul className="space-y-1">
                             {Object.entries(errors).map(([key, error]) => (

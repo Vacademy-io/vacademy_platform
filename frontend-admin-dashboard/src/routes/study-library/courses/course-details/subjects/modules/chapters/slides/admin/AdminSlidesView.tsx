@@ -21,6 +21,7 @@ import { getSubjectName } from '@/utils/helpers/study-library-helpers.ts/get-nam
 import { useNavigate } from '@tanstack/react-router';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import React, { useEffect, useRef, useState, useMemo, useCallback, Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SaveDraftProvider } from '../-context/saveDraftContext';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { useModulesWithChaptersStore } from '@/stores/study-library/use-modules-with-chapters-store';
@@ -58,6 +59,7 @@ export function AdminSlidesView({
     sessionId,
 }: AdminSlidesViewProps) {
     const navigate = useNavigate();
+    const { t } = useTranslation('studyLibraryAdminSlidesView');
     const { studyLibraryData } = useStudyLibraryStore();
     const { modulesWithChaptersData } = useModulesWithChaptersStore();
     const [subjectName, setSubjectName] = useState('');
@@ -160,7 +162,11 @@ export function AdminSlidesView({
                         relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
                         ${isLearnerView ? 'bg-primary-500' : 'bg-neutral-300'}
                     `}
-                    title={isLearnerView ? 'Switch to Instructor View' : 'Switch to Learner View'}
+                    title={
+                        isLearnerView
+                            ? t('toggle.switchToInstructorView')
+                            : t('toggle.switchToLearnerView')
+                    }
                 >
                     <span
                         className={`

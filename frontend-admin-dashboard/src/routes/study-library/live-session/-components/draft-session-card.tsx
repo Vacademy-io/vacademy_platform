@@ -1,4 +1,5 @@
 import QRCode from 'react-qr-code';
+import { useTranslation } from 'react-i18next';
 import { Copy, DownloadSimple, DotsThree } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { copyToClipboard } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
@@ -27,6 +28,7 @@ interface DraftSessionCardProps {
 }
 
 export default function DraftSessionCard({ session }: DraftSessionCardProps) {
+    const { t } = useTranslation('studyLibraryLiveSessionDraftSessionCard');
     // Local state for fetched session details
     const [scheduleInfo, setScheduleInfo] = useState<SessionBySessionIdResponse['schedule'] | null>(
         null
@@ -118,16 +120,16 @@ export default function DraftSessionCard({ session }: DraftSessionCardProps) {
                                     });
                                 }}
                             >
-                                View Details
+                                {t('viewDetails')}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={handleEditSession}
                             >
-                                Edit Live Session
+                                {t('editLiveSession')}
                             </DropdownMenuItem>
                             <DropdownMenuItem className="cursor-pointer" onClick={handleDelete}>
-                                Delete Live Session
+                                {t('deleteLiveSession')}
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -143,24 +145,26 @@ export default function DraftSessionCard({ session }: DraftSessionCardProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-black">Start Date & Time:</span>
-                    <span>{formattedDateTime || 'N/A'}</span>
+                    <span className="text-black">{t('startDateTime')}</span>
+                    <span>{formattedDateTime || t('notAvailable')}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-black">Last Entry:</span>
-                    <span>{scheduleInfo?.last_entry_time ?? session.last_entry_time ?? 'N/A'}</span>
+                    <span className="text-black">{t('lastEntry')}</span>
+                    <span>
+                        {scheduleInfo?.last_entry_time ?? session.last_entry_time ?? t('notAvailable')}
+                    </span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-black">Meeting Type:</span>
+                    <span className="text-black">{t('meetingType')}</span>
                     <span>{session.recurrence_type}</span>
                 </div>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-2 overflow-hidden text-sm text-neutral-500">
-                    <h1 className="shrink-0 !font-normal text-black">Join Link:</h1>
+                    <h1 className="shrink-0 !font-normal text-black">{t('joinLink')}</h1>
                     <span className="min-w-0 flex-1 truncate px-1 py-1 text-sm underline sm:px-3 sm:py-2">{joinLink}</span>
                     <MyButton
                         type="button"

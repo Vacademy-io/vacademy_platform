@@ -5,6 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CaretLeft, CaretRight, PencilSimpleLine, UploadSimple } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -59,11 +61,15 @@ const isEvaluatedStatus = (status?: string | null) => {
 };
 
 // Maps the attempt's evaluation_status to a learner-friendly chip.
-const StatusChip = ({ status }: { status?: string | null }) => {
+const StatusChip = ({ status, t }: { status?: string | null; t: TFunction }) => {
     const s = (status || 'PENDING').toUpperCase();
     const isEvaluated = isEvaluatedStatus(s);
     const isEvaluating = s === 'EVALUATING' || s === 'AI_EVALUATION_IN_PROGRESS';
-    const label = isEvaluated ? 'Evaluated' : isEvaluating ? 'Evaluating' : 'Pending';
+    const label = isEvaluated
+        ? t('status.evaluated')
+        : isEvaluating
+          ? t('status.evaluating')
+          : t('status.pending');
     const cls = isEvaluated
         ? 'border-green-200 bg-green-100 text-green-700'
         : isEvaluating
@@ -90,6 +96,7 @@ const AssessmentSubmissionsPanel = ({
     playMode,
     visibility,
 }: AssessmentSubmissionsPanelProps) => {
+    const { t } = useTranslation('studyLibraryAssessmentSubmissionsPanel');
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [page, setPage] = useState(0);
@@ -176,7 +183,11 @@ const AssessmentSubmissionsPanel = ({
     const [submitting, setSubmitting] = useState(false);
 
     const openQuickEval = (row: SubmissionRow) => {
-        setQuickEval({ open: true, attemptId: row.attempt_id, name: row.full_name || 'Learner' });
+        setQuickEval({
+            open: true,
+            attemptId: row.attempt_id,
+            name: row.full_name || t('learnerFallback'),
+        });
         setMarks(row.score != null && row.score !== '' ? String(row.score) : '');
         setRemarks('');
         setFile(null);
@@ -192,7 +203,7 @@ const AssessmentSubmissionsPanel = ({
 
     const handleQuickSubmit = async () => {
         if (!primaryQuestion) {
-            toast.error('Could not load the assessment question. Please try the full tool.');
+            toast.error(t('errors.couldNotLoadQuestion'));
             return;
         }
         const attemptId = quickEval.attemptId;
@@ -200,7 +211,7 @@ const AssessmentSubmissionsPanel = ({
 
         const parsed = parseFloat(marks);
         if (!Number.isFinite(parsed)) {
-            toast.error('Please enter marks.');
+            toast.error(t('errors.enterMarks'));
             return;
         }
         const cap = primaryQuestion.maxMarks > 0 ? primaryQuestion.maxMarks : Infinity;
@@ -247,8 +258,10 @@ const AssessmentSubmissionsPanel = ({
                 ],
             });
 
-            toast.success('Evaluation submitted', {
-                description: `${quickEval.name}'s submission has been evaluated.`,
+            toast.success(t('toast.evaluationSubmitted'), {
+                description: t('toast.evaluationSubmittedDescription', {
+                    name: quickEval.name,
+                }),
             });
             setQuickEval({ open: false });
             setMarks('');
@@ -257,7 +270,7 @@ const AssessmentSubmissionsPanel = ({
             queryClient.invalidateQueries({ queryKey: ['ASSESSMENT_SLIDE_SUBMISSIONS_PANEL'] });
         } catch (e) {
             console.error(e);
-            toast.error('Failed to submit evaluation. Please try again.');
+            toast.error(t('errors.submitFailed'));
         } finally {
             setSubmitting(false);
         }
@@ -269,9 +282,9 @@ const AssessmentSubmissionsPanel = ({
         <div className="rounded-md border border-neutral-200 bg-white">
             <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2">
                 <p className="text-xs font-semibold text-neutral-800">
-                    Submissions
+                    {t('title')}
                     {totalElements > 0 && (
-                        <span className="ml-1 font-normal text-neutral-500">
+                        <span className="ms-1 font-normal text-neutral-500">
                             ({totalElements})
                         </span>
                     )}
@@ -280,15 +293,15 @@ const AssessmentSubmissionsPanel = ({
 
             {isLoading ? (
                 <div className="px-3 py-8 text-center text-xs text-neutral-500">
-                    Loading submissions…
+                    {t('loading')}
                 </div>
             ) : isError ? (
                 <div className="px-3 py-8 text-center text-xs text-red-500">
-                    Could not load submissions. Open “View Submissions” to see them.
+                    {t('errors.couldNotLoadSubmissions')}
                 </div>
             ) : rows.length === 0 ? (
                 <div className="px-3 py-8 text-center text-xs text-neutral-500">
-                    No submissions yet.
+                    {t('noSubmissionsYet')}
                 </div>
             ) : (
                 <ul className="divide-y divide-neutral-100">
@@ -302,13 +315,15 @@ const AssessmentSubmissionsPanel = ({
                             >
                                 <div className="flex min-w-0 flex-col">
                                     <span className="truncate text-sm font-medium text-neutral-800">
-                                        {row.full_name || 'Learner'}
+                                        {row.full_name || t('learnerFallback')}
                                     </span>
                                     <span className="text-2xs text-neutral-500">
                                         {row.end_time || row.attempt_date
-                                            ? `Submitted ${convertToLocalDateTime(
-                                                  (row.end_time || row.attempt_date) as string
-                                              )}`
+                                            ? t('submittedAt', {
+                                                  date: convertToLocalDateTime(
+                                                      (row.end_time || row.attempt_date) as string
+                                                  ),
+                                              })
                                             : '—'}
                                     </span>
                                 </div>
@@ -321,7 +336,7 @@ const AssessmentSubmissionsPanel = ({
                                                 : ''}
                                         </span>
                                     )}
-                                    <StatusChip status={row.evaluation_status} />
+                                    <StatusChip status={row.evaluation_status} t={t} />
                                     <MyButton
                                         buttonType="primary"
                                         scale="small"
@@ -329,7 +344,9 @@ const AssessmentSubmissionsPanel = ({
                                         disable={!row.attempt_id}
                                     >
                                         <span className="inline-flex items-center gap-1 text-xs">
-                                            {evaluated ? 'Re-evaluate' : 'Quick evaluate'}
+                                            {evaluated
+                                                ? t('actions.reEvaluate')
+                                                : t('actions.quickEvaluate')}
                                         </span>
                                     </MyButton>
                                     <MyButton
@@ -340,7 +357,7 @@ const AssessmentSubmissionsPanel = ({
                                     >
                                         <span className="inline-flex items-center gap-1 text-xs">
                                             <PencilSimpleLine className="size-3.5" />
-                                            Tool
+                                            {t('actions.tool')}
                                         </span>
                                     </MyButton>
                                 </div>
@@ -353,7 +370,7 @@ const AssessmentSubmissionsPanel = ({
             {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t border-neutral-100 px-3 py-2 text-2xs text-neutral-500">
                     <span>
-                        Page {page + 1} of {totalPages}
+                        {t('pageOfTotal', { page: page + 1, total: totalPages })}
                     </span>
                     <div className="flex gap-1">
                         <MyButton
@@ -378,7 +395,9 @@ const AssessmentSubmissionsPanel = ({
 
             {/* Quick-evaluate dialog — marks + remarks + optional evaluated PDF */}
             <MyDialog
-                heading={`Evaluate — ${quickEval.name ?? 'Learner'}`}
+                heading={t('dialog.heading', {
+                    name: quickEval.name ?? t('learnerFallback'),
+                })}
                 open={quickEval.open}
                 onOpenChange={(open) => {
                     if (!open) closeQuickEval();
@@ -387,9 +406,9 @@ const AssessmentSubmissionsPanel = ({
                 <div className="space-y-4">
                     <div className="space-y-1.5">
                         <label className="text-sm font-medium text-neutral-700">
-                            Marks
+                            {t('dialog.marks')}
                             {primaryQuestion && primaryQuestion.maxMarks > 0
-                                ? ` (out of ${primaryQuestion.maxMarks})`
+                                ? t('dialog.outOfMarks', { max: primaryQuestion.maxMarks })
                                 : ''}
                         </label>
                         <Input
@@ -410,19 +429,21 @@ const AssessmentSubmissionsPanel = ({
 
                     <div className="space-y-1.5">
                         <label className="text-sm font-medium text-neutral-700">
-                            Remarks <span className="text-neutral-400">(optional)</span>
+                            {t('dialog.remarks')}{' '}
+                            <span className="text-neutral-400">{t('dialog.optional')}</span>
                         </label>
                         <Textarea
                             rows={3}
                             value={remarks}
                             onChange={(e) => setRemarks(e.target.value)}
-                            placeholder="Add remarks the learner will see…"
+                            placeholder={t('dialog.remarksPlaceholder')}
                         />
                     </div>
 
                     <div className="space-y-1.5">
                         <label className="text-sm font-medium text-neutral-700">
-                            Evaluated PDF <span className="text-neutral-400">(optional)</span>
+                            {t('dialog.evaluatedPdf')}{' '}
+                            <span className="text-neutral-400">{t('dialog.optional')}</span>
                         </label>
                         <input
                             ref={fileInputRef}
@@ -440,11 +461,11 @@ const AssessmentSubmissionsPanel = ({
                             >
                                 <span className="inline-flex items-center gap-1 text-xs">
                                     <UploadSimple className="size-3.5" />
-                                    Choose PDF
+                                    {t('dialog.choosePdf')}
                                 </span>
                             </MyButton>
                             <span className="truncate text-xs text-neutral-500">
-                                {file ? file.name : 'No file chosen'}
+                                {file ? file.name : t('dialog.noFileChosen')}
                             </span>
                         </div>
                     </div>
@@ -456,7 +477,7 @@ const AssessmentSubmissionsPanel = ({
                             onClick={closeQuickEval}
                             disable={busy}
                         >
-                            Cancel
+                            {t('dialog.cancel')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
@@ -464,7 +485,7 @@ const AssessmentSubmissionsPanel = ({
                             onClick={handleQuickSubmit}
                             disable={busy || !primaryQuestion || marks.trim() === ''}
                         >
-                            {busy ? 'Submitting…' : 'Submit evaluation'}
+                            {busy ? t('dialog.submitting') : t('dialog.submitEvaluation')}
                         </MyButton>
                     </div>
                 </div>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, Circle, Info } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { MyButton } from '@/components/design-system/button';
@@ -26,6 +27,7 @@ export default function QuizQuestionsPanel({
     batchId: string;
     slideId: string;
 }) {
+    const { t } = useTranslation('studyLibraryQuizQuestionsPanel');
     const [worstFirst, setWorstFirst] = useState(true);
     const { data, isLoading, error, refetch } = useQuery(
         quizQuestionAnalysisQueryOptions(batchId, slideId, true)
@@ -49,10 +51,10 @@ export default function QuizQuestionsPanel({
         return (
             <QuizResultsMessage
                 tone="danger"
-                title="Could not load the question breakdown"
+                title={t('loadErrorTitle')}
                 action={
                     <MyButton buttonType="secondary" scale="medium" onClick={() => refetch()}>
-                        Retry
+                        {t('retry')}
                     </MyButton>
                 }
             />
@@ -62,8 +64,8 @@ export default function QuizQuestionsPanel({
     if (questions.length === 0) {
         return (
             <QuizResultsMessage
-                title="This quiz has no questions yet"
-                subtitle="Add questions to the quiz slide and the per-question breakdown appears here."
+                title={t('noQuestionsTitle')}
+                subtitle={t('noQuestionsSubtitle')}
             />
         );
     }
@@ -74,15 +76,14 @@ export default function QuizQuestionsPanel({
         <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-caption text-neutral-500">
-                    Accuracy is measured against the {attempted}{' '}
-                    {attempted === 1 ? 'learner' : 'learners'} who attempted this quiz.
+                    {t('accuracyMeasuredAgainst', { count: attempted })}
                 </p>
                 <MyButton
                     buttonType="secondary"
                     scale="small"
                     onClick={() => setWorstFirst((previous) => !previous)}
                 >
-                    {worstFirst ? 'Show in quiz order' : 'Show weakest first'}
+                    {worstFirst ? t('showInQuizOrder') : t('showWeakestFirst')}
                 </MyButton>
             </div>
 
@@ -114,6 +115,7 @@ function QuestionCard({
     question: QuizQuestionStat;
     attemptedLearners: number;
 }) {
+    const { t } = useTranslation('studyLibraryQuizQuestionsPanel');
     const accuracy = question.accuracyPercent;
     const width = Math.max(0, Math.min(100, accuracy ?? 0));
 
@@ -126,10 +128,10 @@ function QuestionCard({
                     </span>
                     <div className="min-w-0">
                         <p className="text-body text-neutral-700">
-                            {question.questionText || 'Untitled question'}
+                            {question.questionText || t('untitledQuestion')}
                         </p>
                         <p className="mt-0.5 text-caption text-neutral-400">
-                            {question.marks} {question.marks === 1 ? 'mark' : 'marks'}
+                            {t('marksCount', { count: question.marks })}
                             {question.questionType
                                 ? ` · ${questionTypeLabel(question.questionType)}`
                                 : ''}
@@ -159,20 +161,26 @@ function QuestionCard({
             </div>
 
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-caption tabular-nums">
-                <span className="text-success-700">{question.correctCount} correct</span>
-                <span className="text-danger-600">{question.wrongCount} wrong</span>
+                <span className="text-success-700">
+                    {t('correctCount', { count: question.correctCount })}
+                </span>
+                <span className="text-danger-600">
+                    {t('wrongCount', { count: question.wrongCount })}
+                </span>
                 {question.skippedCount > 0 && (
-                    <span className="text-neutral-500">{question.skippedCount} skipped</span>
+                    <span className="text-neutral-500">
+                        {t('skippedCount', { count: question.skippedCount })}
+                    </span>
                 )}
                 {question.unansweredCount > 0 && (
                     <span className="text-neutral-400">
-                        {question.unansweredCount} did not answer
+                        {t('unansweredCount', { count: question.unansweredCount })}
                     </span>
                 )}
                 {question.ungradedCount > 0 && (
                     <span className="inline-flex items-center gap-1 text-neutral-400">
                         <Info className="size-3.5" aria-hidden="true" />
-                        {question.ungradedCount} need manual marking
+                        {t('ungradedCount', { count: question.ungradedCount })}
                     </span>
                 )}
             </div>
@@ -187,7 +195,7 @@ function QuestionCard({
                                     <CheckCircle
                                         className="size-4 shrink-0 text-success-600"
                                         weight="fill"
-                                        aria-label="Correct answer"
+                                        aria-label={t('correctAnswer')}
                                     />
                                 ) : (
                                     <Circle
@@ -204,7 +212,7 @@ function QuestionCard({
                                     )}
                                     title={option.text}
                                 >
-                                    {option.text || 'Untitled option'}
+                                    {option.text || t('untitledOption')}
                                 </span>
                                 <div className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-neutral-100">
                                     <div
@@ -227,15 +235,13 @@ function QuestionCard({
 
             {question.explanation && (
                 <p className="mt-3 rounded-md bg-neutral-50 p-2 text-caption text-neutral-600">
-                    <span className="font-semibold">Explanation: </span>
+                    <span className="font-semibold">{t('explanationLabel')} </span>
                     {question.explanation}
                 </p>
             )}
 
             {attemptedLearners === 0 && (
-                <p className="mt-2 text-caption text-neutral-400">
-                    Nobody has attempted this quiz yet.
-                </p>
+                <p className="mt-2 text-caption text-neutral-400">{t('noAttemptsYet')}</p>
             )}
         </li>
     );

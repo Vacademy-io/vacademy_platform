@@ -6,6 +6,7 @@
 // contract exactly — do not camelCase these.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import i18next from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     LIVE_SESSION_CONTENT_LINK,
@@ -134,10 +135,24 @@ export const summarizeContentLinkOutcomes = (outcomes: ContentLinkOutcome[]): st
     const deduped = outcomes.filter((o) => o.outcome === 'SHARED_CHAPTER_DEDUPED').length;
     const alreadyLinked = outcomes.filter((o) => o.outcome === 'ALREADY_LINKED').length;
     const parts: string[] = [];
-    if (created > 0) parts.push(`Added to ${created} chapter${created === 1 ? '' : 's'}`);
-    if (deduped > 0) parts.push(`${deduped} shared chapter${deduped === 1 ? '' : 's'} (deduped)`);
-    if (alreadyLinked > 0) parts.push(`${alreadyLinked} already linked`);
-    return parts.length > 0 ? parts.join(', ') : 'No changes made';
+    if (created > 0) {
+        parts.push(
+            i18next.t('studyLibraryContentLinkService:addedToChapters', { count: created })
+        );
+    }
+    if (deduped > 0) {
+        parts.push(
+            i18next.t('studyLibraryContentLinkService:sharedChapterDeduped', { count: deduped })
+        );
+    }
+    if (alreadyLinked > 0) {
+        parts.push(
+            i18next.t('studyLibraryContentLinkService:alreadyLinked', { count: alreadyLinked })
+        );
+    }
+    return parts.length > 0
+        ? parts.join(', ')
+        : i18next.t('studyLibraryContentLinkService:noChangesMade');
 };
 
 export const sessionContentLinksQueryKey = (sessionId: string) => [

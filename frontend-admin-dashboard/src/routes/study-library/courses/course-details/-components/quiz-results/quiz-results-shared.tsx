@@ -1,7 +1,23 @@
 import { CheckCircle, Minus, Prohibit, Question, XCircle, type Icon } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { StatusChip } from '@/components/design-system/status-chips';
 import { cn } from '@/lib/utils';
+import i18n from '@/i18n';
 import type { QuizLearnerStatus, QuizQuestionDifficulty } from '../../-types/quiz-results-types';
+
+const NAMESPACE = 'studyLibraryQuizResultsShared';
+
+/**
+ * `formatRelative` / `formatDateTime` / `questionTypeLabel` below are plain
+ * exported functions (not components/hooks) consumed from several sibling
+ * files outside a render tree in places, so they can't rely on
+ * `useTranslation`. Fall back to the shared i18next singleton directly —
+ * this namespace is also the one `useTranslation` loads for the components
+ * in this file, so both stay in sync.
+ */
+const globalT: TFunction = ((key: string, options?: Record<string, unknown>) =>
+    i18n.t(key, { ns: NAMESPACE, ...options })) as TFunction;
 
 /* -------------------------------------------------------------------------- */
 /* Formatters                                                                  */
@@ -12,7 +28,7 @@ export const formatPercent = (value: number | null | undefined): string =>
     value === null || value === undefined ? '—' : `${Math.round(value * 10) / 10}%`;
 
 export const formatNumber = (value: number | null | undefined): string =>
-    value === null || value === undefined ? '—' : value.toLocaleString();
+    value === null || value === undefined ? '—' : value.toLocaleString(i18n.language);
 
 /** "1h 4m" / "6m 05s" / "42s" — mirrors the Pulse tab so durations read the same everywhere. */
 export const formatDuration = (totalSeconds: number | null | undefined): string => {
@@ -29,7 +45,7 @@ export const formatDuration = (totalSeconds: number | null | undefined): string 
 /** Absolute date + time in the admin's own zone; the API sends epoch millis. */
 export const formatDateTime = (epochMillis: number | null | undefined): string => {
     if (!epochMillis) return '—';
-    return new Date(epochMillis).toLocaleString(undefined, {
+    return new Date(epochMillis).toLocaleString(i18n.language, {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
@@ -40,11 +56,11 @@ export const formatDateTime = (epochMillis: number | null | undefined): string =
 
 /** "3 days ago" for the at-a-glance recency column; falls back to the absolute date. */
 export const formatRelative = (epochMillis: number | null | undefined): string => {
-    if (!epochMillis) return 'Never';
+    if (!epochMillis) return globalT('never');
     const days = Math.floor((Date.now() - epochMillis) / 86_400_000);
-    if (days <= 0) return 'Today';
-    if (days === 1) return 'Yesterday';
-    if (days < 30) return `${days} days ago`;
+    if (days <= 0) return globalT('today');
+    if (days === 1) return globalT('yesterday');
+    if (days < 30) return globalT('daysAgo', { count: days });
     return formatDateTime(epochMillis).split(',')[0] ?? '—';
 };
 
@@ -99,18 +115,19 @@ const TONE_FILL: Record<ScoreTone, string> = {
 };
 
 /** Maps a stored question type to something a teacher reads, not an enum name. */
-const QUESTION_TYPE_LABEL: Record<string, string> = {
-    MCQS: 'Single choice',
-    MCQM: 'Multiple choice',
-    TRUE_FALSE: 'True / false',
-    NUMERIC: 'Numeric',
-    ONE_WORD: 'One word',
-    LONG_ANSWER: 'Long answer',
+const QUESTION_TYPE_KEY: Record<string, string> = {
+    MCQS: 'questionType.singleChoice',
+    MCQM: 'questionType.multipleChoice',
+    TRUE_FALSE: 'questionType.trueFalse',
+    NUMERIC: 'questionType.numeric',
+    ONE_WORD: 'questionType.oneWord',
+    LONG_ANSWER: 'questionType.longAnswer',
 };
 
 export const questionTypeLabel = (type: string | null | undefined): string => {
     if (!type) return '';
-    return QUESTION_TYPE_LABEL[type] ?? type.replace(/_/g, ' ').toLowerCase();
+    const key = QUESTION_TYPE_KEY[type];
+    return key ? globalT(key) : type.replace(/_/g, ' ').toLowerCase();
 };
 
 export const scoreTextClass = (tone: ScoreTone): string => TONE_TEXT[tone];
@@ -208,12 +225,12 @@ export function ScoreMeter({
     );
 }
 
-const LEARNER_STATUS_LABEL: Record<QuizLearnerStatus, string> = {
-    PASSED: 'Passed',
-    FAILED: 'Failed',
-    COMPLETED: 'Completed',
-    PARTIAL: 'Partly done',
-    NOT_ATTEMPTED: 'Not attempted',
+const LEARNER_STATUS_KEY: Record<QuizLearnerStatus, string> = {
+    PASSED: 'learnerStatus.passed',
+    FAILED: 'learnerStatus.failed',
+    COMPLETED: 'learnerStatus.completed',
+    PARTIAL: 'learnerStatus.partlyDone',
+    NOT_ATTEMPTED: 'learnerStatus.notAttempted',
 };
 
 const LEARNER_STATUS_TONE: Record<QuizLearnerStatus, 'SUCCESS' | 'DANGER' | 'WARNING' | 'INFO'> = {
@@ -225,17 +242,19 @@ const LEARNER_STATUS_TONE: Record<QuizLearnerStatus, 'SUCCESS' | 'DANGER' | 'WAR
 };
 
 export function LearnerStatusChip({ status }: { status: QuizLearnerStatus }) {
+    const { t } = useTranslation('studyLibraryQuizResultsShared');
     // Unknown statuses would otherwise render an empty cell — label the raw value instead.
-    const label = LEARNER_STATUS_LABEL[status] ?? status;
+    const key = LEARNER_STATUS_KEY[status];
+    const label = key ? t(key) : status;
     const tone = LEARNER_STATUS_TONE[status] ?? 'INFO';
     return <StatusChip text={label} textSize="text-caption" status={tone} showIcon={false} />;
 }
 
-const DIFFICULTY_LABEL: Record<QuizQuestionDifficulty, string> = {
-    EASY: 'Well understood',
-    MODERATE: 'Mixed',
-    HARD: 'Struggling',
-    CRITICAL: 'Needs re-teaching',
+const DIFFICULTY_KEY: Record<QuizQuestionDifficulty, string> = {
+    EASY: 'difficulty.wellUnderstood',
+    MODERATE: 'difficulty.mixed',
+    HARD: 'difficulty.struggling',
+    CRITICAL: 'difficulty.needsReteaching',
 };
 
 const DIFFICULTY_CLASS: Record<QuizQuestionDifficulty, string> = {
@@ -265,11 +284,12 @@ export const difficultyTone = (difficulty: QuizQuestionDifficulty | null): Score
 
 /** Difficulty always ships as icon + words, so it never depends on colour vision. */
 export function DifficultyChip({ difficulty }: { difficulty: QuizQuestionDifficulty | null }) {
+    const { t } = useTranslation('studyLibraryQuizResultsShared');
     if (!difficulty) {
         return (
             <span className="inline-flex w-fit items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-caption text-neutral-500">
                 <Question className="size-3.5" aria-hidden="true" />
-                No responses
+                {t('noResponses')}
             </span>
         );
     }
@@ -282,7 +302,7 @@ export function DifficultyChip({ difficulty }: { difficulty: QuizQuestionDifficu
             )}
         >
             <IconComponent className="size-3.5" aria-hidden="true" />
-            {DIFFICULTY_LABEL[difficulty]}
+            {t(DIFFICULTY_KEY[difficulty])}
         </span>
     );
 }

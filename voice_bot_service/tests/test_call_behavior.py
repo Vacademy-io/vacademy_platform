@@ -3274,3 +3274,13 @@ def test_bedrock_settings_and_routing():
     assert src.index("settings.bedrock_llm_agents") < src.index("settings.sarvam_llm_agents")
     assert 'if prov == "bedrock":' in inspect.getsource(pv.build_llm)
     assert "aws]" in open(os.path.join(os.path.dirname(pv.__file__), "..", "requirements.txt")).read()
+
+
+def test_bedrock_client_is_warmed_at_start_not_on_first_turn():
+    """Turn-1 TTFT measured 2.93s (client creation) vs 0.56s after, through the
+    real provider on the box — so the client opens in start(), under the greet."""
+    import inspect
+    src = inspect.getsource(pv._build_bedrock)
+    start = src[src.index("async def start(self, frame):"):src.index("async def stop(self, frame):")]
+    assert "await super().start(frame)" in start
+    assert 'create_client(' in start and 'service_name="bedrock-runtime"' in start

@@ -230,6 +230,19 @@ def _build_bedrock(s):
             super().__init__(**kw)
             self._aws_session = _PersistentClientSession(self._aws_session)
 
+        async def start(self, frame):
+            # Open the client at pipeline start, while the greeting is still
+            # being spoken — otherwise the FIRST reply of every call pays the
+            # ~2s client creation (measured 2.93s TTFT on turn 1 vs 0.56s after).
+            await super().start(frame)
+            try:
+                async with self._aws_session.create_client(
+                        service_name="bedrock-runtime", **self._aws_params):
+                    pass
+            except Exception:
+                logger.warning("bedrock: client warm-up failed — first turn will open it",
+                               exc_info=True)
+
         async def stop(self, frame):
             await super().stop(frame)
             await self._aws_session.close()

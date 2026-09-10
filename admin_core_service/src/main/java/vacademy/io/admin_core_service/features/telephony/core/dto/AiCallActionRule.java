@@ -103,6 +103,20 @@ public class AiCallActionRule {
     private String templateHeaderUrl;
 
     /**
+     * "image" or "document" — which kind of file {@link #templateHeaderUrl} points at.
+     *
+     * <p>Derived by the editor from the chosen template's HEADER format, never typed by an
+     * admin. It exists because the type is not inferable downstream:
+     * WhatsAppService.buildHeaderConfig decides with
+     * {@code "image".equalsIgnoreCase(headerType) ? "image" : "document"}, so a missing
+     * type silently becomes a document — filename and all — and Meta rejects the send with
+     * "(#132012) header: Format mismatch, expected IMAGE, received DOCUMENT".
+     *
+     * <p>Travels as {@code _headerType} in variables_json, next to {@code _headerUrl}.
+     */
+    private String templateHeaderType;
+
+    /**
      * EMAIL only: what the person actually receives.
      *
      * <p>Email has no Meta template — EngagementDispatcher emails {@code draft_body}

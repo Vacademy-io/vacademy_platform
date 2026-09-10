@@ -106,6 +106,13 @@ export interface AiCallActionRule {
      */
     templateHeaderUrl?: string;
     /**
+     * Which kind of file `templateHeaderUrl` points at. Derived from the chosen template,
+     * never typed. The send must say so explicitly — WhatsAppService treats anything that
+     * is not literally "image" as a document, so an absent type makes Meta reject an image
+     * template with 132012, "expected IMAGE, received DOCUMENT".
+     */
+    templateHeaderType?: 'image' | 'document';
+    /**
      * EMAIL only: the message the person receives. Email has no template layer — it is
      * sent verbatim and its FIRST LINE becomes the subject. Supports {{name}}.
      */

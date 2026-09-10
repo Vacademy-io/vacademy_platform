@@ -332,6 +332,19 @@ class TranscriptCollector(FrameProcessor):
                     and not self._bot_spoke_once()
                     and len(text.split()) <= 2):
                 self._outcome.transcript.append({"role": "user", "text": text})
+                # The premise above — "our opening is already queued and will
+                # answer this" — is false when the VAD killed the opening before
+                # ONE frame of audio played. Call ab194522 (2026-09-10): the
+                # caller's "hello" landed 23ms after the greet was queued, the
+                # opening never started, bot_spoke_once stayed False for the
+                # whole machine window, and "No." then "Yeah." — real answers —
+                # were dropped here. 5.8s of silence, "hello hello hello", hang
+                # up. resay_opening only acts once the scripted greet was queued
+                # and nothing of it reached the line, so an operator fragment
+                # BEFORE the greet still takes the drop below.
+                if (self._resay_opening is not None
+                        and await self._resay_opening(text)):
+                    return
                 if self._diag is not None:
                     self._diag.bump("carrier_announcements")
                 logger.info("turn-gate: machine-greeting scrap %r — dropping", text[:32])

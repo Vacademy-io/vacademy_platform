@@ -3129,3 +3129,49 @@ def test_sarvam_llm_routing_also_keys_on_institute(monkeypatch):
     src = inspect.getsource(b.run_bot)
     assert '_inst_id in settings.sarvam_llm_institutes' in src
     assert 'context.get("instituteId")' in src
+
+
+# ── call ab194522 (2026-09-10): the VAD killed the opening 23ms after it was
+#    queued; with bot_spoke_once never set, the caller's "No." and "Yeah." were
+#    dropped as machine-greeting scraps and the call died in silence ──────────
+
+
+async def _pre_speech_collector(rec, resay):
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: False, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True, filler_phrases=[],
+        in_machine_window=lambda: True, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: False, resay_opening=resay)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = _noop_broadcast
+    return tc
+
+
+@pytest.mark.asyncio
+async def test_a_scrap_after_a_killed_opening_resays_the_opening():
+    rec = _Rec()
+    calls = []
+
+    async def resay(text):
+        calls.append(text)
+        return True
+    tc = await _pre_speech_collector(rec, resay)
+    await _feed(tc, "No.")
+    assert calls == ["No."]
+
+
+@pytest.mark.asyncio
+async def test_a_scrap_before_any_greet_is_still_dropped():
+    """resay says 'greet not queued yet' (operator fragment) -> old behaviour."""
+    rec = _Rec()
+
+    async def resay(text):
+        return False
+    tc = await _pre_speech_collector(rec, resay)
+    await _feed(tc, "Please.")
+    assert not any(getattr(f, "messages", None) for f in rec.frames), rec.frames

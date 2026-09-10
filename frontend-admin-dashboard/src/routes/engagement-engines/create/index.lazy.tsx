@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { useCampaignsList } from '@/routes/audience-manager/list/-hooks/useCampaignsList';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { CHANNEL_META, CHANNEL_ORDER, LANGUAGE_OPTIONS } from '../-constants';
+import { buildChannelMeta, CHANNEL_ORDER, buildLanguageOptions } from '../-constants';
 import { useCreateEngine, useDataPointCatalog } from '../-hooks';
 import type {
     AudienceSelector,
@@ -82,6 +82,7 @@ function CreateEnginePage() {
     // Timezone labels are translated, so the list is built from the shared
     // options namespace rather than being a module-level constant.
     const { t: tOptions } = useTranslation('studyLibraryOptions');
+    const { t: tConstants } = useTranslation('engagementEnginesConstants');
     const TIMEZONE_OPTIONS = buildTimezoneOptions(tOptions);
     const { setNavHeading } = useNavHeadingStore();
     const instituteId = getInstituteId() || '';
@@ -248,7 +249,7 @@ function CreateEnginePage() {
                                 <div className="w-full sm:w-80">
                                     <label className="mb-1 block text-subtitle font-regular">Language</label>
                                     <SearchableSelect
-                                        options={LANGUAGE_OPTIONS.map((l) => ({
+                                        options={buildLanguageOptions(tConstants).map((l) => ({
                                             label: l.label,
                                             value: l.value,
                                         }))}
@@ -331,7 +332,7 @@ function CreateEnginePage() {
                                     sends. WhatsApp needs Meta-approved templates (set up after creating).
                                 </p>
                                 {CHANNEL_ORDER.map((c) => {
-                                    const meta = CHANNEL_META[c];
+                                    const meta = buildChannelMeta(tConstants)[c];
                                     const cfg = channels[c] ?? {};
                                     return (
                                         <div
@@ -506,7 +507,7 @@ function CreateEnginePage() {
                                 <ReviewRow label="Objective" value={objective || '—'} />
                                 <ReviewRow
                                     label="Language"
-                                    value={LANGUAGE_OPTIONS.find((l) => l.value === language)?.label ?? language}
+                                    value={buildLanguageOptions(tConstants).find((l) => l.value === language)?.label ?? language}
                                 />
                                 <ReviewRow
                                     label="Data points"
@@ -514,7 +515,7 @@ function CreateEnginePage() {
                                 />
                                 <ReviewRow
                                     label="Channels"
-                                    value={enabledChannelKeys.map((c) => CHANNEL_META[c].label).join(', ')}
+                                    value={enabledChannelKeys.map((c) => buildChannelMeta(tConstants)[c].label).join(', ')}
                                 />
                                 <ReviewRow label="Audience sources" value={`${audienceCount}`} />
                                 <ReviewRow label="Cadence" value={`every ${cadenceHours}h`} />
@@ -526,7 +527,7 @@ function CreateEnginePage() {
                                     label="Auto-send channels"
                                     value={
                                         CHANNEL_ORDER.filter((c) => channels[c]?.enabled && channels[c]?.auto)
-                                            .map((c) => CHANNEL_META[c].label)
+                                            .map((c) => buildChannelMeta(tConstants)[c].label)
                                             .join(', ') || 'None (copilot only)'
                                     }
                                 />

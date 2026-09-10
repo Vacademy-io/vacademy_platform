@@ -97,10 +97,23 @@ public class BbbHealthCheckService {
     }
 
     /**
-     * Scheduled stop — Mon-Sat at 11:55 PM IST.
+     * Scheduled stop — 2:30 AM IST, TUE-SUN (i.e. the night after each MON-SAT
+     * class day).
+     *
+     * Was 11:55 PM MON-SAT. Moved to 2:30 AM so the recording pipeline has time to
+     * drain after classes end: the rap workers process ~22 recordings/hour and
+     * ~50 classes/day are recorded, so the old 8h50m window left recordings
+     * queued overnight.
+     *
+     * The day list MUST be TUE-SUN, not MON-SAT. 2:30 AM falls on the calendar day
+     * AFTER the class day, so Saturday night's server is stopped by the SUNDAY
+     * fire. Leaving it MON-SAT would strand the Saturday server until Monday
+     * 2:30 AM — roughly 26 extra hours of billing every weekend — while Monday's
+     * fire would be a no-op on an already-stopped box.
+     *
      * Stops ALL running servers (snapshot + delete).
      */
-    @Scheduled(cron = "0 55 23 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 30 2 * * TUE-SUN", zone = "Asia/Kolkata")
     public void scheduledStop() {
         log.info("[BBB Pool] Scheduled STOP triggered");
         triggerPoolAction("stop", "all", 0);

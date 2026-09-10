@@ -10,11 +10,13 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Node, Edge } from 'reactflow';
 import i18n from '@/i18n';
 
-// This module builds USE_CASE_TEMPLATES once at import time (module scope, no
-// React context available), so per the i18n rollout's module-scope-without-t
-// pattern we call the i18next singleton directly instead of threading a `t`
-// parameter through every helper. Not reactive to a runtime language switch
-// without a remount of the wizard — an accepted tradeoff for this file.
+// The catalog is built by getUseCaseTemplates() on first use, not at module
+// scope: there is no React context here, so per the i18n rollout's
+// module-scope-without-t pattern we call the i18next singleton directly rather
+// than thread a `t` parameter through every helper — and the singleton has not
+// loaded this namespace by the time the module is imported. Callers must be
+// inside a component that has subscribed to 'workflowUseCaseTemplates'
+// (useTranslation) so the strings exist and a late load re-renders.
 function wt(key: string, options?: Record<string, unknown>): string {
     return i18n.t(`workflowUseCaseTemplates:${key}`, options) as string;
 }
@@ -248,7 +250,8 @@ function makeChannelSendNodes(
 //      job drives the CALL_AI retry loop.
 // ═══════════════════════════════════════════════════
 
-export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
+function buildUseCaseTemplates(): UseCaseTemplate[] {
+    return [
 
     // ─── 0. AI-call new leads ───
     // When a lead is submitted, place an AI voice-agent call first. The AI
@@ -2069,20 +2072,48 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
             };
         },
     },
-];
+    ];
+}
+
+let cache: { language: string; templates: UseCaseTemplate[] } | null = null;
+
+/**
+ * The use-case catalog, built on first use rather than at import time.
+ *
+ * Every label here comes from wt() → the i18next singleton, and this module is
+ * imported long before its catalog is fetched: `ns` preloads only 'common',
+ * and in dev there is no merged catalog for catalogsReady to seed from. Built
+ * at module scope, every title froze as its raw key ("templates.x.name") for
+ * the life of the page. Building on call — from a component that has already
+ * subscribed to the namespace — gets real strings, and keying the cache on the
+ * language means a runtime language switch re-reads them instead of keeping
+ * the old locale until remount.
+ */
+export function getUseCaseTemplates(): UseCaseTemplate[] {
+    const language = i18n.language ?? '';
+    if (cache && cache.language === language) return cache.templates;
+    const templates = buildUseCaseTemplates();
+    // Only memoise once the catalog is actually loaded — caching before that
+    // would freeze the raw keys back in, which is the bug this replaced.
+    if (i18n.hasResourceBundle(language, 'workflowUseCaseTemplates')) {
+        cache = { language, templates };
+    }
+    return templates;
+}
 
 /** Get templates matching a trigger event (or scheduled) */
 export function getTemplatesForTrigger(
     triggerEvent: string | undefined,
     workflowType: 'EVENT_DRIVEN' | 'SCHEDULED'
 ): UseCaseTemplate[] {
+    const templates = getUseCaseTemplates();
     if (workflowType === 'SCHEDULED') {
-        return USE_CASE_TEMPLATES.filter(
+        return templates.filter(
             (t) => t.workflowType === 'SCHEDULED' || t.workflowType === 'BOTH'
         );
     }
     if (!triggerEvent) return [];
-    return USE_CASE_TEMPLATES.filter(
+    return templates.filter(
         (t) =>
             (t.workflowType === 'EVENT_DRIVEN' || t.workflowType === 'BOTH') &&
             t.triggerEvents.includes(triggerEvent)

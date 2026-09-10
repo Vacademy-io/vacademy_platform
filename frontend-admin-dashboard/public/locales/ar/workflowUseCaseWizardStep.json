@@ -13,7 +13,10 @@
         "selectedCount_two": "عنصران محددان",
         "selectedCount_few": "{{count}} عناصر محددة",
         "selectedCount_many": "{{count}} عنصرًا محددًا",
-        "selectedCount_other": "{{count}} عنصر محدد"
+        "selectedCount_other": "{{count}} عنصر محدد",
+        "searchPlaceholder": "بحث...",
+        "noMatches": "لا توجد نتائج لـ ”{{search}}“.",
+        "someHiddenBySearch": "بعض العناصر المحددة مخفية بسبب البحث"
     },
     "batch": {
         "selectPlaceholder": "-- اختر دفعة --",

@@ -138,6 +138,12 @@ function useWhatsappTemplateOptions(instituteId: string, t: TFunction) {
     return { data: options, isLoading };
 }
 
+/**
+ * Show the search box only once a list is long enough to need it — a filter
+ * over four batches is noise, over four hundred it is the only way through.
+ */
+const SEARCHABLE_FROM = 8;
+
 // ─── Question renderer ───
 
 function QuestionField({
@@ -167,6 +173,8 @@ function QuestionField({
     const { data: templateOptions = [], isLoading: templateLoading } = useEmailTemplateOptions(t);
     const { data: waTemplateOptions = [], isLoading: waTemplateLoading } = useWhatsappTemplateOptions(instituteId, t);
     const [creatingSample, setCreatingSample] = useState(false);
+    // One box per question is enough — a question renders at most one list.
+    const [search, setSearch] = useState('');
     const queryClient = useQueryClient();
 
     const renderDropdown = (
@@ -206,8 +214,24 @@ function QuestionField({
                 : [...selected, id];
             onChange(next);
         };
+        // Filter the list, never the selection: an institute with hundreds of
+        // batches is unusable without search, but hiding an already-ticked row
+        // must not untick it. `selected` stays whole, and the counter below
+        // keeps reporting the true total while a search is active.
+        const needle = search.trim().toLowerCase();
+        const visible = needle
+            ? options.filter((opt) => opt.label.toLowerCase().includes(needle))
+            : options;
         return (
             <div className="space-y-2">
+                {options.length > SEARCHABLE_FROM && (
+                    <Input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder={t('multiSelect.searchPlaceholder')}
+                        className="h-8 text-sm"
+                    />
+                )}
                 <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-300 bg-white">
                     {loading && (
                         <div className="px-3 py-2 text-xs text-gray-400">{t('dropdown.loading')}</div>
@@ -215,7 +239,12 @@ function QuestionField({
                     {!loading && options.length === 0 && (
                         <div className="px-3 py-2 text-xs text-gray-400">{t('dropdown.noOptions')}</div>
                     )}
-                    {options.map((opt) => {
+                    {!loading && options.length > 0 && visible.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-gray-400">
+                            {t('multiSelect.noMatches', { search: search.trim() })}
+                        </div>
+                    )}
+                    {visible.map((opt) => {
                         const checked = selected.includes(opt.value);
                         return (
                             <label
@@ -239,6 +268,11 @@ function QuestionField({
                     {selected.length === 0
                         ? emptyLabel
                         : t('multiSelect.selectedCount', { count: selected.length })}
+                    {/* Say so when the filter is hiding ticked rows, so the
+                        count above doesn't look wrong against what's visible. */}
+                    {needle && selected.length > 0
+                        && selected.some((id) => !visible.some((opt) => opt.value === id))
+                        && ` — ${t('multiSelect.someHiddenBySearch')}`}
                 </p>
             </div>
         );
@@ -517,8 +551,15 @@ export function UseCaseWizardStep({
     instituteId: string;
 }) {
     const { t } = useTranslation('workflowUseCaseWizardStep');
+    // Subscribing here is what makes the catalog below resolve: the template
+    // titles come from the 'workflowUseCaseTemplates' namespace via the
+    // i18next singleton, which only loads a namespace once something asks for
+    // it. Without this the cards render their raw keys, and this re-render on
+    // load is how they get replaced with real strings.
+    useTranslation('workflowUseCaseTemplates');
     const { workflowType, triggerConfig, setNodes, setEdges, setWorkflowName, setWorkflowDescription, setEditingWorkflowId, setEditingWorkflowStatus } = useWorkflowBuilderStore();
 
+    // Deliberately not memoised — a memo would capture the pre-load strings.
     const templates = getTemplatesForTrigger(triggerConfig.eventName || undefined, workflowType);
 
     const [selectedTemplate, setSelectedTemplate] = useState<UseCaseTemplate | null>(null);

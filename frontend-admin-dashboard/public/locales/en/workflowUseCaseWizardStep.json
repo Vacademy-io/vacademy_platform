@@ -9,7 +9,10 @@
     },
     "multiSelect": {
         "selectedCount_one": "{{count}} selected",
-        "selectedCount_other": "{{count}} selected"
+        "selectedCount_other": "{{count}} selected",
+        "searchPlaceholder": "Search...",
+        "noMatches": "Nothing matches “{{search}}”.",
+        "someHiddenBySearch": "some selected items are hidden by the search"
     },
     "batch": {
         "selectPlaceholder": "-- Select a batch --",

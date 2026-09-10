@@ -564,6 +564,17 @@ export function SendRulesEditor({
                                                 templateHeaderUrl: mediaHeaderFormat(t)
                                                     ? rule.templateHeaderUrl
                                                     : undefined,
+                                                // Derived, never typed. The send has to say
+                                                // whether the file is an image or a document —
+                                                // WhatsAppService treats anything that is not
+                                                // literally "image" as a document — and the
+                                                // template already declares which it is.
+                                                templateHeaderType:
+                                                    mediaHeaderFormat(t) === 'IMAGE'
+                                                        ? 'image'
+                                                        : mediaHeaderFormat(t) === 'DOCUMENT'
+                                                          ? 'document'
+                                                          : undefined,
                                             });
                                         }}
                                     >

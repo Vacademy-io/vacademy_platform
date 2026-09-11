@@ -6,7 +6,8 @@
         "unknownLeadStatus": "حالة عميل محتمل غير معروفة: {{status}}.",
         "validStatuses": "الحالات الصالحة: {{statuses}}",
         "fieldRequired": "{{field}} مطلوب",
-        "invalidEmail": "بريد إلكتروني غير صالح: {{email}}"
+        "invalidEmail": "بريد إلكتروني غير صالح: {{email}}",
+        "invalidMobile": "رقم جوال غير صالح: {{mobile}}"
     },
     "csvTemplate": {
         "leadOwnerColumn": "مالك العميل المحتمل (بريد المرشد الإلكتروني)",

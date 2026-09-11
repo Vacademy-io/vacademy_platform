@@ -42,8 +42,10 @@ call (`POST /v1/telephony/ai-call/connect` with `"provider":"VACADEMY_AI"`).
 
 Every call has a low-level office ambience loop mixed under the outbound audio
 so silence between turns never sounds like a dead digital line. The asset is
-`assets/office_ambience_8k_mono.wav` (8 kHz, mono, 16-bit PCM, ~88 s seamless
-loop, −32 dBFS RMS) — it must stay 8 kHz mono because pipecat's mixer does not
+`assets/call_center_ambience_8k_mono.wav` (8 kHz, mono, 16-bit PCM, 78.5 s
+seamless loop, −32 dBFS RMS — converted from a 44.1 kHz stereo call-centre
+ambience recording: anti-aliased downsample, mono downmix, 1.5 s crossfade at
+the loop seam, normalised) — it must stay 8 kHz mono because pipecat's mixer does not
 resample. It is mixed inside the output transport (`app/ambience.py`, pipecat
 `SoundfileMixer`), so STT/LLM/TTS are untouched.
 

@@ -3303,7 +3303,7 @@ def test_ambience_asset_is_8k_mono_pcm_and_quiet():
     w = wave.open(str(ambience.AMBIENCE_FILE))
     assert (w.getnchannels(), w.getframerate(), w.getsampwidth()) == (1, 8000, 2)
     secs = w.getnframes() / w.getframerate()
-    assert 60 < secs < 120, secs
+    assert 60 < secs < 120, secs   # 78.5s call-centre loop
     data = w.readframes(8000 * 5)
     s = struct.unpack("<%dh" % (len(data) // 2), data)
     rms_dbfs = 20 * math.log10(math.sqrt(sum(x * x for x in s) / len(s)) / 32768)

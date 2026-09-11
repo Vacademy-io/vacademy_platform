@@ -39,7 +39,7 @@ logger = logging.getLogger("voice_bot")
 # Relative to the PACKAGE, never the CWD: uvicorn runs from /srv in the image
 # and from wherever a developer happens to be locally.
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
-AMBIENCE_FILE = ASSETS_DIR / "office_ambience_8k_mono.wav"
+AMBIENCE_FILE = ASSETS_DIR / "call_center_ambience_8k_mono.wav"
 AMBIENCE_SOUND = "office"
 SPEAKING_GAIN = 0.6     # ambience × this while the bot is talking
 

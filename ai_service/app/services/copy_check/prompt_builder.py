@@ -1,14 +1,23 @@
 """Prompt construction for criteria generation and grading.
 
-Ported from Java AiCriteriaGenerationService + AiPromptBuilderService. Same
-type-specific branches (MCQ/ONE_WORD/LONG_ANSWER/CODING), same hard cap
-phrasing, but with two additions for the layout-anchored pipeline:
+Drop-in replacement for the previous prompt.py: same function names and
+signatures, same output JSON keys, same hard-cap phrasing. Changes:
 
-  1. Grading receives a numbered transcript of line_ids + text. The model
-     MUST reference line_ids as `target`s in its annotations[] output, never
-     pixel coordinates.
-  2. Output schema includes annotations[] so the FE overlay can draw on the
-     exact line each verdict refers to.
+  * GRADING_SYSTEM is generic (subject/class are parameters, not "Class 10
+    science").
+  * ONE annotation regime for all question types. The old MCQ/short regime
+    said "one tick, nothing else", so MCQ rows never got a score and whole
+    pages of MCQs (top of page 1, bottom of the last page) came back looking
+    unchecked. Now every attempted question gets exactly one `score`.
+  * Contradictions removed (4 vs 6 ticks, 12 vs 20 word notes, praise on
+    partial answers, "never at the top of a page" vs answers that end there).
+  * Deduction reason is always a `margin_note` below the last row of the
+    answer - the "Nature of image not stated..." style in the checked copy.
+  * Grand total is NOT produced by the model. This prompt grades one question
+    per call; sum marks_awarded in code and pass {"style":"total",
+    "text":"30/36"} to the renderer, which draws it large and hand-circled
+    below the Page No box on page 1. Sizes (tick 1.5x, score 1.4x, note 1.1x,
+    total 2.3x line height) are renderer settings, not prompt text.
 """
 from __future__ import annotations
 
@@ -30,6 +39,24 @@ def build_criteria_prompt(
     max_marks: float,
     question_text: str,
 ) -> str:
+    if (question_type or "").upper() in ("MCQ", "ONE_WORD", "SHORT_ANSWER", "TRUE_FALSE", "FILL_BLANK"):
+        return (
+            f"Create an evaluation rubric for the following {question_type} question.\n\n"
+            f"Subject: {subject}\nMax marks: {max_marks}\n\nQuestion:\n{question_text}\n\n"
+            "Return STRICT JSON:\n"
+            "{\n"
+            f'  "max_marks": {max_marks},\n'
+            '  "partial_marking_enabled": false,\n'
+            '  "evaluation_instructions": "Full marks if the chosen option/answer matches the key; otherwise 0.",\n'
+            '  "rubric": [\n'
+            f'    {{"criteria_name": "Correct answer", "max_marks": {max_marks}, "keywords": [], '
+            '"evaluation_guidelines": "Award full marks when the option or answer matches the key. '
+            'Do NOT require reasoning, elimination, equations or explanation: the question does not ask '
+            'for them and a bare correct answer earns full marks."}\n'
+            "  ]\n"
+            "}\n"
+            "Exactly ONE criterion. Never split the marks across option/reasoning/elimination."
+        )
     return (
         f"Create a detailed evaluation rubric for the following question.\n\n"
         f"Subject: {subject}\nType: {question_type}\nMax marks: {max_marks}\n\n"
@@ -52,8 +79,7 @@ def build_criteria_prompt(
         "Why this matters: guidance figures are written against whatever total the rubric was "
         "first drafted for. If that rubric is ever reused at a different weight, a grader reads "
         "the old figures literally against the new maxima and silently caps every answer below "
-        "full marks. Measured on a real 10-mark paper whose rubric had been drafted at 6: a "
-        "perfect script could not score above about 6.5, costing one student ~15 marks.\n"
+        "full marks.\n"
         "Section numbers, years and amounts are not mark figures - keep them exactly "
         "(e.g. 's. 30(5)', '1932', 'Rs. 12,00,000')."
     )
@@ -61,333 +87,108 @@ def build_criteria_prompt(
 
 # ---------------------------- Grading prompt ---------------------------------
 
-GRADING_SYSTEM = """
-You are a professional HUMAN EXAM CHECKER.
-
-Your task is to check the student's ORIGINAL HANDWRITTEN ANSWER COPY
-exactly like a real teacher checks a physical examination notebook with
-a red pen.
-
-IMPORTANT:
-You are EDITING/ANNOTATING the student's ORIGINAL COPY.
-
-You are NOT creating a new evaluation page.
-You are NOT creating a report beside the copy.
-You are NOT redesigning the page.
-You are NOT adding a white page.
-You are NOT creating a side panel.
-You are NOT creating boxes or cards.
-You are NOT drawing separator lines.
-You are NOT changing the notebook layout.
-
-The student's ORIGINAL PAPER MUST REMAIN THE MAIN AND ONLY CANVAS.
-
-========================================================
-ABSOLUTE VISUAL RULE - MOST IMPORTANT
-========================================================
-
-PRESERVE THE ORIGINAL STUDENT ANSWER SHEET EXACTLY.
-
-Do not change paper, notebook background, ruled lines, margins,
-handwriting, question numbers, page layout, paper colour, page borders,
-existing printed content or the student's writing.
-
-ONLY ADD TEACHER MARKINGS ON TOP OF THE ORIGINAL PAPER.
-
-Think of the operation as:
-
-ORIGINAL STUDENT COPY + RED TEACHER PEN MARKINGS = FINAL CHECKED COPY
-
-NOT: ORIGINAL COPY + NEW WHITE PAGE + SIDEBAR + REPORT = WRONG
-
-========================================================
-NO WHITE PAGE / NO SIDE PANEL / NO EXTRA CANVAS
-========================================================
-
-NEVER generate or add a white background beside the copy, a white page on
-the side, a separate feedback sheet, a side panel, an evaluation column, a
-floating feedback card, a summary card, a new margin area, artificial
-paper, a separate annotation canvas, boxes around comments, tables,
-horizontal or vertical separator lines, UI elements, a dashboard-style
-evaluation or an infographic-style layout.
-
-ALL feedback must be written DIRECTLY ON THE ORIGINAL STUDENT PAPER.
-
-If there is no blank space, place the annotation naturally in the nearest
-available margin/blank area.
-
-Do NOT create additional space.
-
-========================================================
-REAL PHYSICAL COPY-CHECKING BEHAVIOUR
-========================================================
-
-Imagine you are physically holding the student's notebook.
-
-You have ONE red pen.
-
-You read the student's answer. You naturally mark it with your pen. Then
-you move to the next answer.
-
-Follow the actual visual flow of the copy from top to bottom.
-
-Do NOT break the checking flow. Do NOT jump around the page
-unnecessarily. Do NOT create a separate feedback area.
-
-The result must look like: teacher reads answer -> teacher marks answer ->
-teacher writes short comment -> teacher gives marks -> teacher moves to
-the next question.
-
-========================================================
-QUESTION-BY-QUESTION CHECKING
-========================================================
-
-Every attempted question/sub-question must be checked individually.
-
-For each question: identify the question, read the complete answer,
-evaluate correctness, compare with the rubric/model answer, identify
-correct points, identify incorrect points, identify missing points,
-calculate marks, add natural teacher markings directly beside the relevant
-writing, add the question score near that question, and move naturally to
-the next question.
-
-NEVER skip an attempted question.
-
-========================================================
-QUESTION SCORE
-========================================================
-
-Every attempted question MUST receive its own score, written directly on
-the ORIGINAL PAPER: right side of the answer, nearby margin, beside the
-end of the answer, or nearby blank space.
-
-Do NOT move the score to a separate area. Do NOT place all scores at the
-top. Do NOT create a score table, a score sidebar or a separate marks
-section.
-
-========================================================
-LARGE TEACHER TICKS
-========================================================
-
-Correct meaningful points must receive LARGE, CLEAR handwritten ticks,
-approximately 1.5-2.5x the height of nearby handwriting.
-
-The tick must look like a teacher physically drew it with a red pen:
-natural hand movement, slightly irregular stroke, realistic pen pressure,
-slightly imperfect shape, natural angle.
-
-Do NOT use tiny digital check icons, UI icons or perfectly geometric
-vector ticks.
-
-Place it beside the relevant answer line.
-
-========================================================
-MARK CORRECT POINTS NATURALLY
-========================================================
-
-For every DISTINCT meaningful correct point, add a visible tick.
-
-Do NOT tick every sentence. If several lines form one connected correct
-explanation, one large tick is enough.
-
-Do NOT over-mark.
-
-========================================================
-EVERY ATTEMPTED QUESTION MUST SHOW MARKING
-========================================================
-
-Correct answer: tick + score.
-
-Partially correct: tick + correction + short deduction explanation + score.
-
-Incorrect: cross + corrective comment + short deduction explanation +
-score.
-
-An attempted answer must NEVER appear completely unchecked.
-
-========================================================
-MARK DEDUCTION EXPLANATION
-========================================================
-
-Whenever marks are deducted, explain WHY, directly on the original paper,
-in only 1-2 short sentences, specific to the student's answer:
-
-"Partially correct. One important point is missing."
-
-"Good attempt, but the conclusion is incomplete."
-
-"Correct method, but the final calculation is wrong."
-
-"Answer is incomplete. Capital should be paid last."
-
-Do NOT use generic comments such as "Needs improvement.", "Wrong." or
-"Explain more."
-
-========================================================
-FEEDBACK MUST LOOK HANDWRITTEN
-========================================================
-
-All teacher comments must use the SAME teacher handwriting style: natural
-cursive, slightly slanted, red pen, realistic handwriting, slightly
-irregular baseline, natural letter spacing, natural pen pressure,
-handwritten numbers and punctuation.
-
-The comments should look like the SAME TEACHER checked the whole copy.
-
-Do NOT switch fonts between annotations. Do NOT use typed UI fonts. Do NOT
-use Arial/Roboto/Inter/Helvetica-style text. Do NOT make feedback look
-digitally typeset.
-
-========================================================
-HANDWRITING SIZE
-========================================================
-
-Teacher feedback must be clearly visible, approximately 1.2-1.8x the
-height of normal student handwriting.
-
-Ticks must be EXTRA LARGE. Scores must be EXTRA LARGE.
-
-Visual hierarchy: student handwriting normal, teacher feedback large,
-teacher score extra large, teacher tick extra large.
-
-========================================================
-RED PEN ONLY FOR TEACHER MARKING
-========================================================
-
-Teacher annotations appear as natural RED PEN ink: ticks, crosses,
-underlines, circles, strikes, comments, corrections, marks.
-
-Do NOT change or recolour the student's blue/black handwriting.
-
-========================================================
-NATURAL TEACHER COMMENTS
-========================================================
-
-Use short comments such as "Good!", "Correct!", "Very good.",
-"Well explained!", "Good point.", "Nice example.", "Good reasoning.",
-"Clear.", "Good conclusion.", "Partially correct.", "Needs more detail.",
-"Important point missing.", "Check this.", "Not quite.", "Add an example."
-
-========================================================
-CORRECTIONS
-========================================================
-
-When the student is wrong, write the useful correction.
-
-BAD: "Wrong."
-
-GOOD: "Capital is paid last." / "Use F = ma." / "Risk remains with the
-seller." / "Add one relevant example."
-
-The correction must be short and directly related to the mistake.
-
-========================================================
-DO NOT DRAW ARTIFICIAL LINES
-========================================================
-
-NEVER create separator lines, boxes, columns, arrows connecting distant
-sections, vertical panels, horizontal sections, feedback containers or
-artificial margin lines.
-
-Only use natural teacher pen marks: tick, cross, underline, circle,
-strike, short handwritten note.
-
-A teacher may use a SMALL handwritten arrow if it naturally points to the
-relevant student text. Do not create long decorative arrows.
-
-========================================================
-USE EXISTING SPACE ONLY
-========================================================
-
-If blank space already exists on the student's paper, use it naturally.
-
-If no blank space exists, place the annotation in the nearest safe margin
-or beside the relevant line.
-
-NEVER create additional white space. NEVER expand the canvas. NEVER add
-another page.
-
-========================================================
-PRESERVE THE COPY-CHECKING FLOW
-========================================================
-
-The visual reading flow must remain: question -> student answer -> tick or
-cross -> short teacher feedback -> question score -> next question.
-
-The teacher's eye should be able to follow the copy naturally.
-
-Do NOT make the viewer look away from the notebook to a separate panel.
-
-========================================================
-NO PAGE-LEVEL GRADING
-========================================================
-
-Ignore page numbers. Do not mark page numbers, put scores near page
-numbers, create page totals, page summaries or page-level feedback.
-
-Grade QUESTIONS, not pages.
-
-========================================================
-MULTI-PAGE QUESTION
-========================================================
-
-If a question continues to another page, treat it as ONE continuous
-question. Mark correct points and mistakes wherever they occur. Give ONE
-final score for the complete question, at the logical end of that
-question. Do NOT create duplicate scores.
-
-========================================================
-EXTRACTED ANSWER
-========================================================
-
-The student's extracted answer must be VERBATIM.
-
-Do not correct spelling or grammar, rewrite sentences, add missing
-information, or include teacher comments, marks or page numbers.
-
-========================================================
-GRADING RULES
-========================================================
-
-Use the question, rubric, model answer and the actual student answer.
-
-Award marks based on demonstrated understanding. Accept equivalent
-wording. Accept valid alternative methods. Give partial credit when
-justified. Do not double-deduct the same mistake. Do not deduct marks
-without evidence.
-
-========================================================
-FINAL HUMAN EXAMINER TEST
-========================================================
-
-Before producing the final result, imagine the image is printed on paper.
-
-Ask: "Would a real teacher be able to create this exact checked copy
-simply by using a red pen on the student's original notebook?"
-
-If YES, keep it. If NO, remove anything that looks digitally added or
-artificially designed.
-
-The final result MUST remain the original student paper, with no new white
-page, no side panel, no separate feedback section, no boxes, no artificial
-separator lines and no UI elements; and MUST contain large handwritten
-ticks, handwritten scores, short handwritten feedback, an explanation for
-every meaningful mark deduction, marking on every attempted question, the
-student's handwriting preserved, the notebook lines preserved and the
-original layout preserved.
+GRADING_SYSTEM_TEMPLATE = """
+You are an experienced {subject} teacher (Class {klass}) checking a student's
+handwritten answer copy with a red pen. Another tool draws the marks; you decide
+every mark and say exactly on which transcript row it goes.
+
+INPUTS
+1. ONE question from the paper, with its paper number, max marks and rubric.
+2. TRANSCRIPT - the student's whole copy as numbered rows "[pX_rNN] text",
+   grouped by page. Row ids are the ONLY way to say where a mark goes.
+
+MATCHING THE ANSWER - READ THIS FIRST
+The student's question labels may NOT match the paper's numbering (restart per
+section, skip, shift). NEVER match by label alone. Identify the answer by
+CONTENT - topic, option letters, values and units, the section heading above
+it - and only then grade it. Report what you matched in student_label and
+answer_rows. If two places could answer this question, choose the one whose
+content matches the marking scheme.
+If the SAME question is answered twice and neither attempt is scribbled out,
+grade the FIRST attempt in page order and put a margin_note on the second:
+"Answered twice - first attempt taken." with no score there. Report both row
+ranges in answer_rows_duplicate.
+An answer in the copy that matches NO question in the paper is not yours to
+grade; leave it alone and list its rows in unmapped_rows so the pipeline can
+flag an incomplete question paper.
+
+PROCEDURE
+1. Read the whole transcript. Locate where THIS question's answer starts and
+   ends. An answer may span pages; the score goes where it ENDS, even if that
+   is the first row of a page.
+2. attempted   -> grade against the rubric, marks in 0.5 steps only. Give
+                  method marks in numericals even when the final value is
+                  wrong. If awarded < max, give ONE specific reason naming what
+                  is wrong or missing in THIS answer (5-15 words).
+   cancelled   -> written then scribbled out: award 0, score "0/x" on the
+                  scribbled row, margin_note "Attempt cancelled by student."
+   unattempted -> award 0, annotations [], extracted_answer "".
+3. Before returning, check: an attempted or cancelled question carries EXACTLY
+   ONE `score` annotation; if marks were deducted it also carries EXACTLY ONE
+   `margin_note` giving the reason.
+
+WHAT COUNTS AS THE PAPER
+Only the ruled notebook paper is writable. The margin line, ruled lines, the
+"Page No / Date" box and the subject heading are part of the blank notebook -
+never annotate them. Never place a mark on background, table, cloth or shadow.
+
+ANNOTATION REGIME - the same for every question type
+MCQ / one-word / fill-in:
+  correct -> `tick` on the answer row (right_of_line)
+             + `score` "x/y" on the same row (right_margin)
+  wrong   -> `cross` on the answer row (right_of_line)
+             + `score` "0/y" (right_margin)
+             + `margin_note` "Wrong option. Correct: (c)" (below_line).
+             ALWAYS name the correct option.
+Written / descriptive / numerical:
+  `tick`        on each row holding a correct point, correct formula or
+                correct final value - at most ONE tick per row, at most FOUR
+                ticks per question. Do not tick every sentence.
+  `cross`       on a row with a wrong statement, wrong sign/unit or wrong
+                final value.
+  `underline`   ONLY a wrong word, number or sign: put that word in
+                anchor_text, placement under_word. Never a whole line.
+  `score`       "x/y" right_margin on the LAST row of the answer.
+  `margin_note` only when marks were deducted: below_line under that last
+                row; if the last row is the foot of the page, use left_margin
+                on that row instead. This is the deduction reason.
+Diagram / labelled figure:
+  one `tick` on the caption or label row, `score` on the same row; deduct
+  with a `margin_note` naming the missing labels.
+Praise ("Good.", "Well explained.") only on a FULL-mark written answer, as a
+`margin_note` below the last row, at most one in three such answers, never on
+MCQ, never on a partial answer.
+
+ONE SCORE, NO TOTALS
+- Exactly ONE `score` per attempted or cancelled question, where the answer
+  ends. Continuation pages carry ticks/crosses only.
+- Never a page total, section total or running total; the grand total is
+  computed outside this call.
+- Never write a mark figure inside a margin_note - the score carries it.
+- Never emit an annotation that is not attached to a real row id.
+
+PLACEMENT
+  right_of_line  just right of the student's words on that row
+  right_margin   in the right margin, level with that row (scores only)
+  left_margin    in the left margin, level with that row
+  below_line     on the blank line under that row (notes)
+  under_word     a thin line under the word given in anchor_text only
+
+NEVER ADD
+Boxes, panels, white patches, tables, long lines across the page, arrows,
+large text, icons or stamps.
 """
 
-def _transcript_for_prompt(layout_map: dict[str, Any]) -> str:
-    """The student's pages, as text the grader can actually read.
+GRADING_SYSTEM = GRADING_SYSTEM_TEMPLATE.format(subject="school", klass="6-12")
 
-    Where a page has been re-read by the vision model (see
-    vision_transcript.py) its continuous `vision_text` leads, because that is
-    the reliable reading of the handwriting; the per-row list follows so the
-    model still has line_ids to anchor annotations to. Pages that fall back to
-    raw PaddleOCR say so explicitly - an unreliable transcript the model knows
-    is unreliable produces a low confidence score, which is what should happen,
-    instead of a confident grade invented from noise.
-    """
+
+def grading_system(subject: str = "school", klass: str = "6-12") -> str:
+    """Subject/class-specific system prompt. Use this instead of GRADING_SYSTEM
+    where the subject is known."""
+    return GRADING_SYSTEM_TEMPLATE.format(subject=subject, klass=klass)
+
+
+def _transcript_for_prompt(layout_map: dict[str, Any]) -> str:
     out: list[str] = []
     for page in layout_map.get("pages") or []:
         out.append("---- Page " + str(page.get("page_id")) + " ----")
@@ -418,7 +219,6 @@ def _transcript_for_prompt(layout_map: dict[str, Any]) -> str:
 
 
 def _question_context(question: dict[str, Any]) -> str:
-    """Format MCQ options + correct answer block. Empty for non-MCQ."""
     options = question.get("options") or []
     if not options:
         return ""
@@ -456,10 +256,6 @@ def _type_instructions(question_type: str) -> str:
             "the rubric. Spelling/OCR errors do NOT reduce marks."
         )
     if t == "CODING":
-        # This pipeline grades a scanned/handwritten copy: no sandbox execution
-        # results (verdict, pass counts, runtime, memory) are available. Do NOT
-        # ask the model to use data it cannot see — that invites hallucinated
-        # verdicts. Grade the written logic only.
         return (
             "CODING: No execution results (test verdicts, pass counts, runtime, or "
             "memory) are available for this answer. Grade the written code's logic and "
@@ -471,40 +267,31 @@ def _type_instructions(question_type: str) -> str:
 
 
 def _model_answer_block(question: dict[str, Any]) -> str:
-    """Teacher-authored reference answer, if provided. Used as a grading guide —
-    NOT a required verbatim match — so a teacher who writes a model answer
-    actually influences the grade (previously it was stored but never read)."""
     model_answer = question.get("model_answer")
     if not model_answer:
         return ""
     return (
         "**Model answer (teacher-provided reference):**\n"
-        "This is what a full-marks answer contains. Use it as your guide to award "
-        "marks per the rubric — reward answers that reach the same understanding, "
-        "even in different words or order. Do NOT require identical wording, and do "
-        "NOT penalise correct approaches that differ from it.\n"
+        "This is what a full-marks answer contains. Reward answers that reach the "
+        "same understanding in different words or order. Do NOT require identical "
+        "wording and do NOT penalise correct approaches that differ from it.\n"
         f"{model_answer}\n"
     )
 
 
 def _annotation_regime(question_type: str, max_marks: float) -> str:
-    """Short answers get a short pen, not the essay treatment."""
+    """One reminder line; the full regime is in the system prompt and is the
+    same for every type. The only per-type difference is the tick budget."""
     t = (question_type or "").upper()
-    if t == "MCQ":
+    if t in ("MCQ", "ONE_WORD", "SHORT_ANSWER") or max_marks <= 1:
         return (
-            "This is an MCQ. One annotation on the answer line: a `tick`, or a `cross` whose text "
-            "is the correct option (e.g. 'Correct: (B) Mitochondria'). Nothing else."
-        )
-    if t in ("ONE_WORD", "SHORT_ANSWER") or max_marks <= 2:
-        return (
-            "This is a short answer. One `tick`, or one `cross`/`circle` whose text is the correct "
-            "answer, plus at most one short praise note. Nothing else."
+            "Objective/short answer: `tick` or `cross` on the answer row, plus ONE `score`. "
+            "Wrong answer also gets a `margin_note` naming the correct answer. No praise."
         )
     return (
-        "This is a descriptive answer. Tick each distinct correct point (about 6 at most), correct "
-        "what is wrong with a `strike`/`cross`/`circle` carrying the right position, and add at "
-        "least one short piece of praise where the student has genuinely earned it. Do not mark "
-        "every sentence."
+        "Written answer: up to FOUR `tick`s on correct rows, `cross`/`underline` on wrong ones, "
+        "ONE `score` on the last row, and ONE `margin_note` with the deduction reason if any "
+        "marks were cut. Praise only if full marks."
     )
 
 
@@ -532,7 +319,7 @@ def build_grading_prompt(
 **Evaluation rubric (JSON):**
 {rubric_json}
 
-**Student's transcript (line_id + text per page):**
+**Student's transcript (row id + text per page):**
 {_transcript_for_prompt(layout_map)}
 
 **Type-specific grading:**
@@ -542,29 +329,68 @@ def build_grading_prompt(
 {_annotation_regime(question.get('question_type'), max_marks)}
 
 **Hard constraints (checked by code - a violation is re-prompted):**
-- Maximum marks {max_marks:.1f}. marks_awarded <= {max_marks:.1f}.
+- Maximum marks {max_marks:.1f}. marks_awarded <= {max_marks:.1f}, in 0.5 steps.
 - Sum of criteria_breakdown[].marks == marks_awarded.
 - criteria_breakdown has one entry per rubric criterion, with the rubric's exact criteria_name.
-- Every `target` is a line_id (or region_id) that exists in the transcript, on the stated page_id.
-- `text` is non-empty on strike, cross, circle, margin_note and region_note; null on tick and underline.
-- Praise is 1-4 words ("Good!", "Well explained!"). A note that explains a DEDUCTION is a short 1-2 sentence explanation naming what is missing or wrong in THIS answer, and it may run to about 20 words.
-- Every attempted question carries at least one visible annotation. Its score is placed near the END of that question, never at the top of a page.
-- If marks_awarded < {max_marks:.1f}, at least one strike/cross/circle/margin_note names what was missing or wrong.
-- extracted_answer is the student's writing VERBATIM, errors preserved, never the printed question. First ~250 words then '...' if longer. "" if unattempted.
+- Every `target` is a row id (or region_id) that exists in the transcript, on the stated page_id.
+- If attempted or cancelled: EXACTLY ONE annotation with style "score", text "x/{max_marks:g}",
+  placement right_margin, on the LAST row of the answer. Zero scores or two scores is an error.
+- If marks_awarded < {max_marks:.1f}: EXACTLY ONE "margin_note" with the deduction reason
+  (5-15 words, specific to this answer, no mark figures), placement below_line on the last row
+  (left_margin if that row is the foot of the page).
+- `text` is required on score, cross-for-MCQ, margin_note and region_note; null on tick and underline.
+- Praise (1-4 words) only if marks_awarded == {max_marks:.1f} and the answer is written, not MCQ.
+- extracted_answer is the student's writing VERBATIM, errors preserved, never the printed question.
+  First ~250 words then '...' if longer. "" if unattempted.
 - Unattempted question: marks_awarded 0, extracted_answer "", annotations [].
 
 **Output: STRICT JSON only, no prose before or after.**
 {{
   "marks_awarded": <float>,
+  "verdict": "correct|partial|wrong|cancelled|unattempted",
   "extracted_answer": "<verbatim>",
   "feedback": "<2 sentences grounded in the rubric>",
   "confidence": <0..1>,
   "criteria_breakdown": [
-    {{"criteria_name": "<exact rubric name>", "marks": <float>, "reason": "<'X mark(s) deducted because ...' with a line_id, or why full marks>"}}
+    {{"criteria_name": "<exact rubric name>", "marks": <float>, "reason": "<'X mark(s) deducted because ...' with a row id, or why full marks>"}}
   ],
+  "student_label": "<the label the student wrote above this answer, e.g. 'Q8', or null>",
+  "answer_rows": ["<first row id of the answer>", "<last row id>"],
+  "answer_rows_duplicate": ["<first row>", "<last row>"] or null,
   "annotations": [
-    {{"style": "tick|cross|circle|strike|underline|margin_note|region_note",
-      "target": "<line_id or region_id>", "page_id": "<page_id>",
-      "text": "<short teacher-style note, 1-8 words, or null>"}}
+    {{"style": "tick|cross|underline|score|margin_note|region_note",
+      "target": "<row id from the transcript>", "page_id": "<page_id>",
+      "anchor_text": "<the student's words on that row, copied VERBATIM>",
+      "placement": "right_of_line|right_margin|left_margin|below_line|under_word",
+      "text": "<'x/y' for score, the note for margin_note, else null>"}}
   ]
-}}"""
+}}
+
+ANCHORING - this decides whether the mark reaches the page at all.
+- target is a row id copied EXACTLY from the transcript, e.g. "p3_r12". Never
+  invent one, never give pixel coordinates, never give a page number alone.
+- anchor_text is REQUIRED on every annotation: the student's words on that row
+  exactly as written, misspellings and all. Never the printed question.
+- target and anchor_text must name the SAME row.
+- If you cannot find the exact row, anchor to the closest row you can quote.
+  A mark one row off is acceptable; an omitted mark is not.
+- under_word additionally needs the single wrong word or number in anchor_text.
+- student_label and answer_rows record WHERE this answer lives, from the
+  content match, not from the student's numbering."""
+
+
+# ---------------------------- Grand total (code, not model) -------------------
+
+def grand_total_annotation(results: list[dict[str, Any]], paper_max: float,
+                           first_page_id: str, first_row_id: str) -> dict[str, Any]:
+    """Build the circled obtained/total for page 1 after ALL questions are graded.
+    Renderer draws it ~2.3x line height with a hand-drawn circle just below the
+    Page No box. Never let the model write this."""
+    awarded = sum(float(r.get("marks_awarded") or 0) for r in results)
+    return {
+        "style": "total",
+        "target": first_row_id,
+        "page_id": first_page_id,
+        "placement": "right_margin",
+        "text": f"{awarded:g}/{paper_max:g}",
+    }

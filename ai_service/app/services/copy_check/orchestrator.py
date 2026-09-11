@@ -26,6 +26,7 @@ from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
 from .rubric import RubricResolver, load_snapshot
 from .validator import validate_and_cap
+from .enforce_bridge import apply_enforcement
 
 logger = logging.getLogger(__name__)
 
@@ -262,9 +263,32 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         # Checkpoint first: a cancel that landed after the last question's check
         # would otherwise render, upload, and bill a copy the teacher stopped.
         cancellation.check(job_id, process_id)
-        evaluated_file_id = await annotator.render_and_upload(
-            pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
-        )
+        # Between the grader and the renderer: enforce.py makes the marking
+        # correct whatever the model returned - exactly one score per attempted
+        # question in the right margin, one deduction note below the answer,
+        # praise only where the guide allows it, every annotation on a real
+        # row. It also names any question that ended with no ink, and a copy
+        # with one of those is not shipped: the grades are already reported,
+        # the file is withheld rather than sent out half-checked.
+        try:
+            questions_meta = [{
+                "question_id": q.get("question_id"),
+                "paper_label": q.get("paper_label") or q.get("label"),
+                "max_marks": q.get("max_marks"),
+                "question_type": q.get("question_type"),
+            } for q in questions]
+        except Exception:
+            questions_meta = None
+        verdicts, _total, enforce_report, unmarked = apply_enforcement(
+            verdicts, layout_map, questions_meta)
+        if unmarked:
+            logger.error("copy-check %s: enforce found unmarked questions %s; withholding the file",
+                         process_id, unmarked)
+            evaluated_file_id = None
+        else:
+            evaluated_file_id = await annotator.render_and_upload(
+                pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
+            )
 
         # 5. Done.
         await callbacks.complete(

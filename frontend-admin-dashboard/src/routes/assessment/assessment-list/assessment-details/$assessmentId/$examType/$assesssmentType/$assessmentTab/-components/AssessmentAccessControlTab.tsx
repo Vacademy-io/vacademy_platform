@@ -68,7 +68,7 @@ const AssessmentAccessControlTab = () => {
                 <h1 className="font-semibold">{t('sections.creationAccessTitle')}</h1>
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex flex-wrap items-center gap-4">
-                        {assessmentDetails[3]?.saved_data.creation_access.user_ids?.map(
+                        {assessmentDetails[3]?.saved_data?.creation_access?.user_ids?.map(
                             (userId) => {
                                 const matchedUser = accessControlUsers?.find(
                                     (user: AccessControlUser) => user.id === userId
@@ -125,7 +125,7 @@ const AssessmentAccessControlTab = () => {
                 <h1 className="font-semibold">{t('sections.liveNotificationsTitle')}</h1>
                 <div className="flex items-center gap-4">
                     <div className="flex flex-wrap items-center gap-4">
-                        {assessmentDetails[3]?.saved_data.live_assessment_access.user_ids?.map(
+                        {assessmentDetails[3]?.saved_data?.live_assessment_access?.user_ids?.map(
                             (userId) => {
                                 const matchedUser = accessControlUsers?.find(
                                     (user: AccessControlUser) => user.id === userId
@@ -182,7 +182,7 @@ const AssessmentAccessControlTab = () => {
                 <h1 className="font-semibold">{t('sections.submissionReportsTitle')}</h1>
                 <div className="flex items-center gap-4">
                     <div className="flex flex-wrap items-center gap-4">
-                        {assessmentDetails[3]?.saved_data.report_and_submission_access.user_ids?.map(
+                        {assessmentDetails[3]?.saved_data?.report_and_submission_access?.user_ids?.map(
                             (userId) => {
                                 const matchedUser = accessControlUsers?.find(
                                     (user: AccessControlUser) => user.id === userId
@@ -239,7 +239,7 @@ const AssessmentAccessControlTab = () => {
                 <h1 className="font-semibold">{t('sections.evaluationTitle')}</h1>
                 <div className="flex items-center gap-4">
                     <div className="flex flex-wrap items-center gap-4">
-                        {assessmentDetails[3]?.saved_data.evaluation_access.user_ids?.map(
+                        {assessmentDetails[3]?.saved_data?.evaluation_access?.user_ids?.map(
                             (userId) => {
                                 const matchedUser = accessControlUsers?.find(
                                     (user: AccessControlUser) => user.id === userId

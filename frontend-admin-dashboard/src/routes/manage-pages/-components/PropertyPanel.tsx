@@ -2705,16 +2705,28 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp(sectionKey, { ...section, links });
     };
 
+    // One link row open at a time, keyed "<section>:<index>". The row used to
+    // put the label box, the whole LinkPicker (page search + page list) and
+    // the delete button side by side in the 320px panel: the picker took the
+    // width, the label shrank to a ~26px sliver with its text hidden and the
+    // delete button was pushed off-screen — admins could not rename a link at
+    // all (one typed "h" blind and published it). Same collapsed-row pattern
+    // as the header's navigation links.
+    const [expandedLink, setExpandedLink] = useState<string | null>(null);
+
     const addRightSectionLink = (sectionKey: string) => {
         const section = props[sectionKey] || { title: '', links: [] };
         const links = [...(section.links || []), { label: t('header.defaults.newLink'), route: '/' }];
         updateProp(sectionKey, { ...section, links });
+        // Open the new row so the label box is the next thing the admin sees.
+        setExpandedLink(`${sectionKey}:${links.length - 1}`);
     };
 
     const deleteRightSectionLink = (sectionKey: string, linkIndex: number) => {
         const section = props[sectionKey] || { title: '', links: [] };
         const links = (section.links || []).filter((_: any, i: number) => i !== linkIndex);
         updateProp(sectionKey, { ...section, links });
+        setExpandedLink(null);
     };
 
     const layout = props.layout || 'four-column';
@@ -2850,29 +2862,63 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                                     <Plus className="me-1 size-3" /> {t('actions.add')}
                                 </Button>
                             </div>
-                            {(section.links || []).map((link: any, li: number) => (
-                                <div key={li} className="flex items-center gap-1.5">
-                                    <Input
-                                        className="h-7 text-xs"
-                                        placeholder={t('header.labelPlaceholder')}
-                                        value={link.label || ''}
-                                        onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
-                                    />
-                                    <LinkPicker
-                                        label=""
-                                        value={link.route || ''}
-                                        onChange={(v) => updateRightSectionLink(sectionKey, li, 'route', v)}
-                                    />
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="size-7 shrink-0 p-0 text-red-500"
-                                        onClick={() => deleteRightSectionLink(sectionKey, li)}
-                                    >
-                                        <Trash2 className="size-3" />
-                                    </Button>
-                                </div>
-                            ))}
+                            {(section.links || []).map((link: any, li: number) => {
+                                const rowKey = `${sectionKey}:${li}`;
+                                const isOpen = expandedLink === rowKey;
+                                return (
+                                    <div key={li} className="rounded border bg-white p-2">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => setExpandedLink(isOpen ? null : rowKey)}
+                                                className="flex-1 truncate text-left text-sm font-medium"
+                                                aria-expanded={isOpen}
+                                            >
+                                                {isOpen ? (
+                                                    <ChevronUp className="mr-1 inline size-3" />
+                                                ) : (
+                                                    <ChevronDown className="mr-1 inline size-3" />
+                                                )}
+                                                {link.label || t('header.labelPlaceholder')}
+                                            </button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="size-6 shrink-0 p-0 text-red-500"
+                                                onClick={() => deleteRightSectionLink(sectionKey, li)}
+                                                title={t('actions.delete')}
+                                                aria-label={t('actions.delete')}
+                                            >
+                                                <Trash2 className="size-3" />
+                                            </Button>
+                                        </div>
+                                        {isOpen && (
+                                            <div className="mt-2 space-y-2">
+                                                <Input
+                                                    className="h-8 text-xs"
+                                                    placeholder={t('header.labelPlaceholder')}
+                                                    value={link.label || ''}
+                                                    onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
+                                                />
+                                                <LinkPicker
+                                                    label={t('header.route')}
+                                                    value={link.route || ''}
+                                                    onChange={(v) => updateRightSectionLink(sectionKey, li, 'route', v)}
+                                                />
+                                                {/* The learner footer already honours openInSameTab
+                                                    for external links; the editor never exposed it. */}
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-xs">{t('header.openInSameTab')}</Label>
+                                                    <Switch
+                                                        checked={!!link.openInSameTab}
+                                                        onCheckedChange={(c) => updateRightSectionLink(sectionKey, li, 'openInSameTab', c)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 );

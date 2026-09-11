@@ -4,11 +4,11 @@ import { MyButton } from '@/components/design-system/button';
 import { DotsThree } from '@phosphor-icons/react';
 import { useState, Suspense } from 'react';
 import { MyDialog } from '@/components/design-system/dialog';
-import { useUpdateInviteLinkStatus } from '../-services/update-invite-link-status';
+import { useDeleteEnrollInvites } from '../-services/delete-enroll-invites';
 import { toast } from 'sonner';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { InviteLinkDataInterface } from '@/schemas/study-library/invite-links-schema';
-import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { handleGetEnrollSingleInviteDetails } from './create-invite/-services/enroll-invite';
 import { extractBatchesFromInviteDetails } from '../-utils/enrollInviteTransformers';
 import GenerateInviteLinkDialog from './create-invite/GenerateInviteLinkDialog';
@@ -86,22 +86,17 @@ const EditInviteDialogContent = ({ invite }: { invite: InviteLinkDataInterface }
 
 export const InviteCardMenuOptions = ({ invite }: InviteCardMenuOptionsProps) => {
     const { t } = useTranslation('manageStudentsInviteCardMenuOptions');
-    const queryClient = useQueryClient();
     const dropdownList = buildInviteCardMenuDropdownList(t);
     const [openEditDialog, setOpenEditDialog] = useState(false);
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
-    const updateInviteStatusMutation = useUpdateInviteLinkStatus();
+    // These cards are enroll invites, so the delete has to hit the enroll-invite
+    // endpoint. The earlier learner-invitation status call matched no rows and
+    // reported success — the invite never left the list.
+    const deleteInvitesMutation = useDeleteEnrollInvites();
 
     const onDeleteInvite = async (invite: InviteLinkDataInterface) => {
         try {
-            await updateInviteStatusMutation.mutateAsync({
-                requestBody: {
-                    learner_invitation_ids: [invite.id],
-                    status: 'DELETED',
-                },
-            });
-            queryClient.invalidateQueries({ queryKey: ['inviteList'] });
-            queryClient.invalidateQueries({ queryKey: ['GET_INVITE_LINKS'] });
+            await deleteInvitesMutation.mutateAsync([invite.id]);
             toast.success(t('toast.deleteSuccess'));
             setOpenDeleteDialog(false);
         } catch {

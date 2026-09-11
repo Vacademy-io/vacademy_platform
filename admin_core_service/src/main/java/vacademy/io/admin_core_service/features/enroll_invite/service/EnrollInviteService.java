@@ -37,6 +37,8 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Referra
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -85,6 +87,9 @@ public class EnrollInviteService {
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
 
+    @Autowired
+    private AuthService authService;
+
     @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerBaseUrl;
 
@@ -95,6 +100,16 @@ public class EnrollInviteService {
 
     @Transactional
     public String createEnrollInvite(EnrollInviteDTO enrollInviteDTO) {
+        return createEnrollInvite(enrollInviteDTO, null);
+    }
+
+    /**
+     * @param actor the admin performing the call, or null for internal callers
+     *              (sub-org provisioning, course copy) where no JWT is on hand —
+     *              the invite is then recorded with an unknown creator.
+     */
+    @Transactional
+    public String createEnrollInvite(EnrollInviteDTO enrollInviteDTO, CustomUserDetails actor) {
         if (enrollInviteDTO == null) {
             throw new VacademyException("EnrollInvite payload cannot be null.");
         }
@@ -106,6 +121,9 @@ public class EnrollInviteService {
         }
 
         EnrollInvite enrollInviteToSave = new EnrollInvite(enrollInviteDTO);
+        String actorId = actor != null ? actor.getUserId() : null;
+        enrollInviteToSave.setCreatedByUserId(actorId);
+        enrollInviteToSave.setUpdatedByUserId(actorId);
         EnrollInvite initialSavedEnrollInvite = repository.save(enrollInviteToSave);
 
         // Generate Short URL using centralized service
@@ -169,6 +187,12 @@ public class EnrollInviteService {
 
     @Transactional
     public String updateEnrollInvite(EnrollInviteDTO enrollInviteDTO) {
+        return updateEnrollInvite(enrollInviteDTO, (CustomUserDetails) null);
+    }
+
+    /** @param actor the admin editing, or null for internal callers (recorded as unknown). */
+    @Transactional
+    public String updateEnrollInvite(EnrollInviteDTO enrollInviteDTO, CustomUserDetails actor) {
         if (enrollInviteDTO == null) {
             throw new VacademyException("EnrollInvite payload cannot be null.");
         }
@@ -179,6 +203,9 @@ public class EnrollInviteService {
 
         EnrollInvite enrollInviteToSave = findById(enrollInviteDTO.getId());
         updateEnrollInvite(enrollInviteDTO, enrollInviteToSave);
+        if (actor != null) {
+            enrollInviteToSave.setUpdatedByUserId(actor.getUserId());
+        }
         final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
 
         saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(),
@@ -261,9 +288,20 @@ public class EnrollInviteService {
         enrollInvite.setSettingJson(enrollInviteDTO.getSettingJson());
     }
 
-    public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
+    /**
+     * Column the invite list falls back to when the caller sends no sort. Newest
+     * first: an admin who just created a link expects to see it at the top, and
+     * without any ORDER BY Postgres returned the page in whatever heap order it
+     * liked, so the list reshuffled after every edit.
+     */
+    private static final Sort DEFAULT_INVITE_SORT = Sort.by(Sort.Direction.DESC, "created_at");
+
+    public Page<EnrollInviteListItemDTO> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
             EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize, CustomUserDetails user) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
+        if (sortColumns.isUnsorted()) {
+            sortColumns = DEFAULT_INVITE_SORT;
+        }
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
         Page<EnrollInviteWithSessionsProjection> pageResult;
 
@@ -280,19 +318,33 @@ public class EnrollInviteService {
             }
         }
 
-        if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())) {
+        boolean hasSearch = StringUtils.hasText(enrollInviteFilterDTO.getSearchName());
+        boolean hasScope = !CollectionUtils.isEmpty(enrollInviteFilterDTO.getPackageSessionIds())
+                || !CollectionUtils.isEmpty(enrollInviteFilterDTO.getPaymentOptionIds())
+                || !CollectionUtils.isEmpty(enrollInviteFilterDTO.getTags());
+
+        if (hasSearch && !hasScope) {
+            // Institute-wide search (Invite page with no batch filter) keeps its
+            // dedicated query; it differs from the filtered one in how it treats
+            // invites without a live package session, and that behaviour is relied on.
             pageResult = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
                     enrollInviteFilterDTO.getSearchName(),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     pageable);
         } else {
+            // Scoped list, with or without a search term. Before this the search
+            // branch won regardless of scope, so typing in the course-details
+            // dialog returned invites from every course in the institute.
+            // searchName is passed as "" rather than null: Postgres cannot infer a
+            // type for a null bound inside CONCAT and rejects the statement.
             pageResult = repository.getEnrollInvitesWithFilters(instituteId,
                     enrollInviteFilterDTO.getPackageSessionIds(),
                     enrollInviteFilterDTO.getPaymentOptionIds(),
                     enrollInviteFilterDTO.getTags(),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    hasSearch ? enrollInviteFilterDTO.getSearchName().trim() : "",
                     pageable);
         }
 
@@ -302,10 +354,45 @@ public class EnrollInviteService {
             List<EnrollInviteWithSessionsProjection> filtered = pageResult.getContent().stream()
                     .filter(invite -> allowedSet.contains(invite.getId()))
                     .toList();
-            return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+            pageResult = new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
         }
 
-        return pageResult;
+        Page<EnrollInviteListItemDTO> page = pageResult.map(row -> EnrollInviteListItemDTO.from(row,
+                shortUrlManagementService.getAbsoluteShortUrl(row.getInstituteId(), row.getShortUrl())));
+        attachActorNames(page.getContent());
+        return page;
+    }
+
+    /**
+     * Resolves created_by / updated_by ids to display names in ONE batched
+     * auth_service call per page. Best-effort, like the payment-option list: the
+     * invites must still come back when auth_service is slow or down, so a
+     * failure leaves the names null and the UI falls back to "unknown".
+     */
+    private void attachActorNames(List<EnrollInviteListItemDTO> rows) {
+        List<String> ids = rows.stream()
+                .flatMap(r -> java.util.stream.Stream.of(r.getCreatedByUserId(), r.getUpdatedByUserId()))
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) return;
+        Map<String, String> names = new HashMap<>();
+        try {
+            for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(ids)) {
+                if (u == null || u.getId() == null) continue;
+                String name = u.getFullName() != null && !u.getFullName().isBlank()
+                        ? u.getFullName().trim()
+                        : u.getEmail() != null && !u.getEmail().isBlank() ? u.getEmail() : u.getUsername();
+                if (name != null) names.put(u.getId(), name);
+            }
+        } catch (Exception e) {
+            logger.warn("Could not resolve enroll invite actor names ({} ids): {}", ids.size(), e.getMessage());
+            return;
+        }
+        for (EnrollInviteListItemDTO row : rows) {
+            row.setCreatedByName(names.get(row.getCreatedByUserId()));
+            row.setUpdatedByName(names.get(row.getUpdatedByUserId()));
+        }
     }
 
     public EnrollInviteDTO findByEnrollInviteId(String enrollInviteId, String instituteId) {
@@ -387,8 +474,13 @@ public class EnrollInviteService {
 
     @Transactional
     public String updateDefaultEnrollInviteConfig(String enrollInviteId, String packageSessionId) {
+        return updateDefaultEnrollInviteConfig(enrollInviteId, packageSessionId, null);
+    }
+
+    public String updateDefaultEnrollInviteConfig(String enrollInviteId, String packageSessionId,
+            CustomUserDetails actor) {
         removeDefaultTag(packageSessionId);
-        addDefaultTag(enrollInviteId);
+        addDefaultTag(enrollInviteId, actor);
         return enrollInviteId;
     }
 
@@ -557,11 +649,14 @@ public class EnrollInviteService {
         }
     }
 
-    private void addDefaultTag(String enrollInviteId) {
+    private void addDefaultTag(String enrollInviteId, CustomUserDetails actor) {
         Optional<EnrollInvite> optionalEnrollInvite = repository.findById(enrollInviteId);
         if (optionalEnrollInvite.isPresent()) {
             EnrollInvite enrollInvite = optionalEnrollInvite.get();
             enrollInvite.setTag(EnrollInviteTag.DEFAULT.name());
+            if (actor != null) {
+                enrollInvite.setUpdatedByUserId(actor.getUserId());
+            }
             repository.save(enrollInvite);
         } else {
             throw new VacademyException("EnrollInvite not found");
@@ -722,6 +817,50 @@ public class EnrollInviteService {
 
     public EnrollInvite findById(String id) {
         return repository.findById(id).orElseThrow(() -> new VacademyException("EnrollInvite not found"));
+    }
+
+    // ── Audit helpers (called from @Auditable SpEL on EnrollInviteController) ──
+    // Every method is total: audit must never break the mutation it describes.
+
+    /**
+     * Pre-mutation snapshot for {@code captureBefore} on update. The entity is
+     * flat (no relations), so it serialises cleanly into {@code before_payload}
+     * and the audit UI can diff it against the request body.
+     */
+    public EnrollInvite auditSnapshot(String enrollInviteId) {
+        if (enrollInviteId == null || enrollInviteId.isBlank()) return null;
+        try {
+            return repository.findById(enrollInviteId).orElse(null);
+        } catch (Exception e) {
+            logger.warn("auditSnapshot failed for enroll invite {}: {}", enrollInviteId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** Name of one invite for the audit sentence, falling back to its id. */
+    public String auditName(String enrollInviteId) {
+        if (enrollInviteId == null || enrollInviteId.isBlank()) return null;
+        try {
+            return repository.findById(enrollInviteId)
+                    .map(EnrollInvite::getName)
+                    .filter(n -> n != null && !n.isBlank())
+                    .orElse(enrollInviteId);
+        } catch (Exception e) {
+            return enrollInviteId;
+        }
+    }
+
+    /**
+     * "invite link Summer Batch" for one id, "3 invite link(s)" for several — a
+     * bulk delete naming every invite would not fit the log row.
+     */
+    public String auditLabel(List<String> enrollInviteIds) {
+        List<String> ids = enrollInviteIds == null
+                ? List.of()
+                : enrollInviteIds.stream().filter(Objects::nonNull).filter(id -> !id.isBlank()).distinct().toList();
+        if (ids.isEmpty()) return null;
+        if (ids.size() > 1) return ids.size() + " invite link(s)";
+        return "invite link " + auditName(ids.get(0));
     }
 
     private static String getInviteCode() {

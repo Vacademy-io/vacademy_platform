@@ -20,12 +20,10 @@ public class ConnectCallResponseDTO {
      */
     private boolean realtimeEvents;
     /**
-     * The audience_response the call was logged against, when there is one.
-     * Echoed back because a learner call sends no responseId but the
-     * orchestrator may still have linked an existing lead row — the UI needs
-     * that id to open the post-call disposition sheet (status + follow-up both
-     * key off it). Null for a learner with no lead row: the caller should skip
-     * disposition capture rather than send a blank id.
+     * The audience_response the call was filed under: the request's own
+     * responseId for a lead call, null for a learner call. The UI opens the
+     * post-call disposition sheet (status + follow-up both key off a lead row)
+     * only when this is set, and skips it rather than send a blank id.
      */
     private String responseId;
 }

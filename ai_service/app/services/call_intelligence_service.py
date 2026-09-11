@@ -317,6 +317,39 @@ def _openrouter_audio_url() -> str:
     return f"{base}/audio/transcriptions"
 
 
+_AUDIO_TYPES = {
+    "mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg", "m4a": "audio/mp4",
+    "mp4": "audio/mp4", "webm": "audio/webm", "flac": "audio/flac",
+}
+
+
+def _audio_name(audio: bytes, content_type: Optional[str], source_url: str) -> tuple:
+    """(filename, mime) for the multipart upload — the provider validates the
+    extension against the bytes, so a wrong guess is a 400.
+
+    First deploy (2026-09-11) named a file .mp3 only on an ID3 tag or an
+    FF FB sync; our Plivo recordings are bare MPEG-2.5 frames (FF E3), got
+    called .wav and every one was rejected. Order: the storage's content-type,
+    then the URL's extension, then the magic bytes, defaulting to mp3.
+    """
+    ct = (content_type or "").split(";")[0].strip().lower()
+    for ext, mime in _AUDIO_TYPES.items():
+        if ct == mime or (ct == "audio/mp3" and ext == "mp3") or (ct == "audio/x-wav" and ext == "wav"):
+            return f"recording.{ext}", mime
+    path = source_url.split("?")[0].lower()
+    for ext, mime in _AUDIO_TYPES.items():
+        if path.endswith("." + ext):
+            return f"recording.{ext}", mime
+    if audio[:4] == b"RIFF":
+        return "recording.wav", "audio/wav"
+    if audio[:4] == b"OggS":
+        return "recording.ogg", "audio/ogg"
+    if audio[4:8] == b"ftyp":
+        return "recording.m4a", "audio/mp4"
+    # ID3 tag, or an MPEG frame sync (FF Ex / FF Fx) — covers MPEG-1/2/2.5.
+    return "recording.mp3", "audio/mpeg"
+
+
 async def _transcribe_openrouter(source_url: str, stt_model: str) -> Dict[str, Any]:
     """Transcribe one recording through OpenRouter's audio endpoint.
 
@@ -334,12 +367,12 @@ async def _transcribe_openrouter(source_url: str, stt_model: str) -> Dict[str, A
         audio = dl.content
         if not audio:
             raise RuntimeError("empty recording download")
-        name = "recording.mp3" if b"ID3" in audio[:3] or audio[:2] == b"\xff\xfb" else "recording.wav"
+        name, mime = _audio_name(audio, dl.headers.get("content-type"), source_url)
         resp = await client.post(
             _openrouter_audio_url(),
             headers={"Authorization": f"Bearer {api_key}"},
             data={"model": stt_model},
-            files={"file": (name, audio)},
+            files={"file": (name, audio, mime)},
         )
         if resp.status_code >= 400:
             raise RuntimeError(f"openrouter transcription HTTP {resp.status_code}: {resp.text[:300]}")

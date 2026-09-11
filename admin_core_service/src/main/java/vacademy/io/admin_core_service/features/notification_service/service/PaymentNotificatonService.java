@@ -643,6 +643,24 @@ public class PaymentNotificatonService {
             String creditsGranted,
             String totalAmountMajor,
             String packName) {
+        return sendCreditPackConfirmation(instituteId, recipientEmail, recipientUserId, invoiceNumber,
+                creditsGranted, totalAmountMajor, packName, null, null);
+    }
+
+    /**
+     * @param invoicePdf      rendered GST tax invoice to attach; null = send without attachment
+     * @param invoiceFileName attachment file name, e.g. "INV-AICRED-202609-0007.pdf"
+     */
+    public boolean sendCreditPackConfirmation(
+            String instituteId,
+            String recipientEmail,
+            String recipientUserId,
+            String invoiceNumber,
+            String creditsGranted,
+            String totalAmountMajor,
+            String packName,
+            byte[] invoicePdf,
+            String invoiceFileName) {
         if (instituteId == null || recipientEmail == null || invoiceNumber == null) {
             return false;
         }
@@ -652,21 +670,48 @@ public class PaymentNotificatonService {
             return false;
         }
 
+        boolean attached = invoicePdf != null && invoicePdf.length > 0;
         String body = buildCreditPackEmailBody(
-                institute.getInstituteName(), invoiceNumber, creditsGranted, totalAmountMajor, packName);
-
-        NotificationDTO notification = new NotificationDTO();
-        notification.setBody(body);
-        notification.setNotificationType(CommunicationType.EMAIL.name());
-        notification.setSubject("Your AI credits are ready — invoice " + invoiceNumber);
-
-        NotificationToUserDTO recipient = new NotificationToUserDTO();
-        recipient.setUserId(recipientUserId);
-        recipient.setChannelId(recipientEmail);
-        recipient.setPlaceholders(new HashMap<>());
-        notification.setUsers(List.of(recipient));
+                institute.getInstituteName(), invoiceNumber, creditsGranted, totalAmountMajor, packName, attached);
+        String subject = "Your AI credits are ready — tax invoice " + invoiceNumber;
 
         try {
+            if (attached) {
+                AttachmentUsersDTO.AttachmentDTO att = new AttachmentUsersDTO.AttachmentDTO();
+                att.setAttachmentName(invoiceFileName != null ? invoiceFileName : invoiceNumber + ".pdf");
+                att.setAttachment(Base64.getEncoder().encodeToString(invoicePdf));
+
+                AttachmentUsersDTO recipient = new AttachmentUsersDTO();
+                recipient.setUserId(recipientUserId);
+                recipient.setChannelId(recipientEmail);
+                recipient.setPlaceholders(new HashMap<>());
+                recipient.setAttachments(List.of(att));
+
+                AttachmentNotificationDTO dto = AttachmentNotificationDTO.builder()
+                        .body(body)
+                        .subject(subject)
+                        .notificationType(CommunicationType.EMAIL.name())
+                        .source("AI_CREDIT_PACK_CONFIRMATION")
+                        .sourceId(invoiceNumber)
+                        .attachmentName(att.getAttachmentName())
+                        .emailType("UTILITY_EMAIL")
+                        .users(List.of(recipient))
+                        .build();
+                notificationService.sendAttachmentEmailViaUnified(List.of(dto), instituteId);
+                return true;
+            }
+
+            NotificationDTO notification = new NotificationDTO();
+            notification.setBody(body);
+            notification.setNotificationType(CommunicationType.EMAIL.name());
+            notification.setSubject(subject);
+
+            NotificationToUserDTO recipient = new NotificationToUserDTO();
+            recipient.setUserId(recipientUserId);
+            recipient.setChannelId(recipientEmail);
+            recipient.setPlaceholders(new HashMap<>());
+            notification.setUsers(List.of(recipient));
+
             notificationService.sendEmailViaUnified(notification, instituteId);
             return true;
         } catch (Exception e) {
@@ -685,7 +730,8 @@ public class PaymentNotificatonService {
     }
 
     private static String buildCreditPackEmailBody(
-            String instituteName, String invoiceNumber, String credits, String total, String packName) {
+            String instituteName, String invoiceNumber, String credits, String total, String packName,
+            boolean invoiceAttached) {
         String safeInstitute = StringUtils.hasText(instituteName) ? instituteName : "your institute";
         String safePack = StringUtils.hasText(packName) ? packName : "AI Credits";
         return "<!DOCTYPE html><html><body style=\"font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#111;\">"
@@ -704,7 +750,11 @@ public class PaymentNotificatonService {
                 + "</table>"
                 + "<p style=\"color:#6b7280;font-size:13px;margin-top:24px;\">"
                 + "Your credits are already available in the AI Credits panel. "
-                + "A GST-compliant invoice will be available for download from your billing dashboard shortly.</p>"
+                + (invoiceAttached
+                        ? "Your GST tax invoice <strong>" + invoiceNumber + "</strong> is attached to this email as a PDF. "
+                        : "")
+                + "You can download your GST tax invoice anytime from the admin dashboard under "
+                + "<strong>AI Credits &rarr; Billing</strong>.</p>"
                 + "</div></body></html>";
     }
 }

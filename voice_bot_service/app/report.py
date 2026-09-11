@@ -85,6 +85,24 @@ def _llm_target(s):
 # failed analysis reads as "the model considered it and found nothing promised".
 _NO_SENDS: Dict[str, Any] = {"promisedSends": [], "declinedSends": [], "conditionsMet": [], "whatsappNumber": None, "email": None}
 
+# ── call sentiment ───────────────────────────────────────────────────────────
+# A one-line verdict on HOW THE CALL WENT, shown next to the disposition. It grades
+# OUR AGENT, not the lead's interest: leadRating already scores the lead, and
+# diag_health already scores the audio pipeline but is blind to whether the
+# conversation itself worked — every fabricated disposition in the 2026-09-09 audit
+# sat on a GREEN call with no faults.
+#
+# Closed vocabulary, because it drives a colour chip in the admin UI.
+_SENTIMENT_LEVELS = ("GOOD", "NEEDS_WORK", "POOR")
+# Kept short on purpose: this is a gist for a table cell, not an analysis. The
+# prompt asks for one sentence and this is the hard backstop.
+_GIST_MAX_CHARS = 180
+
+# NULL means NOT ASSESSED, never "fine" — the same contract as diag_health in V416.
+# Every degraded or skipped path returns these keys explicitly rather than omitting
+# them, so a missing key is indistinguishable from an assessed-and-empty one.
+_NO_SENTIMENT: Dict[str, Any] = {"callQuality": None, "callGist": None}
+
 
 async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     s = get_settings()
@@ -108,11 +126,11 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     questions = agent.get("extractionQuestions") or []
     transcript = _transcript_text(outcome.transcript)
     if not transcript.strip():
-        return {"disposition": "Incomplete", "summary": "No conversation captured.",
+        return {"disposition": _INSUFFICIENT, "summary": "No conversation captured.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
                 "callbackTimeText": None, "meetingRequested": False,
                 "meetingDatetimeIso": None, "meetingDatetimeText": None,
-                "meetingType": None, **_NO_SENDS}
+                "meetingType": None, **_NO_SENDS, **_NO_SENTIMENT}
 
     # Current date/time so the analyser can resolve relative dates spoken on the call
     # ("tomorrow 3pm", "day after") into a concrete ISO instant. Same tz convention as
@@ -198,7 +216,20 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "meetingDatetimeIso (ISO 8601 with offset for the agreed meeting time resolved from RIGHT "
         f"NOW, e.g. '2026-07-23T15:00:00{now_offset}', or null if none agreed), "
         "meetingDatetimeText (the caller's own words for the time, e.g. 'tomorrow 3 pm', or null), "
-        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null).\n"
+        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null), "
+        # Grades OUR side of the call, deliberately NOT the lead's interest —
+        # leadRating already does that. Asked for last so the model has already
+        # committed to a disposition before it judges the handling.
+        f"callQuality (one of {list(_SENTIMENT_LEVELS)}: how well the ASSISTANT handled "
+        "this call — GOOD = it asked, listened and progressed the conversation; "
+        "NEEDS_WORK = it got through but talked over the caller, repeated itself, "
+        "missed answers or left the goal unaddressed; POOR = the caller could not be "
+        "understood or served at all. Judge OUR performance, not whether the lead was "
+        "interested — a polite refusal handled well is GOOD), "
+        "callGist (ONE short sentence, under 25 words, plain and specific, naming the "
+        "single thing that most needs improving if any, e.g. 'Good call — she agreed "
+        "to a demo, but the bot cut her off twice while she answered.' No preamble, "
+        "no restating the disposition).\n"
         + artefact_spec + condition_spec +
         f"\nTranscript:\n{transcript}\n\nJSON:"
     )
@@ -235,7 +266,47 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         return {"disposition": _INSUFFICIENT,
                 "summary": "Automatic analysis unavailable; see transcript.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
-                "callbackTimeText": None, **_NO_SENDS}
+                "callbackTimeText": None, **_NO_SENDS, **_NO_SENTIMENT}
+
+
+def _sanitize_sentiment(analysis: Dict[str, Any], corr: str) -> None:
+    """Closed vocabulary + a length cap on the gist.
+
+    callQuality drives a colour chip, so an unrecognised value must become NULL
+    ("not assessed") rather than reach the UI as a mystery string — and NULL must
+    never be rendered as GOOD. The gist is model prose, so it is trimmed to one
+    line and hard-capped; the prompt asks for one sentence but a cap is cheaper
+    than trusting that.
+    """
+    try:
+        raw = str(analysis.get("callQuality") or "").strip()
+        norm = raw.upper().replace(" ", "_").replace("-", "_")
+        if norm and norm not in _SENTIMENT_LEVELS:
+            logger.info("report: unrecognised callQuality %r — recording as not assessed "
+                        "corr=%s", raw, corr)
+        analysis["callQuality"] = norm if norm in _SENTIMENT_LEVELS else None
+
+        gist = str(analysis.get("callGist") or "").strip()
+        # Collapse any newlines the model adds: this lands in a single table cell.
+        gist = " ".join(gist.split())
+        if len(gist) > _GIST_MAX_CHARS:
+            gist = gist[:_GIST_MAX_CHARS - 1].rstrip() + "…"
+        analysis["callGist"] = gist or None
+    except Exception:
+        # A cosmetic field must never cost the report.
+        logger.exception("report: sentiment sanitise failed corr=%s", corr)
+        analysis["callQuality"] = None
+        analysis["callGist"] = None
+
+
+def _caller_word_count(outcome: CallOutcome) -> int:
+    """How many words the caller actually contributed.
+
+    A MEASURED fact, not a model judgement, which is the point: admin_core routes
+    on it (see AiCallOutcomeClassifier's engaged-but-unjudged branch), and routing a
+    lead to a human must not depend on the same model whose label we distrusted.
+    """
+    return sum(len(t.split()) for t in _caller_turns(outcome))
 
 
 def _norm_label(s: Any) -> str:
@@ -821,10 +892,16 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
             "callbackTimeText": None, "meetingRequested": False,
             "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None,
             **_NO_SENDS,
+            # Sentiment is NOT assessed here rather than stamped POOR: a caller who
+            # said nothing is not evidence our agent handled the call badly, and the
+            # analyser never ran to judge it either way.
+            **_NO_SENTIMENT,
+            "callGist": "No conversation to assess — " + reason + ".",
         }
     else:
         analysis = await _analyze(outcome)
         _drop_unevidenced_booking(analysis, outcome.corr)
+        _sanitize_sentiment(analysis, outcome.corr)
     agent = ctx.get("agent") or {}
     _sanitize_sends(analysis, outcome, agent, outcome.corr)
 
@@ -847,6 +924,15 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         # say before we overruled it?" without a schema change or a transcript read.
         "dispositionRawLabel": analysis.get("dispositionRawLabel"),
         "dispositionDowngradedFrom": analysis.get("dispositionDowngradedFrom"),
+        # One-line verdict on how the call went, shown beside the disposition.
+        # NULL quality = not assessed; never render it as GOOD.
+        "callQuality": analysis.get("callQuality"),
+        "callGist": analysis.get("callGist"),
+        # MEASURED caller engagement. admin_core routes an unjudged-but-engaged call
+        # to a human off this number rather than off the model's label — see
+        # AiCallOutcomeClassifier. Always present, including on the gated paths where
+        # no analysis ran at all.
+        "callerWordCount": _caller_word_count(outcome),
         "leadRating": analysis.get("leadRating"),
         "summary": analysis.get("summary"),
         "extractedQa": analysis.get("extractedQa") or {},

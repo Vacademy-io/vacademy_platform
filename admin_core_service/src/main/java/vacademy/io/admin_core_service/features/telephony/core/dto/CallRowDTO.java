@@ -72,6 +72,16 @@ public class CallRowDTO {
 
     /** Fault codes behind {@link #diagHealth}; null when not measured. */
     private java.util.List<String> diagFaults;
+
+    /**
+     * One-line sentiment on how the call went, shown beside the AI disposition.
+     * {@code callQuality} is GOOD / NEEDS_WORK / POOR and grades OUR assistant's
+     * handling (not the lead — that is leadRating; not the audio — that is diagHealth).
+     * {@code callGist} is a single sentence naming what most needs improving.
+     * NULL quality = NOT ASSESSED and must never render as GOOD.
+     */
+    private String callQuality;
+    private String callGist;
     /** Effective promised call-back time (human callback_at or AI callback_at). */
     private Timestamp callbackAt;
 

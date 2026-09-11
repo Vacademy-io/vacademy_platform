@@ -46,6 +46,25 @@ public class AiCallReport {
      */
     Map<String, Object> diagnostics;
 
+    /**
+     * One-line verdict on how the call went, grading OUR assistant's handling —
+     * {@code callQuality} is GOOD / NEEDS_WORK / POOR and {@code callGist} is a
+     * single sentence naming what most needs improving. Deliberately separate from
+     * {@code leadRating} (the lead's interest) and {@code diagnostics} (the audio
+     * pipeline). Provider-optional: a null quality means NOT ASSESSED and must never
+     * be rendered as GOOD.
+     */
+    String callQuality;
+    String callGist;
+
+    /**
+     * Words the caller actually contributed, as MEASURED by the bot from the
+     * transcript — not a model judgement. The outcome classifier uses it to route an
+     * engaged-but-unjudged call to a human instead of retrying it. Null = the
+     * provider did not measure it, which is NOT the same as zero.
+     */
+    Integer callerWordCount;
+
     String recordingUrl;
     String transcript;
 

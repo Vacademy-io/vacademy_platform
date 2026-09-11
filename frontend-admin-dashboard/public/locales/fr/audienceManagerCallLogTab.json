@@ -87,6 +87,15 @@
         "edit": "Modifier",
         "set": "Définir"
     },
+    "sentiment": {
+        "good": "Bon appel",
+        "needsWork": "À améliorer",
+        "poor": "Appel médiocre",
+        "titleGood": "L’assistant a bien géré cet appel",
+        "titleNeedsWork": "L’appel a abouti, mais quelque chose est à améliorer",
+        "titlePoor": "L’assistant n’a pas pu aider cet appelant",
+        "notAssessed": "Qualité de l’appel non évaluée"
+    },
     "recording": {
         "loading": "Chargement…",
         "play": "Lire"

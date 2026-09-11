@@ -60,6 +60,20 @@ public class CallDetailDTO {
     /** Fired fault codes, e.g. ["DEAD_AIR","TTS_WEDGE"]. Closed, append-only vocabulary of 12. */
     private List<String> diagFaults;
 
+    // ── AI-voice call sentiment (V503) ───────────────────────────────────────
+    // How well OUR assistant handled the call — distinct from leadRating (the lead's
+    // interest) and from diagHealth (the audio pipeline, which is blind to whether the
+    // conversation itself worked). NULL = NOT ASSESSED, never GOOD.
+
+    /** GOOD / NEEDS_WORK / POOR. */
+    private String callQuality;
+
+    /** One sentence, e.g. "Good call — she agreed to a demo, but the bot cut her off twice." */
+    private String callGist;
+
+    /** Words the caller actually said (measured). Null = not measured, NOT zero. */
+    private Integer callerWordCount;
+
     /** Highest-priority fired code — what to headline when several fired. */
     /**
      * Was the TTS speech cache actually running on this call?

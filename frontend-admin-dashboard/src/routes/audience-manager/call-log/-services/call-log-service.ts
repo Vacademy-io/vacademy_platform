@@ -269,9 +269,44 @@ export function rowCallFaults(row: CallHealthFields): string[] {
     return Array.isArray(faults) ? faults : [];
 }
 
+// ── Call sentiment (V503) ──────────────────────────────────────────────────
+
+/**
+ * How well OUR assistant handled the call. Closed vocabulary from the bot.
+ * Deliberately not the lead's interest (that is leadRating) and not the audio
+ * pipeline (that is {@link CallHealth}, which is blind to whether the
+ * conversation itself worked — every fabricated disposition in the 2026-09-09
+ * audit sat on a GREEN call).
+ */
+export type CallQuality = 'GOOD' | 'NEEDS_WORK' | 'POOR';
+
+/**
+ * `CallRowDTO.callQuality/callGist` — served on the LIST so the chip and gist
+ * render inline beside the disposition with no per-row fetch. Both spellings
+ * accepted, same reasoning as {@link CallHealthFields}.
+ *
+ * NULL quality means NOT ASSESSED (a human call, an older bot, a call the caller
+ * never spoke on). It must never render as GOOD.
+ */
+export interface CallSentimentFields {
+    call_quality?: CallQuality | null;
+    callQuality?: CallQuality | null;
+    call_gist?: string | null;
+    callGist?: string | null;
+}
+
+export function rowCallQuality(row: CallSentimentFields): CallQuality | null {
+    return row.call_quality ?? row.callQuality ?? null;
+}
+
+export function rowCallGist(row: CallSentimentFields): string | null {
+    const g = row.call_gist ?? row.callGist;
+    return typeof g === 'string' && g.trim() ? g.trim() : null;
+}
+
 // ── Row type (snake_case) ──────────────────────────────────────────────────
 
-export interface CallRow extends CallHealthFields {
+export interface CallRow extends CallHealthFields, CallSentimentFields {
     id: string;
     provider_type: string | null;
     call_type: 'AI' | 'HUMAN';
@@ -592,7 +627,7 @@ export interface CallDetailKeyVal {
 }
 
 /** Deep per-call detail — richer than the search row, used by the "more details" popover. */
-export interface CallDetail extends CallHealthFields {
+export interface CallDetail extends CallHealthFields, CallSentimentFields {
     id: string;
     provider_type: string | null;
     direction: 'INBOUND' | 'OUTBOUND' | null;

@@ -87,7 +87,8 @@ public class CallSearchService {
             LEFT JOIN LATERAL (
                 SELECT r.id AS acr_id, r.disposition AS ai_disposition, r.callback_at AS ai_callback_at,
                        r.callback AS ai_callback, r.transfer_triggered AS transfer_triggered,
-                       r.diag_health AS diag_health, r.diag_faults AS diag_faults
+                       r.diag_health AS diag_health, r.diag_faults AS diag_faults,
+                       r.call_quality AS call_quality, r.call_gist AS call_gist
                 FROM ai_call_result r
                 WHERE r.call_log_id = tcl.id
                 ORDER BY r.received_at DESC NULLS LAST
@@ -279,6 +280,8 @@ public class CallSearchService {
                    acr.ai_disposition AS ai_disposition,
                    acr.diag_health AS diag_health,
                    acr.diag_faults AS diag_faults,
+                   acr.call_quality AS call_quality,
+                   acr.call_gist AS call_gist,
                    CASE WHEN (acr.acr_id IS NOT NULL
                               OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))
                         THEN 'AI' ELSE 'HUMAN' END AS call_type,
@@ -330,6 +333,10 @@ public class CallSearchService {
                 // OTHER feature had already fetched detail for.
                 .diagHealth(rs.getString("diag_health"))
                 .diagFaults(splitDiagFaults(rs.getString("diag_faults")))
+                // Sentiment rides the list for the same reason health does: the row
+                // shows the chip + gist inline, not only in the detail drawer.
+                .callQuality(rs.getString("call_quality"))
+                .callGist(rs.getString("call_gist"))
                 .callbackAt(rs.getTimestamp("callback_at_eff"))
                 .createdAt(rs.getTimestamp("created_at"))
                 .leadStatusId(rs.getString("lead_status_id"))

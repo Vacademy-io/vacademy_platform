@@ -122,6 +122,13 @@ public class AiVoiceWebhookService {
         row.setCallStart(report.getCallStart());
         row.setTranscript(report.getTranscript());
         row.setRawPayload(report.getRawPayload());
+        // Sentiment + measured engagement (V503). Nulls are meaningful here: a null
+        // callQuality is "not assessed" (never GOOD) and a null callerWordCount is
+        // "not measured" (never 0), so they are written through verbatim rather than
+        // defaulted — a provider that sends none simply leaves them null.
+        row.setCallQuality(report.getCallQuality());
+        row.setCallGist(report.getCallGist());
+        row.setCallerWordCount(report.getCallerWordCount());
         applyDiagnostics(row, report);
 
         repo.save(row);

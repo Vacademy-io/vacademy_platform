@@ -3617,3 +3617,82 @@ async def test_ambience_drift_skips_inaudible_updates():
     n = len(rec.frames)
     await d._send_target(b.FrameDirection.DOWNSTREAM)     # same instant: no change
     assert len(rec.frames) == n
+
+
+# ── Call sentiment + measured engagement (V503) ──────────────────────────────
+
+
+def test_sentiment_is_a_closed_vocabulary_and_null_means_not_assessed():
+    for spoken, want in (("GOOD", "GOOD"), ("good", "GOOD"), ("needs work", "NEEDS_WORK"),
+                         ("Needs-Work", "NEEDS_WORK"), ("POOR", "POOR")):
+        a = {"callQuality": spoken, "callGist": "Fine."}
+        rpt._sanitize_sentiment(a, "c")
+        assert a["callQuality"] == want, spoken
+    # An invented level must become NULL (not assessed) — never reach the UI as a
+    # mystery string, and never be coerced UP to GOOD.
+    for bad in ("EXCELLENT", "ok", "", None, 7):
+        a = {"callQuality": bad, "callGist": "x"}
+        rpt._sanitize_sentiment(a, "c")
+        assert a["callQuality"] is None, bad
+
+
+def test_gist_is_one_line_and_capped():
+    a = {"callQuality": "GOOD", "callGist": "  Good call —\n she agreed,\n\nbut the bot cut her off.  "}
+    rpt._sanitize_sentiment(a, "c")
+    assert a["callGist"] == "Good call — she agreed, but the bot cut her off."
+    long = {"callQuality": "POOR", "callGist": "x" * 500}
+    rpt._sanitize_sentiment(long, "c")
+    assert len(long["callGist"]) <= rpt._GIST_MAX_CHARS
+    assert long["callGist"].endswith("…")
+    empty = {"callQuality": "GOOD", "callGist": "   "}
+    rpt._sanitize_sentiment(empty, "c")
+    assert empty["callGist"] is None
+
+
+def test_caller_word_count_is_measured_from_real_caller_turns_only():
+    o = _ConvOutcome([
+        {"role": "assistant", "text": "Hi, is this Shweta? Aarushi from Vacademy."},
+        {"role": "user", "text": "Hello."},
+        {"role": "user", "text": "[unclear sound from the caller]"},   # synthetic cue
+        {"role": "user", "text": "Yes, we run hybrid classes on Zoom."},
+    ])
+    assert rpt._caller_word_count(o) == 8
+    assert rpt._caller_word_count(_ConvOutcome([])) == 0
+    assert rpt._caller_word_count(_ConvOutcome([{"role": "assistant", "text": "a b c"}])) == 0
+
+
+@pytest.mark.asyncio
+async def test_report_always_carries_sentiment_and_word_count(monkeypatch):
+    """Every path — analysed, gated, degraded — must emit the keys explicitly, so a
+    missing key is never mistaken downstream for an assessed-and-empty one."""
+    posted = []
+
+    async def capture(inst, tok, payload):
+        posted.append(payload)
+        return True
+
+    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
+
+    # 1. Analysed path: model verdict flows through, sanitised.
+    async def analysed(o):
+        return {"disposition": "Not_Interested", "callQuality": "needs work",
+                "callGist": "Polite refusal, but the bot repeated the pitch twice."}
+    monkeypatch.setattr(rpt, "_analyze", analysed)
+    await rpt.build_and_post_report(_ConvOutcome([
+        {"role": "user", "text": "no thanks, we are not looking for anything right now"}]), "cu1")
+    p = posted[-1]
+    assert p["callQuality"] == "NEEDS_WORK"
+    assert p["callGist"].startswith("Polite refusal")
+    assert p["callerWordCount"] == 10
+
+    # 2. Substance-gated path: no analysis ran, so quality is NOT ASSESSED (null),
+    #    the gist says why, and the measured count is still present.
+    async def never(o):
+        raise AssertionError("classifier must not run on a greeting-only call")
+    monkeypatch.setattr(rpt, "_analyze", never)
+    await rpt.build_and_post_report(_ConvOutcome([{"role": "user", "text": "Hello."}]), "cu2")
+    p = posted[-1]
+    assert p["callQuality"] is None
+    assert p["callGist"].startswith("No conversation to assess")
+    assert p["callerWordCount"] == 1
+    assert "callerWordCount" in p and "callQuality" in p and "callGist" in p

@@ -131,6 +131,28 @@ public class AiCallResult {
     @Column(name = "diag_faults", columnDefinition = "TEXT")
     private String diagFaults;
 
+    /**
+     * GOOD / NEEDS_WORK / POOR — how well OUR assistant handled the call. Distinct
+     * from {@code leadRating} (the lead's interest) and from {@code diagHealth} (the
+     * audio pipeline, which is blind to whether the conversation worked).
+     * NULL = NOT ASSESSED, never "fine" — same contract as diagHealth.
+     */
+    @Column(name = "call_quality", length = 16)
+    private String callQuality;
+
+    /** One-sentence gist of how the call went, for the admin UI. NULL = not assessed. */
+    @Column(name = "call_gist", length = 200)
+    private String callGist;
+
+    /**
+     * Words the caller actually said, measured from the transcript. The outcome
+     * classifier routes an engaged-but-unjudged call to a human off this rather than
+     * off the disposition string. NULL = not measured (pre-existing rows) and must
+     * NOT be read as 0, which is a real silent pickup.
+     */
+    @Column(name = "caller_word_count")
+    private Integer callerWordCount;
+
     @Column(name = "callback")
     private Boolean callback;
 

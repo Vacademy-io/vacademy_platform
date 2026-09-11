@@ -1,4 +1,6 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, Navigate } from "@tanstack/react-router";
+import { RouteMatcher } from "../-services/route-matcher";
+import { CatalogueTagContext } from "../-components/CatalogueTagContext";
 import { CourseDetailsPage } from "./-components/CourseDetailsPage";
 import { CourseSubPage } from "../-components/CourseSubPage";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -75,6 +77,12 @@ function RouteComponent() {
     return <DashboardLoader />;
   }
 
+  // "/new/<x>" on a host where `new` is mounted at the root → "/<x>", search
+  // params included (enrol links carry ?enrollInviteId=…).
+  if (RouteMatcher.isRootMounted(resolvedTagName)) {
+    return <Navigate to={`/${resolvedCourseId}` as never} search={true} replace />;
+  }
+
   // Check if courseId looks like a course ID (numeric or UUID)
   const isNumeric = /^\d+$/.test(resolvedCourseId);
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedCourseId);
@@ -88,7 +96,11 @@ function RouteComponent() {
       return <DashboardLoader />;
     }
     // If no institute ID after loading, pass empty string (subpage will handle it)
-    return <CourseSubPage tagName={resolvedTagName} page={resolvedCourseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />;
+    return (
+      <CatalogueTagContext.Provider value={resolvedTagName}>
+        <CourseSubPage tagName={resolvedTagName} page={resolvedCourseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />
+      </CatalogueTagContext.Provider>
+    );
   }
 
   // Show loading while domain routing is resolving
@@ -127,6 +139,7 @@ function RouteComponent() {
 
 
   return (
+    <CatalogueTagContext.Provider value={resolvedTagName}>
     <CourseDetailsPage
       courseId={resolvedCourseId}
       tagName={resolvedTagName}
@@ -140,5 +153,6 @@ function RouteComponent() {
       available_slots={available_slots}
       productPageCode={productPageCode}
     />
+    </CatalogueTagContext.Provider>
   );
 }

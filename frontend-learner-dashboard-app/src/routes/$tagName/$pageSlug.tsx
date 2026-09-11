@@ -2,7 +2,9 @@
  * Handles custom catalogue pages, e.g. /vacademy/about-us, /vacademy/contact.
  * The page route slug is matched against the catalogue config's pages[].route field.
  */
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { RouteMatcher } from "./-services/route-matcher";
+import { CatalogueTagContext } from "./-components/CatalogueTagContext";
 import { CourseCataloguePage } from "./-components/CourseCataloguePage";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -55,12 +57,19 @@ function RouteComponent() {
 
   if (!domainRouting.instituteId) return <RootNotFoundComponent />;
 
+  // "/new/about" on a host where `new` is mounted at the root → "/about".
+  if (RouteMatcher.isRootMounted(resolvedTagName)) {
+    return <Navigate to={`/${resolvedPageSlug}` as never} search={true} replace />;
+  }
+
   return (
-    <CourseCataloguePage
-      tagName={resolvedTagName}
-      instituteId={domainRouting.instituteId}
-      instituteThemeCode={domainRouting.instituteThemeCode}
-      pageSlug={resolvedPageSlug}
-    />
+    <CatalogueTagContext.Provider value={resolvedTagName}>
+      <CourseCataloguePage
+        tagName={resolvedTagName}
+        instituteId={domainRouting.instituteId}
+        instituteThemeCode={domainRouting.instituteThemeCode}
+        pageSlug={resolvedPageSlug}
+      />
+    </CatalogueTagContext.Provider>
   );
 }

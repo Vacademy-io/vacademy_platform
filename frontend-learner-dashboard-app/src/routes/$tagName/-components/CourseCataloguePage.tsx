@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { RouteMatcher } from "../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { Capacitor } from "@capacitor/core";
@@ -109,7 +110,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         setIsLoading(true);
         console.log("[CourseCataloguePage] Fetching catalogue data for:", { instituteId, tagName });
 
-        const data = await CourseCatalogueService.getCourseCatalogueByTag(instituteId, tagName);
+        // Memoised: on a root-mounted host the route already fetched this
+        // catalogue to classify the URL, so this is normally a cache hit.
+        const data = await CourseCatalogueService.getCourseCatalogueByTagMemo(instituteId, tagName);
 
         console.log("[CourseCataloguePage] Successfully fetched catalogue data");
         setCatalogueData(data);
@@ -707,7 +710,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           legacyGetStartedVisible={!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false)}
           onLogin={handleIntroLogin}
           onLegacyGetStarted={() => setShowLeadCollection(true)}
-          onNavigate={(route) => navigate({ to: `/${tagName}/${route.replace(/^\//, '')}` })}
+          onNavigate={(route) => navigate({ to: RouteMatcher.pagePath(tagName, route) })}
           nativePad={isAndroid || isIOS}
         />
       )}

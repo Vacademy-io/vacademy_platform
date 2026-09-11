@@ -123,7 +123,8 @@ public class DomainRoutingService {
                 .hideInstituteName(mapping.getHideInstituteName())
                 .logoWidthPx(mapping.getLogoWidthPx())
                 .logoHeightPx(mapping.getLogoHeightPx())
-                .stackNameBelowLogo(mapping.getStackNameBelowLogo());
+                .stackNameBelowLogo(mapping.getStackNameBelowLogo())
+                .rootCatalogueTag(mapping.getRootCatalogueTag());
 
         if (institute != null) {
             responseBuilder.instituteId(institute.getId())

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { RouteMatcher } from "../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { useNavigate } from "@tanstack/react-router";
@@ -321,7 +322,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             {t("courseSubPage.pageNotFoundDetail", { page })}
           </p>
           <button
-            onClick={() => navigate({ to: `/${tagName}` })}
+            onClick={() => navigate({ to: RouteMatcher.pagePath(tagName) })}
             className="px-4 py-2 bg-primary-600 text-white rounded-catalogue-sm hover:bg-primary-700"
           >
             {t("courseSubPage.goBackToCatalogue")}
@@ -490,7 +491,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
               console.log("[CourseSubPage] Lead collection is disabled, not showing modal");
             }
           }}
-          onNavigate={(route) => navigate({ to: `/${tagName}/${route.replace(/^\//, '')}` })}
+          onNavigate={(route) => navigate({ to: RouteMatcher.pagePath(tagName, route) })}
         />
       )}
     </div>

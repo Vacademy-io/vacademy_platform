@@ -51,7 +51,7 @@ export const FooterComponent: React.FC<FooterProps & {
 
     const normalizedRoute = RouteMatcher.normalizeRoute(route);
     if (normalizedRoute === 'home' || normalizedRoute === '') {
-      navigate({ to: `/${tagName}` });
+      navigate({ to: RouteMatcher.pagePath(tagName) });
       return;
     }
 

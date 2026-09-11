@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import axios from "axios";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -225,7 +226,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
 
     const openCourse = (c: ShowcaseCourse) =>
         navigate({
-            to: `/${tagName}/${c.id}`,
+            to: `${RouteMatcher.basePath(tagName ?? "")}/${c.id}`,
             search: {
                 enrollInviteId: c.enrollInviteId,
                 packageSessionId: c.packageSessionId,

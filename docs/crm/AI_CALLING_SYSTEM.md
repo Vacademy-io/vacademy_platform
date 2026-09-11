@@ -887,7 +887,9 @@ V430/V431 (edge pricing + discount), **V448** (`institute_telephony_config.role`
 
 **Call shape**: `GREET_DELAY_SECS=0.8`, `IDLE_TIMEOUT_SECS=8.0`, `MAX_NUDGES=2`,
 `END_GRACE_SECS=2.0`, `MAX_DEAF_STREAK=2`, `MACHINE_GREETING_WINDOW_SECS=22`,
-`FILLER_PROBABILITY=0.10`, `FILLER_PHRASES=Hmm…`, `AMBIENCE_ENABLED=true`, `AMBIENCE_VOLUME=0.15`
+`FILLER_PROBABILITY=0.10`, `FILLER_PHRASES=Hmm…`, `AMBIENCE_ENABLED=true`, `AMBIENCE_VOLUME=0.15`, `AMBIENCE_DRIFT_DB=2.0`,
+`VOICE_EQ_ENABLED=true` (300 Hz high-pass + 1.7 kHz presence on the bot voice, so it sits in
+the caller's telephone band — see the service README)
 (room tone under every call — voice_bot_service/assets/call_center_ambience_8k_mono.wav, see the
 service README), `NO_REPEAT_ENABLED=true`,
 `NO_ECHO_ENABLED=true` (§7.3a — drop an opener that only parrots the caller's answer),

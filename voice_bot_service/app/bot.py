@@ -85,6 +85,7 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
 from .ambience import AmbienceDucker
+from .voice_eq import build_voice_eq, make_voice_eq_processor
 from . import diagnostics as diag_mod
 from .providers import (build_llm, build_stt, build_tts, engine_of,
                         normalize_for_rumik, rumik_term_map_version)
@@ -3152,6 +3153,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          enabled=lambda: settings.run_guard_enabled,
                          diag=diag)
 
+    # One EQ per call: it carries IIR state across frames, so it must not be
+    # shared between concurrent calls. None when disabled or scipy is missing,
+    # and then no processor is added at all.
+    _voice_eq = build_voice_eq(settings)
+    if _voice_eq is not None:
+        logger.info("voice-eq: HP%.0fHz + LP%.0fHz + %+.1fdB@%.0fHz, makeup %+.1fdB corr=%s",
+                    _voice_eq.highpass_hz, _voice_eq.lowpass_hz, _voice_eq.presence_db,
+                    _voice_eq.presence_hz, settings.voice_eq_makeup_db, corr)
+
     pipeline = Pipeline([
         transport.input(),
         stt,
@@ -3174,9 +3184,18 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         *([ttscache.make_turn_watcher_processor(tts_watcher)]
           if tts_watcher is not None else []),
         duck,
-        # Room-tone ducking (0.6x while the bot speaks). Control frames only;
-        # remove this one line to run the ambience at a fixed level.
-        *([AmbienceDucker(settings.ambience_volume)] if settings.ambience_enabled else []),
+        # Put the bot's voice in the caller's band (app/voice_eq.py). AFTER the
+        # duck so audio that is held and then dropped is never filtered for
+        # nothing; BEFORE transport.output() so it catches cache hits and
+        # scripted lines too — and cannot touch the ambience, which the
+        # transport mixes in afterwards.
+        *([make_voice_eq_processor(_voice_eq)] if _voice_eq is not None else []),
+        # Room-tone level: ducked under speech, drifting slowly while idle.
+        # Control frames only; remove this one line to run it flat.
+        *([AmbienceDucker(settings.ambience_volume,
+                          drift_db=settings.ambience_drift_db,
+                          drift_period_secs=settings.ambience_drift_period_secs)]
+          if settings.ambience_enabled else []),
         transport.output(),
         played_transcript,
         aggregators.assistant(),

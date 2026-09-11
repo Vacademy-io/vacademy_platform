@@ -53,6 +53,30 @@ resample. It is mixed inside the output transport (`app/ambience.py`, pipecat
 |---|---|---|
 | `AMBIENCE_ENABLED` | `true` | `false` removes the mixer entirely — no code change needed |
 | `AMBIENCE_VOLUME` | `0.15` | mixer gain on the file (0.15 × −32 dBFS ≈ −48 dBFS); ducked to 0.6× while the bot speaks |
+| `AMBIENCE_DRIFT_DB` | `2.0` | slow ± level drift so the bed breathes like a room; `0` holds it flat |
+| `AMBIENCE_DRIFT_PERIOD_SECS` | `40` | one drift cycle; the phase is randomised per call |
+
+## Telephone-band EQ on the bot's voice
+
+Measured on the production path: our TTS carries **30.8%** of its energy below
+300 Hz against **15.3%** for a real recording through real microphones — a
+caller's handset and the analog hybrid roll that band off, ours does not. The
+result is one band-limited voice and one full-range, close-miked voice on the
+same line, which is the strongest remaining "this is a recording" cue.
+`app/voice_eq.py` puts the bot in the caller's band (300 Hz high-pass, gentle
+3.4 kHz low-pass, small presence lift, makeup gain), as a processor between
+`DuckGate` and `transport.output()` — so it also covers TTS-cache hits and
+scripted lines, and cannot touch the ambience, which is mixed in afterwards.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `VOICE_EQ_ENABLED` | `true` | `false` removes the processor entirely |
+| `VOICE_EQ_HIGHPASS_HZ` | `300` | the telephone channel's low corner |
+| `VOICE_EQ_PRESENCE_DB` | `2.5` | lift at 1.7 kHz, wins back what the high-pass costs |
+| `VOICE_EQ_MAKEUP_DB` | `2.0` | returns the ~3 dB the high-pass removes (measured peak after: −4.5 dBFS) |
+
+Measured effect on 13.3 s of production speech: sub-300 Hz energy 30.8% → 18.4%,
+in-band 68.3% → 81.2% — i.e. it lands on the real-recording profile.
 
 If STT ever transcribes the ambience via handset echo, lower `AMBIENCE_VOLUME`
 rather than adding filtering.

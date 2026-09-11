@@ -421,6 +421,28 @@ class Settings:
         default_factory=lambda: _env("AMBIENCE_ENABLED", "true").lower() == "true")
     ambience_volume: float = field(
         default_factory=lambda: float(_env("AMBIENCE_VOLUME", "0.15")))
+    # A room is never at exactly one level. Slow +/- drift (dB) over
+    # AMBIENCE_DRIFT_PERIOD_SECS, phase randomised per call so two calls never
+    # breathe in step. 0 disables and the bed sits at a fixed gain.
+    ambience_drift_db: float = field(
+        default_factory=lambda: float(_env("AMBIENCE_DRIFT_DB", "2.0")))
+    ambience_drift_period_secs: float = field(
+        default_factory=lambda: float(_env("AMBIENCE_DRIFT_PERIOD_SECS", "40")))
+    # ── Telephone-band EQ on the bot's voice (app/voice_eq.py) ──────────────
+    # Our TTS carries 30.8% of its energy below 300 Hz; a real recording
+    # through real mics carries 15.3%, because handsets and analog hybrids roll
+    # that band off. Matching the caller's band is the biggest remaining
+    # "this is a recording" cue. Measured defaults — see the module docstring.
+    voice_eq_enabled: bool = field(
+        default_factory=lambda: _env("VOICE_EQ_ENABLED", "true").lower() == "true")
+    voice_eq_highpass_hz: float = field(
+        default_factory=lambda: float(_env("VOICE_EQ_HIGHPASS_HZ", "300")))
+    voice_eq_presence_db: float = field(
+        default_factory=lambda: float(_env("VOICE_EQ_PRESENCE_DB", "2.5")))
+    # Puts back the ~3 dB the high-pass removes, so the bot does not merely get
+    # quieter. Measured peak after makeup: -4.5 dBFS.
+    voice_eq_makeup_db: float = field(
+        default_factory=lambda: float(_env("VOICE_EQ_MAKEUP_DB", "2.0")))
     filler_phrases: tuple = field(
         default_factory=lambda: tuple(
             p.strip() for p in _env("FILLER_PHRASES", "Hmm…").split(",") if p.strip()

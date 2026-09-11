@@ -20,3 +20,7 @@ python-dotenv>=1.0
 # call, which is what makes streaming decode viable.
 edge-tts>=7.2
 miniaudio>=1.59
+# Telephone-band EQ on the bot voice (app/voice_eq.py) uses scipy IIR
+# filtering. Already present transitively; pinned here because we now depend
+# on it directly.
+scipy>=1.11

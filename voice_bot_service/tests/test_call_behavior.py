@@ -3367,7 +3367,8 @@ def test_ambience_is_wired_into_transport_and_pipeline():
     src_main = open(os.path.join(os.path.dirname(b.__file__), "main.py")).read()
     assert "audio_out_mixer=build_ambience_mixer(s)" in src_main
     src = inspect.getsource(b.run_bot)
-    assert "AmbienceDucker(settings.ambience_volume)" in src
+    assert "AmbienceDucker(settings.ambience_volume," in src
+    assert "drift_db=settings.ambience_drift_db" in src
     assert src.index("AmbienceDucker(") < src.index("transport.output(),")
     root = os.path.join(os.path.dirname(b.__file__), "..")
     assert "COPY assets ./assets" in open(os.path.join(root, "Dockerfile")).read()
@@ -3385,3 +3386,120 @@ def test_resay_requires_an_interruption_after_the_greet_was_queued():
     greet = src[src.index("async def _greet_when_ready"):]
     assert "_greet_queued_t = time.time()" in greet
     assert greet.index("_greet_queued_t = time.time()") < greet.index("await task.queue_frames(_frames)")
+
+
+# ── Telephone-band EQ on the bot's voice (2026-09-11) ────────────────────────
+# Measured need: our TTS carries 30.8% of its energy below 300 Hz vs 15.3% for
+# a real recording through real mics. These pin the filter's SHAPE, not taste.
+
+def _eq_tone_gain(eq, freq, sr=8000, secs=1.0, amp=8000):
+    """dB gain the EQ applies to a steady tone (settling transient skipped)."""
+    import numpy as np, math
+    t = np.arange(int(secs * sr)) / sr
+    pcm = (np.sin(2 * np.pi * freq * t) * amp).astype(np.int16).tobytes()
+    out = np.frombuffer(eq.process(pcm, sr), dtype=np.int16).astype(float)
+    out = out[len(out) // 4:]
+    rms_in, rms_out = amp / math.sqrt(2), math.sqrt((out * out).mean())
+    return 20 * math.log10(rms_out / rms_in + 1e-12)
+
+
+def _fresh_eq(**kw):
+    from app.voice_eq import TelephoneEQ
+    return TelephoneEQ(**kw)
+
+
+def test_voice_eq_matches_the_telephone_band():
+    ref = _eq_tone_gain(_fresh_eq(), 1000)
+    low = _eq_tone_gain(_fresh_eq(), 100)
+    pres = _eq_tone_gain(_fresh_eq(), 1700)
+    high = _eq_tone_gain(_fresh_eq(), 3900)
+    assert ref - low > 15, (ref, low)      # the whole point: sub-300 Hz goes
+    assert pres > ref, (pres, ref)         # presence lift is audible at 1.7k
+    assert ref - high > 3, (ref, high)     # gentle roll-off near the channel top
+    # Makeup restores level rather than shrinking the voice: mid-band is not
+    # quieter than it went in.
+    assert ref > -1.0, ref
+
+
+def test_voice_eq_frame_by_frame_is_identical_to_the_whole_stream():
+    """An IIR restarted per frame clicks at every 20 ms boundary. State has to
+    carry, so chunked output must equal one-shot output."""
+    import numpy as np
+    rng = np.random.default_rng(7)
+    pcm = (rng.normal(0, 3000, 8000).clip(-32768, 32767)).astype(np.int16).tobytes()
+    whole = _fresh_eq().process(pcm, 8000)
+    eq = _fresh_eq()
+    chunked = b"".join(eq.process(pcm[i:i + 320], 8000) for i in range(0, len(pcm), 320))
+    assert len(whole) == len(chunked) == len(pcm)
+    a = np.frombuffer(whole, dtype=np.int16).astype(int)
+    b_ = np.frombuffer(chunked, dtype=np.int16).astype(int)
+    assert np.abs(a - b_).max() <= 1, np.abs(a - b_).max()
+
+
+def test_voice_eq_keeps_separate_state_per_sample_rate():
+    """Live TTS arrives at 24 kHz and cache hits at 8 kHz in the SAME call."""
+    eq = _fresh_eq()
+    import numpy as np
+    for sr in (24000, 8000, 24000):
+        pcm = (np.zeros(sr // 50) + 1000).astype(np.int16).tobytes()
+        assert len(eq.process(pcm, sr)) == len(pcm)
+    assert sorted(eq._states) == [8000, 24000]
+
+
+def test_voice_eq_never_returns_out_of_range_audio():
+    import numpy as np
+    eq = _fresh_eq(makeup_db=12.0)          # deliberately abusive
+    pcm = (np.full(4000, 32000)).astype(np.int16).tobytes()
+    out = np.frombuffer(eq.process(pcm, 8000), dtype=np.int16)
+    assert out.min() >= -32768 and out.max() <= 32767
+    assert eq.clipped_samples >= 0
+
+
+def test_voice_eq_is_off_when_disabled_and_wired_after_the_duck():
+    import types, inspect
+    from app.voice_eq import build_voice_eq
+    assert build_voice_eq(types.SimpleNamespace(voice_eq_enabled=False)) is None
+    src = inspect.getsource(b.run_bot)
+    assert "_voice_eq = build_voice_eq(settings)" in src
+    assert src.index("duck,\n") < src.index("make_voice_eq_processor(_voice_eq)")
+    assert src.index("make_voice_eq_processor(_voice_eq)") < src.index("transport.output(),")
+
+
+# ── Ambience drift: a room is never at exactly one level ─────────────────────
+
+def test_ambience_drift_is_off_until_the_call_starts_and_bounded_after():
+    import math, time
+    from app.ambience import AmbienceDucker
+    d = AmbienceDucker(0.15, drift_db=2.0, drift_period_secs=40)
+    assert d._drift(time.time()) == 1.0          # no StartFrame yet -> flat
+    assert d._target(time.time()) == 0.15
+    d._t0 = 1000.0
+    vals = [d._target(1000.0 + t) for t in range(0, 80)]
+    lo, hi = min(vals), max(vals)
+    assert 20 * math.log10(hi / lo) <= 4.1, (lo, hi)   # +/-2 dB swing, no more
+    assert lo > 0 and hi <= 1.0
+    # Ducking still applies on top of the drift, never instead of it.
+    d._ducked = True
+    assert d._target(1000.0) == round(0.15 * d._drift(1000.0) * 0.6, 4)
+
+
+def test_ambience_drift_phase_differs_between_calls():
+    from app.ambience import AmbienceDucker
+    phases = {AmbienceDucker(0.15, drift_db=2.0)._phase for _ in range(8)}
+    assert len(phases) > 1                        # not the same movement every call
+
+
+@pytest.mark.asyncio
+async def test_ambience_drift_skips_inaudible_updates():
+    from app.ambience import AmbienceDucker
+    rec = _Rec()
+    d = AmbienceDucker(0.15, drift_db=2.0, drift_period_secs=40)
+    d._t0 = 1000.0
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    d.push_frame = _push
+    await d._send_target(b.FrameDirection.DOWNSTREAM)     # first: always sends
+    n = len(rec.frames)
+    await d._send_target(b.FrameDirection.DOWNSTREAM)     # same instant: no change
+    assert len(rec.frames) == n

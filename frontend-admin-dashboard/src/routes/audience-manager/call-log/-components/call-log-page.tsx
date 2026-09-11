@@ -57,6 +57,23 @@ const PRESETS = [
     { key: '90', days: 90 },
 ] as const;
 
+/** Wall-clock presets ("last 1 hour"): an instant window the server honours over dates. */
+const HOUR_PRESETS = [1, 3, 6, 24] as const;
+
+interface AppliedRange {
+    from: string;
+    to: string;
+    /** Set for hour presets; absent for day presets / manual dates. */
+    fromTs?: number;
+    toTs?: number;
+    hours?: number;
+}
+const hourRange = (hours: number): AppliedRange => {
+    const now = new Date();
+    const start = new Date(now.getTime() - hours * 3600 * 1000);
+    return { from: toDateInput(start), to: toDateInput(now), fromTs: start.getTime(), hours };
+};
+
 const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
 
 // ── Page ───────────────────────────────────────────────────────────────────
@@ -77,17 +94,28 @@ export function CallLogPage() {
     const defaults = useMemo(() => computeRange(DEFAULT_DAYS), []);
     const [fromDate, setFromDate] = useState(defaults.from);
     const [toDate, setToDate] = useState(defaults.to);
-    const [applied, setApplied] = useState(defaults);
+    const [applied, setApplied] = useState<AppliedRange>(defaults);
+    const [customHours, setCustomHours] = useState('');
     const [teamId, setTeamId] = useState<string | undefined>(undefined);
     const [counsellorUserId, setCounsellorUserId] = useState<string | undefined>(undefined);
 
-    const activePreset = PRESETS.find((p) => {
-        const r = computeRange(p.days);
-        return applied.from === r.from && applied.to === r.to;
-    })?.key;
+    const activePreset = applied.hours
+        ? undefined
+        : PRESETS.find((p) => {
+              const r = computeRange(p.days);
+              return applied.from === r.from && applied.to === r.to;
+          })?.key;
+    const activeHours = applied.hours;
 
     const applyPreset = (days: number) => {
         const r = computeRange(days);
+        setFromDate(r.from);
+        setToDate(r.to);
+        setApplied(r);
+    };
+    const applyHours = (hours: number) => {
+        if (!Number.isFinite(hours) || hours <= 0) return;
+        const r = hourRange(Math.min(hours, 24 * 90));
         setFromDate(r.from);
         setToDate(r.to);
         setApplied(r);
@@ -155,6 +183,22 @@ export function CallLogPage() {
             {/* Shared filter bar */}
             <div className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center gap-1 self-end rounded-md border border-neutral-200 bg-white p-1">
+                    {HOUR_PRESETS.map((h) => (
+                        <button
+                            key={`h${h}`}
+                            type="button"
+                            onClick={() => applyHours(h)}
+                            className={cn(
+                                'rounded px-2.5 py-1 text-xs',
+                                activeHours === h
+                                    ? 'bg-primary-500 text-white'
+                                    : 'text-neutral-600 hover:bg-neutral-50'
+                            )}
+                        >
+                            {t('filters.presetHours', { hours: h })}
+                        </button>
+                    ))}
+                    <span className="mx-0.5 h-4 w-px bg-neutral-200" aria-hidden />
                     {PRESETS.map((p) => (
                         <button
                             key={p.key}
@@ -170,6 +214,26 @@ export function CallLogPage() {
                             {t('filters.presetLabel', { days: p.days })}
                         </button>
                     ))}
+                    <span className="mx-0.5 h-4 w-px bg-neutral-200" aria-hidden />
+                    <Input
+                        type="number"
+                        min={1}
+                        max={2160}
+                        value={customHours}
+                        onChange={(e) => setCustomHours(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') applyHours(Number(customHours));
+                        }}
+                        onBlur={() => customHours && applyHours(Number(customHours))}
+                        placeholder={t('filters.customHoursPlaceholder')}
+                        aria-label={t('filters.customHoursLabel')}
+                        className={cn(
+                            'h-7 w-24 text-xs',
+                            activeHours && !HOUR_PRESETS.includes(activeHours as 1 | 3 | 6 | 24)
+                                ? 'border-primary-500'
+                                : ''
+                        )}
+                    />
                 </div>
                 <div className="flex flex-col gap-1">
                     <Label htmlFor="cl-from" className="text-xs text-neutral-600">
@@ -224,6 +288,8 @@ export function CallLogPage() {
                     instituteId={instituteId}
                     fromDate={applied.from}
                     toDate={applied.to}
+                    fromTs={applied.fromTs}
+                    toTs={applied.toTs}
                     teamId={teamId}
                     counsellorUserId={counsellorUserId}
                 />

@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
     ArrowsClockwise,
+    ArrowBendUpRight,
     DownloadSimple,
     Info,
     PhoneIncoming,
@@ -35,6 +36,8 @@ import {
     User,
     WarningCircle,
     Waveform,
+    WhatsappLogo,
+    ClockCounterClockwise,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -69,36 +72,52 @@ import type { StudentTable } from '@/types/student-table-types';
 import { TELEPHONY_CALL_STATUSES, humanizeCallStatus } from '@/hooks/use-lead-report-settings';
 import {
     applyDisposition,
+    bulkAnalyze,
+    bulkSetDisposition,
+    bulkSetLeadStatus,
     callDetailKey,
     callRowLeadUserId,
     isMaskedNumber,
     callLogMetricsKey,
     callLogSearchKey,
     dispositionCatalogKey,
+    dispositionCountsKey,
     dispositionOptionsKey,
     exportCallLog,
     fetchCallDetail,
     fetchCallLog,
     fetchCallMetrics,
     fetchDispositionCatalog,
+    fetchDispositionCounts,
     fetchDispositionFilterOptions,
     fetchRecordingUrl,
     isCallLogEndpointMissing,
     normalizeDispositionKey,
     rowCallHealth,
     toMillis,
+    type BulkResult,
     type CallLogFilters,
     type CallLogScope,
     type CallRow,
+    type DispositionCount,
     type DispositionOption,
 } from '../-services/call-log-service';
 import { CallHealthCell, CallHealthSheet } from './CallHealth';
+import { Checkbox } from '@/components/ui/checkbox';
+import { LeadStatusSelect } from '@/components/shared/lead-status-select';
+import { useLeadStatuses } from '@/hooks/use-lead-statuses';
+import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
+import { BulkAssignCounsellorDialog } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import { MigrateLeadsDialog } from '@/components/shared/leads/migrate-leads-dialog';
 
 /** Scope passed in by the page (date window + RBAC narrowing), same shape the Reports tabs used. */
 export interface CallLogTabProps {
     instituteId: string;
     fromDate: string;
     toDate: string;
+    /** Instant window (epoch millis) for the hour presets; overrides the dates when set. */
+    fromTs?: number;
+    toTs?: number;
     teamId?: string;
     counsellorUserId?: string;
 }
@@ -226,12 +245,14 @@ export default function CallLogTab({
     instituteId,
     fromDate,
     toDate,
+    fromTs,
+    toTs,
     teamId,
     counsellorUserId,
 }: CallLogTabProps) {
     const { t } = useTranslation('audienceManagerCallLogTab');
     const queryClient = useQueryClient();
-    const scope: CallLogScope = { instituteId, fromDate, toDate, teamId, counsellorUserId };
+    const scope: CallLogScope = { instituteId, fromDate, toDate, fromTs, toTs, teamId, counsellorUserId };
 
     // Shared lead side-sheet (same one Recent Leads / Follow-ups use). The
     // StudentSidebarProvider is mounted app-wide by the layout; we only own the
@@ -393,10 +414,63 @@ export default function CallLogTab({
 
     const [dispositionTarget, setDispositionTarget] = useState<CallRow | null>(null);
 
+    // Disposition strip: every outcome in the window with a count. Keyed on the
+    // filters WITHOUT the disposition selection, so the strip does not collapse to
+    // the one chip you just clicked.
+    const stripFilters: CallLogFilters = useMemo(() => {
+        const { dispositionKeys: _omit, missedInbound: _m, callbacksDue: _c, ...rest } = filters;
+        return rest;
+    }, [filters]);
+    const dispositionCountsQuery = useQuery({
+        queryKey: dispositionCountsKey(scope, stripFilters),
+        queryFn: () => fetchDispositionCounts(scope, stripFilters),
+        enabled: !!instituteId,
+        staleTime: 30_000,
+        retry: retryUnlessMissing,
+    });
+    const toggleDispositionChip = (key: string) => {
+        if (!key) return; // "Not set" is a count, not a filter the search can express
+        setDispositionKeys((cur) => (cur.length === 1 && cur[0] === key ? [] : [key]));
+    };
+
+    // Lead statuses (for the inline status column + bulk status) and counsellors (bulk assign).
+    const { statuses: leadStatuses } = useLeadStatuses();
+    const { options: counsellorOptions } = useLeadCounsellorOptions({ assignable: true });
+
+    // Row selection → bulk bar. Keyed by call id; cleared whenever the list changes.
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    useEffect(() => setSelected(new Set()), [filterSig, page]);
+    const toggleRow = (id: string) =>
+        setSelected((cur) => {
+            const next = new Set(cur);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    const [bulkDialog, setBulkDialog] = useState<
+        'NONE' | 'STATUS' | 'DISPOSITION' | 'ASSIGN' | 'CAMPAIGN'
+    >('NONE');
+
     const refreshLists = () => {
         queryClient.invalidateQueries({ queryKey: ['crm-call-log-search'] });
         queryClient.invalidateQueries({ queryKey: ['crm-call-log-metrics'] });
+        queryClient.invalidateQueries({ queryKey: ['crm-call-log-disposition-counts'] });
     };
+
+    const reportBulk = (res: BulkResult, verb: string) => {
+        if (res.failed?.length) {
+            toast.warning(t('bulk.partial', { updated: res.updated, failed: res.failed.length, verb }));
+        } else {
+            toast.success(t('bulk.done', { updated: res.updated, verb }));
+        }
+        setSelected(new Set());
+        refreshLists();
+    };
+    const analyzeMutation = useMutation({
+        mutationFn: () => bulkAnalyze(instituteId, [...selected]),
+        onSuccess: (res) => reportBulk(res, t('bulk.verbAnalyze')),
+        onError: () => toast.error(t('bulk.error')),
+    });
 
     if (!instituteId) {
         return <EmptyBlock message={t('empty.pickInstitute')} />;
@@ -417,6 +491,18 @@ export default function CallLogTab({
     );
     const data = searchQuery.data;
     const rows = data?.content ?? [];
+    const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+    const selectedRows = rows.filter((r) => selected.has(r.id));
+    const selectedLeads = Array.from(
+        new Map(
+            selectedRows
+                .filter((r) => callRowLeadUserId(r))
+                .map((r) => [callRowLeadUserId(r) as string, { userId: callRowLeadUserId(r) as string, name: r.lead_name || '' }])
+        ).values()
+    );
+    const selectedResponseIds = Array.from(
+        new Set(selectedRows.map((r) => r.response_id).filter((x): x is string => !!x))
+    );
 
     return (
         <SidebarProvider
@@ -494,6 +580,33 @@ export default function CallLogTab({
                         </div>
                     </div>
 
+                    {/* Disposition strip — every outcome in this window, click to filter */}
+                    {(dispositionCountsQuery.data?.length ?? 0) > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="me-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                                {t('dispositionStrip.label')}
+                            </span>
+                            {(dispositionCountsQuery.data ?? []).map((d) => (
+                                <DispositionChip
+                                    key={d.key || '__none__'}
+                                    item={d}
+                                    active={dispositionKeys.length === 1 && dispositionKeys[0] === d.key}
+                                    onClick={() => toggleDispositionChip(d.key)}
+                                    notSetLabel={t('dispositionStrip.notSet')}
+                                />
+                            ))}
+                            {dispositionKeys.length > 0 && (
+                                <MyButton
+                                    buttonType="text"
+                                    scale="small"
+                                    onClick={() => setDispositionKeys([])}
+                                >
+                                    {t('dispositionStrip.clear')}
+                                </MyButton>
+                            )}
+                        </div>
+                    )}
+
                     <div className="flex flex-wrap items-end gap-3">
                         <FilterText
                             label={t('filters.leadName')}
@@ -568,6 +681,59 @@ export default function CallLogTab({
                         </h2>
                     </div>
 
+                    {/* Bulk bar — appears once a row is ticked */}
+                    {selected.size > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+                            <span className="text-sm font-medium text-primary-800">
+                                {t('bulk.selected', { count: selected.size })}
+                            </span>
+                            <MyButton buttonType="text" scale="small" onClick={() => setSelected(new Set())}>
+                                {t('bulk.clear')}
+                            </MyButton>
+                            <span className="mx-1 h-4 w-px bg-primary-200" aria-hidden />
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setBulkDialog('STATUS')}
+                                disabled={selectedResponseIds.length === 0}
+                            >
+                                {t('bulk.leadStatus')}
+                            </MyButton>
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setBulkDialog('DISPOSITION')}
+                            >
+                                {t('bulk.disposition')}
+                            </MyButton>
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setBulkDialog('ASSIGN')}
+                                disabled={selectedLeads.length === 0}
+                            >
+                                {t('bulk.assignCounsellor')}
+                            </MyButton>
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setBulkDialog('CAMPAIGN')}
+                                disabled={selectedResponseIds.length === 0}
+                            >
+                                {t('bulk.addToCampaign')}
+                            </MyButton>
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => analyzeMutation.mutate()}
+                                disabled={analyzeMutation.isPending}
+                            >
+                                <Sparkle size={14} weight="fill" className="me-1" />
+                                {t('bulk.reanalyze')}
+                            </MyButton>
+                        </div>
+                    )}
+
                     {searchQuery.isLoading ? (
                         <LoadingBlock />
                     ) : searchQuery.isError ? (
@@ -580,8 +746,22 @@ export default function CallLogTab({
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+                                            <th className="w-8 py-2 pe-2">
+                                                <Checkbox
+                                                    checked={allOnPageSelected}
+                                                    onCheckedChange={(c) =>
+                                                        setSelected(
+                                                            c === true
+                                                                ? new Set(rows.map((r) => r.id))
+                                                                : new Set()
+                                                        )
+                                                    }
+                                                    aria-label={t('bulk.selectPage')}
+                                                />
+                                            </th>
                                             <th className="py-2 pe-3">{t('table.columns.time')}</th>
                                             <th className="py-2 pe-3">{t('table.columns.lead')}</th>
+                                            <th className="py-2 pe-3">{t('table.columns.leadStatus')}</th>
                                             <th className="py-2 pe-3">{t('table.columns.direction')}</th>
                                             <th className="py-2 pe-3">{t('table.columns.type')}</th>
                                             <th className="py-2 pe-3">{t('table.columns.status')}</th>
@@ -602,6 +782,15 @@ export default function CallLogTab({
                                             <th className="py-2 pe-3">
                                                 {t('table.columns.disposition')}
                                             </th>
+                                            <th className="py-2 pe-3" title={t('table.columns.scoresTooltip')}>
+                                                {t('table.columns.scores')}
+                                            </th>
+                                            <th className="min-w-64 py-2 pe-3">
+                                                {t('table.columns.update')}
+                                            </th>
+                                            <th className="py-2 pe-3" title={t('table.columns.actionsTooltip')}>
+                                                {t('table.columns.actions')}
+                                            </th>
                                             <th className="py-2 pe-3">
                                                 {t('table.columns.recording')}
                                             </th>
@@ -616,8 +805,18 @@ export default function CallLogTab({
                                         {rows.map((r) => (
                                             <tr
                                                 key={r.id}
-                                                className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                                                className={cn(
+                                                    'border-b border-neutral-100 last:border-0 hover:bg-neutral-50',
+                                                    selected.has(r.id) && 'bg-primary-50/40'
+                                                )}
                                             >
+                                                <td className="py-2.5 pe-2 align-top">
+                                                    <Checkbox
+                                                        checked={selected.has(r.id)}
+                                                        onCheckedChange={() => toggleRow(r.id)}
+                                                        aria-label={t('bulk.selectRow')}
+                                                    />
+                                                </td>
                                                 <td className="whitespace-nowrap py-2.5 pr-3 text-neutral-600">
                                                     {fmtDateTime(r.start_time ?? r.created_at)}
                                                 </td>
@@ -655,6 +854,19 @@ export default function CallLogTab({
                                                     </div>
                                                 </td>
                                                 <td className="py-2.5 pr-3">
+                                                    {r.response_id ? (
+                                                        <LeadStatusSelect
+                                                            responseId={r.response_id}
+                                                            currentStatus={r.lead_status_key ?? r.lead_status_label ?? null}
+                                                            statuses={leadStatuses}
+                                                            onUpdated={refreshLists}
+                                                            size="sm"
+                                                        />
+                                                    ) : (
+                                                        <span className="text-xs text-neutral-400">—</span>
+                                                    )}
+                                                </td>
+                                                <td className="py-2.5 pr-3">
                                                     <DirectionBadge direction={r.direction} />
                                                 </td>
                                                 <td className="py-2.5 pr-3">
@@ -684,6 +896,15 @@ export default function CallLogTab({
                                                         labels={dispositionLabels}
                                                         onEdit={() => setDispositionTarget(r)}
                                                     />
+                                                </td>
+                                                <td className="py-2.5 pr-3">
+                                                    <ScoresCell row={r} />
+                                                </td>
+                                                <td className="py-2.5 pr-3">
+                                                    <UpdateCell row={r} onOpen={() => setIntelTarget(r)} />
+                                                </td>
+                                                <td className="py-2.5 pr-3">
+                                                    <ActionsCell row={r} />
                                                 </td>
                                                 <td className="py-2.5 pr-3">
                                                     <RecordingCell
@@ -732,6 +953,52 @@ export default function CallLogTab({
                     }}
                 />
 
+                {/* Bulk dialogs */}
+                <BulkLeadStatusDialog
+                    open={bulkDialog === 'STATUS'}
+                    onClose={() => setBulkDialog('NONE')}
+                    statuses={leadStatuses}
+                    count={selectedResponseIds.length}
+                    onConfirm={async (statusId) => {
+                        const res = await bulkSetLeadStatus(instituteId, [...selected], statusId);
+                        setBulkDialog('NONE');
+                        reportBulk(res, t('bulk.verbStatus'));
+                    }}
+                />
+                <BulkDispositionDialog
+                    open={bulkDialog === 'DISPOSITION'}
+                    onClose={() => setBulkDialog('NONE')}
+                    options={dispositions}
+                    count={selected.size}
+                    onConfirm={async (key, notes) => {
+                        const res = await bulkSetDisposition(instituteId, [...selected], key, notes);
+                        setBulkDialog('NONE');
+                        reportBulk(res, t('bulk.verbDisposition'));
+                    }}
+                />
+                <BulkAssignCounsellorDialog
+                    open={bulkDialog === 'ASSIGN'}
+                    onOpenChange={(o) => !o && setBulkDialog('NONE')}
+                    instituteId={instituteId}
+                    leads={selectedLeads}
+                    counsellorOptions={counsellorOptions}
+                    onSuccess={() => {
+                        setBulkDialog('NONE');
+                        setSelected(new Set());
+                        refreshLists();
+                    }}
+                />
+                <MigrateLeadsDialog
+                    open={bulkDialog === 'CAMPAIGN'}
+                    onOpenChange={(o) => !o && setBulkDialog('NONE')}
+                    instituteId={instituteId}
+                    responseIds={selectedResponseIds}
+                    onSuccess={() => {
+                        setSelected(new Set());
+                        refreshLists();
+                    }}
+                />
+
                 {/* Transcript + AI intelligence dialog (credits-gated) */}
                 <CallIntelligenceDialog call={intelTarget} onClose={() => setIntelTarget(null)} />
 
@@ -748,6 +1015,344 @@ export default function CallLogTab({
             {/* Shared lead side-sheet — opens to the Lead Profile tab. */}
             <StudentSidebar defaultLeadProfile />
         </SidebarProvider>
+    );
+}
+
+// ── Disposition strip chip ─────────────────────────────────────────────────
+
+function DispositionChip({
+    item,
+    active,
+    onClick,
+    notSetLabel,
+}: {
+    item: DispositionCount;
+    active: boolean;
+    onClick: () => void;
+    notSetLabel: string;
+}) {
+    const isNone = !item.key;
+    const label = isNone ? notSetLabel : item.label || humanizeCallStatus(item.key);
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={isNone}
+            className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                active
+                    ? 'border-primary-500 bg-primary-500 text-white'
+                    : isNone
+                      ? 'cursor-default border-neutral-200 bg-neutral-50 text-neutral-500'
+                      : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+            )}
+        >
+            {item.color && !active && (
+                // Colour is institute-authored catalog data, not a token — isolated here.
+                <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: item.color }}
+                    aria-hidden
+                />
+            )}
+            {label}
+            <span
+                className={cn(
+                    'rounded-full px-1.5 text-caption tabular-nums',
+                    active ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-600'
+                )}
+            >
+                {fmtNumber(item.count)}
+            </span>
+        </button>
+    );
+}
+
+// ── Intelligence columns ───────────────────────────────────────────────────
+
+const SENTIMENT_TONE: Record<string, string> = {
+    POSITIVE: 'bg-success-50 text-success-700',
+    NEUTRAL: 'bg-neutral-100 text-neutral-600',
+    NEGATIVE: 'bg-danger-50 text-danger-700',
+};
+
+/** Caller · Outcome · sentiment, compact — null when the call was never analysed. */
+function ScoresCell({ row }: { row: CallRow }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
+    if (row.ci_status !== 'COMPLETED') {
+        return <span className="text-xs text-neutral-400">—</span>;
+    }
+    const num = (v: number | null | undefined) =>
+        v === null || v === undefined ? '–' : Number(v).toFixed(1).replace(/\.0$/, '');
+    return (
+        <div className="flex flex-col gap-0.5 text-xs">
+            <span className="whitespace-nowrap text-neutral-700" title={t('scores.callerTooltip')}>
+                {t('scores.caller')} <b className="tabular-nums">{num(row.ci_caller_rating)}</b>
+            </span>
+            <span className="whitespace-nowrap text-neutral-700" title={t('scores.outcomeTooltip')}>
+                {t('scores.outcome')} <b className="tabular-nums">{num(row.ci_outcome_rating)}</b>
+            </span>
+            {row.ci_lead_sentiment && (
+                <span
+                    className={cn(
+                        'w-fit rounded-full px-1.5 py-0.5 text-caption font-medium',
+                        SENTIMENT_TONE[row.ci_lead_sentiment] ?? SENTIMENT_TONE.NEUTRAL
+                    )}
+                >
+                    {t(`scores.sentiment.${row.ci_lead_sentiment.toLowerCase()}`)}
+                </span>
+            )}
+        </div>
+    );
+}
+
+/** The analysis' two-line update, or where the analysis is in its pipeline. */
+function UpdateCell({ row, onOpen }: { row: CallRow; onOpen: () => void }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
+    const status = row.ci_status;
+    if (status === 'COMPLETED' && row.ci_short_update) {
+        return (
+            <button
+                type="button"
+                onClick={onOpen}
+                className="line-clamp-2 max-w-sm text-left text-xs leading-snug text-neutral-700 hover:text-primary-700"
+                title={t('update.openFull')}
+            >
+                {row.ci_short_update}
+            </button>
+        );
+    }
+    if (status === 'COMPLETED') {
+        // Analysed before the two-line update existed (schema < 1.1).
+        return (
+            <button type="button" onClick={onOpen} className="text-xs text-primary-600 hover:underline">
+                {t('update.viewAnalysis')}
+            </button>
+        );
+    }
+    if (status === 'PENDING' || status === 'TRANSCRIBING' || status === 'ANALYZING') {
+        return (
+            <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
+                <ArrowsClockwise size={12} className="animate-spin" />
+                {t('update.inProgress')}
+            </span>
+        );
+    }
+    if (status === 'FAILED') {
+        return <span className="text-xs text-danger-600">{t('update.failed')}</span>;
+    }
+    if (status === 'SKIPPED') {
+        return <span className="text-xs text-neutral-400">{t('update.skipped')}</span>;
+    }
+    return <span className="text-xs text-neutral-400">—</span>;
+}
+
+/** What happened in the call besides talking: sends, call-back, transfer. */
+function ActionsCell({ row }: { row: CallRow }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
+    const items: { key: string; icon: React.ReactNode; label: string; tone: string }[] = [];
+    if ((row.sends_total ?? 0) > 0) {
+        const sent = row.sends_sent ?? 0;
+        const total = row.sends_total ?? 0;
+        items.push({
+            key: 'wa',
+            icon: <WhatsappLogo size={14} weight="fill" />,
+            label: sent === total ? t('actions.sent', { count: sent }) : t('actions.sentOf', { sent, total }),
+            tone: sent === total ? 'bg-success-50 text-success-700' : 'bg-warning-50 text-warning-700',
+        });
+    }
+    if (row.ai_callback || row.callback_at) {
+        items.push({
+            key: 'cb',
+            icon: <ClockCounterClockwise size={14} />,
+            label: t('actions.callback'),
+            tone: 'bg-primary-50 text-primary-700',
+        });
+    }
+    if (row.transferred) {
+        items.push({
+            key: 'tr',
+            icon: <ArrowBendUpRight size={14} />,
+            label: t('actions.transferred'),
+            tone: 'bg-neutral-100 text-neutral-700',
+        });
+    }
+    if (items.length === 0) return <span className="text-xs text-neutral-400">—</span>;
+    return (
+        <div className="flex flex-wrap gap-1">
+            {items.map((i) => (
+                <span
+                    key={i.key}
+                    className={cn(
+                        'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-caption font-medium',
+                        i.tone
+                    )}
+                >
+                    {i.icon}
+                    {i.label}
+                </span>
+            ))}
+        </div>
+    );
+}
+
+// ── Bulk dialogs ───────────────────────────────────────────────────────────
+
+function BulkLeadStatusDialog({
+    open,
+    onClose,
+    statuses,
+    count,
+    onConfirm,
+}: {
+    open: boolean;
+    onClose: () => void;
+    statuses: { id: string; label: string; color: string }[];
+    count: number;
+    onConfirm: (statusId: string) => Promise<void>;
+}) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
+    const [statusId, setStatusId] = useState('');
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        if (open) setStatusId('');
+    }, [open]);
+    return (
+        <MyDialog
+            heading={t('bulkStatusDialog.heading', { count })}
+            open={open}
+            onOpenChange={(o) => {
+                if (!o) onClose();
+            }}
+            footer={
+                <MyButton
+                    buttonType="primary"
+                    scale="medium"
+                    disabled={!statusId || busy}
+                    onClick={async () => {
+                        setBusy(true);
+                        try {
+                            await onConfirm(statusId);
+                        } catch {
+                            toast.error(t('bulk.error'));
+                        } finally {
+                            setBusy(false);
+                        }
+                    }}
+                >
+                    {t('bulkStatusDialog.apply')}
+                </MyButton>
+            }
+        >
+            <div className="flex flex-col gap-3 py-2">
+                <Label className="text-xs text-neutral-600">{t('bulkStatusDialog.status')}</Label>
+                <div className="flex flex-wrap gap-2">
+                    {statuses.map((s) => (
+                        <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setStatusId(s.id)}
+                            className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm',
+                                statusId === s.id
+                                    ? 'border-primary-500 bg-primary-50 text-primary-800'
+                                    : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+                            )}
+                        >
+                            {/* Lead-status colour is institute-authored data, not a token. */}
+                            <span className="size-2 rounded-full" style={{ backgroundColor: s.color }} />
+                            {s.label}
+                        </button>
+                    ))}
+                    {statuses.length === 0 && (
+                        <span className="text-xs text-neutral-500">{t('bulkStatusDialog.none')}</span>
+                    )}
+                </div>
+            </div>
+        </MyDialog>
+    );
+}
+
+function BulkDispositionDialog({
+    open,
+    onClose,
+    options,
+    count,
+    onConfirm,
+}: {
+    open: boolean;
+    onClose: () => void;
+    options: DispositionOption[];
+    count: number;
+    onConfirm: (dispositionKey: string, notes?: string) => Promise<void>;
+}) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
+    const [key, setKey] = useState('');
+    const [notes, setNotes] = useState('');
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        if (open) {
+            setKey('');
+            setNotes('');
+        }
+    }, [open]);
+    return (
+        <MyDialog
+            heading={t('bulkDispositionDialog.heading', { count })}
+            open={open}
+            onOpenChange={(o) => {
+                if (!o) onClose();
+            }}
+            footer={
+                <MyButton
+                    buttonType="primary"
+                    scale="medium"
+                    disabled={!key || busy}
+                    onClick={async () => {
+                        setBusy(true);
+                        try {
+                            await onConfirm(key, notes.trim() || undefined);
+                        } catch {
+                            toast.error(t('bulk.error'));
+                        } finally {
+                            setBusy(false);
+                        }
+                    }}
+                >
+                    {t('dispositionDialog.save')}
+                </MyButton>
+            }
+        >
+            <div className="flex flex-col gap-3 py-2">
+                <Label className="text-xs text-neutral-600">{t('dispositionDialog.outcome')}</Label>
+                <div className="flex flex-wrap gap-2">
+                    {options.map((o) => (
+                        <button
+                            key={o.disposition_key}
+                            type="button"
+                            onClick={() => setKey(o.disposition_key)}
+                            className={cn(
+                                'rounded-full border px-3 py-1 text-sm',
+                                key === o.disposition_key
+                                    ? 'border-primary-500 bg-primary-50 text-primary-800'
+                                    : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+                            )}
+                        >
+                            {o.label}
+                        </button>
+                    ))}
+                    {options.length === 0 && (
+                        <span className="text-xs text-neutral-500">{t('dispositionDialog.noOutcomes')}</span>
+                    )}
+                </div>
+                <Label className="text-xs text-neutral-600">{t('dispositionDialog.notes')}</Label>
+                <Input
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder={t('dispositionDialog.notesPlaceholder')}
+                />
+            </div>
+        </MyDialog>
     );
 }
 

@@ -50,7 +50,13 @@
             "counsellor": "Counsellor",
             "disposition": "Disposition",
             "recording": "Recording",
-            "ai": "AI"
+            "ai": "AI",
+            "leadStatus": "Lead status",
+            "scores": "AI scores",
+            "scoresTooltip": "Caller rating · Outcome rating · lead sentiment, from Call Intelligence",
+            "update": "Update",
+            "actions": "In-call actions",
+            "actionsTooltip": "WhatsApp sends, call-backs and transfers the agent made"
         },
         "openLeadProfile": "Open lead profile",
         "viewLead": "View lead",
@@ -122,5 +128,60 @@
     "common": {
         "retry": "Retry",
         "leadFallback": "Lead"
+    },
+    "dispositionStrip": {
+        "label": "Outcomes",
+        "notSet": "Not set",
+        "clear": "Clear"
+    },
+    "scores": {
+        "caller": "Caller",
+        "outcome": "Outcome",
+        "callerTooltip": "How well the caller advanced their own objective (0–10)",
+        "outcomeTooltip": "How strong the outcome was from the lead's side (0–10)",
+        "sentiment": {
+            "positive": "Positive",
+            "neutral": "Neutral",
+            "negative": "Negative"
+        }
+    },
+    "update": {
+        "openFull": "Open the full analysis",
+        "viewAnalysis": "View analysis",
+        "inProgress": "Analysing…",
+        "failed": "Analysis failed",
+        "skipped": "Not analysed"
+    },
+    "actions": {
+        "sent": "WhatsApp sent ({{count}})",
+        "sentOf": "WhatsApp {{sent}}/{{total}} sent",
+        "callback": "Call-back",
+        "transferred": "Transferred"
+    },
+    "bulk": {
+        "selected": "{{count}} selected",
+        "clear": "Clear",
+        "selectPage": "Select all on this page",
+        "selectRow": "Select call",
+        "leadStatus": "Lead status",
+        "disposition": "Disposition",
+        "assignCounsellor": "Assign counsellor",
+        "addToCampaign": "Add to campaign",
+        "reanalyze": "Re-run analysis",
+        "done": "{{updated}} {{verb}}",
+        "partial": "{{updated}} {{verb}}, {{failed}} failed",
+        "error": "Bulk update failed. Please try again.",
+        "verbStatus": "lead statuses updated",
+        "verbDisposition": "dispositions set",
+        "verbAnalyze": "calls queued for analysis"
+    },
+    "bulkStatusDialog": {
+        "heading": "Set lead status for {{count}} leads",
+        "status": "Status",
+        "apply": "Apply",
+        "none": "No lead statuses configured."
+    },
+    "bulkDispositionDialog": {
+        "heading": "Set disposition for {{count}} calls"
     }
 }

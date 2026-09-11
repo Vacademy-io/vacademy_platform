@@ -50,7 +50,13 @@
             "counsellor": "काउंसलर",
             "disposition": "परिणाम",
             "recording": "रिकॉर्डिंग",
-            "ai": "AI"
+            "ai": "AI",
+            "leadStatus": "लीड स्थिति",
+            "scores": "AI स्कोर",
+            "scoresTooltip": "कॉलर रेटिंग · परिणाम रेटिंग · लीड भावना (Call Intelligence से)",
+            "update": "अपडेट",
+            "actions": "कॉल में हुई कार्रवाई",
+            "actionsTooltip": "एजेंट द्वारा भेजे गए WhatsApp, कॉल-बैक और ट्रांसफ़र"
         },
         "openLeadProfile": "लीड प्रोफ़ाइल खोलें",
         "viewLead": "लीड देखें",
@@ -122,5 +128,60 @@
     "common": {
         "retry": "पुनः प्रयास करें",
         "leadFallback": "लीड"
+    },
+    "dispositionStrip": {
+        "label": "परिणाम",
+        "notSet": "सेट नहीं",
+        "clear": "हटाएँ"
+    },
+    "scores": {
+        "caller": "कॉलर",
+        "outcome": "परिणाम",
+        "callerTooltip": "कॉलर ने अपना लक्ष्य कितनी अच्छी तरह आगे बढ़ाया (0–10)",
+        "outcomeTooltip": "लीड की ओर से परिणाम कितना मज़बूत रहा (0–10)",
+        "sentiment": {
+            "positive": "सकारात्मक",
+            "neutral": "तटस्थ",
+            "negative": "नकारात्मक"
+        }
+    },
+    "update": {
+        "openFull": "पूरा विश्लेषण खोलें",
+        "viewAnalysis": "विश्लेषण देखें",
+        "inProgress": "विश्लेषण हो रहा है…",
+        "failed": "विश्लेषण विफल",
+        "skipped": "विश्लेषण नहीं हुआ"
+    },
+    "actions": {
+        "sent": "WhatsApp भेजा ({{count}})",
+        "sentOf": "WhatsApp {{sent}}/{{total}} भेजे",
+        "callback": "कॉल-बैक",
+        "transferred": "ट्रांसफ़र हुआ"
+    },
+    "bulk": {
+        "selected": "{{count}} चुने गए",
+        "clear": "हटाएँ",
+        "selectPage": "इस पेज के सभी चुनें",
+        "selectRow": "कॉल चुनें",
+        "leadStatus": "लीड स्थिति",
+        "disposition": "डिस्पोज़िशन",
+        "assignCounsellor": "काउंसलर असाइन करें",
+        "addToCampaign": "कैंपेन में जोड़ें",
+        "reanalyze": "विश्लेषण दोबारा चलाएँ",
+        "done": "{{updated}} {{verb}}",
+        "partial": "{{updated}} {{verb}}, {{failed}} विफल",
+        "error": "बल्क अपडेट विफल। कृपया फिर से कोशिश करें।",
+        "verbStatus": "लीड स्थितियाँ अपडेट हुईं",
+        "verbDisposition": "डिस्पोज़िशन सेट हुए",
+        "verbAnalyze": "कॉल विश्लेषण के लिए कतार में"
+    },
+    "bulkStatusDialog": {
+        "heading": "{{count}} लीड की स्थिति सेट करें",
+        "status": "स्थिति",
+        "apply": "लागू करें",
+        "none": "कोई लीड स्थिति कॉन्फ़िगर नहीं है।"
+    },
+    "bulkDispositionDialog": {
+        "heading": "{{count}} कॉल का डिस्पोज़िशन सेट करें"
     }
 }

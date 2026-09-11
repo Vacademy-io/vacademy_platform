@@ -12,7 +12,10 @@
         "to": "To",
         "apply": "Apply",
         "reset": "Reset",
-        "noInstitute": "Pick an institute to view the call log."
+        "noInstitute": "Pick an institute to view the call log.",
+        "presetHours": "{{hours}}h",
+        "customHoursPlaceholder": "Last N hrs",
+        "customHoursLabel": "Last N hours"
     },
     "counsellorPicker": {
         "ariaLabel": "Filter by counsellor",

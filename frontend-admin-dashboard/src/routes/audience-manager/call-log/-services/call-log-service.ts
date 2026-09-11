@@ -29,6 +29,10 @@ export interface CallLogScope {
     fromDate: string;
     /** yyyy-MM-dd (inclusive). */
     toDate: string;
+    /** Optional instant window (epoch millis, UTC) — the "last 1h / 3h / 24h" presets.
+     *  When set it overrides fromDate/toDate on the server. toTs omitted = now. */
+    fromTs?: number;
+    toTs?: number;
     teamId?: string;
     counsellorUserId?: string;
 }
@@ -56,6 +60,8 @@ function buildSearchBody(scope: CallLogScope, f: CallLogFilters, page?: number, 
         institute_id: scope.instituteId,
         from_date: scope.fromDate,
         to_date: scope.toDate,
+        from_ts: scope.fromTs,
+        to_ts: scope.toTs,
         team_id: scope.teamId,
         counsellor_user_id: scope.counsellorUserId,
         direction: f.direction,
@@ -299,6 +305,25 @@ export interface CallRow extends CallHealthFields {
     ttsCacheSavedInr?: number | null;
     callback_at: number | string | null;
     created_at: number | string | null;
+    // ── Inline on the table since 2026-09-11 (older backends omit these) ──
+    /** The lead's pipeline status (lead_status row), editable from the table. */
+    lead_status_id?: string | null;
+    lead_status_key?: string | null;
+    lead_status_label?: string | null;
+    lead_status_color?: string | null;
+    /** call_intelligence.status; null/undefined = never queued. */
+    ci_status?: 'PENDING' | 'TRANSCRIBING' | 'ANALYZING' | 'COMPLETED' | 'FAILED' | 'SKIPPED' | null;
+    /** The analysis' two-line "what happened / what's next". */
+    ci_short_update?: string | null;
+    ci_caller_rating?: number | null;
+    ci_outcome_rating?: number | null;
+    ci_lead_sentiment?: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | null;
+    ci_conversion_likelihood?: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+    /** In-call actions the AI agent took / promised. */
+    ai_callback?: boolean;
+    transferred?: boolean;
+    sends_total?: number;
+    sends_sent?: number;
 }
 
 /** MyTable / MyPagination page shape. */
@@ -310,6 +335,58 @@ export interface CallPage {
     total_elements: number;
     last: boolean;
 }
+
+// ── POST /dispositions/counts — the chip strip above the table ─────────────
+
+export interface DispositionCount {
+    /** Normalized key — send it back as dispositionKeys to filter. '' = no outcome set. */
+    key: string;
+    label: string | null;
+    color: string | null;
+    category: string | null;
+    settable: boolean;
+    count: number;
+}
+
+export const dispositionCountsKey = (scope: CallLogScope, f: CallLogFilters) =>
+    ['crm-call-log-disposition-counts', scope, f] as const;
+
+export async function fetchDispositionCounts(
+    scope: CallLogScope,
+    f: CallLogFilters
+): Promise<DispositionCount[]> {
+    const { data } = await authenticatedAxiosInstance.post(
+        `${CALLS_BASE}/dispositions/counts`,
+        buildSearchBody(scope, f)
+    );
+    return Array.isArray(data) ? data : [];
+}
+
+// ── POST /bulk/* — row-checkbox actions ────────────────────────────────────
+
+export interface BulkResult {
+    updated: number;
+    updated_ids: string[];
+    failed: { call_log_id: string; error: string }[];
+}
+
+async function bulk(path: string, body: Record<string, unknown>): Promise<BulkResult> {
+    const { data } = await authenticatedAxiosInstance.post(`${CALLS_BASE}/bulk/${path}`, body);
+    return data as BulkResult;
+}
+
+export const bulkSetDisposition = (
+    instituteId: string,
+    callLogIds: string[],
+    dispositionKey: string,
+    notes?: string
+) => bulk('disposition', { institute_id: instituteId, call_log_ids: callLogIds, disposition_key: dispositionKey, notes });
+
+export const bulkSetLeadStatus = (instituteId: string, callLogIds: string[], statusId: string) =>
+    bulk('lead-status', { institute_id: instituteId, call_log_ids: callLogIds, status_id: statusId });
+
+export const bulkAnalyze = (instituteId: string, callLogIds: string[]) =>
+    bulk('analyze', { institute_id: instituteId, call_log_ids: callLogIds });
 
 // ── POST /search ───────────────────────────────────────────────────────────
 

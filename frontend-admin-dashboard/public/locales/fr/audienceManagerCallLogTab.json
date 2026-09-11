@@ -50,7 +50,13 @@
             "counsellor": "Conseiller",
             "disposition": "Résultat",
             "recording": "Enregistrement",
-            "ai": "IA"
+            "ai": "IA",
+            "leadStatus": "Statut du lead",
+            "scores": "Scores IA",
+            "scoresTooltip": "Note de l'appelant · note du résultat · sentiment du lead (Call Intelligence)",
+            "update": "Mise à jour",
+            "actions": "Actions pendant l'appel",
+            "actionsTooltip": "Envois WhatsApp, rappels et transferts effectués par l'agent"
         },
         "openLeadProfile": "Ouvrir le profil du prospect",
         "viewLead": "Voir le prospect",
@@ -122,5 +128,60 @@
     "common": {
         "retry": "Réessayer",
         "leadFallback": "Prospect"
+    },
+    "dispositionStrip": {
+        "label": "Résultats",
+        "notSet": "Non défini",
+        "clear": "Effacer"
+    },
+    "scores": {
+        "caller": "Appelant",
+        "outcome": "Résultat",
+        "callerTooltip": "Dans quelle mesure l'appelant a fait avancer son objectif (0–10)",
+        "outcomeTooltip": "Force du résultat du point de vue du lead (0–10)",
+        "sentiment": {
+            "positive": "Positif",
+            "neutral": "Neutre",
+            "negative": "Négatif"
+        }
+    },
+    "update": {
+        "openFull": "Ouvrir l'analyse complète",
+        "viewAnalysis": "Voir l'analyse",
+        "inProgress": "Analyse en cours…",
+        "failed": "Analyse échouée",
+        "skipped": "Non analysé"
+    },
+    "actions": {
+        "sent": "WhatsApp envoyé ({{count}})",
+        "sentOf": "WhatsApp {{sent}}/{{total}} envoyés",
+        "callback": "Rappel",
+        "transferred": "Transféré"
+    },
+    "bulk": {
+        "selected": "{{count}} sélectionnés",
+        "clear": "Effacer",
+        "selectPage": "Tout sélectionner sur cette page",
+        "selectRow": "Sélectionner l'appel",
+        "leadStatus": "Statut du lead",
+        "disposition": "Disposition",
+        "assignCounsellor": "Attribuer un conseiller",
+        "addToCampaign": "Ajouter à une campagne",
+        "reanalyze": "Relancer l'analyse",
+        "done": "{{updated}} {{verb}}",
+        "partial": "{{updated}} {{verb}}, {{failed}} en échec",
+        "error": "La mise à jour groupée a échoué. Veuillez réessayer.",
+        "verbStatus": "statuts de lead mis à jour",
+        "verbDisposition": "dispositions définies",
+        "verbAnalyze": "appels mis en file pour analyse"
+    },
+    "bulkStatusDialog": {
+        "heading": "Définir le statut de {{count}} leads",
+        "status": "Statut",
+        "apply": "Appliquer",
+        "none": "Aucun statut de lead configuré."
+    },
+    "bulkDispositionDialog": {
+        "heading": "Définir la disposition de {{count}} appels"
     }
 }

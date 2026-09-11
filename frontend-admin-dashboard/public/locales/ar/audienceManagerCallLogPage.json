@@ -12,7 +12,10 @@
         "to": "إلى",
         "apply": "تطبيق",
         "reset": "إعادة تعيين",
-        "noInstitute": "اختر مؤسسة لعرض سجل المكالمات."
+        "noInstitute": "اختر مؤسسة لعرض سجل المكالمات.",
+        "presetHours": "{{hours}} س",
+        "customHoursPlaceholder": "آخر N ساعة",
+        "customHoursLabel": "آخر N ساعة"
     },
     "counsellorPicker": {
         "ariaLabel": "التصفية حسب المرشد",

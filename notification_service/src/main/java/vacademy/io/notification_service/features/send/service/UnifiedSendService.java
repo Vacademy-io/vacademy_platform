@@ -106,10 +106,24 @@ public class UnifiedSendService implements SendChannelRouter {
     private UnifiedSendResponse sendWhatsApp(UnifiedSendRequest request) {
         List<UnifiedSendResponse.RecipientResult> results = new ArrayList<>();
 
-        // Phase 3: Resolve named variables → positional using stored template
-        Map<String, Integer> nameToPosition = resolveTemplateVariablePositions(
+        Optional<NotificationTemplate> storedTemplate = findWhatsAppTemplate(
                 request.getInstituteId(), request.getTemplateName(),
                 request.getLanguageCode() != null ? request.getLanguageCode() : "en");
+
+        // Phase 3: Resolve named variables → positional using stored template
+        Map<String, Integer> nameToPosition = resolveTemplateVariablePositions(storedTemplate);
+
+        // A template approved with a media header (IMAGE/VIDEO/DOCUMENT) must be sent WITH that
+        // header component — Meta rejects the message otherwise: #132012 "header: Format
+        // mismatch, expected DOCUMENT, received UNKNOWN". Callers that only know the template
+        // name (the Inbox composer, automations, chatbot hand-offs) carry no file, so the sample
+        // the template was approved with is the default. An explicit options/_headerUrl still wins.
+        String templateHeaderType = storedTemplate.map(UnifiedSendService::mediaHeaderType).orElse(null);
+        String templateHeaderUrl = templateHeaderType != null
+                ? httpUrlOrNull(storedTemplate.get().getHeaderSampleUrl()) : null;
+        String requestHeaderType = request.getOptions() != null
+                ? blankToNull(request.getOptions().getHeaderType()) : null;
+        String headerType = requestHeaderType != null ? requestHeaderType : templateHeaderType;
 
         List<Map<String, Map<String, String>>> bodyParams = new ArrayList<>();
         Map<String, Map<String, String>> headerParams = new HashMap<>();
@@ -179,24 +193,28 @@ public class UnifiedSendService implements SendChannelRouter {
             userMap.put(phone, resolvedVars);
             bodyParams.add(userMap);
 
-            // Header params (image/document) — from global options or per-recipient variable
+            // Header params (image/video/document) — per-recipient variable, then global options,
+            // then the file the template was approved with.
             String headerUrl = null;
             if (r.getVariables() != null && r.getVariables().containsKey("_headerUrl")) {
-                headerUrl = r.getVariables().get("_headerUrl");
-            } else if (request.getOptions() != null && request.getOptions().getHeaderUrl() != null) {
-                headerUrl = request.getOptions().getHeaderUrl();
+                headerUrl = blankToNull(r.getVariables().get("_headerUrl"));
+            }
+            if (headerUrl == null && request.getOptions() != null) {
+                headerUrl = blankToNull(request.getOptions().getHeaderUrl());
+            }
+            if (headerUrl == null) {
+                headerUrl = templateHeaderUrl;
             }
 
             if (headerUrl != null) {
-                String hType = request.getOptions() != null ? request.getOptions().getHeaderType() : null;
-                if ("video".equalsIgnoreCase(hType)) {
+                if ("video".equalsIgnoreCase(headerType)) {
                     headerVideoParams.put(phone, headerUrl);
                 } else {
                     headerParams.put(phone, Map.of("link", headerUrl));
                 }
                 // Inject into resolvedVars so WATI bulk path can read them
                 resolvedVars.put("_headerUrl", headerUrl);
-                if (hType != null) resolvedVars.put("_headerType", hType);
+                if (headerType != null) resolvedVars.put("_headerType", headerType);
             }
 
             // Fix #2: Per-recipient button URL params from variables
@@ -225,7 +243,6 @@ public class UnifiedSendService implements SendChannelRouter {
         }
 
         try {
-            String headerType = request.getOptions() != null ? request.getOptions().getHeaderType() : null;
             String langCode = request.getLanguageCode() != null ? request.getLanguageCode() : "en";
 
             // Build buttonIndexParams: read from _buttonIndex variable, default to "0"
@@ -719,8 +736,55 @@ public class UnifiedSendService implements SendChannelRouter {
     // ==================== Phase 3: Named → Positional Variable Resolution ====================
 
     /**
-     * Looks up the template in whatsapp_templates table and builds a mapping:
-     * variable name → positional index.
+     * The stored copy of the WhatsApp template being sent, if we have one. Empty when the caller
+     * gave no name, or the template was never synced/created here — a send still goes out then,
+     * exactly as the caller shaped it.
+     */
+    private Optional<NotificationTemplate> findWhatsAppTemplate(
+            String instituteId, String templateName, String language) {
+        if (templateName == null || instituteId == null) return Optional.empty();
+        try {
+            return notificationTemplateRepository
+                    .findByInstituteIdAndNameAndLanguage(instituteId, templateName, language);
+        } catch (Exception e) {
+            log.warn("Failed to load template {} for institute {}: {}", templateName, instituteId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * The template's header kind in the form the provider payload uses ("image" / "video" /
+     * "document"), or null for TEXT / NONE headers, which need no file.
+     */
+    static String mediaHeaderType(NotificationTemplate template) {
+        String raw = template.getHeaderType();
+        if (raw == null) return null;
+        switch (raw.trim().toUpperCase()) {
+            case "IMAGE": return "image";
+            case "VIDEO": return "video";
+            case "DOCUMENT": return "document";
+            default: return null;
+        }
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    /**
+     * The template's saved sample only qualifies as a header fallback when it is something the
+     * provider can actually fetch. A few draft rows hold pasted HTML in that column; handing that
+     * to Meta as a "link" would just swap one rejection for another.
+     */
+    private static String httpUrlOrNull(String value) {
+        String url = blankToNull(value);
+        if (url == null) return null;
+        String lower = url.toLowerCase();
+        return lower.startsWith("https://") || lower.startsWith("http://") ? url : null;
+    }
+
+    /**
+     * Builds the mapping variable name → positional index from the stored template.
      *
      * Example: bodyText = "Hello {{1}}, welcome to {{2}}"
      * bodySampleValues = '["name", "course"]' (JSON array)
@@ -729,19 +793,13 @@ public class UnifiedSendService implements SendChannelRouter {
      * If template not found or has no sample values, returns empty map
      * and variables pass through as-is (backward compatible).
      */
-    private Map<String, Integer> resolveTemplateVariablePositions(
-            String instituteId, String templateName, String language) {
+    private Map<String, Integer> resolveTemplateVariablePositions(Optional<NotificationTemplate> templateOpt) {
+        if (templateOpt.isEmpty()) return Map.of();
 
-        if (templateName == null || instituteId == null) return Map.of();
+        NotificationTemplate template = templateOpt.get();
+        String templateName = template.getName();
 
         try {
-            Optional<NotificationTemplate> templateOpt = notificationTemplateRepository
-                    .findByInstituteIdAndNameAndLanguage(instituteId, templateName, language);
-
-            if (templateOpt.isEmpty()) return Map.of();
-
-            NotificationTemplate template = templateOpt.get();
-
             // Prefer bodyVariableNames (semantic: ["name", "course"])
             // Fall back to bodySampleValues (example values: ["Shreyash", "Math 101"])
             String namesJson = template.getBodyVariableNames();

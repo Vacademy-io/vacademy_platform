@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { flattenTemplateBody, humanizeTemplateText, splitTemplateText } from './template-text';
+import {
+    flattenTemplateBody,
+    humanizeTemplateText,
+    mediaFileName,
+    splitTemplateText,
+} from './template-text';
 
 /**
  * Every WhatsApp preview in the admin reads a template through here, and the shape it has to cope
@@ -93,5 +98,27 @@ describe('flattenTemplateBody', () => {
 
     it('is empty for empty content', () => {
         expect(flattenTemplateBody(undefined)).toBe('');
+    });
+});
+
+describe('mediaFileName', () => {
+    it('strips the upload key prefix and keeps the original name', () => {
+        expect(
+            mediaFileName(
+                'https://d1om4dxj9e7kkd.cloudfront.net/ADMIN_PUBLIC_UPLOAD/63a5262b-f5e4-4de6-990e-d3296ca5012b-HCCA_Updated_Brochure_1.pdf'
+            )
+        ).toBe('HCCA_Updated_Brochure_1.pdf');
+    });
+
+    it('decodes escapes, keeps a literal +, and ignores query strings', () => {
+        expect(
+            mediaFileName('https://cdn.example.com/f/HCCA%20Syllabus%201.pdf?X-Amz-Expires=1')
+        ).toBe('HCCA Syllabus 1.pdf');
+        expect(mediaFileName('https://cdn.example.com/f/C++_Notes.pdf')).toBe('C++_Notes.pdf');
+    });
+
+    it('is empty when there is nothing to name', () => {
+        expect(mediaFileName(undefined)).toBe('');
+        expect(mediaFileName('https://cdn.example.com/')).toBe('');
     });
 });

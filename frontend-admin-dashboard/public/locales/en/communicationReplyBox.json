@@ -14,7 +14,8 @@
         "templateSent": "Template \"{{name}}\" sent",
         "templateNotSent": "Template \"{{name}}\" was not sent",
         "providerRejectedNoReason": "The provider rejected the send without giving a reason.",
-        "couldNotSendTemplate": "Could not send template \"{{name}}\""
+        "couldNotSendTemplate": "Could not send template \"{{name}}\"",
+        "templateHeaderFileMissing": "Template \"{{name}}\" needs a {{kind}} in its header, but none is saved on the template. Open WhatsApp Templates and upload the {{kind}} for it first."
     },
     "mediaKindPlural": {
         "document": "documents",
@@ -57,11 +58,24 @@
     "attachmentsUnavailableTooltip": "Attachments need the updated notification service — not deployed yet",
     "stopRecordingTooltip": "Stop and attach the recording",
     "recordVoiceNoteTooltip": "Record a voice note",
-    "templatePrompt": {
-        "header_one": "Template \"{{name}}\" requires {{count}} value:",
-        "header_other": "Template \"{{name}}\" requires {{count}} values:",
-        "footer": "Enter values (comma-separated):",
-        "paramFallback": "param {{n}}",
-        "exampleSuffix": " (e.g. {{value}})"
+    "templateDialog": {
+        "heading": "Send template",
+        "to": "To {{phone}}",
+        "valuesLabel": "Fill in the values",
+        "valueFallback": "Value {{n}}",
+        "valuePlaceholder": "e.g. {{value}}",
+        "missingValues_one": "{{count}} value is still empty",
+        "missingValues_other": "{{count}} values are still empty",
+        "headerMissing": "This template needs a {{kind}} in its header, but none is saved on it. Open WhatsApp Templates and upload the {{kind}} first.",
+        "note": "This is the exact message the contact will receive. Templates cannot be edited at send time.",
+        "emptyBody": "This template has no message body.",
+        "media": {
+            "image": "Image",
+            "video": "Video",
+            "document": "Document"
+        },
+        "cancel": "Cancel",
+        "send": "Send template",
+        "sending": "Sending…"
     }
 }

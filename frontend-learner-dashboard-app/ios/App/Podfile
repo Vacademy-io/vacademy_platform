@@ -91,6 +91,10 @@ target 'Agilore Global' do
   capacitor_pods
 end
 
+target 'Oui Academie' do
+  capacitor_pods
+end
+
 post_install do |installer|
   assertDeploymentTarget(installer)
 end

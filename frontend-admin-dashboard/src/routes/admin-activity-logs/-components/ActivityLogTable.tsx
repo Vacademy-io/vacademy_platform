@@ -181,6 +181,13 @@ const NAMED_DESCRIPTION_PATTERNS: RegExp[] = [
 
     /^(switched WhatsApp provider to )(.+)$/i,
     /^((?:updated|removed) WhatsApp credentials for )(.+)$/i,
+
+    // ── Payment plans ────────────────────────────────────────────────
+    // "made ... the default" must precede the generic create/update/delete
+    // form, which would otherwise swallow the trailing clause into the name.
+    /^(made payment plan )(.+?)( the default)$/i,
+    /^((?:created|updated|deleted|approved) (?:payment|fee) plan )(.+)$/i,
+    /^(updated fee type )(.+)$/i,
 ];
 
 /**

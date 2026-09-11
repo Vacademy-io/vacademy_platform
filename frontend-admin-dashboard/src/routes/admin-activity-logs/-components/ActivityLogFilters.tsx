@@ -126,6 +126,8 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
     {
         group: 'Finance',
         options: [
+            { value: 'PAYMENT_PLAN', label: 'Payment plan' },
+            { value: 'FEE_PLAN', label: 'Fee plan (CPO)' },
             { value: 'ERP_JOURNAL', label: 'Journal entry' },
             { value: 'ERP_FINANCE_PNL', label: 'Profit and loss' },
         ],
@@ -148,6 +150,7 @@ const ACTIVITY_OPTIONS: MultiSelectOption[] = [
     { value: 'BULK_CREATE', label: 'Bulk created' },
     { value: 'BULK_UPDATE', label: 'Bulk updated' },
     { value: 'IMPORT', label: 'Imported' },
+    { value: 'MIGRATE', label: 'Migrated' },
     { value: 'EXPORT', label: 'Exported' },
     { value: 'DOWNLOAD', label: 'Downloaded' },
     { value: 'PURGE', label: 'Purged' },
@@ -187,6 +190,7 @@ const ACTIVITY_OPTIONS: MultiSelectOption[] = [
     { value: 'EXPORT_CREDENTIALS', label: 'Credentials exported' },
     { value: 'DEACTIVATE', label: 'Deactivated (record)' },
     { value: 'PROVISION_BOOKING_PAGE', label: 'Booking page provisioned' },
+    { value: 'MAKE_DEFAULT', label: 'Made default' },
     { value: 'APPROVE', label: 'Approved' },
     { value: 'REJECT', label: 'Rejected' },
     { value: 'DECLINE', label: 'Declined' },

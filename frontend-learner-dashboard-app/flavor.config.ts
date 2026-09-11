@@ -259,4 +259,10 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "learner",
   },
 
+  // Oui Académie Android app
+  "com.ouiacademie.io": {
+    appName: "Oui Académie",
+    domain: "oui-academie.com",
+    subdomain: "student",
+  },
 };

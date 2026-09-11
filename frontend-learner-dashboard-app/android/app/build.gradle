@@ -185,6 +185,14 @@ android {
 			resValue "string", "app_name", "DumBee"
 			manifestPlaceholders.DEEP_LINK_HOST = "learner.soullifee.com"
 		}
+		agilore {
+			dimension "client"
+			applicationId "com.agilore.app"
+			versionCode 1
+			versionName "1.0.0"
+			resValue "string", "app_name", "Agilore Global"
+			manifestPlaceholders.DEEP_LINK_HOST = "learner.agilore.com"
+		}
 	}
 }
 

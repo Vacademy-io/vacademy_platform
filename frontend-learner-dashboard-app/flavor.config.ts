@@ -251,4 +251,12 @@ export const flavorConfig: FlavorConfigs = {
     domain: "agilore.com",
     subdomain: "learner",
   },
+
+  // Agilore Global Android app
+  "com.agilore.app": {
+    appName: "Agilore Global",
+    domain: "agilore.com",
+    subdomain: "learner",
+  },
+
 };

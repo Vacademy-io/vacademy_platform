@@ -76,4 +76,25 @@ public class CallRowDTO {
     private Timestamp callbackAt;
 
     private Timestamp createdAt;
+
+    // ── Inline on the Call Log table since 2026-09-11 ────────────────────────
+    /** The lead's pipeline status (audience_response.lead_status_id → lead_status); editable in the table. */
+    private String leadStatusId;
+    private String leadStatusKey;
+    private String leadStatusLabel;
+    private String leadStatusColor;
+    /** call_intelligence.status (PENDING/TRANSCRIBING/ANALYZING/COMPLETED/FAILED/SKIPPED); null = never queued. */
+    private String ciStatus;
+    /** The analysis' two-line "what happened / what's next". */
+    private String ciShortUpdate;
+    private Double ciCallerRating;
+    private Double ciOutcomeRating;
+    private String ciLeadSentiment;
+    private String ciConversionLikelihood;
+    /** In-call actions: the agent promised a call-back / triggered a transfer. */
+    private boolean aiCallback;
+    private boolean transferred;
+    /** Sends (WhatsApp/email) the AI call created, and how many actually went out. */
+    private int sendsTotal;
+    private int sendsSent;
 }

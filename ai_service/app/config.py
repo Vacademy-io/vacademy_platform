@@ -88,6 +88,21 @@ class Settings(BaseSettings):
     # frame-regen path — bumping the default raises the floor without
     # changing the env override. Override via `LLM_DEFAULT_MODEL` if needed.
     llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "google/gemini-3.1-pro-preview")
+    # CRM Call Intelligence (call_intelligence_service). Founder decision
+    # 2026-09-11: on by default for every AI-agent call at no extra charge, so
+    # the per-call cost has to be near zero. Measured on OpenRouter against a
+    # real 209 s Hindi call: GLM-5.3-flash ~$0.0004 per call for the analysis;
+    # for transcription, whisper-large-v3-turbo ($0.0002/min) locked onto the
+    # English screener in the first 30 s and rendered the whole Hindi call as
+    # garbled English (with or without language=hi), whisper-large-v3 dropped
+    # sentences, gpt-4o-mini-transcribe ($0.0017/min) was clean Devanagari with
+    # code-switching intact — so that is the default. Both overridable.
+    # (The render-box Whisper this replaces failed 45% of runs "at capacity".)
+    call_intel_llm_model: str = os.getenv("CALL_INTEL_LLM_MODEL", "z-ai/glm-5.3-flash")
+    call_intel_stt_model: str = os.getenv("CALL_INTEL_STT_MODEL", "openai/gpt-4o-mini-transcribe")
+    # "openrouter" (default) | "render" — the render worker stays as the fallback
+    # when OpenRouter transcription fails and RENDER_SERVER_URL is configured.
+    call_intel_stt_backend: str = os.getenv("CALL_INTEL_STT_BACKEND", "openrouter")
     # NOTE: for ai-service in production this default is DEAD — the Deployment
     # spec sets LLM_DEFAULT_MODEL=google/gemini-2.5-flash as a literal env value,
     # so that is what actually serves the learner chatbot. Change the model in the

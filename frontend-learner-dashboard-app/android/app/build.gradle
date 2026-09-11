@@ -193,6 +193,14 @@ android {
 			resValue "string", "app_name", "Agilore Global"
 			manifestPlaceholders.DEEP_LINK_HOST = "learner.agilore.com"
 		}
+		oui {
+			dimension "client"
+			applicationId "com.ouiacademie.io"
+			versionCode 1
+			versionName "1.0.0"
+			resValue "string", "app_name", "Oui Académie"
+			manifestPlaceholders.DEEP_LINK_HOST = "student.oui-academie.com"
+		}
 	}
 }
 

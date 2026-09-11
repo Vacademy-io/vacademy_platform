@@ -86,6 +86,7 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
 from .config import get_settings
 from .ambience import AmbienceDucker
 from .voice_eq import build_voice_eq, make_voice_eq_processor
+from .prosody import build_prosody_shaper, make_prosody_processor
 from . import diagnostics as diag_mod
 from .providers import (build_llm, build_stt, build_tts, engine_of,
                         normalize_for_rumik, rumik_term_map_version)
@@ -3178,6 +3179,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # One EQ per call: it carries IIR state across frames, so it must not be
     # shared between concurrent calls. None when disabled or scipy is missing,
     # and then no processor is added at all.
+    # Voice modulation (app/prosody.py): per-agent factor from the dashboard
+    # (agent.voiceModulation, V504), else the box default — off unless set.
+    # Per call for the same reason as the EQ: it carries audio state.
+    _prosody = build_prosody_shaper(
+        agent.get("voiceModulation") if agent.get("voiceModulation") is not None
+        else settings.prosody_expand)
+    if _prosody is not None:
+        logger.info("prosody: pitch-range expansion x%.2f corr=%s", _prosody.expand, corr)
     _voice_eq = build_voice_eq(settings)
     if _voice_eq is not None:
         logger.info("voice-eq: HP%.0fHz + LP%.0fHz + %+.1fdB@%.0fHz, makeup %+.1fdB corr=%s",
@@ -3211,6 +3220,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # nothing; BEFORE transport.output() so it catches cache hits and
         # scripted lines too — and cannot touch the ambience, which the
         # transport mixes in afterwards.
+        # Shape the full-band voice first, then band-limit it.
+        *([make_prosody_processor(_prosody)] if _prosody is not None else []),
         *([make_voice_eq_processor(_voice_eq)] if _voice_eq is not None else []),
         # Room-tone level: ducked under speech, drifting slowly while idle.
         # Control frames only; remove this one line to run it flat.

@@ -896,6 +896,10 @@ service README), `NO_REPEAT_ENABLED=true`,
 `WARM_QUESTIONS_ENABLED=true` (prompt rule for every agent: cushion a question with one
 clause of assumption/reason/their-last-answer instead of firing it bare — founder feedback
 2026-09-08, "it's asking questions as if she is my mother"),
+`PROSODY_EXPAND=1.0` (box default for voice modulation — pitch-range expansion applied to the
+bot's audio by `app/prosody.py`, engine-agnostic; the per-agent "Voice modulation" setting in
+the dashboard (`ai_agent.voice_modulation`, V504) overrides it — Off 1.0 / Subtle 1.3 /
+Conversational 1.6 / Lively 2.0; see the service README),
 `PROSODY_HINTS_ENABLED=true` (prompt rule for every agent: one '...' before the key phrase and
 at most one '!' per reply, so the TTS — which has no prosody knobs — gets a pitch contour from
 the text; +15% pitch spread measured on Smallest/mrunal — client feedback 2026-09-11, "the tone

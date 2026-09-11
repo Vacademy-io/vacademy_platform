@@ -78,6 +78,28 @@ scripted lines, and cannot touch the ambience, which is mixed in afterwards.
 Measured effect on 13.3 s of production speech: sub-300 Hz energy 30.8% → 18.4%,
 in-band 68.3% → 81.2% — i.e. it lands on the real-recording profile.
 
+## Voice modulation (pitch-range expansion), any engine
+
+Clients: "the tone is very simple and linear — bot like". The TTS engines expose
+no usable prosody control (Smallest: speed only), so `app/prosody.py` reshapes
+the **audio**: it tracks the pitch of each block and scales every excursion
+around the voice's own running median by a factor, resynthesised with Praat's
+PSOLA (`praat-parselmouth`). The voice keeps its identity; it just moves more.
+Streamed in 200 ms blocks with 60 ms of context and a 20 ms cross-fade, so first
+audio is delayed ~260 ms; the tail of a sentence is flushed on `TTSStoppedFrame`
+or after 80 ms without audio; an interruption drops what is pending. Sits
+between `DuckGate` and the EQ (shape full-band, then band-limit).
+
+Measured on real Smallest/mrunal output (pitch spread, sd of F0 in semitones;
+conversational speech is ~4–5 st): English 2.9 → 3.6 / 3.9 / 4.3 and Hindi
+3.4 → 4.1 / 4.7 / 5.7 at ×1.3 / ×1.6 / ×2.0; every variant transcribed
+word-for-word; ~0.013× realtime on one core.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `PROSODY_EXPAND` | `1.0` (off) | box default and kill switch; `1.6` = conversational, `2.5` max |
+| agent `voiceModulation` (dashboard, V504) | unset | per-agent override — the intended rollout path: one agent, one listening test, then widen |
+
 If STT ever transcribes the ambience via handset echo, lower `AMBIENCE_VOLUME`
 rather than adding filtering.
 

@@ -550,6 +550,13 @@ class Settings:
     # 3.2 st (+15%). Prompt rule, every agent; kill switch keeps the same shape.
     prosody_hints_enabled: bool = field(
         default_factory=lambda: _env("PROSODY_HINTS_ENABLED", "true").lower() == "true")
+    # Voice modulation on the AUDIO (app/prosody.py) — the vendor-agnostic fix
+    # for the same complaint: pitch excursions around the voice's median are
+    # scaled by this factor. 1.0 = off; 1.6 = conversational. The dashboard's
+    # per-agent voiceModulation (V504) overrides it; this is the default for
+    # agents that have not set one, and the box-wide value ops can force.
+    prosody_expand: float = field(
+        default_factory=lambda: float(_env("PROSODY_EXPAND", "1.0")))
     # Edge read-aloud default voice. hi-IN-SwaraNeural (F) / hi-IN-MadhurNeural (M)
     # are the only Hindi ones; the en-IN trio is Neerja, NeerjaExpressive, Prabhat.
     edge_tts_voice: str = field(

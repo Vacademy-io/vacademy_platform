@@ -24,3 +24,6 @@ miniaudio>=1.59
 # filtering. Already present transitively; pinned here because we now depend
 # on it directly.
 scipy>=1.11
+# Voice modulation (app/prosody.py): Praat's PSOLA pitch resynthesis via
+# parselmouth. Binary wheels for py3.12 manylinux; no Praat install needed.
+praat-parselmouth>=0.4.7

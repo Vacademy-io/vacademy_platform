@@ -3487,6 +3487,98 @@ def test_voice_eq_is_off_when_disabled_and_wired_after_the_duck():
     assert src.index("make_voice_eq_processor(_voice_eq)") < src.index("transport.output(),")
 
 
+# ── Voice modulation: pitch-range expansion on the audio, any engine ─────────
+
+def _vibrato(sr=8000, secs=3.0, f0=200.0, depth_st=2.0, rate_hz=1.5):
+    """A buzzy 'voice' whose pitch swings ±depth_st semitones — a stand-in for
+    the up-and-down of speech that the shaper must widen."""
+    import numpy as np
+    t = np.arange(int(sr * secs)) / sr
+    f = f0 * 2 ** (depth_st * np.sin(2 * np.pi * rate_hz * t) / 12)
+    phase = 2 * np.pi * np.cumsum(f) / sr
+    # Harmonic-rich (sawtooth-ish) so pitch tracking has something to lock on.
+    x = sum(np.sin(k * phase) / k for k in range(1, 8))
+    return (x / np.abs(x).max() * 12000).astype(np.int16)
+
+
+def _pitch_spread_st(pcm16, sr):
+    import numpy as np
+    x = pcm16.astype(float); hop = int(sr * 0.02); win = int(sr * 0.04); f = []
+    for i in range(0, len(x) - win, hop):
+        fr = x[i:i + win] - x[i:i + win].mean()
+        ac = np.correlate(fr, fr, "full")[win - 1:]; ac = ac / (ac[0] + 1e-9)
+        lo, hi = int(sr / 350), int(sr / 70); k = lo + int(np.argmax(ac[lo:hi]))
+        if ac[k] > 0.5:
+            f.append(sr / k)
+    f = np.array(f)
+    return float((12 * np.log2(f / np.median(f))).std())
+
+
+def _stream(shaper, pcm16, sr, frame_ms=20):
+    import numpy as np
+    pcm = pcm16.tobytes(); step = int(sr * frame_ms / 1000) * 2; out = b""
+    for i in range(0, len(pcm), step):
+        out += shaper.process(pcm[i:i + step], sr)
+    out += shaper.flush(sr)
+    return np.frombuffer(out, dtype=np.int16)
+
+
+def test_prosody_widens_pitch_and_keeps_length_when_streamed():
+    """Clients, 2026-09-11: "the tone is very linear — bot like". Fed 20 ms at a
+    time like the pipeline does, the shaper must (a) widen the pitch movement by
+    about the factor asked, (b) return exactly as many samples as it was given
+    — a lost or duplicated block is a stutter on the line — and (c) not add
+    seams sharper than the audio already has."""
+    import numpy as np
+    pytest.importorskip("parselmouth")
+    from app.prosody import ProsodyShaper
+    x = _vibrato()
+    y = _stream(ProsodyShaper(1.6), x, 8000)
+    assert len(y) == len(x)
+    before, after = _pitch_spread_st(x, 8000), _pitch_spread_st(y, 8000)
+    assert 1.3 < after / before < 1.9, (before, after)
+    assert np.abs(np.diff(y.astype(int))).max() <= np.abs(np.diff(x.astype(int))).max() * 1.5
+    assert np.abs(y).max() <= 32767
+
+
+def test_prosody_is_a_no_op_at_one_and_drops_pending_on_reset():
+    from app.prosody import ProsodyShaper, build_prosody_shaper, clamp_expand
+    pcm = b"\x00\x10" * 400
+    assert ProsodyShaper(1.0).process(pcm, 8000) == pcm      # off = untouched, no delay
+    assert build_prosody_shaper(1.0) is None
+    assert build_prosody_shaper(None) is None
+    assert build_prosody_shaper("garbage") is None
+    assert clamp_expand(9) == 2.5 and clamp_expand(0.2) == 1.0 and clamp_expand("1.6") == 1.6
+    pytest.importorskip("parselmouth")
+    sh = ProsodyShaper(1.6)
+    assert sh.process(pcm, 8000) == b""                      # buffered, not yet a block
+    sh.reset()                                               # interruption
+    assert sh.flush() == b""                                 # nothing leaks after it
+
+
+def test_prosody_keeps_separate_state_per_sample_rate():
+    """Live TTS is 24 kHz and cache hits are 8 kHz in the SAME call; a block
+    must never be assembled from both."""
+    pytest.importorskip("parselmouth")
+    from app.prosody import ProsodyShaper
+    sh = ProsodyShaper(1.6)
+    a = _stream(sh, _vibrato(sr=24000, secs=1.0), 24000)
+    b_ = _stream(sh, _vibrato(sr=8000, secs=1.0), 8000)
+    assert len(a) == 24000 and len(b_) == 8000
+    assert sorted(sh._states) == [8000, 24000]
+
+
+def test_prosody_is_per_agent_and_wired_before_the_eq():
+    """The dashboard's voiceModulation (V504) wins over the box default, and the
+    processor shapes the full-band voice BEFORE the telephone EQ band-limits it."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert 'agent.get("voiceModulation")' in src
+    assert "settings.prosody_expand" in src
+    assert src.index("make_prosody_processor(_prosody)") < src.index("make_voice_eq_processor(_voice_eq)")
+    assert src.index("duck,\n") < src.index("make_prosody_processor(_prosody)")
+
+
 # ── Ambience drift: a room is never at exactly one level ─────────────────────
 
 def test_ambience_drift_is_off_until_the_call_starts_and_bounded_after():

@@ -3565,7 +3565,60 @@ def test_prosody_keeps_separate_state_per_sample_rate():
     a = _stream(sh, _vibrato(sr=24000, secs=1.0), 24000)
     b_ = _stream(sh, _vibrato(sr=8000, secs=1.0), 8000)
     assert len(a) == 24000 and len(b_) == 8000
-    assert sorted(sh._states) == [8000, 24000]
+    # A rate change releases and retires the other rate's state (playout order).
+    assert sorted(sh._states) == [8000]
+
+
+def test_sentinel_never_speaks_a_tool_call_block():
+    """Call 5a9fe35a (2026-09-11): sarvam-105b wrote a GLM-style
+    "<tool_call>send_whatsapp_message <arg_key>phone_number</arg_key>…" instead
+    of <<SEND:key>> and the TTS read it — phone number included — to the caller."""
+    full = ("I can WhatsApp you a short overview. <tool_call>send_whatsapp_message "
+            "<arg_key>phone_number</arg_key><arg_value>9001909009</arg_value></tool_call> "
+            "I'm sending it now.")
+    assert b._TOOL_CALL_RE.sub("", full) == "I can WhatsApp you a short overview.  I'm sending it now."
+    # Unterminated block: everything from "<tool_call>" is held, never spoken.
+    emit, held = b.SentinelGate._split_safe("Sure. <tool_call>send_whatsapp_message <arg_key>ph")
+    assert emit == "Sure. " and held.startswith("<tool_call>")
+    # A half-written opener is held too, so "<tool_c" is not read as words.
+    emit, held = b.SentinelGate._split_safe("Sure. <tool_c")
+    assert emit == "Sure. " and held == "<tool_c"
+    # Stray argument tags outside a block are dropped as well.
+    assert b._TOOL_CALL_RE.sub("", "ok </arg_value> done") == "ok  done"
+
+
+def test_lead_name_is_cleaned_before_it_is_spoken():
+    """Same call: the list held "Bhawana Jain (founder)" and the bot said
+    "Hi, is this Bhawana Jain founder?"; its batch also carried
+    "Beena Bhati / Pooja" and "I Am Yoga Studio"."""
+    assert b._clean_lead_name("Bhawana Jain (founder)") == "Bhawana Jain"
+    assert b._clean_lead_name("Beena Bhati / Pooja") == "Beena Bhati"
+    assert b._clean_lead_name("  Shefali  [hot lead] ") == "Shefali"
+    assert b._clean_lead_name("I Am Yoga Studio") is None
+    assert b._clean_lead_name("Robotics Programs for Schools") is None
+    assert b._clean_lead_name("919425677707") is None
+    assert b._clean_lead_name("(founder)") is None
+    assert b._clean_lead_name("Riya Jain") == "Riya Jain"
+    assert b._clean_lead_name(None) is None
+
+
+def test_prosody_never_reorders_audio_across_sample_rates():
+    """Call 5a9fe35a (2026-09-11): a cached 8 kHz "Got it." left its tail in the
+    8 kHz buffer while the live 24 kHz sentence streamed past; the tail came out
+    mid-sentence ("Since you're Got it. So you have…"). A rate change must flush
+    the other rate FIRST, and the flushed bytes must be reported at THEIR rate."""
+    import numpy as np
+    pytest.importorskip("parselmouth")
+    from app.prosody import ProsodyShaper
+    sh = ProsodyShaper(1.6)
+    cached = _vibrato(sr=8000, secs=0.2)               # shorter than block+context: all buffered
+    assert sh.process(cached.tobytes(), 8000) == b""   # buffered
+    live = _vibrato(sr=24000, secs=0.02)
+    out = sh.process(live.tobytes(), 24000)            # rate change → 8 kHz must go out first
+    assert sh.last_flushed_rate == 8000
+    assert len(sh.pending_other_rate) == len(cached.tobytes())
+    assert out == b""                                  # the 24 kHz chunk is now buffering
+    assert sorted(sh._states) == [24000]               # 8 kHz state fully released
 
 
 def test_prosody_is_per_agent_and_wired_before_the_eq():

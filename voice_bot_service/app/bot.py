@@ -126,7 +126,16 @@ def _valid_send_key(key: str) -> bool:
 # any marker scan. Complete tokens only: a half-streamed "<SEND:schol" is held
 # back by _split_safe until its closing bracket arrives.
 _LOOSE_MARKER_RE = re.compile(r"(?<!<)<\s*(SEND:[^<>]+|END_CALL|TRANSFER)\s*>(?!>)")
-_LOOSE_MARKER_PREFIXES = ("<SEND:", "<END_CALL>", "<TRANSFER>")
+_LOOSE_MARKER_PREFIXES = ("<SEND:", "<END_CALL>", "<TRANSFER>", "<tool_call>", "<arg_key>",
+                          "<arg_value>", "</tool_call>")
+# Call 5a9fe35a (2026-09-11): sarvam-105b wrote a GLM-style tool call —
+# "<tool_call>send_whatsapp_message <arg_key>phone_number</arg_key>
+# <arg_value>9…" — instead of <<SEND:key>>, nothing here knew the shape, and the
+# TTS read it to the caller, phone number included. Any such block (or its
+# unterminated start, to the end of the buffer) is cut out of speech; the send
+# itself still happens post-call from the transcript's promise. The trailing
+# alternative also catches the bare "<tool_call>" a model may write.
+_TOOL_CALL_RE = re.compile(r"<tool_call>.*?(?:</tool_call>|$)|</?arg_(?:key|value)>", re.S)
 
 
 def _canonical_markers(text: str) -> str:
@@ -1400,6 +1409,10 @@ class SentinelGate(FrameProcessor):
             self._buffer += frame.text or ""
             if "<" in self._buffer:
                 self._buffer = _canonical_markers(self._buffer)
+                if "<tool_call>" in self._buffer and "</tool_call>" in self._buffer:
+                    logger.warning("sentinel: model wrote a tool-call block — removed from speech "
+                                   "corr=%s %r", self._outcome.corr, self._buffer[:80])
+                    self._buffer = _TOOL_CALL_RE.sub("", self._buffer)
             if TRANSFER_MARKER in self._buffer:
                 self._outcome.transfer_requested = True
                 self._buffer = self._buffer.replace(TRANSFER_MARKER, "")
@@ -1578,6 +1591,12 @@ class SentinelGate(FrameProcessor):
         # see a half-written one. Hold back from an unterminated open marker to the end.
         idx = buffer.rfind(SEND_MARKER_OPEN)
         if idx != -1 and SEND_MARKER_CLOSE not in buffer[idx:]:
+            return buffer[:idx], buffer[idx:]
+        # An open tool-call block: hold everything from it until it closes (the
+        # LLMTextFrame branch strips the completed block; the End branch drops a
+        # never-closed one). Nothing after "<tool_call>" is ever speech.
+        idx = buffer.find("<tool_call>")
+        if idx != -1:
             return buffer[:idx], buffer[idx:]
         # The single-bracket form sarvam-105b sometimes writes: hold back an
         # unterminated "<SEND:…" too, or its first half is spoken.
@@ -2004,6 +2023,37 @@ def _opening_barely_heard(opening: str, transcript, reply_started_t: float,
             played = entry.get("text") or ""
             break
     return len(played) < len(opening) * heard_ratio
+
+
+_NAME_NOISE_RE = re.compile(r"\([^)]*\)|\[[^\]]*\]|\{[^}]*\}")
+_ORG_NAME_WORDS = frozenset({
+    "studio", "academy", "yoga", "classes", "class", "institute", "school", "college",
+    "program", "programs", "programme", "centre", "center", "pvt", "ltd", "llp", "gym",
+    "fitness", "coaching", "tuition", "tutorials", "solutions", "services", "group",
+    "team", "wellness", "foundation", "trust", "clinic", "hospital", "enterprises",
+})
+
+
+def _clean_lead_name(name) -> Optional[str]:
+    """The person's name as it should be SPOKEN, or None when the list gave us
+    something that is not a person.
+
+    Call 5a9fe35a (2026-09-11): the audience list held "Bhawana Jain (founder)"
+    and the bot said "Hi, is this Bhawana Jain founder?"; the same batch carried
+    "Beena Bhati / Pooja" and "I Am Yoga Studio". Parentheticals and everything
+    after a separator are list annotations, not names; a name made of business
+    words is an organisation, and name_sanity_rule already knows to ask
+    "May I know who I'm speaking with?" when the name is absent."""
+    s = str(name or "")
+    s = _NAME_NOISE_RE.sub(" ", s)
+    s = re.split(r"\s*[/|,;]\s*", s, maxsplit=1)[0]
+    s = " ".join(s.split()).strip(" -–—.:")
+    if not s or _lead_name_is_phone(s):
+        return None
+    words = [w.strip(".,").casefold() for w in s.split()]
+    if any(w in _ORG_NAME_WORDS for w in words):
+        return None
+    return s
 
 
 def _lead_name_is_phone(name) -> bool:
@@ -2516,7 +2566,10 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         _parts = [
             "THINGS YOU CAN SEND. You may offer these, in your own words, at the moment "
             "they naturally fit — never all at once, and never one the caller already "
-            "declined. Offer at most one per turn."
+            "declined. Offer at most one per turn. You have NO tools and NO functions: "
+            "the ONLY way to send is the exact token shown below, written as plain text at "
+            "the end of your reply. Never write XML, <tool_call>, <arg_key>, JSON or a "
+            "function call — anything like that would be read aloud to the caller."
         ]
         for o in _post:
             _parts.append(f"- Offer: {o['ask']}")
@@ -2738,6 +2791,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         logger.warning("lead name %r is a phone number — treating as no name corr=%s",
                        str(context.get("leadName"))[:24], corr)
         context["leadName"] = None
+    _cleaned = _clean_lead_name(context.get("leadName"))
+    if _cleaned != context.get("leadName"):
+        logger.info("lead name %r spoken as %r corr=%s",
+                    str(context.get("leadName"))[:40], _cleaned, corr)
+        context["leadName"] = _cleaned
 
     flags = CallState(t=time.time())
     diag = diag_mod.CallDiagnostics()

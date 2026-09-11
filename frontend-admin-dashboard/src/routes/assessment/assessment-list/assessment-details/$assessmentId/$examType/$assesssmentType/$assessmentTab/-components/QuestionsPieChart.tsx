@@ -30,6 +30,7 @@ import {
     Users,
     Gauge,
     Trophy,
+    Warning,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -104,6 +105,27 @@ export function QuestionsPieChart() {
     if (isLoading) return <DashboardLoader />;
 
     const overview = data.assessment_overview_dto;
+    // The backend answers with a null overview when the institute it was asked
+    // for has no mapping to this assessment. That happens in practice: the
+    // selected institute lives in localStorage shared by every tab, so a
+    // switch in another tab sends this page's queries out under the wrong
+    // institute. Say so instead of crashing the whole app on
+    // `null.total_participants`.
+    if (!overview) {
+        return (
+            <Card className="mt-6 border-warning-200 bg-warning-50 shadow-sm">
+                <CardContent className="flex items-start gap-3 p-5">
+                    <Warning className="mt-0.5 size-5 shrink-0 text-warning-600" />
+                    <div className="flex flex-col gap-1">
+                        <p className="text-sm font-semibold text-neutral-700">
+                            {t('unavailable.title')}
+                        </p>
+                        <p className="text-sm text-neutral-600">{t('unavailable.body')}</p>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
     const subjectLabel = getTerminology(ContentTerms.Subjects, SystemTerms.Subjects);
     const subjectName =
         resolveSubjectName(instituteDetails?.subjects, subjectNamesById, overviewSubjectId) ||

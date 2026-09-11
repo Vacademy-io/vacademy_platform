@@ -8,7 +8,7 @@ import {
     PencilSimple,
     CaretLeft,
 } from '@phosphor-icons/react';
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18next from 'i18next';
 import { Card, CardContent } from '@/components/ui/card';
@@ -96,6 +96,9 @@ function RouteComponent() {
     const [isStopEvaluation, setIsStopEvaluation] = useState(false);
     const [isPdfPanelOpen, setIsPdfPanelOpen] = useState(false);
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    // Which file id `pdfUrl` was resolved from, so a switch from the raw sheet
+    // (shown while the run is in progress) to the checked copy reloads the viewer.
+    const [pdfFileId, setPdfFileId] = useState<string | null>(null);
     const [isLoadingPdf, setIsLoadingPdf] = useState(false);
     const [duration, setDuration] = useState('0s');
     // Callback ref triggers a re-render with the populated element so the
@@ -155,6 +158,21 @@ function RouteComponent() {
         staleTime: 5 * 60_000,
     });
     const layoutMap = (layoutMapData ?? null) as LayoutMap | null;
+
+    // The checked copy THIS run rendered (progress.file_id — ticks, notes and
+    // marks already drawn into the PDF; the backend serves it from the run's own
+    // complete payload, never the attempt's latest, so an older run's page never
+    // shows a newer run's marks). When it exists the viewer shows it as-is and
+    // the JSON overlay stays off — drawing the same annotations again on top
+    // produced a second set of green ticks, boxes and notes over the pen marks.
+    // The overlay is keyed to the file actually on screen (pdfFileId), not the
+    // one wanted: while the checked copy is still loading, or if that load
+    // failed, the raw sheet keeps its overlay instead of going bare.
+    const checkedFileId: string | null =
+        progress?.overall_status === 'COMPLETED' && progress?.file_id ? progress.file_id : null;
+    const answerSheetFileId: string | null =
+        checkedFileId ?? (attemptDetails as string | null) ?? null;
+    const showOverlay = !checkedFileId || pdfFileId !== checkedFileId;
 
     const annotations: Annotation[] = useMemo(() => {
         const out: Annotation[] = [];
@@ -291,27 +309,13 @@ function RouteComponent() {
         return status === 'STARTED' || status === 'PROCESSING' || status === 'EXTRACTING';
     };
 
-    const handleViewAnswerSheet = async () => {
-        if (isPdfPanelOpen) {
-            setIsPdfPanelOpen(false);
-            return;
-        }
-
-        if (pdfUrl) {
-            setIsPdfPanelOpen(true);
-            return;
-        }
-
-        if (!attemptDetails) {
-            toast.error(t('toasts.answerSheetUnavailable'));
-            return;
-        }
-
+    const loadAnswerSheet = async (fileId: string) => {
         setIsLoadingPdf(true);
         try {
-            const url = await getPublicUrl(attemptDetails);
+            const url = await getPublicUrl(fileId);
             if (url) {
                 setPdfUrl(url);
+                setPdfFileId(fileId);
                 setIsPdfPanelOpen(true);
             } else {
                 toast.error(t('toasts.answerSheetLoadFailed'));
@@ -323,6 +327,37 @@ function RouteComponent() {
             setIsLoadingPdf(false);
         }
     };
+
+    const handleViewAnswerSheet = async () => {
+        if (isPdfPanelOpen) {
+            setIsPdfPanelOpen(false);
+            return;
+        }
+
+        if (!answerSheetFileId) {
+            toast.error(t('toasts.answerSheetUnavailable'));
+            return;
+        }
+
+        if (pdfUrl && pdfFileId === answerSheetFileId) {
+            setIsPdfPanelOpen(true);
+            return;
+        }
+
+        await loadAnswerSheet(answerSheetFileId);
+    };
+
+    // Panel open on the raw sheet when the run finishes → swap to the checked
+    // copy. One automatic attempt per file id: a failed load already toasts, and
+    // retrying it from here would loop; the button reloads on the next click.
+    const autoLoadedFor = useRef<string | null>(null);
+    useEffect(() => {
+        if (!isPdfPanelOpen || isLoadingPdf || !answerSheetFileId) return;
+        if (pdfFileId === answerSheetFileId || autoLoadedFor.current === answerSheetFileId) return;
+        autoLoadedFor.current = answerSheetFileId;
+        void loadAnswerSheet(answerSheetFileId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [answerSheetFileId, isPdfPanelOpen, isLoadingPdf, pdfFileId]);
 
     if (isLoading || !progress) {
         return <DashboardLoader />;
@@ -460,7 +495,7 @@ function RouteComponent() {
                             </MyButton>
 
                             {/* View Answer Sheet Button */}
-                            {attemptDetails && !isPdfPanelOpen && (
+                            {answerSheetFileId && !isPdfPanelOpen && (
                                 <MyButton
                                     onClick={handleViewAnswerSheet}
                                     disabled={isLoadingPdf}
@@ -592,12 +627,14 @@ function RouteComponent() {
                                         className="relative h-full w-full"
                                     >
                                         <SimplePDFViewer pdfUrl={pdfUrl} />
-                                        <PdfAnnotationOverlay
-                                            pdfContainerEl={pdfContainerEl}
-                                            layoutMap={layoutMap}
-                                            annotations={annotations}
-                                            scores={questionScores}
-                                        />
+                                        {showOverlay && (
+                                            <PdfAnnotationOverlay
+                                                pdfContainerEl={pdfContainerEl}
+                                                layoutMap={layoutMap}
+                                                annotations={annotations}
+                                                scores={questionScores}
+                                            />
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="flex h-full items-center justify-center">

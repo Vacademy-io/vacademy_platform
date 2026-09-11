@@ -1,13 +1,7 @@
 package vacademy.io.auth_service.feature.user.service;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 
 public class InviteUserEmailBody {
-
-    @Value("${teacher.portal.client.url}:https://dash.vacademy.io")
-    private static String adminPortalClientUrl;
-
-    public static final String ADMIN_LOGIN_URL = adminPortalClientUrl + "/login";
 
     public static String createInviteUserEmail(
             String name,
@@ -97,7 +91,8 @@ public class InviteUserEmailBody {
             """.formatted(themeColor, name, username, password, rolesFormatted, adminLoginUrl,instituteName);
     }
 
-    public static String createReminderEmail(String name, String username, String password, List<String> roles) {
+    public static String createReminderEmail(String name, String username, String password, List<String> roles,
+                                             String instituteName, String adminLoginUrl) {
         String rolesFormatted = String.join(", ", roles);
 
         return """
@@ -186,11 +181,11 @@ public class InviteUserEmailBody {
                             <a class="button" href="%s">Accept Invitation</a>
                         </div>
                         <div class="footer">
-                            Regards, <br> The Vacademy Team
+                            Regards, <br> %s
                         </div>
                     </div>
                 </body>
                 </html>
-                """.formatted(name, username, password, rolesFormatted, ADMIN_LOGIN_URL);
+                """.formatted(name, username, password, rolesFormatted, adminLoginUrl, instituteName);
     }
 }

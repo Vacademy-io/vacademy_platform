@@ -111,3 +111,27 @@ export function flattenTemplateBody(raw: string | undefined | null): string {
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 }
+
+const UPLOAD_KEY_PREFIX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i;
+
+/**
+ * The file name a media URL points at, as WhatsApp will show it on a document bubble.
+ *
+ * Uploads are stored as `<uuid>-<original name>`, so the uuid comes off; query strings and hashes
+ * are not part of the name. Empty when the URL carries no usable name — the caller shows its
+ * generic "Document" label then.
+ */
+export function mediaFileName(url: string | undefined | null): string {
+    if (!url) return '';
+    let path = url.split('#')[0] ?? '';
+    path = path.split('?')[0] ?? '';
+    let segment = path.slice(path.lastIndexOf('/') + 1);
+    try {
+        // Form-decoding would turn a literal '+' into a space; shield it first.
+        segment = decodeURIComponent(segment.replace(/\+/g, '%2B'));
+    } catch {
+        // Malformed escape: keep the raw segment.
+    }
+    segment = segment.slice(segment.lastIndexOf('/') + 1);
+    return segment.replace(UPLOAD_KEY_PREFIX, '').trim();
+}

@@ -1,6 +1,7 @@
 package vacademy.io.auth_service.feature.user.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -23,9 +24,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class InviteUserService {
+    private static final String DEFAULT_ADMIN_LOGIN_URL = "https://dash.vacademy.io/login";
+
     private final UserService userService;
     private final RoleService roleService;
     private final NotificationService notificationService;
@@ -105,13 +109,48 @@ public class InviteUserService {
         // Carries the invitee's password — an arbitrary role would send it from another
         // institute's address.
         String instituteId = InstituteChoice.forUser(originInstituteResolver, user);
-        
+
+        // Sign off and link as the sending institute, like the initial invitation does.
+        // The reminder never depended on admin-core before this lookup, so a failure here
+        // must not block the resend — it falls back to the platform defaults the template
+        // used to hardcode.
+        String instituteName = "Vacademy";
+        String adminLoginUrl = DEFAULT_ADMIN_LOGIN_URL;
+        if (StringUtils.hasText(instituteId)) {
+            try {
+                InstituteInfoDTO instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
+                if (instituteInfoDTO != null) {
+                    if (StringUtils.hasText(instituteInfoDTO.getInstituteName()))
+                        instituteName = instituteInfoDTO.getInstituteName();
+                    if (StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl()))
+                        adminLoginUrl = toLoginUrl(instituteInfoDTO.getAdminPortalUrl());
+                }
+            } catch (Exception e) {
+                log.warn("Institute branding lookup failed for invitation reminder (user {}, institute {}): {}",
+                        user.getId(), instituteId, e.getMessage());
+            }
+        }
+
         GenericEmailRequest emailRequest = createEmailRequest(
                 user.getEmail(), "Invitation Reminder Mail",
                 InviteUserEmailBody.createReminderEmail(
-                        user.getFullName(), user.getUsername(), user.getPassword(), getUserRoleNames(user))
+                        user.getFullName(), user.getUsername(), user.getPassword(), getUserRoleNames(user),
+                        instituteName, adminLoginUrl)
         );
         notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
+    }
+
+    // admin_portal_base_url is stored scheme-less for some institutes ("admin.shikshanation.com");
+    // a scheme-less href is a relative link in every mail client, so normalise before use.
+    private static String toLoginUrl(String adminPortalUrl) {
+        String base = adminPortalUrl.trim();
+        if (!base.matches("(?i)^https?://.*")) {
+            base = "https://" + base;
+        }
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + "/login";
     }
 
     private ModifyUserRolesDTO createModifyRolesDTO(String userId, String instituteId, List<String> roles) {

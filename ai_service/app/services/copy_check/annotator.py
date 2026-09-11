@@ -19,6 +19,7 @@ a different dpi than the map claims, or if pages differ in size.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
@@ -99,6 +100,16 @@ _ADVANCE_SLACK = 1.12
 # heavy on the pull, light on the push - and no two instances of a letter come
 # out identical. Set COPY_CHECK_PEN_STROKES=0 to go back to the font.
 _PEN_STROKES = os.getenv("COPY_CHECK_PEN_STROKES", "1") != "0"
+# hand_render: the marking guide's own pen. Text in a handwriting face with
+# per-glyph jitter, ticks and crosses as wobbly Bezier strokes, the total in
+# a hand-thrown loop - drawn on a transparent raster layer and composited
+# over the page, so the student's copy underneath is never touched. Every
+# placement decision and every paper-boundary test above still applies; only
+# the ink changes. COPY_CHECK_HAND_RENDER=0 reverts to the vector pen.
+_HAND_RENDER = os.getenv("COPY_CHECK_HAND_RENDER", "1") != "0"
+_PEN: list = [None]            # one hand_render.Pen per copy, seeded from it
+_LINE_H: list = [None]         # the current page's typical row height, in points
+_PEN_SCALE = 4.0               # raster px per PDF point on the overlay layers
 _JOINED_FACES = ("snell", "savoye", "chancery", "brush", "zapfino", "roundhand")
 _HW_FONTNAME = "hwnote"
 # x-height/em of the print hand every size in this module was tuned against.
@@ -114,6 +125,10 @@ _HW_FONTSIZE = 12.5
 # correct. The final point is missing." is 46 characters on its own. Capping at
 # 46 truncated exactly the notes that explain why a mark was lost. Praise stays
 # short because the model writes it short, not because this forces it.
+# Slack allowed when testing a mark against the paper boundary, in points.
+# Matches the tolerance the row-span test has always used; the mask is
+# measured at 40dpi so a cell is ~1.8pt and sub-cell overshoot is noise.
+_PAPER_TOL = 1.0
 _MAX_NOTE_CHARS = 110
 # Below this the mark is not trustworthy enough to release unreviewed.
 _REVIEW_CONFIDENCE = 0.60
@@ -372,6 +387,8 @@ _INK_MAP: list = [None]
 # through the marker's own note ("Bu[X]yer m[X]st be insolv[X]nt") is worse
 # than one on the student's words.
 _PLACED: list = [None]
+# Per-row paper boundary for the page being drawn (see _paper_rows).
+_PAPER: list = [None]
 # Where the added marking strip begins, when there is one. A note belongs
 # there by preference: it is blank paper beside the answer, which is exactly
 # where a teacher writes when the notebook gives them the room.
@@ -398,6 +415,37 @@ def _ink(colour, rng, x: float = None, y: float = None):
     return (max(0.0, min(1.0, r * k)),
             max(0.0, min(1.0, g * k * rng.uniform(0.97, 1.03))),
             max(0.0, min(1.0, b * k * rng.uniform(0.94, 1.02))))
+
+
+def _point_on_paper(x: float, y: float) -> bool:
+    """Is this exact point physically on the student's notebook page?
+
+    The last line of defence for the marking guide's first rule. Placement
+    decides WHERE a mark goes, but eighteen call sites draw strokes and any one
+    of them can run past the sheet - on a copy photographed on a bedsheet that
+    put 98% of the ink on the bedsheet. Checking here means no primitive can
+    write off the paper whatever the caller intended.
+    """
+    paper = _PAPER[0]
+    if not paper:
+        return True
+    r = int(y / paper["sy"])
+    if r < 0 or r >= paper["rows"]:
+        return False
+    mask = paper.get("mask")
+    if mask is not None:
+        # Test the paper itself. The row span is one horizontal interval, so on
+        # a sheet photographed at an angle it reaches past the corners and over
+        # the bedsheet beside them; the mask does not.
+        sx, sy = paper["sx"], paper["sy"]
+        for dx, dy in ((0.0, 0.0), (-_PAPER_TOL, 0.0), (_PAPER_TOL, 0.0),
+                       (0.0, -_PAPER_TOL), (0.0, _PAPER_TOL)):
+            cc, rr = int((x + dx) / sx), int((y + dy) / sy)
+            if 0 <= rr < paper["rows"] and 0 <= cc < paper["cols"] and mask[rr, cc]:
+                return True                    # within 1pt of paper, as before
+        return False
+    hi = paper["hi"][r]
+    return hi > 0 and (paper["lo"][r] - 1.0) <= x <= (hi + 1.0)
 
 
 def _clip_point(x: float, y: float) -> tuple:
@@ -491,6 +539,139 @@ def _cursive_text(page: Any, origin: Any, text: str, fontname: str, size: float,
         x += _text_width(token, fontname, wsize, font)
 
 
+def _pen_for(pdf_bytes: bytes) -> Any:
+    """The copy's pen: one hand for the whole script, seeded from the file."""
+    if not _HAND_RENDER:
+        return None
+    try:
+        from . import hand_render
+        seed = int.from_bytes(hashlib.blake2b(pdf_bytes[:1 << 20], digest_size=8).digest(), "big")
+        return hand_render.Pen(seed)
+    except Exception:
+        logger.debug("hand_render unavailable; using the vector pen", exc_info=True)
+        return None
+
+
+def _composite_layer(page: Any, layer: Any, ox_px: float, oy_px: float) -> Optional[Any]:
+    """Crop a drawn RGBA layer to its ink and place it on the page.
+
+    (ox_px, oy_px) is where the layer's top-left sits, in page pixels at
+    _PEN_SCALE. Returns the rect covered in points, or None if the ink would
+    leave the paper - the caller then falls back to the vector pen, whose
+    per-stroke gate can still draw the part that fits.
+    """
+    import io
+    import fitz
+
+    bbox = layer.getbbox()
+    if not bbox:
+        return None
+    x0, y0, x1, y1 = bbox
+    S = _PEN_SCALE
+    rect = fitz.Rect((ox_px + x0) / S, (oy_px + y0) / S, (ox_px + x1) / S, (oy_px + y1) / S)
+    if not _on_paper(_PAPER[0], rect):
+        return None
+    if _CLIP[0] is not None and not _CLIP[0].contains(rect):
+        return None
+    buf = io.BytesIO()
+    layer.crop(bbox).save(buf, format="PNG")
+    page.insert_image(rect, stream=buf.getvalue(), overlay=True)
+    return rect
+
+
+def _pen_text_overlay(page: Any, origin: Any, text: str, size: float,
+                      max_x: Optional[float] = None) -> Optional[Any]:
+    """Write `text` with the copy's pen, baseline-left at `origin` (points)."""
+    pen = _PEN[0]
+    if pen is None or not text:
+        return None
+    try:
+        from PIL import Image, ImageFont
+        S = _PEN_SCALE
+        # Kalam carries a small x-height, so at the size the placement ladder
+        # chose for the old face it reads a shade too small beside the
+        # student's hand. The guide asks for notes ~1.1x the line height.
+        px = max(6, int(round(size * S * 1.18)))
+        font = ImageFont.truetype(pen.font_path, px)
+        # Shrink until the line fits before the limit the caller set; the
+        # caller has already wrapped, so this rarely runs more than once.
+        for _ in range(6):
+            est_pt = font.getlength(text) * 1.12 / S
+            if max_x is None or origin.x + est_pt <= max_x or px <= 8:
+                break
+            px = int(px * 0.92)
+            font = ImageFont.truetype(pen.font_path, px)
+        est_w = int(font.getlength(text) * 1.3) + 4 * px
+        est_h = 4 * px
+        layer = Image.new("RGBA", (est_w, est_h), (0, 0, 0, 0))
+        # Pen.text takes the TOP-left of the text (PIL's convention), not the
+        # baseline its docstring names. Placing the baseline there put every
+        # score and note one text-height below its row. The font's ascent is
+        # the distance from top to baseline; draw that much higher.
+        ascent = font.getmetrics()[0]
+        ax, ay = 2 * px, int(2.4 * px)          # baseline-left inside the layer
+        pen.text(layer, (ax, ay - ascent), text, px)
+        return _composite_layer(page, layer, origin.x * S - ax, origin.y * S - ay)
+    except Exception:
+        logger.debug("hand_render text failed; using the vector pen", exc_info=True)
+        return None
+
+
+def _pen_mark_overlay(page: Any, style: str, cx: float, cy: float, size: float) -> Optional[Any]:
+    """A tick or cross with the copy's pen. (cx, cy) is the top-left of the
+    size x size box the vector pen would have used."""
+    pen = _PEN[0]
+    if pen is None:
+        return None
+    try:
+        from PIL import Image
+        S = _PEN_SCALE
+        h = size * S
+        layer = Image.new("RGBA", (int(h * 4), int(h * 4)), (0, 0, 0, 0))
+        if style == "tick":
+            # vertex sits low-left in the box, the tail climbs to the right
+            pen.tick(layer, (h * 1.4, h * 2.6), h * 0.95)
+        else:
+            pen.cross(layer, (h * 2.0, h * 2.0), h * 0.85)
+        # layer (h*1.4, h*2.6) / (h*2, h*2) correspond to the box's own
+        # anchor points; map the layer origin so they coincide.
+        if style == "tick":
+            ox = cx * S + h * 0.30 - h * 1.4
+            oy = cy * S + h * 0.85 - h * 2.6
+        else:
+            ox = cx * S + h * 0.5 - h * 2.0
+            oy = cy * S + h * 0.5 - h * 2.0
+        return _composite_layer(page, layer, ox, oy)
+    except Exception:
+        logger.debug("hand_render mark failed; using the vector pen", exc_info=True)
+        return None
+
+
+def _pen_total_overlay(page: Any, centre: Any, text: str, size: float) -> Optional[Any]:
+    """The circled total with the copy's pen; `size` is the digit height in points."""
+    pen = _PEN[0]
+    if pen is None:
+        return None
+    try:
+        from PIL import Image, ImageFont
+        S = _PEN_SCALE
+        px = int(round(size * S))
+        font = ImageFont.truetype(pen.font_path, px)
+        w = font.getlength(text)
+        layer = Image.new("RGBA", (int(w * 2.2) + 6 * px, 6 * px), (0, 0, 0, 0))
+        ax, ay = int(w * 0.6) + 3 * px, int(2.2 * px)      # top-left of the digits
+        pen.circled_total(layer, (ax, ay), text, px)
+        # Pen draws from the top-left; the digits' centre is about half an
+        # ascent below that. Put it at `centre`.
+        ascent = font.getmetrics()[0]
+        ox = centre.x * S - (ax + w * 0.5)
+        oy = centre.y * S - (ay + ascent * 0.5)
+        return _composite_layer(page, layer, ox, oy)
+    except Exception:
+        logger.debug("hand_render total failed; using the vector pen", exc_info=True)
+        return None
+
+
 def _pen_text(page: Any, origin: Any, text: str, size: float, colour, rng,
               slant: float = 0.0, max_x: Optional[float] = None,
               rise: Optional[float] = None, tilt: Optional[float] = None) -> None:
@@ -504,6 +685,9 @@ def _pen_text(page: Any, origin: Any, text: str, size: float, colour, rng,
     """
     import fitz
     from . import penfont
+
+    if _PEN[0] is not None and _pen_text_overlay(page, origin, text, size, max_x) is not None:
+        return
 
     # A joined hand, when one is installed. penfont draws each letter as
     # separate strokes on a unit box, so nothing ever connects and every
@@ -592,6 +776,9 @@ def _hand_text(page: Any, origin: Any, text: str, fontname: str, size: float,
     climb = math.tan(math.radians(rise))
     for ch in text:
         w = _text_width(ch, fontname, size, font)
+        if ch != " " and not _point_on_paper(x, origin.y + drift):
+            x += w
+            continue
         if ch == " ":
             x += w * rng.uniform(1.0, _ADVANCE_SLACK)
             continue
@@ -695,6 +882,8 @@ def _hand_line(page: Any, p0: Any, p1: Any, colour, width: float, rng,
     for i in range(n):
         a = fitz.Point(*_clip_point(pts[i].x, pts[i].y))
         b = fitz.Point(*_clip_point(pts[i + 1].x, pts[i + 1].y))
+        if not (_point_on_paper(a.x, a.y) and _point_on_paper(b.x, b.y)):
+            continue                     # a pen cannot reach past the paper
         t = (i + 0.5) / n
         taper = min(1.0, min(t, 1.0 - t) / 0.18)
         dx, dy = b.x - a.x, b.y - a.y
@@ -748,6 +937,9 @@ def _draw_tick_or_cross(page, style, cx, cy, size, colour, rng, rect,
     """The tick / cross gesture, shared by both anchor positions."""
     import fitz
     import math
+
+    if _PEN[0] is not None and _pen_mark_overlay(page, style, cx, cy, size) is not None:
+        return
 
     if style == "tick":
         # Drawn as a real pen tick: a short down-stroke into a long, higher
@@ -892,8 +1084,14 @@ def _draw_mark(page: Any, rect: Any, style: str, bounds: Any = None,
     # Start at the first letter, stop at the last. Critics found underlines
     # beginning "left of the pink margin rule in blank paper" and trailing past
     # the final word - a pen starts and stops where the words do.
-    ink_a = max(_INK_SPAN[0][0] if _INK_SPAN[0] else rect.x0, rect.x0)
-    ink_b = min(_INK_SPAN[0][1] if _INK_SPAN[0] else rect.x1, rect.x1)
+    # Where the words actually are. The layout's own span is preferred; when
+    # it carries none (a scanned copy reached the renderer with no ink_x0/x1
+    # on any row) measure the page itself. Without this the span was the ROW
+    # BOX, which is pinned to the sheet edges - and every underline ran the
+    # full width of the page, which the marking guide forbids outright.
+    ink_span = _INK_SPAN[0] or _row_ink_span(_INK_MAP[0], rect)
+    ink_a = max(ink_span[0] if ink_span else rect.x0, rect.x0)
+    ink_b = min(ink_span[1] if ink_span else rect.x1, rect.x1)
     if ink_b - ink_a < 30.0:
         ink_a, ink_b = rect.x0, rect.x1
     span = max(ink_b - ink_a, 40.0)
@@ -1067,27 +1265,82 @@ def _draw_mark(page: Any, rect: Any, style: str, bounds: Any = None,
                               default=cx) + rng.uniform(6.0, 14.0)
                 cx = shifted if shifted + size <= sheet_x1 - 12.0 else None
             if cx is not None:
-                _draw_tick_or_cross(page, style, cx, cy, size, colour, rng,
-                                    rect, line_x0, line_x1)
-                return
-        left_x = rect.x0 - size - 3
-        if left_x >= sheet_x0:
-            cx = left_x
-        elif rect.x0 > sheet_x0 + 6:
-            cx = sheet_x0
-        else:
-            cx = min(rect.x1 + 4, sheet_x1 - size)
+                box = fitz.Rect(cx - 4, cy - 4, cx + size + 4, cy + size + 4)
+                if _on_paper(_PAPER[0], box):
+                    logger.debug("TICKPLACE site=right style=%s cx=%.1f cy=%.1f size=%.1f "
+                                 "own=%s end_x=%.1f sheet=(%.1f,%.1f) rect=%s",
+                                 style, cx, cy, size, own, end_x, sheet_x0, sheet_x1, rect)
+                    _draw_tick_or_cross(page, style, cx, cy, size, colour, rng,
+                                        rect, line_x0, line_x1)
+                    return
+                logger.debug("tick would fall off the paper; trying the margin")
+        # Fallback placement. Prefer just past the row's MEASURED ink: a tick
+        # belongs beside the words it approves. The row BOX is no guide here -
+        # the layout pins it to the sheet edge on most rows, so the right-hand
+        # test above fails and this fallback used to drop straight to the
+        # sheet's left edge. Measured on one copy that parked 17 of 49 marks
+        # in a single column on the printed margin rule, where a tick renders
+        # as a 3pt vertical bar - the clearest possible tell that no teacher
+        # held the pen, and the MCQ answers beside it got nothing at all.
+        ink_end = own[1] if own else (_INK_SPAN[0][1] if _INK_SPAN[0] else None)
+        cx = None
+        if ink_end is not None and ink_end + 6.0 + size <= sheet_x1 - 12.0:
+            cx = ink_end + rng.uniform(6.0, 14.0)
+        if cx is None:
+            left_x = rect.x0 - size - 3
+            if left_x >= sheet_x0:
+                cx = left_x
+            elif rect.x0 > sheet_x0 + 6:
+                cx = sheet_x0
+            else:
+                cx = min(rect.x1 + 4, sheet_x1 - size)
         cx = max(sheet_x0 + 2.0, min(cx, sheet_x1 - size - 12.0))
         cy = rect.y0 + (rect.height - size) / 2.0
 
+        # A mark is never drawn narrower than its own gesture. When the chosen
+        # spot is not wholly on the paper the strokes are gated away one
+        # segment at a time and what survives is a 2-4pt vertical sliver
+        # against the printed margin rule - measured at 17 of 49 marks on one
+        # copy, with the MCQ answers beside them left unticked. Try the places
+        # a marker would actually use, and if none of them fits, write nothing
+        # here rather than leave a bar.
+        box = fitz.Rect(cx, cy, cx + size, cy + size)
+        if not _on_paper(_PAPER[0], box):
+            spots = []
+            if ink_end is not None:
+                spots.append(ink_end + 6.0)          # just after the words
+            spots.append(rect.x0 - size - 3.0)       # before the first word
+            spots.append(sheet_x1 - size - 12.0)     # the right margin
+            placed = False
+            for trial in spots:
+                trial = max(sheet_x0 + 2.0, min(trial, sheet_x1 - size - 12.0))
+                probe = fitz.Rect(trial, cy, trial + size, cy + size)
+                if _on_paper(_PAPER[0], probe):
+                    cx, placed = trial, True
+                    break
+            if not placed:
+                logger.debug("no room for a whole %s on row %s; skipped rather "
+                             "than drawing a sliver", style, rect)
+                return
+
+        logger.debug("TICKPLACE site=fallback style=%s cx=%.1f cy=%.1f size=%.1f "
+                     "own=%s ink_end=%s sheet=(%.1f,%.1f) rect=%s",
+                     style, cx, cy, size, own, ink_end, sheet_x0, sheet_x1, rect)
         _draw_tick_or_cross(page, style, cx, cy, size, colour, rng, rect,
                             line_x0, line_x1)
         return
 
     # margin_note / region_note / anything unrecognised: underline the span so
-    # the note in the margin has something to point at.
-    _hand_line(page, fitz.Point(line_x0, rect.y1 + 1),
-               fitz.Point(line_x1, rect.y1 + 1), colour, 1.0, rng)
+    # the note in the margin has something to point at - but only a SHORT one.
+    # The marking guide forbids a rule across a whole line, and on a scanned
+    # copy the printed ruling is read as ink, so the measured span can run
+    # the full width of the sheet. A pointer that long is a full-width line by
+    # another name: measured at five per copy. Beyond a third of the sheet, a
+    # comment sits under its row well enough with no pointer at all.
+    sheet_w = (bounds.width if bounds else page.rect.width)
+    if (line_x1 - line_x0) <= sheet_w * 0.34:
+        _hand_line(page, fitz.Point(line_x0, rect.y1 + 1),
+                   fitz.Point(line_x1, rect.y1 + 1), colour, 1.0, rng)
 
 
 def _note_rect(slot, width: float, height: float):
@@ -1131,6 +1384,11 @@ def _free_slot(candidates, occupied, width: float, height: float, page: Any,
         # consecutive lines of the answer.
         if imap is not None and _ink_under(imap, box) > 0.02:
             continue
+        # The paper is the only canvas. A slot that runs off the sheet onto a
+        # bedsheet, a desk or the scanner's white ground is not somewhere a
+        # teacher's pen could have reached.
+        if not _on_paper(_PAPER[0], box):
+            continue
         return x, y_top
     return None
 
@@ -1166,7 +1424,32 @@ def _ink_map(page: Any, sheet: Any) -> Optional[dict]:
         # Per-row background: page 7 of the copy is a dark scan whose median
         # sits below any fixed threshold, which collapsed it to solid ink.
         bg = np.median(band, axis=1, keepdims=True)
-        return {"ink": band < (bg - 45.0), "sx": sx, "sy": sy, "x0": x0}
+        ink = band < (bg - 45.0)
+        # The notebook's own printed ruling is dark too, and on a scan it
+        # reads as ink running edge to edge on every ruled row. Then nothing
+        # downstream can find a blank band or the end of a line: comments
+        # reported "no free band" on every page, ticks were pushed off the
+        # right and parked in the left margin, and a pointer underline ran
+        # the full width of the sheet. A rule is 1-3px tall at this
+        # resolution; the pen is not. A vertical opening keeps only ink at
+        # least a few pixels tall, which drops every rule however it wanders
+        # and keeps the handwriting.
+        try:
+            import cv2
+            kh = max(3, int(round(pix.height / 1170.0 * 4)))
+            ink = cv2.morphologyEx(ink.astype(np.uint8), cv2.MORPH_OPEN,
+                                   np.ones((kh, 1), np.uint8)).astype(bool)
+        except Exception:
+            logger.debug("ruling not removed from the ink map", exc_info=True)
+        # Vertical lines are not writing either: the printed margin rule, and
+        # on a phone scan the dark strip where the page edge meets the
+        # scanner's shadow. That strip read as ink on EVERY row, so each
+        # row's writing appeared to run to the sheet edge, every right-margin
+        # score was pushed off the paper, and every note reported no room.
+        # A column inked down more than 40% of the page is a line, not text.
+        col_cov = ink.mean(axis=0)
+        ink[:, col_cov > 0.40] = False
+        return {"ink": ink, "sx": sx, "sy": sy, "x0": x0}
     except Exception:
         logger.debug("could not measure the ink map", exc_info=True)
         return None
@@ -1193,9 +1476,263 @@ def _row_ink_span(imap: Optional[dict], rect: Any) -> Optional[tuple]:
         if cols.size == 0:
             return None
         sx, off = imap["sx"], imap["x0"]
-        return ((off + int(cols.min())) * sx, (off + int(cols.max())) * sx)
+        # Two pixels of ink at the page edge are not where the line ends. On a
+        # phone scan the printed rule curls where it meets the edge, leaving a
+        # 2pt speck on every row; taking cols.max() then said every line ran
+        # to x=570 and pushed every right-margin score off the paper. Walk the
+        # runs and drop a narrow run that sits far from its nearest neighbour.
+        runs: list[list[int]] = []
+        for c in cols.tolist():
+            if runs and c - runs[-1][1] <= 3:
+                runs[-1][1] = c
+            else:
+                runs.append([c, c])
+        min_w = max(3.0, 5.0 / sx)              # narrower than ~5pt
+        far = 40.0 / sx                          # further than ~40pt away
+        keep = []
+        for i, (a, b) in enumerate(runs):
+            narrow = (b - a + 1) < min_w
+            prev_gap = a - runs[i - 1][1] if i > 0 else float("inf")
+            next_gap = runs[i + 1][0] - b if i + 1 < len(runs) else float("inf")
+            if narrow and min(prev_gap, next_gap) > far:
+                continue
+            keep.append((a, b))
+        if not keep:
+            keep = [(runs[0][0], runs[-1][1])]
+        return ((off + keep[0][0]) * sx, (off + keep[-1][1]) * sx)
     except Exception:
         return None
+
+
+def _paper_quad(rgb: Any) -> Any:
+    """Boolean mask of the notebook paper in a page raster. True = paper.
+
+    Replaces a brightness-and-largest-blob rule that was measured admitting
+    only 14% of the students' OWN handwriting - on three pages of thirteen it
+    admitted nothing at all, so those pages came back unmarked. Two kinds of
+    picture, detected rather than assumed:
+
+      PHOTO  a phone photograph of an open notebook on a bedsheet. Paper is
+             bright AND achromatic; the bedsheet, the cartoon blanket and the
+             hand holding the page are all strongly coloured, so score by
+             lightness minus chroma rather than lightness alone - that is what
+             the old rule got wrong, because a lit patch of blanket outscored
+             a shadowed half of the page. Then fit a convex quadrilateral to
+             the blob and FILL it: an open spread is two quads hinged at the
+             gutter, not one, so a single 4-gon either clips a leaf or swallows
+             a wedge of bedsheet.
+
+      SCAN   a sheet pasted on a white PDF canvas. The sheet's own background
+             is the same pure white as the canvas, so brightness cannot outline
+             it - keeping the non-white pixels returned the handwriting only,
+             which is exactly why the scanned copy came back nearly blank. Take
+             the extent of its content instead.
+
+    The mask must be the whole sheet - gutter, fingers, blank rows between
+    lines - because a blank row with no paper admits no mark on that row.
+    """
+    import numpy as np
+    import cv2
+
+    a = np.clip(np.asarray(rgb), 0, 255).astype(np.uint8)
+    H, W = a.shape[:2]
+
+    # Everything that is not the flat white PDF canvas.
+    v_all = a.mean(axis=2)
+    s_all = a.max(axis=2).astype(int) - a.min(axis=2).astype(int)
+    nw = ~((v_all > 250) & (s_all < 8))
+    ys = np.nonzero(nw.any(axis=1))[0]
+    xs = np.nonzero(nw.any(axis=0))[0]
+    if not ys.size or not xs.size:
+        return np.zeros((H, W), bool)
+    y0, y1, x0, x1 = ys[0], ys[-1] + 1, xs[0], xs[-1] + 1
+    sub = a[y0:y1, x0:x1]
+    if sub.size == 0:
+        return np.zeros((H, W), bool)
+
+    h, w = sub.shape[:2]
+    v = sub.mean(axis=2)
+    s = sub.max(axis=2).astype(int) - sub.min(axis=2).astype(int)
+    out = np.zeros((H, W), bool)
+
+    if float(((v > 250) & (s < 8)).mean()) > 0.35:
+        # SCAN: the sheet is the extent of its own content.
+        #
+        # Restricted to ACHROMATIC content. A scan is grey ruling and blue or
+        # black ink on white, all low-saturation, so this costs nothing here -
+        # but it is what stops the branch handing back the whole frame if a
+        # brightly lit photograph is ever misrouted into it. Taking every
+        # non-white pixel would make a patterned bedsheet part of the sheet
+        # and switch the boundary rule off altogether, silently.
+        content = (v < 250) & (s < 60)
+        # By COVERAGE, never by any(). One stray pixel decides a bounding box:
+        # a single pale anti-aliasing pixel where the sheet meets the
+        # background - measured at RGB(238,180,217), just inside the
+        # achromatic test - stretched this box to the whole frame and made the
+        # bedsheet paper. The same trap caught the "Scanned with ... Scanner"
+        # caption in _photo_bounds. Take the first and last row and column
+        # that carry real content, then fill everything between them, so the
+        # blank paper between two written lines is still paper.
+        rows_ok = np.nonzero(content.mean(axis=1) > 0.01)[0]
+        cols_ok = np.nonzero(content.mean(axis=0) > 0.01)[0]
+        m = np.zeros((h, w), bool)
+        if rows_ok.size and cols_ok.size:
+            m[rows_ok[0]:rows_ok[-1] + 1, cols_ok[0]:cols_ok[-1] + 1] = True
+        out[y0:y1, x0:x1] = m
+        return out
+
+    # PHOTO: paperness = bright and achromatic.
+    lab = cv2.cvtColor(sub, cv2.COLOR_RGB2LAB)
+    L = lab[:, :, 0].astype(np.float32)
+    A = lab[:, :, 1].astype(np.float32) - 128.0
+    B = lab[:, :, 2].astype(np.float32) - 128.0
+    chroma = np.sqrt(A * A + B * B)
+    score = np.clip(L - 2.0 * chroma, -60.0, 255.0)
+    rng = max(1e-6, float(score.max() - score.min()))
+    score = ((score - score.min()) / rng * 255.0).astype(np.uint8)
+
+    thr, _ = cv2.threshold(score, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Loosen Otsu: paper in shadow is dim, and losing it costs a whole leaf.
+    bw = (score >= max(1.0, thr - 10)).astype(np.uint8)
+    k = max(3, int(round(min(h, w) * 0.012)) | 1)
+    se = np.ones((k, k), np.uint8)
+    bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, se)
+    bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, se)
+
+    nlab, lbl, stats, _ = cv2.connectedComponentsWithStats(bw, 8)
+    if nlab <= 1:
+        return out
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    big = int(np.argmax(areas)) + 1
+    keep = (lbl == big)
+    for i in range(1, nlab):        # the far leaf of a spread, a lit corner
+        if i != big and stats[i, cv2.CC_STAT_AREA] > 0.08 * areas.max():
+            keep |= (lbl == i)
+
+    def quad(points: Any) -> Any:
+        hull = cv2.convexHull(points)
+        peri = cv2.arcLength(hull, True)
+        for f in np.linspace(0.005, 0.15, 60):
+            ap = cv2.approxPolyDP(hull, f * peri, True)
+            if len(ap) <= 4:
+                if len(ap) == 4:
+                    return ap.reshape(-1, 2).astype(np.int32)
+                break
+        return cv2.boxPoints(cv2.minAreaRect(hull)).astype(np.int32)
+
+    def fill(poly: Any) -> Any:
+        o = np.zeros((h, w), np.uint8)
+        cv2.fillConvexPoly(o, poly, 1)
+        return o
+
+    yy, xx = np.nonzero(keep)
+    if xx.size < 50:
+        return out
+    pts = np.stack([xx, yy], 1).astype(np.int32).reshape(-1, 1, 2)
+    total = float(keep.sum())
+
+    def merit(f: Any) -> float:
+        return float((f & keep).sum() - 0.35 * (f & ~keep).sum()) / total
+
+    best_fill = fill(quad(pts))
+    best = merit(best_fill.astype(bool))
+    # Sweep the gutter: two quads beat one whenever the picture is a spread.
+    for c in np.linspace(0.12 * w, 0.88 * w, 35):
+        left = pts[pts[:, 0, 0] < c].reshape(-1, 1, 2)
+        right = pts[pts[:, 0, 0] >= c].reshape(-1, 1, 2)
+        if len(left) < 80 or len(right) < 80:
+            continue
+        f = fill(quad(left)) | fill(quad(right))
+        m = merit(f.astype(bool))
+        if m > best:
+            best, best_fill = m, f
+
+    grown = best_fill.astype(bool) | keep
+    d = max(1, int(round(6 * min(h, w) / 264.0)))
+    grown = cv2.dilate(grown.astype(np.uint8),
+                       np.ones((2 * d + 1, 2 * d + 1), np.uint8)).astype(bool)
+
+    # A page that runs off the picture is cut by the frame, not by its edge.
+    snap = int(round(0.03 * max(h, w)))
+    if snap > 0:
+        for r in range(h):
+            c = np.nonzero(grown[r])[0]
+            if not c.size:
+                continue
+            if c[-1] >= w - 1 - snap:
+                grown[r, c[-1]:] = True
+            if c[0] <= snap:
+                grown[r, :c[0]] = True
+        for c in np.nonzero(grown.any(axis=0))[0]:
+            rr = np.nonzero(grown[:, c])[0]
+            if rr[0] <= snap:
+                grown[:rr[0], c] = True
+            if rr[-1] >= h - 1 - snap:
+                grown[rr[-1]:, c] = True
+
+    out[y0:y1, x0:x1] = grown
+    return out
+
+
+def _paper_rows(page: Any) -> Optional[dict]:
+    """The notebook page's own boundary for this page.
+
+    Returns the paper MASK plus, for callers that still want them, the
+    per-raster-row spans. The mask is what the gate should test: a span is one
+    horizontal interval per row, which cannot describe a page photographed at
+    an angle - at the top and bottom of a tilted sheet the interval reaches
+    past the corners and over the bedsheet beside them.
+    """
+    try:
+        import numpy as np
+
+        pix = page.get_pixmap(dpi=40)
+        a = np.frombuffer(pix.samples, np.uint8).reshape(
+            pix.height, pix.width, pix.n)[:, :, :3].astype(int)
+        H, W = a.shape[:2]
+        mask = _paper_quad(a)
+        if not mask.any():
+            return None
+
+        sx, sy = page.rect.width / W, page.rect.height / H
+        lo = np.full(H, -1.0); hi = np.full(H, -1.0)
+        for r in range(H):
+            cols = np.nonzero(mask[r])[0]
+            if cols.size:
+                lo[r], hi[r] = cols.min() * sx, (cols.max() + 1) * sx
+        if not (hi > 0).any():
+            return None
+        return {"lo": lo, "hi": hi, "sy": sy, "sx": sx,
+                "rows": H, "cols": W, "mask": mask}
+    except Exception:
+        logger.debug("could not measure the paper boundary", exc_info=True)
+        return None
+def _on_paper(paper: Optional[dict], box: Any) -> bool:
+    """True only if every row the box covers is paper for its full width."""
+    if not paper:
+        return True
+    lo, hi, sy = paper["lo"], paper["hi"], paper["sy"]
+    r0 = max(0, min(paper["rows"] - 1, int(box.y0 / sy)))
+    r1 = max(r0 + 1, min(paper["rows"], int(box.y1 / sy) + 1))
+    mask = paper.get("mask")
+    if mask is not None:
+        # The same 1pt slack the span test below allows. The mask is measured
+        # at 40dpi, so one cell is ~1.8pt: without slack a row box pinned 0.3pt
+        # past the sheet edge - a third of one cell, and far less than the
+        # width of the pen - is called off-paper, which rejected nine of the
+        # twenty-four lines on one scanned page.
+        sx, sy = paper["sx"], paper["sy"]
+        r0 = max(0, min(paper["rows"] - 1, int((box.y0 + _PAPER_TOL) / sy)))
+        r1 = max(r0 + 1, min(paper["rows"], int((box.y1 - _PAPER_TOL) / sy) + 1))
+        c0 = max(0, min(paper["cols"] - 1, int((box.x0 + _PAPER_TOL) / sx)))
+        c1 = max(c0 + 1, min(paper["cols"], int((box.x1 - _PAPER_TOL) / sx) + 1))
+        return bool(mask[r0:r1, c0:c1].all())
+    for r in range(r0, r1):
+        if hi[r] <= 0:
+            return False                       # no paper at all on this row
+        if box.x0 < lo[r] - 1.0 or box.x1 > hi[r] + 1.0:
+            return False
+    return True
 
 
 def _photo_bounds(page: Any) -> Optional[Any]:
@@ -1233,6 +1770,19 @@ def _photo_bounds(page: Any) -> Optional[Any]:
         rows = np.nonzero(row_cov > 0.5)[0]
         cols = np.nonzero(col_cov > 0.5)[0]
         if rows.size == 0 or cols.size == 0:
+            return None
+        # A page is never a sliver. On a SCAN the sheet is the same white as
+        # the canvas, so the only column more than half non-white is the
+        # printed pink margin rule - and this returned a 3pt-wide "photograph"
+        # at x=84. Intersected with the sheet, that gave every mark on the
+        # page a zero-width home: 17 of 49 ticks were clamped onto the rule and
+        # rendered as vertical bars, while the MCQ answers beside them got
+        # nothing. The validation above was on photographs only. When the
+        # bound is narrower than a quarter of the frame it has found a rule,
+        # not a page; say so and let the caller fall back to the ink box.
+        if (cols.max() + 1 - cols.min()) < 0.25 * pix.width:
+            logger.debug("photo bound %.0f-%.0fpx is a rule, not a page; ignoring",
+                         float(cols.min()), float(cols.max()))
             return None
         sx, sy = page.rect.width / pix.width, page.rect.height / pix.height
         return fitz.Rect(float(cols.min()) * sx, float(rows.min()) * sy,
@@ -1389,8 +1939,8 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
     scale = _pen_scale(_handwriting_fontfile())
     obstacles = list(occupied or [])
 
-    def wrap(size: float, max_w: float) -> list:
-        words, lines, cur = note.split(), [], ""
+    def wrap(size: float, max_w: float, text: Optional[str] = None) -> list:
+        words, lines, cur = (note if text is None else text).split(), [], ""
         for w in words:
             trial = (cur + " " + w).strip()
             if _text_width(trial, fontname, size, measure_font) * _ADVANCE_SLACK <= max_w:
@@ -1414,6 +1964,15 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
     ideal = max(11.0 * scale, min(base_size, 15.0 * scale))
     floor = 9.0 * scale
     attempt = 0
+    # The ladder above keeps a remark whole and keeps it near its answer, and
+    # refuses a placement that would cost either. That is right until refusing
+    # means writing nothing: a comment that never reaches the page takes the
+    # reason for the deduction with it, and the student is left holding a mark
+    # with no explanation - measured here as a 90-character note silently
+    # dropped while 428pt of blank paper sat below it. So when the ladder is
+    # exhausted, drop both conditions - one short line, anywhere blank on the
+    # sheet - and give up only if the page truly has no room.
+    desperate = False
     while True:
         size = max(floor, ideal - attempt * 0.75)
         # Widening the column is cheaper than shrinking the hand: it costs
@@ -1437,7 +1996,7 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
         # Fewer lines as the search gets desperate: a gap two lines tall is
         # far commoner than one three lines tall, and a one-line note that is
         # actually on the page beats a three-line note that is not.
-        cap = 3 if attempt < 2 else (2 if attempt < 5 else 1)
+        cap = 1 if desperate else (3 if attempt < 2 else (2 if attempt < 5 else 1))
         wrapped_all = wrap(size, max_w)
         # Taking the first `cap` lines and discarding the rest is how
         # "s.18: partner is agent of the firm" reached the page as
@@ -1449,19 +2008,25 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
             kept = " ".join(wrapped_all[:cap]).rstrip(" ,;:-")
             while " " in kept and kept.rsplit(" ", 1)[-1].lower() in _DANGLING:
                 kept = kept.rsplit(" ", 1)[0].rstrip(" ,;:-")
-            if len(kept) < len(note) * 0.55:
+            if len(kept) < len(note) * 0.55 and not desperate:
                 attempt += 1
                 if attempt > 8:
-                    logger.debug("nowhere to write a whole remark near %s", rect)
-                    return None
+                    logger.debug("nowhere to write a whole remark near %s"
+                                 " - shortening it instead of dropping it", rect)
+                    desperate, attempt = True, 0
                 continue
-            lines = wrap(size, max_w)[:cap]
+            # Re-wrap the SHORTENED remark rather than slicing the full one:
+            # slicing is what turned "s.18: partner is agent of the firm" into
+            # "s.18 partner is".
+            lines = wrap(size, max_w, kept)[:cap]
         else:
             lines = wrapped_all
         if not lines:
             attempt += 1
             if attempt > 8:
-                return None
+                if desperate:
+                    return None
+                desperate, attempt = True, 0
             continue
         widest = max(_text_width(l, fontname, size, measure_font) for l in lines)
         # Reserve what will actually be drawn. The block reaches a `lift` above
@@ -1475,7 +2040,10 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
         # either gets refused or lands on the answer. Short lines still climb
         # steeply; long ones flatten, exactly as a hand does.
         band_lift = min(widest * math.tan(math.radians(climb)), size * 0.6)
-        line_h = size * 1.3 + band_lift
+        # The pen's Kalam is ~1.9 sizes tall from ascender to descender; the
+        # vector face this ladder was tuned for was 1.3. Reserve what will be
+        # inked, or the band search clears a strip the note then overruns.
+        line_h = size * (1.9 if _PEN[0] is not None else 1.3) + band_lift
         height = line_h * len(lines) + 4.0 + band_lift
         # Prefer what the page itself says is written over what the layout
         # map guessed; fall back to the boxes when no map was measured.
@@ -1497,11 +2065,16 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
         # ended up with "Riskraiehddes fadmerobbilipbeitySPBskeasivpedge".
         blockers = list(measured_bands or obstacles) + list(_PLACED[0] or [])
         band = _free_band(sheet, blockers, height, rect.y1, floor_y=floor_y,
-                          max_dist=sheet.height * 0.30)
+                          max_dist=None if desperate else sheet.height * 0.30)
         if band is not None:
             break
         attempt += 1
         if size <= floor and attempt > 6:
+            if not desperate:
+                # Near the answer is a preference. On the page at all is not.
+                logger.debug("no free band near %s - searching the whole sheet", rect)
+                desperate, attempt = True, 0
+                continue
             logger.debug("no free band on page for pen note near %s", rect)
             return None
 
@@ -1530,7 +2103,11 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
                   rise=math.degrees(math.atan(band_lift / max(widest, 1.0))),
                   tilt=note_tilt)
     # Recorded exactly as reserved: anchor minus the lift, for the full height.
-    return _note_rect((x0, y0 - band_lift), width, height)
+    placed_box = _note_rect((x0, y0 - band_lift), width, height)
+    if not _on_paper(_PAPER[0], placed_box):
+        logger.debug("free band lies off the paper; leaving the note out")
+        return None
+    return placed_box
 
 
 def _strip_note(page: Any, rect: Any, note: str, occupied: Optional[list],
@@ -1596,6 +2173,167 @@ def _strip_note(page: Any, rect: Any, note: str, occupied: Optional[list],
     return None
 
 
+def _pen_text_width(text: str, size: float) -> float:
+    """Width in points of `text` as the copy's pen will write it."""
+    pen = _PEN[0]
+    if pen is not None:
+        try:
+            from PIL import ImageFont
+            px = max(6, int(round(size * _PEN_SCALE * 1.18)))
+            return ImageFont.truetype(pen.font_path, px).getlength(text) * 1.08 / _PEN_SCALE
+        except Exception:
+            pass
+    return 0.55 * size * max(1, len(text))
+
+
+def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Optional[str],
+                       sheet: Any, occupied: Optional[list]) -> Optional[Any]:
+    """Write `note` where the marking guide's placement says, or return None.
+
+    The renderer contract, in points:
+      right_margin  x = sheet right edge - 7% of the page width, level with the row
+      left_margin   right-aligned just before the row's first ink
+      below_line    x = row's first ink, one line below, wrapped at the right margin
+      right_of_line just past the row's last ink, level with it
+    enforce.py guarantees every score is right_margin on the answer's last row
+    and every deduction note is below_line; the free-space search that placed
+    them before put scores in whichever margin had room, which on one copy was
+    the left one for every question. A spot the contract names is used only
+    if it is on the paper and clear of the student's writing; otherwise the
+    caller falls back to the search, so nothing is dropped for being tidy.
+    """
+    import fitz
+
+    from .validator import VALID_POSITIONS
+
+    if not note or position not in VALID_POSITIONS:
+        return None
+    sheet = sheet or page.rect
+    page_w = page.rect.width
+    # Size from the PAGE's line height, never the target row's: a merged
+    # "Q16. Ans. (c)" row was twice as tall as its neighbours, and the note
+    # hung on it came out twice the size of the note two lines above and
+    # wrapped onto a second line. One hand writes at one size.
+    h = _LINE_H[0] or max(rect.height, 12.0)
+    own = _row_ink_span(_INK_MAP[0], rect)
+    ink_a = own[0] if own else rect.x0
+    ink_b = own[1] if own else min(rect.x1, ink_a + 0.6 * sheet.width)
+    is_score = style in ("score", "total")
+    size = max(11.0, min(24.0, h * (1.4 if is_score else 1.1)))
+    base_y = rect.y0 + rect.height * 0.5 + size * 0.35
+    notes = list(_PLACED[0] or [])
+
+    def clear(box: Any) -> bool:
+        why = None
+        if not _on_paper(_PAPER[0], box):
+            why = "off paper"
+        elif _CLIP[0] is not None and not _CLIP[0].contains(box):
+            why = f"outside clip {_CLIP[0]}"
+        elif _ink_under(_INK_MAP[0], box) > 0.03:
+            why = f"ink under {_ink_under(_INK_MAP[0], box):.2f}"
+        elif any(box.intersects(n) for n in notes):
+            why = "collides with a placed note"
+        if why:
+            logger.debug("CONTRACT %s %r at %s refused: %s", position, note[:20], box, why)
+            return False
+        return True
+
+    lines: list[tuple[str, float, float]] = []      # (text, x0, baseline)
+    if position in ("right_margin_same_line", "right_of_line"):
+        width = _pen_text_width(note, size)
+        if position == "right_margin_same_line":
+            x0 = sheet.x1 - page_w * 0.07 - width
+        else:
+            x0 = ink_b + 6.0
+        # Keep clear of the row's writing - but only when that writing was
+        # actually measured. The layout's row box is pinned to the sheet edge
+        # on merged rows, and trusting it pushed scores off the paper.
+        if own:
+            x0 = max(x0, ink_b + 6.0)
+        if x0 + width > sheet.x1 - 3.0:
+            size = max(10.0, size * (sheet.x1 - 3.0 - x0) / max(width, 1.0))
+            width = _pen_text_width(note, size)
+        lines = [(note, x0, base_y)]
+    elif position == "left_margin_same_line":
+        width = _pen_text_width(note, size)
+        x0 = max(sheet.x0 + 3.0, ink_a - 6.0 - width)
+        if x0 + width > ink_a - 3.0:
+            size = max(9.0, size * (ink_a - 3.0 - x0) / max(width, 1.0))
+            width = _pen_text_width(note, size)
+        lines = [(note, x0, base_y)]
+    elif position == "below_line_left":
+        size = max(10.0, min(20.0, h * 1.1))
+        # Fit the note to the GAP under the row, not to the row. A 20pt note
+        # dropped into a 20pt gap fills it edge to edge and the pen's own
+        # wobble lands on the next line - "Wrong option. Correct: (c)" was
+        # written across the student's Q3. Measure the gap from the page's
+        # ink; if there is not room for a legible line, say so and let the
+        # caller find another spot.
+        gap = None
+        try:
+            bands = _ink_bands(_INK_MAP[0], sheet) or []
+            below = [b.y0 for b in bands if b.y0 > rect.y1 + 2.0 and b.width > sheet.width * 0.15]
+            if below:
+                gap = min(below) - rect.y1
+        except Exception:
+            gap = None
+        # Geometry, not statistics: the note's inked footprint runs from
+        # ~1.05 sizes above its baseline to ~0.45 below (Kalam, 1.18x, with
+        # wobble). Every line of it must end above the next line of writing.
+        # The ink-fraction test let a note graze the ascenders of the row
+        # below because ascenders are sparse; a teacher's eye does not.
+        # Measured on the pen itself: Kalam inks ~0.95 sizes above the
+        # baseline and up to ~0.95 below (deep descenders plus the pen's own
+        # jitter) - a footprint 1.9x the nominal size, not the 1.5x of a
+        # print face.
+        if gap is not None:
+            if gap < 14.0:
+                return None
+            size = max(9.0, min(size, (gap - 3.0) / 1.9))
+        x0 = max(sheet.x0 + 6.0, ink_a)
+        max_w = (sheet.x1 - page_w * 0.05) - x0
+        words, cur, wrapped = note.split(), "", []
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if _pen_text_width(trial, size) <= max_w or not cur:
+                cur = trial
+            else:
+                wrapped.append(cur); cur = w
+        if cur:
+            wrapped.append(cur)
+        wrapped = wrapped[:2]
+        if gap is not None and len(wrapped) > 1 and gap < size * 1.9 * 2 + 3.0:
+            wrapped = wrapped[:1]          # one line is all that fits
+        y = rect.y1 + 2.0 + size * 0.95    # top of the ink just under the row
+        if gap is not None and y + size * 0.95 > rect.y1 + gap - 1.0:
+            return None
+        for i, t in enumerate(wrapped):
+            lines.append((t, x0, y + i * size * 1.5))
+    else:
+        return None
+
+    boxes = []
+    for t, x0, by in lines:
+        w = _pen_text_width(t, size)
+        # the pen writes Kalam at 1.18x the nominal size with a little
+        # baseline wobble; test the footprint that is actually inked
+        # Digits have no descenders: a score's ink is ~0.85 above the
+        # baseline to ~0.35 below. Reserving a full text footprint for it
+        # made every score two rows tall and "collide" with its neighbour.
+        up, down = (0.85, 0.35) if is_score else (1.0, 1.0)
+        boxes.append(fitz.Rect(x0 - 1.0, by - size * up, x0 + w + 1.0, by + size * down))
+    if not boxes or not all(clear(b) for b in boxes):
+        return None
+    rng = _hand_rng("contract", style, note[:24], round(rect.y0, 1))
+    for t, x0, by in lines:
+        _pen_text(page, fitz.Point(x0, by), t, size, _NOTE_TEXT, rng,
+                  slant=rng.uniform(-3.0, 3.0), max_x=sheet.x1 - 2.0)
+    placed = boxes[0]
+    for b in boxes[1:]:
+        placed = placed | b
+    return placed
+
+
 def _place_note(page: Any, rect: Any, style: str, note: str,
                 occupied: Optional[list] = None, sheet: Any = None) -> None:
     """Write the pen note somewhere it can actually be read.
@@ -1657,7 +2395,11 @@ def _place_note(page: Any, rect: Any, style: str, note: str,
     # Sized against the student's own writing. The row band is taller than the
     # letters in it (roughly 2x), so a note at ~1.0 of the band lands near the
     # 1.2-1.8x of the HANDWRITING the marking guide asks for.
-    base_size = max(13.0, min(26.0, rect.height * 1.0)) * scale
+    # ...but against the PAGE's line height when that is known, never the one
+    # row this note happens to hang on: a merged two-line row made one note
+    # twice the size of its neighbours, wrapped over two lines.
+    row_h = _LINE_H[0] if _LINE_H[0] else rect.height
+    base_size = max(13.0, min(26.0, row_h * 1.0)) * scale
     occupied = occupied or []
     # The marked row itself is not an obstacle for a note that sits beside it.
     obstacles = [o for o in occupied if not o.intersects(rect) or o != rect]
@@ -1885,8 +2627,8 @@ def _place_note(page: Any, rect: Any, style: str, note: str,
     # ink to `obstacles` did not reach it - and this is the path that was
     # laying comments straight across the student's paragraph. Check the
     # writing here as well as the comments already placed.
-    if _ink_under(_INK_MAP[0], box) > 0.02:
-        logger.debug("column slot sits on the student's writing; using blank paper")
+    if _ink_under(_INK_MAP[0], box) > 0.02 or not _on_paper(_PAPER[0], box):
+        logger.debug("column slot is on the writing or off the paper; using blank paper")
         return _write_in_free_band(page, rect, note, occupied, sheet,
                                    fontname, base_size, measure_font)
     for other in (_PLACED[0] or []):
@@ -1994,6 +2736,37 @@ def _draw_score_badge(page: Any, centre: Any, awarded: float, out_of: Optional[f
     while size > radius * 0.46 and _text_width(inline, badge_font, size, badge_measure) > radius * 1.55:
         size -= 0.5
     centred(inline, centre.y + radius * 0.30, size)
+
+
+def _draw_grand_total(page: Any, centre: Any, awarded: float, out_of: float,
+                      line_h: float) -> None:
+    """The copy's total, the way the marking guide asks for it.
+
+    "awarded/max", large, with a hand-thrown loop round it, below the Page No
+    box on page one. Unlike the per-question badge this ALWAYS shows the
+    denominator and ALWAYS carries a ring: the guide is explicit, and a bare
+    "24" in the corner of a 30-mark paper read as a page number.
+
+    The ring is sized to the digits, not the digits to the ring: fitting text
+    into a fixed circle shrank "24/30" to 16pt inside a 50pt loop, and the
+    loop, not the mark, was what the eye landed on.
+    """
+    import fitz
+
+    text = _latin1(f"{_fmt_marks(awarded)}/{_fmt_marks(out_of)}")
+    if _PEN[0] is not None and _pen_total_overlay(page, centre, text, line_h * 1.45) is not None:
+        return
+    font, measure = _digit_pen(page)
+    rng = _hand_rng("grand-total", round(centre.x, 1), round(centre.y, 1), text)
+    size = line_h * 1.45                          # digits ~1.5 lines tall
+    width = _text_width(text, font, size, measure)
+    rx = width / 2.0 + size * 0.42
+    ry = size * 0.80                              # overall ~2.3 lines tall
+    _hand_oval(page, fitz.Rect(centre.x - rx, centre.y - ry, centre.x + rx, centre.y + ry),
+               _WRONG, 1.9, rng)
+    _hand_text(page, fitz.Point(centre.x - width / 2.0, centre.y + size * 0.34),
+               text, font, size, _WRONG, rng, font=measure,
+               slant=rng.uniform(-3.0, 3.0))
 
 
 def page_id_for(order: Optional[dict], page_no: int) -> Optional[str]:
@@ -2267,6 +3040,7 @@ def build_annotated_pdf(
     _INK_MAP[0] = None
     _PLACED[0] = None
     _ROW_SLOPE[0] = 0.0
+    _PEN[0] = _pen_for(pdf_bytes)
 
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
@@ -2413,9 +3187,11 @@ def build_annotated_pdf(
     # Measured once per page, before a single mark is drawn: our own ink would
     # otherwise widen every span we then try to avoid.
     ink_maps: dict[str, Any] = {}
+    paper_rows: dict[str, Any] = {}
     for pid, page_no in (order or {}).items():
         if 0 <= page_no < doc.page_count:
             ink_maps[pid] = _ink_map(doc[page_no], paper.get(pid))
+            paper_rows[pid] = _paper_rows(doc[page_no])
 
     drawn = 0
     # question_number -> (page_no, y) of its lowest annotation, so the circled
@@ -2440,6 +3216,19 @@ def build_annotated_pdf(
                  "brace": 3, "underline": 4, "feedback": 5, "margin_note": 5,
                  "region_note": 5, "tick": 6}
     ordered: list = []
+    total_override: list = [None]      # a 'total' annotation, if enforce.py sent one
+    # A page's typical line height: the median of its row boxes, in points.
+    # Notes and scores are sized from this so one page is written in one hand.
+    line_h_by_page: dict[str, float] = {}
+    for lp in layout_map.get("pages") or []:
+        pid_ = lp.get("page_id"); wh_ = dims.get(pid_); pn_ = order.get(pid_)
+        if not wh_ or pn_ is None or pn_ >= doc.page_count:
+            continue
+        sy_ = content.get(pn_, doc[pn_].rect).height / wh_[1]
+        hs_ = sorted(float(l["box"][3]) * sy_ for l in (lp.get("lines") or [])
+                     if l.get("box") and len(l["box"]) == 4 and float(l["box"][3]) > 0)
+        if hs_:
+            line_h_by_page[pid_] = max(10.0, min(30.0, hs_[len(hs_) // 2]))
     for verdict in verdicts:
         for ann in verdict.get("annotations") or []:
             ordered.append((verdict, ann))
@@ -2466,6 +3255,17 @@ def build_annotated_pdf(
             sy = crect.height / layout_wh[1]
             x, y, w, h = (float(v) for v in target["box"])
             rect = fitz.Rect(x * sx, y * sy, (x + w) * sx, (y + h) * sy)
+            # A mark is never drawn narrower than 0.8x the row height. Some
+            # rows are slivers - a label-only row like "Q15", or a stray OCR
+            # box - and a tick sized to one renders as a vertical bar sitting
+            # against the printed margin rule, which is the single clearest
+            # tell that no teacher held the pen. Widen about the centre and
+            # keep it inside the page content.
+            min_w = rect.height * 0.8
+            if 0 < rect.width < min_w:
+                grow = (min_w - rect.width) / 2.0
+                rect = fitz.Rect(max(crect.x0, rect.x0 - grow), rect.y0,
+                                 min(crect.x1, rect.x1 + grow), rect.y1)
 
             _CLIP[0] = paper.get(page_id)
             _SHADE[0] = shade_by_page.get(page_id)
@@ -2478,6 +3278,8 @@ def build_annotated_pdf(
             # of every page, so it reported no free space anywhere. Measure it.
             _INK_MAP[0] = ink_maps.get(page_id)
             _PLACED[0] = occupied.setdefault(page_id + ":notes", [])
+            _PAPER[0] = paper_rows.get(page_id)
+            _LINE_H[0] = line_h_by_page.get(page_id)
             _MARGIN_X[0] = (content.get(page_no, page.rect).x1
                             if margin_ratio > 0.0 else None)
             measured = _row_ink_span(_INK_MAP[0], rect)
@@ -2491,6 +3293,12 @@ def build_annotated_pdf(
                 rect = fitz.Rect(rect.x0, rect.y0, rect.x1,
                                  max(rect.y1, float(ink_bottom) * sy))
             style = (ann.get("style") or "margin_note").strip().lower()
+            if style == "total":
+                # enforce.py's grand total: drawn once, below the Page No box,
+                # by the block after this loop - never as a row annotation.
+                if ann.get("text"):
+                    total_override[0] = str(ann["text"])
+                continue
             if style in ("underline", "strike", "strikethrough"):
                 # Band the y so two row ids on the same visual line collapse.
                 key = (page_no, round(rect.y0 / 9.0))
@@ -2526,7 +3334,12 @@ def build_annotated_pdf(
             if note:
                 page_boxes = occupied.setdefault(page_id, [])
                 sheet_r = paper.get(page_id)
-                placed = _place_note(page, rect, style, note, page_boxes, sheet_r)
+                # The guide's placement first; the free-space search only when
+                # that spot is off the paper or on the student's writing.
+                placed = _place_by_contract(page, rect, style, note,
+                                            ann.get("position"), sheet_r, page_boxes)
+                if placed is None:
+                    placed = _place_note(page, rect, style, note, page_boxes, sheet_r)
 
             _draw_mark(page, rect, style, paper.get(page_id),
                        has_note=placed is not None)
@@ -2559,6 +3372,14 @@ def build_annotated_pdf(
         import fitz
         total = sum(float(v.get("marks_awarded") or 0) for v in verdicts)
         out_of = sum(float(v.get("max_marks") or 0) for v in verdicts)
+        if total_override[0] and "/" in total_override[0]:
+            # enforce.py computes the total against the PAPER's maximum, not
+            # the sum of the questions that happened to be graded.
+            try:
+                a_txt, m_txt = total_override[0].split("/", 1)
+                total, out_of = float(a_txt), float(m_txt)
+            except ValueError:
+                pass
         first = doc[0]
         # Inside the SHEET's top-right corner, not the PDF page's. Hard-coding
         # page.width - 46 put the most prominent mark on the whole script -
@@ -2567,12 +3388,36 @@ def build_annotated_pdf(
         first_id = next((pid for pid, idx in order.items() if idx == 0), None)
         sheet0 = paper.get(first_id)
         _CLIP[0] = sheet0
+        _PAPER[0] = paper_rows.get(first_id)
+        # The marking guide's total: "awarded/max", hand-circled, about 2.3x
+        # the line height, just below the Page No box. The earlier badge sat
+        # 34pt from the sheet edge with a 22pt ring, so on a scan the ring and
+        # the "/30" fell past the paper and were gated away, leaving a bare
+        # "24" - the most prominent mark on the script, and it read as a
+        # page number. Size it from the page's own rows and keep the whole
+        # thing inside the sheet.
+        line_h = 22.0
+        try:
+            lp0 = next((p for p in layout_map.get("pages") or []
+                        if p.get("page_id") == first_id), None)
+            if lp0 and lp0.get("lines"):
+                wh0 = dims.get(first_id)
+                pr0 = content.get(0, first.rect)
+                sy0 = pr0.height / wh0[1] if wh0 else 1.0
+                hs = sorted(float(l["box"][3]) * sy0 for l in lp0["lines"]
+                            if l.get("box") and len(l["box"]) == 4 and float(l["box"][3]) > 0)
+                if hs:
+                    line_h = max(14.0, min(40.0, hs[len(hs) // 2]))
+        except Exception:
+            logger.debug("could not size the total from the rows", exc_info=True)
+        # Half-width of the ring, to keep the whole mark inside the sheet.
+        half_w = line_h * 1.45 * 0.62 * 2.6
         if sheet0 is not None:
-            bx = sheet0.x1 - 34.0
-            by = sheet0.y0 + 34.0
+            bx = sheet0.x1 - half_w - 14.0
+            by = sheet0.y0 + 62.0 + line_h * 1.2    # below the Page No / Date box
         else:
-            bx, by = first.rect.width - 46, 52
-        _draw_score_badge(first, fitz.Point(bx, by), total, out_of, radius=22.0)
+            bx, by = first.rect.width - half_w - 24.0, 62.0 + line_h * 1.2
+        _draw_grand_total(first, fitz.Point(bx, by), total, out_of, line_h)
 
     _CLIP[0] = None
     if append_summary:

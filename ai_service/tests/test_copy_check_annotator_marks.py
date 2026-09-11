@@ -161,8 +161,13 @@ def test_no_ink_leaves_the_paper() -> None:
     arr = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, pix.n)
     ink = (arr[:, :, 0].astype(int) - arr[:, :, 1].astype(int)) > 40
     ys, xs = np.nonzero(ink)
+    # Silence is not a pass. This sheet has four clear rows and room beside
+    # them, so a note that draws nothing has been dropped, not restrained -
+    # and skipping here let the boundary rule go unchecked for the whole
+    # suite while the gate was in fact rejecting almost every mark.
+    check("the note was actually written", xs.size > 0,
+          "nothing was drawn - the comment was silently dropped")
     if xs.size == 0:
-        print("  SKIP  nothing was drawn to check")
         doc.close()
         return
     scale = 150.0 / 72.0
@@ -350,7 +355,231 @@ def test_whole_paper_shape_is_unwrapped() -> None:
           f"got {len(out['annotations'])}")
 
 
+def test_bbox_anchors_and_placement_names() -> None:
+    print("\nvalidator — the reported geometry places a mark the text cannot")
+    from ai_service.app.services.copy_check.validator import validate_and_cap
+
+    layout = {"pages": [{"page_id": "P1", "width": 1000, "height": 2000, "lines": [
+        {"line_id": "L1", "box": [100, 100, 400, 40], "text": "Ans. (d)"},
+        {"line_id": "L2", "box": [100, 900, 400, 40], "text": "Magnified."},
+    ], "regions": []}]}
+    base = {"question_id": "Q1", "maximum_marks": 2, "marks_awarded": 1.0,
+            "extracted_answer": "x", "feedback": "f", "confidence": 0.9,
+            "criteria_breakdown": []}
+
+    def run(anns):
+        return validate_and_cap(dict(base, annotations=anns),
+                                {"question_id": "Q1", "max_marks": 2}, layout)["annotations"]
+
+    # Bad id AND unquotable text: the normalised bbox is the last chance.
+    got = run([{"style": "tick", "target": "BAD", "page_id": "P1",
+                "anchor_text": "zzz nothing like this at all",
+                "anchor_bbox": [0.10, 0.45, 0.50, 0.47],
+                "placement": "right_of_anchor"}])
+    check("geometry placed a mark text could not", len(got) == 1, f"got {len(got)}")
+    if got:
+        check("it landed on the nearest row", got[0]["target"] == "L2",
+              f"got {got[0]['target']}")
+        check("the guide's placement name is normalised",
+              got[0]["position"] == "right_of_line", f"got {got[0]['position']}")
+
+    check("a far-off bbox is refused, not forced onto a line",
+          run([{"style": "tick", "target": "BAD", "page_id": "P1",
+                "anchor_text": "zzz nothing like this",
+                "anchor_bbox": [0.9, 0.02, 0.99, 0.04]}]) == [], "a mark was placed")
+    # Pixels instead of the 0-1 the guide asks for would put every mark in the
+    # top-left corner. Refuse rather than trust it.
+    check("a bbox given in pixels is refused",
+          run([{"style": "tick", "target": "BAD", "page_id": "P1",
+                "anchor_text": "zzz nothing like this",
+                "anchor_bbox": [100, 100, 400, 140]}]) == [], "pixels were trusted")
+    good = run([{"style": "tick", "target": "L1", "page_id": "P1",
+                 "anchor_text": "Ans. (d)", "placement": "right_of_anchor"}])
+    check("a correct line_id still wins outright",
+          good and good[0]["target"] == "L1", "id was overridden")
+
+
+def test_mark_figure_never_hides_in_a_comment() -> None:
+    print("\nvalidator — a mark written inside a comment must not contradict the grade")
+    from ai_service.app.services.copy_check.validator import validate_and_cap
+
+    layout = {"pages": [{"page_id": "P1", "lines": [
+        {"line_id": "L1_01", "box": [40, 40, 300, 18], "text": "h' = 1.5 x 4 = -6 cm."},
+    ], "regions": []}]}
+    # Measured on a real copy: the grader recorded 2.0/3.0 and then wrote
+    # "2.25/3" inside the note. A quarter mark no examiner writes, disagreeing
+    # with the mark the student is actually given, printed beside the score.
+    raw = {
+        "question_id": "Q20", "maximum_marks": 3, "marks_awarded": 2.0,
+        "extracted_answer": "x", "feedback": "f", "confidence": 0.9,
+        "criteria_breakdown": [],
+        "annotations": [{"style": "margin_note", "target": "L1_01", "page_id": "P1",
+                         "anchor_text": "h' = 1.5 x 4 = -6 cm.",
+                         "text": "Nature not stated: real & inverted. 2.25/3"}],
+    }
+    out = validate_and_cap(raw, {"question_id": "Q20", "max_marks": 3}, layout)
+    note = out["annotations"][0]["text"]
+    check("the comment survives", note is not None, "note was dropped")
+    check("the stray mark figure is gone", "2.25" not in (note or ""),
+          f"still reads {note!r}")
+    check("the teacher's actual words are kept",
+          "Nature not stated" in (note or ""), f"got {note!r}")
+    check("the recorded mark is untouched", out["marks_awarded"] == 2.0,
+          f"got {out['marks_awarded']}")
+
+    # A fraction that is part of the remark, not a mark, must survive.
+    keep = dict(raw, annotations=[{"style": "margin_note", "target": "L1_01",
+                                   "page_id": "P1", "anchor_text": "h'",
+                                   "text": "Use 1/2 mv^2 here"}])
+    out2 = validate_and_cap(keep, {"question_id": "Q20", "max_marks": 3}, layout)
+    check("a formula containing a fraction is left alone",
+          out2["annotations"][0]["text"] == "Use 1/2 mv^2 here",
+          f"got {out2['annotations'][0]['text']!r}")
+
+
+def test_paper_boundary_finds_the_page() -> None:
+    print("\n_paper_rows — the notebook page, not the brightest patch of bedsheet")
+    from ai_service.app.services.copy_check.annotator import (
+        _paper_rows, _on_paper, _point_on_paper, _PAPER)
+
+    # A photograph: a near-white, achromatic sheet lying at a slight angle on a
+    # strongly coloured cloth. The old detector scored by brightness alone, so
+    # a well-lit patch of cloth outscored a shadowed half of the page and the
+    # gate then rejected 86% of the marks - three pages got none at all.
+    doc = fitz.open()
+    page = doc.new_page(width=400, height=600)
+    page.draw_rect(page.rect, color=(0.80, 0.10, 0.55), fill=(0.80, 0.10, 0.55))
+    # A bright but SATURATED distractor - the cartoon blanket in the real copies.
+    page.draw_rect(fitz.Rect(300, 20, 395, 120), color=(0.95, 0.85, 0.15),
+                   fill=(0.95, 0.85, 0.15))
+    sheet = [fitz.Point(62, 84), fitz.Point(338, 62),
+             fitz.Point(348, 520), fitz.Point(72, 542)]
+    page.draw_polyline(sheet + [sheet[0]], color=(1, 1, 1), fill=(0.99, 0.99, 0.98))
+    for i in range(8):                      # ruled lines and a little writing
+        y = 120 + i * 45
+        page.draw_line(fitz.Point(90, y), fitz.Point(320, y), color=(0.6, 0.6, 0.7))
+        page.insert_text(fitz.Point(95, y - 6), "the student wrote here", fontsize=11)
+
+    paper = _paper_rows(page)
+    check("the page was found", paper is not None, "no paper detected")
+    if paper is None:
+        doc.close()
+        return
+    check("a mask is returned, not only row spans", paper.get("mask") is not None,
+          "no mask")
+
+    _PAPER[0] = paper
+    try:
+        check("the middle of the sheet is paper", _point_on_paper(200, 300), "rejected")
+        check("a written line is paper", _point_on_paper(150, 210), "rejected")
+        # The saturated distractor and the cloth must NOT be paper, or the pen
+        # is free to write on the bedsheet.
+        check("the coloured distractor is not paper",
+              not _point_on_paper(350, 60), "accepted the blanket")
+        check("the cloth below the sheet is not paper",
+              not _point_on_paper(200, 580), "accepted the cloth")
+        check("the cloth beside the sheet is not paper",
+              not _point_on_paper(20, 300), "accepted the cloth")
+        check("a box inside the sheet is admitted",
+              _on_paper(paper, fitz.Rect(100, 200, 300, 240)), "rejected")
+        check("a box running off the sheet is refused",
+              not _on_paper(paper, fitz.Rect(300, 200, 396, 240)), "admitted")
+    finally:
+        _PAPER[0] = None
+        doc.close()
+
+    # A scan pasted on a white PDF canvas. Its own background is the SAME pure
+    # white as the canvas, so keeping the non-white pixels returns the
+    # handwriting only - which is how a scanned copy came back nearly unmarked.
+    doc = fitz.open()
+    page = doc.new_page(width=400, height=600)
+    page.draw_rect(fitz.Rect(40, 30, 360, 520), color=(0.93, 0.93, 0.91),
+                   fill=(0.93, 0.93, 0.91))
+    for i in range(6):
+        page.insert_text(fitz.Point(60, 90 + i * 60), "scanned answer text", fontsize=12)
+    paper = _paper_rows(page)
+    check("the scanned sheet was found", paper is not None, "no paper detected")
+    if paper is not None:
+        _PAPER[0] = paper
+        try:
+            check("blank paper BETWEEN the written lines is still paper",
+                  _point_on_paper(200, 120), "rejected - a blank row admits nothing")
+            check("the margin beside the text is paper",
+                  _point_on_paper(330, 300), "rejected - no room for a margin note")
+            check("the white canvas outside the scan is not paper",
+                  not _point_on_paper(390, 560), "accepted the bare canvas")
+        finally:
+            _PAPER[0] = None
+    doc.close()
+
+
+def test_annotation_rescued_by_anchor_text() -> None:
+    print("\nvalidator — a wrong line_id must not silently bin the mark")
+    from ai_service.app.services.copy_check.validator import validate_and_cap
+
+    layout = {"pages": [{"page_id": "P1", "lines": [
+        {"line_id": "L1_01", "box": [40, 40, 300, 18],
+         "text": "The incident ray, reflected ray and normal lie in the same plane"},
+        {"line_id": "L1_02", "box": [40, 60, 300, 18],
+         "text": "The angle of incidence equals the angle of reflection"},
+        {"line_id": "L1_03", "box": [40, 80, 300, 18],
+         "text": "principal focus."},
+    ], "regions": []}]}
+    base = {
+        "question_id": "Q1", "maximum_marks": 4, "marks_awarded": 2.0,
+        "extracted_answer": "x", "feedback": "f", "confidence": 0.9,
+        "criteria_breakdown": [],
+    }
+
+    # A hallucinated id used to be dropped without trace, which is how a page
+    # comes back unmarked while the grader reports it graded the answer.
+    raw = dict(base, annotations=[
+        {"style": "tick", "target": "L9_99", "page_id": "P1",
+         "anchor_text": "incidence equals the angle", "position": "right_of_line"},
+        {"style": "cross", "target": "nonsense", "page_id": "P1",
+         "anchor_text": "principal focus."},
+    ])
+    out = validate_and_cap(raw, {"question_id": "Q1", "max_marks": 4}, layout)
+    check("both marks survived a bad line_id", len(out["annotations"]) == 2,
+          f"got {len(out['annotations'])}")
+    by_style = {a["style"]: a for a in out["annotations"]}
+    check("the tick landed on the quoted row",
+          by_style.get("tick", {}).get("target") == "L1_02",
+          f"got {by_style.get('tick', {}).get('target')}")
+    check("the cross landed on the quoted row",
+          by_style.get("cross", {}).get("target") == "L1_03",
+          f"got {by_style.get('cross', {}).get('target')}")
+    check("a recognised position is carried through",
+          by_style.get("tick", {}).get("position") == "right_of_line",
+          f"got {by_style.get('tick', {}).get('position')}")
+
+    # The rescue must not become a way for anything to land anywhere.
+    junk = dict(base, annotations=[
+        {"style": "tick", "target": "L9_99", "page_id": "P1",
+         "anchor_text": "purple monkey dishwasher unrelated nonsense"},
+        {"style": "tick", "target": "L9_98", "page_id": "P1"},
+        {"style": "not_a_style", "target": "L1_01", "page_id": "P1"},
+    ])
+    out2 = validate_and_cap(junk, {"question_id": "Q1", "max_marks": 4}, layout)
+    check("unmatchable quote, absent quote and bad style are all dropped",
+          len(out2["annotations"]) == 0, f"got {len(out2['annotations'])}")
+
+    # An unrecognised position must not be passed on as if it were real.
+    odd = dict(base, annotations=[
+        {"style": "tick", "target": "L1_01", "page_id": "P1",
+         "anchor_text": "The incident ray", "position": "diagonally_across"},
+    ])
+    out3 = validate_and_cap(odd, {"question_id": "Q1", "max_marks": 4}, layout)
+    check("an invented position is discarded, not trusted",
+          out3["annotations"][0]["position"] is None,
+          f"got {out3['annotations'][0]['position']}")
+
+
 if __name__ == "__main__":
+    test_bbox_anchors_and_placement_names()
+    test_mark_figure_never_hides_in_a_comment()
+    test_paper_boundary_finds_the_page()
+    test_annotation_rescued_by_anchor_text()
     test_tick_tail_rises()
     test_free_band_finds_the_gap()
     test_note_survives_a_full_width_row()

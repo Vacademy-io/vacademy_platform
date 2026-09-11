@@ -22,6 +22,27 @@ describe('splitDescriptionParts', () => {
         return (parts as string[]).filter((_, index) => index % 2 === 1);
     };
 
+    it('bolds the plan name on payment and fee plan actions', () => {
+        expect(nameParts('created payment plan Annual Membership')).toEqual(['Annual Membership']);
+        expect(nameParts('updated payment plan Annual Membership')).toEqual(['Annual Membership']);
+        expect(nameParts('deleted payment plan Annual Membership')).toEqual(['Annual Membership']);
+        expect(nameParts('created fee plan Grade 10 Tuition 2026')).toEqual([
+            'Grade 10 Tuition 2026',
+        ]);
+        expect(nameParts('approved fee plan Grade 10 Tuition 2026')).toEqual([
+            'Grade 10 Tuition 2026',
+        ]);
+        expect(nameParts('updated fee type Admission Fee')).toEqual(['Admission Fee']);
+        // The trailing clause stays plain; only the plan name is emphasised.
+        expect(nameParts('made payment plan Annual Membership the default')).toEqual([
+            'Annual Membership',
+        ]);
+    });
+
+    it('leaves a bulk plan delete unemphasised — there is no single name to bold', () => {
+        expect(splitDescriptionParts('deleted 3 payment plan(s)')).toBeNull();
+    });
+
     it('bolds the audience name on campaign actions', () => {
         expect(nameParts('created audience Winter Admissions 2026')).toEqual([
             'Winter Admissions 2026',

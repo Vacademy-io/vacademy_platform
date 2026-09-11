@@ -32,5 +32,22 @@
     },
     "actions": {
         "addNewPaymentPlan": "+ नई भुगतान योजना जोड़ें"
+    },
+    "search": {
+        "placeholder": "नाम से योजनाएँ खोजें…",
+        "noResults": "आपकी खोज या फ़िल्टर से कोई योजना मेल नहीं खाती।",
+        "clear": "साफ़ करें"
+    },
+    "filters": {
+        "all": "सभी",
+        "FREE": "निःशुल्क",
+        "ONE_TIME": "एकमुश्त",
+        "DONATION": "दान",
+        "SUBSCRIPTION": "सदस्यता",
+        "CPO": "CPO"
+    },
+    "meta": {
+        "created": "{{date}} को बनाया गया",
+        "createdBy": "{{name}} द्वारा"
     }
 }

@@ -33,5 +33,22 @@
     },
     "actions": {
         "addNewPaymentPlan": "+ Ajouter un nouveau plan de paiement"
+    },
+    "search": {
+        "placeholder": "Rechercher un plan par nom…",
+        "noResults": "Aucun plan ne correspond à votre recherche ou filtre.",
+        "clear": "Effacer"
+    },
+    "filters": {
+        "all": "Tous",
+        "FREE": "Gratuit",
+        "ONE_TIME": "Paiement unique",
+        "DONATION": "Don",
+        "SUBSCRIPTION": "Abonnement",
+        "CPO": "CPO"
+    },
+    "meta": {
+        "created": "Créé le {{date}}",
+        "createdBy": "par {{name}}"
     }
 }

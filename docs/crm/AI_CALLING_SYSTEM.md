@@ -896,6 +896,10 @@ service README), `NO_REPEAT_ENABLED=true`,
 `WARM_QUESTIONS_ENABLED=true` (prompt rule for every agent: cushion a question with one
 clause of assumption/reason/their-last-answer instead of firing it bare — founder feedback
 2026-09-08, "it's asking questions as if she is my mother"),
+`PROSODY_HINTS_ENABLED=true` (prompt rule for every agent: one '...' before the key phrase and
+at most one '!' per reply, so the TTS — which has no prosody knobs — gets a pitch contour from
+the text; +15% pitch spread measured on Smallest/mrunal — client feedback 2026-09-11, "the tone
+is very linear, bot like"),
 `REPLY_INFLIGHT_GRACE_SECS=6.0`, `REPORT_REQUIRE_CONVERSATION=true`,
 `REPORT_SPOOL_MAX_AGE_SECS=1200`.
 

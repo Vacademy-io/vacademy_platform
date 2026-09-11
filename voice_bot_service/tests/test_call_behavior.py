@@ -1474,6 +1474,28 @@ def test_warm_question_rule_reaches_every_prompt_branch(monkeypatch):
         _gs.cache_clear()  # never leave the off-switch cached for later tests
 
 
+def test_delivery_rule_reaches_every_prompt_branch(monkeypatch):
+    """Clients, 2026-09-11: "the tone is very simple and linear — bot like". The
+    TTS has no prosody control, so the prompt asks for text that carries
+    delivery ('...' before the key phrase, one '!'), measured +15% pitch spread
+    on the live engine. Platform-wide like the warm-question rule: both prompt
+    branches, and the kill switch must remove it."""
+    MARK = "SPEAK, DON'T READ"
+    agent = {"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+        "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}}
+    assert MARK in b.build_system_prompt(agent)
+    assert MARK in b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    monkeypatch.setenv("PROSODY_HINTS_ENABLED", "false")
+    from app.config import get_settings as _gs
+    _gs.cache_clear()
+    try:
+        assert MARK not in b.build_system_prompt(agent)
+    finally:
+        _gs.cache_clear()
+
+
 def test_language_switch_on_request_is_permanent():
     """Founder: "if users asks that i want to talk in english it should then talk
     only in english". The old rule allowed the switch but said nothing about

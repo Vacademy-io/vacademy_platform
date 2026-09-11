@@ -2467,6 +2467,26 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "check-in phrase ('does that make sense?', 'how does that sound?'). Usually the "
         "next REAL question is the better turn-ender; with a brisk caller, drop "
         "check-ins entirely.")
+    # Clients, 2026-09-11: "the tone is very simple and linear — bot like". Our TTS
+    # has no prosody knobs (speed only), so the text carries the delivery. Verified
+    # on the production engine before shipping: '...', '!' and ',' change the
+    # pitch contour and are NEVER read aloud (Sarvam STT of the output: no "dot",
+    # no "exclamation", English and Hindi); pipecat and NoRepeatGate both cut a
+    # sentence at '...', but the fragment that makes is under 22 chars, which
+    # is_repeat ignores by design. '?' is deliberately kept for the ONE real
+    # question: question_topic() and _played_ended_with_question() key on it.
+    delivery_rule = (
+        "- SPEAK, DON'T READ. Even, flat sentences sound like a machine reading a "
+        "script. Give each reply ONE moment of emphasis: put '...' just before the "
+        "phrase that matters most ('You set your timings once... and every morning the "
+        "sessions just appear'), and when there is genuine warmth or good news, let ONE "
+        "sentence end with '!' — never more than one, never on a question. Vary the "
+        "rhythm: a short sentence next to a longer one, not two of the same length. "
+        "These marks are for your voice only: never end a reply with '...', never write "
+        "dashes, and use '?' only for the one real question you are asking. Your "
+        "scripted opening stays exactly as written."
+        if get_settings().prosody_hints_enabled else ""
+    )
     fields_line = _lead_fields_line(context)
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
                 f"append {END_MARKER}.")
@@ -2615,6 +2635,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             no_echo_rule,
             warm_question_rule,
             check_in_rule,
+            delivery_rule,
             one_step_rule,
             goal_drive_rule,
             lead_name_line,
@@ -2652,6 +2673,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         no_echo_rule,
         warm_question_rule,
         check_in_rule,
+        delivery_rule,
         one_step_rule,
         goal_drive_rule,
         dialled_number_line,

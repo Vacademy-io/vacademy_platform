@@ -542,6 +542,14 @@ class Settings:
     # Prompt rule, injected for every agent; kill switch keeps the same shape.
     warm_questions_enabled: bool = field(
         default_factory=lambda: _env("WARM_QUESTIONS_ENABLED", "true").lower() == "true")
+    # Clients, 2026-09-11: "the tone is very simple, very linear — bot like". The
+    # TTS (Smallest lightning_v3.1_pro) exposes no prosody control beyond speed;
+    # the only steering it takes is the TEXT. Measured on the live engine, voice
+    # mrunal, 3 runs each: plain prose 2.8 st of pitch spread; the same words
+    # with an ellipsis before the key phrase, one '!' and a lead-in question
+    # 3.2 st (+15%). Prompt rule, every agent; kill switch keeps the same shape.
+    prosody_hints_enabled: bool = field(
+        default_factory=lambda: _env("PROSODY_HINTS_ENABLED", "true").lower() == "true")
     # Edge read-aloud default voice. hi-IN-SwaraNeural (F) / hi-IN-MadhurNeural (M)
     # are the only Hindi ones; the en-IN trio is Neerja, NeerjaExpressive, Prabhat.
     edge_tts_voice: str = field(

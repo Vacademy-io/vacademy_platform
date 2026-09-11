@@ -43,7 +43,7 @@ const footer = {
 };
 
 const footerLinks = (section: 'rightSection2' | 'rightSection3') =>
-    useEditorStore.getState().config!.globalSettings.layout.footer.props[section].links;
+    useEditorStore.getState().config!.globalSettings.layout!.footer.props[section].links;
 
 describe('Global footer → link columns', () => {
     beforeEach(() => {

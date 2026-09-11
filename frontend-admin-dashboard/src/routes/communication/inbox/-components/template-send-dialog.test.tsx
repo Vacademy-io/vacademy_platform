@@ -106,7 +106,9 @@ describe('TemplateSendDialog', () => {
     });
 
     it('sends the variables keyed by position, prefilled from the samples and edited live', async () => {
-        const onSend = vi.fn(async () => {});
+        const onSend = vi.fn<[WhatsAppTemplateDTO, Record<string, string>], Promise<void>>(
+            async () => {}
+        );
         render(
             <TemplateSendDialog
                 template={withVariables}

@@ -432,6 +432,25 @@ class TranscriptCollector(FrameProcessor):
                     # aggregator never sees this turn, so pipecat's min-words and
                     # emulated-VAD paths cannot delete it (ANSWER_DELETED).
                     self._on_transcript(backchannel=True)
+                    # Call 34f258c2 (2026-09-11): "…fees ka follow-up? Is that you?"
+                    # → caller "Yes." → the HELD tail "Or does someone help?" resumed
+                    # after the answer, twice in one call. A short reply to a question
+                    # that has already been asked is its answer, not a backchannel:
+                    # drop the held tail and let the model respond to the answer.
+                    if (ducked and self._duck is not None and self._duck.has_pending_audio()
+                            and self._played_ended_with_question()):
+                        logger.info("turn-gate: %r answers the question already asked — "
+                                    "dropping the held tail, not resuming it", text[:20])
+                        await self.broadcast_interruption()
+                        await self.push_frame(LLMMessagesAppendFrame(
+                            messages=[{"role": "user", "content": text}]), direction)
+                        await self.push_frame(LLMMessagesAppendFrame(
+                            messages=[{"role": "user", "content":
+                                       "[That was their ANSWER to the question you had "
+                                       "just asked — respond to that answer only. Do not "
+                                       "finish, repeat or rephrase the question.]"}],
+                            run_llm=True), direction)
+                        return
                     logger.info("turn-gate: absorbed backchannel %r "
                                 "(ducked=%s, cut=%s)", text[:30], ducked,
                                 self._interrupt_on_vad())
@@ -585,15 +604,35 @@ class PlayedTranscriptRecorder(FrameProcessor):
     def __init__(self, outcome: CallOutcome):
         super().__init__()
         self._outcome = outcome
+        self._last_chunk = ""
+
+    # Since the speech cache put each sentence in its own audio context
+    # (2026-08-25), pipecat's sequencer force-completes a slot at the end of
+    # that context and re-emits its "remaining" text — so a sentence lands here
+    # twice ("Great, thanks. Great, thanks.", "Just a second. Just a second.";
+    # 6 duplicates on call 34f258c2, 2026-09-11) although the RECORDING plays it
+    # once. Left in, the duplicate reaches the health rules (REPLY_LOOP) and the
+    # assistant aggregator — the model then sees itself repeating and imitates.
+    @staticmethod
+    def _same(a: str, b: str) -> bool:
+        na = " ".join(a.split()).casefold()
+        nb = " ".join(b.split()).casefold()
+        return bool(na) and na == nb
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, TTSTextFrame) and frame.text and frame.text.strip():
             t = self._outcome.transcript
+            chunk = frame.text.strip()
             if t and t[-1]["role"] == "assistant":
-                t[-1]["text"] = (t[-1]["text"] + " " + frame.text.strip()).strip()
+                if self._same(chunk, self._last_chunk) or self._same(t[-1]["text"], chunk):
+                    logger.info("played: dropping duplicate text frame %r", chunk[:48])
+                    await self.push_frame(frame, direction)
+                    return
+                t[-1]["text"] = (t[-1]["text"] + " " + chunk).strip()
             else:
-                t.append({"role": "assistant", "text": frame.text.strip()})
+                t.append({"role": "assistant", "text": chunk})
+            self._last_chunk = chunk
         await self.push_frame(frame, direction)
 
 

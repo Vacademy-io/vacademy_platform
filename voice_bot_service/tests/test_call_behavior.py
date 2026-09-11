@@ -3569,6 +3569,77 @@ def test_prosody_keeps_separate_state_per_sample_rate():
     assert sorted(sh._states) == [8000]
 
 
+@pytest.mark.asyncio
+async def test_played_transcript_drops_the_sequencers_duplicate_text():
+    """Call 34f258c2 (2026-09-11): with one audio context per sentence, pipecat's
+    sequencer force-completes a slot and re-emits its text — "Great, thanks.
+    Great, thanks." in the transcript while the recording plays it once."""
+    from pipecat.frames.frames import TTSTextFrame
+    from pipecat.processors.frame_processor import FrameDirection
+    import unittest.mock as um
+    o = FakeOutcome()
+    rec = b.PlayedTranscriptRecorder(o)
+
+    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
+        pass
+    rec.push_frame = fake_push
+
+    async def fake_super(self, frame, direction):
+        return
+
+    async def drive(text):
+        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
+            await rec.process_frame(TTSTextFrame(text, aggregated_by="sentence"),
+                                    FrameDirection.DOWNSTREAM)
+    for t in ("Great, thanks.", "Great, thanks.", "So the reason I called.", "Just a second.",
+              "just a second.", "Fair enough."):
+        await drive(t)
+    assert o.transcript == [{"role": "assistant",
+                             "text": "Great, thanks. So the reason I called. Just a second. Fair enough."}]
+
+
+@pytest.mark.asyncio
+async def test_a_short_answer_drops_the_held_question_tail():
+    """Call 34f258c2 (2026-09-11): "…Is that you?" → "Yes." → the HELD tail "Or
+    does someone help?" resumed after the answer. A short reply to a question
+    already asked is its answer: drop the tail, cue the model to respond."""
+    rec = _Rec()
+    out = FakeOutcome()
+    out.transcript.append({"role": "assistant",
+                           "text": "So who's doing the daily running around? Is that you?"})
+
+    class Duck:
+        def is_ducked(self):
+            return True
+
+        def has_pending_audio(self):
+            return True
+    absorbed = []
+
+    async def _absorb(t):
+        absorbed.append(t)
+    tc = b.TranscriptCollector(
+        out, lambda user=True: None,
+        is_bot_speaking=lambda: True, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: False, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True, duck=Duck(), on_absorb=_absorb)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    interrupted = []
+
+    async def _bi():
+        interrupted.append(True)
+    tc.broadcast_interruption = _bi
+    await _feed(tc, "Yes.")
+    assert interrupted and not absorbed
+    cues = _cue_texts(rec)
+    assert "Yes." in cues and any("their ANSWER" in c for c in cues), cues
+
+
 def test_sentinel_never_speaks_a_tool_call_block():
     """Call 5a9fe35a (2026-09-11): sarvam-105b wrote a GLM-style
     "<tool_call>send_whatsapp_message <arg_key>phone_number</arg_key>…" instead

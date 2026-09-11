@@ -973,6 +973,13 @@ export const Route = createRootRouteWithContext<{
         );
 
         if (domainRoutingResult) {
+          // A host with a root-mounted catalogue serves it right here at "/"
+          // (routes/index.tsx) — bouncing to "/<tag>" is exactly what that
+          // flag exists to stop. resolveDomainRouting has already cached the
+          // tag for the route component and every link builder.
+          if ((domainRoutingResult.rootCatalogueTag || "").trim()) {
+            return;
+          }
           // API returned valid institute data, use the redirect field from API response
           const redirectPath = domainRoutingResult.redirect || "/courses";
           throw redirect({ to: redirectPath as never });

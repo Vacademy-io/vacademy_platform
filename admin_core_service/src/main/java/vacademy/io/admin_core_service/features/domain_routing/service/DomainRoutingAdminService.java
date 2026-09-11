@@ -145,6 +145,7 @@ public class DomainRoutingAdminService {
                                 .logoHeightPx(request.getLogoHeightPx())
                                 .stackNameBelowLogo(request.getStackNameBelowLogo())
                                 .applyNamingSetting(Boolean.TRUE.equals(request.getApplyNamingSetting()))
+                                .rootCatalogueTag(normalizeRootTag(request.getRootCatalogueTag()))
                                 .primary(Boolean.TRUE.equals(request.getPrimary()))
                                 .build();
                 return repository.save(entity);
@@ -235,6 +236,11 @@ public class DomainRoutingAdminService {
                         if (request.getPrimary() != null) {
                                 existing.setPrimary(request.getPrimary());
                         }
+                        // Same contract as primary: absent means untouched, so a caller that
+                        // predates the field cannot silently un-mount a root catalogue.
+                        if (request.getRootCatalogueTag() != null) {
+                                existing.setRootCatalogueTag(normalizeRootTag(request.getRootCatalogueTag()));
+                        }
                         return repository.save(existing);
                 });
         }
@@ -250,5 +256,12 @@ public class DomainRoutingAdminService {
                         throw new IllegalArgumentException(
                                         "All fields domain, subdomain, role, instituteId are required");
                 }
+        }
+
+        /** Trim, strip any leading slash, and turn blank into null (= not mounted). */
+        private static String normalizeRootTag(String raw) {
+                if (raw == null) return null;
+                String t = raw.trim().replaceFirst("^/+", "");
+                return t.isEmpty() ? null : t;
         }
 }

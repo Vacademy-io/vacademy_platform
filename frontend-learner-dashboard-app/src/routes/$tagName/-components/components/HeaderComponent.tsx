@@ -109,6 +109,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
     // mobile menu, or the "is there anything to show?" checks that gate them.
     const visibleNavigation = navigation.filter((item) => item?.enabled !== false);
 
+    // The catalogue this header belongs to. The prop is authoritative — the
+    // route resolved it — and the first path segment was only ever a fallback
+    // for the default "home". On a root-mounted host that segment is a PAGE
+    // ("/about"), so reading it as the tag would send every Home click to
+    // "/about" and the cart to "/about/cart".
+    const effectiveTagName =
+      tagName && tagName !== 'home'
+        ? tagName
+        : (location.pathname.split('/').filter(Boolean)[0] || tagName);
+
     // Filter out "Sign Up" auth links when signup is disabled at the institute level.
     const visibleAuthLinks = signupEnabled
       ? authLinks
@@ -271,12 +281,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
     // either: Courses was the only nav item that could ever look active.
     const isActiveRoute = (route: string) => {
       if (RouteMatcher.isExternalLink(route)) return false;
-      const pathSegments = location.pathname.split('/').filter(Boolean);
-      // Read the page slug as "whatever follows the tag", not as a fixed index,
-      // so a catalogue ever mounted without its tag segment still resolves.
-      const tagIndex = pathSegments.indexOf(tagName);
+      // "Whatever follows the catalogue base": the segment after "/<tag>", or
+      // the first segment when this catalogue is mounted at the host's root.
       const currentRoute = RouteMatcher.normalizeRoute(
-        pathSegments[tagIndex >= 0 ? tagIndex + 1 : 1] || ''
+        RouteMatcher.segmentsAfterBase(location.pathname, effectiveTagName)[0] || ''
       );
       const target = RouteMatcher.normalizeRoute(route || '');
       const targetIsHome = target === '' || target === 'home';
@@ -319,20 +327,12 @@ export const HeaderComponent: React.FC<HeaderProps & {
       const normalizedRoute = RouteMatcher.normalizeRoute(route);
 
       if (normalizedRoute === 'home' || normalizedRoute === '' || route === '/') {
-        const currentPath = location.pathname;
-        const pathSegments = currentPath.split('/').filter(Boolean);
-        const currentTagName = pathSegments[0] || tagName;
-
-        navigate({ to: `/${currentTagName}` });
+        navigate({ to: RouteMatcher.pagePath(effectiveTagName) });
         return;
       }
 
       if (normalizedRoute === 'courses') {
-        const currentPath = location.pathname;
-        const pathSegments = currentPath.split('/').filter(Boolean);
-        const currentTagName = pathSegments[0] || tagName;
-
-        navigate({ to: `/${currentTagName}` });
+        navigate({ to: RouteMatcher.pagePath(effectiveTagName) });
         return;
       }
 
@@ -374,7 +374,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
       let hideCart = false;
 
       const currentPath = location.pathname.toLowerCase();
-      const pathSegments = location.pathname.split('/').filter(Boolean);
+      // Segments after the catalogue base, so "/new/<id>" and a root-mounted
+      // "/<id>" both read as a course-details page.
+      const afterBase = RouteMatcher.segmentsAfterBase(location.pathname, effectiveTagName);
 
       // Hide on cart page
       if (currentPath.includes('/cart')) {
@@ -382,9 +384,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
         hideCart = true;
       }
 
-      // Hide on book/course details page (pattern: /$tagName/$courseId)
-      if (pathSegments.length >= 2) {
-        const potentialCourseId = pathSegments[1];
+      // Hide on book/course details page (pattern: <base>/$courseId)
+      if (afterBase.length >= 1) {
+        const potentialCourseId = afterBase[0];
         const isNumeric = /^\d+$/.test(potentialCourseId);
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(potentialCourseId);
         if (isNumeric || isUUID) {
@@ -396,7 +398,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
       // Check if current page has buyRentSection component
       // Hide search but KEEP cart visible on plan page
       if (catalogueData?.pages) {
-        const pageRoute = pathSegments.slice(1).join('/') || '';
+        const pageRoute = afterBase.join('/') || '';
         for (const page of catalogueData.pages) {
           const pageRouteLower = (page.route || '').toLowerCase();
           const pageIdLower = (page.id || '').toLowerCase();
@@ -597,10 +599,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   {!hideCart && (
                   <button
                     onClick={() => {
-                      const currentPath = location.pathname;
-                      const pathSegments = currentPath.split('/').filter(Boolean);
-                      const currentTagName = pathSegments[0] || tagName;
-                      navigate({ to: `/${currentTagName}/cart` });
+                      navigate({ to: `${RouteMatcher.basePath(effectiveTagName)}/cart` });
                     }}
                     className="relative p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
                     aria-label={t("header.shoppingCart")}
@@ -821,10 +820,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                             // Set genre filter in sessionStorage
                             sessionStorage.setItem('genreFilter', genre.toLowerCase());
                             // Navigate to homepage with genre filter
-                            const currentPath = location.pathname;
-                            const pathSegments = currentPath.split('/').filter(Boolean);
-                            const currentTagName = pathSegments[0] || tagName;
-                            navigate({ to: `/${currentTagName}` });
+                            navigate({ to: RouteMatcher.pagePath(effectiveTagName) });
                           }}
                           className="group w-full text-left px-6 py-3 text-sm font-medium text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-bg-subtle border-b border-catalogue-border-subtle last:border-b-0 transition-all duration-200 ease-in-out transform hover:translate-x-1"
                         >

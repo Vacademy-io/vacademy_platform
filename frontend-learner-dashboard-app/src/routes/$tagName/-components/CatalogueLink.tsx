@@ -1,5 +1,7 @@
 import React from 'react';
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { RouteMatcher } from '../-services/route-matcher';
+import { useCatalogueTag } from './CatalogueTagContext';
 
 interface CatalogueLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
     /** The route value — can be a page slug ("about-us"), "homepage", full URL, or #anchor */
@@ -17,7 +19,8 @@ interface CatalogueLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElemen
 export const CatalogueLink: React.FC<CatalogueLinkProps> = ({ to, children, target, className, style, ...rest }) => {
     const navigate = useNavigate();
     const params = useParams({ strict: false }) as { tagName?: string };
-    const tagName = params.tagName || '';
+    // Context first: on a root-mounted host the param is a page route, not the tag.
+    const tagName = useCatalogueTag(params.tagName || '');
 
     if (!to || to === '#') {
         return <span className={className} style={style} {...rest}>{children}</span>;
@@ -53,10 +56,16 @@ export const CatalogueLink: React.FC<CatalogueLinkProps> = ({ to, children, targ
         );
     }
 
-    // Internal route (possibly with anchor)
-    const normalizedRoute = routePart.toLowerCase().replace(/^\//, '').replace(/\/$/, '').trim();
-    const isHome = normalizedRoute === 'home' || normalizedRoute === 'homepage' || normalizedRoute === '' || normalizedRoute === '/';
-    const fullPath = isHome ? `/${tagName}` : `/${tagName}/${normalizedRoute}`;
+    // Internal route (possibly with anchor). A page route may arrive as
+    // "/new/contact" (authored as an absolute site path) — strip the tag so a
+    // root-mounted host does not emit "/new/contact" for a page that lives at
+    // "/contact"; RouteMatcher.pagePath() then applies whichever prefix the
+    // host actually uses.
+    const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const strippedRoute = tagName
+        ? routePart.replace(new RegExp(`^/?${escapedTag}(?=/|$)`, 'i'), '')
+        : routePart;
+    const fullPath = RouteMatcher.pagePath(tagName, strippedRoute);
     const fullHref = fullPath + hashPart;
 
     const handleClick = (e: React.MouseEvent) => {

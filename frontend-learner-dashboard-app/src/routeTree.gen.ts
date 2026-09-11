@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as VerifyIndexRouteImport } from './routes/verify/index'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
 import { Route as TryIndexRouteImport } from './routes/try/index'
@@ -120,6 +121,11 @@ import { Route as AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRout
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRouteImport } from './routes/study-library/courses/course-details/subjects/modules/chapters/index'
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport } from './routes/study-library/courses/course-details/subjects/modules/chapters/slides/index'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VerifyIndexRoute = VerifyIndexRouteImport.update({
   id: '/verify/',
   path: '/verify/',
@@ -722,6 +728,7 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
   )
 
 export interface FileRoutesByFullPath {
+  '/': typeof IndexRoute
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
@@ -834,6 +841,7 @@ export interface FileRoutesByFullPath {
   '/study-library/courses/course-details/subjects/modules/chapters/slides': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
@@ -945,6 +953,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
@@ -1059,6 +1068,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
     | '/$tagName/$pageSlug'
     | '/assignment/$slideId'
     | '/parent/documents'
@@ -1171,6 +1181,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/$tagName/$pageSlug'
     | '/assignment/$slideId'
     | '/sub-org-registration/payment-result'
@@ -1281,6 +1292,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   id:
     | '__root__'
+    | '/'
     | '/$tagName/$pageSlug'
     | '/assignment/$slideId'
     | '/parent/documents'
@@ -1394,6 +1406,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   TagNamePageSlugRoute: typeof TagNamePageSlugRoute
   AssignmentSlideIdRoute: typeof AssignmentSlideIdRoute
   ParentDocumentsRoute: typeof ParentDocumentsRouteWithChildren
@@ -1499,6 +1512,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/verify/': {
       id: '/verify/'
       path: '/verify'
@@ -2314,6 +2334,7 @@ const ParentChildChildIdRouteWithChildren =
   ParentChildChildIdRoute._addFileChildren(ParentChildChildIdRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   TagNamePageSlugRoute: TagNamePageSlugRoute,
   AssignmentSlideIdRoute: AssignmentSlideIdRoute,
   ParentDocumentsRoute: ParentDocumentsRouteWithChildren,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -1152,7 +1153,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     }
 
     navigate({
-      to: `/${tagName}/${customPageRoute ?? course.id}`,
+      to: `${RouteMatcher.basePath(tagName)}/${customPageRoute ?? course.id}`,
       search: searchParams.toString()
         ? {
             enrollInviteId: course.enrollInviteId,
@@ -1801,7 +1802,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       {/* Floating Cart Button - Fixed at bottom right */}
       {/* {cartButtonConfig?.enabled && <div className="fixed bottom-14 right-3 z-50">
         <Button
-          onClick={() => navigate({ to: `/${tagName}/cart` })}
+          onClick={() => navigate({ to: `${RouteMatcher.basePath(tagName)}/cart` })}
           className="h-12 w-12 rounded-full bg-primary hover:bg-primary-700 text-white shadow-lg flex items-center justify-center relative"
           size="sm"
         >

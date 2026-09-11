@@ -66,6 +66,7 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
         options: [
             { value: 'COURSE', label: 'Course' },
             { value: 'LIVE_SESSION', label: 'Live session' },
+            { value: 'ENROLL_INVITE', label: 'Invite link' },
             { value: 'LEARNER', label: 'Learner' },
             { value: 'GUARDIAN_LINK', label: 'Guardian link' },
             { value: 'INSTITUTE_SETTING', label: 'Settings' },

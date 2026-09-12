@@ -33,7 +33,11 @@
     "providers": {
         "exotel": "Exotel",
         "aavtaarAi": "AI (Aavtaar)",
-        "airtel": "Airtel"
+        "airtel": "Airtel",
+        "vacademyAi": "AI (Vacademy agent)",
+        "plivo": "Vacademy Voice",
+        "manual": "Manual upload",
+        "mock": "AI (test)"
     },
     "table": {
         "heading": "Calls",
@@ -86,6 +90,11 @@
     "disposition": {
         "edit": "Edit",
         "set": "Set"
+    },
+    "followUp": {
+        "titleCall": "Worth a manual call",
+        "titleCallLater": "Call back at the time they asked",
+        "titleSkip": "No manual call needed"
     },
     "recording": {
         "loading": "Loading…",

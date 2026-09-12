@@ -33,7 +33,11 @@
     "providers": {
         "exotel": "Exotel",
         "aavtaarAi": "الذكاء الاصطناعي (Aavtaar)",
-        "airtel": "Airtel"
+        "airtel": "Airtel",
+        "vacademyAi": "ذكاء اصطناعي (وكيل Vacademy)",
+        "plivo": "Vacademy Voice",
+        "manual": "رفع يدوي",
+        "mock": "ذكاء اصطناعي (اختبار)"
     },
     "table": {
         "heading": "المكالمات",
@@ -86,6 +90,11 @@
     "disposition": {
         "edit": "تعديل",
         "set": "تحديد"
+    },
+    "followUp": {
+        "titleCall": "يستحق مكالمة يدوية",
+        "titleCallLater": "أعد الاتصال في الوقت الذي طلبوه",
+        "titleSkip": "لا حاجة لمكالمة يدوية"
     },
     "recording": {
         "loading": "جارٍ التحميل…",

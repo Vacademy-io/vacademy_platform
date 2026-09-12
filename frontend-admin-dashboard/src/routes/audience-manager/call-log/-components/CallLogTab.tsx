@@ -93,11 +93,14 @@ import {
     fetchRecordingUrl,
     isCallLogEndpointMissing,
     normalizeDispositionKey,
+    rowFollowUpGist,
     rowCallHealth,
+    rowFollowUp,
     toMillis,
     type BulkResult,
     type CallLogFilters,
     type CallLogScope,
+    type FollowUp,
     type CallRow,
     type DispositionCount,
     type DispositionOption,
@@ -125,13 +128,53 @@ export interface CallLogTabProps {
 const PAGE_SIZE = 25;
 const ALL = '__ALL__';
 
-/** Provider filter/label vocabulary — labels come from the translation catalog. */
-function buildProviderOptions(t: TFunction) {
+/**
+ * Provider vocabulary — every value `telephony_call_log.provider_type` can hold
+ * (backend `ProviderType`), grouped by the call type it implies so the provider
+ * filter can follow the Type filter.
+ *
+ * This list used to be three entries (Exotel, Aavtaar, Airtel), written when
+ * those were the only providers. VACADEMY_AI — our own voice bot, by now the
+ * majority of AI calls on several institutes — was never added, so choosing
+ * Type = AI offered "AI (Aavtaar)" as the only provider and there was no way to
+ * filter to (or even name, in the detail panel) the institute's own agent. PLIVO
+ * (Vacademy Voice click-to-call) and MANUAL uploads were likewise unfilterable.
+ *
+ * Grouping is the backend's own rule, mirrored: a row is AI when its provider is
+ * AAVTAAR / VACADEMY_AI / MOCK or an ai_call_result has landed for it
+ * (CallSearchService.AI_LATERAL); everything else is HUMAN.
+ */
+type ProviderGroup = 'AI' | 'HUMAN';
+
+function buildProviderOptions(t: TFunction): ReadonlyArray<{
+    value: string;
+    label: string;
+    group: ProviderGroup;
+    /** Hidden from the filter dropdown (test-only), still labelled in the detail panel. */
+    filterable: boolean;
+}> {
     return [
-        { value: 'EXOTEL', label: t('providers.exotel') },
-        { value: 'AAVTAAR', label: t('providers.aavtaarAi') },
-        { value: 'AIRTEL', label: t('providers.airtel') },
-    ] as const;
+        { value: 'VACADEMY_AI', label: t('providers.vacademyAi'), group: 'AI', filterable: true },
+        { value: 'AAVTAAR', label: t('providers.aavtaarAi'), group: 'AI', filterable: true },
+        { value: 'MOCK', label: t('providers.mock'), group: 'AI', filterable: false },
+        { value: 'PLIVO', label: t('providers.plivo'), group: 'HUMAN', filterable: true },
+        { value: 'AIRTEL', label: t('providers.airtel'), group: 'HUMAN', filterable: true },
+        { value: 'EXOTEL', label: t('providers.exotel'), group: 'HUMAN', filterable: true },
+        { value: 'MANUAL', label: t('providers.manual'), group: 'HUMAN', filterable: true },
+    ];
+}
+
+/**
+ * The provider options to OFFER given the current Type filter: all filterable
+ * providers when Type is "All", otherwise only the group that type implies. A
+ * provider from the other group would always return zero rows, so listing it
+ * is worse than useless — it is exactly how "AI shows only Aavtaar" read as a
+ * broken filter.
+ */
+function providerOptionsFor(t: TFunction, callType: string) {
+    return buildProviderOptions(t).filter(
+        (p) => p.filterable && (callType === ALL || p.group === callType)
+    );
 }
 
 // ── Formatting ─────────────────────────────────────────────────────────────
@@ -632,7 +675,18 @@ export default function CallLogTab({
                         <FilterSelect
                             label={t('filters.type')}
                             value={callType}
-                            onChange={setCallType}
+                            onChange={(v) => {
+                                setCallType(v);
+                                // A provider from the other group can no longer match
+                                // anything — drop it rather than leave a filter that
+                                // silently returns an empty list.
+                                if (
+                                    providerType !== ALL &&
+                                    !providerOptionsFor(t, v).some((p) => p.value === providerType)
+                                ) {
+                                    setProviderType(ALL);
+                                }
+                            }}
                             options={[
                                 { value: 'HUMAN', label: t('filters.typeHuman') },
                                 { value: 'AI', label: t('filters.typeAi') },
@@ -642,7 +696,7 @@ export default function CallLogTab({
                             label={t('filters.provider')}
                             value={providerType}
                             onChange={setProviderType}
-                            options={buildProviderOptions(t).map((p) => ({
+                            options={providerOptionsFor(t, callType).map((p) => ({
                                 value: p.value,
                                 label: p.label,
                             }))}
@@ -1670,17 +1724,79 @@ function DispositionCell({
         ? labels.get(normalizeDispositionKey(current)) ?? humanizeCallStatus(current)
         : null;
     return (
-        <div className="flex items-center gap-2">
-            {label ? (
-                <span className="inline-flex whitespace-nowrap rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
-                    {label}
-                </span>
-            ) : (
-                <span className="text-xs text-neutral-400">—</span>
-            )}
-            <MyButton buttonType="text" scale="small" onClick={onEdit}>
-                {row.disposition_key ? t('disposition.edit') : t('disposition.set')}
-            </MyButton>
+        <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+                {label ? (
+                    <span className="inline-flex whitespace-nowrap rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                        {label}
+                    </span>
+                ) : (
+                    <span className="text-xs text-neutral-400">—</span>
+                )}
+                <MyButton buttonType="text" scale="small" onClick={onEdit}>
+                    {row.disposition_key ? t('disposition.edit') : t('disposition.set')}
+                </MyButton>
+            </div>
+            <CallFollowUp row={row} />
+        </div>
+    );
+}
+
+/**
+ * The counsellor's one-sentence answer to "do I call this lead myself?", directly
+ * under the disposition: the recommendation and the concrete reason from the
+ * call — "Worth a call — runs a 50-member hybrid studio, asked about pricing."
+ *
+ * The SENTENCE is the product. followUp (CALL / CALL_LATER / SKIP) only colours
+ * it and gives it a leading dot; it is deliberately never rendered as a word,
+ * because a one-word label is exactly what the disposition already is and it
+ * tells a human nothing about what happened on the call or what to do next.
+ *
+ * Renders NOTHING when the call was not assessed. A human call, an older bot, or
+ * a call the caller never spoke on carries no recommendation, and an empty cell
+ * is the honest rendering of "not assessed" — never a grey "fine", and never a
+ * colour standing in for a verdict that was not given. The one exception is a
+ * gist with no level (the bot's own "Nothing to go on — …" on a gated call),
+ * which renders in neutral so the counsellor still sees why.
+ */
+const FOLLOW_UP_STYLE: Record<FollowUp, { dot: string; text: string; titleKey: string }> = {
+    CALL: {
+        dot: 'bg-success-500',
+        text: 'text-success-700',
+        titleKey: 'followUp.titleCall',
+    },
+    CALL_LATER: {
+        dot: 'bg-warning-500',
+        text: 'text-warning-700',
+        titleKey: 'followUp.titleCallLater',
+    },
+    SKIP: {
+        dot: 'bg-neutral-400',
+        text: 'text-neutral-500',
+        titleKey: 'followUp.titleSkip',
+    },
+};
+
+function CallFollowUp({ row }: { row: CallRow }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
+    const level = rowFollowUp(row);
+    const gist = rowFollowUpGist(row);
+    if (!gist) return null;
+    const style = level ? FOLLOW_UP_STYLE[level] : null;
+    return (
+        <div
+            className="flex max-w-sm items-start gap-1.5"
+            title={style ? `${t(style.titleKey)} — ${gist}` : gist}
+        >
+            <span
+                aria-hidden="true"
+                className={`mt-[5px] size-1.5 shrink-0 rounded-full ${style ? style.dot : 'bg-neutral-300'}`}
+            />
+            <span
+                className={`line-clamp-2 text-caption leading-snug ${style ? style.text : 'text-neutral-500'}`}
+            >
+                {gist}
+            </span>
         </div>
     );
 }

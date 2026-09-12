@@ -87,7 +87,8 @@ public class CallSearchService {
             LEFT JOIN LATERAL (
                 SELECT r.id AS acr_id, r.disposition AS ai_disposition, r.callback_at AS ai_callback_at,
                        r.callback AS ai_callback, r.transfer_triggered AS transfer_triggered,
-                       r.diag_health AS diag_health, r.diag_faults AS diag_faults
+                       r.diag_health AS diag_health, r.diag_faults AS diag_faults,
+                       r.follow_up AS follow_up, r.follow_up_gist AS follow_up_gist
                 FROM ai_call_result r
                 WHERE r.call_log_id = tcl.id
                 ORDER BY r.received_at DESC NULLS LAST
@@ -279,6 +280,8 @@ public class CallSearchService {
                    acr.ai_disposition AS ai_disposition,
                    acr.diag_health AS diag_health,
                    acr.diag_faults AS diag_faults,
+                   acr.follow_up AS follow_up,
+                   acr.follow_up_gist AS follow_up_gist,
                    CASE WHEN (acr.acr_id IS NOT NULL
                               OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))
                         THEN 'AI' ELSE 'HUMAN' END AS call_type,
@@ -330,6 +333,11 @@ public class CallSearchService {
                 // OTHER feature had already fetched detail for.
                 .diagHealth(rs.getString("diag_health"))
                 .diagFaults(splitDiagFaults(rs.getString("diag_faults")))
+                // The follow-up gist rides the list for the same reason health does:
+                // the counsellor reads it in the row to decide whether to call, not
+                // only in the detail drawer.
+                .followUp(rs.getString("follow_up"))
+                .followUpGist(rs.getString("follow_up_gist"))
                 .callbackAt(rs.getTimestamp("callback_at_eff"))
                 .createdAt(rs.getTimestamp("created_at"))
                 .leadStatusId(rs.getString("lead_status_id"))
@@ -466,8 +474,13 @@ public class CallSearchService {
                 sb.append(" AND (acr.acr_id IS NOT NULL"
                         + " OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
             } else if ("HUMAN".equalsIgnoreCase(f.getCallType().trim())) {
+                // COALESCE: `NULL NOT IN (...)` is NULL, so a row with no provider
+                // matched NEITHER filter while the call_type column in the SELECT
+                // rendered it HUMAN — it showed in the unfiltered list and vanished
+                // the moment Type = Human was chosen. Keep the filter and the column
+                // on the same rule.
                 sb.append(" AND (acr.acr_id IS NULL"
-                        + " AND tcl.provider_type NOT IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
+                        + " AND COALESCE(tcl.provider_type, '') NOT IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
             }
         }
         // Disposition filter matches the EFFECTIVE outcome — the same value the

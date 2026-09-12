@@ -85,6 +85,36 @@ def _llm_target(s):
 # failed analysis reads as "the model considered it and found nothing promised".
 _NO_SENDS: Dict[str, Any] = {"promisedSends": [], "declinedSends": [], "conditionsMet": [], "whatsappNumber": None, "email": None}
 
+# ── follow-up gist ───────────────────────────────────────────────────────────
+# ONE SENTENCE, written for the counsellor deciding whether to pick up the phone
+# for this lead: the recommendation and the concrete reason from the call.
+#   "Worth a call — runs a 50-member hybrid studio, sends links by hand, asked
+#    about pricing."
+#   "Skip — reached a school reception, not a yoga trainer."
+#   "Call back Tuesday after 4pm — she asked for that slot; sounded keen."
+#
+# This is NOT a grade of our agent and NOT a restatement of the disposition. The
+# disposition is a label the classifier chose from a closed list; leadRating is a
+# number; neither tells a human what actually happened on the call or what to do
+# about it. The gist is the thing a counsellor reads in the list to decide, in one
+# glance, whether this lead is worth their time — including on the calls that ended
+# Incomplete because the audio broke or the label was refused, which is exactly
+# where the engaged-but-unjudged routing now sends them a lead with no label to go
+# on.
+#
+# followUp is a closed vocabulary used ONLY to colour the sentence and to filter
+# ("show me the ones worth calling"). It is never rendered as a word on its own —
+# the sentence is the product.
+_FOLLOW_UP_LEVELS = ("CALL", "CALL_LATER", "SKIP")
+# Hard backstop on the sentence. The prompt asks for under 30 words; a counsellor
+# is scanning a table cell, not reading a summary — that field already exists.
+_GIST_MAX_CHARS = 240
+
+# NULL means NOT ASSESSED, never "fine" — the same contract as diag_health in V416.
+# Every degraded or skipped path returns these keys explicitly rather than omitting
+# them, so a missing key is indistinguishable from an assessed-and-empty one.
+_NO_FOLLOW_UP: Dict[str, Any] = {"followUp": None, "followUpGist": None}
+
 
 def _parse_analysis_json(content: str):
     """The analyser's JSON, or None. Tolerates fences, prose around the object,
@@ -136,11 +166,11 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     questions = agent.get("extractionQuestions") or []
     transcript = _transcript_text(outcome.transcript)
     if not transcript.strip():
-        return {"disposition": "Incomplete", "summary": "No conversation captured.",
+        return {"disposition": _INSUFFICIENT, "summary": "No conversation captured.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
                 "callbackTimeText": None, "meetingRequested": False,
                 "meetingDatetimeIso": None, "meetingDatetimeText": None,
-                "meetingType": None, **_NO_SENDS}
+                "meetingType": None, **_NO_SENDS, **_NO_FOLLOW_UP}
 
     # Current date/time so the analyser can resolve relative dates spoken on the call
     # ("tomorrow 3pm", "day after") into a concrete ISO instant. Same tz convention as
@@ -226,7 +256,25 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "meetingDatetimeIso (ISO 8601 with offset for the agreed meeting time resolved from RIGHT "
         f"NOW, e.g. '2026-07-23T15:00:00{now_offset}', or null if none agreed), "
         "meetingDatetimeText (the caller's own words for the time, e.g. 'tomorrow 3 pm', or null), "
-        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null).\n"
+        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null), "
+        # Asked for last, so the model has already committed to the disposition and
+        # the evidence fields before it advises a human. The gist must rest on the
+        # same EVIDENCE RULES as everything above — a recommendation built on an
+        # invented fact is worse than none.
+        f"followUp (one of {list(_FOLLOW_UP_LEVELS)}: should a HUMAN counsellor "
+        "personally call this lead next? CALL = yes, worth a person's time now — a "
+        "real need, a question the assistant could not answer, or interest without a "
+        "booking; CALL_LATER = yes, but at the time the caller asked for; SKIP = no — "
+        "wrong person, a clear refusal, a business that does not fit, or nothing to "
+        "pursue. Judge the LEAD, not the assistant), "
+        "followUpGist (ONE sentence, under 30 words, written for the counsellor "
+        "deciding whether to pick up the phone: lead with the recommendation, then the "
+        "concrete reason FROM THIS CALL — what they run, what they asked, what they "
+        "objected to, when they said to call. e.g. 'Worth a call — runs a 50-member "
+        "hybrid studio, sends links by hand, asked about pricing.' or 'Skip — reached "
+        "a school reception, not a yoga trainer.' or 'Call back Tuesday after 4pm — "
+        "she asked for that slot and sounded keen.' Plain words, no preamble, do not "
+        "restate the disposition label, never include a fact the caller did not say).\n"
         + artefact_spec + condition_spec +
         f"\nTranscript:\n{transcript}\n\nJSON:"
     )
@@ -281,7 +329,47 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         return {"disposition": _INSUFFICIENT,
                 "summary": "Automatic analysis unavailable; see transcript.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
-                "callbackTimeText": None, **_NO_SENDS}
+                "callbackTimeText": None, **_NO_SENDS, **_NO_FOLLOW_UP}
+
+
+def _sanitize_follow_up(analysis: Dict[str, Any], corr: str) -> None:
+    """Closed vocabulary + a length cap on the gist.
+
+    followUp colours the sentence and feeds a filter, so an unrecognised value must
+    become NULL ("not assessed") rather than reach the UI as a mystery string — and
+    NULL must never be read as CALL. The gist is model prose, so it is collapsed to
+    one line and hard-capped; the prompt asks for one sentence but a cap is cheaper
+    than trusting that.
+    """
+    try:
+        raw = str(analysis.get("followUp") or "").strip()
+        norm = raw.upper().replace(" ", "_").replace("-", "_")
+        if norm and norm not in _FOLLOW_UP_LEVELS:
+            logger.info("report: unrecognised followUp %r — recording as not assessed "
+                        "corr=%s", raw, corr)
+        analysis["followUp"] = norm if norm in _FOLLOW_UP_LEVELS else None
+
+        gist = str(analysis.get("followUpGist") or "").strip()
+        # Collapse any newlines the model adds: this lands in a single table cell.
+        gist = " ".join(gist.split())
+        if len(gist) > _GIST_MAX_CHARS:
+            gist = gist[:_GIST_MAX_CHARS - 1].rstrip() + "…"
+        analysis["followUpGist"] = gist or None
+    except Exception:
+        # A cosmetic field must never cost the report.
+        logger.exception("report: sentiment sanitise failed corr=%s", corr)
+        analysis["followUp"] = None
+        analysis["followUpGist"] = None
+
+
+def _caller_word_count(outcome: CallOutcome) -> int:
+    """How many words the caller actually contributed.
+
+    A MEASURED fact, not a model judgement, which is the point: admin_core routes
+    on it (see AiCallOutcomeClassifier's engaged-but-unjudged branch), and routing a
+    lead to a human must not depend on the same model whose label we distrusted.
+    """
+    return sum(len(t.split()) for t in _caller_turns(outcome))
 
 
 def _norm_label(s: Any) -> str:
@@ -867,10 +955,18 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
             "callbackTimeText": None, "meetingRequested": False,
             "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None,
             **_NO_SENDS,
+            # No recommendation is made here — the analyser never ran, and a caller
+            # who said nothing gives a counsellor nothing to decide on. The gist
+            # still says so in plain words, and says what happens next, so the
+            # counsellor is not left guessing why the cell is otherwise empty.
+            **_NO_FOLLOW_UP,
+            "followUpGist": ("Nothing to go on — " + reason
+                             + "; the AI will retry, no manual call needed yet."),
         }
     else:
         analysis = await _analyze(outcome)
         _drop_unevidenced_booking(analysis, outcome.corr)
+        _sanitize_follow_up(analysis, outcome.corr)
     agent = ctx.get("agent") or {}
     _sanitize_sends(analysis, outcome, agent, outcome.corr)
 
@@ -893,6 +989,16 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         # say before we overruled it?" without a schema change or a transcript read.
         "dispositionRawLabel": analysis.get("dispositionRawLabel"),
         "dispositionDowngradedFrom": analysis.get("dispositionDowngradedFrom"),
+        # The counsellor's one-sentence answer to "do I call this lead myself?",
+        # shown under the disposition. followUp only colours it and filters on it.
+        # NULL = not assessed; never read it as CALL.
+        "followUp": analysis.get("followUp"),
+        "followUpGist": analysis.get("followUpGist"),
+        # MEASURED caller engagement. admin_core routes an unjudged-but-engaged call
+        # to a human off this number rather than off the model's label — see
+        # AiCallOutcomeClassifier. Always present, including on the gated paths where
+        # no analysis ran at all.
+        "callerWordCount": _caller_word_count(outcome),
         "leadRating": analysis.get("leadRating"),
         "summary": analysis.get("summary"),
         "extractedQa": analysis.get("extractedQa") or {},

@@ -33,7 +33,11 @@
     "providers": {
         "exotel": "Exotel",
         "aavtaarAi": "AI (Aavtaar)",
-        "airtel": "Airtel"
+        "airtel": "Airtel",
+        "vacademyAi": "AI (Vacademy एजेंट)",
+        "plivo": "Vacademy Voice",
+        "manual": "मैन्युअल अपलोड",
+        "mock": "AI (टेस्ट)"
     },
     "table": {
         "heading": "कॉल",
@@ -86,6 +90,11 @@
     "disposition": {
         "edit": "संपादित करें",
         "set": "सेट करें"
+    },
+    "followUp": {
+        "titleCall": "मैन्युअल कॉल करना उचित है",
+        "titleCallLater": "उनके बताए समय पर वापस कॉल करें",
+        "titleSkip": "मैन्युअल कॉल की ज़रूरत नहीं"
     },
     "recording": {
         "loading": "लोड हो रहा है…",

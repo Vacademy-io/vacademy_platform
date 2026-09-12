@@ -21,6 +21,7 @@
     "headerTooManyVariables_other": "A text header can contain at most one variable; this one has {{count}}.",
     "headerSampleValueMissing": "The header variable needs a sample value for Meta to review it.",
     "headerSampleUrlRequired": "A sample {{type}} URL is required for {{type}}-header templates.",
+    "headerSampleUrlExpiring": "The sample {{type}} link is a temporary signed URL (it carries a Signature/Expires parameter) and will stop working once it expires — Meta would approve the template, then every send would fail. Use Upload to host the file permanently instead.",
     "footerTooLong": "Footer is {{length}} characters; Meta allows at most {{max}}.",
     "footerCannotContainVariables": "Footers cannot contain variables — remove the {{token}} from the footer.",
     "tooManyButtons": "A template can have at most {{max}} buttons.",

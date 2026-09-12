@@ -27,6 +27,17 @@ const BUTTON_TEXT_MAX = 25;
 /** Meta's own ceiling. The builder offers 3, but a template synced from Meta may carry more. */
 const MAX_BUTTONS = 10;
 
+/**
+ * Query parameters that only ever appear on temporary, signed links (S3 presigned GETs,
+ * CloudFront signed URLs, GCS/Azure SAS). Such a link passes Meta's review — the signature is
+ * still valid that day — and then the header media 403s on every send once it expires, because
+ * the send path attaches `header_sample_url` as the template's media on each message.
+ */
+const SIGNED_URL_PARAMS =
+    /[?&](Signature|Expires|X-Amz-Signature|X-Amz-Expires|Key-Pair-Id|Policy|sig)=/i;
+
+export const looksLikeSignedUrl = (url: string): boolean => SIGNED_URL_PARAMS.test(url.trim());
+
 /** Meta allows lowercase letters, digits and underscores, up to 512 characters. */
 export const normalizeTemplateName = (raw: string): string =>
     raw.toLowerCase().replace(/[^a-z0-9_]/g, '_');
@@ -212,6 +223,11 @@ export const validateForSubmit = (
         problems.push({
             field: 'headerSampleUrl',
             message: t('headerSampleUrlRequired', { type: dto.headerType.toLowerCase() }),
+        });
+    } else if (dto.headerType !== 'NONE' && looksLikeSignedUrl(dto.headerSampleUrl)) {
+        problems.push({
+            field: 'headerSampleUrl',
+            message: t('headerSampleUrlExpiring', { type: dto.headerType.toLowerCase() }),
         });
     }
 

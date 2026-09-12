@@ -5,7 +5,7 @@
  * number of params (0)". These cover the generator side of that contract.
  */
 import { describe, expect, it } from 'vitest';
-import { declaredParamsKey, getTemplatesForTrigger } from './use-case-templates';
+import { declaredParamsKey, getTemplatesForTrigger, isQuestionApplicable } from './use-case-templates';
 
 /** The audience-confirmation use case, which maps six named vars for email. */
 function confirmationTemplate() {
@@ -76,5 +76,52 @@ describe('makeChannelSendNodes — WhatsApp templateVars', () => {
             waTemplateName: 'unknown',
         });
         expect(config.templateVars).toMatchObject({ name: 'Full Name' });
+    });
+});
+
+/**
+ * Per-enrolment triggers already carry the batch the learner joined
+ * (`packageSessionIds` on the context), and the trigger's own scope decides
+ * which batches fire. Asking for a batch again in the wizard was worse than
+ * redundant: the hard-coded answer overrode the trigger scope — three batches
+ * selected on the trigger, one batch messaged.
+ */
+describe('email_batch_students — batch comes from the trigger when it can', () => {
+    function template(trigger: string) {
+        const tmpl = getTemplatesForTrigger(trigger, 'EVENT_DRIVEN')
+            .find((t) => t.id === 'email_batch_students');
+        if (!tmpl) throw new Error(`email_batch_students not offered for ${trigger}`);
+        return tmpl;
+    }
+
+    function queryBatchId(trigger: string, answers: Record<string, string | number | string[]>) {
+        const { nodes } = template(trigger).generateWorkflow(answers, trigger);
+        const query = nodes.find((n) => n.data.nodeType === 'QUERY');
+        const params = (query?.data.config as { params: { batchId: string } }).params;
+        return params.batchId;
+    }
+
+    const base = { channel: 'EMAIL', templateName: 'reminder' };
+
+    it('does not ask for a batch on LEARNER_BATCH_ENROLLMENT', () => {
+        const batchQ = template('LEARNER_BATCH_ENROLLMENT').questions.find((q) => q.id === 'batchId')!;
+        expect(isQuestionApplicable(batchQ, base, 'LEARNER_BATCH_ENROLLMENT')).toBe(false);
+        expect(isQuestionApplicable(batchQ, base, 'SUB_ORG_MEMBER_ENROLLMENT')).toBe(false);
+    });
+
+    it('reads the batch from the trigger context on enrolment events', () => {
+        expect(queryBatchId('LEARNER_BATCH_ENROLLMENT', base)).toBe("#ctx['packageSessionIds']");
+        expect(queryBatchId('SUB_ORG_MEMBER_ENROLLMENT', base)).toBe("#ctx['packageSessionIds']");
+    });
+
+    it('ignores a stale batch answer on enrolment events — the trigger wins', () => {
+        expect(queryBatchId('LEARNER_BATCH_ENROLLMENT', { ...base, batchId: 'stale-batch' }))
+            .toBe("#ctx['packageSessionIds']");
+    });
+
+    it('still asks for, and uses, the batch on triggers that do not carry one', () => {
+        const batchQ = template('LIVE_SESSION_START').questions.find((q) => q.id === 'batchId')!;
+        expect(isQuestionApplicable(batchQ, base, 'LIVE_SESSION_START')).toBe(true);
+        expect(queryBatchId('LIVE_SESSION_START', { ...base, batchId: 'batch-42' })).toBe('batch-42');
     });
 });

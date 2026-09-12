@@ -36,6 +36,14 @@ export interface WizardQuestion {
     /** Only show this question if another answer matches */
     showIf?: { questionId: string; values: string[] };
     /**
+     * Skip this question when the workflow is built on one of these trigger
+     * events, because the event already supplies the answer at run time (and
+     * the generator reads it from the context instead). Asking anyway is not
+     * just redundant — a hard-coded answer silently overrides whatever scope
+     * the admin set on the trigger in the previous step.
+     */
+    hideForTriggers?: string[];
+    /**
      * Optional override for which entry in SAMPLE_TEMPLATES to offer as a
      * "Use sample" button alongside this template_select question. Defaults to
      * the use-case template's id. Set explicitly when a single use-case has
@@ -135,6 +143,52 @@ function whatsappTemplateQuestion(overrides: Partial<WizardQuestion> = {}): Wiza
         showIf: { questionId: 'channel', values: ['WHATSAPP', 'BOTH'] },
         ...overrides,
     };
+}
+
+/**
+ * Whether a question applies given the current answers and trigger event.
+ * The single source of truth for the wizard's "is this question asked?"
+ * decision — rendering, the Generate gate, and the preview all go through it
+ * so they cannot disagree about which questions are required.
+ */
+export function isQuestionApplicable(
+    question: WizardQuestion,
+    answers: Record<string, string | number | string[]>,
+    triggerEvent: string | undefined
+): boolean {
+    if (triggerEvent && question.hideForTriggers?.includes(triggerEvent)) return false;
+    if (!question.showIf) return true;
+    const depVal = String(answers[question.showIf.questionId] ?? '');
+    return question.showIf.values.includes(depVal);
+}
+
+// ─── Batch from the trigger ───
+//
+// Per-enrolment events put the batch the learner just joined on the workflow
+// context as `packageSessionIds` (a single id, despite the plural name —
+// StudentRegistrationManager.triggerEnrollmentWorkflow and
+// SubOrgMemberEnrollmentContext both write it that way). Templates that query
+// "students in the batch" read it from there rather than asking the admin to
+// pick one: the trigger's own scope (step 3) already decides which batches
+// fire, and a batch hard-coded here would override it — three batches selected
+// on the trigger, one batch messaged.
+
+/** Trigger events whose context carries the batch as `packageSessionIds`. */
+const BATCH_FROM_TRIGGER = ['LEARNER_BATCH_ENROLLMENT', 'SUB_ORG_MEMBER_ENROLLMENT'];
+
+/** SpEL that resolves to the batch from a BATCH_FROM_TRIGGER event's context. */
+const BATCH_FROM_CONTEXT = "#ctx['packageSessionIds']";
+
+/**
+ * The batch id a "students in batch" QUERY should use: the trigger's own
+ * batch when the event supplies one, else whatever the admin picked.
+ */
+function batchIdFor(
+    answers: Record<string, string | number | string[]>,
+    triggerEvent: string | undefined
+): string {
+    if (triggerEvent && BATCH_FROM_TRIGGER.includes(triggerEvent)) return BATCH_FROM_CONTEXT;
+    return answers.batchId as string;
 }
 
 /**
@@ -500,6 +554,7 @@ function buildUseCaseTemplates(): UseCaseTemplate[] {
                 helpText: wt('templates.email_batch_students.questions.batchId.helpText'),
                 type: 'batch_select',
                 required: true,
+                hideForTriggers: BATCH_FROM_TRIGGER,
             },
             channelQuestion(),
             {
@@ -532,7 +587,7 @@ function buildUseCaseTemplates(): UseCaseTemplate[] {
 
             const queryNode = makeNode('QUERY', wt('shared.nodes.fetchBatchStudents'), {
                 prebuiltKey: 'fetch_students_by_batch',
-                params: { batchId: answers.batchId as string },
+                params: { batchId: batchIdFor(answers, triggerEvent) },
             }, 250, 230);
 
             const send = makeChannelSendNodes(answers, {
@@ -1032,6 +1087,7 @@ function buildUseCaseTemplates(): UseCaseTemplate[] {
                 label: wt('shared.questions.batchId.label'),
                 type: 'batch_select',
                 required: true,
+                hideForTriggers: BATCH_FROM_TRIGGER,
             },
             channelQuestion(),
             {
@@ -1052,7 +1108,7 @@ function buildUseCaseTemplates(): UseCaseTemplate[] {
 
             const queryNode = makeNode('QUERY', wt('shared.nodes.fetchBatchStudents'), {
                 prebuiltKey: 'fetch_students_by_batch',
-                params: { batchId: answers.batchId as string },
+                params: { batchId: batchIdFor(answers, triggerEvent) },
             }, 250, 230);
 
             const send = makeChannelSendNodes(answers, {

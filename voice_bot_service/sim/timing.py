@@ -79,6 +79,11 @@ class Scenario:
     ttft: float = 0.45
     tts_ttfb: float = 0.35
     note: str = ""
+    # Sentences pre-loaded into the speech cache under exactly the key run_bot's
+    # install_tts_cache will look them up with, so the reply HITS the cache and
+    # the cached-sentence path (own audio context, synchronous frames) runs for
+    # real. Non-empty also keeps the agent's speech_cache_mode FULL.
+    cache_warm: List[str] = field(default_factory=list)
 
 
 # ── the simulated line ──────────────────────────────────────────────────────
@@ -189,8 +194,12 @@ def build(scenario: Scenario, line: Line, verbose: bool = False):
             # utterance bracket and the played-transcript recorder all key on
             # them) and pauses frame processing while a sentence renders. One
             # audio context per sentence as the speech cache configures it.
+            # push_text_frames=False like Smallest (word_timestamps=True): the
+            # TTSTextFrames come from word timings, not from the base class
+            # after run_tts. The speech cache's hit path keys on this flag.
             super().__init__(sample_rate=24000, push_start_frame=True, push_stop_frames=True,
-                             pause_frame_processing=True, reuse_context_id_within_turn=False)
+                             pause_frame_processing=True, reuse_context_id_within_turn=False,
+                             push_text_frames=False)
             self.model_name = "sim-tts"
 
         async def run_tts(self, text: str, context_id: str):
@@ -206,6 +215,11 @@ def build(scenario: Scenario, line: Line, verbose: bool = False):
             yield TTSStartedFrame(context_id=context_id)
             for i in range(0, len(pcm), step):
                 yield TTSAudioRawFrame(pcm[i:i + step], 24000, 1, context_id=context_id)
+            # Word timings, as Smallest reports them: pipecat turns these into
+            # the TTSTextFrames the played-transcript recorder keys on.
+            per = secs / words
+            await self.add_word_timestamps(
+                [(w, i * per) for i, w in enumerate(text.split())], context_id)
             yield TTSStoppedFrame(context_id=context_id)
 
     class SimInput(BaseInputTransport):
@@ -332,14 +346,48 @@ def build(scenario: Scenario, line: Line, verbose: bool = False):
     return transport, {"stt": stt, "llm": llm, "tts": tts}
 
 
+def _warm_cache(tts, agent: Dict[str, Any], lines: List[str]) -> None:
+    """Store `lines` in the speech cache the way a previous call would have,
+    keyed exactly as run_bot's install_tts_cache keys a lookup for this tts
+    service and agent (engine_of, _agent_voice, pace, temperature)."""
+    from app import ttscache
+    from app.bot import _agent_voice, _as_float
+    from app.providers import engine_of
+    engine, model = engine_of(tts)
+    cache = ttscache.get_cache()
+    cache.open()
+    for text in lines:
+        norm = text.strip()
+        key = ttscache.cache_key(engine=engine.lower(), model=model,
+                                 voice=_agent_voice(agent) or "",
+                                 pace=_as_float(agent.get("pace")),
+                                 temperature=_as_float(agent.get("temperature")),
+                                 sample_rate=ttscache.SAMPLE_RATE, term_map_version="",
+                                 text=norm)
+        cand = ttscache.Candidate(key=key, text=norm, chars=len(norm), engine=engine.lower(),
+                                  model=model, voice=_agent_voice(agent) or "",
+                                  pace=_as_float(agent.get("pace")),
+                                  temperature=_as_float(agent.get("temperature")), fixed=True)
+        cache.ladder([cand])
+        # ~60 ms per character of voiced 8 kHz tone: inside plausible_duration.
+        n = int(ttscache.SAMPLE_RATE * 0.06 * len(norm))
+        t = np.arange(n) / ttscache.SAMPLE_RATE
+        pcm = (np.sin(2 * np.pi * 210 * t) * 9000).astype(np.int16).tobytes()
+        ok = cache.store(cand, pcm)
+        if not ok:
+            raise RuntimeError(f"cache warm refused {norm!r}")
+
+
 async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = False) -> Dict[str, Any]:
     from app import bot as b
     ctx = json.loads(json.dumps(ctx))
-    ctx["agent"]["speech_cache_mode"] = "OFF"
+    ctx["agent"]["speech_cache_mode"] = "FULL" if scenario.cache_warm else "OFF"
     ctx["agent"]["voiceModulation"] = 1.0
     ctx["corr"] = f"sim-{scenario.key}"
     line = Line()
     transport, providers = build(scenario, line, verbose)
+    if scenario.cache_warm:
+        _warm_cache(providers["tts"], ctx["agent"], scenario.cache_warm)
     outcome = b.CallOutcome(corr=ctx["corr"], context=ctx)
     try:
         await asyncio.wait_for(b.run_bot(transport, ctx["corr"], ctx, outcome,
@@ -380,6 +428,16 @@ OPEN_ANSWER = "Yes, go ahead."
 PITCH_Q = ("So the reason I called — we work with yoga teachers on everything around their online "
            "classes. The daily link, the reminders, the fees. Who's doing the daily running around "
            "right now? Is that you, or does someone help?")
+
+
+def _after_word(text: str, word: str, ttfb: float = 0.35) -> float:
+    """Seconds after the bot utterance starts at which `word` has finished
+    playing under SimTTS's pacing (words / 2.8 per second, first audio after
+    ttfb)."""
+    words = text.split()
+    i = words.index(word)
+    per = max(0.5, len(words) / 2.8) / len(words)
+    return round(ttfb + (i + 1) * per + 0.15, 2)
 
 
 def _assistant_texts(res):
@@ -474,10 +532,49 @@ def chk_turn_latency(res):
     return [f"turn latency {slow} s (caller stop → bot audio)"] if slow else []
 
 
+def chk_cached_opener(res):
+    """Call 994162b0 (2026-09-12): 'Thank you.' from the cache, then 3.6 s of
+    nothing before the pitch. A cached sentence's own audio context only closed
+    on pipecat's 3 s idle timeout, and the next sentence waited behind it."""
+    f = []
+    if not res["caller"]:
+        return ["caller never spoke"]
+    cend = res["caller"][0][1]
+    # The reply only; the idle nudge ~8 s after it is a different scenario.
+    ivs = [iv for iv in res["bot"] if cend <= iv[0] < cend + 12.0]
+    if not ivs:
+        return ["no bot audio after the caller's answer"]
+    gaps = [round(b - a, 2) for (_, a), (b, _) in zip(ivs, ivs[1:])]
+    if any(g > 1.0 for g in gaps):
+        f.append(f"silence inside the reply: gaps {gaps} s between bot audio intervals")
+    if ivs[0][0] - cend > 2.5:
+        f.append(f"reply started {ivs[0][0] - cend:.2f}s after the caller stopped")
+    total = sum(b - a for a, b in ivs)
+    if total < 5.0:
+        f.append(f"reply audio only {total:.1f}s — a sentence was lost")
+    texts = " ".join(_assistant_texts(res))
+    for s in ("Thank you", "daily link"):
+        if s not in texts:
+            f.append(f"{s!r} never reached the played transcript")
+    return f
+
+
 SCENARIOS: List[Scenario] = [
+    Scenario("cached_opener_then_pitch",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=["Thank you. So the reason I called — we work with yoga teachers on everything "
+                      "around their online classes. The daily link, the reminders, the fees."],
+             checks=chk_cached_opener, max_secs=30, cache_warm=["Thank you."],
+             note="call 994162b0: cached 'Thank you.' then 3.6 s of silence — the cached per-sentence "
+                  "context only closed on pipecat's 3 s idle timeout"),
     Scenario("yes_over_tail",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
-                     Say("Yes.", after_bot_start=2, offset=11.0, stt_latency=0.4)],
+                     # Right after "right now?" has PLAYED (word timings reach the
+                     # played transcript per word, as with Smallest), while the tail
+                     # "Is that you, or does someone help?" is still queued — call
+                     # 34f258c2's shape exactly.
+                     Say("Yes.", after_bot_start=2, offset=_after_word(PITCH_Q, "now?"),
+                         stt_latency=0.4)],
              replies=[PITCH_Q, "Great — so it's on you. Honestly, the fees part is what most teachers are fed up with."],
              checks=lambda r: chk_yes_over_tail(r) + chk_turn_latency(r), max_secs=40,
              note="call 34f258c2: '…Is that you?' → 'Yes.' → the held tail 'or does someone help?' resumed"),
@@ -520,6 +617,10 @@ BY_KEY = {s.key: s for s in SCENARIOS}
 
 
 async def main():
+    import os, tempfile
+    # A private speech cache per run: warm lines must never land in the box's
+    # real ledger, and CI has no writable /srv/data.
+    os.environ["TTS_CACHE_DIR"] = tempfile.mkdtemp(prefix="sim-tts-cache-")
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenarios", default="all")
     ap.add_argument("--verbose", action="store_true")

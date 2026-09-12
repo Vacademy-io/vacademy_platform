@@ -3948,3 +3948,88 @@ def test_stt_provider_smallest_maps_agent_language_pins_and_honours_the_hold(mon
             pv.build_stt(8000)
     finally:
         _gs.cache_clear()
+
+
+# ── call 08df7128 (2026-09-12): "Right." "Right." then 12 s of nothing ───────
+
+@pytest.mark.asyncio
+async def test_the_same_filler_twice_in_one_reply_is_dropped():
+    """The model opened with 'Right.' and, after its real sentences were
+    already-said drops, closed with another 'Right.' — two cached contexts,
+    each 3 s of phantom speaking, and the caller heard a filler twice.
+    Different acknowledgments in one reply stay (see
+    test_short_acknowledgements_are_never_suppressed)."""
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="Yes")
+    await _reply(g, "Right. ", "Right.")
+    assert [t.strip() for t in rec.text] == ["Right."]
+    rec.text.clear()
+    await _reply(g, "Okay. ", "Right.")
+    assert [t.strip() for t in rec.text] == ["Okay.", "Right."]
+
+
+@pytest.mark.asyncio
+async def test_only_fillers_surviving_hands_the_turn_back():
+    """'Right.' survived, the three real sentences behind it were dropped as
+    already said, and the caller got 'Right.' then silence. 'Nothing
+    answerable was said' must hand back exactly like 'nothing was said'."""
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="Yes")
+    S = "So that morning message is on you, daily, and the link goes out on its own."
+    await _reply(g, S)
+    rec.text.clear()
+    await _reply(g, "Right. ", S)
+    said = [t.strip() for t in rec.text]
+    assert said[0] == "Right."
+    assert len(said) == 2, said
+    assert said[1] in b.NoRepeatGate._HANDBACK + b.NoRepeatGate._HANDBACK_EN, said
+
+
+@pytest.mark.asyncio
+async def test_fillers_do_not_feed_the_hand_back_escalation():
+    """Widening the content-free set once made 'Theek hai. Achha.' hold its
+    own opener on the next reply (the escalation counter saw a content-free
+    TURN). Acknowledgment noises are fillers for the two rules above and
+    nothing else."""
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="haan")
+    await _reply(g, "Right.")
+    assert g._consecutive_handbacks == 0
+    rec.text.clear()
+    await _reply(g, "Okay. ", "Sunday ko hai.")
+    assert [t.strip() for t in rec.text] == ["Okay.", "Sunday ko hai."]
+
+
+@pytest.mark.asyncio
+async def test_no_hand_back_after_a_forced_close():
+    """A goodbye must stay a goodbye: with the caller having asked to end, an
+    already-said tail behind a short closing line must not grow a 'Yes, go
+    ahead.'"""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "cut the call",
+                       end_forced=lambda: True)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    S = "Thank you for your time, have a lovely day ahead."
+    await _reply(g, S)
+    rec.text.clear()
+    await _reply(g, "Okay. ", S)
+    said = [t.strip() for t in rec.text]
+    assert said == ["Okay."], said
+
+
+def test_played_question_check_tolerates_a_few_words_of_the_next_sentence():
+    """Word-timed text frames + STT finality delay: by the time 'Yes.' lands,
+    'Is that' has already played after 'right now?'. Still an answer to the
+    question. A long stretch after the last '?' is not."""
+    class _O:
+        transcript = [{"role": "assistant", "text": "Who is doing it right now? Is that"},
+                      {"role": "user", "text": "Yes."}]
+    tc = b.TranscriptCollector.__new__(b.TranscriptCollector)
+    tc._outcome = _O()
+    assert tc._played_ended_with_question() is True
+    _O.transcript[0]["text"] = ("Who is doing it right now? Is that you or does someone help "
+                                "you every single morning with the")
+    assert tc._played_ended_with_question() is False
+    _O.transcript[0]["text"] = "So the reason I called is the daily link"
+    assert tc._played_ended_with_question() is False

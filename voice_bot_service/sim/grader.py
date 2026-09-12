@@ -15,6 +15,10 @@ _PRICE = re.compile(r"(₹|rs\.?|rupees|inr)\s?\d|\b\d{3,5}\s?(per|/|a)\s?(month
 _CLOCK = re.compile(r"\b\d{1,2}(:\d{2})?\s?(am|pm)\b", re.I)
 _ONLINE_PITCH = re.compile(r"\b(zoom|google meet|daily link|the link|recordings?|online sessions?)\b", re.I)
 _DAILY_LINK_Q = re.compile(r"(who sends the link|send(ing|s)? (the|that|out the) link|daily link|day's link)", re.I)
+_CONTENT_FREE = {"right", "okay", "ok", "hmm", "achha", "acha", "theek hai", "thik hai", "sure",
+                 "alright", "i see", "got it", "understood", "great", "okay great", "fair enough",
+                 "correct", "yes", "yes go ahead", "please go on", "sorry you were saying", "ji",
+                 "ji boliye", "haan ji", "haan", "aap bataiye", "boliye", "bataiye", "yes?", "hmm hmm"}
 _HINDI = re.compile(r"[ऀ-ॿ]|\b(aap|hai|hain|kya|main|hoon|ke|ki|ka|ji|nahi|haan|theek|bataiye|kaise)\b", re.I)
 
 
@@ -50,6 +54,14 @@ def grade(persona, convo: List[Dict], lead_name: str, now: Optional[datetime] = 
             warns.append(f"turn {i}: monologue ({len(t['text'].split())} words)")
         if t["text"].count("?") > 2:
             warns.append(f"turn {i}: {t['text'].count('?')} questions in one turn")
+    # Call 08df7128 (2026-09-12): the caller heard "Right." and then nothing —
+    # every real sentence behind it was an already-said drop. What the caller
+    # HEARS must carry something answerable; a bare acknowledgment is a dead turn.
+    for i, t in enumerate(bot[1:], 1):
+        heard = " ".join(w.strip(".,!?…") for w in t["text"].lower().split())
+        if heard and heard in _CONTENT_FREE:
+            fails.append(f"turn {i}: content-free reply {t['text'][:24]!r}")
+            break
     seen = set()
     for t in bot:
         for s in re.split(r"(?<=[.?!])\s+", t["text"]):

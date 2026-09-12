@@ -1177,3 +1177,101 @@ def test_plausible_duration_rejects_drones_and_keeps_real_speech():
     # 4 s floor: a short line may take up to 4 s (pauses, slow voice).
     assert plausible_duration("Okay.", 3_900)
     assert not plausible_duration("Okay.", 4_100 * 2)
+
+
+async def test_a_cached_sentence_closes_its_own_per_sentence_context(
+        monkeypatch, tmp_path):
+    """Live call 994162b0 (2026-09-12): 'Thank you.' from the cache, then 3.6 s
+    of silence before the next cached sentence. With per-sentence contexts the
+    base class never closes a cached context (the vendor's 'done' does that for
+    vendor audio, and the turn-end close targets an id no sentence uses), so the
+    queue sat open until pipecat's 3 s idle timeout and the next sentence's audio
+    waited behind it. The hit path must append the stop bracket and the None
+    sentinel itself, in that order, after its audio and text."""
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    line = "Thank you."
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(400))
+
+    tts = _FakeTTS()
+    tts._reuse_context_id_within_turn = True
+    removed = []
+
+    async def remove_audio_context(cid):
+        removed.append(cid)
+    tts.remove_audio_context = remove_audio_context
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+    assert ttscache.per_sentence_contexts(tts)
+
+    order = []
+    async for f in tts.run_tts(line, "ctx-thanks"):
+        if f is not None:
+            order.append(type(f).__name__)
+            if removed:
+                order.append("<removed>")
+    assert "TTSAudioRawFrame" in order and "TTSTextFrame" in order
+    assert order[-2:] == ["TTSStoppedFrame", "<removed>"] or (
+        order[-1] == "TTSStoppedFrame" and removed == ["ctx-thanks"]), order
+    assert removed == ["ctx-thanks"]
+    # the stop bracket must come AFTER the text frame, which comes after audio
+    assert order.index("TTSTextFrame") > order.index("TTSAudioRawFrame")
+    assert order.index("TTSStoppedFrame") > order.index("TTSTextFrame")
+
+
+async def test_a_cached_sentence_does_not_close_a_shared_turn_context(
+        monkeypatch, tmp_path):
+    """With one context per TURN (cache disabled for the agent, or a sync
+    engine), closing after the first sentence would cut the rest of the turn
+    off. The base class owns the close there; the hit path must not touch it."""
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    line = "Theek hai, dhanyavaad."
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(600))
+    tts = _FakeTTS()
+    removed = []
+
+    async def remove_audio_context(cid):
+        removed.append(cid)
+    tts.remove_audio_context = remove_audio_context
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+    tts._reuse_context_id_within_turn = True      # shared turn context
+    kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-1") if f is not None]
+    assert "TTSAudioRawFrame" in kinds
+    assert "TTSStoppedFrame" not in kinds and removed == []
+
+
+async def test_a_push_text_frames_engine_is_left_to_the_base_class(
+        monkeypatch, tmp_path):
+    """On an engine where pipecat appends the TTSTextFrame AFTER run_tts
+    returns, closing inside run_tts would put the None sentinel ahead of the
+    text and the sentence would vanish from the played transcript (the timing
+    simulator's stub caught this). Such engines keep the base-class close."""
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    line = "Thank you."
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(400))
+    tts = _FakeTTS()
+    tts._push_text_frames = True
+    removed = []
+
+    async def remove_audio_context(cid):
+        removed.append(cid)
+    tts.remove_audio_context = remove_audio_context
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+    kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-2") if f is not None]
+    assert "TTSAudioRawFrame" in kinds and removed == []

@@ -1316,6 +1316,34 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
 
                     if own_stop:
                         yield TTSStoppedFrame(context_id=context_id)
+                    elif per_sentence_contexts(tts) and own_text:
+                        # CLOSE OUR OWN CONTEXT. With one context per sentence the
+                        # base class never closes a cached one: a vendor context is
+                        # closed by the vendor's own "done" in the receive loop,
+                        # and on_turn_context_completed only closes
+                        # _turn_context_id — a fresh id created at turn start
+                        # that NO sentence uses once reuse is off. A cached
+                        # sentence's queue therefore sat open until
+                        # _handle_audio_context's 3 s idle timeout, and the next
+                        # sentence's audio waited behind it. Live call 994162b0
+                        # (2026-09-12): "Thank you." (0.4 s, cached) then 3.6 s of
+                        # silence before "So the reason I called…" — on EVERY
+                        # reply whose first sentence was short and cached. A long
+                        # cached sentence hid it (its own audio kept the queue
+                        # busy), which is why the hole only surfaced with the
+                        # short-first-sentence rule. Mirror the vendor path: the
+                        # stop bracket, then the None sentinel. The stop frame is
+                        # already in the queue when this line runs — the consumer
+                        # appends each yielded frame before resuming us — so the
+                        # order audio → text → stopped → None holds. ONLY when we
+                        # own the text frame: on a push_text_frames engine the base
+                        # class appends its TTSTextFrame after run_tts returns, i.e.
+                        # after our None, and it would never be dequeued.
+                        if getattr(tts, "_push_stop_frames", False):
+                            yield TTSStoppedFrame(context_id=context_id)
+                        remove = getattr(tts, "remove_audio_context", None)
+                        if remove is not None:
+                            await remove(context_id)
                     return
 
         # Counted here rather than at entry, so the denominator is "sentences the

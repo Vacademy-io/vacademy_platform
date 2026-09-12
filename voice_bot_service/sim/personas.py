@@ -83,6 +83,14 @@ PERSONAS: List[Persona] = [
             "short and offer to call back, say 'Evening is fine' and hang up. If they pitch anyway, say "
             "'I said I'm busy' [HANGUP].",
             checks=["short_when_busy"], max_turns=3),
+    Persona("what_do_you_want", "Dr. Shweta Rao",                      # call 08df7128, 2026-09-12
+            _STYLE + " You teach yoga online on Zoom and send the day's link yourself every morning. "
+            "For your first three replies answer with one or two words only ('Yes.', 'Online.', "
+            "'Every morning.'). On your fourth reply say: 'Hello? Okay, so what exactly are you "
+            "looking for from me?' — you want ONE straight line about what they want from you. If "
+            "the reply repeats their pitch instead of answering that, say 'You already said that' "
+            "and hang up. Otherwise say 'Okay, send me the details' and hang up.",
+            checks=[], max_turns=6),
     Persona("objector", "Deepak Menon",
             _STYLE + " You run online yoga on Zoom with 40 students. After the pitch say: 'We manage fine "
             "on WhatsApp groups. Why would I pay for this?' Push back once more if the answer is generic, "

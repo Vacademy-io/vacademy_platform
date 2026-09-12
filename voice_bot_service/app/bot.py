@@ -285,7 +285,16 @@ class TranscriptCollector(FrameProcessor):
         prev = t[-2]
         if prev.get("role") != "assistant":
             return False
-        return (prev.get("text") or "").rstrip().endswith(("?", "？"))
+        text = (prev.get("text") or "").rstrip()
+        if text.endswith(("?", "？")):
+            return True
+        # Text reaches the played transcript per WORD (Smallest word timings),
+        # and the STT final lands 0.4-0.8 s after the caller starts — by then a
+        # few words of the next sentence have played: "…right now? Is that".
+        # The caller is answering the question; the fragment is the interrupted
+        # continuation. Timing simulator yes_over_tail, 2026-09-12.
+        i = max(text.rfind("?"), text.rfind("？"))
+        return i >= 0 and len(text[i + 1:].split()) <= 8
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -904,6 +913,8 @@ class NoRepeatGate(FrameProcessor):
         # nothing else — whether that came from us or from the model.
         self._consecutive_handbacks = 0
         self._said_real = False
+        self._cf_this_reply: set = set()   # fillers said in THIS reply (keys)
+        self._real_this_reply = False       # anything non-filler said in THIS reply
         # A content-free opener we are holding rather than speaking, and the last
         # sentence the gate dropped (kept ACROSS turns, unlike _held_tail).
         self._cf_held = ""
@@ -1074,6 +1085,18 @@ class NoRepeatGate(FrameProcessor):
         "bataiye", "haan", "yes", "yes go ahead", "please go on",
         "sorry you were saying",
     })
+    # Acknowledgment noises. NOT folded into _CONTENT_FREE: that set also drives
+    # the hand-back escalation and the content-free-turn counter, and widening
+    # it made "Theek hai. Achha." hold its own opener. Call 08df7128
+    # (2026-09-12): "Right." "Right." was the whole audible reply twice over —
+    # each a separate cached TTS context, each 3 s of phantom speaking — and
+    # when only a filler survives the already-said drops the caller has nothing
+    # to answer. Farewells and thanks are NOT here on purpose.
+    _FILLER = frozenset({
+        "right", "okay", "ok", "okay okay", "hmm", "hmm hmm", "achha", "acha",
+        "theek hai", "thik hai", "theek", "sure", "alright", "i see", "got it",
+        "understood", "great", "okay great", "ok great", "fair enough", "correct",
+    })
 
     # Strip punctuation only. NOT isalnum() — Devanagari vowel signs are not
     # alphanumeric, so an isalnum filter turns "जी, बोलिए।" into "ज बलए" and the
@@ -1081,11 +1104,22 @@ class NoRepeatGate(FrameProcessor):
     _CF_STRIP = "।॥.,!?…\"'`~()[]{}:;-–—"
 
     @classmethod
-    def _is_content_free(cls, text: str) -> bool:
-        """Would the caller get NOTHING out of this reply? ("जी, बोलिए।")"""
+    def _cf_key(cls, text: str) -> str:
         words = [w.strip(cls._CF_STRIP)
                  for w in (text or "").casefold().replace("।", " ").split()]
-        return " ".join(w for w in words if w) in cls._CONTENT_FREE
+        return " ".join(w for w in words if w)
+
+    @classmethod
+    def _is_content_free(cls, text: str) -> bool:
+        """Would the caller get NOTHING out of this reply? ("जी, बोलिए।")"""
+        return cls._cf_key(text) in cls._CONTENT_FREE
+
+    @classmethod
+    def _is_filler(cls, text: str) -> bool:
+        """A sentence that carries nothing answerable: a hand-back OR an
+        acknowledgment noise."""
+        k = cls._cf_key(text)
+        return k in cls._CONTENT_FREE or k in cls._FILLER
 
     async def _emit(self, text: str, direction):
         # The End-branch strips its tail, so without this the assistant
@@ -1110,6 +1144,10 @@ class NoRepeatGate(FrameProcessor):
         self._emitted += 1
         if not self._is_content_free(text):
             self._said_real = True          # the bot said something answerable
+        if self._is_filler(text):
+            self._cf_this_reply.add(self._cf_key(text))
+        else:
+            self._real_this_reply = True
         await self.push_frame(LLMTextFrame(text), direction)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -1119,6 +1157,8 @@ class NoRepeatGate(FrameProcessor):
             self._buf, self._emitted, self._held_tail = "", 0, ""
             self._said_real = False
             self._cf_held = ""
+            self._cf_this_reply = set()
+            self._real_this_reply = False
             self._strict_this_response = self._continuation_next
             self._continuation_next = False
             # The previous response ran to a natural start-of-next — its
@@ -1165,6 +1205,8 @@ class NoRepeatGate(FrameProcessor):
                     logger.exception("no-repeat: unplayed-revert failed — keeping all")
             self._pending = []
             self._buf, self._held_tail, self._cf_held = "", "", ""
+            self._cf_this_reply = set()
+            self._real_this_reply = False
             await self.push_frame(frame, direction)
             return
 
@@ -1203,6 +1245,15 @@ class NoRepeatGate(FrameProcessor):
                     logger.info("no-repeat: holding a second content-free opener %r",
                                 sentence.strip()[:32])
                     continue
+                # The SAME content-free sentence twice in ONE reply says nothing
+                # twice. Call 08df7128: "Right." … "Right." was all that survived
+                # the already-said drops. Different acknowledgments in one reply
+                # ("Theek hai. Achha.") stay — that is how people talk.
+                if (self._is_filler(sentence)
+                        and self._cf_key(sentence) in self._cf_this_reply):
+                    logger.info("no-repeat: dropping repeated filler %r",
+                                sentence.strip()[:24])
+                    continue
                 if self._keep(sentence):
                     await self._emit(sentence, direction)
                 else:
@@ -1218,6 +1269,10 @@ class NoRepeatGate(FrameProcessor):
             if tail and not any(ch.isalnum() for ch in tail):
                 logger.info("no-repeat: dropping letterless tail %r", tail[:16])
                 tail = ""
+            if (tail and self._is_filler(tail)
+                    and self._cf_key(tail) in self._cf_this_reply):
+                logger.info("no-repeat: dropping repeated filler tail %r", tail[:24])
+                tail = ""
             if tail:
                 if self._emitted == 0:
                     tail = self._trim_echo(tail)
@@ -1228,7 +1283,12 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", tail[:56])
-            if self._emitted == 0 and self._held_tail:
+            # "Nothing answerable was said" — not "nothing was said". Call
+            # 08df7128: "Right." survived, the three real sentences behind it were
+            # already-said drops, and the caller got "Right." then 12 s of
+            # nothing. Never on a forced close: a goodbye must stay a goodbye.
+            if (not self._real_this_reply and self._held_tail
+                    and not self._end_forced()):
                 if self._consecutive_handbacks >= 1:
                     # ESCALATE (call 3148ccd4). We already handed the turn back
                     # once and the caller still has nothing to answer. Saying

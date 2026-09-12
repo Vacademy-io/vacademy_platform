@@ -4033,3 +4033,67 @@ def test_played_question_check_tolerates_a_few_words_of_the_next_sentence():
     assert tc._played_ended_with_question() is False
     _O.transcript[0]["text"] = "So the reason I called is the daily link"
     assert tc._played_ended_with_question() is False
+
+
+# ── call f08f5712 (2026-09-12): "Hello?" after the question; "Yes, I'm here." twice ──
+
+@pytest.mark.asyncio
+async def test_the_same_sentence_twice_in_one_reply_is_dropped_whatever_its_length():
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="Hello? Hello, hello, hello?")
+    await _reply(g, "Yes, I'm here. ", "Yes, I'm here.")
+    assert [t.strip() for t in rec.text] == ["Yes, I'm here."]
+    # across replies a short sentence may still recur (acknowledgments)
+    rec.text.clear()
+    await _reply(g, "Yes, I'm here.")
+    assert [t.strip() for t in rec.text] == ["Yes, I'm here."]
+
+
+def test_caller_checking_presence():
+    from app.turntake import caller_checking_presence as f
+    for yes in ("Hello?", "Hello? Hello, hello, hello?", "hello hello", "Are you there?",
+                "Kya aap sun rahe hain?", "hello ji", "Awaaz aa rahi hai?"):
+        assert f(yes), yes
+    for no in ("Yes.", "Online.", "Hello, I teach yoga online on Zoom.", "haan ji online",
+               "yes go ahead", "", "[cue]"):
+        assert not f(no), no
+
+
+def test_last_played_question_comes_from_what_the_caller_heard():
+    class _O:
+        transcript = [
+            {"role": "assistant", "text": "Hi, is this Devang? Aarushi from Vacademy"},
+            {"role": "user", "text": "Okay."},
+            {"role": "assistant", "text": "Thank you. So the reason I called. Basically so you "
+                                          "only have to teach. You'd be taking classes online "
+                                          "these days I'm guessing — or is it all offline right now?"},
+            {"role": "assistant", "text": "Hello? Are you still there?"},
+            {"role": "user", "text": "Hello?"},
+        ]
+    tc = b.TranscriptCollector.__new__(b.TranscriptCollector)
+    tc._outcome = _O()
+    # the nudge is a question too, but it is the bot's own line check —
+    # re-asking it is the loop this exists to break. Skip to the real question.
+    assert tc._last_played_question().endswith("offline right now?")
+    _O.transcript.pop(3)
+    assert tc._last_played_question().endswith("offline right now?")
+    _O.transcript = [{"role": "assistant", "text": "Okay. Thank you."}, {"role": "user", "text": "Hello?"}]
+    assert tc._last_played_question() == ""
+
+
+@pytest.mark.asyncio
+async def test_a_line_check_licenses_repeating_the_lost_question():
+    """The cue re-asks the question verbatim; without this the no-repeat gate
+    dropped it as already said and the caller heard only "Yes, I'm here."
+    (call f08f5712, and the hello_checker persona before this line)."""
+    rec = _NRRec()
+    caller = {"t": "Okay."}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    Q = "You'd be taking classes online these days I'm guessing — or is it all offline right now?"
+    await _reply(g, "So the reason I called is the daily link and the fees. ", Q)
+    caller["t"] = "Hello? Hello, hello?"
+    rec.text.clear()
+    await _reply(g, "Yes, I'm here. ", Q)
+    assert any("offline right now?" in t for t in rec.text), rec.text

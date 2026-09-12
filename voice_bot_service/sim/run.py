@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 from app import bot as b
-from app.turntake import caller_wants_to_end
+from app.turntake import caller_wants_to_end, caller_checking_presence, presence_cue, last_question_in
 from sim import gates as g
 from sim.grader import grade, judge
 from sim.llm import make_chat, spec_for_provider
@@ -73,6 +73,17 @@ async def simulate(persona, base_ctx, agent_chat, caller_chat, max_tokens=180):
                             "[The caller just asked to end this call. Reply with ONE short, polite "
                             "goodbye line — no question, no offer, no clarification, no pitch — and "
                             "append " + b.END_MARKER + ".]"})
+        # Mirror the turn-gate's line-check cue (call f08f5712): "Hello?" after
+        # the bot's question is answered by confirming AND re-asking it.
+        if not forced and caller_checking_presence(caller_text) and len(convo) > 1:
+            q = ""
+            for t in reversed(convo[:-1]):
+                if t["role"] == "assistant":
+                    q = last_question_in(t["text"])
+                    if q:
+                        break
+            if q:
+                history.append({"role": "user", "content": presence_cue(q)})
         raw, ttft = await agent_chat(system, history, max_tokens, float(agent.get("temperature") or 0.6))
         ttfts.append(ttft)
         sp = gates.pass_reply(raw)

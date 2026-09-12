@@ -298,6 +298,41 @@ def caller_wants_to_end(text: str) -> bool:
     return bool(ws) and (ws[-1] in _BYE_WORDS or (len(ws) <= 4 and bool(set(ws) & _BYE_WORDS)))
 
 
+_PRESENCE_WORDS = frozenset({"hello", "hallo", "helo", "hullo", "hi", "haan", "ji", "yes", "yeah"})
+_PRESENCE_PHRASES = ("are you there", "you there", "still there", "can you hear", "sun rahe",
+                     "sun rahi", "sun pa rahe", "awaaz aa rahi", "aawaz aa rahi", "hai kya", "koi hai")
+
+
+def caller_checking_presence(text: str) -> bool:
+    """"Hello? Hello, hello?" / "Are you there?" — the caller lost the thread
+    and is checking the line, not answering. Call f08f5712 (2026-09-12): after
+    the bot's question the caller said "Hello?" and got "Yes, I'm here." with
+    the question never repeated; they said hello four more times and hung up."""
+    t = (text or "").casefold()
+    if t.startswith("["):
+        return False                       # a synthetic cue, not speech
+    if any(p in t for p in _PRESENCE_PHRASES):
+        return True
+    ws = re.findall(r"[a-z\u0900-\u097f']+", t)   # _words keeps the '?' on 'hello?'
+    return 1 <= len(ws) <= 6 and all(w in _PRESENCE_WORDS for w in ws) and "hello" in ws
+
+
+def presence_cue(question: str) -> str:
+    """The turn-gate's cue when the caller is checking the line: confirm, then
+    put the question they lost back on it. Shared with the text simulator."""
+    return ("[The caller is checking whether you are still on the line — they did not "
+            "hear or lost your question. Reply in ONE breath: confirm in two or three "
+            "words, then ask this again in the same words: \"" + question + "\" Nothing else.]")
+
+
+def last_question_in(text: str) -> str:
+    """The last question sentence in a block of bot speech, skipping the bot's
+    own line checks ("Hello? Are you still there?"), or ''."""
+    sents = [x.strip() for x in re.split(r"(?<=[.!?।])\s+", text or "") if x.strip()]
+    qs = [x for x in sents if x.endswith(("?", "？")) and not caller_checking_presence(x)]
+    return qs[-1] if qs else ""
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))

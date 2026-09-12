@@ -63,7 +63,13 @@ def grade(persona, convo: List[Dict], lead_name: str, now: Optional[datetime] = 
             fails.append(f"turn {i}: content-free reply {t['text'][:24]!r}")
             break
     seen = set()
+    # A reply to the caller's "Hello?" legitimately repeats the lost question.
+    _after_hello = {id(convo[i + 1]) for i, t in enumerate(convo[:-1])
+                    if t["role"] == "user"
+                    and re.fullmatch(r"(hello[?,.!\s]*)+", t["text"].strip().lower())}
     for t in bot:
+        if id(t) in _after_hello:
+            continue
         for s in re.split(r"(?<=[.?!])\s+", t["text"]):
             k = " ".join(s.split()).lower()
             if len(k.split()) >= 5:
@@ -140,6 +146,15 @@ def grade(persona, convo: List[Dict], lead_name: str, now: Optional[datetime] = 
         hyp = [t for t in after(r"not looking|not interested|no need") if re.search(r"if you (were|ever|do)|in the future|scale up", t["text"], re.I)]
         if len(hyp) >= 2:
             fails.append("kept pushing hypotheticals after the caller said no")
+    if "reasks_after_hello" in checks:                 # call f08f5712
+        # After a caller "Hello?" the bot must put its question back on the line,
+        # not just confirm it is there.
+        for i, t in enumerate(convo):
+            if t["role"] == "user" and re.fullmatch(r"(hello[?,.!\s]*)+", t["text"].strip().lower()):
+                nxt = next((x for x in convo[i + 1:] if x["role"] == "assistant"), None)
+                if nxt is not None and "?" not in nxt["text"]:
+                    fails.append(f"after the caller's 'Hello?' the bot did not re-ask: {nxt['text'][:60]!r}")
+                    break
     if "one_question_per_turn" in checks:
         if any(t["text"].count("?") > 1 for t in bot[1:]):
             warns.append("more than one question in a turn")

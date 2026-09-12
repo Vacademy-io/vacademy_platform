@@ -91,6 +91,13 @@ PERSONAS: List[Persona] = [
             "the reply repeats their pitch instead of answering that, say 'You already said that' "
             "and hang up. Otherwise say 'Okay, send me the details' and hang up.",
             checks=[], max_turns=6),
+    Persona("hello_checker", "Devang Shah",                              # call f08f5712, 2026-09-12
+            _STYLE + " Reply 'Okay.' to the opening. After the pitch you got distracted and did not "
+            "catch the question: your next TWO replies are exactly 'Hello?' and then 'Hello? Hello, "
+            "hello?'. If the caller repeats their question, answer it (you teach online on Zoom) and "
+            "then say 'Okay, send me details' and hang up. If they only say they are here without a "
+            "question, say 'Hello?' once more and hang up.",
+            checks=["reasks_after_hello"], max_turns=6),
     Persona("objector", "Deepak Menon",
             _STYLE + " You run online yoga on Zoom with 40 students. After the pitch say: 'We manage fine "
             "on WhatsApp groups. Why would I pay for this?' Push back once more if the answer is generic, "

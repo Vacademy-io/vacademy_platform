@@ -94,7 +94,8 @@ from . import ttscache
 from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
                        caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
-                       question_topic, strip_echo_opener, ABSORB)
+                       question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
+                       presence_cue, last_question_in)
 
 logger = logging.getLogger(__name__)
 
@@ -614,7 +615,31 @@ class TranscriptCollector(FrameProcessor):
                                "[The caller just asked to end this call. Reply with ONE short, "
                                "polite goodbye line — no question, no offer, no clarification, "
                                "no pitch — and append " + END_MARKER + ".]"}]), direction)
+            # "Hello? Hello?" after the bot's question is a line check, not an
+            # answer. Call f08f5712 (2026-09-12): the model replied "Yes, I'm
+            # here." and stopped; the caller, still without the question, said
+            # hello four more times and hung up. Confirm AND put the question
+            # back on the line.
+            elif (caller_checking_presence(text) and self._bot_spoke_once()
+                  and not text.startswith("[")):
+                q = self._last_played_question()
+                if q:
+                    logger.info("turn-gate: caller is checking the line (%r) — re-asking %r",
+                                text[:24], q[:48])
+                    await self.push_frame(LLMMessagesAppendFrame(
+                        messages=[{"role": "user", "content": presence_cue(q)}]), direction)
         await self.push_frame(frame, direction)
+
+    def _last_played_question(self) -> str:
+        """The last question the caller HEARD (played transcript), or ''."""
+        t = self._outcome.transcript
+        for entry in reversed(t[:-1] if t and t[-1].get("role") == "user" else t):
+            if entry.get("role") != "assistant":
+                continue
+            q = last_question_in(entry.get("text") or "")
+            if q:
+                return q
+        return ""
 
 
 class PlayedTranscriptRecorder(FrameProcessor):
@@ -915,6 +940,7 @@ class NoRepeatGate(FrameProcessor):
         self._said_real = False
         self._cf_this_reply: set = set()   # fillers said in THIS reply (keys)
         self._real_this_reply = False       # anything non-filler said in THIS reply
+        self._norms_this_reply: set = set() # normalised sentences said in THIS reply
         # A content-free opener we are holding rather than speaking, and the last
         # sentence the gate dropped (kept ACROSS turns, unlike _held_tail).
         self._cf_held = ""
@@ -1016,6 +1042,8 @@ class NoRepeatGate(FrameProcessor):
             return True
         if caller_asked_to_repeat(self._last_caller_text()):
             return True            # they ASKED us to say it again
+        if caller_checking_presence(self._last_caller_text()):
+            return True            # "Hello?" — they LOST it; the re-ask is the reply
         # Same QUESTION, different words. Sentence similarity at 0.80 cannot see
         # this (597aeb3f's pair scores ~0.7), so the topic supplies the candidate
         # and a looser similarity bar confirms it.
@@ -1135,6 +1163,7 @@ class NoRepeatGate(FrameProcessor):
         text = re.sub(r"(?<!\d)(\d{10})(?!\d)", lambda m: " ".join(m.group(1)), text)
         norm = normalize_spoken(text)
         self._spoken.append(norm)
+        self._norms_this_reply.add(norm)
         topic = question_topic(text)
         # Remember the PREVIOUS exemplar so an un-poison can restore it exactly.
         prev_exemplar = self._asked.get(topic) if topic else None
@@ -1159,6 +1188,7 @@ class NoRepeatGate(FrameProcessor):
             self._cf_held = ""
             self._cf_this_reply = set()
             self._real_this_reply = False
+            self._norms_this_reply = set()
             self._strict_this_response = self._continuation_next
             self._continuation_next = False
             # The previous response ran to a natural start-of-next — its
@@ -1207,6 +1237,7 @@ class NoRepeatGate(FrameProcessor):
             self._buf, self._held_tail, self._cf_held = "", "", ""
             self._cf_this_reply = set()
             self._real_this_reply = False
+            self._norms_this_reply = set()
             await self.push_frame(frame, direction)
             return
 
@@ -1254,6 +1285,14 @@ class NoRepeatGate(FrameProcessor):
                     logger.info("no-repeat: dropping repeated filler %r",
                                 sentence.strip()[:24])
                     continue
+                # The SAME sentence twice in one reply, any length. is_repeat
+                # exempts short sentences (acknowledgments recur across turns),
+                # which let "Yes, I'm here. Yes, I'm here." through (call
+                # f08f5712). Within a single reply an exact repeat is never right.
+                if normalize_spoken(sentence) in self._norms_this_reply:
+                    logger.info("no-repeat: dropping exact repeat within the reply %r",
+                                sentence.strip()[:32])
+                    continue
                 if self._keep(sentence):
                     await self._emit(sentence, direction)
                 else:
@@ -1272,6 +1311,9 @@ class NoRepeatGate(FrameProcessor):
             if (tail and self._is_filler(tail)
                     and self._cf_key(tail) in self._cf_this_reply):
                 logger.info("no-repeat: dropping repeated filler tail %r", tail[:24])
+                tail = ""
+            if tail and normalize_spoken(tail) in self._norms_this_reply:
+                logger.info("no-repeat: dropping exact repeat tail %r", tail[:32])
                 tail = ""
             if tail:
                 if self._emitted == 0:

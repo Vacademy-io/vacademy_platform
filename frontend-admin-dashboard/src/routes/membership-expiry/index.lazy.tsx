@@ -1,5 +1,4 @@
 import { createLazyFileRoute } from '@tanstack/react-router';
-import { useTranslation } from 'react-i18next';
 import { MembershipExpiryTable } from './-components/MembershipExpiryTable';
 import { MembershipExpiryFilters } from './-components/MembershipExpiryFilters';
 import { MembershipExpiryAnalytics } from './-components/MembershipExpiryAnalytics';
@@ -19,7 +18,6 @@ export const Route = createLazyFileRoute('/membership-expiry/')({
 });
 
 function MembershipExpiryPage() {
-  const { t } = useTranslation('membershipExpiryIndexLazy');
   const [pageNo, setPageNo] = useState(0);
   const [pageSize] = useState(20);
 
@@ -138,9 +136,9 @@ function MembershipExpiryPage() {
     <LayoutContainer>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Membership Expiry</h1>
           <p className="text-muted-foreground">
-            {t('subtitle')}
+            Monitor and manage student membership expirations.
           </p>
         </div>
 

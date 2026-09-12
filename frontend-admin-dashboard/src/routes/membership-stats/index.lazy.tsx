@@ -1,5 +1,4 @@
 import { createLazyFileRoute } from '@tanstack/react-router';
-import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState, useMemo } from 'react';
@@ -27,7 +26,6 @@ export const Route = createLazyFileRoute('/membership-stats/')({
 });
 
 function MembershipStatsLayoutPage() {
-    const { t } = useTranslation('membershipStatsIndexLazy');
     const { setNavHeading } = useNavHeadingStore();
 
     // Pagination
@@ -41,8 +39,8 @@ function MembershipStatsLayoutPage() {
     const [packageSessionFilter, setPackageSessionFilter] = useState<PackageSessionFilter>({});
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
-    }, [setNavHeading, t]);
+        setNavHeading(<h1 className="text-lg">Membership Stats</h1>);
+    }, [setNavHeading]);
 
     // Get institute details from Zustand store
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
@@ -208,8 +206,8 @@ function MembershipStatsLayoutPage() {
     return (
         <>
             <Helmet>
-                <title>{t('pageTitle')}</title>
-                <meta name="description" content={t('pageDescription')} />
+                <title>Enrollment Stats</title>
+                <meta name="description" content="View membership statistics and classification" />
             </Helmet>
 
             <div className="space-y-4 p-4 text-sm">

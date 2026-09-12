@@ -58,8 +58,6 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Copy, CopySimple, Eye, PencilSimple, Plus, XCircle, ArrowCircleUp, ArrowCircleDown, ClockCounterClockwise } from '@phosphor-icons/react';
 import { toast } from 'sonner';
-import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { useEffect, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import { MemberHistoryDrawer } from '@/routes/manage-custom-teams/sub-orgs/-components/member-history-drawer';
@@ -136,7 +134,6 @@ export function SubOrgAnalyticsPanel({
     restrictedView = false,
     variant = 'panel',
 }: Props) {
-    const { t } = useTranslation('manageSuborgTeamsSubOrgAnalyticsPanel');
     const pageChrome = variant === 'page';
     // Institutes rename this concept via Settings → Naming (Channel Partner,
     // Branch, Franchise, VLE …); user-facing labels must follow that.
@@ -184,7 +181,7 @@ export function SubOrgAnalyticsPanel({
     const configuredPlan = configuredOption?.payment_plans?.[0];
     const configuredPriceLabel =
         configuredOption?.type === 'FREE'
-            ? t('tiles.free')
+            ? 'Free'
             : configuredPlan
               ? `${getCurrencySymbol(configuredPlan.currency || '')}${formatPlanPrice(
                     configuredPlan.actual_price
@@ -324,12 +321,12 @@ export function SubOrgAnalyticsPanel({
         try {
             await navigator.clipboard.writeText(link);
             setCopiedLinkId(invoiceId);
-            toast.success(t('toasts.linkCopied'));
+            toast.success('Payment link copied');
             window.setTimeout(() => {
                 setCopiedLinkId((prev) => (prev === invoiceId ? null : prev));
             }, 2000);
         } catch (_err) {
-            toast.error(t('toasts.copyFailed'));
+            toast.error('Could not copy to clipboard');
         }
     };
 
@@ -346,8 +343,8 @@ export function SubOrgAnalyticsPanel({
         onSuccess: (data) => {
             toast.success(
                 data?.recipient_email
-                    ? t('toasts.reminderSentTo', { email: data.recipient_email })
-                    : t('toasts.reminderFired')
+                    ? `Reminder sent to ${data.recipient_email}`
+                    : 'Reminder fired'
             );
             if (adminUserId) {
                 queryClient.invalidateQueries({
@@ -356,7 +353,7 @@ export function SubOrgAnalyticsPanel({
             }
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.message || t('toasts.reminderFailed'));
+            toast.error(err?.response?.data?.message || 'Failed to send reminder');
         },
     });
 
@@ -371,17 +368,13 @@ export function SubOrgAnalyticsPanel({
             // Report channels honestly — email may be off in INVOICE_SETTING, in
             // which case only the in-app alert fired; admin should know that.
             const channels: string[] = [];
-            if (data.alert_sent) channels.push(t('toasts.channelInApp'));
-            if (data.email_sent) channels.push(t('toasts.channelEmail'));
-            const email = data.recipient_email;
+            if (data.alert_sent) channels.push('in-app');
+            if (data.email_sent) channels.push('email');
+            const where = data.recipient_email ? ` to ${data.recipient_email}` : '';
             toast.success(
                 channels.length > 0
-                    ? email
-                        ? t('toasts.reminderSentToEmail', { email, channels: channels.join(' + ') })
-                        : t('toasts.reminderSentPlain', { channels: channels.join(' + ') })
-                    : email
-                      ? t('toasts.reminderNoChannelsToEmail', { email })
-                      : t('toasts.reminderNoChannelsPlain')
+                    ? `Reminder sent${where} via ${channels.join(' + ')}`
+                    : `Reminder${where} — no channels delivered (check institute Invoice Settings)`
             );
             if (adminUserId) {
                 queryClient.invalidateQueries({
@@ -390,7 +383,7 @@ export function SubOrgAnalyticsPanel({
             }
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.message || t('toasts.invoiceReminderFailed'));
+            toast.error(err?.response?.data?.message || 'Failed to send invoice reminder');
         },
     });
 
@@ -403,7 +396,7 @@ export function SubOrgAnalyticsPanel({
             setDuplicateSource(full);
             setCreateInvoiceOpen(true);
         } catch {
-            toast.error(t('toasts.duplicateLoadFailed'));
+            toast.error('Could not load invoice to duplicate');
         } finally {
             setDuplicatingId(null);
         }
@@ -418,7 +411,7 @@ export function SubOrgAnalyticsPanel({
             setEditSource(full);
             setCreateInvoiceOpen(true);
         } catch {
-            toast.error(t('toasts.editLoadFailed'));
+            toast.error('Could not load invoice to edit');
         } finally {
             setEditingId(null);
         }
@@ -430,13 +423,13 @@ export function SubOrgAnalyticsPanel({
         onMutate: (invoiceId) => setRejectingId(invoiceId),
         onSettled: () => setRejectingId(null),
         onSuccess: () => {
-            toast.success(t('toasts.invoiceRejected'));
+            toast.success('Invoice rejected');
             if (adminUserId) {
                 queryClient.invalidateQueries({ queryKey: ['sub-org-admin-invoices', adminUserId] });
             }
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.message || t('toasts.rejectFailed'));
+            toast.error(err?.response?.data?.message || 'Could not reject invoice');
         },
     });
 
@@ -507,7 +500,7 @@ export function SubOrgAnalyticsPanel({
     if (financeLoading) {
         return (
             <div className="rounded-lg border bg-white p-6 text-sm text-muted-foreground">
-                {t('loadingAnalytics', { term: subOrgTerm.toLowerCase() })}
+                Loading {subOrgTerm.toLowerCase()} analytics…
             </div>
         );
     }
@@ -528,7 +521,7 @@ export function SubOrgAnalyticsPanel({
             >
                 <Tile
                     icon={<Wallet className="h-4 w-4 text-emerald-600" />}
-                    label={t('tiles.adminPayment')}
+                    label="Admin payment"
                     // When an admin has redeemed the invite, show their actual plan.
                     // Otherwise surface the *configured* payment option (what a future
                     // admin will pay via) instead of a confusing bare "No plan".
@@ -536,17 +529,17 @@ export function SubOrgAnalyticsPanel({
                         admin?.payment_type ||
                         configuredOption?.name ||
                         orgInvite?.payment_type ||
-                        t('tiles.noPlan')
+                        'No plan'
                     }
                     secondary={
                         admin?.payment_type
                             ? admin.payment_type === 'CPO'
-                                ? t('tiles.outstanding', { amount: fmtMoney(admin?.outstanding_amount) })
+                                ? `Outstanding ${fmtMoney(admin?.outstanding_amount)}`
                                 : admin?.user_plan_status || '—'
                             : configuredOption || orgInvite?.payment_type
-                              ? configuredPriceLabel
-                                    ? t('tiles.priceAwaitingAdmin', { price: configuredPriceLabel })
-                                    : t('tiles.awaitingAdmin')
+                              ? `${
+                                    configuredPriceLabel ? `${configuredPriceLabel} · ` : ''
+                                }Awaiting admin`
                               : '—'
                     }
                 />
@@ -556,39 +549,36 @@ export function SubOrgAnalyticsPanel({
                             icon={<Users className="h-4 w-4 text-blue-600" />}
                             label={(() => {
                                 const seat = finance?.seat_usage;
-                                if (!seat || seat.total == null) return t('tiles.learners');
-                                return t('tiles.learnersWithSeats', {
-                                    used: seat.used ?? 0,
-                                    total: seat.total,
-                                });
+                                if (!seat || seat.total == null) return 'Learners';
+                                return `Learners · ${seat.used ?? 0}/${seat.total} seats`;
                             })()}
                             primary={String(totals?.learner_count ?? 0)}
                             secondary={(() => {
                                 const seat = finance?.seat_usage;
-                                const outstanding = t('tiles.totalOutstanding', {
-                                    amount: fmtMoney(totals?.total_outstanding),
-                                });
+                                const outstanding = `Total outstanding ${fmtMoney(totals?.total_outstanding)}`;
                                 if (seat && seat.remaining != null) {
-                                    return `${outstanding} · ${t('tiles.seatsLeft', {
-                                        count: seat.remaining,
-                                    })}`;
+                                    return `${outstanding} · ${seat.remaining} seat${
+                                        seat.remaining === 1 ? '' : 's'
+                                    } left`;
                                 }
                                 return outstanding;
                             })()}
                         />
                         <Tile
                             icon={<FileText className="h-4 w-4 text-purple-600" />}
-                            label={t('tiles.invoices')}
+                            label="Invoices"
                             primary={String(invoices.length)}
                             secondary={
-                                adminUserId ? t('tiles.generatedForAdmin') : t('tiles.noAdminLinked')
+                                adminUserId ? `Generated for admin` : 'No admin linked yet'
                             }
                         />
                         <Tile
                             icon={<BookOpen className="h-4 w-4 text-amber-600" />}
                             label={getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
                             primary={String(psList.length)}
-                            secondary={t('tiles.scopedInvite', { count: scopedInvites.length })}
+                            secondary={`${scopedInvites.length} scoped invite${
+                                scopedInvites.length === 1 ? '' : 's'
+                            }`}
                         />
                     </>
                 )}
@@ -600,7 +590,7 @@ export function SubOrgAnalyticsPanel({
                 <div className="rounded-lg border bg-white p-4">
                     <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         <Wallet className="h-3.5 w-3.5" />
-                        {t('accountSummary')}
+                        Account Summary
                     </h4>
                     <AccountSummaryGrid summary={effectiveAdminSummary} />
                 </div>
@@ -611,15 +601,21 @@ export function SubOrgAnalyticsPanel({
                 <div className="rounded-lg border bg-white p-4">
                     <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         <ClockCounterClockwise className="h-3.5 w-3.5" />
-                        {t('transactionHistory')}
+                        Transaction History
                     </h4>
                     {ledgerEntries.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">{t('noTransactions')}</p>
+                        <p className="text-xs text-muted-foreground">No transactions recorded yet.</p>
                     ) : (
                         <div className="space-y-2">
                             <ul className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200">
                                 {ledgerEntries.map((entry) => {
-                                    const LEDGER_META = buildLedgerMeta(t);
+                                    const LEDGER_META: Record<string, { label: string; cls: string; isCredit: boolean }> = {
+                                        DEBIT_ACCRUAL:     { label: 'Invoice raised',   cls: 'bg-red-50 text-red-700 border-red-200',         isCredit: false },
+                                        CREDIT_PAYMENT:    { label: 'Payment received',  cls: 'bg-green-50 text-green-700 border-green-200',   isCredit: true  },
+                                        CREDIT_WAIVER:     { label: 'Waiver',            cls: 'bg-blue-50 text-blue-700 border-blue-200',      isCredit: true  },
+                                        CREDIT_ADJUSTMENT: { label: 'Adjustment',        cls: 'bg-amber-50 text-amber-700 border-amber-200',   isCredit: true  },
+                                        DEBIT_PENALTY:     { label: 'Penalty',           cls: 'bg-orange-50 text-orange-700 border-orange-200',isCredit: false },
+                                    };
                                     const meta = LEDGER_META[entry.event_type] ?? {
                                         label: entry.event_type,
                                         cls: 'bg-gray-50 text-gray-600 border-gray-200',
@@ -661,7 +657,7 @@ export function SubOrgAnalyticsPanel({
                             {ledgerTotalPages > 1 && (
                                 <div className="flex items-center justify-between px-1">
                                     <span className="text-[10px] text-muted-foreground">
-                                        {t('pageOf', { page: ledgerPage + 1, total: ledgerTotalPages })}
+                                        Page {ledgerPage + 1} of {ledgerTotalPages}
                                     </span>
                                     <div className="flex gap-1">
                                         <button
@@ -704,21 +700,21 @@ export function SubOrgAnalyticsPanel({
                     {canViewFinance && (
                         <TabsTrigger value="admin" className={tabTriggerClass('admin')}>
                             <Wallet className="h-3.5 w-3.5" />
-                            {t('tabs.adminPayment')}
+                            Admin payment
                         </TabsTrigger>
                     )}
                     {!restrictedView && (
                         <>
                             <TabsTrigger value="courses" className={tabTriggerClass('courses')}>
                                 <BookOpen className="h-3.5 w-3.5" />
-                                {t('tabs.courses')}
+                                Courses
                                 <Badge variant="outline" className={tabBadgeClass('courses')}>
                                     {psList.length}
                                 </Badge>
                             </TabsTrigger>
                             <TabsTrigger value="learners" className={tabTriggerClass('learners')}>
                                 <GraduationCap className="h-3.5 w-3.5" />
-                                {t('tabs.learners')}
+                                Learners
                                 <Badge variant="outline" className={tabBadgeClass('learners')}>
                                     {learners.length}
                                 </Badge>
@@ -729,7 +725,7 @@ export function SubOrgAnalyticsPanel({
                                     className={tabTriggerClass('invoices')}
                                 >
                                     <FileText className="h-3.5 w-3.5" />
-                                    {t('tabs.invoices')}
+                                    Invoices
                                     <Badge variant="outline" className={tabBadgeClass('invoices')}>
                                         {invoices.length}
                                     </Badge>
@@ -739,7 +735,7 @@ export function SubOrgAnalyticsPanel({
                     )}
                     <TabsTrigger value="team" className={tabTriggerClass('team')}>
                         <Users className="h-3.5 w-3.5" />
-                        {t('tabs.team')}
+                        Team
                     </TabsTrigger>
                 </TabsList>
 
@@ -749,16 +745,12 @@ export function SubOrgAnalyticsPanel({
                         <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
                             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                                 <Wallet className="h-4 w-4" />
-                                {subOrgName
-                                    ? t('adminPaymentSection.headingWithName', { name: subOrgName })
-                                    : t('adminPaymentSection.heading')}
+                                Admin payment{subOrgName ? ` — ${subOrgName}` : ''}
                             </h3>
                             <div className="flex flex-wrap items-center gap-2">
                                 {admin?.payment_type === 'CPO' && (
                                     <Badge variant="secondary">
-                                        {t('adminPaymentSection.pending', {
-                                            count: admin.pending_installments_count ?? 0,
-                                        })}
+                                        {admin.pending_installments_count ?? 0} pending
                                     </Badge>
                                 )}
                                 {/* Record an arbitrary amount and FIFO-fill it across the
@@ -775,7 +767,7 @@ export function SubOrgAnalyticsPanel({
                                         onClick={() => setRecordPaymentOpen(true)}
                                     >
                                         <Plus className="size-4" />
-                                        {t('adminPaymentSection.recordOfflinePayment')}
+                                        Record Offline Payment
                                     </MyButton>
                                 )}
                             </div>
@@ -788,7 +780,7 @@ export function SubOrgAnalyticsPanel({
                                             {admin.full_name || admin.user_id}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
-                                            {admin.payment_type || t('adminPaymentSection.unknownPlan')}
+                                            {admin.payment_type || 'unknown plan'}
                                             {admin.user_plan_status
                                                 ? ` · ${admin.user_plan_status}`
                                                 : ''}
@@ -800,49 +792,37 @@ export function SubOrgAnalyticsPanel({
                                             setDrawer({
                                                 userId: admin.user_id!,
                                                 name: admin.full_name || admin.user_id,
-                                                subtitle: t('adminPaymentSection.termAdmin', {
-                                                    term: getTerminology(
-                                                        OtherTerms.SubOrg,
-                                                        SystemTerms.SubOrg
-                                                    ),
-                                                }),
+                                                subtitle: `${getTerminology(
+                                                    OtherTerms.SubOrg,
+                                                    SystemTerms.SubOrg
+                                                )} admin`,
                                             })
                                         }
                                         className="shrink-0 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
                                     >
-                                        {t('adminPaymentSection.openHistory')}
+                                        Open history
                                     </button>
                                 </div>
                                 {admin.payment_type === 'CPO' && (
                                     <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                                        <Metric label="Total" value={fmtMoney(admin.total_amount)} />
+                                        <Metric label="Paid" value={fmtMoney(admin.paid_amount)} />
                                         <Metric
-                                            label={t('adminPaymentSection.metricTotal')}
-                                            value={fmtMoney(admin.total_amount)}
-                                        />
-                                        <Metric
-                                            label={t('adminPaymentSection.metricPaid')}
-                                            value={fmtMoney(admin.paid_amount)}
-                                        />
-                                        <Metric
-                                            label={t('adminPaymentSection.metricOutstanding')}
+                                            label="Outstanding"
                                             value={fmtMoney(admin.outstanding_amount)}
                                         />
                                     </div>
                                 )}
                                 {admin.next_due && (
                                     <div className="mt-2 rounded bg-muted/40 p-2 text-xs">
-                                        <span className="text-muted-foreground">
-                                            {t('adminPaymentSection.nextDue')}{' '}
-                                        </span>
+                                        <span className="text-muted-foreground">Next due: </span>
                                         <span className="font-medium">
                                             {fmtMoney(admin.next_due.amount_expected)}
                                         </span>
                                         {admin.next_due.due_date && (
                                             <span className="text-muted-foreground">
                                                 {' '}
-                                                {t('adminPaymentSection.onDate', {
-                                                    date: fmtDate(admin.next_due.due_date),
-                                                })}
+                                                on {fmtDate(admin.next_due.due_date)}
                                             </span>
                                         )}
                                         <span className="text-muted-foreground">
@@ -862,13 +842,8 @@ export function SubOrgAnalyticsPanel({
                                                 showLedger ? 'rotate-180' : ''
                                             }`}
                                         />
-                                        {showLedger
-                                            ? t('adminPaymentSection.hideLedger', {
-                                                  count: admin.installments.length,
-                                              })
-                                            : t('adminPaymentSection.viewLedger', {
-                                                  count: admin.installments.length,
-                                              })}
+                                        {showLedger ? 'Hide' : 'View'} full ledger (
+                                        {admin.installments.length})
                                     </button>
                                 )}
                                 {showLedger && admin.installments && (
@@ -904,7 +879,7 @@ export function SubOrgAnalyticsPanel({
                             </>
                         ) : (
                             <p className="text-sm text-muted-foreground">
-                                {t('adminPaymentSection.noAdminRedeemed')}
+                                No admin has redeemed the invite yet.
                             </p>
                         )}
                     </section>
@@ -933,14 +908,12 @@ export function SubOrgAnalyticsPanel({
                     <section className="rounded-lg border bg-white p-4">
                         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
                             <BookOpen className="h-4 w-4" />
-                            {t('coursesTab.heading', {
-                                term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
-                                count: psList.length,
-                            })}
+                            {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} (
+                            {psList.length})
                         </h3>
                         {psList.length === 0 ? (
                             <p className="text-xs text-muted-foreground">
-                                {t('coursesTab.noScopedInvites')}
+                                No active scoped invites — no learner access.
                             </p>
                         ) : (
                             <ul className="grid gap-2 sm:grid-cols-2">
@@ -963,11 +936,11 @@ export function SubOrgAnalyticsPanel({
                     <section className="rounded-lg border bg-white p-4">
                         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
                             <GraduationCap className="h-4 w-4" />
-                            {t('learnersTab.heading', { count: learners.length })}
+                            Learners ({learners.length})
                         </h3>
                         {learners.length === 0 ? (
                             <p className="text-xs text-muted-foreground">
-                                {t('learnersTab.noLearners')}
+                                No learners enrolled yet.
                             </p>
                         ) : (
                             <div className="max-h-[60vh] space-y-1 overflow-y-auto rounded-md border">
@@ -990,7 +963,7 @@ export function SubOrgAnalyticsPanel({
                                                 setDrawer({
                                                     userId: l.user_id,
                                                     name: l.full_name || l.user_id,
-                                                    subtitle: t('learnersTab.learnerSubtitle'),
+                                                    subtitle: 'Learner',
                                                     courses: psIds.map((psId) => ({
                                                         id: psId,
                                                         label: courseLabelFor(psId),
@@ -1005,9 +978,7 @@ export function SubOrgAnalyticsPanel({
                                                 </p>
                                                 {l.enrolled_date && (
                                                     <p className="text-[10px] text-muted-foreground">
-                                                        {t('learnersTab.enrolled', {
-                                                            date: fmtDate(l.enrolled_date),
-                                                        })}
+                                                        Enrolled {fmtDate(l.enrolled_date)}
                                                     </p>
                                                 )}
                                                 {(() => {
@@ -1042,10 +1013,8 @@ export function SubOrgAnalyticsPanel({
                                                     <span className="font-medium text-amber-700">
                                                         {fmtMoney(l.outstanding_amount)}
                                                     </span>
-                                                    <span className="ms-1 text-muted-foreground">
-                                                        {t('learnersTab.dueCount', {
-                                                            count: l.pending_installments_count,
-                                                        })}
+                                                    <span className="ml-1 text-muted-foreground">
+                                                        ({l.pending_installments_count} due)
                                                     </span>
                                                 </div>
                                             ) : (
@@ -1065,7 +1034,7 @@ export function SubOrgAnalyticsPanel({
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                                 <FileText className="h-4 w-4" />
-                                {t('invoicesTab.heading', { count: invoices.length })}
+                                Invoices ({invoices.length})
                             </h3>
                             <div className="flex flex-wrap items-center gap-2">
                                 {adminUserId && (
@@ -1076,7 +1045,7 @@ export function SubOrgAnalyticsPanel({
                                         onClick={() => setCreateInvoiceOpen(true)}
                                     >
                                         <Plus className="size-4" />
-                                        {t('invoicesTab.createInvoice')}
+                                        Create Invoice
                                     </MyButton>
                                 )}
                                 {canEditLedger && adminUserPlanId && (
@@ -1087,14 +1056,14 @@ export function SubOrgAnalyticsPanel({
                                         onClick={() => setRecordPaymentOpen(true)}
                                     >
                                         <Plus className="size-4" />
-                                        {t('adminPaymentSection.recordOfflinePayment')}
+                                        Record Offline Payment
                                     </MyButton>
                                 )}
                             </div>
                         </div>
                         {invoices.length === 0 ? (
                             <p className="text-xs text-muted-foreground">
-                                {t('invoicesTab.noInvoices')}
+                                No invoices generated yet.
                             </p>
                         ) : (
                             <ul className="space-y-2">
@@ -1136,13 +1105,13 @@ export function SubOrgAnalyticsPanel({
 
                                     // Source badge colours / labels
                                     const sourceMeta = isSfpRow
-                                        ? { label: t('invoicesTab.sourceCpoInstallment'), cls: 'bg-amber-50 text-amber-700 border-amber-200' }
+                                        ? { label: 'CPO Installment', cls: 'bg-amber-50 text-amber-700 border-amber-200' }
                                         : source === 'ADMIN_MANUAL'
-                                          ? { label: t('invoicesTab.sourceAdminInvoice'), cls: 'bg-purple-50 text-purple-700 border-purple-200' }
+                                          ? { label: 'Admin Invoice', cls: 'bg-purple-50 text-purple-700 border-purple-200' }
                                           : source === 'USER_PLAN'
-                                            ? { label: t('invoicesTab.sourceSubscription'), cls: 'bg-blue-50 text-blue-700 border-blue-200' }
+                                            ? { label: 'Subscription', cls: 'bg-blue-50 text-blue-700 border-blue-200' }
                                             : source === 'STUDENT_FEE_PAYMENT'
-                                              ? { label: t('invoicesTab.sourceFeePayment'), cls: 'bg-teal-50 text-teal-700 border-teal-200' }
+                                              ? { label: 'Fee Payment', cls: 'bg-teal-50 text-teal-700 border-teal-200' }
                                               : null;
 
                                     return (
@@ -1181,12 +1150,10 @@ export function SubOrgAnalyticsPanel({
                                                         onClick={() => remindMutation.mutate(sfpId)}
                                                         disabled={remindingId === sfpId}
                                                         className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                                        title={t('invoicesTab.remindTitleSfp')}
+                                                        title="Send installment-due reminder"
                                                     >
                                                         <Bell className="size-3" />
-                                                        {remindingId === sfpId
-                                                            ? t('invoicesTab.remindSending')
-                                                            : t('invoicesTab.remind')}
+                                                        {remindingId === sfpId ? 'Sending…' : 'Remind'}
                                                     </button>
                                                 )}
                                                 {isSfpRow && paymentLink && (
@@ -1194,12 +1161,12 @@ export function SubOrgAnalyticsPanel({
                                                         type="button"
                                                         onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
                                                         className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                        title={t('invoicesTab.copyLinkTitle')}
+                                                        title="Copy payment link to share with learner"
                                                     >
                                                         {copiedLinkId === inv.id ? (
-                                                            <><CircleCheck className="size-3" /> {t('invoicesTab.copied')}</>
+                                                            <><CircleCheck className="size-3" /> Copied</>
                                                         ) : (
-                                                            <><Copy className="size-3" /> {t('invoicesTab.copyLink')}</>
+                                                            <><Copy className="size-3" /> Copy Link</>
                                                         )}
                                                     </button>
                                                 )}
@@ -1211,12 +1178,10 @@ export function SubOrgAnalyticsPanel({
                                                         onClick={() => invoiceReminderMutation.mutate(inv.id)}
                                                         disabled={remindingId === inv.id}
                                                         className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                                        title={t('invoicesTab.remindTitleAdmin')}
+                                                        title="Re-send payment-due reminder"
                                                     >
                                                         <Bell className="size-3" />
-                                                        {remindingId === inv.id
-                                                            ? t('invoicesTab.remindSending')
-                                                            : t('invoicesTab.remind')}
+                                                        {remindingId === inv.id ? 'Sending…' : 'Remind'}
                                                     </button>
                                                 )}
                                                 {isAdminInvoicePending && paymentLink && (
@@ -1224,12 +1189,12 @@ export function SubOrgAnalyticsPanel({
                                                         type="button"
                                                         onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
                                                         className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                        title={t('invoicesTab.copyLinkTitle')}
+                                                        title="Copy payment link to share with learner"
                                                     >
                                                         {copiedLinkId === inv.id ? (
-                                                            <><CircleCheck className="size-3" /> {t('invoicesTab.copied')}</>
+                                                            <><CircleCheck className="size-3" /> Copied</>
                                                         ) : (
-                                                            <><Copy className="size-3" /> {t('invoicesTab.copyLink')}</>
+                                                            <><Copy className="size-3" /> Copy Link</>
                                                         )}
                                                     </button>
                                                 )}
@@ -1243,9 +1208,9 @@ export function SubOrgAnalyticsPanel({
                                                             })
                                                         }
                                                         className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                        title={t('invoicesTab.markPaidTitle')}
+                                                        title="Mark this invoice as paid"
                                                     >
-                                                        {t('invoicesTab.markPaid')}
+                                                        Mark Paid
                                                     </button>
                                                 )}
                                                 {isAdminInvoicePending && (
@@ -1259,12 +1224,10 @@ export function SubOrgAnalyticsPanel({
                                                         }
                                                         disabled={rejectingId === inv.id}
                                                         className="inline-flex items-center gap-1 rounded border border-danger-300 bg-danger-50 px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-100 disabled:opacity-50"
-                                                        title={t('invoicesTab.rejectTitle')}
+                                                        title="Void this invoice"
                                                     >
                                                         <XCircle className="size-3" />
-                                                        {rejectingId === inv.id
-                                                            ? t('invoicesTab.rejecting')
-                                                            : t('invoicesTab.reject')}
+                                                        {rejectingId === inv.id ? 'Rejecting…' : 'Reject'}
                                                     </button>
                                                 )}
                                                 {/* ADMIN_MANUAL pending — Edit in place (same invoice number) */}
@@ -1274,12 +1237,10 @@ export function SubOrgAnalyticsPanel({
                                                         onClick={() => void handleEditInvoice(inv.id)}
                                                         disabled={editingId === inv.id}
                                                         className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                                        title={t('invoicesTab.editTitle')}
+                                                        title="Edit this unpaid invoice — keeps the same invoice number"
                                                     >
                                                         <PencilSimple className="size-3" />
-                                                        {editingId === inv.id
-                                                            ? t('invoicesTab.loading')
-                                                            : t('invoicesTab.edit')}
+                                                        {editingId === inv.id ? 'Loading…' : 'Edit'}
                                                     </button>
                                                 )}
                                                 {/* ADMIN_MANUAL — Duplicate (available on any status, not just pending) */}
@@ -1289,12 +1250,10 @@ export function SubOrgAnalyticsPanel({
                                                         onClick={() => void handleDuplicateInvoice(inv.id)}
                                                         disabled={duplicatingId === inv.id}
                                                         className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                                        title={t('invoicesTab.duplicateTitle')}
+                                                        title="Create a new invoice pre-filled with this one's items"
                                                     >
                                                         <CopySimple className="size-3" />
-                                                        {duplicatingId === inv.id
-                                                            ? t('invoicesTab.loading')
-                                                            : t('invoicesTab.duplicate')}
+                                                        {duplicatingId === inv.id ? 'Loading…' : 'Duplicate'}
                                                     </button>
                                                 )}
 
@@ -1304,12 +1263,12 @@ export function SubOrgAnalyticsPanel({
                                                         type="button"
                                                         onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
                                                         className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                        title={t('invoicesTab.copySubscriptionLinkTitle')}
+                                                        title="Copy subscription payment link"
                                                     >
                                                         {copiedLinkId === inv.id ? (
-                                                            <><CircleCheck className="size-3" /> {t('invoicesTab.copied')}</>
+                                                            <><CircleCheck className="size-3" /> Copied</>
                                                         ) : (
-                                                            <><Copy className="size-3" /> {t('invoicesTab.copyLink')}</>
+                                                            <><Copy className="size-3" /> Copy Link</>
                                                         )}
                                                     </button>
                                                 )}
@@ -1321,23 +1280,23 @@ export function SubOrgAnalyticsPanel({
                                                             type="button"
                                                             onClick={() => setPreviewTarget(inv)}
                                                             className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                            title={t('invoicesTab.previewTitle')}
+                                                            title="Preview the invoice PDF without downloading it"
                                                         >
                                                             <Eye className="h-3 w-3" />
-                                                            {t('invoicesTab.preview')}
+                                                            Preview
                                                         </button>
                                                         <button
                                                             type="button"
                                                             onClick={() => void downloadNamedInvoicePdf(inv)}
                                                             className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                            title={t('invoicesTab.downloadTitle')}
+                                                            title="Download invoice PDF"
                                                         >
                                                             <Download className="h-3 w-3" />
-                                                            {t('invoicesTab.save')}
+                                                            Save
                                                         </button>
                                                     </>
                                                 ) : (
-                                                    <span className="text-[10px] text-muted-foreground">{t('invoicesTab.noPdf')}</span>
+                                                    <span className="text-[10px] text-muted-foreground">No PDF</span>
                                                 )}
                                             </div>
                                         </li>
@@ -1355,7 +1314,7 @@ export function SubOrgAnalyticsPanel({
                     <section className="rounded-lg border bg-white p-4">
                         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
                             <Users className="h-4 w-4" />
-                            {t('teamTab.heading')}
+                            Team members
                         </h3>
                         <CustomTeamsList mode="subOrg" subOrgId={subOrgId} />
                     </section>
@@ -1379,9 +1338,7 @@ export function SubOrgAnalyticsPanel({
                     userPlanId={adminUserPlanId}
                     adminUserId={adminUserId || undefined}
                     contextLabel={
-                        subOrgName
-                            ? t('adminCpoContextWithName', { name: subOrgName })
-                            : t('adminCpoContextTerm', { term: subOrgTerm })
+                        subOrgName ? `${subOrgName} — admin CPO` : `${subOrgTerm} admin CPO`
                     }
                     suggestedAmount={suggestedAmount}
                 />
@@ -1394,9 +1351,7 @@ export function SubOrgAnalyticsPanel({
             {adminUserId && instituteId && (
                 <CreateInvoiceDialog
                     userId={adminUserId}
-                    userName={
-                        admin?.full_name || subOrgName || t('adminPaymentSection.termAdmin', { term: subOrgTerm })
-                    }
+                    userName={admin?.full_name || subOrgName || `${subOrgTerm} admin`}
                     instituteId={instituteId}
                     open={createInvoiceOpen}
                     onOpenChange={(o) => {
@@ -1448,20 +1403,20 @@ export function SubOrgAnalyticsPanel({
             <AlertDialog open={!!rejectTarget} onOpenChange={(o) => !o && setRejectTarget(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>
-                            {t('rejectDialog.title', { number: rejectTarget?.number })}
-                        </AlertDialogTitle>
+                        <AlertDialogTitle>Reject invoice {rejectTarget?.number}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            {t('rejectDialog.description')}
+                            This voids the invoice permanently — the payment link stops working and
+                            it can never be marked paid. This cannot be undone. To fix a mistake,
+                            use Duplicate afterward to create a corrected invoice.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>{t('rejectDialog.cancel')}</AlertDialogCancel>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={handleRejectInvoice}
                             className="bg-danger-600 hover:bg-danger-700"
                         >
-                            {t('rejectDialog.confirm')}
+                            Reject Invoice
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -1522,39 +1477,6 @@ function buildPsLabel(
     return parts.join(' · ') || fallback || '';
 }
 
-/** Ledger event-type → badge label/colour/credit-sign, translated via the caller's `t`. */
-function buildLedgerMeta(
-    t: TFunction
-): Record<string, { label: string; cls: string; isCredit: boolean }> {
-    return {
-        DEBIT_ACCRUAL: {
-            label: t('ledger.invoiceRaised'),
-            cls: 'bg-red-50 text-red-700 border-red-200',
-            isCredit: false,
-        },
-        CREDIT_PAYMENT: {
-            label: t('ledger.paymentReceived'),
-            cls: 'bg-green-50 text-green-700 border-green-200',
-            isCredit: true,
-        },
-        CREDIT_WAIVER: {
-            label: t('ledger.waiver'),
-            cls: 'bg-blue-50 text-blue-700 border-blue-200',
-            isCredit: true,
-        },
-        CREDIT_ADJUSTMENT: {
-            label: t('ledger.adjustment'),
-            cls: 'bg-amber-50 text-amber-700 border-amber-200',
-            isCredit: true,
-        },
-        DEBIT_PENALTY: {
-            label: t('ledger.penalty'),
-            cls: 'bg-orange-50 text-orange-700 border-orange-200',
-            isCredit: false,
-        },
-    };
-}
-
 function collectPackageSessions(invites: any[]): { id: string; label: string }[] {
     const seen = new Set<string>();
     const out: { id: string; label: string }[] = [];
@@ -1599,17 +1521,14 @@ function collectPackageSessions(invites: any[]): { id: string; label: string }[]
 
 /** 4-cell grid: total accrued / paid / balance / overdue from the ledger. */
 function AccountSummaryGrid({ summary }: { summary: UserAccountSummaryDTO }) {
-    // Same namespace as the parent panel — this is a small sub-component of it, not
-    // an independently-routed piece of UI, so it doesn't need its own catalog.
-    const { t } = useTranslation('manageSuborgTeamsSubOrgAnalyticsPanel');
     const sym = summary.currency === 'USD' ? '$' : summary.currency === 'EUR' ? '€' : '₹';
     const fmt = (v: number) =>
         `${sym}${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
     const cells = [
-        { label: t('accountSummaryGrid.totalAccrued'), value: fmt(summary.total_accrued), danger: false },
-        { label: t('accountSummaryGrid.totalPaid'), value: fmt(summary.total_paid), danger: false, success: true },
-        { label: t('accountSummaryGrid.due'), value: fmt(summary.balance), danger: summary.balance > 0 },
-        { label: t('accountSummaryGrid.pastDue'), value: fmt(summary.overdue), danger: summary.overdue > 0 },
+        { label: 'Total accrued', value: fmt(summary.total_accrued), danger: false },
+        { label: 'Total paid', value: fmt(summary.total_paid), danger: false, success: true },
+        { label: 'Due', value: fmt(summary.balance), danger: summary.balance > 0 },
+        { label: 'Past Due', value: fmt(summary.overdue), danger: summary.overdue > 0 },
     ];
     return (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

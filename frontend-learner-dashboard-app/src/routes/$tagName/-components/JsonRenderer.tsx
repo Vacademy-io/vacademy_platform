@@ -65,6 +65,7 @@ import { CartComponent } from "./components/CartComponent";
 import { BuyRentSectionComponent } from "./components/BuyRentSectionComponent";
 import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
+import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
 
 interface JsonRendererProps {
@@ -241,6 +242,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <FaqSectionRenderer key={id} {...props} />;
       case "videoEmbed":
         return <VideoEmbedRenderer key={id} {...props} />;
+      case "documentViewer":
+        return <DocumentViewerComponent key={id} {...props} />;
       case "ctaBanner":
         return <CtaBannerRenderer key={id} {...props} />;
       case "pricingTable":

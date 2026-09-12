@@ -204,7 +204,22 @@
     "button": "Bouton",
     "newsletterSuccessDefault": "Merci pour votre inscription !",
     "enterYourEmail": "Saisissez votre e-mail",
-    "subscribe": "S'abonner"
+    "subscribe": "S'abonner",
+    "documentViewer": {
+      "open": "Ouvrir le document",
+      "download": "Télécharger le PDF",
+      "close": "Fermer",
+      "fullScreen": "Plein écran",
+      "previousPage": "Page précédente",
+      "nextPage": "Page suivante",
+      "zoomIn": "Zoom avant",
+      "zoomOut": "Zoom arrière",
+      "pageOf": "{{current}} / {{total}}",
+      "loading": "Chargement du document…",
+      "loadFailed": "Le document n’a pas pu être affiché ici.",
+      "openInNewTab": "Ouvrir dans un nouvel onglet",
+      "noDocument": "Aucun document configuré pour le moment"
+    }
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "Discutez avec nous sur WhatsApp"

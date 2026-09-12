@@ -2055,6 +2055,12 @@ function EmailConfigurationRow({
     const [email, setEmail] = useState(config.email);
     const [name, setName] = useState(config.name);
     const [description, setDescription] = useState(config.description || '');
+    // Sending controls: kept as strings for the inputs, parsed on save.
+    const [maxPerDay, setMaxPerDay] = useState(String(config.maxPerDay ?? 0));
+    const [timezone, setTimezone] = useState(config.timezone || '');
+    const [sendAfterHour, setSendAfterHour] = useState(String(config.sendAfterHour ?? 0));
+    const [postalAddress, setPostalAddress] = useState(config.postalAddress || '');
+    const [listUnsubscribe, setListUnsubscribe] = useState(Boolean(config.listUnsubscribe));
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
@@ -2138,7 +2144,12 @@ function EmailConfigurationRow({
     const isDirty =
         email !== config.email ||
         name !== config.name ||
-        description !== (config.description || '');
+        description !== (config.description || '') ||
+        Number(maxPerDay || 0) !== (config.maxPerDay ?? 0) ||
+        timezone !== (config.timezone || '') ||
+        Number(sendAfterHour || 0) !== (config.sendAfterHour ?? 0) ||
+        postalAddress !== (config.postalAddress || '') ||
+        listUnsubscribe !== Boolean(config.listUnsubscribe);
 
     const canSave =
         isDirty &&
@@ -2154,6 +2165,11 @@ function EmailConfigurationRow({
                 email: email.trim(),
                 name: name.trim(),
                 description: description.trim() || undefined,
+                maxPerDay: Math.max(0, Number(maxPerDay || 0)),
+                timezone: timezone.trim(),
+                sendAfterHour: Math.min(23, Math.max(0, Number(sendAfterHour || 0))),
+                postalAddress: postalAddress.trim(),
+                listUnsubscribe,
             });
         } finally {
             setSaving(false);
@@ -2164,6 +2180,11 @@ function EmailConfigurationRow({
         setEmail(config.email);
         setName(config.name);
         setDescription(config.description || '');
+        setMaxPerDay(String(config.maxPerDay ?? 0));
+        setTimezone(config.timezone || '');
+        setSendAfterHour(String(config.sendAfterHour ?? 0));
+        setPostalAddress(config.postalAddress || '');
+        setListUnsubscribe(Boolean(config.listUnsubscribe));
     };
 
     const handleDelete = async () => {
@@ -2272,6 +2293,69 @@ function EmailConfigurationRow({
                     />
                 </div>
             </div>
+
+            <details className="rounded-md border bg-muted/20 p-2">
+                <summary className="cursor-pointer text-xs font-medium">
+                    {t('emailRow.controls.controlsTitle')}
+                </summary>
+                <div className="mt-1 text-xs text-muted-foreground">
+                    {t('emailRow.controls.controlsHint')}
+                </div>
+                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+                    <div>
+                        <Label className="text-xs">{t('emailRow.controls.maxPerDay')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            value={maxPerDay}
+                            onChange={(e) => setMaxPerDay(e.target.value)}
+                            placeholder={t('emailRow.controls.maxPerDayPlaceholder')}
+                        />
+                    </div>
+                    <div>
+                        <Label className="text-xs">{t('emailRow.controls.timezone')}</Label>
+                        <Input
+                            value={timezone}
+                            onChange={(e) => setTimezone(e.target.value)}
+                            placeholder={t('emailRow.controls.timezonePlaceholder')}
+                            className="font-mono text-sm"
+                        />
+                    </div>
+                    <div>
+                        <Label className="text-xs">{t('emailRow.controls.sendAfterHour')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            max={23}
+                            value={sendAfterHour}
+                            onChange={(e) => setSendAfterHour(e.target.value)}
+                        />
+                    </div>
+                    <div className="md:col-span-3">
+                        <Label className="text-xs">{t('emailRow.controls.postalAddress')}</Label>
+                        <Input
+                            value={postalAddress}
+                            onChange={(e) => setPostalAddress(e.target.value)}
+                            placeholder={t('emailRow.controls.postalAddressPlaceholder')}
+                        />
+                    </div>
+                    <label className="flex items-start gap-2 text-xs md:col-span-3">
+                        <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={listUnsubscribe}
+                            onChange={(e) => setListUnsubscribe(e.target.checked)}
+                        />
+                        <span>
+                            {t('emailRow.controls.listUnsubscribe')}
+                            <span className="block text-muted-foreground">
+                                {t('emailRow.controls.listUnsubscribeHint')}
+                            </span>
+                        </span>
+                    </label>
+                </div>
+            </details>
+
             <div className="flex items-center justify-end gap-2">
                 {isDirty && (
                     <Button

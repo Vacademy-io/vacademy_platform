@@ -3743,7 +3743,74 @@ async def test_ambience_drift_skips_inaudible_updates():
     assert len(rec.frames) == n
 
 
-# ── Follow-up gist + measured engagement (V503) ──────────────────────────────
+# ── 2026-09-12: calls 862aa6a0 / ada2e60c ─────────────────────────────────────
+
+def test_no_repeat_allows_one_greeting_per_call():
+    """Call 862aa6a0: "Good morning!" five times in 30 s — one per barge-in
+    regeneration. Greetings sit under is_repeat's 22-char floor on purpose (acks
+    recur), so they need their own once-per-call rule."""
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "")
+    assert g._keep("Good morning!") is True
+    assert g._keep("Good morning!") is False
+    assert g._keep("Hello!") is False                       # any greeting, not the same one
+    assert g._keep("Namaste ji.") is False
+    assert g._keep("Good, so the reason I called.") is True  # not a bare greeting
+    assert g._keep("Good morning to you and your students.") is True
+
+
+@pytest.mark.asyncio
+async def test_played_transcript_drops_a_repeated_group_within_one_entry():
+    """Call ada2e60c: "Okay, I understand. Thank you for your time, namaste." twice
+    in the transcript, once in the recording — the sequencer re-emitted the whole
+    two-sentence group, which consecutive-only de-duplication could not see."""
+    from pipecat.frames.frames import TTSTextFrame
+    from pipecat.processors.frame_processor import FrameDirection
+    import unittest.mock as um
+    o = FakeOutcome()
+    rec = b.PlayedTranscriptRecorder(o)
+
+    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
+        pass
+    rec.push_frame = fake_push
+
+    async def fake_super(self, frame, direction):
+        return
+
+    async def drive(text):
+        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
+            await rec.process_frame(TTSTextFrame(text, aggregated_by="sentence"), FrameDirection.DOWNSTREAM)
+    for t in ("Okay, I understand.", "Thank you for your time, namaste.",
+              "Okay, I understand.", "Thank you for your time, namaste."):
+        await drive(t)
+    assert o.transcript[-1]["text"] == "Okay, I understand. Thank you for your time, namaste."
+    # A short ack CAN legitimately repeat inside one entry ("Okay." … "Okay.").
+    for t in ("Okay.", "Right.", "Okay."):
+        await drive(t)
+    assert o.transcript[-1]["text"].endswith("Okay. Right. Okay.")
+
+
+def test_analysis_json_parser_repairs_what_production_returned():
+    """Call 862aa6a0: max_tokens cut the analyser's JSON mid-object and the whole
+    report degraded to 'Automatic analysis unavailable'."""
+    from app.report import _parse_analysis_json as parse
+    assert parse('```json\n{"disposition": "Callback", "leadRating": 7}\n```') == {"disposition": "Callback", "leadRating": 7}
+    assert parse('{"a": 1, "b": [1, 2,],}') == {"a": 1, "b": [1, 2]}
+    truncated = '{"disposition": "Incomplete", "summary": "Mona takes personal classes.",\n "leadRating": 4,\n "extractedQa": {"q": "an'
+    out = parse(truncated)
+    assert out and out["disposition"] == "Incomplete" and out["leadRating"] == 4
+    assert parse("no json here") is None and parse("") is None
+
+
+def test_prompt_greets_once_ends_on_request_and_uses_first_name():
+    p = b.build_system_prompt({"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40, "direction": "OUTBOUND",
+        "openingLine": "Hi! I am Aarushi from Vacademy."}, "leadName": "Vijay Madhekar"})
+    assert "GREET ONCE" in p
+    assert "never a clarifying question" in p
+    assert "Address them by their FIRST name only ('Vijay'" in p
+
+
+# ── Follow-up gist + measured engagement (V510) ──────────────────────────────
 #
 # The gist is ONE sentence for the counsellor deciding whether to call this lead
 # themselves — the recommendation and the concrete reason from the call. It is

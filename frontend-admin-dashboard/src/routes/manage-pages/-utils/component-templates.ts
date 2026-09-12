@@ -320,6 +320,25 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         },
     },
 
+    documentViewer: {
+        type: 'documentViewer',
+        enabled: true,
+        props: {
+            heading: t('documentViewer.heading'),
+            subheading: t('documentViewer.subheading'),
+            // Public CDN URL of the PDF — set by DocumentUploadField.
+            documentUrl: '',
+            fileName: '',
+            // 'button' opens a full-screen reader from one CTA; 'inline'
+            // embeds the reader in the page.
+            display: 'button',
+            buttonText: t('documentViewer.buttonText'),
+            coverImage: '',
+            height: '70vh',
+            showDownload: true,
+        },
+    },
+
     ctaBanner: {
         type: 'ctaBanner',
         enabled: true,

@@ -33,6 +33,7 @@ import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
+import { DocumentUploadField } from './DocumentUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
@@ -1779,6 +1780,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <FaqSectionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'videoEmbed':
             return <VideoEmbedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'documentViewer':
+            return <DocumentViewerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'ctaBanner':
             return <CtaBannerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'pricingTable':
@@ -3833,6 +3836,80 @@ const VideoEmbedEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label>{t('mediaShowcase.autoplay')}</Label>
                 <Switch checked={props.autoplay || false} onCheckedChange={(c) => updateProp('autoplay', c)} />
             </div>
+        </div>
+    );
+};
+
+// Document Viewer Editor
+const DocumentViewerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    const display = props.display || 'button';
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">{t('documentViewer.heading')}</h4>
+            <DocumentUploadField
+                label={t('documentViewer.file')}
+                value={props.documentUrl || ''}
+                onChange={(url) => updateProp('documentUrl', url)}
+            />
+            <div className="space-y-2">
+                <Label>{t('documentViewer.fileName')}</Label>
+                <Input
+                    value={props.fileName || ''}
+                    placeholder={t('documentViewer.fileNamePlaceholder')}
+                    onChange={(e) => updateProp('fileName', e.target.value)}
+                />
+                <p className="text-xs text-gray-500">{t('documentViewer.fileNameHelp')}</p>
+            </div>
+            <div className="space-y-2">
+                <Label>{t('ctaBanner.headingField')}</Label>
+                <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('faq.subheading')}</Label>
+                <Textarea rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('documentViewer.display')}</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={display} onChange={(e) => updateProp('display', e.target.value)}>
+                    <option value="button">{t('documentViewer.displayButton')}</option>
+                    <option value="inline">{t('documentViewer.displayInline')}</option>
+                </select>
+                <p className="text-xs text-gray-500">
+                    {display === 'inline' ? t('documentViewer.displayInlineHelp') : t('documentViewer.displayButtonHelp')}
+                </p>
+            </div>
+            {display === 'button' ? (
+                <>
+                    <div className="space-y-2">
+                        <Label>{t('documentViewer.buttonText')}</Label>
+                        <Input value={props.buttonText || ''} placeholder={t('mediaShowcase.buttonTextPlaceholder')} onChange={(e) => updateProp('buttonText', e.target.value)} />
+                    </div>
+                    <ImageUploadField
+                        label={t('documentViewer.coverImage')}
+                        value={props.coverImage || ''}
+                        onChange={(url) => updateProp('coverImage', url)}
+                    />
+                </>
+            ) : (
+                <div className="space-y-2">
+                    <Label>{t('documentViewer.frameHeight')}</Label>
+                    <select className="w-full rounded border px-3 py-2 text-sm" value={props.height || '70vh'} onChange={(e) => updateProp('height', e.target.value)}>
+                        <option value="480px">{t('documentViewer.heightShort')}</option>
+                        <option value="70vh">{t('documentViewer.heightMedium')}</option>
+                        <option value="85vh">{t('documentViewer.heightTall')}</option>
+                    </select>
+                </div>
+            )}
+            <div className="flex items-center justify-between">
+                <Label>{t('documentViewer.showDownload')}</Label>
+                <Switch checked={props.showDownload !== false} onCheckedChange={(c) => updateProp('showDownload', c)} />
+            </div>
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || ''} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('header.textColor')} value={props.textColor || ''} onChange={(c) => updateProp('textColor', c)} />
         </div>
     );
 };

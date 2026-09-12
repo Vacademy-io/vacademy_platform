@@ -248,5 +248,10 @@
         "cartCtaLabel": "कार्ट में जोड़ें",
         "checkoutCtaLabel": "चेकआउट पर जाएँ",
         "viewCourseLabel": "कोर्स देखें"
+    },
+    "documentViewer": {
+        "heading": "हमारा कैटलॉग देखें",
+        "subheading": "हर पृष्ठ यहीं पलटें।",
+        "buttonText": "कैटलॉग खोलें"
     }
 }

@@ -4097,3 +4097,55 @@ async def test_a_line_check_licenses_repeating_the_lost_question():
     rec.text.clear()
     await _reply(g, "Yes, I'm here. ", Q)
     assert any("offline right now?" in t for t in rec.text), rec.text
+
+
+# ── call 31763255 (2026-09-12): fragment finals as barge-ins; "yes." dropped as a scrap ──
+
+def test_fragment_continuation_shapes():
+    from app.turntake import is_fragment_continuation as f
+    assert f("Sorry, you wanted to say somet", "hing", 0.44)
+    assert f("It happens to my frie", "nd", 0.5)
+    assert f("? It makes", "some", 0.9)
+    assert f("You still", "me?", 0.5)
+    assert not f("Okay.", "Hello?", 0.6)              # finished, then a new utterance
+    assert not f("Yes, go ahead", "Actually wait, I am busy now", 0.8)   # long = new
+    assert not f("Yes, go ahead", "hello", 1.4)       # too late to be the same breath
+    assert not f("", "hing", 0.2) and not f("abc", "[cue]", 0.2)
+
+
+@pytest.mark.asyncio
+async def test_a_fragment_tail_does_not_interrupt_the_reply():
+    """"? It makes" → reply in flight → "some" 0.8 s later. The tail is the same
+    utterance: no interruption, the reply keeps playing, and the words still
+    reach the context (absorb path)."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._reply_in_flight = lambda: False
+    await _feed(tc, "? It makes")
+    assert rec.interruptions == 0
+    tc._reply_in_flight = lambda: True
+    tc._is_bot_speaking = lambda: True
+    rec.frames.clear()
+    await _feed(tc, "some")
+    assert rec.interruptions == 0, "the tail of the caller's own sentence killed the reply"
+    assert tc._outcome.transcript[-1] == {"role": "user", "text": "? It makes some"}
+    assert any("some" in c for c in rec.cues()), "the words never reached the context"
+
+
+@pytest.mark.asyncio
+async def test_a_letterless_final_never_interrupts():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    await _feed(tc, "।")
+    assert rec.interruptions == 0 and rec.frames == []
+    assert all(e.get("text") != "।" for e in tc._outcome.transcript)
+
+
+@pytest.mark.asyncio
+async def test_a_real_new_utterance_after_a_finished_one_still_barges_in():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    await _feed(tc, "Online.")
+    rec.interruptions = 0
+    await _feed(tc, "Actually wait, I have a question about the fees.")
+    assert rec.interruptions == 1

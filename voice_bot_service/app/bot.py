@@ -95,7 +95,7 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
                        caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
-                       presence_cue, last_question_in)
+                       presence_cue, last_question_in, is_fragment_continuation)
 
 logger = logging.getLogger(__name__)
 
@@ -391,10 +391,45 @@ class TranscriptCollector(FrameProcessor):
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
                 return
+            ducked = self._duck is not None and self._duck.is_ducked()
+            # A final with no letter or digit ("।", "?") is punctuation the engine
+            # attached to nothing. Call 31763255 (2026-09-12): a bare "।" was a
+            # "real barge-in" that killed a two-sentence reply.
+            if not any(ch.isalnum() for ch in text):
+                logger.info("turn-gate: letterless final %r — ignoring", text[:8])
+                self._on_activity(user=True)
+                if ducked:
+                    await self._on_absorb(None)
+                return
+            # The tail of the previous final (see turntake.is_fragment_continuation)
+            # while a reply is playing or in flight: same utterance, so the reply
+            # keeps going and the words still reach the context. Before this,
+            # every such tail was a barge-in: reply killed, regenerated, and then
+            # suppressed as a repeat — the "long gaps" and "repeating" of 31763255.
+            if (self._last_text and is_fragment_continuation(
+                    self._last_text, text, now - self._last_text_t)
+                    and self._gate_enabled()
+                    and (self._is_bot_speaking() or self._reply_in_flight()
+                         or self._recently_cut()
+                         or (self._duck is not None and self._duck.has_pending_audio()))):
+                logger.info("turn-gate: fragment continuation %r of %r — absorbing, "
+                            "not interrupting", text[:24], self._last_text[-24:])
+                t = self._outcome.transcript
+                if t and t[-1].get("role") == "user":
+                    t[-1]["text"] = (t[-1]["text"] + " " + text).strip()
+                else:
+                    t.append({"role": "user", "text": text})
+                self._last_text = (self._last_text + " " + text.casefold()).strip()
+                self._last_text_t = now
+                self._on_activity(user=True)
+                self._on_transcript(backchannel=True)
+                await self.push_frame(LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content": text}]), direction)
+                await self._on_absorb(text)
+                return
             # Drop an identical repeat within 4s (greeting spam: "Hello" x3 while the
             # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
             # model can't answer the same hello twice.
-            ducked = self._duck is not None and self._duck.is_ducked()
             if (text.casefold() == self._last_text and now - self._last_text_t < 4.0
                     and self._bot_stopped_t() < self._last_text_t):
                 logger.info("transcript dedupe: dropping repeat %r", text[:30])
@@ -3082,9 +3117,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             diag.bump("bot_turns")
         flags["bot_speaking"] = speaking
         flags["tts_gen_t"] = 0.0
+        # Set when the FIRST frame reaches the line, not when the opening ends:
+        # call 31763255 (2026-09-12) — "yes." to "Hi, is this Shreyash?" landed
+        # 3.4 s into the opening and was dropped as a machine-greeting scrap
+        # because "we had not spoken yet".
+        flags["bot_spoke_once"] = True
         if not speaking:
             flags["bot_stopped_t"] = time.time()
-            flags["bot_spoke_once"] = True
 
     def set_user_speaking(speaking: bool):
         if speaking and not flags["user_speaking"]:

@@ -333,6 +333,31 @@ def last_question_in(text: str) -> str:
     return qs[-1] if qs else ""
 
 
+_TERMINAL = (".", "?", "!", "।", "？", "…")
+
+
+def is_fragment_continuation(prev: str, text: str, dt: float, window: float = 1.0) -> bool:
+    """Smallest finalizes the decoded PREFIX at our VAD stop and the remainder
+    arrives as its own final 0.3-0.9 s later: "…say somet" + "hing", "frie" +
+    "nd", "? It makes" + "some" (call 31763255, 2026-09-12). The second piece is
+    the same utterance, not a new one — it must never count as a barge-in."""
+    if not prev or not text or dt < 0 or dt > window:
+        return False
+    t = text.strip()
+    if t.startswith("["):
+        return False
+    if caller_checking_presence(t) or caller_wants_to_end(t):
+        return False                      # "Hello." / "cut the call" are never a tail
+    if prev.rstrip().endswith(_TERMINAL):
+        return False                      # the previous piece was a finished sentence
+    first = t[0]
+    if first.islower() and first.isascii():
+        return True                       # "hing", "nd", "some", "me?" — the engine
+                                          # only capitalises a sentence START
+    # Neither piece is punctuated as a sentence and the tail is short: one breath.
+    return not t.endswith(_TERMINAL) and len(t.split()) <= 4
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))

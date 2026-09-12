@@ -532,6 +532,29 @@ def chk_turn_latency(res):
     return [f"turn latency {slow} s (caller stop → bot audio)"] if slow else []
 
 
+def chk_fragment_tail(res):
+    """Call 31763255 (2026-09-12): Smallest split "…say somet" / "hing" and
+    "? It makes" / "some". The second fragment must not kill the reply
+    generated for the first: one LLM run, the reply plays in full, and no
+    interruption reaches the output after the caller's turn."""
+    f = []
+    if len(res["caller"]) < 2:
+        return ["caller turns missing"]
+    cend = res["caller"][1][1]
+    if res["llm_runs"] != 2:
+        f.append(f"expected 2 LLM runs (opening answer + one reply), got {res['llm_runs']}")
+    ivs = [iv for iv in res["bot"] if cend <= iv[0] < cend + 12.0]
+    total = sum(b - a for a, b in ivs)
+    if total < 4.0:
+        f.append(f"reply audio only {total:.1f}s after the fragmented turn — it was cut")
+    texts = " ".join(_assistant_texts(res))
+    if "It makes sense" not in texts:
+        f.append("the reply to the fragmented turn never played in full")
+    if res["interruptions_at_output"] > 3:      # opening cut + VAD onset + first fragment formalised; the tail must add none
+        f.append(f"{res['interruptions_at_output']} interruptions at the output — a fragment barged in")
+    return f
+
+
 def chk_cached_opener(res):
     """Call 994162b0 (2026-09-12): 'Thank you.' from the cache, then 3.6 s of
     nothing before the pitch. A cached sentence's own audio context only closed
@@ -560,6 +583,13 @@ def chk_cached_opener(res):
 
 
 SCENARIOS: List[Scenario] = [
+    Scenario("fragment_tail_is_not_a_barge_in",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("It makes some sense", 1.6, after_bot_stop=2, offset=0.8,
+                         finals=["? It makes", "some sense"], stt_latency=0.4)],
+             replies=[PITCH_Q, "It makes sense, good. So who sends the daily link right now — you, or someone else?"],
+             checks=chk_fragment_tail, max_secs=45,
+             note="call 31763255: '? It makes' → reply → 'some' as a real barge-in killed it"),
     Scenario("cached_opener_then_pitch",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=["Thank you. So the reason I called — we work with yoga teachers on everything "

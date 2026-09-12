@@ -99,6 +99,8 @@ async def main():
     ap.add_argument("--out", default=os.environ.get("SIM_OUT", "sim_report.json"))
     ap.add_argument("--ci", action="store_true", help="exit 1 if any persona has a hard fail")
     ap.add_argument("--min-judge", type=float, default=0.0)
+    ap.add_argument("--soft-errors", action="store_true",
+                    help="a run error (auth, network) is reported but does not fail --ci")
     args = ap.parse_args()
 
     spec = spec_for_provider() if args.model == "prod" else args.model
@@ -118,7 +120,8 @@ async def main():
             except Exception as e:  # noqa: BLE001
                 convo, ttfts, ended = [], [], False
                 res, jd = {"fails": [f"run error: {type(e).__name__}: {str(e)[:120]}"], "warns": []}, {"score": -1, "problems": []}
-            fail = bool(res["fails"]) or bool(args.min_judge and 0 <= jd["score"] < args.min_judge)
+            hard = [f for f in res["fails"] if not (args.soft_errors and f.startswith("run error"))]
+            fail = bool(hard) or bool(args.min_judge and 0 <= jd["score"] < args.min_judge)
             any_fail |= fail
             status = "FAIL" if fail else "ok  "
             ttft = f"{statistics.median(ttfts)*1000:4.0f}ms" if ttfts else "  n/a"

@@ -2763,7 +2763,7 @@ def test_build_tts_call_site_passes_the_agent_language():
     """The factory can only honour the language if run_bot hands it over."""
     import inspect
     src = inspect.getsource(b.run_bot)
-    call = src[src.index("tts = build_tts("):]
+    call = src[src.index("build_tts(settings.sample_rate, voice=_agent_voice(agent)"):]
     call = call[:call.index(")\n")]
     assert 'language=agent.get("language")' in call
     assert "language" in inspect.signature(pv.build_tts).parameters
@@ -3878,3 +3878,12 @@ def test_is_farewell_is_narrow():
     assert not f("Namaste Aditi ji, I'm Aarushi from Vacademy. We came to know you take yoga classes — do you have two minutes?")
     assert not f("Thank you. So the reason I called — we work with yoga teachers on everything around their online classes.")
     assert not f("")
+
+
+def test_no_repeat_drops_questions_once_the_caller_asked_to_end():
+    flag = {"v": False}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "", end_forced=lambda: flag["v"])
+    assert g._keep("Just to clarify, do you take online classes?") is True
+    flag["v"] = True
+    assert g._keep("Just to clarify, do you take online classes?") is False
+    assert g._keep("No problem at all, thank you for your time.") is True

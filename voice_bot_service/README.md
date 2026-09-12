@@ -158,3 +158,25 @@ It runs in CI after the unit harness (`Run conversation simulator`) and blocks t
 deploy on a hard fail; the JSON report is an artifact. **Run it before any model,
 voice, prompt-rule or turn-taking change** — that is the whole point. Not covered:
 how the voice sounds, real line acoustics, STT mishearings (listen to recordings).
+
+### Timing simulator (`sim/timing.py`) — the real pipeline on a simulated line
+
+The text simulator cannot see barge-in, ducking, a held question tail resuming, a
+goodbye that never closes, or a nudge firing after it. `sim/timing.py` runs the real
+`run_bot` pipeline (every gate, the aggregator with Silero VAD and Smart Turn, the
+watchdog) on a simulated Plivo line: caller turns are real 8 kHz speech clips
+(`sim/fixtures/caller/`, one TTS render each, complete utterances so Smart Turn
+hears a natural ending), STT/LLM/TTS are stubs with vendor-like latency and the
+Smallest service's frame shape, and the output transport paces in real time. Six
+scenarios from this week's calls assert on what the line carried — bot audio
+intervals, played transcript, LLM prompts, diagnostics. No credentials, no cost;
+runs in CI on every push (`Run timing simulator`) and blocks the deploy.
+
+```
+docker compose exec voice-bot python -m sim.timing --verbose
+python -m sim.timing --scenarios yes_over_tail,farewell_without_marker
+```
+
+Its first day found that the "Yes over the question tail" fix relied on DuckGate
+holding audio, which it never does (TTS outruns real time; the tail sits in the
+transport's queue), and reproduced the farewell dead-air hole before its fix.

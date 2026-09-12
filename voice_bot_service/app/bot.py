@@ -440,8 +440,12 @@ class TranscriptCollector(FrameProcessor):
                     # after the answer, twice in one call. A short reply to a question
                     # that has already been asked is its answer, not a backchannel:
                     # drop the held tail and let the model respond to the answer.
-                    if (ducked and self._duck is not None and self._duck.has_pending_audio()
-                            and self._played_ended_with_question()):
+                    # NOT gated on duck.has_pending_audio(): TTS delivers a reply
+                    # faster than real time, so by the time the caller answers, the
+                    # tail sits in the TRANSPORT's queue, not in DuckGate (timing
+                    # sim yes_over_tail; production "dropping 0 held frame(s)").
+                    # broadcast_interruption() is what clears that queue.
+                    if ducked and self._played_ended_with_question():
                         logger.info("turn-gate: %r answers the question already asked — "
                                     "dropping the held tail, not resuming it", text[:20])
                         await self.broadcast_interruption()
@@ -854,7 +858,7 @@ class NoRepeatGate(FrameProcessor):
     _SENT_END = re.compile(r"[.!?।]+[\s\"'\)\]]*")
 
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
-                 no_echo=None, handbacks=None, played_text=None):
+                 no_echo=None, handbacks=None, played_text=None, end_forced=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         self._last_caller_text = last_caller_text or (lambda: "")
@@ -867,6 +871,11 @@ class NoRepeatGate(FrameProcessor):
         self._played_text = played_text
         self._spoken: list = []
         self._greeted = False              # one greeting per call (see _GREETING_RE)
+        # The caller asked to end (outcome.end_forced): the model gets one
+        # goodbye line, and a question in it is never spoken — timing sim
+        # cut_the_call_forced_close: "Just to clarify…?" still played before
+        # the forced close.
+        self._end_forced = end_forced or (lambda: False)
         # topic -> the normalized QUESTION we actually asked about it. A dict,
         # not a set: topic membership alone is not evidence of a re-ask — see
         # _TOPIC_REASK_THRESHOLD for the call that proved it.
@@ -985,6 +994,9 @@ class NoRepeatGate(FrameProcessor):
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
             return True
+        if self._end_forced() and (sentence or "").rstrip().endswith(("?", "？")):
+            logger.info("no-repeat: caller asked to end — dropping question %r", sentence.strip()[:48])
+            return False
         if self._GREETING_RE.match(sentence or ""):
             if self._greeted:
                 logger.info("no-repeat: dropping second greeting %r", sentence.strip()[:24])
@@ -1528,7 +1540,7 @@ class SentinelGate(FrameProcessor):
             # 6fa15c09: "…धन्यवाद, नमस्ते", then 8-11 s of silence, then a nudge).
             # Not in the opening seconds: "Namaste Aditi ji, I'm Aarushi…" is a greeting.
             if (not self._end_this_response and self._spoke_this_response
-                    and time.time() - getattr(self._outcome, "connected_at", 0.0) > 20
+                    and any(t.get("role") == "user" for t in self._outcome.transcript)
                     and is_farewell(self._utterance)):
                 logger.info("sentinel: farewell without marker %r — ending corr=%s",
                             self._utterance[-60:], self._outcome.corr)
@@ -2875,7 +2887,8 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
 
 
 async def run_bot(transport, corr: str, context: Dict[str, Any],
-                  outcome: CallOutcome, *, aiohttp_session) -> CallOutcome:
+                  outcome: CallOutcome, *, aiohttp_session,
+                  providers: Optional[Dict[str, Any]] = None) -> CallOutcome:
     """Run one call end-to-end on an already-connected Plivo <Stream> transport.
     Mutates the caller-owned CallOutcome in place (crash-safe reporting).
 
@@ -3023,8 +3036,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     bridge_line = "Just a second." if eng else "एक सेकंड।"
 
     stt_bias = (agent.get("name") or "").strip() or None
-    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias,
-                    mode=_agent_stt_mode(agent))
+    # `providers` (sim/timing.py): the timing simulator runs THIS pipeline —
+    # every gate, the aggregator, VAD, Smart Turn, the watchdog — with stub
+    # STT/LLM/TTS services instead of vendors, so turn-taking bugs reproduce
+    # offline. Production never passes it.
+    providers = providers or {}
+    stt = providers.get("stt") or build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias,
+                                            mode=_agent_stt_mode(agent))
     # to_thread: Vertex constructors do a SYNCHRONOUS service-account OAuth
     # round-trip; keep it off the loop so concurrent calls' audio never glitches.
     # Per-agent LLM routing for the Sarvam POC (config.sarvam_llm_agents): only
@@ -3039,7 +3057,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     elif ((_agent_id and _agent_id in settings.sarvam_llm_agents)
             or (_inst_id and _inst_id in settings.sarvam_llm_institutes)):
         _llm_provider = "sarvam"
-    llm = await asyncio.to_thread(build_llm, _llm_provider)
+    llm = providers.get("llm") or await asyncio.to_thread(build_llm, _llm_provider)
     _eff_provider = _llm_provider or settings.llm_provider
     diag.llm_vendor = "%s/%s" % (
         _eff_provider,
@@ -3048,12 +3066,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             _eff_provider, getattr(llm, "model_name", "") or ""))
     logger.info("llm: %s corr=%s%s", diag.llm_vendor, corr,
                 " (per-agent POC override)" if _llm_provider else "")
-    tts = build_tts(settings.sample_rate, voice=_agent_voice(agent),
-                    aiohttp_session=aiohttp_session,
-                    pace=_as_float(agent.get("pace")),
-                    temperature=_as_float(agent.get("temperature")),
-                    tts_model=_agent_tts_model(agent),
-                    language=agent.get("language"))
+    tts = providers.get("tts") or build_tts(settings.sample_rate, voice=_agent_voice(agent),
+                                            aiohttp_session=aiohttp_session,
+                                            pace=_as_float(agent.get("pace")),
+                                            temperature=_as_float(agent.get("temperature")),
+                                            tts_model=_agent_tts_model(agent),
+                                            language=agent.get("language"))
     for _svc in (stt, tts):
         if hasattr(_svc, "set_diagnostics"):
             _svc.set_diagnostics(diag)
@@ -3305,6 +3323,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     no_repeat = NoRepeatGate(
         enabled=lambda: settings.no_repeat_enabled,
+        end_forced=lambda: outcome.end_forced,
         last_caller_text=lambda: (outcome.transcript[-1].get("text", "")
                                   if outcome.transcript
                                   and outcome.transcript[-1].get("role") == "user" else ""),
@@ -3710,6 +3729,25 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             apply_decision(flags, d, now)
 
             if d.kind == NONE:
+                # Idle fallback for the turn pipecat's idle controller cannot see:
+                # its timer starts on BotStoppedSpeaking while the caller is quiet,
+                # so when the CALLER stopped last and got no reply — a pickup
+                # "Hello" dropped as a machine-greeting scrap, a dedupe, a carrier
+                # line — nothing ever arms it and the line sits silent for the rest
+                # of the call (timing sim hello_then_silence, 2026-09-12; the
+                # "Hello? … Hello?" callers in real transcripts). Same handler,
+                # same budget; self-limiting because the nudge itself moves
+                # bot_stopped_t past user_stopped_t.
+                _last = max(flags["bot_stopped_t"], flags["user_stopped_t"], flags["transcript_t"])
+                if (flags["user_stopped_t"] > flags["bot_stopped_t"] > 0
+                        and not flags["bot_speaking"] and not flags["user_speaking"]
+                        and flags["stopping_since"] is None and flags["ducked_since"] == 0
+                        and not _reply_in_flight()
+                        and now - _last >= settings.idle_timeout_secs):
+                    logger.info("idle: caller spoke last and got no reply for %.1fs — "
+                                "nudging from the watchdog corr=%s", now - _last, corr)
+                    flags["bot_stopped_t"] = now        # one shot per silence, not one per tick
+                    await _on_idle(None)
                 continue
             if d.kind == ARM_STOP:
                 logger.info("sentinel: grace elapsed (%.1fs) — closing the line corr=%s",

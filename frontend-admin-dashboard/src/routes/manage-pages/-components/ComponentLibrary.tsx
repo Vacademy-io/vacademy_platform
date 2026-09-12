@@ -99,7 +99,7 @@ const COMPONENT_GROUPS: { title: string; keys: string[] }[] = [
     },
     {
         title: 'Media',
-        keys: ['mediaShowcase', 'imageGallery', 'videoEmbed', 'imageBlock', 'marquee'],
+        keys: ['mediaShowcase', 'imageGallery', 'videoEmbed', 'documentViewer', 'imageBlock', 'marquee'],
     },
     {
         title: 'Answers & text',

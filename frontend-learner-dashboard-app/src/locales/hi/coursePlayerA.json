@@ -203,7 +203,22 @@
     "button": "बटन",
     "newsletterSuccessDefault": "सदस्यता लेने के लिए धन्यवाद!",
     "enterYourEmail": "अपना ईमेल दर्ज करें",
-    "subscribe": "सदस्यता लें"
+    "subscribe": "सदस्यता लें",
+    "documentViewer": {
+      "open": "दस्तावेज़ खोलें",
+      "download": "PDF डाउनलोड करें",
+      "close": "बंद करें",
+      "fullScreen": "पूर्ण स्क्रीन",
+      "previousPage": "पिछला पृष्ठ",
+      "nextPage": "अगला पृष्ठ",
+      "zoomIn": "ज़ूम इन",
+      "zoomOut": "ज़ूम आउट",
+      "pageOf": "{{current}} / {{total}}",
+      "loading": "दस्तावेज़ लोड हो रहा है…",
+      "loadFailed": "दस्तावेज़ यहाँ नहीं दिखाया जा सका।",
+      "openInNewTab": "नए टैब में खोलें",
+      "noDocument": "अभी तक कोई दस्तावेज़ सेट नहीं किया गया"
+    }
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "WhatsApp पर हमसे चैट करें"

@@ -904,5 +904,31 @@
     "metaPlaceholder": "بيانات وصفية (مثل الأسابيع 1-4)",
     "chipsPlaceholder": "الشرائح (مفصولة بفواصل)",
     "highlightThisStep": "تمييز هذه الخطوة"
+  },
+  "documentViewer": {
+    "heading": "إعدادات عارض المستندات",
+    "file": "ملف PDF",
+    "fileName": "اسم ملف التنزيل",
+    "fileNamePlaceholder": "مثال: The7Cs Book Catalogue",
+    "fileNameHelp": "يُستخدم عندما يقوم الزائر بتنزيل ملف PDF. اتركه فارغًا لاستخدام اسم الملف المرفوع.",
+    "display": "طريقة العرض",
+    "displayButton": "زر يفتح قارئًا بملء الشاشة",
+    "displayInline": "قارئ مضمّن في الصفحة",
+    "displayButtonHelp": "دعوة واحدة لاتخاذ إجراء؛ يُفتح ملف PDF فوق الصفحة مثل عرض تقديمي.",
+    "displayInlineHelp": "تظهر الصفحة الأولى مباشرة داخل الصفحة مع زر ملء الشاشة.",
+    "buttonText": "نص الزر",
+    "coverImage": "صورة الغلاف (اختياري)",
+    "frameHeight": "ارتفاع القارئ",
+    "heightShort": "قصير (480px)",
+    "heightMedium": "متوسط (70% من الشاشة)",
+    "heightTall": "طويل (85% من الشاشة)",
+    "showDownload": "إظهار زر التنزيل",
+    "onlyPdf": "يمكن رفع ملفات PDF فقط هنا.",
+    "tooLarge": "حجم ملف PDF هذا يتجاوز {{max}} ميغابايت. اضغطه أولًا — الملفات الكبيرة تُحمَّل ببطء على الهواتف.",
+    "uploadFailed": "فشل الرفع. حاول مرة أخرى.",
+    "uploading": "جارٍ الرفع...",
+    "uploadPdf": "رفع PDF",
+    "clear": "مسح",
+    "openFile": "فتح"
   }
 }

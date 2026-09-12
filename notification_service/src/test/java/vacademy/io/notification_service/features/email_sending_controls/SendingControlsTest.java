@@ -57,6 +57,14 @@ class SendingControlsTest {
     }
 
     @Test
+    void blankBaseUrlFallsBackToGateway() throws Exception {
+        // kubectl set env with an unset secret yields "", not an absent variable.
+        EmailUnsubscribeService svc = new EmailUnsubscribeService(mock(EmailUnsubscribeRepository.class), "k", "", "");
+        ReflectionTestUtils.invokeMethod(svc, "init");
+        assertTrue(svc.unsubscribeUrl("i", "x@y.com").startsWith("https://backend-stage.vacademy.io/notification-service/public/v1/email/unsubscribe?"));
+    }
+
+    @Test
     void mailerAddsHeadersAndFooter() throws Exception {
         EmailUnsubscribeRepository repo = mock(EmailUnsubscribeRepository.class);
         when(repo.existsByEmailAndInstituteIdAndIsActiveTrue("x@y.com", "i")).thenReturn(false);

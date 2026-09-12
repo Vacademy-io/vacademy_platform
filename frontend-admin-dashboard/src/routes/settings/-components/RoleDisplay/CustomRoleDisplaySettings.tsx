@@ -2270,6 +2270,13 @@ export default function CustomRoleDisplaySettings({
                         listCustomFieldControls: next,
                     }))
                 }
+                utmValue={settings.listUtmFilterControls}
+                onUtmChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        listUtmFilterControls: next,
+                    }))
+                }
             />
 
             <Card>

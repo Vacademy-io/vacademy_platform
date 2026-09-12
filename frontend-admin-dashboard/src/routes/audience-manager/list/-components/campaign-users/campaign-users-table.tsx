@@ -12,6 +12,17 @@ import {
 } from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
+import {
+    hasUtmSelection,
+    toUtmFiltersPayload,
+    utmValueLabel,
+} from '@/components/shared/leads/utm-filter-encoding';
+import {
+    UTM_FILTER_DIMENSIONS,
+    type UtmFilterDimension,
+    type UtmFilterSelection,
+} from '@/services/utm-list-filters';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
 import {
     decodeSelectionToEntries,
@@ -241,6 +252,21 @@ const CampaignUsersContent = ({
         [customFieldFilters]
     );
 
+    // Campaign (UTM) filters — one value list per dimension. The controls
+    // render nothing while the institute's UTM setting is off.
+    const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>({});
+    const { t: tUtm } = useTranslation('utmListFilters');
+    const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) => {
+        setPage(0);
+        setUtmFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[dimension];
+            else next[dimension] = values;
+            return next;
+        });
+    };
+    const utmFiltersPayload = useMemo(() => toUtmFiltersPayload(utmFilters), [utmFilters]);
+
     // ── Dialog state ─────────────────────────────────────────
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showSendMessage, setShowSendMessage] = useState(false);
@@ -440,6 +466,7 @@ const CampaignUsersContent = ({
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
+            utm_filters: utmFiltersPayload,
             call_history_filter: callHistoryFilter || undefined,
         };
     }, [
@@ -454,6 +481,7 @@ const CampaignUsersContent = ({
         slaFilters,
         counsellorFilters,
         customFieldFiltersPayload,
+        utmFiltersPayload,
         callHistoryFilter,
         ALL_VALUE,
         ALL_ACTIVE_VALUE,
@@ -710,6 +738,7 @@ const CampaignUsersContent = ({
         setToDate('');
         setAppliedRange({ from: '', to: '' });
         setCustomFieldFilters({});
+        setUtmFilters({});
     };
 
     const isDateFilterActive = !!appliedRange.from || !!appliedRange.to;
@@ -720,7 +749,8 @@ const CampaignUsersContent = ({
         leadStatusFilters.length > 0 ||
         slaFilters.length > 0 ||
         counsellorFilters.length > 0 ||
-        customFieldFiltersPayload.length > 0;
+        customFieldFiltersPayload.length > 0 ||
+        hasUtmSelection(utmFilters);
 
     // Active filter chips
     const chips: { label: string; onRemove: () => void }[] = [];
@@ -794,6 +824,24 @@ const CampaignUsersContent = ({
                     f.field_id,
                     removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
                 ),
+        });
+    });
+
+    UTM_FILTER_DIMENSIONS.forEach((dimension) => {
+        (utmFilters[dimension] ?? []).forEach((value) => {
+            chips.push({
+                label: tUtm('chip', {
+                    dimension: tUtm(
+                        `dimensions.${dimension === 'source_type' ? 'sourceType' : dimension}`
+                    ),
+                    value: utmValueLabel(value, tUtm('untagged')),
+                }),
+                onRemove: () =>
+                    setUtmFilter(
+                        dimension,
+                        (utmFilters[dimension] ?? []).filter((v) => v !== value)
+                    ),
+            });
         });
     });
 
@@ -1143,6 +1191,12 @@ const CampaignUsersContent = ({
                             </SelectItem>
                         </SelectContent>
                     </Select>
+                    <UtmFilterControls
+                        surface="LEADS"
+                        instituteId={instituteId ?? ''}
+                        selection={utmFilters}
+                        onChange={setUtmFilter}
+                    />
                     <ManageListFiltersLink surface="LEADS" />
                     <Popover>
                         <PopoverTrigger asChild>

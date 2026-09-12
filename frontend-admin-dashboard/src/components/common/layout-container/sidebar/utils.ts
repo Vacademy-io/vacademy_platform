@@ -588,6 +588,15 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/audience-manager/reports',
                 subItemId: 'lead-reports',
             },
+            {
+                // Deep link into the Reports Center's Campaigns (UTM) tab — the
+                // campaign-attribution dashboard is the thing admins go looking
+                // for by name, and a tab inside Reports is not discoverable from
+                // the nav on its own.
+                subItem: sidebarT('sidebar:utmCampaigns'),
+                subItemLink: '/audience-manager/reports?tab=utm',
+                subItemId: 'utm-campaigns',
+            },
         ],
     },
     {

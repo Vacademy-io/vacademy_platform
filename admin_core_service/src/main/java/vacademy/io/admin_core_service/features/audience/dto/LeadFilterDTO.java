@@ -114,6 +114,14 @@ public class LeadFilterDTO {
     // values.
     private java.util.List<CustomFieldFilter> customFieldFilters;
 
+    // ── Campaign (UTM) attribution filter ──
+    // Narrows to leads whose person has a recorded utm_attribution touch
+    // matching every dimension sent (OR within a dimension, AND across), or —
+    // with untagged_only — to leads with no touch at all. Resolved up-front
+    // into a response-id set and intersected with the custom-field match set,
+    // so the native queries below are untouched. See UtmListFilterDTO.
+    private vacademy.io.admin_core_service.features.utm_attribution.dto.UtmListFilterDTO utmFilters;
+
     // Pagination
     private Integer page;
     private Integer size;

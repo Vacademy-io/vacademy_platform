@@ -11,7 +11,13 @@ import type {
     ListCustomFieldControls,
     ListCustomFieldSurface,
     ListCustomFieldSurfaceControls,
+    ListUtmFilterControls,
+    ListUtmFilterDimension,
 } from '@/types/display-settings';
+import { useUtmBuilderEnabled } from '@/hooks/use-utm-builder-enabled';
+import { Link } from '@tanstack/react-router';
+import { Megaphone } from '@phosphor-icons/react';
+import { UTM_FILTER_DIMENSIONS, CORE_UTM_FILTER_DIMENSIONS } from '@/services/utm-list-filters';
 
 interface ListCustomFieldControlsCardProps {
     /** The unified per-surface controls from the display-settings blob. */
@@ -29,6 +35,12 @@ interface ListCustomFieldControlsCardProps {
     /** Suppress the card's own title/description when a host (e.g. the
      *  "Manage filters" dialog) already provides a heading. */
     hideHeading?: boolean;
+    /** Campaign (UTM) filter controls for the same surfaces. Optional so the
+     *  card keeps working for hosts that only edit custom fields; when both
+     *  props are given a "Campaign (UTM) filters" section renders above the
+     *  custom-field rows of the selected surface. */
+    utmValue?: ListUtmFilterControls | undefined;
+    onUtmChange?: (next: ListUtmFilterControls) => void;
 }
 
 const buildSurfaces = (
@@ -56,8 +68,12 @@ export const ListCustomFieldControlsCard = ({
     onChange,
     initialSurface,
     hideHeading = false,
+    utmValue,
+    onUtmChange,
 }: ListCustomFieldControlsCardProps) => {
     const { t } = useTranslation('settingsListCustomFieldControlsCard');
+    const { t: tUtm } = useTranslation('utmListFilters');
+    const utm = useUtmBuilderEnabled();
     const instituteId = getCurrentInstituteId();
     const { data: fields, isLoading } = useCustomFieldSetup(instituteId ?? undefined);
     const [surface, setSurface] = useState<ListCustomFieldSurface>(initialSurface ?? 'LEADS');
@@ -108,6 +124,32 @@ export const ListCustomFieldControlsCard = ({
 
     const surfaceMeta = surfaces.find((s) => s.id === surface);
 
+    // ── Campaign (UTM) filters for this surface ────────────────────────
+    // Absent entry = follow the institute UTM setting; absent dimensions =
+    // automatic (core three + whatever the data holds). The switches below
+    // show the EFFECTIVE state so an unsaved surface reads truthfully.
+    const utmSurface = utmValue?.[surface];
+    const utmEnabledEffective = utm.enabled && utmSurface?.enabled !== false;
+    const utmDimensionsEffective: ListUtmFilterDimension[] = utmSurface?.dimensions ?? [
+        ...UTM_FILTER_DIMENSIONS,
+    ];
+    const utmDimensionLabel = (d: ListUtmFilterDimension) =>
+        tUtm(`dimensions.${d === 'source_type' ? 'sourceType' : d}`);
+    const setUtmSurface = (patch: Partial<NonNullable<typeof utmSurface>>) => {
+        if (!onUtmChange) return;
+        onUtmChange({
+            ...(utmValue ?? {}),
+            [surface]: { ...(utmSurface ?? {}), ...patch },
+        });
+    };
+    const toggleUtmDimension = (d: ListUtmFilterDimension, on: boolean) => {
+        const next = new Set(utmDimensionsEffective);
+        if (on) next.add(d);
+        else next.delete(d);
+        // Keep the canonical order so the bar renders dimensions consistently.
+        setUtmSurface({ dimensions: UTM_FILTER_DIMENSIONS.filter((x) => next.has(x)) });
+    };
+
     return (
         <Card>
             {!hideHeading && (
@@ -133,6 +175,73 @@ export const ListCustomFieldControlsCard = ({
                     <p className="mt-2 text-xs text-muted-foreground">
                         {t('appliesTo', { pages: surfaceMeta.pages })}
                     </p>
+                )}
+                {onUtmChange && (
+                    <div className="mt-4 rounded-lg border border-border bg-neutral-50/60 p-4">
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="flex min-w-0 flex-col gap-1">
+                                <div className="flex items-center gap-2">
+                                    <Megaphone className="size-4 text-neutral-500" />
+                                    <Label
+                                        htmlFor={`list-utm-enabled-${surface}`}
+                                        className="cursor-pointer text-sm font-semibold text-neutral-800"
+                                    >
+                                        {t('utm.title')}
+                                    </Label>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {utm.enabled ? (
+                                        t('utm.description')
+                                    ) : (
+                                        <>
+                                            {t('utm.disabledHint')}{' '}
+                                            <Link
+                                                to="/settings"
+                                                search={{ selectedTab: 'utmSettings' }}
+                                                className="font-medium text-primary-500 hover:underline"
+                                            >
+                                                {t('utm.openSettings')}
+                                            </Link>
+                                        </>
+                                    )}
+                                </p>
+                            </div>
+                            <Switch
+                                id={`list-utm-enabled-${surface}`}
+                                checked={utmEnabledEffective}
+                                disabled={!utm.enabled}
+                                onCheckedChange={(v) => setUtmSurface({ enabled: v })}
+                            />
+                        </div>
+                        {utmEnabledEffective && (
+                            <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                                {UTM_FILTER_DIMENSIONS.map((d) => (
+                                    <div
+                                        key={d}
+                                        className="flex items-center justify-between gap-3 py-1"
+                                    >
+                                        <Label
+                                            htmlFor={`list-utm-dim-${surface}-${d}`}
+                                            className="cursor-pointer text-sm text-neutral-700"
+                                        >
+                                            {utmDimensionLabel(d)}
+                                            {!utmSurface?.dimensions &&
+                                                !CORE_UTM_FILTER_DIMENSIONS.includes(d) && (
+                                                    <span className="ml-1.5 text-xs text-neutral-400">
+                                                        {t('utm.autoHint')}
+                                                    </span>
+                                                )}
+                                        </Label>
+                                        <Switch
+                                            id={`list-utm-dim-${surface}-${d}`}
+                                            checked={utmDimensionsEffective.includes(d)}
+                                            onCheckedChange={(v) => toggleUtmDimension(d, v)}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 )}
                 {isLoading ? (
                     <p className="mt-3 text-sm text-muted-foreground">{t('loading')}</p>

@@ -2290,6 +2290,13 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
                             listCustomFieldControls: next,
                         }))
                     }
+                    utmValue={settings.listUtmFilterControls}
+                    onUtmChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            listUtmFilterControls: next,
+                        }))
+                    }
                 />
             </div>
 

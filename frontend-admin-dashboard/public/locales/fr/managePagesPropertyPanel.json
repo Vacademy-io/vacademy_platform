@@ -883,5 +883,31 @@
     "metaPlaceholder": "Méta (ex. Semaines 1-4)",
     "chipsPlaceholder": "Puces (séparées par des virgules)",
     "highlightThisStep": "Mettre en valeur cette étape"
+  },
+  "documentViewer": {
+    "heading": "Paramètres de la visionneuse de document",
+    "file": "Fichier PDF",
+    "fileName": "Nom du fichier téléchargé",
+    "fileNamePlaceholder": "ex. Catalogue The7Cs",
+    "fileNameHelp": "Utilisé lorsqu'un visiteur télécharge le PDF. Laissez vide pour garder le nom du fichier importé.",
+    "display": "Affichage",
+    "displayButton": "Bouton ouvrant une lecture plein écran",
+    "displayInline": "Visionneuse intégrée à la page",
+    "displayButtonHelp": "Un seul appel à l'action ; le PDF s'ouvre par-dessus la page, comme une présentation.",
+    "displayInlineHelp": "La première page s'affiche directement dans la page, avec un bouton Plein écran.",
+    "buttonText": "Texte du bouton",
+    "coverImage": "Image de couverture (facultatif)",
+    "frameHeight": "Hauteur de la visionneuse",
+    "heightShort": "Courte (480px)",
+    "heightMedium": "Moyenne (70 % de l'écran)",
+    "heightTall": "Grande (85 % de l'écran)",
+    "showDownload": "Afficher le bouton Télécharger",
+    "onlyPdf": "Seuls les fichiers PDF peuvent être importés ici.",
+    "tooLarge": "Ce PDF dépasse {{max}} Mo. Compressez-le d'abord — les gros fichiers se chargent lentement sur mobile.",
+    "uploadFailed": "Échec de l'import. Réessayez.",
+    "uploading": "Import en cours...",
+    "uploadPdf": "Importer un PDF",
+    "clear": "Effacer",
+    "openFile": "Ouvrir"
   }
 }

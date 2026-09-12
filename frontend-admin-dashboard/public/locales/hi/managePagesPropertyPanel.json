@@ -876,5 +876,31 @@
     "metaPlaceholder": "मेटा (जैसे Weeks 1-4)",
     "chipsPlaceholder": "चिप्स (कॉमा से अलग)",
     "highlightThisStep": "यह स्टेप हाइलाइट करें"
+  },
+  "documentViewer": {
+    "heading": "दस्तावेज़ व्यूअर सेटिंग्स",
+    "file": "PDF फ़ाइल",
+    "fileName": "डाउनलोड फ़ाइल नाम",
+    "fileNamePlaceholder": "जैसे The7Cs Book Catalogue",
+    "fileNameHelp": "जब कोई विज़िटर PDF डाउनलोड करे तब उपयोग होता है। खाली छोड़ने पर अपलोड की गई फ़ाइल का नाम रहेगा।",
+    "display": "प्रदर्शन",
+    "displayButton": "बटन जो पूर्ण-स्क्रीन रीडर खोले",
+    "displayInline": "पेज में एम्बेडेड रीडर",
+    "displayButtonHelp": "एक कॉल-टू-एक्शन; PDF पेज के ऊपर प्रेज़ेंटेशन की तरह खुलता है।",
+    "displayInlineHelp": "पहला पृष्ठ सीधे पेज में दिखता है, पूर्ण स्क्रीन बटन के साथ।",
+    "buttonText": "बटन टेक्स्ट",
+    "coverImage": "कवर इमेज (वैकल्पिक)",
+    "frameHeight": "रीडर की ऊँचाई",
+    "heightShort": "छोटी (480px)",
+    "heightMedium": "मध्यम (स्क्रीन का 70%)",
+    "heightTall": "लंबी (स्क्रीन का 85%)",
+    "showDownload": "डाउनलोड बटन दिखाएँ",
+    "onlyPdf": "यहाँ केवल PDF फ़ाइलें अपलोड की जा सकती हैं।",
+    "tooLarge": "यह PDF {{max}} MB से बड़ी है। पहले इसे कंप्रेस करें — बड़ी फ़ाइलें फ़ोन पर धीरे लोड होती हैं।",
+    "uploadFailed": "अपलोड विफल। फिर से प्रयास करें।",
+    "uploading": "अपलोड हो रहा है...",
+    "uploadPdf": "PDF अपलोड करें",
+    "clear": "हटाएँ",
+    "openFile": "खोलें"
   }
 }

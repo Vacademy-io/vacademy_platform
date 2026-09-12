@@ -876,5 +876,31 @@
     "metaPlaceholder": "Meta (e.g. Weeks 1-4)",
     "chipsPlaceholder": "Chips (comma-separated)",
     "highlightThisStep": "Highlight this step"
+  },
+  "documentViewer": {
+    "heading": "Document Viewer Settings",
+    "file": "PDF file",
+    "fileName": "Download file name",
+    "fileNamePlaceholder": "e.g. The7Cs Book Catalogue",
+    "fileNameHelp": "Used when a visitor downloads the PDF. Leave blank to use the uploaded file's name.",
+    "display": "Display",
+    "displayButton": "Button that opens a full-screen reader",
+    "displayInline": "Reader embedded in the page",
+    "displayButtonHelp": "One call-to-action; the PDF opens over the page, like a presentation.",
+    "displayInlineHelp": "The first page shows directly in the page, with a Full screen button.",
+    "buttonText": "Button text",
+    "coverImage": "Cover image (optional)",
+    "frameHeight": "Reader height",
+    "heightShort": "Short (480px)",
+    "heightMedium": "Medium (70% of screen)",
+    "heightTall": "Tall (85% of screen)",
+    "showDownload": "Show Download button",
+    "onlyPdf": "Only PDF files can be uploaded here.",
+    "tooLarge": "That PDF is over {{max}} MB. Compress it first — large files load slowly on phones.",
+    "uploadFailed": "Upload failed. Try again.",
+    "uploading": "Uploading...",
+    "uploadPdf": "Upload PDF",
+    "clear": "Clear",
+    "openFile": "Open"
   }
 }

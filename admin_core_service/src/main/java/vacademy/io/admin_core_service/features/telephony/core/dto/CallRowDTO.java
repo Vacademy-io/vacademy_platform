@@ -72,6 +72,16 @@ public class CallRowDTO {
 
     /** Fault codes behind {@link #diagHealth}; null when not measured. */
     private java.util.List<String> diagFaults;
+
+    /**
+     * The counsellor's one-sentence answer to "do I call this lead myself?", shown
+     * under the AI disposition. {@code followUpGist} is the sentence — the
+     * recommendation and the concrete reason from the call. {@code followUp} is
+     * CALL / CALL_LATER / SKIP and only colours it; it is never shown as a word.
+     * NULL = NOT ASSESSED and must never be read as CALL.
+     */
+    private String followUp;
+    private String followUpGist;
     /** Effective promised call-back time (human callback_at or AI callback_at). */
     private Timestamp callbackAt;
 

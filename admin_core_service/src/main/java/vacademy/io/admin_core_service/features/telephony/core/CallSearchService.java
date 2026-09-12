@@ -87,7 +87,8 @@ public class CallSearchService {
             LEFT JOIN LATERAL (
                 SELECT r.id AS acr_id, r.disposition AS ai_disposition, r.callback_at AS ai_callback_at,
                        r.callback AS ai_callback, r.transfer_triggered AS transfer_triggered,
-                       r.diag_health AS diag_health, r.diag_faults AS diag_faults
+                       r.diag_health AS diag_health, r.diag_faults AS diag_faults,
+                       r.follow_up AS follow_up, r.follow_up_gist AS follow_up_gist
                 FROM ai_call_result r
                 WHERE r.call_log_id = tcl.id
                 ORDER BY r.received_at DESC NULLS LAST
@@ -279,6 +280,8 @@ public class CallSearchService {
                    acr.ai_disposition AS ai_disposition,
                    acr.diag_health AS diag_health,
                    acr.diag_faults AS diag_faults,
+                   acr.follow_up AS follow_up,
+                   acr.follow_up_gist AS follow_up_gist,
                    CASE WHEN (acr.acr_id IS NOT NULL
                               OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))
                         THEN 'AI' ELSE 'HUMAN' END AS call_type,
@@ -330,6 +333,11 @@ public class CallSearchService {
                 // OTHER feature had already fetched detail for.
                 .diagHealth(rs.getString("diag_health"))
                 .diagFaults(splitDiagFaults(rs.getString("diag_faults")))
+                // The follow-up gist rides the list for the same reason health does:
+                // the counsellor reads it in the row to decide whether to call, not
+                // only in the detail drawer.
+                .followUp(rs.getString("follow_up"))
+                .followUpGist(rs.getString("follow_up_gist"))
                 .callbackAt(rs.getTimestamp("callback_at_eff"))
                 .createdAt(rs.getTimestamp("created_at"))
                 .leadStatusId(rs.getString("lead_status_id"))

@@ -269,9 +269,43 @@ export function rowCallFaults(row: CallHealthFields): string[] {
     return Array.isArray(faults) ? faults : [];
 }
 
+// ── Follow-up gist (V510) ──────────────────────────────────────────────────
+
+/**
+ * Should a human counsellor call this lead next. Closed vocabulary from the bot,
+ * used ONLY to colour the gist sentence and to filter on — it is never rendered
+ * as a word on its own. The sentence is the product.
+ */
+export type FollowUp = 'CALL' | 'CALL_LATER' | 'SKIP';
+
+/**
+ * `CallRowDTO.followUp/followUpGist` — the counsellor's one-sentence answer to
+ * "do I call this lead myself?": the recommendation and the concrete reason from
+ * the call. Served on the LIST so it reads inline under the disposition with no
+ * per-row fetch. Both spellings accepted, same reasoning as {@link CallHealthFields}.
+ *
+ * NULL followUp means NOT ASSESSED (a human call, an older bot, a call the caller
+ * never spoke on). It must never be read as CALL.
+ */
+export interface CallFollowUpFields {
+    follow_up?: FollowUp | null;
+    followUp?: FollowUp | null;
+    follow_up_gist?: string | null;
+    followUpGist?: string | null;
+}
+
+export function rowFollowUp(row: CallFollowUpFields): FollowUp | null {
+    return row.follow_up ?? row.followUp ?? null;
+}
+
+export function rowFollowUpGist(row: CallFollowUpFields): string | null {
+    const g = row.follow_up_gist ?? row.followUpGist;
+    return typeof g === 'string' && g.trim() ? g.trim() : null;
+}
+
 // ── Row type (snake_case) ──────────────────────────────────────────────────
 
-export interface CallRow extends CallHealthFields {
+export interface CallRow extends CallHealthFields, CallFollowUpFields {
     id: string;
     provider_type: string | null;
     call_type: 'AI' | 'HUMAN';
@@ -592,7 +626,7 @@ export interface CallDetailKeyVal {
 }
 
 /** Deep per-call detail — richer than the search row, used by the "more details" popover. */
-export interface CallDetail extends CallHealthFields {
+export interface CallDetail extends CallHealthFields, CallFollowUpFields {
     id: string;
     provider_type: string | null;
     direction: 'INBOUND' | 'OUTBOUND' | null;

@@ -87,6 +87,11 @@
         "edit": "Edit",
         "set": "Set"
     },
+    "followUp": {
+        "titleCall": "Worth a manual call",
+        "titleCallLater": "Call back at the time they asked",
+        "titleSkip": "No manual call needed"
+    },
     "recording": {
         "loading": "Loading…",
         "play": "Play"

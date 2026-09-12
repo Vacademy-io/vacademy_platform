@@ -87,6 +87,11 @@
         "edit": "Modifier",
         "set": "Définir"
     },
+    "followUp": {
+        "titleCall": "Mérite un appel manuel",
+        "titleCallLater": "Rappeler à l’heure demandée",
+        "titleSkip": "Aucun appel manuel nécessaire"
+    },
     "recording": {
         "loading": "Chargement…",
         "play": "Lire"

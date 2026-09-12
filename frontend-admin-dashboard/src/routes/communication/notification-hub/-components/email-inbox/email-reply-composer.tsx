@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PaperPlaneTilt, Warning } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -45,6 +46,7 @@ export function EmailReplyComposer({
     defaultSubject = '',
     onSent,
 }: Props) {
+    const { t } = useTranslation('communicationEmailReplyComposer');
     const [senders, setSenders] = useState<EmailConfiguration[]>([]);
     const [loadingSenders, setLoadingSenders] = useState(false);
     const [from, setFrom] = useState<string>('');
@@ -94,11 +96,11 @@ export function EmailReplyComposer({
 
     const handleSend = async () => {
         if (!body.trim()) {
-            toast.error('Body cannot be empty');
+            toast.error(t('bodyEmpty'));
             return;
         }
         if (!from) {
-            toast.error('Pick a sender');
+            toast.error(t('pickSender'));
             return;
         }
         if (!toEmail) return;
@@ -115,14 +117,14 @@ export function EmailReplyComposer({
             onSent(sent);
             setSubject('');
             setBody('');
-            toast.success('Reply sent');
+            toast.success(t('replySent'));
             onOpenChange(false);
         } catch (err: any) {
             console.error('Send reply failed', err);
             toast.error(
                 err?.response?.data?.message ||
                     err?.response?.data?.error ||
-                    'Failed to send reply'
+                    t('failedToSendReply')
             );
         } finally {
             setSending(false);
@@ -133,9 +135,9 @@ export function EmailReplyComposer({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="w-[640px] max-w-[92vw] p-0 gap-0">
                 <DialogHeader className="px-5 pt-5 pb-3 border-b">
-                    <DialogTitle className="text-base">Reply</DialogTitle>
+                    <DialogTitle className="text-base">{t('reply')}</DialogTitle>
                     <DialogDescription className="text-xs">
-                        Send a reply through one of your institute's configured senders.
+                        {t('dialogDescription')}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -145,15 +147,15 @@ export function EmailReplyComposer({
                             <Warning className="h-4 w-4 text-amber-600" />
                             <AlertDescription className="text-xs">
                                 {loadingSenders
-                                    ? 'Loading senders…'
-                                    : 'No configured sender for this institute. Add one in Settings → Notification Settings → Email Settings to enable replies.'}
+                                    ? t('loadingSenders')
+                                    : t('noSenderConfigured')}
                             </AlertDescription>
                         </Alert>
                     </div>
                 ) : (
                     <div className="px-5 py-4 space-y-3">
                         <div className="grid grid-cols-[64px_1fr] gap-x-3 gap-y-3 items-center">
-                            <Label className="text-xs text-muted-foreground">From</Label>
+                            <Label className="text-xs text-muted-foreground">{t('from')}</Label>
                             <Select value={from} onValueChange={setFrom}>
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue />
@@ -171,16 +173,16 @@ export function EmailReplyComposer({
                                 </SelectContent>
                             </Select>
 
-                            <Label className="text-xs text-muted-foreground">To</Label>
+                            <Label className="text-xs text-muted-foreground">{t('to')}</Label>
                             <div className="text-sm text-foreground bg-muted/60 rounded px-3 py-2 truncate">
                                 {toEmail || ''}
                             </div>
 
-                            <Label className="text-xs text-muted-foreground">Subject</Label>
+                            <Label className="text-xs text-muted-foreground">{t('subject')}</Label>
                             <Input
                                 value={subject}
                                 onChange={(e) => setSubject(e.target.value)}
-                                placeholder="(optional)"
+                                placeholder={t('optional')}
                                 className="h-9 text-sm"
                             />
                         </div>
@@ -188,7 +190,7 @@ export function EmailReplyComposer({
                         <Textarea
                             value={body}
                             onChange={(e) => setBody(e.target.value)}
-                            placeholder="Write a reply…"
+                            placeholder={t('writeReplyPlaceholder')}
                             rows={8}
                             className="text-sm resize-none"
                             autoFocus
@@ -203,7 +205,7 @@ export function EmailReplyComposer({
                         onClick={() => onOpenChange(false)}
                         disabled={sending}
                     >
-                        Cancel
+                        {t('cancel')}
                     </Button>
                     <Button
                         onClick={handleSend}
@@ -212,7 +214,7 @@ export function EmailReplyComposer({
                         className="gap-1.5"
                     >
                         <PaperPlaneTilt size={12} weight="fill" />
-                        {sending ? 'Sending…' : 'Send reply'}
+                        {sending ? t('sending') : t('sendReply')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

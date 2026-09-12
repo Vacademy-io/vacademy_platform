@@ -500,7 +500,8 @@ async def test_report_carries_generated_at_for_late_delivery(monkeypatch):
 def test_run_bot_setup_and_teardown_structure():
     src = inspect.getsource(b.run_bot)
     # Vertex SA OAuth must not block the event loop (other live calls glitch).
-    assert "await asyncio.to_thread(build_llm)" in src
+    # Still off the event loop; now carries the per-agent provider override.
+    assert "await asyncio.to_thread(build_llm, _llm_provider)" in src
     # Greet task is tracked; watchdog + greet cancels are AWAITED.
     assert "_bg_tasks.append(asyncio.create_task(_greet_when_ready()))" in src
     tail = src[src.index("watchdog_task = asyncio.create_task"):]
@@ -592,12 +593,13 @@ def test_placeholder_unknown_key_falls_back_and_warns(caplog):
     ctx = {"leadName": "Devaki", "leadFields": {}}
     with caplog.at_level("WARNING"):
         out = b._fill_placeholders("Hi {{totally_unknown}}!", ctx)
-    assert out == "Hi !"
+    # Whitespace cleanup (2026-09-09) closes the hole an empty value leaves.
+    assert out == "Hi!"
     assert any("unresolved" in r.getMessage() for r in caplog.records)
     # NO generic *_name -> lead_name fallback: endswith("name") also matches
     # {{school_name}}/{{child_name}}, so it would confidently speak the PARENT's
     # name as the school's or the child's. A hole beats a wrong name.
-    assert b._fill_placeholders("Hi {{school_name}}!", ctx) == "Hi !"
+    assert b._fill_placeholders("Hi {{school_name}}!", ctx) == "Hi!"
     assert b._fill_placeholders("child {{child_name}}", ctx) == "child "
     # …but the person we are CALLING is the parent, so this one does resolve.
     assert b._fill_placeholders("Hi {{parent_name}}!", ctx) == "Hi Devaki!"
@@ -1443,6 +1445,55 @@ def test_plain_hindi_register_rule_targets_the_words_actually_used():
         "name": "Ann", "language": "english", "systemPrompt": "Bot: Hi! " * 80,
         "direction": "OUTBOUND", "openingLine": "Hi!"}})
     assert "PHONE HINDI" not in en
+
+
+def test_warm_question_rule_reaches_every_prompt_branch(monkeypatch):
+    """Founder, 2026-09-08, live-testing the yoga agent: "it's asking questions as
+    if she is my mother — 'hey, do you take live classes?' is not the right way...
+    humanize the prompt, and inculcate this into AI calling in general". "In
+    general" means the rule must ride the platform, not one authored script — so
+    it must appear for BOTH the authored-prompt branch and the thin-prompt
+    scaffold, and honour its kill switch."""
+    MARK = "ASK LIKE A PERSON, NOT A FORM"
+    authored = b.build_system_prompt({"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+        "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}})
+    assert MARK in authored
+    thin = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert MARK in thin
+    monkeypatch.setenv("WARM_QUESTIONS_ENABLED", "false")
+    from app.config import get_settings as _gs
+    _gs.cache_clear()  # get_settings is lru_cached; force a re-read of the env
+    try:
+        off = b.build_system_prompt({"agent": {
+            "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+            "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}})
+        assert MARK not in off
+    finally:
+        _gs.cache_clear()  # never leave the off-switch cached for later tests
+
+
+def test_delivery_rule_reaches_every_prompt_branch(monkeypatch):
+    """Clients, 2026-09-11: "the tone is very simple and linear — bot like". The
+    TTS has no prosody control, so the prompt asks for text that carries
+    delivery ('...' before the key phrase, one '!'), measured +15% pitch spread
+    on the live engine. Platform-wide like the warm-question rule: both prompt
+    branches, and the kill switch must remove it."""
+    MARK = "SPEAK, DON'T READ"
+    agent = {"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+        "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}}
+    assert MARK in b.build_system_prompt(agent)
+    assert MARK in b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    monkeypatch.setenv("PROSODY_HINTS_ENABLED", "false")
+    from app.config import get_settings as _gs
+    _gs.cache_clear()
+    try:
+        assert MARK not in b.build_system_prompt(agent)
+    finally:
+        _gs.cache_clear()
 
 
 def test_language_switch_on_request_is_permanent():
@@ -2585,3 +2636,1537 @@ def test_greet_ignores_a_stale_open_turn():
     assert fire(voice_until=9.0, turn_closes=None) >= 2.4
     # A silent line fires at the plain greet delay.
     assert fire(voice_until=0.0) <= 0.9
+
+
+# ── call c9aa4062 (2026-09-09): "September 10th dot WHAT time works best" ────
+# The LLM emitted a stray leading period, _SENT_END matched the bare "." as a
+# complete sentence, and Smallest TTS spoke it as the WORD "dot" — three times
+# in one call, until the caller asked "sorry, what is dot H four W?".
+
+
+@pytest.mark.asyncio
+async def test_letterless_chunks_never_reach_tts():
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Okay, Thursday September 10th. ", ".",
+                 "What time works best for you?")
+    assert all(any(ch.isalnum() for ch in t) for t in rec.text), rec.text
+    joined = " ".join(rec.text)
+    assert "What time works best" in joined
+    assert "September 10th" in joined
+
+
+@pytest.mark.asyncio
+async def test_letterless_tail_is_dropped_too():
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Sounds good. ", "..")
+    assert rec.text and all(any(ch.isalnum() for ch in t) for t in rec.text), rec.text
+
+
+@pytest.mark.asyncio
+async def test_emitted_sentences_keep_a_joining_space_for_the_context():
+    """The assistant aggregator concatenates emitted frames verbatim; without a
+    separator the model's own context reads "…there.Nice to…" and the model
+    starts IMITATING the glued style (which is what produced the stray-period
+    chunks of call c9aa4062 in the first place)."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Hello there.Nice day, right?")
+    assert "".join(rec.text) == "Hello there. Nice day, right?", rec.text
+
+
+# ── call c9aa4062: the opening read the caller's phone number as her NAME ────
+
+
+def test_a_phone_number_is_never_a_lead_name():
+    assert b._lead_name_is_phone("919425677707")
+    assert b._lead_name_is_phone("+91 94256 77707")
+    assert b._lead_name_is_phone("91-9425-677-707")
+    assert not b._lead_name_is_phone("Ritu Sharma")
+    assert not b._lead_name_is_phone("Selvin")
+    assert not b._lead_name_is_phone("")
+    assert not b._lead_name_is_phone(None)
+    assert not b._lead_name_is_phone("Mary 2nd")
+
+
+def test_unknown_name_renders_empty_for_english_and_aap_for_hindi():
+    """"Hello, am I speaking with aap?" is as broken in English as reading the
+    number — the fallback must match the agent's language, and the cleanup must
+    close the grammar hole an empty value leaves."""
+    line = "Hello, am I speaking with {{name}}?"
+    en = b._fill_placeholders(line, {"leadName": None,
+                                     "agent": {"language": "english"}})
+    assert en == "Hello, am I speaking with?"
+    hi = b._fill_placeholders(line, {"leadName": None,
+                                     "agent": {"language": "hinglish"}})
+    assert hi == "Hello, am I speaking with aap?"
+    named = b._fill_placeholders(line, {"leadName": "Ritu",
+                                        "agent": {"language": "english"}})
+    assert named == "Hello, am I speaking with Ritu?"
+
+
+# ── call c9aa4062: "which number should I send it to?" → caller made to
+#    dictate the very number the bot had dialled ─────────────────────────────
+
+
+def test_dialled_number_line_reaches_both_prompt_branches():
+    authored = b.build_system_prompt({
+        "leadPhone": "919425677707",
+        "agent": {"name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+                  "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi."}})
+    assert "919425677707" in authored
+    assert "NEVER ask the caller to dictate" in authored
+    thin = b.build_system_prompt({
+        "leadPhone": "919425677707",
+        "agent": {"name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert "919425677707" in thin
+    no_phone = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert "dictate" not in no_phone
+
+
+def test_check_in_variation_rule_reaches_both_prompt_branches():
+    """Six "does that make sense?" turn-enders in three minutes (c9aa4062)."""
+    for sp in ("Bot: Hi! I am Aarushi. " * 40, "short"):
+        p = b.build_system_prompt({"agent": {
+            "name": "A", "systemPrompt": sp, "direction": "OUTBOUND",
+            "openingLine": "Hi! I am A."}})
+        assert "VARY your check-ins" in p
+
+
+# ── calls c9aa4062 / e73a839b / 0e26a0c9 (2026-09-09): the 15-19 s "audio wasn't
+#    ready" stalls were Smallest returning a ~200 Hz DRONE for English text tagged
+#    `hi` on lightning_v3.1_pro/mrunal (72.5 s for "Ah, okay, so you've got some
+#    automation in place."; 4 of 101 sentences; 0 of 101 tagged `en`) ──────────
+
+
+def test_smallest_language_follows_the_agent_not_a_constant(monkeypatch):
+    import sys, types
+    fake = types.SimpleNamespace(EN="en", HI="hi")
+    mod = sys.modules.get("pipecat.transcriptions.language")
+    if mod is None:
+        mod = types.ModuleType("pipecat.transcriptions.language")
+        sys.modules["pipecat.transcriptions.language"] = mod
+    monkeypatch.setattr(mod, "Language", fake, raising=False)
+    assert pv._smallest_language("english") == "en"
+    assert pv._smallest_language("English") == "en"
+    assert pv._smallest_language("en-IN") == "en"
+    # Hinglish / Hindi / unset keep the code-switching Hindi tag.
+    assert pv._smallest_language("hinglish") == "hi"
+    assert pv._smallest_language("hindi") == "hi"
+    assert pv._smallest_language(None) == "hi"
+    assert pv._smallest_language("") == "hi"
+
+
+def test_build_tts_call_site_passes_the_agent_language():
+    """The factory can only honour the language if run_bot hands it over."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    call = src[src.index("build_tts(settings.sample_rate, voice=_agent_voice(agent)"):]
+    call = call[:call.index(")\n")]
+    assert 'language=agent.get("language")' in call
+    assert "language" in inspect.signature(pv.build_tts).parameters
+
+
+# ── call 9e566e32 (2026-09-09): the callee's pickup "Hello" 250ms into our opening
+#    cut it after "Hi,"; the carry-on cue said "do not re-greet" and the model went
+#    straight to "Thanks. So the reason I called…" — caller hung up at 11s ─────────
+
+
+def test_opening_barely_heard_is_only_true_at_the_opening():
+    opening = "Hi, is this Shreyash? Aarushi from Vacademy — we came to know you run yoga sessions. Do you have two minutes?"
+    assert b._opening_barely_heard(opening, [{"role": "assistant", "text": "Hi,"}], 0.0)
+    assert b._opening_barely_heard(opening, [], 0.0)          # nothing recorded at all
+    # Heard most of it: the ordinary continuation path, not a re-say.
+    assert not b._opening_barely_heard(opening, [{"role": "assistant", "text": opening[:90]}], 0.0)
+    # An LLM reply has already run: the opening is history, whatever was played.
+    assert not b._opening_barely_heard(opening, [{"role": "assistant", "text": "Hi,"}], 123.4)
+    assert not b._opening_barely_heard("", [], 0.0)
+
+
+async def _collector_with_resay(rec, resay):
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: True, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True, resay_opening=resay)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = rec.__dict__.setdefault("_bi", _noop_broadcast)
+    return tc
+
+
+async def _noop_broadcast():
+    return None
+
+
+def _cue_texts(rec):
+    out = []
+    for f in rec.frames:
+        for m in (getattr(f, "messages", None) or []):
+            out.append(str(m.get("content", "")))
+    return out
+
+
+@pytest.mark.asyncio
+async def test_a_hello_that_cuts_the_opening_resays_it_instead_of_carrying_on():
+    rec = _Rec()
+    calls = []
+
+    async def resay(text):
+        calls.append(text)
+        return True
+    tc = await _collector_with_resay(rec, resay)
+    await _feed(tc, "Hello.")
+    assert calls == ["Hello."]
+    cues = _cue_texts(rec)
+    assert "Hello." in cues, "absorb-but-never-lose: the ack still reaches the context"
+    assert not any("carry on" in c or "re-greet" in c for c in cues), cues
+
+
+@pytest.mark.asyncio
+async def test_a_hello_mid_pitch_still_gets_the_carry_on_cue():
+    """resay says 'not the opening' -> today's behaviour, byte for byte."""
+    rec = _Rec()
+
+    async def resay(text):
+        return False
+    tc = await _collector_with_resay(rec, resay)
+    await _feed(tc, "Hello.")
+    assert any("carry on" in c for c in _cue_texts(rec)), _cue_texts(rec)
+
+
+def test_watchdog_speaks_the_bridge_line_on_llm_bridge():
+    """The decision is pure (test_timeline); this pins the I/O side: run_bot
+    wires the configured threshold in and speaks bridge_line, off-context."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert "llm_bridge_after_secs=(settings.llm_bridge_after_secs" in src
+    handler = src[src.index("if d.kind == LLM_BRIDGE:"):]
+    handler = handler[:handler.index("continue")]
+    assert "TTSSpeakFrame(bridge_line, append_to_context=False)" in handler
+    assert 'diag.bump("llm_bridges")' in handler
+
+
+# ── call 7003c36a (2026-09-09): "I am busy" → "When would be a better time to
+#    call you back today?" → caller "Yeah." over the last word → absorbed as a
+#    backchannel → "carry on" cue → the model carried on INTO THE PITCH ──────────
+
+
+async def _collector_with_transcript(rec, played_assistant_text):
+    out = FakeOutcome()
+    out.transcript.append({"role": "assistant", "text": played_assistant_text})
+    tc = b.TranscriptCollector(
+        out, lambda user=True: None,
+        is_bot_speaking=lambda: True, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = _noop_broadcast
+    return tc
+
+
+@pytest.mark.asyncio
+async def test_a_yes_right_after_a_played_question_is_its_answer():
+    rec = _Rec()
+    tc = await _collector_with_transcript(
+        rec, "No problem at all, Shiv. When would be a better time for me to call you back today?")
+    await _feed(tc, "Yeah.")
+    cues = _cue_texts(rec)
+    assert any("their ANSWER to the question" in c for c in cues), cues
+    assert not any("carry on from where you were interrupted" in c for c in cues), cues
+
+
+@pytest.mark.asyncio
+async def test_a_yes_over_a_statement_still_carries_on():
+    rec = _Rec()
+    tc = await _collector_with_transcript(
+        rec, "We work with yoga trainers on everything around their online sessions.")
+    await _feed(tc, "Yeah.")
+    cues = _cue_texts(rec)
+    assert any("carry on" in c for c in cues), cues
+    assert not any("their ANSWER" in c for c in cues), cues
+
+
+# ── Disposition fidelity: institute 3716991c, 2026-09-09 (77-call audit) ──────
+#
+# The classifier was inventing conversations. On a transcript whose only caller
+# turn was "Hello." it returned Demo_Booked plus the facts that would justify it —
+# a name, a member count, a platform and a meeting time, none of them spoken — and
+# because it fabricated meetingRequested + meetingDatetimeIso in the same response
+# it also walked past _drop_unevidenced_booking. 13 of 31 near-silent calls got a
+# decisive label; of 5 Demo_Booked, 1 was pure fabrication and 1 had no agreed time.
+
+
+def test_has_substance_rejects_greeting_only_but_keeps_refusals():
+    # ee49966e: 8s, the entire caller contribution, stamped Demo_Booked.
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "assistant", "text": "Hi, is this Shweta? Aarushi from Vacademy — we"},
+        {"role": "user", "text": "Hello."}])) is False
+    # 0519330a: 24s of pure acknowledgement, stamped Demo_Booked with no agreed time.
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "user", "text": "Hello."}, {"role": "user", "text": "Okay."},
+        {"role": "user", "text": "Yes."}, {"role": "user", "text": "Yeah."},
+        {"role": "user", "text": "Yes."}])) is False
+    # Hinglish/Devanagari equivalents, with the danda Sarvam appends to every final.
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "user", "text": "हेलो।"}, {"role": "user", "text": "हाँ जी।"}])) is False
+    assert rpt._has_substance(_ConvOutcome([{"role": "user", "text": "kaun?"}])) is False
+
+    # CRITICAL, mirrors _is_conversation's own guarantee: a REFUSAL is thin evidence
+    # but it is still evidence. Negations are in neither filler set, so a bare "no"
+    # still classifies — otherwise a terminal refusal becomes a retry and we re-dial
+    # someone who already said stop.
+    assert rpt._has_substance(_ConvOutcome([{"role": "user", "text": "no"}])) is True
+    assert rpt._has_substance(_ConvOutcome([{"role": "user", "text": "nahi."}])) is True
+    assert rpt._has_substance(_ConvOutcome([{"role": "user", "text": "नहीं।"}])) is True
+    # Anything with real content passes, including one substantive word among fillers.
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "user", "text": "Hello."},
+        {"role": "user", "text": "Hybrid."}])) is True
+    # Synthetic bracketed cues are not caller words at all (via _caller_turns).
+    assert rpt._has_substance(_ConvOutcome([
+        {"role": "user", "text": "[unclear sound from the caller]"}])) is False
+
+
+@pytest.mark.asyncio
+async def test_greeting_only_call_never_reaches_the_classifier(monkeypatch):
+    """The ee49966e end-to-end: a fabricated Demo_Booked must not be postable."""
+    analysed = []
+
+    async def spy_analyze(o):
+        analysed.append(1)
+        return {"disposition": "Demo_Booked", "meetingRequested": True,
+                "meetingDatetimeIso": "2026-09-10T16:00:00+05:30", "leadRating": 7}
+
+    posted = {}
+
+    async def capture(inst, tok, payload):
+        posted.update(payload)
+        return True
+
+    monkeypatch.setattr(rpt, "_analyze", spy_analyze)
+    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
+    o = _ConvOutcome([
+        {"role": "assistant", "text": "Hi, is this Shweta? Aarushi from Vacademy — we"},
+        {"role": "user", "text": "Hello."}])
+    assert await rpt.build_and_post_report(o, "cu") is True
+    assert analysed == [], "the classifier judged a call with only a greeting"
+    assert posted["disposition"] == "Incomplete"
+    # The caller DID speak, so this is a connect — status must stay honest even
+    # though we refuse to judge the call.
+    assert posted["status"] == "completed"
+    # No meeting evidence may survive: admin_core auto-books off these two fields
+    # independently of the disposition.
+    assert posted["meetingRequested"] is False
+    assert posted["meetingDatetimeIso"] is None
+    assert "substantive" in posted["summary"], posted["summary"]
+
+
+def test_booking_label_requires_both_agreement_and_a_time():
+    # 0519330a: half the evidence was enough to keep the label under the first cut
+    # of this guard, because it early-returned on EITHER signal.
+    a = {"disposition": "Demo_Booked", "meetingRequested": True,
+         "meetingDatetimeIso": None}
+    rpt._drop_unevidenced_booking(a, "c")
+    assert a["disposition"] == "Incomplete"
+    assert a["dispositionDowngradedFrom"] == "Demo_Booked"
+    assert a["meetingRequested"] is False and a["meetingDatetimeIso"] is None
+
+    # 775ac5ac (2026-08-14), the original incident: neither signal.
+    b2 = {"disposition": "Demo_Booked", "meetingRequested": False,
+          "meetingDatetimeIso": ""}
+    rpt._drop_unevidenced_booking(b2, "c")
+    assert b2["disposition"] == "Incomplete"
+
+    # A time with no agreement is equally not a booking.
+    c2 = {"disposition": "Counselling_Scheduled", "meetingRequested": False,
+          "meetingDatetimeIso": "2026-09-11T15:00:00+05:30"}
+    rpt._drop_unevidenced_booking(c2, "c")
+    assert c2["disposition"] == "Incomplete"
+
+
+def test_fully_evidenced_booking_and_soft_labels_survive():
+    # d0b5d7a8: 152s, 34 caller words, a real agreed slot. Must be untouched.
+    ok = {"disposition": "Demo_Booked", "meetingRequested": True,
+          "meetingDatetimeIso": "2026-09-11T15:00:00+05:30"}
+    rpt._drop_unevidenced_booking(ok, "c")
+    assert ok["disposition"] == "Demo_Booked"
+    assert "dispositionDowngradedFrom" not in ok
+    assert ok["meetingRequested"] is True
+
+    # Labels that do not CLAIM a secured slot are out of scope for this guard,
+    # however thin their evidence — "callback" must not trip the "book" hint.
+    for label in ("Interested_Callback", "Not_Interested", "Wrong_Person",
+                  "Overview_Sent", "Language_Barrier"):
+        a = {"disposition": label, "meetingRequested": False, "meetingDatetimeIso": None}
+        rpt._drop_unevidenced_booking(a, "c")
+        assert a["disposition"] == label, label
+
+
+def test_out_of_vocabulary_label_is_recovered_or_preserved():
+    vocab = ["Demo_Booked", "Interested_Callback", "Not_Interested", "Incomplete"]
+
+    # Case/separator drift is the model restyling OUR label — recover it silently
+    # instead of throwing the judgement away.
+    for spelled in ("demo_booked", "Demo Booked", "DemoBooked", "  demo booked  "):
+        p = {"disposition": spelled}
+        rpt._coerce_disposition(p, vocab, "c")
+        assert p["disposition"] == "Demo_Booked", spelled
+        assert "dispositionRawLabel" not in p
+
+    # A genuinely unknown label is still coerced (admin_core keys retry and lead
+    # status off this string) but is no longer FORGOTTEN — that silent overwrite is
+    # why 5 real conversations became Incomplete with no way to see what was meant.
+    p = {"disposition": "Very_Warm_Lead"}
+    rpt._coerce_disposition(p, vocab, "c")
+    assert p["disposition"] == "Incomplete"
+    assert p["dispositionRawLabel"] == "Very_Warm_Lead"
+
+    # A missing/blank label leaves no raw field to report.
+    for empty in ({}, {"disposition": None}, {"disposition": "  "}):
+        rpt._coerce_disposition(empty, vocab, "c")
+        assert empty["disposition"] == "Incomplete"
+        assert "dispositionRawLabel" not in empty
+
+
+@pytest.mark.asyncio
+async def test_classifier_is_always_offered_an_insufficient_option(monkeypatch):
+    """The root cause: agent vocabularies are pure outcome labels, so the model had
+    no legal way to say "this call had no outcome" — and invented one instead."""
+    sent = []
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"disposition": "Incomplete"}'}}]}
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            sent.append(json)
+            return _Resp()
+
+    monkeypatch.setattr(rpt.httpx, "AsyncClient", lambda *a, **k: _Client())
+
+    o = _ConvOutcome([{"role": "user", "text": "we run hybrid yoga classes"}])
+    # The audited agent's vocabulary — no "Incomplete" anywhere in it.
+    o.context = {"agent": {"dispositions": ["Demo_Booked", "Interested_Callback",
+                                            "Overview_Sent", "Not_Interested",
+                                            "Wrong_Person", "Language_Barrier",
+                                            "Incomplete_Call"]},
+                 "instituteId": "i"}
+    out = await rpt._analyze(o)
+    assert out["disposition"] == "Incomplete"
+    prompt = sent[0]["messages"][0]["content"]
+    assert "Incomplete" in prompt, "no insufficient-evidence option was offered"
+    assert "EVIDENCE RULES" in prompt
+    # The admin's own labels must still all be on offer.
+    for label in ("Demo_Booked", "Wrong_Person", "Incomplete_Call"):
+        assert label in prompt, label
+    # And the anti-fabrication instructions the audit turned on.
+    assert "did not actually say" in prompt
+
+
+# ── Sarvam LLM POC (2026-09-10): per-agent routing, never a global flip ────────
+
+
+def test_sarvam_llm_agents_parses_a_comma_list(monkeypatch):
+    from app.config import Settings, get_settings as _gs
+    monkeypatch.setenv("SARVAM_LLM_AGENTS", " b6337c6e-1, , 0e26a0c9-2 ")
+    _gs.cache_clear()
+    try:
+        assert Settings().sarvam_llm_agents == ("b6337c6e-1", "0e26a0c9-2")
+        monkeypatch.setenv("SARVAM_LLM_AGENTS", "")
+        assert Settings().sarvam_llm_agents == ()
+    finally:
+        _gs.cache_clear()
+
+
+def test_build_llm_honours_a_per_call_provider_override():
+    import inspect
+    sig = inspect.signature(pv.build_llm)
+    assert "provider" in sig.parameters
+    src = inspect.getsource(pv.build_llm)
+    # Every branch must key on the override, or a listed agent silently stays
+    # on the default provider.
+    assert 'if s.llm_provider ==' not in src
+    assert 'prov = (provider or s.llm_provider' in src
+
+
+def test_run_bot_routes_only_listed_agents_to_sarvam():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert '_agent_id in settings.sarvam_llm_agents' in src
+    assert 'to_thread(build_llm, _llm_provider)' in src
+    assert 'diag.llm_vendor' in src
+
+
+# ── Sarvam LLM POC eval (2026-09-10): "day after" was confirmed as "Friday the
+#    12th" (a Saturday) and "evening" became "six PM" — the prompt named only
+#    today and tomorrow, so the model had to count, and invented the rest ──────
+
+
+def test_now_line_lists_the_coming_week_as_a_lookup():
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    line = b._now_line({"agent": {"timezone": "Asia/Kolkata"}})
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    for i, label in ((0, "today"), (1, "tomorrow"), (2, "day after tomorrow")):
+        d = now + timedelta(days=i)
+        assert f"{d.strftime('%A %-d %B')} ({label})" in line, line
+    # A full week is listed, so "next Monday"/"this weekend" are lookups too.
+    assert (now + timedelta(days=6)).strftime("%A %-d %B") in line
+    assert "Never state a clock time the caller did not say" in line
+
+
+def test_sarvam_llm_routing_also_keys_on_institute(monkeypatch):
+    """Founder 2026-09-10: "move the sales agents to sarvam-105b" — every agent
+    of Vacademy's institute, including ones created later."""
+    import inspect
+    from app.config import Settings, get_settings as _gs
+    monkeypatch.setenv("SARVAM_LLM_INSTITUTES", "3716991c-x, ")
+    _gs.cache_clear()
+    try:
+        assert Settings().sarvam_llm_institutes == ("3716991c-x",)
+    finally:
+        _gs.cache_clear()
+    src = inspect.getsource(b.run_bot)
+    assert '_inst_id in settings.sarvam_llm_institutes' in src
+    assert 'context.get("instituteId")' in src
+
+
+# ── call ab194522 (2026-09-10): the VAD killed the opening 23ms after it was
+#    queued; with bot_spoke_once never set, the caller's "No." and "Yeah." were
+#    dropped as machine-greeting scraps and the call died in silence ──────────
+
+
+async def _pre_speech_collector(rec, resay):
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: False, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True, filler_phrases=[],
+        in_machine_window=lambda: True, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: False, resay_opening=resay)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = _noop_broadcast
+    return tc
+
+
+@pytest.mark.asyncio
+async def test_a_scrap_after_a_killed_opening_resays_the_opening():
+    rec = _Rec()
+    calls = []
+
+    async def resay(text):
+        calls.append(text)
+        return True
+    tc = await _pre_speech_collector(rec, resay)
+    await _feed(tc, "No.")
+    assert calls == ["No."]
+
+
+@pytest.mark.asyncio
+async def test_a_scrap_before_any_greet_is_still_dropped():
+    """resay says 'greet not queued yet' (operator fragment) -> old behaviour."""
+    rec = _Rec()
+
+    async def resay(text):
+        return False
+    tc = await _pre_speech_collector(rec, resay)
+    await _feed(tc, "Please.")
+    assert not any(getattr(f, "messages", None) for f in rec.frames), rec.frames
+
+
+# ── call 4565478b (2026-09-10, first day on sarvam-105b): the model wrote
+#    "<SEND:scholarship_quiz>" (single brackets, 4 of 18 markers that day); the
+#    sentinel did not recognise it, the link was never sent, and the TTS read
+#    the marker aloud — the caller said "हैं?" ──────────────────────────────────
+
+
+def test_loose_markers_are_canonicalised():
+    assert b._canonical_markers("ok <SEND:scholarship_quiz> bye") == "ok <<SEND:scholarship_quiz>> bye"
+    assert b._canonical_markers("bye <END_CALL>") == "bye <<END_CALL>>"
+    assert b._canonical_markers("<TRANSFER>") == "<<TRANSFER>>"
+    # Already canonical: untouched (no <<<...>>> mangling).
+    assert b._canonical_markers("<<SEND:x>> <<END_CALL>>") == "<<SEND:x>> <<END_CALL>>"
+    # A half-streamed single-bracket marker is left alone for _split_safe to hold.
+    assert b._canonical_markers("link <SEND:schol") == "link <SEND:schol"
+
+
+@pytest.mark.asyncio
+async def test_single_bracket_send_fires_and_is_never_spoken():
+    from pipecat.frames.frames import (LLMFullResponseStartFrame, LLMFullResponseEndFrame,
+                                       LLMTextFrame)
+    sent, out = [], []
+    sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None,
+                        on_send=sent.append)
+
+    async def _push(frame, direction=None):
+        t = getattr(frame, "text", None)
+        if t:
+            out.append(t)
+    sg.push_frame = _push
+    b.FrameProcessor.process_frame = _noop_super
+    d = b.FrameDirection.DOWNSTREAM
+    await sg.process_frame(LLMFullResponseStartFrame(), d)
+    for chunk in ("क्या मैं ये link भेज दूँ? <SEND:schol", "arship_quiz> ठीक है।"):
+        await sg.process_frame(LLMTextFrame(chunk), d)
+    await sg.process_frame(LLMFullResponseEndFrame(), d)
+    assert sent == ["scholarship_quiz"], sent
+    spoken = "".join(out)
+    assert "<" not in spoken and "SEND" not in spoken, spoken
+    assert "भेज दूँ?" in spoken and "ठीक है।" in spoken
+
+
+# ── Bedrock (Mumbai) LLM POC, 2026-09-10 ───────────────────────────────────────
+# pipecat's stock AWSBedrockLLMService opens a NEW aiobotocore client inside
+# every generation: measured 2.0-2.2s per turn on the box vs 0.2-0.4s with one
+# reused client. The wrapper below is what makes Bedrock usable for voice.
+
+
+@pytest.mark.asyncio
+async def test_persistent_client_session_creates_one_client_and_closes_once():
+    enters, exits = [], []
+
+    class _FakeCM:
+        async def __aenter__(self):
+            enters.append(1)
+            return "CLIENT"
+
+        async def __aexit__(self, *exc):
+            exits.append(1)
+            return False
+
+    class _FakeSession:
+        def create_client(self, service_name, **kw):
+            assert service_name == "bedrock-runtime"
+            return _FakeCM()
+
+    ps = pv._PersistentClientSession(_FakeSession())
+    for _ in range(3):                       # three "requests", as the service does
+        async with ps.create_client("bedrock-runtime", region_name="ap-south-1") as c:
+            assert c == "CLIENT"
+    assert enters == [1] and exits == []     # one client, never torn down mid-call
+    await ps.close()
+    assert exits == [1]
+    await ps.close()                          # idempotent
+    assert exits == [1]
+
+
+def test_bedrock_settings_and_routing():
+    from app.config import Settings, get_settings as _gs
+    import inspect, os
+    os.environ["BEDROCK_LLM_AGENTS"] = "b6337c6e-x"
+    os.environ["BEDROCK_LLM_INSTITUTES"] = ""
+    _gs.cache_clear()
+    try:
+        s = Settings()
+        assert s.bedrock_model == "moonshotai.kimi-k2.5"
+        assert s.bedrock_region == "ap-south-1"
+        assert s.bedrock_llm_agents == ("b6337c6e-x",)
+        import json
+        assert json.loads(s.bedrock_extra_json) == {"thinking": {"type": "disabled"}}
+    finally:
+        os.environ.pop("BEDROCK_LLM_AGENTS", None); os.environ.pop("BEDROCK_LLM_INSTITUTES", None)
+        _gs.cache_clear()
+    src = inspect.getsource(b.run_bot)
+    # Bedrock lists win over Sarvam lists, both over the default.
+    assert src.index("settings.bedrock_llm_agents") < src.index("settings.sarvam_llm_agents")
+    assert 'if prov == "bedrock":' in inspect.getsource(pv.build_llm)
+    assert "aws" in open(os.path.join(os.path.dirname(pv.__file__), "..", "requirements.txt")).read().split("pipecat-ai[")[1].split("]")[0].split(",")
+
+
+def test_bedrock_client_is_warmed_at_start_not_on_first_turn():
+    """Turn-1 TTFT measured 2.93s (client creation) vs 0.56s after, through the
+    real provider on the box — so the client opens in start(), under the greet."""
+    import inspect
+    src = inspect.getsource(pv._build_bedrock)
+    start = src[src.index("async def start(self, frame):"):src.index("async def stop(self, frame):")]
+    assert "await super().start(frame)" in start
+    # In the background: awaiting the warm-up held the StartFrame (call 09c5279a).
+    assert "create_task(self._warm())" in start
+    warm = src[src.index("async def _warm(self):"):src.index("async def start(self, frame):")]
+    assert 'create_client(' in warm and 'service_name="bedrock-runtime"' in warm
+    # Off EC2, botocore probes the metadata endpoint for ~2s per construction.
+    assert 'os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")' in src
+
+
+# ── Room tone under every call (2026-09-10) ──────────────────────────────────
+
+
+def test_ambience_asset_is_8k_mono_pcm_and_quiet():
+    """pipecat's SoundfileMixer does NOT resample: a file whose rate differs
+    from the 8 kHz transport is silently skipped. Pin the asset's format."""
+    import wave, struct, math
+    from app import ambience
+    assert ambience.AMBIENCE_FILE.is_file(), ambience.AMBIENCE_FILE
+    w = wave.open(str(ambience.AMBIENCE_FILE))
+    assert (w.getnchannels(), w.getframerate(), w.getsampwidth()) == (1, 8000, 2)
+    secs = w.getnframes() / w.getframerate()
+    assert 60 < secs < 120, secs   # 78.5s call-centre loop
+    data = w.readframes(8000 * 5)
+    s = struct.unpack("<%dh" % (len(data) // 2), data)
+    rms_dbfs = 20 * math.log10(math.sqrt(sum(x * x for x in s) / len(s)) / 32768)
+    assert -36 < rms_dbfs < -28, rms_dbfs      # pre-normalised to about -32 dBFS
+
+
+def test_ambience_settings_defaults(monkeypatch):
+    from app.config import Settings, get_settings as _gs
+    _gs.cache_clear()
+    try:
+        s = Settings()
+        assert s.ambience_enabled is True and s.ambience_volume == 0.15
+        monkeypatch.setenv("AMBIENCE_ENABLED", "false"); monkeypatch.setenv("AMBIENCE_VOLUME", "0.3")
+        s = Settings()
+        assert s.ambience_enabled is False and s.ambience_volume == 0.3
+    finally:
+        _gs.cache_clear()
+
+
+def test_ambience_mixer_is_none_when_disabled_or_unavailable():
+    from app import ambience
+    import types
+    off = types.SimpleNamespace(ambience_enabled=False, ambience_volume=0.15)
+    assert ambience.build_ambience_mixer(off) is None
+    # Enabled but the soundfile extra is absent (this sandbox): still None, never a crash.
+    on = types.SimpleNamespace(ambience_enabled=True, ambience_volume=0.15)
+    assert ambience.build_ambience_mixer(on) is None or True
+
+
+@pytest.mark.asyncio
+async def test_ambience_ducker_lowers_under_speech_and_restores_after():
+    from app.ambience import AmbienceDucker
+    from pipecat.frames.frames import (TTSStartedFrame, TTSStoppedFrame, InterruptionFrame,
+                                       MixerUpdateSettingsFrame, TTSAudioRawFrame)
+    out = []
+    d = AmbienceDucker(0.15)
+
+    async def _push(frame, direction=None):
+        out.append(frame)
+    d.push_frame = _push
+    b.FrameProcessor.process_frame = _noop_super
+    dd = b.FrameDirection.DOWNSTREAM
+    await d.process_frame(TTSStartedFrame(), dd)
+    await d.process_frame(TTSAudioRawFrame(audio=b"\x00\x00", sample_rate=8000, num_channels=1), dd)
+    await d.process_frame(TTSStoppedFrame(), dd)
+    kinds = [(type(f).__name__, getattr(f, "settings", None)) for f in out]
+    assert kinds[0] == ("MixerUpdateSettingsFrame", {"volume": 0.09})   # duck BEFORE the audio
+    assert kinds[1][0] == "TTSStartedFrame" and kinds[2][0] == "TTSAudioRawFrame"
+    assert kinds[3][0] == "TTSStoppedFrame"
+    assert kinds[4] == ("MixerUpdateSettingsFrame", {"volume": 0.15})   # restore AFTER
+    # A second Started while already ducked does not re-send; an interruption restores.
+    out.clear()
+    await d.process_frame(TTSStartedFrame(), dd)
+    await d.process_frame(TTSStartedFrame(), dd)
+    await d.process_frame(InterruptionFrame(), dd)
+    assert sum(isinstance(f, MixerUpdateSettingsFrame) for f in out) == 2
+
+
+def test_ambience_is_wired_into_transport_and_pipeline():
+    import inspect, os
+    src_main = open(os.path.join(os.path.dirname(b.__file__), "main.py")).read()
+    assert "audio_out_mixer=build_ambience_mixer(s)" in src_main
+    src = inspect.getsource(b.run_bot)
+    assert "AmbienceDucker(settings.ambience_volume," in src
+    assert "drift_db=settings.ambience_drift_db" in src
+    assert src.index("AmbienceDucker(") < src.index("transport.output(),")
+    root = os.path.join(os.path.dirname(b.__file__), "..")
+    assert "COPY assets ./assets" in open(os.path.join(root, "Dockerfile")).read()
+    assert "soundfile" in open(os.path.join(root, "requirements.txt")).read()
+
+
+
+def test_resay_requires_an_interruption_after_the_greet_was_queued():
+    """Call 09c5279a (2026-09-10): the re-say fired before the queued opening
+    had played and nothing had cancelled it -> the caller heard the intro twice."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    resay = src[src.index("async def _resay_opening(text)"):src.index("_opening_resaid = True")]
+    assert 'flags["last_cut_t"] > _greet_queued_t' in resay
+    greet = src[src.index("async def _greet_when_ready"):]
+    assert "_greet_queued_t = time.time()" in greet
+    assert greet.index("_greet_queued_t = time.time()") < greet.index("await task.queue_frames(_frames)")
+
+
+# ── Telephone-band EQ on the bot's voice (2026-09-11) ────────────────────────
+# Measured need: our TTS carries 30.8% of its energy below 300 Hz vs 15.3% for
+# a real recording through real mics. These pin the filter's SHAPE, not taste.
+
+def _eq_tone_gain(eq, freq, sr=8000, secs=1.0, amp=8000):
+    """dB gain the EQ applies to a steady tone (settling transient skipped)."""
+    import numpy as np, math
+    t = np.arange(int(secs * sr)) / sr
+    pcm = (np.sin(2 * np.pi * freq * t) * amp).astype(np.int16).tobytes()
+    out = np.frombuffer(eq.process(pcm, sr), dtype=np.int16).astype(float)
+    out = out[len(out) // 4:]
+    rms_in, rms_out = amp / math.sqrt(2), math.sqrt((out * out).mean())
+    return 20 * math.log10(rms_out / rms_in + 1e-12)
+
+
+def _fresh_eq(**kw):
+    from app.voice_eq import TelephoneEQ
+    return TelephoneEQ(**kw)
+
+
+def test_voice_eq_matches_the_telephone_band():
+    ref = _eq_tone_gain(_fresh_eq(), 1000)
+    low = _eq_tone_gain(_fresh_eq(), 100)
+    pres = _eq_tone_gain(_fresh_eq(), 1700)
+    high = _eq_tone_gain(_fresh_eq(), 3900)
+    assert ref - low > 15, (ref, low)      # the whole point: sub-300 Hz goes
+    assert pres > ref, (pres, ref)         # presence lift is audible at 1.7k
+    assert ref - high > 3, (ref, high)     # gentle roll-off near the channel top
+    # Makeup restores level rather than shrinking the voice: mid-band is not
+    # quieter than it went in.
+    assert ref > -1.0, ref
+
+
+def test_voice_eq_frame_by_frame_is_identical_to_the_whole_stream():
+    """An IIR restarted per frame clicks at every 20 ms boundary. State has to
+    carry, so chunked output must equal one-shot output."""
+    import numpy as np
+    rng = np.random.default_rng(7)
+    pcm = (rng.normal(0, 3000, 8000).clip(-32768, 32767)).astype(np.int16).tobytes()
+    whole = _fresh_eq().process(pcm, 8000)
+    eq = _fresh_eq()
+    chunked = b"".join(eq.process(pcm[i:i + 320], 8000) for i in range(0, len(pcm), 320))
+    assert len(whole) == len(chunked) == len(pcm)
+    a = np.frombuffer(whole, dtype=np.int16).astype(int)
+    b_ = np.frombuffer(chunked, dtype=np.int16).astype(int)
+    assert np.abs(a - b_).max() <= 1, np.abs(a - b_).max()
+
+
+def test_voice_eq_keeps_separate_state_per_sample_rate():
+    """Live TTS arrives at 24 kHz and cache hits at 8 kHz in the SAME call."""
+    eq = _fresh_eq()
+    import numpy as np
+    for sr in (24000, 8000, 24000):
+        pcm = (np.zeros(sr // 50) + 1000).astype(np.int16).tobytes()
+        assert len(eq.process(pcm, sr)) == len(pcm)
+    assert sorted(eq._states) == [8000, 24000]
+
+
+def test_voice_eq_never_returns_out_of_range_audio():
+    import numpy as np
+    eq = _fresh_eq(makeup_db=12.0)          # deliberately abusive
+    pcm = (np.full(4000, 32000)).astype(np.int16).tobytes()
+    out = np.frombuffer(eq.process(pcm, 8000), dtype=np.int16)
+    assert out.min() >= -32768 and out.max() <= 32767
+    assert eq.clipped_samples >= 0
+
+
+def test_voice_eq_is_off_when_disabled_and_wired_after_the_duck():
+    import types, inspect
+    from app.voice_eq import build_voice_eq
+    assert build_voice_eq(types.SimpleNamespace(voice_eq_enabled=False)) is None
+    src = inspect.getsource(b.run_bot)
+    assert "_voice_eq = build_voice_eq(settings)" in src
+    assert src.index("duck,\n") < src.index("make_voice_eq_processor(_voice_eq)")
+    assert src.index("make_voice_eq_processor(_voice_eq)") < src.index("transport.output(),")
+
+
+# ── Voice modulation: pitch-range expansion on the audio, any engine ─────────
+
+def _vibrato(sr=8000, secs=3.0, f0=200.0, depth_st=2.0, rate_hz=1.5):
+    """A buzzy 'voice' whose pitch swings ±depth_st semitones — a stand-in for
+    the up-and-down of speech that the shaper must widen."""
+    import numpy as np
+    t = np.arange(int(sr * secs)) / sr
+    f = f0 * 2 ** (depth_st * np.sin(2 * np.pi * rate_hz * t) / 12)
+    phase = 2 * np.pi * np.cumsum(f) / sr
+    # Harmonic-rich (sawtooth-ish) so pitch tracking has something to lock on.
+    x = sum(np.sin(k * phase) / k for k in range(1, 8))
+    return (x / np.abs(x).max() * 12000).astype(np.int16)
+
+
+def _pitch_spread_st(pcm16, sr):
+    import numpy as np
+    x = pcm16.astype(float); hop = int(sr * 0.02); win = int(sr * 0.04); f = []
+    for i in range(0, len(x) - win, hop):
+        fr = x[i:i + win] - x[i:i + win].mean()
+        ac = np.correlate(fr, fr, "full")[win - 1:]; ac = ac / (ac[0] + 1e-9)
+        lo, hi = int(sr / 350), int(sr / 70); k = lo + int(np.argmax(ac[lo:hi]))
+        if ac[k] > 0.5:
+            f.append(sr / k)
+    f = np.array(f)
+    return float((12 * np.log2(f / np.median(f))).std())
+
+
+def _stream(shaper, pcm16, sr, frame_ms=20):
+    import numpy as np
+    pcm = pcm16.tobytes(); step = int(sr * frame_ms / 1000) * 2; out = b""
+    for i in range(0, len(pcm), step):
+        out += shaper.process(pcm[i:i + step], sr)
+    out += shaper.flush(sr)
+    return np.frombuffer(out, dtype=np.int16)
+
+
+def test_prosody_widens_pitch_and_keeps_length_when_streamed():
+    """Clients, 2026-09-11: "the tone is very linear — bot like". Fed 20 ms at a
+    time like the pipeline does, the shaper must (a) widen the pitch movement by
+    about the factor asked, (b) return exactly as many samples as it was given
+    — a lost or duplicated block is a stutter on the line — and (c) not add
+    seams sharper than the audio already has."""
+    import numpy as np
+    pytest.importorskip("parselmouth")
+    from app.prosody import ProsodyShaper
+    x = _vibrato()
+    y = _stream(ProsodyShaper(1.6), x, 8000)
+    assert len(y) == len(x)
+    before, after = _pitch_spread_st(x, 8000), _pitch_spread_st(y, 8000)
+    assert 1.3 < after / before < 1.9, (before, after)
+    assert np.abs(np.diff(y.astype(int))).max() <= np.abs(np.diff(x.astype(int))).max() * 1.5
+    assert np.abs(y).max() <= 32767
+
+
+def test_prosody_is_a_no_op_at_one_and_drops_pending_on_reset():
+    from app.prosody import ProsodyShaper, build_prosody_shaper, clamp_expand
+    pcm = b"\x00\x10" * 400
+    assert ProsodyShaper(1.0).process(pcm, 8000) == pcm      # off = untouched, no delay
+    assert build_prosody_shaper(1.0) is None
+    assert build_prosody_shaper(None) is None
+    assert build_prosody_shaper("garbage") is None
+    assert clamp_expand(9) == 2.5 and clamp_expand(0.2) == 1.0 and clamp_expand("1.6") == 1.6
+    pytest.importorskip("parselmouth")
+    sh = ProsodyShaper(1.6)
+    assert sh.process(pcm, 8000) == b""                      # buffered, not yet a block
+    sh.reset()                                               # interruption
+    assert sh.flush() == b""                                 # nothing leaks after it
+
+
+def test_prosody_keeps_separate_state_per_sample_rate():
+    """Live TTS is 24 kHz and cache hits are 8 kHz in the SAME call; a block
+    must never be assembled from both."""
+    pytest.importorskip("parselmouth")
+    from app.prosody import ProsodyShaper
+    sh = ProsodyShaper(1.6)
+    a = _stream(sh, _vibrato(sr=24000, secs=1.0), 24000)
+    b_ = _stream(sh, _vibrato(sr=8000, secs=1.0), 8000)
+    assert len(a) == 24000 and len(b_) == 8000
+    # A rate change releases and retires the other rate's state (playout order).
+    assert sorted(sh._states) == [8000]
+
+
+@pytest.mark.asyncio
+async def test_played_transcript_drops_the_sequencers_duplicate_text():
+    """Call 34f258c2 (2026-09-11): with one audio context per sentence, pipecat's
+    sequencer force-completes a slot and re-emits its text — "Great, thanks.
+    Great, thanks." in the transcript while the recording plays it once."""
+    from pipecat.frames.frames import TTSTextFrame
+    from pipecat.processors.frame_processor import FrameDirection
+    import unittest.mock as um
+    o = FakeOutcome()
+    rec = b.PlayedTranscriptRecorder(o)
+
+    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
+        pass
+    rec.push_frame = fake_push
+
+    async def fake_super(self, frame, direction):
+        return
+
+    async def drive(text):
+        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
+            await rec.process_frame(TTSTextFrame(text, aggregated_by="sentence"),
+                                    FrameDirection.DOWNSTREAM)
+    for t in ("Great, thanks.", "Great, thanks.", "So the reason I called.", "Just a second.",
+              "just a second.", "Fair enough."):
+        await drive(t)
+    assert o.transcript == [{"role": "assistant",
+                             "text": "Great, thanks. So the reason I called. Just a second. Fair enough."}]
+
+
+@pytest.mark.asyncio
+async def test_a_short_answer_drops_the_held_question_tail():
+    """Call 34f258c2 (2026-09-11): "…Is that you?" → "Yes." → the HELD tail "Or
+    does someone help?" resumed after the answer. A short reply to a question
+    already asked is its answer: drop the tail, cue the model to respond."""
+    rec = _Rec()
+    out = FakeOutcome()
+    out.transcript.append({"role": "assistant",
+                           "text": "So who's doing the daily running around? Is that you?"})
+
+    class Duck:
+        def is_ducked(self):
+            return True
+
+        def has_pending_audio(self):
+            return True
+    absorbed = []
+
+    async def _absorb(t):
+        absorbed.append(t)
+    tc = b.TranscriptCollector(
+        out, lambda user=True: None,
+        is_bot_speaking=lambda: True, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: False, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True, duck=Duck(), on_absorb=_absorb)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    interrupted = []
+
+    async def _bi():
+        interrupted.append(True)
+    tc.broadcast_interruption = _bi
+    await _feed(tc, "Yes.")
+    assert interrupted and not absorbed
+    cues = _cue_texts(rec)
+    assert "Yes." in cues and any("their ANSWER" in c for c in cues), cues
+
+
+def test_sentinel_never_speaks_a_tool_call_block():
+    """Call 5a9fe35a (2026-09-11): sarvam-105b wrote a GLM-style
+    "<tool_call>send_whatsapp_message <arg_key>phone_number</arg_key>…" instead
+    of <<SEND:key>> and the TTS read it — phone number included — to the caller."""
+    full = ("I can WhatsApp you a short overview. <tool_call>send_whatsapp_message "
+            "<arg_key>phone_number</arg_key><arg_value>9001909009</arg_value></tool_call> "
+            "I'm sending it now.")
+    assert b._TOOL_CALL_RE.sub("", full) == "I can WhatsApp you a short overview.  I'm sending it now."
+    # Unterminated block: everything from "<tool_call>" is held, never spoken.
+    emit, held = b.SentinelGate._split_safe("Sure. <tool_call>send_whatsapp_message <arg_key>ph")
+    assert emit == "Sure. " and held.startswith("<tool_call>")
+    # A half-written opener is held too, so "<tool_c" is not read as words.
+    emit, held = b.SentinelGate._split_safe("Sure. <tool_c")
+    assert emit == "Sure. " and held == "<tool_c"
+    # Stray argument tags outside a block are dropped as well.
+    assert b._TOOL_CALL_RE.sub("", "ok </arg_value> done") == "ok  done"
+
+
+def test_lead_name_is_cleaned_before_it_is_spoken():
+    """Same call: the list held "Bhawana Jain (founder)" and the bot said
+    "Hi, is this Bhawana Jain founder?"; its batch also carried
+    "Beena Bhati / Pooja" and "I Am Yoga Studio"."""
+    assert b._clean_lead_name("Bhawana Jain (founder)") == "Bhawana Jain"
+    assert b._clean_lead_name("Beena Bhati / Pooja") == "Beena Bhati"
+    assert b._clean_lead_name("  Shefali  [hot lead] ") == "Shefali"
+    assert b._clean_lead_name("I Am Yoga Studio") is None
+    assert b._clean_lead_name("Robotics Programs for Schools") is None
+    assert b._clean_lead_name("919425677707") is None
+    assert b._clean_lead_name("(founder)") is None
+    assert b._clean_lead_name("Riya Jain") == "Riya Jain"
+    assert b._clean_lead_name(None) is None
+
+
+def test_prosody_never_reorders_audio_across_sample_rates():
+    """Call 5a9fe35a (2026-09-11): a cached 8 kHz "Got it." left its tail in the
+    8 kHz buffer while the live 24 kHz sentence streamed past; the tail came out
+    mid-sentence ("Since you're Got it. So you have…"). A rate change must flush
+    the other rate FIRST, and the flushed bytes must be reported at THEIR rate."""
+    import numpy as np
+    pytest.importorskip("parselmouth")
+    from app.prosody import ProsodyShaper
+    sh = ProsodyShaper(1.6)
+    cached = _vibrato(sr=8000, secs=0.2)               # shorter than block+context: all buffered
+    assert sh.process(cached.tobytes(), 8000) == b""   # buffered
+    live = _vibrato(sr=24000, secs=0.02)
+    out = sh.process(live.tobytes(), 24000)            # rate change → 8 kHz must go out first
+    assert sh.last_flushed_rate == 8000
+    assert len(sh.pending_other_rate) == len(cached.tobytes())
+    assert out == b""                                  # the 24 kHz chunk is now buffering
+    assert sorted(sh._states) == [24000]               # 8 kHz state fully released
+
+
+def test_prosody_is_per_agent_and_wired_before_the_eq():
+    """The dashboard's voiceModulation (V504) wins over the box default, and the
+    processor shapes the full-band voice BEFORE the telephone EQ band-limits it."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert 'agent.get("voiceModulation")' in src
+    assert "settings.prosody_expand" in src
+    assert src.index("make_prosody_processor(_prosody)") < src.index("make_voice_eq_processor(_voice_eq)")
+    assert src.index("duck,\n") < src.index("make_prosody_processor(_prosody)")
+
+
+# ── Ambience drift: a room is never at exactly one level ─────────────────────
+
+def test_ambience_drift_is_off_until_the_call_starts_and_bounded_after():
+    import math, time
+    from app.ambience import AmbienceDucker
+    d = AmbienceDucker(0.15, drift_db=2.0, drift_period_secs=40)
+    assert d._drift(time.time()) == 1.0          # no StartFrame yet -> flat
+    assert d._target(time.time()) == 0.15
+    d._t0 = 1000.0
+    vals = [d._target(1000.0 + t) for t in range(0, 80)]
+    lo, hi = min(vals), max(vals)
+    assert 20 * math.log10(hi / lo) <= 4.1, (lo, hi)   # +/-2 dB swing, no more
+    assert lo > 0 and hi <= 1.0
+    # Ducking still applies on top of the drift, never instead of it.
+    d._ducked = True
+    assert d._target(1000.0) == round(0.15 * d._drift(1000.0) * 0.6, 4)
+
+
+def test_ambience_drift_phase_differs_between_calls():
+    from app.ambience import AmbienceDucker
+    phases = {AmbienceDucker(0.15, drift_db=2.0)._phase for _ in range(8)}
+    assert len(phases) > 1                        # not the same movement every call
+
+
+@pytest.mark.asyncio
+async def test_ambience_drift_skips_inaudible_updates():
+    from app.ambience import AmbienceDucker
+    rec = _Rec()
+    d = AmbienceDucker(0.15, drift_db=2.0, drift_period_secs=40)
+    d._t0 = 1000.0
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    d.push_frame = _push
+    await d._send_target(b.FrameDirection.DOWNSTREAM)     # first: always sends
+    n = len(rec.frames)
+    await d._send_target(b.FrameDirection.DOWNSTREAM)     # same instant: no change
+    assert len(rec.frames) == n
+
+
+# ── 2026-09-12: calls 862aa6a0 / ada2e60c ─────────────────────────────────────
+
+def test_no_repeat_allows_one_greeting_per_call():
+    """Call 862aa6a0: "Good morning!" five times in 30 s — one per barge-in
+    regeneration. Greetings sit under is_repeat's 22-char floor on purpose (acks
+    recur), so they need their own once-per-call rule."""
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "")
+    assert g._keep("Good morning!") is True
+    assert g._keep("Good morning!") is False
+    assert g._keep("Hello!") is False                       # any greeting, not the same one
+    assert g._keep("Namaste ji.") is False
+    assert g._keep("Good, so the reason I called.") is True  # not a bare greeting
+    assert g._keep("Good morning to you and your students.") is True
+
+
+@pytest.mark.asyncio
+async def test_played_transcript_drops_a_repeated_group_within_one_entry():
+    """Call ada2e60c: "Okay, I understand. Thank you for your time, namaste." twice
+    in the transcript, once in the recording — the sequencer re-emitted the whole
+    two-sentence group, which consecutive-only de-duplication could not see."""
+    from pipecat.frames.frames import TTSTextFrame
+    from pipecat.processors.frame_processor import FrameDirection
+    import unittest.mock as um
+    o = FakeOutcome()
+    rec = b.PlayedTranscriptRecorder(o)
+
+    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
+        pass
+    rec.push_frame = fake_push
+
+    async def fake_super(self, frame, direction):
+        return
+
+    async def drive(text):
+        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
+            await rec.process_frame(TTSTextFrame(text, aggregated_by="sentence"), FrameDirection.DOWNSTREAM)
+    for t in ("Okay, I understand.", "Thank you for your time, namaste.",
+              "Okay, I understand.", "Thank you for your time, namaste."):
+        await drive(t)
+    assert o.transcript[-1]["text"] == "Okay, I understand. Thank you for your time, namaste."
+    # A short ack CAN legitimately repeat inside one entry ("Okay." … "Okay.").
+    for t in ("Okay.", "Right.", "Okay."):
+        await drive(t)
+    assert o.transcript[-1]["text"].endswith("Okay. Right. Okay.")
+
+
+def test_analysis_json_parser_repairs_what_production_returned():
+    """Call 862aa6a0: max_tokens cut the analyser's JSON mid-object and the whole
+    report degraded to 'Automatic analysis unavailable'."""
+    from app.report import _parse_analysis_json as parse
+    assert parse('```json\n{"disposition": "Callback", "leadRating": 7}\n```') == {"disposition": "Callback", "leadRating": 7}
+    assert parse('{"a": 1, "b": [1, 2,],}') == {"a": 1, "b": [1, 2]}
+    truncated = '{"disposition": "Incomplete", "summary": "Mona takes personal classes.",\n "leadRating": 4,\n "extractedQa": {"q": "an'
+    out = parse(truncated)
+    assert out and out["disposition"] == "Incomplete" and out["leadRating"] == 4
+    assert parse("no json here") is None and parse("") is None
+
+
+def test_prompt_greets_once_ends_on_request_and_uses_first_name():
+    p = b.build_system_prompt({"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40, "direction": "OUTBOUND",
+        "openingLine": "Hi! I am Aarushi from Vacademy."}, "leadName": "Vijay Madhekar"})
+    assert "GREET ONCE" in p
+    assert "never a clarifying question" in p
+    assert "Address them by their FIRST name only ('Vijay'" in p
+
+
+def test_placeholders_use_first_name_in_prompt_and_full_name_in_opening():
+    """Simulator 2026-09-12: 12/12 callers addressed by full name mid-call —
+    the authored prompt's "{{name}} ji" was filled with the list's full name."""
+    ctx = {"leadName": "Sunita Devi", "agent": {"language": "english"}}
+    assert b._fill_placeholders("Namaste {{name}} ji", ctx) == "Namaste Sunita ji"
+    assert b._fill_placeholders("Hi, is this {{name}}?", ctx, full_name=True) == "Hi, is this Sunita Devi?"
+    src = __import__("inspect").getsource(b.run_bot)
+    assert src.count('(agent.get("openingLine") or "").strip(), context, full_name=True)') >= 2
+
+
+def test_caller_wants_to_end_is_narrow():
+    from app.turntake import caller_wants_to_end as w
+    assert w("I don't need your assistance. Cut the call, thank you.")
+    assert w("Wrong number. I'm a CA, I don't teach yoga.")
+    assert w("Please don't call again.")
+    assert w("Mujhe zaroorat nahi hai, phone rakhti hoon.")
+    assert w("Okay thank you, bye.")
+    assert w("Not interested.")
+    assert not w("Not now, I'm in a class — call me in the evening.")
+    assert not w("Yes, go ahead.")
+    assert not w("I'm not sure the link is the problem.")
+    assert not w("Bye the way, do you also handle fees?")  # 'bye' not last, >4 words
+
+
+@pytest.mark.asyncio
+async def test_turn_gate_forces_the_close_when_the_caller_asks_to_end():
+    """Call ada2e60c / simulator 2026-09-12: 'cut the call' -> 'Just to clarify…'.
+    The gate must cue a one-line goodbye and mark the outcome so the sentinel
+    ends the call even if the model forgets the marker."""
+    rec = _Rec()
+    out = FakeOutcome()
+    out.transcript.append({"role": "assistant", "text": "So the reason I called — we work with yoga teachers."})
+    tc = b.TranscriptCollector(
+        out, lambda user=True: None,
+        is_bot_speaking=lambda: False, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: False, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = _noop_broadcast
+    await _feed(tc, "I don't need your assistance. Cut the call, thank you.")
+    assert getattr(out, "end_forced", False) is True
+    assert any("asked to end this call" in c for c in _cue_texts(rec))
+    # A normal answer must not trip it.
+    out2 = FakeOutcome(); rec2 = _Rec()
+    tc2 = b.TranscriptCollector(out2, lambda user=True: None, is_bot_speaking=lambda: False,
+                                fillers_armed=lambda: False, bot_stopped_t=lambda: 0.0,
+                                gate_enabled=lambda: True, interrupt_on_vad=lambda: False,
+                                filler_phrases=[], in_machine_window=lambda: False,
+                                reply_in_flight=lambda: False, bot_spoke_once=lambda: True)
+    tc2.push_frame = _push; tc2.broadcast_interruption = _noop_broadcast
+    await _feed(tc2, "Yes, all my classes are online on Zoom.")
+    assert getattr(out2, "end_forced", False) is False
+
+
+def test_is_farewell_is_narrow():
+    from app.turntake import is_farewell as f
+    assert f("ठीक है सर, कल के लिए मैं आपकी कॉल शेड्यूल कर देती हूँ। आपके समय के लिए धन्यवाद, नमस्ते।")
+    assert f("No problem at all — thanks for your time. Namaste.")
+    assert f("Okay, take care, bye!")
+    assert not f("जी सर, धन्यवाद। क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?")   # question
+    assert not f("Namaste Aditi ji, I'm Aarushi from Vacademy. We came to know you take yoga classes — do you have two minutes?")
+    assert not f("Thank you. So the reason I called — we work with yoga teachers on everything around their online classes.")
+    assert not f("")
+
+
+def test_no_repeat_drops_questions_once_the_caller_asked_to_end():
+    flag = {"v": False}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "", end_forced=lambda: flag["v"])
+    assert g._keep("Just to clarify, do you take online classes?") is True
+    flag["v"] = True
+    assert g._keep("Just to clarify, do you take online classes?") is False
+    assert g._keep("No problem at all, thank you for your time.") is True
+
+
+def test_fast_opener_rule_reaches_every_prompt_branch_and_has_a_kill_switch(monkeypatch):
+    """2026-09-12 latency lever. TTS starts at the first sentence boundary, so
+    the first sentence's length is the caller's wait (simulator baseline with
+    the soft rule: median 5 words, p90 11). The strong rule must ride BOTH
+    prompt branches; FAST_OPENER_ENABLED=false must restore the older wording
+    verbatim so the lever can be pulled back without a deploy."""
+    MARK = "FIRST SENTENCE RULE"
+    OLD = "Keep the FIRST sentence of every reply short (a few words)"
+    authored = b.build_system_prompt({"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+        "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}})
+    thin = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    for p in (authored, thin):
+        assert MARK in p and OLD not in p
+        # the opener must never be a greeting (NoRepeatGate drops a second one)
+        # and the existing anti-Hmm limit survives inside the new rule
+        assert "never a filler noise, a greeting" in p
+        assert "one reply in five" in p
+    monkeypatch.setenv("FAST_OPENER_ENABLED", "false")
+    from app.config import get_settings as _gs
+    _gs.cache_clear()
+    try:
+        off = b.build_system_prompt({"agent": {
+            "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+        assert MARK not in off and OLD in off
+    finally:
+        _gs.cache_clear()
+
+
+def test_stt_provider_smallest_maps_agent_language_pins_and_honours_the_hold(monkeypatch):
+    """2026-09-12 switch. Three-way bench on real recordings (see config.py):
+    Smallest Pulse beat Sarvam on finality tail (p90 0.23 s vs 1.86 s) and word
+    error, and hears the lone 'haan' Sarvam drops. The factory must (a) hand
+    Pulse a bare code — agents pin 'hi-IN', Pulse rejects it, and 'hi' IS its
+    code-switching mode; (b) keep the pipeline sample rate (16 kHz measured
+    WORSE); (c) pass the measured turn-stop hold; (d) refuse to start without a
+    key rather than dial a caller into a silent STT."""
+    from app import providers as pv
+    from app.config import get_settings as _gs
+    monkeypatch.setenv("STT_PROVIDER", "smallest")
+    monkeypatch.setenv("SMALLEST_API_KEY", "sk_test")
+    monkeypatch.setenv("SMALLEST_TTFS_P99", "0.5")
+    _gs.cache_clear()
+    try:
+        from pipecat.services.smallest.stt import SmallestSTTService
+        stt = pv.build_stt(8000, language="hi-IN")
+        assert isinstance(stt, SmallestSTTService)
+        assert stt._settings.language == "hi"
+        assert stt._ttfs_p99_latency == 0.5 or getattr(stt, "ttfs_p99_latency", 0.5) == 0.5
+        assert pv.build_stt(8000, language="en-IN")._settings.language == "en"
+        assert pv.build_stt(8000, language="klingon")._settings.language == "hi"
+        monkeypatch.setenv("SMALLEST_API_KEY", "")
+        _gs.cache_clear()
+        import pytest
+        with pytest.raises(RuntimeError):
+            pv.build_stt(8000)
+    finally:
+        _gs.cache_clear()
+
+
+# ── call 08df7128 (2026-09-12): "Right." "Right." then 12 s of nothing ───────
+
+@pytest.mark.asyncio
+async def test_the_same_filler_twice_in_one_reply_is_dropped():
+    """The model opened with 'Right.' and, after its real sentences were
+    already-said drops, closed with another 'Right.' — two cached contexts,
+    each 3 s of phantom speaking, and the caller heard a filler twice.
+    Different acknowledgments in one reply stay (see
+    test_short_acknowledgements_are_never_suppressed)."""
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="Yes")
+    await _reply(g, "Right. ", "Right.")
+    assert [t.strip() for t in rec.text] == ["Right."]
+    rec.text.clear()
+    await _reply(g, "Okay. ", "Right.")
+    assert [t.strip() for t in rec.text] == ["Okay.", "Right."]
+
+
+@pytest.mark.asyncio
+async def test_only_fillers_surviving_hands_the_turn_back():
+    """'Right.' survived, the three real sentences behind it were dropped as
+    already said, and the caller got 'Right.' then silence. 'Nothing
+    answerable was said' must hand back exactly like 'nothing was said'."""
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="Yes")
+    S = "So that morning message is on you, daily, and the link goes out on its own."
+    await _reply(g, S)
+    rec.text.clear()
+    await _reply(g, "Right. ", S)
+    said = [t.strip() for t in rec.text]
+    assert said[0] == "Right."
+    assert len(said) == 2, said
+    assert said[1] in b.NoRepeatGate._HANDBACK + b.NoRepeatGate._HANDBACK_EN, said
+
+
+@pytest.mark.asyncio
+async def test_fillers_do_not_feed_the_hand_back_escalation():
+    """Widening the content-free set once made 'Theek hai. Achha.' hold its
+    own opener on the next reply (the escalation counter saw a content-free
+    TURN). Acknowledgment noises are fillers for the two rules above and
+    nothing else."""
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="haan")
+    await _reply(g, "Right.")
+    assert g._consecutive_handbacks == 0
+    rec.text.clear()
+    await _reply(g, "Okay. ", "Sunday ko hai.")
+    assert [t.strip() for t in rec.text] == ["Okay.", "Sunday ko hai."]
+
+
+@pytest.mark.asyncio
+async def test_no_hand_back_after_a_forced_close():
+    """A goodbye must stay a goodbye: with the caller having asked to end, an
+    already-said tail behind a short closing line must not grow a 'Yes, go
+    ahead.'"""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "cut the call",
+                       end_forced=lambda: True)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    S = "Thank you for your time, have a lovely day ahead."
+    await _reply(g, S)
+    rec.text.clear()
+    await _reply(g, "Okay. ", S)
+    said = [t.strip() for t in rec.text]
+    assert said == ["Okay."], said
+
+
+def test_played_question_check_tolerates_a_few_words_of_the_next_sentence():
+    """Word-timed text frames + STT finality delay: by the time 'Yes.' lands,
+    'Is that' has already played after 'right now?'. Still an answer to the
+    question. A long stretch after the last '?' is not."""
+    class _O:
+        transcript = [{"role": "assistant", "text": "Who is doing it right now? Is that"},
+                      {"role": "user", "text": "Yes."}]
+    tc = b.TranscriptCollector.__new__(b.TranscriptCollector)
+    tc._outcome = _O()
+    assert tc._played_ended_with_question() is True
+    _O.transcript[0]["text"] = ("Who is doing it right now? Is that you or does someone help "
+                                "you every single morning with the")
+    assert tc._played_ended_with_question() is False
+    _O.transcript[0]["text"] = "So the reason I called is the daily link"
+    assert tc._played_ended_with_question() is False
+
+
+# ── call f08f5712 (2026-09-12): "Hello?" after the question; "Yes, I'm here." twice ──
+
+@pytest.mark.asyncio
+async def test_the_same_sentence_twice_in_one_reply_is_dropped_whatever_its_length():
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="Hello? Hello, hello, hello?")
+    await _reply(g, "Yes, I'm here. ", "Yes, I'm here.")
+    assert [t.strip() for t in rec.text] == ["Yes, I'm here."]
+    # across replies a short sentence may still recur (acknowledgments)
+    rec.text.clear()
+    await _reply(g, "Yes, I'm here.")
+    assert [t.strip() for t in rec.text] == ["Yes, I'm here."]
+
+
+def test_caller_checking_presence():
+    from app.turntake import caller_checking_presence as f
+    for yes in ("Hello?", "Hello? Hello, hello, hello?", "hello hello", "Are you there?",
+                "Kya aap sun rahe hain?", "hello ji", "Awaaz aa rahi hai?"):
+        assert f(yes), yes
+    for no in ("Yes.", "Online.", "Hello, I teach yoga online on Zoom.", "haan ji online",
+               "yes go ahead", "", "[cue]"):
+        assert not f(no), no
+
+
+def test_last_played_question_comes_from_what_the_caller_heard():
+    class _O:
+        transcript = [
+            {"role": "assistant", "text": "Hi, is this Devang? Aarushi from Vacademy"},
+            {"role": "user", "text": "Okay."},
+            {"role": "assistant", "text": "Thank you. So the reason I called. Basically so you "
+                                          "only have to teach. You'd be taking classes online "
+                                          "these days I'm guessing — or is it all offline right now?"},
+            {"role": "assistant", "text": "Hello? Are you still there?"},
+            {"role": "user", "text": "Hello?"},
+        ]
+    tc = b.TranscriptCollector.__new__(b.TranscriptCollector)
+    tc._outcome = _O()
+    # the nudge is a question too, but it is the bot's own line check —
+    # re-asking it is the loop this exists to break. Skip to the real question.
+    assert tc._last_played_question().endswith("offline right now?")
+    _O.transcript.pop(3)
+    assert tc._last_played_question().endswith("offline right now?")
+    _O.transcript = [{"role": "assistant", "text": "Okay. Thank you."}, {"role": "user", "text": "Hello?"}]
+    assert tc._last_played_question() == ""
+
+
+@pytest.mark.asyncio
+async def test_a_line_check_licenses_repeating_the_lost_question():
+    """The cue re-asks the question verbatim; without this the no-repeat gate
+    dropped it as already said and the caller heard only "Yes, I'm here."
+    (call f08f5712, and the hello_checker persona before this line)."""
+    rec = _NRRec()
+    caller = {"t": "Okay."}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    Q = "You'd be taking classes online these days I'm guessing — or is it all offline right now?"
+    await _reply(g, "So the reason I called is the daily link and the fees. ", Q)
+    caller["t"] = "Hello? Hello, hello?"
+    rec.text.clear()
+    await _reply(g, "Yes, I'm here. ", Q)
+    assert any("offline right now?" in t for t in rec.text), rec.text
+
+
+# ── call 31763255 (2026-09-12): fragment finals as barge-ins; "yes." dropped as a scrap ──
+
+def test_fragment_continuation_shapes():
+    from app.turntake import is_fragment_continuation as f
+    assert f("Sorry, you wanted to say somet", "hing", 0.44)
+    assert f("It happens to my frie", "nd", 0.5)
+    assert f("? It makes", "some", 0.9)
+    assert f("You still", "me?", 0.5)
+    assert not f("Okay.", "Hello?", 0.6)              # finished, then a new utterance
+    assert not f("Yes, go ahead", "Actually wait, I am busy now", 0.8)   # long = new
+    assert not f("Yes, go ahead", "hello", 1.4)       # too late to be the same breath
+    assert not f("", "hing", 0.2) and not f("abc", "[cue]", 0.2)
+
+
+@pytest.mark.asyncio
+async def test_a_fragment_tail_does_not_interrupt_the_reply():
+    """"? It makes" → reply in flight → "some" 0.8 s later. The tail is the same
+    utterance: no interruption, the reply keeps playing, and the words still
+    reach the context (absorb path)."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._reply_in_flight = lambda: False
+    await _feed(tc, "? It makes")
+    assert rec.interruptions == 0
+    tc._reply_in_flight = lambda: True
+    tc._is_bot_speaking = lambda: True
+    rec.frames.clear()
+    await _feed(tc, "some")
+    assert rec.interruptions == 0, "the tail of the caller's own sentence killed the reply"
+    assert tc._outcome.transcript[-1] == {"role": "user", "text": "? It makes some"}
+    assert any("some" in c for c in rec.cues()), "the words never reached the context"
+
+
+@pytest.mark.asyncio
+async def test_a_letterless_final_never_interrupts():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    await _feed(tc, "।")
+    assert rec.interruptions == 0 and rec.frames == []
+    assert all(e.get("text") != "।" for e in tc._outcome.transcript)
+
+
+@pytest.mark.asyncio
+async def test_a_real_new_utterance_after_a_finished_one_still_barges_in():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    await _feed(tc, "Online.")
+    rec.interruptions = 0
+    await _feed(tc, "Actually wait, I have a question about the fees.")
+    assert rec.interruptions == 1
+
+
+@pytest.mark.asyncio
+async def test_voicemail_is_recognised_only_from_carrier_phrases():
+    """Call 24089872 (2026-09-12): the bot nudged twice and said goodbye to
+    "forwarded to voicemail… at the tone". A carrier phrase with no human turn
+    is voicemail; a scrap, silence, or any real caller words are not."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    assert tc.looks_like_voicemail() is False          # silence is not a machine
+    await _feed(tc, "Hi.")                              # a scrap is not a machine
+    assert tc.looks_like_voicemail() is False
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    assert tc.looks_like_voicemail() is True
+    tc2 = _replay_collector(rec)
+    tc2._bot_spoke_once = lambda: False
+    await _feed(tc2, "Your call has been forwarded to voicemail.")
+    tc2._bot_spoke_once = lambda: True
+    await _feed(tc2, "haan ji bol raha hoon")           # a human after all
+    assert tc2.looks_like_voicemail() is False

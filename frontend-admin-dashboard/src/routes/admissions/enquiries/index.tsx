@@ -1,5 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import {
@@ -17,13 +19,13 @@ import { Card } from '@/components/ui/card';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { EnquiryTable } from './-components/EnquiryTable';
 import { MyButton } from '@/components/design-system/button';
-import { Copy, Plus, X, Monitor } from 'lucide-react';
+import { Copy, Plus, X, Monitor } from '@phosphor-icons/react';
 import createCampaignLink from '@/routes/audience-manager/list/-utils/createCampaignLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FilterChips } from '@/components/design-system/chips';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search } from 'lucide-react';
+import { MagnifyingGlass } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -37,39 +39,39 @@ export const Route = createFileRoute('/admissions/enquiries/')({
 });
 
 // Predefined date ranges
-const DATE_RANGES = [
-    { id: 'today', label: 'Today' },
-    { id: 'last_7_days', label: 'Last 7 Days' },
-    { id: 'last_30_days', label: 'Last 30 Days' },
-    { id: 'last_3_months', label: 'Last 3 Months' },
-    { id: 'last_6_months', label: 'Last 6 Months' },
-    { id: 'last_year', label: 'Last Year' },
+const buildDateRanges = (t: TFunction) => [
+    { id: 'today', label: t('dateRanges.today') },
+    { id: 'last_7_days', label: t('dateRanges.last7Days') },
+    { id: 'last_30_days', label: t('dateRanges.last30Days') },
+    { id: 'last_3_months', label: t('dateRanges.last3Months') },
+    { id: 'last_6_months', label: t('dateRanges.last6Months') },
+    { id: 'last_year', label: t('dateRanges.lastYear') },
 ];
 
-const ENQUIRY_STATUSES = [
-    { id: 'NEW', label: 'New' },
-    { id: 'CONTACTED', label: 'Contacted' },
-    { id: 'NOT_ELIGIBLE', label: 'Not Eligible' },
-    { id: 'QUALIFIED', label: 'Qualified' },
-    { id: 'FOLLOW_UP', label: 'Follow up' },
-    { id: 'CLOSED', label: 'Closed' },
-    { id: 'CONVERTED', label: 'Converted' },
-    { id: 'ADMITTED', label: 'Admitted' },
+const buildEnquiryStatuses = (t: TFunction) => [
+    { id: 'NEW', label: t('enquiryStatuses.new') },
+    { id: 'CONTACTED', label: t('enquiryStatuses.contacted') },
+    { id: 'NOT_ELIGIBLE', label: t('enquiryStatuses.notEligible') },
+    { id: 'QUALIFIED', label: t('enquiryStatuses.qualified') },
+    { id: 'FOLLOW_UP', label: t('enquiryStatuses.followUp') },
+    { id: 'CLOSED', label: t('enquiryStatuses.closed') },
+    { id: 'CONVERTED', label: t('enquiryStatuses.converted') },
+    { id: 'ADMITTED', label: t('enquiryStatuses.admitted') },
 ];
 
-const SOURCE_TYPES = [
-    { id: 'WEBSITE', label: 'Website' },
-    { id: 'GOOGLE_ADS', label: 'Google Ads' },
-    { id: 'FACEBOOK', label: 'Facebook' },
-    { id: 'INSTAGRAM', label: 'Instagram' },
-    { id: 'REFERRAL', label: 'Referral' },
-    { id: 'OTHER', label: 'Other' },
+const buildSourceTypes = (t: TFunction) => [
+    { id: 'WEBSITE', label: t('sourceTypes.website') },
+    { id: 'GOOGLE_ADS', label: t('sourceTypes.googleAds') },
+    { id: 'FACEBOOK', label: t('sourceTypes.facebook') },
+    { id: 'INSTAGRAM', label: t('sourceTypes.instagram') },
+    { id: 'REFERRAL', label: t('sourceTypes.referral') },
+    { id: 'OTHER', label: t('sourceTypes.other') },
 ];
 
-const LEAD_TIERS = [
-    { id: 'HOT', label: '🔴 HOT' },
-    { id: 'WARM', label: '🟡 WARM' },
-    { id: 'COLD', label: '🔵 COLD' },
+const buildLeadTiers = (t: TFunction) => [
+    { id: 'HOT', label: `🔴 ${t('leadTiers.hot')}` },
+    { id: 'WARM', label: `🟡 ${t('leadTiers.warm')}` },
+    { id: 'COLD', label: `🔵 ${t('leadTiers.cold')}` },
 ];
 
 // Helper function to calculate date range
@@ -114,7 +116,12 @@ const getDateRange = (rangeValue: string) => {
 };
 
 function EnquiryPage() {
+    const { t } = useTranslation('admissionsEnquiriesIndex');
     const { data: instituteData } = useSuspenseQuery(useInstituteQuery());
+    const DATE_RANGES = useMemo(() => buildDateRanges(t), [t]);
+    const ENQUIRY_STATUSES = useMemo(() => buildEnquiryStatuses(t), [t]);
+    const SOURCE_TYPES = useMemo(() => buildSourceTypes(t), [t]);
+    const LEAD_TIERS = useMemo(() => buildLeadTiers(t), [t]);
     const [selectedEnquiryId, setSelectedEnquiryId] = useState<string>('');
     const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryListItem | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
@@ -156,8 +163,8 @@ function EnquiryPage() {
         [enquiriesData?.content]
     );
     useEffect(() => {
-        setNavHeading('Enquiries');
-    }, [setNavHeading]);
+        setNavHeading(t('pageTitle'));
+    }, [setNavHeading, t]);
 
     // Auto-select first enquiry by default
     useEffect(() => {
@@ -176,11 +183,11 @@ function EnquiryPage() {
         navigator.clipboard
             .writeText(shareableLink)
             .then(() => {
-                toast.success('Enquiry link copied to clipboard!');
+                toast.success(t('toast.linkCopied'));
             })
             .catch((error) => {
                 console.error('Unable to copy enquiry link', error);
-                toast.error('Failed to copy link');
+                toast.error(t('toast.copyFailed'));
             });
     };
 
@@ -246,11 +253,11 @@ function EnquiryPage() {
         <div className="space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold">Enquiries</h1>
+                <h1 className="text-2xl font-bold">{t('pageTitle')}</h1>
                 <div className="flex items-stretch gap-4">
                     <Select value={selectedEnquiryId} onValueChange={setSelectedEnquiryId}>
-                        <SelectTrigger className="h-auto w-[280px] px-3 py-1.5">
-                            <SelectValue placeholder="Select Enquiry" />
+                        <SelectTrigger className="h-auto w-72 px-3 py-1.5">
+                            <SelectValue placeholder={t('selectEnquiryPlaceholder')} />
                         </SelectTrigger>
                         <SelectContent>
                             {enquiries.map((enquiry) => (
@@ -260,7 +267,7 @@ function EnquiryPage() {
                                             {enquiry.campaign_name}
                                         </span>
                                         <span className="text-xs font-light text-muted-foreground">
-                                            Enquiry type: {enquiry.campaign_type}
+                                            {t('enquiryTypeLabel', { type: enquiry.campaign_type })}
                                         </span>
                                     </div>
                                 </SelectItem>
@@ -276,18 +283,18 @@ function EnquiryPage() {
                         className="h-full"
                     >
                         <Plus className="mr-1 size-4" />
-                        Add New Enquiry Response
+                        {t('addNewEnquiryResponse')}
                     </MyButton>
                     <MyButton
                         buttonType="secondary"
                         scale="small"
                         onClick={handleCopy}
                         className="h-full"
-                        title="Copy enquiry link to clipboard"
-                        aria-label="Copy enquiry link to clipboard"
+                        title={t('copyLinkTitle')}
+                        aria-label={t('copyLinkTitle')}
                     >
                         {' '}
-                        Copy Form Link
+                        {t('copyFormLink')}
                         <Copy />
                     </MyButton>
                     {leadSettings.enabled && (
@@ -296,11 +303,11 @@ function EnquiryPage() {
                             scale="small"
                             onClick={() => setIsWalkInOpen(true)}
                             className="h-full"
-                            title="Open walk-in registration form"
-                            aria-label="Open walk-in registration form"
+                            title={t('walkInRegisterTitle')}
+                            aria-label={t('walkInRegisterTitle')}
                             disabled={!selectedEnquiryId}
                         >
-                            Walk-in Register
+                            {t('walkInRegister')}
                             <Monitor className="ml-1 size-4" />
                         </MyButton>
                     )}
@@ -311,7 +318,7 @@ function EnquiryPage() {
             <div className="flex flex-wrap items-center gap-2">
                 {/* Status Filter */}
                 <FilterChips
-                    label="Status"
+                    label={t('filters.status')}
                     filterList={ENQUIRY_STATUSES}
                     selectedFilters={statusFilters}
                     handleSelect={(option) => {
@@ -329,7 +336,7 @@ function EnquiryPage() {
 
                 {/* Source Filter */}
                 <FilterChips
-                    label="Source"
+                    label={t('filters.source')}
                     filterList={SOURCE_TYPES}
                     selectedFilters={sourceFilters}
                     handleSelect={(option) => {
@@ -347,7 +354,7 @@ function EnquiryPage() {
 
                 {/* Date Range Filter */}
                 <FilterChips
-                    label="Date Range"
+                    label={t('filters.dateRange')}
                     filterList={DATE_RANGES}
                     selectedFilters={dateRangeFilters}
                     handleSelect={(option) => {
@@ -366,7 +373,7 @@ function EnquiryPage() {
                 {/* Package Session Filter */}
                 {packageSessionOptions.length > 0 && (
                     <FilterChips
-                        label="Class"
+                        label={t('filters.class')}
                         filterList={packageSessionOptions}
                         selectedFilters={packageSessionFilters}
                         handleSelect={(option) => {
@@ -389,7 +396,7 @@ function EnquiryPage() {
                 <div className="flex items-center gap-2">
                     <Input
                         type="text"
-                        placeholder="Search by name or mobile..."
+                        placeholder={t('searchPlaceholder')}
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -397,7 +404,7 @@ function EnquiryPage() {
                                 setSearchFilter(searchInput);
                             }
                         }}
-                        className="h-8 bg-white text-xs md:w-[250px]"
+                        className="h-8 bg-white text-xs md:w-64"
                     />
                     <Button
                         variant="secondary"
@@ -405,7 +412,7 @@ function EnquiryPage() {
                         className="h-8 px-3"
                         onClick={() => setSearchFilter(searchInput)}
                     >
-                        <Search className="size-4" />
+                        <MagnifyingGlass className="size-4" />
                     </Button>
                 </div>
 
@@ -447,20 +454,20 @@ function EnquiryPage() {
                         }
                     }}
                 >
-                    <SelectTrigger className="h-8 w-[180px] text-xs">
-                        <SelectValue placeholder="Sort by..." />
+                    <SelectTrigger className="h-8 w-44 text-xs">
+                        <SelectValue placeholder={t('sortBy.placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="none">Default Order</SelectItem>
-                        <SelectItem value="SUBMITTED_AT">Date Submitted</SelectItem>
+                        <SelectItem value="none">{t('sortBy.defaultOrder')}</SelectItem>
+                        <SelectItem value="SUBMITTED_AT">{t('sortBy.dateSubmitted')}</SelectItem>
                         {leadSettings.enabled && (
                             <SelectItem value="LEAD_SCORE">
-                                Lead Score{' '}
+                                {t('sortBy.leadScore')}{' '}
                                 {sortBy === 'LEAD_SCORE' ? (sortDirection === 'DESC' ? '↓' : '↑') : ''}
                             </SelectItem>
                         )}
                         <SelectItem value="PARENT_NAME">
-                            Parent Name{' '}
+                            {t('sortBy.parentName')}{' '}
                             {sortBy === 'PARENT_NAME' ? (sortDirection === 'DESC' ? '↓' : '↑') : ''}
                         </SelectItem>
                     </SelectContent>
@@ -475,7 +482,7 @@ function EnquiryPage() {
                             onCheckedChange={setShowDuplicates}
                         />
                         <Label htmlFor="show-duplicates" className="text-xs text-neutral-600">
-                            Show duplicates
+                            {t('showDuplicates')}
                         </Label>
                     </div>
                 )}
@@ -488,7 +495,7 @@ function EnquiryPage() {
                         className="h-8 px-2 text-xs"
                     >
                         <X className="mr-1 size-3" />
-                        Clear All
+                        {t('clearAll')}
                     </MyButton>
                 )}
             </div>
@@ -514,9 +521,7 @@ function EnquiryPage() {
             {/* No enquiry selected state */}
             {!selectedEnquiryId && (
                 <Card className="p-12 text-center">
-                    <p className="text-muted-foreground">
-                        Please select an enquiry to view responses
-                    </p>
+                    <p className="text-muted-foreground">{t('selectEnquiryPrompt')}</p>
                 </Card>
             )}
 
@@ -527,7 +532,7 @@ function EnquiryPage() {
                     className="h-12 rounded-full bg-primary-500 px-6 text-white shadow-xl transition-all hover:-translate-y-1 hover:bg-primary-600 hover:shadow-2xl md:h-14"
                 >
                     <Plus className="mr-2 size-5" />
-                    Create New Enquiry Form
+                    {t('createNewEnquiryForm')}
                 </Button>
             </div>
 
@@ -536,9 +541,12 @@ function EnquiryPage() {
 
             {/* Walk-in Registration Sheet */}
             <Sheet open={isWalkInOpen} onOpenChange={setIsWalkInOpen}>
-                <SheetContent side="right" className="w-full max-w-2xl p-0 sm:max-w-2xl">
+                <SheetContent
+                    side="right"
+                    className="flex w-full max-w-2xl flex-col p-0 sm:max-w-2xl"
+                >
                     <SheetHeader className="border-b px-6 py-4">
-                        <SheetTitle>Walk-in Registration</SheetTitle>
+                        <SheetTitle>{t('walkInRegistration')}</SheetTitle>
                     </SheetHeader>
                     {selectedEnquiryId && (
                         <iframe
@@ -547,8 +555,8 @@ function EnquiryPage() {
                                 instituteDetails?.learner_portal_base_url,
                                 true
                             )}
-                            className="h-[calc(100vh-70px)] w-full border-0"
-                            title="Walk-in Registration Form"
+                            className="w-full flex-1 border-0"
+                            title={t('walkInRegistrationFormTitle')}
                         />
                     )}
                 </SheetContent>

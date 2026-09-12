@@ -1,0 +1,15 @@
+{
+    "navHeading": "Réunions d'équipe",
+    "heading": "Réunions d'équipe",
+    "subtitle": "Réunions organisées par vous et votre équipe",
+    "unknownHost": "Hôte inconnu",
+    "noTeamTitle": "Vous ne gérez pas encore d'équipe",
+    "noTeamDescription": "Réunions d'équipe affiche les plannings de toutes les personnes qui vous sont rattachées. Dès que des membres de l'équipe vous seront rattachés, leurs réunions apparaîtront ici.",
+    "emptyTitle": "Aucune réunion d'équipe cette semaine",
+    "emptyDescription": "Les réunions organisées par vous ou votre équipe apparaîtront ici.",
+    "hostFilterAriaLabel": "Filtrer les réunions par hôte",
+    "allHosts": "Tous les hôtes ({{count}})",
+    "filterByHost": "Filtrer par hôte",
+    "searchHostPlaceholder": "Rechercher un hôte…",
+    "noHostFound": "Aucun hôte trouvé."
+}

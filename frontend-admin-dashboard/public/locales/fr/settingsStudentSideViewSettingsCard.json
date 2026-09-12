@@ -1,0 +1,13 @@
+{
+    "title": "Options de la vue latérale étudiant",
+    "description": "Configurez les onglets visibles, leur ordre et celui qui s'ouvre par défaut dans la vue latérale étudiant.",
+    "ariaLabel": {
+        "moveUp": "Déplacer {{label}} vers le haut",
+        "moveDown": "Déplacer {{label}} vers le bas"
+    },
+    "defaultTab": {
+        "label": "Onglet par défaut",
+        "hint": "L'onglet qui s'ouvre lorsque la vue latérale s'affiche pour la première fois.",
+        "placeholder": "Sélectionner un onglet"
+    }
+}

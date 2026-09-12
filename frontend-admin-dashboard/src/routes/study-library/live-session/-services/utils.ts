@@ -268,6 +268,8 @@ export interface LiveSessionReport {
     statusType: string | null;
     engagementData: string | null;
     providerTotalDurationMinutes: number | null;
+    /** Exact seconds when the provider reports them (Vacademy Meet); null for Zoom. */
+    providerTotalDurationSeconds?: number | null;
     feedbackDetails: string | null;
 }
 

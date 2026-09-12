@@ -2,11 +2,13 @@
 import { cn } from "@/lib/utils";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { distribution_duration_types } from "@/types/assessment";
 
 const LOW_TIME_MS = 3 * 60 * 1000;
 
 export function SectionTabs() {
+  const { t } = useTranslation("questionTest");
   const {
     assessment,
     currentSection,
@@ -86,7 +88,7 @@ export function SectionTabs() {
 
   return (
     <nav
-      aria-label="Assessment sections"
+      aria-label={t("sectionTabs.ariaLabel")}
       className="flex flex-none gap-5 overflow-x-auto border-b border-neutral-200 bg-white px-4 [scrollbar-width:none] md:px-6 [&::-webkit-scrollbar]:hidden"
     >
       {assessment?.section_dtos

@@ -1,0 +1,11 @@
+{
+    "fallback": {
+        "textMessage": "رسالة نصية",
+        "anyMessage": "أي رسالة",
+        "ai": "الذكاء الاصطناعي"
+    },
+    "branch": {
+        "default": "افتراضي",
+        "numbered": "الفرع {{number}}"
+    }
+}

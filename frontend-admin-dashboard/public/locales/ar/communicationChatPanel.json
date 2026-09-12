@@ -1,0 +1,34 @@
+{
+    "emptyState": {
+        "title": "اختر محادثة",
+        "subtitle": "اختر جهة اتصال من اليسار لعرض الرسائل"
+    },
+    "backToConversations": "العودة إلى المحادثات",
+    "idLabel": "المعرّف: {{id}}",
+    "escalation": {
+        "title": "بانتظار ردك",
+        "reason": {
+            "maxTurns": "وصلت المحادثة إلى حد الردود الآلية.",
+            "aiError": "تعذر على المساعد إنشاء رد.",
+            "manual": "تم تحويلها من قبل مسؤول.",
+            "default": "لم تكن لدى المساعد المعلومات اللازمة للرد، لذا ذكر أنه سيتحقق مع الفريق."
+        },
+        "askedQuote": "سألوا: «{{message}}»"
+    },
+    "loadError": {
+        "retrying": "إعادة المحاولة…",
+        "tryAgain": "أعد المحاولة"
+    },
+    "loadOlder": {
+        "loading": "جارٍ التحميل...",
+        "cta": "تحميل الرسائل الأقدم"
+    },
+    "noMessages": "لا توجد رسائل في هذه المحادثة بعد",
+    "bot": "بوت",
+    "viaTemplate": "عبر القالب «{{name}}»",
+    "notDelivered": "لم يتم التسليم",
+    "accountLevelFailure": "يؤثر هذا على كل رسالة WhatsApp من هذا الرقم، وليس على هذه المحادثة فقط.",
+    "errorCode": "رمز خطأ WhatsApp {{code}}",
+    "viewDocument": "عرض المستند",
+    "attachmentAlt": "مرفق"
+}

@@ -1,0 +1,99 @@
+{
+    "feePlan": {
+        "heading": "Plan de frais",
+        "planLabelFallback": "Plan de frais",
+        "installments_one": "{{count}} échéance",
+        "installments_many": "{{count}} d'échéances",
+        "installments_other": "{{count}} échéances",
+        "netPaid": "Net {{net}} · Payé {{paid}}",
+        "outstanding": "Solde restant"
+    },
+    "accountSummary": {
+        "heading": "Résumé du compte",
+        "totalAccrued": "Total accumulé",
+        "totalPaid": "Total payé",
+        "due": "Dû",
+        "pastDue": "En retard"
+    },
+    "markPaidDialog": {
+        "successToast": "Facture {{invoice}} marquée comme payée",
+        "errorToast": "Échec du marquage comme payée",
+        "title": "Marquer la facture comme payée",
+        "descriptionPrefix": "Enregistre un paiement hors ligne pour",
+        "descriptionFallback": "Enregistre un paiement hors ligne pour cette facture.",
+        "transactionReference": "Référence de transaction",
+        "transactionReferencePlaceholder": "n° de chèque, réf. UPI, n° de reçu",
+        "notes": "Notes",
+        "notesPlaceholder": "Note facultative",
+        "cancel": "Annuler",
+        "saving": "Enregistrement…",
+        "submit": "Marquer comme payée"
+    },
+    "invoicesList": {
+        "cancelSuccessToast": "Facture annulée",
+        "cancelErrorToast": "Impossible d'annuler la facture",
+        "copyLinkSuccessToast": "Lien de paiement copié",
+        "copyLinkErrorToast": "Impossible de copier dans le presse-papiers",
+        "emptyTitle": "Aucune facture pour l'instant",
+        "emptyHint": "Les factures générées pour cet apprenant apparaîtront ici.",
+        "proforma": "PROFORMA",
+        "proformaTitle": "Facture proforma — devient une facture numérotée une fois payée",
+        "discountFallback": "Remise",
+        "sourceAdminInvoice": "Facture admin",
+        "sourceSubscription": "Abonnement",
+        "sourceFeePayment": "Paiement de frais",
+        "previewTitle": "Aperçu du PDF de la facture sans le télécharger",
+        "preview": "Aperçu",
+        "downloadTitle": "Télécharger le PDF de la facture",
+        "download": "Télécharger",
+        "copied": "Copié",
+        "copyPaymentLink": "Copier le lien de paiement",
+        "copyPaymentLinkTitle": "Copier le lien de paiement à partager avec l'apprenant",
+        "editTitle": "Modifier cette facture impayée — conserve le même numéro de facture",
+        "edit": "Modifier",
+        "markPaidTitle": "Enregistrer un paiement hors ligne / manuel",
+        "markPaid": "Marquer comme payée",
+        "cancelInvoiceTitle": "Annuler cette facture — le lien de paiement cessera de fonctionner",
+        "cancelling": "Annulation…",
+        "cancelAction": "Annuler",
+        "paginationRange": "{{from}}–{{to}} sur {{total}}",
+        "cancelDialog": {
+            "title": "Annuler la facture {{number}} ?",
+            "description": "Cela annule définitivement la facture — le lien de paiement cessera de fonctionner et elle ne pourra plus jamais être marquée comme payée. Cette action est irréversible. Pour corriger une erreur, créez une nouvelle facture par la suite.",
+            "keep": "Conserver la facture",
+            "confirm": "Annuler la facture"
+        }
+    },
+    "invoiceStatus": {
+        "generated": "Générée",
+        "sent": "Envoyée",
+        "viewed": "Consultée",
+        "pendingPayment": "Paiement en attente",
+        "paid": "Payée",
+        "rejected": "Rejetée"
+    },
+    "transactionHistory": {
+        "heading": "Historique des transactions",
+        "loading": "Chargement des transactions…",
+        "empty": "Aucun historique de transaction pour l'instant.",
+        "pageOf": "Page {{page}} sur {{total}}",
+        "event": {
+            "debitAccrual": "Facture émise",
+            "creditPayment": "Paiement reçu",
+            "creditWaiver": "Remise gracieuse",
+            "creditAdjustment": "Ajustement",
+            "debitPenalty": "Pénalité",
+            "debitReversal": "Facture annulée"
+        }
+    },
+    "main": {
+        "loadInvoiceError": "Impossible de charger la facture à modifier",
+        "noLearnerTitle": "Aucun apprenant sélectionné",
+        "noLearnerHint": "Sélectionnez un apprenant pour voir son historique de paiement.",
+        "installmentsHeading": "Échéances",
+        "invoicesHeading": "Factures",
+        "invoicesHeadingCount": "Factures ({{count}})",
+        "createInvoice": "Créer une facture",
+        "loadingInvoices": "Chargement des factures..."
+    }
+}

@@ -1,3 +1,4 @@
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 // Types that define Admin/Teacher display settings configuration
 
 export type UserRoleForDisplaySettings = 'ADMIN' | 'TEACHER';
@@ -24,7 +25,7 @@ export interface SidebarTabConfig {
     // For custom tabs: which sidebar category (CRM/LMS/AI) it belongs to.
     // Built-in tabs derive their category from SidebarItemsData; this only applies
     // to user-added custom tabs whose id isn't in SidebarItemsData.
-    category?: 'CRM' | 'LMS' | 'AI';
+    category?: SidebarCategory;
 }
 
 // Dashboard widget identifiers. These are string literal ids that we can enforce in UI.
@@ -58,7 +59,8 @@ export type DashboardWidgetId =
     | 'topVles'
     | 'subOrgSeatCourses'
     | 'subOrgActivityDues'
-    | 'mentorshipStats';
+    | 'mentorshipStats'
+    | 'lmsConnectionHealth';
 
 export interface DashboardWidgetConfig {
     id: DashboardWidgetId;
@@ -85,6 +87,7 @@ export type CourseDetailsTabId =
     | 'LEARNER'
     | 'TEACHER'
     | 'ASSESSMENT'
+    | 'QUIZ_RESULTS'
     | 'LIVE_SESSION'
     | 'PLANNING'
     | 'ACTIVITY'
@@ -92,7 +95,8 @@ export type CourseDetailsTabId =
     | 'REPORTS'
     | 'CERTIFICATES'
     | 'DOWNLOADS'
-    | 'SETTINGS';
+    | 'SETTINGS'
+    | 'TUTOR_MODE';
 
 export interface CourseDetailsTabConfig {
     id: CourseDetailsTabId;
@@ -183,6 +187,7 @@ export type StudentSideViewTabId =
     | 'application'
     | 'lead'
     | 'fullHistory'
+    | 'workflows'
     | 'parent'
     | 'onboarding';
 
@@ -204,6 +209,10 @@ export interface StudentSideViewSettings {
     applicationTab: boolean;
     leadTab: boolean;
     fullHistoryTab?: boolean;
+    // Workflows tab — the automations that ran for this person, with a Retry
+    // action per run. Optional for backward-compat with settings saved before
+    // this tab existed.
+    workflowsTab?: boolean;
     // Guardian tab — surfaces the linked guardian/children (parent-link feature).
     // Optional for backward-compat with settings saved before this tab existed.
     parentTab?: boolean;
@@ -279,6 +288,7 @@ export type StudentSideViewVisibilityKey =
     | 'applicationTab'
     | 'leadTab'
     | 'fullHistoryTab'
+    | 'workflowsTab'
     | 'parentTab'
     | 'onboardingTab';
 
@@ -484,6 +494,36 @@ export type ListCustomFieldControls = Partial<
     Record<ListCustomFieldSurface, ListCustomFieldSurfaceControls>
 >;
 
+// Campaign (UTM) attribution filters on the same list surfaces. Which
+// dimensions can be offered lives in services/utm-list-filters
+// (UTM_FILTER_DIMENSIONS); this is the per-surface admin override.
+export type ListUtmFilterDimension =
+    | 'source'
+    | 'medium'
+    | 'campaign'
+    | 'content'
+    | 'term'
+    | 'source_type';
+
+export interface ListUtmFilterSurfaceControls {
+    // Explicit on/off for this surface. ABSENT = follow the institute's
+    // campaign-link (UTM) setting: the filters appear the moment that is
+    // switched on and vanish when it is switched off, with nothing to
+    // configure here. `false` hides them even while UTM is on (a role that
+    // never needs them); `true` still requires UTM to be on — without it
+    // there is nothing to filter by.
+    enabled?: boolean;
+    // Dimensions rendered as dropdowns. ABSENT = automatic: source, medium and
+    // campaign always; content, term and channel only once the institute's
+    // data actually holds a value for them. An explicit list pins exactly
+    // these (a dimension with no data still renders, empty).
+    dimensions?: ListUtmFilterDimension[];
+}
+
+export type ListUtmFilterControls = Partial<
+    Record<ListCustomFieldSurface, ListUtmFilterSurfaceControls>
+>;
+
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
     sidebar: SidebarTabConfig[];
@@ -646,6 +686,13 @@ export interface DisplaySettingsData {
     //        CONTACTS → none
     listCustomFieldControls?: ListCustomFieldControls;
 
+    // 12e) Campaign (UTM) attribution filters per list surface — the same
+    //      surfaces as 12d. Institute-wide, stored on the ADMIN blob. Absent
+    //      surface entry = follow the UTM setting (see
+    //      ListUtmFilterSurfaceControls). Edited from the same "Manage
+    //      filters" popup / Display Settings card as the custom-field filters.
+    listUtmFilterControls?: ListUtmFilterControls;
+
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;
 
@@ -680,7 +727,7 @@ export interface DisplaySettingsData {
 
     // 14) Sidebar Category Configuration
     sidebarCategories?: Array<{
-        id: 'CRM' | 'LMS' | 'AI';
+        id: SidebarCategory;
         visible: boolean;
         locked?: boolean; // whether the category is locked
         default: boolean; // Is this the default category on load?

@@ -29,8 +29,11 @@ export const Route = createFileRoute("/live-class-guest/embed/")({
 import { ENABLE_LIVE_CLASS_SAFETY_MODAL } from "@/constants/feature-flags";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useTranslation } from "react-i18next";
 
 function GuestEmbedComponent() {
+  const { t } = useTranslation("liveClassGuest");
+  const liveSession = getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession);
   const { sessionId } = Route.useSearch();
   const {
     data: sessionDetails,
@@ -68,7 +71,7 @@ function GuestEmbedComponent() {
       }
       const joinUrl = response.data?.joinUrl;
       if (!joinUrl) {
-        setBbbError("Failed to get video class URL");
+        setBbbError(t("embed.errors.videoUrlUnavailable"));
         return;
       }
       window.open(joinUrl, "_blank", "noopener,noreferrer");
@@ -79,9 +82,9 @@ function GuestEmbedComponent() {
         errMsg.toLowerCase().includes("ended") ||
         errMsg.toLowerCase().includes("not started")
       ) {
-        setBbbError("This class has not started yet or has ended.");
+        setBbbError(t("embed.errors.notStartedOrEnded"));
       } else {
-        setBbbError("Failed to join video class. Please try again.");
+        setBbbError(t("embed.errors.joinFailed"));
       }
     } finally {
       setBbbJoining(false);
@@ -113,10 +116,12 @@ function GuestEmbedComponent() {
             disabled={bbbJoining}
             className="px-8 py-4 bg-primary-500 text-white rounded-lg text-lg font-semibold hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {bbbJoining ? "Joining..." : "Join Live Class"}
+            {bbbJoining
+              ? t("embed.bbb.joining")
+              : t("embed.bbb.joinButton", { liveSession })}
           </button>
           <p className="text-sm text-gray-500">
-            Click to join the live video class in a new window
+            {t("embed.bbb.joinHint", { liveSession })}
           </p>
         </div>
       );
@@ -138,9 +143,9 @@ function GuestEmbedComponent() {
       if (!videoId) {
         return (
           <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
-            Invalid YouTube URL format
+            {t("embed.youtube.invalidUrl")}
             <a href={sessionDetails.defaultMeetLink} target="_blank">
-              Click here to view the live
+              {t("embed.youtube.viewLiveLink")}
             </a>
           </div>
         );
@@ -205,7 +210,7 @@ function GuestEmbedComponent() {
       window.open(joinLink, "_blank", "noopener,noreferrer");
       return (
         <div className="flex flex-col items-center justify-center p-12 h-screen bg-white">
-          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
+          <p className="mt-4 text-neutral-600">{t("embed.openingNewTab")}</p>
         </div>
       );
     }
@@ -219,7 +224,7 @@ function GuestEmbedComponent() {
   if (error) {
     return (
       <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
-        Error loading session details: {(error as Error).message}
+        {t("common.errorLoadingSession", { message: (error as Error).message })}
       </div>
     );
   }
@@ -231,7 +236,7 @@ function GuestEmbedComponent() {
   if (!sessionDetails?.defaultMeetLink && !isBbb) {
     return (
       <div className="p-4 border border-yellow-200 rounded-lg bg-yellow-50 text-yellow-700">
-        No meeting link available for this session.
+        {t("embed.noMeetingLink")}
       </div>
     );
   }
@@ -256,12 +261,12 @@ function GuestEmbedComponent() {
             {sessionDetails?.title || getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}
           </h1>
           <div className="bg-red-600 text-white px-2 py-1 rounded text-sm animate-pulse">
-            Live
+            {t("common.liveBadge")}
           </div>
         </div>
         <div className="flex-grow relative flex items-center justify-center p-2">
           <div className="absolute top-10 end-10 p-2 px-4 bg-red-500 text-white z-1 rounded">
-            Live
+            {t("common.liveBadge")}
           </div>
           {renderEmbededSession()}
         </div>

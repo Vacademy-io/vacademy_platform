@@ -32,7 +32,6 @@ public class WebSecurityConfig {
             "/notification-service/whatsapp/v1/send-template-whatsapp",
             "/notification-service/whatsapp/v1/send-template-whatsapp/multiple",
             "/auth/**",
-            "/notification-service/v1/send-email",
             "/notification-service/actuator/**",
             "/actuator/**",
             "/notification-service/internal/**",
@@ -68,6 +67,17 @@ public class WebSecurityConfig {
             "/notification-service/webhook/v1/meta/**"
     };
 
+    /**
+     * Paths that must carry a valid JWT. These are matched BEFORE ALLOWED_PATHS,
+     * so they win over the broad "/notification-service/v1/**" permitAll entry.
+     */
+    private static final String[] SECURED_PATHS = {
+            "/notification-service/v1/send-email",
+            // Sending controls: per-institute quota status and the opt-out list (email addresses)
+            // plus add/remove — admin data, must not sit under the broad v1 permitAll.
+            "/notification-service/v1/email-sending/**"
+    };
+
     @Autowired
     private JwtAuthFilter jwtAuthFilter; // Inject JwtAuthFilter dependency
     @Autowired
@@ -86,6 +96,15 @@ public class WebSecurityConfig {
                     // before the broad "/notification-service/v1/**" permitAll below, which would
                     // otherwise swallow them. Scoped to /v1/chat/** only — no other endpoint is affected.
                     authz.requestMatchers(AntPathRequestMatcher.antMatcher("/notification-service/v1/chat/**")).authenticated();
+
+                    // Generic mailer. Left open it is an unauthenticated relay that will send an
+                    // arbitrary subject/body to any address. Registered here, ahead of the broad
+                    // "/notification-service/v1/**" permitAll below, so it actually takes effect.
+                    // Service-to-service callers should use /notification-service/internal/** ;
+                    // the OTP endpoints stay public because they are pre-login flows.
+                    for (String path : SECURED_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).authenticated();
+                    }
 
                     // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
                     // Spring 6)

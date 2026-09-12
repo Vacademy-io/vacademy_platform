@@ -37,7 +37,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static vacademy.io.common.core.standard_classes.ListService.createSortObject;
+import vacademy.io.assessment_service.features.assessment.sort.StableSort;
 
 @Slf4j
 @Component
@@ -74,9 +74,43 @@ public class AdminAssessmentGetManager {
         return ResponseEntity.ok(assessmentAdminListInitDto);
     }
 
+    // Unique per row, so two exams sharing a start date (a whole day's papers usually do)
+    // keep a stable relative order across pages. Bare column name on purpose: Spring Data
+    // prefixes an unrecognised sort property with the query's detected alias, which here
+    // is the assessment table itself -- "id" becomes "a.id". An already-qualified "a.id"
+    // would become "a.a.id".
+    private static final String ASSESSMENT_LIST_TIE_BREAKER = "id";
+
+    /**
+     * Default order per tab, keyed off the same flags that decide which tab this is.
+     * Direction follows what the tab is for: the next exam matters most when looking
+     * forward, the latest one when looking back.
+     *
+     * <p>{@code bound_start_time} is safe to sort every tab by, drafts included — it is
+     * NOT NULL in practice (0 of 2,375 live rows are null), so there is no null bucket to
+     * reason about.
+     */
+    private static Sort defaultAssessmentListSort(AdminAssessmentFilter filter) {
+        boolean upcoming = Boolean.TRUE.equals(filter.getGetUpcomingAssessments());
+        return upcoming
+                // Soonest first — the exam about to happen is the one an admin needs.
+                ? Sort.by(Sort.Order.asc("bound_start_time"))
+                // Live and past (and drafts, which set none of the flags): most recent
+                // first, so the paper just run — or about to be run — is at the top.
+                : Sort.by(Sort.Order.desc("bound_start_time"));
+    }
+
     public ResponseEntity<AllAdminAssessmentResponse> assessmentAdminListFilter(CustomUserDetails user, AdminAssessmentFilter adminAssessmentFilter, String instituteId, int pageNo, int pageSize) {
-        // Create a sorting object based on the provided sort columns
-        Sort thisSort = createSortObject(adminAssessmentFilter.getSortColumns());
+        // Order by when the exam actually RUNS, not when it was created. The admin list
+        // sends no sort_columns at all, which used to leave the Pageable unsorted; the
+        // query has no ORDER BY of its own, so Postgres returned heap order. On a
+        // mostly-append-only table that looks like creation order, which diverges from the
+        // schedule as soon as an admin sets a paper up in advance (prod has exams created
+        // in June that run in August, and they sorted into their June slot).
+        Sort thisSort = StableSort.withStableOrder(
+                adminAssessmentFilter.getSortColumns(),
+                defaultAssessmentListSort(adminAssessmentFilter),
+                ASSESSMENT_LIST_TIE_BREAKER);
         Page<Object[]> assessmentsPage;
         //TODO: Check user permission
 
@@ -115,7 +149,7 @@ public class AdminAssessmentGetManager {
 
     public ResponseEntity<LeaderBoardResponse> getLeaderBoard(CustomUserDetails user, String assessmentId, LeaderboardFilter filter, String instituteId, int pageNo, int pageSize) {
         if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
-        Sort sortColumn = createSortObject(filter.getSortColumns());
+        Sort sortColumn = ListService.createSortObject(filter.getSortColumns());
 
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumn);
         Page<LeaderBoardDto> paginatedLeaderboard = null;

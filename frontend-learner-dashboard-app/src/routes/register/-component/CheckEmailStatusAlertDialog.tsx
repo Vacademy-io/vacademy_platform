@@ -38,6 +38,7 @@ import {
 import AssessmentRegistrationCompleted from "./AssessmentRegistrationCompleted";
 import AssessmentClosedExpiredComponent from "./AssessmentClosedExpiredComponent";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 const checkCloseTestTimeCondition = (serverTime: number, endDate: string) => {
   const registrationEndDate: number = new Date(Date.parse(endDate)).getTime();
@@ -85,6 +86,7 @@ const CheckEmailStatusAlertDialog = ({
   case3Status: boolean;
   serverTime: number;
 }) => {
+  const { t } = useTranslation("registrationA");
   const [
     isPrivateAssessmentAlreadyRegistered,
     setIsPrivateAssessmentAlreadyRegistered,
@@ -175,13 +177,13 @@ const CheckEmailStatusAlertDialog = ({
     onSuccess: () => {
       setIsOTPSent(true);
       startTimer();
-      toast.success("OTP sent successfully");
+      toast.success(t("checkEmailDialog.toast.otpSent"));
       setUserAlreadyRegistered(false);
     },
     onError: async () => {
       await removeTokensAndLogout();
-      toast.error("This email is not registered", {
-        description: "Please register yourself to attempt this assessment",
+      toast.error(t("checkEmailDialog.toast.notRegisteredTitle"), {
+        description: t("checkEmailDialog.toast.notRegisteredDescription"),
         duration: 3000,
       });
       setUserAlreadyRegistered(true);
@@ -259,9 +261,9 @@ const CheckEmailStatusAlertDialog = ({
         getTestDetailsOfParticipants.remaining_attempts === 0
       ) {
         toast.error(
-          "Your remaining attempts are over to attempt this assessment!",
+          t("checkEmailDialog.toast.attemptsOverTitle"),
           {
-            description: "Your attempts are over!",
+            description: t("checkEmailDialog.toast.attemptsOverDescription"),
             duration: 3000,
           },
         );
@@ -305,8 +307,8 @@ const CheckEmailStatusAlertDialog = ({
       }
     },
     onError: () => {
-      toast.error("Invalid OTP", {
-        description: "Please try again",
+      toast.error(t("checkEmailDialog.toast.invalidOtpTitle"), {
+        description: t("checkEmailDialog.toast.invalidOtpDescription"),
         duration: 3000,
       });
     },
@@ -320,7 +322,7 @@ const CheckEmailStatusAlertDialog = ({
         otp: otpArray.join(""),
       });
     } else {
-      toast.error("Please fill all OTP fields");
+      toast.error(t("checkEmailDialog.toast.fillAllOtp"));
     }
   };
 
@@ -405,10 +407,10 @@ const CheckEmailStatusAlertDialog = ({
       <AlertDialogContent className="p-0 overflow-hidden border border-primary-100 shadow-2xl sm:max-w-reg-430 rounded-2xl">
         <div className="px-5 py-4 bg-gradient-to-r from-primary-50 to-white border-b border-primary-100">
           <h1 className="text-primary-600 font-semibold text-base">
-            Check Registration Status
+            {t("checkEmailDialog.title")}
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Verify your email to continue with assessment registration.
+            {t("checkEmailDialog.subtitle")}
           </p>
         </div>
         <FormProvider {...form}>
@@ -417,14 +419,14 @@ const CheckEmailStatusAlertDialog = ({
               <FormControl>
                 <MyInput
                   inputType="email"
-                  inputPlaceholder="Enter your email"
+                  inputPlaceholder={t("checkEmailDialog.emailPlaceholder")}
                   input={form.watch("email")}
                   onChangeFunction={(e) =>
                     form.setValue("email", e.target.value)
                   }
                   required={true}
                   size="large"
-                  label="Email"
+                  label={t("common.email")}
                   className="!max-w-full !w-full"
                 />
               </FormControl>
@@ -462,10 +464,10 @@ const CheckEmailStatusAlertDialog = ({
                 >
                   {timer > 0 ? (
                     <span className="!text-neutral-400">
-                      Resend OTP in {timer} seconds
+                      {t("checkEmailDialog.resendIn", { seconds: timer })}
                     </span>
                   ) : (
-                    "Resend OTP"
+                    t("common.resendOtp")
                   )}
                 </button>
               </>
@@ -481,7 +483,7 @@ const CheckEmailStatusAlertDialog = ({
                   disable={!isEmailValid || sendOtpMutation.isPending}
                   onClick={() => sendOtpMutation.mutate(email)}
                 >
-                  {sendOtpMutation.isPending ? "Sending OTP..." : "Send OTP"}
+                  {sendOtpMutation.isPending ? t("checkEmailDialog.sending") : t("checkEmailDialog.send")}
                 </MyButton>
               ) : (
                 <MyButton
@@ -493,7 +495,7 @@ const CheckEmailStatusAlertDialog = ({
                   disable={!isFormValid || verifyOtpMutation.isPending}
                   onClick={form.handleSubmit(onSubmit)}
                 >
-                  {verifyOtpMutation.isPending ? "Verifying..." : "Verify & Continue"}
+                  {verifyOtpMutation.isPending ? t("common.verifying") : t("checkEmailDialog.verify")}
                 </MyButton>
               )}
             </div>

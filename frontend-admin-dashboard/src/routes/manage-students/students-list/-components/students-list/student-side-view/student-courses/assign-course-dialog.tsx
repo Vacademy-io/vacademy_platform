@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -38,6 +39,7 @@ export const AssignCourseDialog = ({
     onOpenChange,
     onSuccess,
 }: AssignCourseDialogProps) => {
+    const { t } = useTranslation('manageStudentsAssignCourseDialog');
     const instituteId = getInstituteId() || '';
     const [step, setStep] = useState<WizardStep>('SELECT_COURSES');
     const [batches, setBatches] = useState<PackageSessionDTO[]>([]);
@@ -98,7 +100,7 @@ export const AssignCourseDialog = ({
 
             setBatches(allBatches);
         } catch {
-            toast.error('Failed to load courses');
+            toast.error(t('toasts.loadCoursesFailed'));
         } finally {
             setIsLoadingBatches(false);
         }
@@ -178,7 +180,7 @@ export const AssignCourseDialog = ({
             setPreviewData(result);
             setStep('PREVIEW');
         } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'Preview failed');
+            toast.error(err?.response?.data?.message || t('toasts.previewFailed'));
         }
     };
 
@@ -189,16 +191,19 @@ export const AssignCourseDialog = ({
             setStep('RESULTS');
             if (result.summary.failed === 0) {
                 toast.success(
-                    `${result.summary.successful} course(s) assigned successfully!`
+                    t('toasts.assignSuccess', { count: result.summary.successful })
                 );
                 onSuccess();
             } else {
                 toast.warning(
-                    `${result.summary.successful} assigned, ${result.summary.failed} failed.`
+                    t('toasts.assignPartial', {
+                        successful: result.summary.successful,
+                        failed: result.summary.failed,
+                    })
                 );
             }
         } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'Assignment failed');
+            toast.error(err?.response?.data?.message || t('toasts.assignFailed'));
         }
     };
 
@@ -216,13 +221,18 @@ export const AssignCourseDialog = ({
     const renderSelectCourses = () => (
         <div className="flex flex-col gap-5">
             <p className="text-sm text-neutral-600">
-                Assign <strong>{userName}</strong> to one or more courses.
+                <Trans
+                    t={t}
+                    i18nKey="selectCourses.description"
+                    values={{ name: userName }}
+                    components={{ strong: <strong /> }}
+                />
             </p>
 
             {/* Search */}
             <input
                 type="text"
-                placeholder="Search courses..."
+                placeholder={t('selectCourses.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-200"
@@ -232,7 +242,10 @@ export const AssignCourseDialog = ({
             {!isLoadingBatches && filteredBatches.length > 0 && (
                 <div className="flex items-center justify-between">
                     <span className="text-xs text-neutral-500">
-                        {selectedPSIds.size} of {batches.length} selected
+                        {t('selectCourses.selectedCount', {
+                            selected: selectedPSIds.size,
+                            total: batches.length,
+                        })}
                     </span>
                     <button
                         type="button"
@@ -260,8 +273,8 @@ export const AssignCourseDialog = ({
                         className="text-xs font-medium text-primary-600 hover:text-primary-700"
                     >
                         {filteredBatches.every((b) => selectedPSIds.has(b.id))
-                            ? 'Deselect All'
-                            : 'Select All'}
+                            ? t('selectCourses.deselectAll')
+                            : t('selectCourses.selectAll')}
                     </button>
                 </div>
             )}
@@ -273,7 +286,7 @@ export const AssignCourseDialog = ({
                 <div className="flex max-h-80 flex-col gap-2 overflow-y-auto pr-1">
                     {filteredBatches.length === 0 ? (
                         <p className="py-4 text-center text-sm text-neutral-400">
-                            No courses found
+                            {t('selectCourses.noCoursesFound')}
                         </p>
                     ) : (
                         filteredBatches.map((b) => {
@@ -315,9 +328,11 @@ export const AssignCourseDialog = ({
     const renderConfigure = () => (
         <div className="flex flex-col gap-5">
             <p className="text-sm text-neutral-600">
-                Configure enrollment settings for each course.
-                You can leave everything as <strong>"Auto (Default)"</strong> for a quick free enrollment,
-                or pick a specific invite per course.
+                <Trans
+                    t={t}
+                    i18nKey="configure.description"
+                    components={{ strong: <strong /> }}
+                />
             </p>
 
             {/* Invite pickers per PS */}
@@ -334,11 +349,11 @@ export const AssignCourseDialog = ({
             {/* Global options */}
             <div className="flex flex-col gap-3 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
                 <p className="text-2xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Options
+                    {t('configure.optionsLabel')}
                 </p>
                 <div className="flex items-center gap-2">
                     <label className="text-xs font-medium text-neutral-600">
-                        If already enrolled:
+                        {t('configure.duplicateHandlingLabel')}
                     </label>
                     <select
                         value={duplicateHandling}
@@ -349,9 +364,11 @@ export const AssignCourseDialog = ({
                         }
                         className="rounded border border-neutral-200 px-2 py-1 text-xs"
                     >
-                        <option value="SKIP">Skip</option>
-                        <option value="ERROR">Error</option>
-                        <option value="RE_ENROLL">Re-enroll</option>
+                        <option value="SKIP">{t('configure.duplicateOptions.skip')}</option>
+                        <option value="ERROR">{t('configure.duplicateOptions.error')}</option>
+                        <option value="RE_ENROLL">
+                            {t('configure.duplicateOptions.reEnroll')}
+                        </option>
                     </select>
                 </div>
                 <label className="flex items-center gap-2 text-xs text-neutral-600">
@@ -361,7 +378,7 @@ export const AssignCourseDialog = ({
                         onChange={(e) => setNotifyLearners(e.target.checked)}
                         className="h-3.5 w-3.5 rounded border-neutral-300 text-primary-500"
                     />
-                    Notify learner via email
+                    {t('configure.notifyLabel')}
                 </label>
             </div>
         </div>
@@ -373,22 +390,22 @@ export const AssignCourseDialog = ({
         return (
             <div className="flex flex-col gap-4">
                 <p className="text-sm font-medium text-neutral-700">
-                    Preview — Dry Run Results
+                    {t('preview.title')}
                 </p>
 
                 {/* Summary chips */}
                 <div className="flex flex-wrap gap-2">
                     <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                        ✅ {summary.successful} will succeed
+                        ✅ {t('preview.willSucceed', { count: summary.successful })}
                     </span>
                     {summary.skipped > 0 && (
                         <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-700">
-                            ⏭ {summary.skipped} skipped
+                            ⏭ {t('preview.skipped', { count: summary.skipped })}
                         </span>
                     )}
                     {summary.failed > 0 && (
                         <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                            ❌ {summary.failed} failed
+                            ❌ {t('preview.failed', { count: summary.failed })}
                         </span>
                     )}
                 </div>
@@ -396,7 +413,7 @@ export const AssignCourseDialog = ({
                 {/* Invite resolution summary */}
                 <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2">
                     <p className="mb-1 text-2xs font-semibold uppercase text-neutral-500">
-                        Invite Configuration
+                        {t('preview.inviteConfigTitle')}
                     </p>
                     {psConfigs.map((cfg) => {
                         const previewResult = previewData?.results.find(
@@ -420,7 +437,9 @@ export const AssignCourseDialog = ({
                                     {cfg.packageSessionName.split(' · ')[0]}:
                                 </span>{' '}
                                 {cfg.isAutoMode ? (
-                                    <span className="text-blue-600">Auto (Default)</span>
+                                    <span className="text-blue-600">
+                                        {t('preview.autoDefault')}
+                                    </span>
                                 ) : (
                                     <span className="text-purple-600">
                                         {cfg.selectedInvite?.name}
@@ -431,13 +450,17 @@ export const AssignCourseDialog = ({
                                 )}
                                 {isCpo && (
                                     <span className="text-amber-700">
-                                        {' · CPO'}
-                                        {cpoCount != null ? ` · ${cpoCount} installments` : ''}
-                                        {cpoTotal != null ? ` · total ₹${cpoTotal}` : ''}
+                                        {` · ${t('preview.cpoBadge')}`}
+                                        {cpoCount != null
+                                            ? ` · ${t('preview.installments', { count: cpoCount })}`
+                                            : ''}
+                                        {cpoTotal != null
+                                            ? ` · ${t('preview.totalAmount', { amount: cpoTotal })}`
+                                            : ''}
                                         {' · '}
                                         {cpoMode === 'OFFLINE' && cpoAmount
-                                            ? `recording ₹${cpoAmount} now`
-                                            : 'no initial payment'}
+                                            ? t('preview.recordingNow', { amount: cpoAmount })
+                                            : t('preview.noInitialPayment')}
                                     </span>
                                 )}
                             </div>
@@ -451,13 +474,13 @@ export const AssignCourseDialog = ({
                         <thead className="sticky top-0 bg-neutral-50">
                             <tr>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Course
+                                    {t('preview.tableHeaders.course')}
                                 </th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Action
+                                    {t('preview.tableHeaders.action')}
                                 </th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Status
+                                    {t('preview.tableHeaders.status')}
                                 </th>
                             </tr>
                         </thead>
@@ -520,19 +543,21 @@ export const AssignCourseDialog = ({
             .filter(Boolean);
         return (
             <div className="flex flex-col gap-4">
-                <p className="text-sm font-semibold text-neutral-800">Assignment Complete</p>
+                <p className="text-sm font-semibold text-neutral-800">
+                    {t('results.title')}
+                </p>
                 <div className="flex flex-wrap gap-2">
                     <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                        ✅ {summary.successful} assigned
+                        ✅ {t('results.assigned', { count: summary.successful })}
                     </span>
                     {summary.skipped > 0 && (
                         <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-700">
-                            ⏭ {summary.skipped} skipped
+                            ⏭ {t('results.skipped', { count: summary.skipped })}
                         </span>
                     )}
                     {summary.failed > 0 && (
                         <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                            ❌ {summary.failed} failed
+                            ❌ {t('results.failed', { count: summary.failed })}
                         </span>
                     )}
                 </div>
@@ -542,13 +567,13 @@ export const AssignCourseDialog = ({
                         <thead className="sticky top-0 bg-neutral-50">
                             <tr>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Course
+                                    {t('results.tableHeaders.course')}
                                 </th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Status
+                                    {t('results.tableHeaders.status')}
                                 </th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Message
+                                    {t('results.tableHeaders.message')}
                                 </th>
                             </tr>
                         </thead>
@@ -603,10 +628,10 @@ export const AssignCourseDialog = ({
     // ────────────────── STEPPER + FOOTER ──────────────────
 
     const stepLabels: { key: WizardStep; label: string }[] = [
-        { key: 'SELECT_COURSES', label: 'Select' },
-        { key: 'CONFIGURE', label: 'Configure' },
-        { key: 'PREVIEW', label: 'Preview' },
-        { key: 'RESULTS', label: 'Done' },
+        { key: 'SELECT_COURSES', label: t('stepper.select') },
+        { key: 'CONFIGURE', label: t('stepper.configure') },
+        { key: 'PREVIEW', label: t('stepper.preview') },
+        { key: 'RESULTS', label: t('stepper.done') },
     ];
 
     const stepIndex = stepLabels.findIndex((s) => s.key === step);
@@ -648,7 +673,7 @@ export const AssignCourseDialog = ({
                         scale="small"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('footer.cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -656,7 +681,7 @@ export const AssignCourseDialog = ({
                         disable={selectedPSIds.size === 0}
                         onClick={goToConfigure}
                     >
-                        Next → Configure ({selectedPSIds.size})
+                        {t('footer.nextConfigure', { count: selectedPSIds.size })}
                     </MyButton>
                 </>
             )}
@@ -667,7 +692,7 @@ export const AssignCourseDialog = ({
                         scale="small"
                         onClick={() => setStep('SELECT_COURSES')}
                     >
-                        ← Back
+                        {t('footer.back')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -675,7 +700,7 @@ export const AssignCourseDialog = ({
                         disable={isPending}
                         onClick={handlePreview}
                     >
-                        {isPending ? 'Loading...' : 'Preview →'}
+                        {isPending ? t('footer.loading') : t('footer.previewButton')}
                     </MyButton>
                 </>
             )}
@@ -686,7 +711,7 @@ export const AssignCourseDialog = ({
                         scale="small"
                         onClick={() => setStep('CONFIGURE')}
                     >
-                        ← Back
+                        {t('footer.back')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -694,7 +719,7 @@ export const AssignCourseDialog = ({
                         disable={isPending}
                         onClick={handleConfirm}
                     >
-                        {isPending ? 'Assigning...' : '✓ Confirm Assignment'}
+                        {isPending ? t('footer.assigning') : t('footer.confirmAssignment')}
                     </MyButton>
                 </>
             )}
@@ -705,7 +730,7 @@ export const AssignCourseDialog = ({
                     onClick={() => onOpenChange(false)}
                     className="ml-auto"
                 >
-                    Done
+                    {t('footer.done')}
                 </MyButton>
             )}
         </div>
@@ -713,7 +738,9 @@ export const AssignCourseDialog = ({
 
     return (
         <MyDialog
-            heading={`Assign to ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`}
+            heading={t('dialogTitle', {
+                term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+            })}
             open={open}
             onOpenChange={onOpenChange}
             // Match the bulk Enroll Learner dialog (~820px) so per-installment

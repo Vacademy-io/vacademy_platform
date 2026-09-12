@@ -3,7 +3,7 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useEffect, useState, useMemo } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { MyButton } from '@/components/design-system/button';
-import { SessionStatus, sessionStatusLabels } from '../-constants/enums';
+import { SessionStatus, sessionStatusTabLabelKeys } from '../-constants/enums';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import LiveSessionCard from './live-session-card';
@@ -34,10 +34,12 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { type SelectOption } from '@/components/design-system/SelectChips';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useTranslation } from 'react-i18next';
 
 const AllBatchesOption: SelectOption = ALL_BATCHES_OPTION;
 
 export default function SessionListPage() {
+    const { t } = useTranslation('studyLibrarySessionsListPage');
     const { setNavHeading } = useNavHeadingStore();
     const { clearSessionDetails } = useSessionDetailsStore();
     const { clearSessionId } = useLiveSessionStore();
@@ -379,12 +381,12 @@ export default function SessionListPage() {
     // Human-readable label for the active platform value (used in the chip strip).
     const platformLabelFor = (value: string): string => {
         const map: Record<string, string> = {
-            zoom: 'Zoom',
-            'google meet': 'Google Meet',
-            youtube: 'YouTube',
-            bbb: 'Vacademy Meet',
-            zoho: 'Zoho',
-            other: 'Other',
+            zoom: t('platformLabels.zoom'),
+            'google meet': t('platformLabels.googleMeet'),
+            youtube: t('platformLabels.youtube'),
+            bbb: t('platformLabels.bbb'),
+            zoho: t('platformLabels.zoho'),
+            other: t('platformLabels.other'),
         };
         return map[value] ?? value;
     };
@@ -400,7 +402,7 @@ export default function SessionListPage() {
         if (searchQuery) {
             inlineChips.push({
                 key: 'search',
-                label: 'Search',
+                label: t('chips.search'),
                 value: `"${searchQuery}"`,
                 onClear: () => setSearchQuery(''),
             });
@@ -410,7 +412,7 @@ export default function SessionListPage() {
             const right = endDate ? format(endDate, 'dd MMM') : '…';
             inlineChips.push({
                 key: 'date',
-                label: 'Date',
+                label: t('chips.date'),
                 value: `${left} – ${right}`,
                 onClear: () => {
                     setStartDate(undefined);
@@ -424,7 +426,7 @@ export default function SessionListPage() {
         if (startTimeOfDay || endTimeOfDay) {
             attributeChips.push({
                 key: 'time',
-                label: 'Time',
+                label: t('chips.time'),
                 value: `${startTimeOfDay || '00:00'} – ${endTimeOfDay || '23:59'}`,
                 onClear: () => {
                     setStartTimeOfDay('');
@@ -434,13 +436,13 @@ export default function SessionListPage() {
         }
         if (meetingTypeFilter) {
             const v = meetingTypeFilter === RecurringType.ONCE
-                ? 'Once'
+                ? t('filters.once')
                 : meetingTypeFilter === RecurringType.WEEKLY
-                    ? 'Weekly'
-                    : meetingTypeFilter === 'custom' ? 'Custom' : meetingTypeFilter;
+                    ? t('filters.weekly')
+                    : meetingTypeFilter === 'custom' ? t('filters.custom') : meetingTypeFilter;
             attributeChips.push({
                 key: 'meeting',
-                label: 'Meeting type',
+                label: t('chips.meetingType'),
                 value: v,
                 onClear: () => setMeetingTypeFilter(''),
             });
@@ -449,18 +451,18 @@ export default function SessionListPage() {
         if (subjectChipList.length > 0) {
             attributeChips.push({
                 key: 'subject',
-                label: 'Subject',
+                label: t('chips.subject'),
                 value:
                     subjectChipList.length === 1
                         ? subjectChipList[0]!
-                        : `${subjectChipList.length} selected`,
+                        : t('filters.selectedCount', { count: subjectChipList.length }),
                 onClear: () => setSubjectFilter([]),
             });
         }
         if (accessFilter) {
             attributeChips.push({
                 key: 'access',
-                label: 'Access',
+                label: t('chips.access'),
                 value: accessFilter.charAt(0).toUpperCase() + accessFilter.slice(1),
                 onClear: () => setAccessFilter(''),
             });
@@ -468,7 +470,7 @@ export default function SessionListPage() {
         if (streamingServiceFilter) {
             attributeChips.push({
                 key: 'platform',
-                label: 'Platform',
+                label: t('chips.platform'),
                 value: platformLabelFor(streamingServiceFilter),
                 onClear: () => setStreamingServiceFilter(''),
             });
@@ -478,7 +480,7 @@ export default function SessionListPage() {
             attributeChips.push({
                 key: 'batches',
                 label: getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch),
-                value: nonAllBatches.length === 1 ? nonAllBatches[0]!.label : `${nonAllBatches.length} selected`,
+                value: nonAllBatches.length === 1 ? nonAllBatches[0]!.label : t('filters.selectedCount', { count: nonAllBatches.length }),
                 onClear: () => setSelectedBatches([AllBatchesOption]),
             });
         }
@@ -520,7 +522,7 @@ export default function SessionListPage() {
                         type="text"
                         value={searchQuery}
                         onChange={handleSearchChange}
-                        placeholder="Search sessions..."
+                        placeholder={t('filterBarSearchPlaceholder')}
                         className="h-9 w-full rounded-md border border-neutral-300 bg-white py-2 pl-10 pr-3 text-sm text-neutral-900 placeholder:text-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                     />
                 </div>
@@ -535,10 +537,10 @@ export default function SessionListPage() {
                                 {startDate && endDate
                                     ? `${format(startDate, 'dd/MM/yy')} - ${format(endDate, 'dd/MM/yy')}`
                                     : startDate
-                                        ? `From ${format(startDate, 'dd/MM/yy')}`
+                                        ? t('dateRange.from', { date: format(startDate, 'dd/MM/yy') })
                                         : endDate
-                                            ? `To ${format(endDate, 'dd/MM/yy')}`
-                                            : 'Select date range'}
+                                            ? t('dateRange.to', { date: format(endDate, 'dd/MM/yy') })
+                                            : t('dateRange.selectRange')}
                                 <CalendarIcon className="text-neutral-500" />
                             </button>
                         </PopoverTrigger>
@@ -550,7 +552,7 @@ export default function SessionListPage() {
                                 const isForward =
                                     selectedTab === SessionStatus.UPCOMING ||
                                     selectedTab === SessionStatus.LIVE;
-                                const directionLabel = isForward ? 'Next' : 'Past';
+                                const directionLabel = isForward ? t('dateRange.next') : t('dateRange.past');
                                 const applyDays = (days: number) => {
                                     const today = new Date();
                                     today.setHours(0, 0, 0, 0);
@@ -571,11 +573,11 @@ export default function SessionListPage() {
                                     setDatePopoverOpen(false);
                                 };
                                 const presets: Array<{ label: string; days: number }> = [
-                                    { label: 'Today', days: 1 },
-                                    { label: `${directionLabel} 3 days`, days: 3 },
-                                    { label: `${directionLabel} 7 days`, days: 7 },
-                                    { label: `${directionLabel} 10 days`, days: 10 },
-                                    { label: `${directionLabel} 15 days`, days: 15 },
+                                    { label: t('dateRange.today'), days: 1 },
+                                    { label: t('dateRange.daysPreset', { direction: directionLabel, count: 3 }), days: 3 },
+                                    { label: t('dateRange.daysPreset', { direction: directionLabel, count: 7 }), days: 7 },
+                                    { label: t('dateRange.daysPreset', { direction: directionLabel, count: 10 }), days: 10 },
+                                    { label: t('dateRange.daysPreset', { direction: directionLabel, count: 15 }), days: 15 },
                                 ];
                                 // Highlight a preset only if the current range
                                 // exactly matches its computed window.
@@ -608,7 +610,7 @@ export default function SessionListPage() {
                                     <>
                                         <div className="border-b border-neutral-100 px-4 py-3">
                                             <h4 className="text-xs font-medium text-neutral-700">
-                                                Quick select
+                                                {t('dateRange.quickSelect')}
                                             </h4>
                                             <div className="mt-2 flex flex-wrap gap-1.5">
                                                 {presets.map((p) => {
@@ -632,12 +634,12 @@ export default function SessionListPage() {
                                         </div>
                                         <div className="px-4 py-3">
                                             <h4 className="text-xs font-medium text-neutral-700">
-                                                Custom range
+                                                {t('dateRange.customRange')}
                                             </h4>
                                             <div className="mt-2 flex flex-col gap-2">
                                                 <label className="flex flex-col gap-1">
                                                     <span className="text-[11px] text-neutral-500">
-                                                        Start date
+                                                        {t('dateRange.startDate')}
                                                     </span>
                                                     <input
                                                         type="date"
@@ -658,7 +660,7 @@ export default function SessionListPage() {
                                                 </label>
                                                 <label className="flex flex-col gap-1">
                                                     <span className="text-[11px] text-neutral-500">
-                                                        End date
+                                                        {t('dateRange.endDate')}
                                                     </span>
                                                     <input
                                                         type="date"
@@ -689,14 +691,14 @@ export default function SessionListPage() {
                                                 disabled={!startDate && !endDate}
                                                 className="text-xs text-neutral-500 hover:text-neutral-800 hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:no-underline"
                                             >
-                                                Clear
+                                                {t('dateRange.clear')}
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => setDatePopoverOpen(false)}
                                                 className="rounded-md bg-primary-500 px-3 py-1 text-xs text-white hover:bg-primary-600"
                                             >
-                                                Done
+                                                {t('dateRange.done')}
                                             </button>
                                         </div>
                                     </>
@@ -720,7 +722,7 @@ export default function SessionListPage() {
                             }`}
                         >
                             <FunnelSimple size={16} weight="bold" />
-                            <span>Filters</span>
+                            <span>{t('filters.button')}</span>
                             {attributeFilterCount > 0 && (
                                 <span className="rounded-full bg-primary-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
                                     {attributeFilterCount}
@@ -735,7 +737,7 @@ export default function SessionListPage() {
                     >
                         <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
                             <h3 className="text-sm font-semibold text-neutral-800">
-                                Filters
+                                {t('filters.heading')}
                             </h3>
                             <button
                                 type="button"
@@ -743,7 +745,7 @@ export default function SessionListPage() {
                                 disabled={draftFilterCount === 0}
                                 className="text-xs font-medium text-red-600 transition-opacity hover:text-red-700 hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:no-underline"
                             >
-                                Reset
+                                {t('filters.reset')}
                             </button>
                         </div>
                         <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto p-4">
@@ -751,7 +753,7 @@ export default function SessionListPage() {
                             <section>
                                 <h4 className="mb-2 flex items-center gap-1.5 text-xs font-medium text-neutral-700">
                                     <Clock size={14} className="text-neutral-500" />
-                                    Time of Day
+                                    {t('filters.timeOfDay')}
                                 </h4>
                                 <div className="flex gap-2">
                                     <input
@@ -764,7 +766,7 @@ export default function SessionListPage() {
                                             }))
                                         }
                                         className="h-8 flex-1 rounded-md border border-neutral-300 px-2 text-sm"
-                                        aria-label="Start time"
+                                        aria-label={t('filters.startTimeAria')}
                                     />
                                     <input
                                         type="time"
@@ -776,7 +778,7 @@ export default function SessionListPage() {
                                             }))
                                         }
                                         className="h-8 flex-1 rounded-md border border-neutral-300 px-2 text-sm"
-                                        aria-label="End time"
+                                        aria-label={t('filters.endTimeAria')}
                                     />
                                 </div>
                             </section>
@@ -784,14 +786,14 @@ export default function SessionListPage() {
                             {/* Meeting Type */}
                             <section>
                                 <h4 className="mb-2 text-xs font-medium text-neutral-700">
-                                    Meeting Type
+                                    {t('filters.meetingType')}
                                 </h4>
                                 <div className="flex flex-wrap gap-1.5">
                                     {[
-                                        { label: 'All', value: '' },
-                                        { label: 'Once', value: RecurringType.ONCE },
-                                        { label: 'Weekly', value: RecurringType.WEEKLY },
-                                        { label: 'Custom', value: 'custom' },
+                                        { label: t('filters.all'), value: '' },
+                                        { label: t('filters.once'), value: RecurringType.ONCE },
+                                        { label: t('filters.weekly'), value: RecurringType.WEEKLY },
+                                        { label: t('filters.custom'), value: 'custom' },
                                     ].map((opt) => (
                                         <button
                                             key={opt.label}
@@ -817,21 +819,21 @@ export default function SessionListPage() {
                             {/* Subject — multi-select, mirrors the batches pattern */}
                             <section>
                                 <h4 className="mb-2 flex items-center justify-between text-xs font-medium text-neutral-700">
-                                    <span>Subject</span>
+                                    <span>{t('chips.subject')}</span>
                                     {filterDraft.subjectFilter.length > 0 && (
                                         <span className="text-[10px] font-normal text-neutral-500">
-                                            {filterDraft.subjectFilter.length} selected
+                                            {t('filters.selectedCount', { count: filterDraft.subjectFilter.length })}
                                         </span>
                                     )}
                                 </h4>
                                 <div className="flex max-h-[140px] flex-wrap gap-1.5 overflow-y-auto rounded-md border border-neutral-100 bg-neutral-50/40 p-2">
                                     {[
-                                        { id: 'all', name: 'All' },
+                                        { id: 'all', name: t('filters.all') },
                                         ...SubjectFilterData.sort((a, b) =>
                                             a.name.localeCompare(b.name)
                                         ),
                                     ].map((opt) => {
-                                        const isAll = opt.name === 'All';
+                                        const isAll = opt.name === t('filters.all');
                                         const isActive = isAll
                                             ? filterDraft.subjectFilter.length === 0
                                             : filterDraft.subjectFilter.includes(opt.name);
@@ -870,11 +872,11 @@ export default function SessionListPage() {
                             {/* Access Type */}
                             <section>
                                 <h4 className="mb-2 text-xs font-medium text-neutral-700">
-                                    Access Type
+                                    {t('filters.accessType')}
                                 </h4>
                                 <div className="flex flex-wrap gap-1.5">
                                     {[
-                                        { label: 'All', value: '' },
+                                        { label: t('filters.all'), value: '' },
                                         ...Object.values(AccessType).map((a) => ({
                                             label: a.charAt(0).toUpperCase() + a.slice(1),
                                             value: a,
@@ -904,16 +906,16 @@ export default function SessionListPage() {
                             {/* Platform */}
                             <section>
                                 <h4 className="mb-2 text-xs font-medium text-neutral-700">
-                                    Platform
+                                    {t('filters.platform')}
                                 </h4>
                                 <div className="flex flex-wrap gap-1.5">
                                     {[
-                                        { label: 'All', value: '' },
-                                        { label: 'Zoom', value: 'zoom' },
-                                        { label: 'Google Meet', value: 'google meet' },
-                                        { label: 'YouTube', value: 'youtube' },
-                                        { label: 'Vacademy Meet', value: 'bbb' },
-                                        { label: 'Other', value: 'other' },
+                                        { label: t('filters.all'), value: '' },
+                                        { label: t('platformLabels.zoom'), value: 'zoom' },
+                                        { label: t('platformLabels.googleMeet'), value: 'google meet' },
+                                        { label: t('platformLabels.youtube'), value: 'youtube' },
+                                        { label: t('platformLabels.bbb'), value: 'bbb' },
+                                        { label: t('platformLabels.other'), value: 'other' },
                                     ].map((opt) => (
                                         <button
                                             key={opt.label}
@@ -950,12 +952,11 @@ export default function SessionListPage() {
                                     {filterDraft.selectedBatches.filter((b) => b.value !== 'all')
                                         .length > 0 && (
                                         <span className="font-normal text-primary-600">
-                                            {
-                                                filterDraft.selectedBatches.filter(
+                                            {t('filters.selectedCount', {
+                                                count: filterDraft.selectedBatches.filter(
                                                     (b) => b.value !== 'all'
-                                                ).length
-                                            }{' '}
-                                            selected
+                                                ).length,
+                                            })}
                                         </span>
                                     )}
                                 </h4>
@@ -965,7 +966,7 @@ export default function SessionListPage() {
                                             type="text"
                                             value={batchSearch}
                                             onChange={(e) => setBatchSearch(e.target.value)}
-                                            placeholder={`Search ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()}…`}
+                                            placeholder={t('filters.searchBatchesPlaceholder', { batches: getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch).toLowerCase() })}
                                             className="h-7 w-full rounded border-none bg-transparent px-1.5 text-xs text-neutral-700 placeholder:text-neutral-400 focus:outline-none focus:ring-0"
                                         />
                                     </div>
@@ -978,7 +979,7 @@ export default function SessionListPage() {
                                             if (matched.length === 0) {
                                                 return (
                                                     <div className="px-3 py-4 text-center text-xs text-neutral-400">
-                                                        No matches
+                                                        {t('filters.noMatches')}
                                                     </div>
                                                 );
                                             }
@@ -1067,14 +1068,14 @@ export default function SessionListPage() {
                                 onClick={() => setFiltersOpen(false)}
                                 className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
                             >
-                                Cancel
+                                {t('filters.cancel')}
                             </button>
                             <button
                                 type="button"
                                 onClick={applyFilters}
                                 className="rounded-md bg-primary-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-600"
                             >
-                                Apply
+                                {t('filters.apply')}
                             </button>
                         </div>
                     </PopoverContent>
@@ -1095,7 +1096,7 @@ export default function SessionListPage() {
                                 type="button"
                                 onClick={chip.onClear}
                                 className="flex size-4 items-center justify-center rounded-full text-primary-500 hover:bg-primary-100 hover:text-primary-700"
-                                aria-label={`Clear ${chip.label}`}
+                                aria-label={t('chips.clearAria', { label: chip.label })}
                             >
                                 <X size={10} weight="bold" />
                             </button>
@@ -1105,7 +1106,7 @@ export default function SessionListPage() {
                         onClick={clearFilters}
                         className="ml-auto text-xs text-neutral-500 hover:text-neutral-800 hover:underline"
                     >
-                        Clear all
+                        {t('chips.clearAll')}
                     </button>
                 </div>
             )}
@@ -1124,7 +1125,7 @@ export default function SessionListPage() {
         if (isLoading) {
             return (
                 <div className="flex h-[300px] items-center justify-center">
-                    <div className="text-neutral-500">Loading sessions...</div>
+                    <div className="text-neutral-500">{t('sessions.loading')}</div>
                 </div>
             );
         }
@@ -1132,28 +1133,30 @@ export default function SessionListPage() {
         if (error) {
             return (
                 <div className="flex h-[300px] items-center justify-center">
-                    <div className="text-red-500">Error loading sessions: {error.message}</div>
+                    <div className="text-red-500">{t('sessions.error', { message: error.message })}</div>
                 </div>
             );
         }
 
         const tabLabel =
             selectedTab === SessionStatus.LIVE
-                ? 'Live'
+                ? t('sessions.tabLabels.live')
                 : selectedTab === SessionStatus.UPCOMING
-                    ? 'Upcoming'
+                    ? t('sessions.tabLabels.upcoming')
                     : selectedTab === SessionStatus.PAST
-                        ? 'Past'
-                        : 'Draft';
+                        ? t('sessions.tabLabels.past')
+                        : t('sessions.tabLabels.draft');
 
         const renderBigEmpty = () => (
             <div className="flex h-[300px] flex-col items-center justify-center gap-4 text-center">
                 <VideoCameraSlash size={64} className="text-neutral-300" />
-                <h2 className="text-2xl font-bold text-neutral-600">No {tabLabel} Sessions</h2>
+                <h2 className="text-2xl font-bold text-neutral-600">
+                    {t('sessions.emptyTitle', { tab: tabLabel })}
+                </h2>
                 <p className="max-w-xs text-sm text-neutral-500">
-                    {tabLabel === 'Draft'
-                        ? 'No draft sessions found. Create a new session to get started.'
-                        : 'Schedule your first live class to engage with learners in real time.'}
+                    {selectedTab === SessionStatus.DRAFTS
+                        ? t('sessions.emptyDraftBody')
+                        : t('sessions.emptyDefaultBody')}
                 </p>
             </div>
         );
@@ -1269,7 +1272,7 @@ export default function SessionListPage() {
                         })
                     ) : (
                         <div className="flex h-[200px] items-center justify-center text-neutral-500">
-                            No {tabLabel.toLowerCase()} sessions on this page.
+                            {t('sessions.emptyPage', { tab: tabLabel.toLowerCase() })}
                         </div>
                     )}
                 </div>
@@ -1301,21 +1304,21 @@ export default function SessionListPage() {
                                     : 'border-none bg-transparent'
                                     }`}
                             >
-                                {sessionStatusLabels[status]}
+                                {t(`sessions.tabLabels.${sessionStatusTabLabelKeys[status]}`)}
                             </TabsTrigger>
                         ))}
                     </TabsList>
                     <div className="flex items-center gap-2">
                         <SettingsQuickAccessButton
                             settingsKey={SettingsTabs.LiveSession}
-                            label="Live session settings"
+                            label={t('settingsButtonLabel')}
                         />
                         <MyButton
                             onClick={() => navigate({ to: '/study-library/live-session/schedule' })}
                             buttonType="primary"
                             className="w-full sm:w-auto"
                         >
-                            Schedule
+                            {t('scheduleButton')}
                         </MyButton>
                     </div>
                 </div>

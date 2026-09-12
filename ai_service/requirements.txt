@@ -45,3 +45,5 @@ pymupdf>=1.24.0
 # in-house Whisper transcription (/transcription/v1/*) instead of proxying.
 youtube-transcript-api>=0.6.2
 nh3==0.2.*
+# Live AI Tutor: tolerant parsing of model-emitted plan JSON (SVG-in-JSON quoting slips)
+json-repair==0.*

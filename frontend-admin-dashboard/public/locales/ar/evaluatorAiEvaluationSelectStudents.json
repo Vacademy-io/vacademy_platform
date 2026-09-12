@@ -1,0 +1,48 @@
+{
+    "dialog": {
+        "title": "اختر {{term}} للتقييم"
+    },
+    "table": {
+        "name": "الاسم",
+        "enrollmentId": "معرّف التسجيل",
+        "attemptCount": "عدد المحاولات",
+        "currentPdfId": "معرّف PDF الحالي",
+        "notAvailable": "غير متاح",
+        "attemptsCount_zero": "لا توجد محاولات ({{count}})",
+        "attemptsCount_one": "محاولة واحدة",
+        "attemptsCount_two": "محاولتان",
+        "attemptsCount_few": "{{count}} محاولات",
+        "attemptsCount_many": "{{count}} محاولة",
+        "attemptsCount_other": "{{count}} محاولة",
+        "attemptLabel": "المحاولة {{number}}",
+        "evaluatingWithAssessment": "جارٍ تقييم {{term}} باستخدام {{assessment}}...",
+        "emptyState": "لم يتم العثور على {{term}} مسجّلين.",
+        "submitSelected": "إرسال المحدد ({{count}})"
+    },
+    "pagination": {
+        "pageInfo": "صفحة {{current}} من {{total}}",
+        "previous": "السابق",
+        "next": "التالي",
+        "selectedCount_zero": "لا شيء محدد ({{count}})",
+        "selectedCount_one": "محدد واحد",
+        "selectedCount_two": "محددان",
+        "selectedCount_few": "{{count}} محددة",
+        "selectedCount_many": "{{count}} محددًا",
+        "selectedCount_other": "{{count}} محدد"
+    },
+    "common": {
+        "cancel": "إلغاء"
+    },
+    "assessmentDialog": {
+        "title": "اختر التقييم",
+        "assessmentLabel": "التقييم",
+        "selectPlaceholder": "اختر تقييمًا",
+        "evaluating": "جارٍ التقييم...",
+        "evaluateButton": "تقييم"
+    },
+    "toast": {
+        "selectAtLeastOneStudent": "يرجى تحديد طالب واحد على الأقل",
+        "selectAssessment": "يرجى اختيار تقييم",
+        "evaluationFailed": "فشل التقييم. يرجى المحاولة مرة أخرى."
+    }
+}

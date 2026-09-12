@@ -1,0 +1,32 @@
+{
+    "kpis": {
+        "activeLearners": {
+            "label": "Active {{learners}}",
+            "subtitle": "of {{total}} total"
+        },
+        "totalCourses": {
+            "label": "Total {{courses}}",
+            "subtitle": "Active {{courses}}"
+        },
+        "teamMembers": {
+            "label": "Team Members",
+            "subtitle": "{{admins}}, {{teachers}} & staff"
+        },
+        "outstandingFees": {
+            "label": "Outstanding Fees",
+            "subtitle": "Due across overdue items"
+        },
+        "overdueItems": {
+            "label": "Overdue Items",
+            "subtitle": "Need follow-up"
+        },
+        "classesToday": {
+            "label": "{{sessions}} Today",
+            "subtitle": "Scheduled {{sessions}}"
+        }
+    },
+    "breakdown": {
+        "inactive": "Inactive",
+        "terminated": "Terminated"
+    }
+}

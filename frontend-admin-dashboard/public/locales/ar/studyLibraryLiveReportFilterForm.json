@@ -1,0 +1,16 @@
+{
+    "validation": {
+        "courseRequired": "الدورة مطلوبة",
+        "sessionRequired": "الجلسة مطلوبة",
+        "levelRequired": "المستوى مطلوب",
+        "startDateRequired": "تاريخ البدء مطلوب",
+        "endDateRequired": "تاريخ الانتهاء مطلوب",
+        "learnerRequired": "المتعلم مطلوب",
+        "dateRangeWithinMonth": "يجب أن يكون نطاق التاريخ خلال شهر واحد."
+    },
+    "selectPlaceholder": "اختر {{term}}",
+    "searchPlaceholder": "ابحث عن {{term}}...",
+    "loading": "جارٍ التحميل…",
+    "generateReport": "إنشاء التقرير",
+    "fixFollowing": "يرجى تصحيح ما يلي:"
+}

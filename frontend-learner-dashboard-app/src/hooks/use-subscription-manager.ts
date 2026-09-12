@@ -4,9 +4,13 @@ import { Preferences } from "@capacitor/preferences";
 import { toast } from "sonner";
 import {
   SUBSCRIPTION_LIST_QUERY_KEY,
+  cancelScheduledPlanChange,
   cancelSubscription,
   fetchSubscriptions,
   initiateRenewalPayment,
+  requestPlanChange,
+  type PlanChangeResult,
+  type PlanChangeTarget,
   type Subscription,
 } from "@/components/common/user-profile/payment-billing/subscription-services";
 
@@ -54,6 +58,7 @@ export function useSubscriptionManager({
 }: UseSubscriptionManagerArgs) {
   const queryClient = useQueryClient();
   const [renewingPlanId, setRenewingPlanId] = useState<string | null>(null);
+  const [changingPlanId, setChangingPlanId] = useState<string | null>(null);
   const queryKey = [SUBSCRIPTION_LIST_QUERY_KEY, scope, instituteId];
   // Guards against stacking timers when a learner retries a payment.
   const refetchTimers = useRef<number[]>([]);
@@ -133,6 +138,83 @@ export function useSubscriptionManager({
     }
   };
 
+  /**
+   * Book a plan change. An upgrade comes back with a gateway payload and is handed to the
+   * host's checkout, exactly like a renewal; a downgrade comes back SCHEDULED with nothing
+   * to pay, so the caller just shows the effective date. Returns the result either way so
+   * the caller can tell the two apart.
+   *
+   * `requires_mandate_reauth` on the chosen target forces mandate mode: without it the
+   * upgrade would go through and then every future auto-charge would be rejected — either
+   * for exceeding the mandate's ceiling or because the new invite uses another gateway.
+   */
+  const startPlanChange = async (
+    sub: Subscription,
+    target: PlanChangeTarget,
+    withAutopay: boolean
+  ): Promise<PlanChangeResult | null> => {
+    if (!instituteId) return null;
+    try {
+      setChangingPlanId(sub.user_plan_id);
+      const result = await requestPlanChange(
+        instituteId,
+        sub.user_plan_id,
+        target.plan_id,
+        withAutopay || Boolean(target.requires_mandate_reauth)
+      );
+
+      if (result.status === "PENDING_PAYMENT" && result.payment_response) {
+        const orderDetails =
+          result.payment_response?.payment_response?.response_data ??
+          result.payment_response?.response_data;
+        if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
+          throw new Error("Could not create the payment order");
+        }
+        let email = "";
+        let mobile = "";
+        try {
+          const stored = await Preferences.get({ key: "StudentDetails" });
+          if (stored.value) {
+            const details = JSON.parse(stored.value);
+            email = details?.email ?? "";
+            mobile = details?.mobile_number ?? details?.mobileNumber ?? "";
+          }
+        } catch {
+          // best effort — the backend resolves the customer from the JWT anyway
+        }
+        onCheckout({
+          razorpayKeyId: orderDetails.razorpayKeyId,
+          razorpayOrderId: orderDetails.razorpayOrderId,
+          amount: orderDetails.amount,
+          currency: orderDetails.currency || target.currency || "INR",
+          contact: mobile,
+          email,
+          recurring: orderDetails.recurring,
+          customerId: orderDetails.customerId,
+        });
+      } else {
+        // SCHEDULED or an upgrade fully covered by the proration credit — the plan (or the
+        // booking on it) has already changed server-side, so re-read it.
+        invalidate();
+      }
+      return result;
+    } catch (e) {
+      toast.error("Couldn't change the plan", {
+        description:
+          e instanceof Error ? e.message : "Please try again in a moment.",
+      });
+      return null;
+    } finally {
+      setChangingPlanId(null);
+    }
+  };
+
+  const cancelPlanChangeMutation = useMutation({
+    mutationFn: (userPlanId: string) =>
+      cancelScheduledPlanChange(instituteId as string, userPlanId),
+    onSuccess: () => invalidate(),
+  });
+
   return {
     subscriptions: subscriptions ?? [],
     isLoading,
@@ -141,8 +223,12 @@ export function useSubscriptionManager({
     isCancelling: cancelMutation.isPending,
     startRenewal,
     renewingPlanId,
+    startPlanChange,
+    changingPlanId,
+    cancelPlanChange: cancelPlanChangeMutation.mutateAsync,
+    isCancellingPlanChange: cancelPlanChangeMutation.isPending,
     refetchSoon,
   };
 }
 
-export type { Subscription };
+export type { PlanChangeResult, PlanChangeTarget, Subscription };

@@ -61,7 +61,10 @@ export interface AITaskIndividualListInterface {
     status: string; // Add more status values as needed
     result_json: string;
     input_id: string;
-    input_type: string; // Add more input types as needed
+    input_type: string; // PROMPT_ID | PDF_ID | IMAGE_ID | AUDIO_ID | ...
+    // AiTaskType (TEXT_TO_QUESTIONS, LECTURE_PLANNER, ...). Optional because the
+    // legacy media_service TaskStatusDto never carried it; ai_service does.
+    type?: string;
     created_at: string; // ISO datetime string
     updated_at: string; // ISO datetime string
     file_detail: {

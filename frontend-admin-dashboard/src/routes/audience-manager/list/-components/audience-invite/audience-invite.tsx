@@ -5,6 +5,8 @@ import { SettingsQuickAccessButton } from '@/components/settings/quick-access/Se
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { CreateCampaignDialog } from '../create-campaign-dialog/CreateCampaignDialog';
 import { format } from 'date-fns';
 import {
@@ -17,6 +19,7 @@ import {
     Info,
     Megaphone,
     Globe,
+    QrCode,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -39,6 +42,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDialog';
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
+import { ShareQrDialog } from '../share-qr-dialog/ShareQrDialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LeadPagination } from '@/components/shared/leads';
 import {
@@ -69,14 +73,19 @@ const formatDate = (iso: string) => {
     return Number.isNaN(d.getTime()) ? iso : format(d, 'MMM d, yyyy');
 };
 
-const statusDropdownOptions: { label: string; value: StatusFilter }[] = [
-    { label: 'All Status', value: 'ALL' },
-    { label: 'Active', value: 'ACTIVE' },
-    { label: 'Inactive', value: 'INACTIVE' },
-    { label: 'Draft', value: 'DRAFT' },
+/** Factory-with-parameter — called from within the component render via
+ * useMemo(() => buildStatusDropdownOptions(t), [t]) once the
+ * useTranslation('audienceManagerAudienceInvite') consumer is mounted. */
+const buildStatusDropdownOptions = (t: TFunction): { label: string; value: StatusFilter }[] => [
+    { label: t('statusFilter.allStatus'), value: 'ALL' },
+    { label: t('status.active'), value: 'ACTIVE' },
+    { label: t('status.inactive'), value: 'INACTIVE' },
+    { label: t('status.draft'), value: 'DRAFT' },
 ];
 
 export const AudienceInvite = () => {
+    const { t, i18n } = useTranslation('audienceManagerAudienceInvite');
+    const statusDropdownOptions = useMemo(() => buildStatusDropdownOptions(t), [t]);
     const [searchQuery, setSearchQuery] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
@@ -85,6 +94,7 @@ export const AudienceInvite = () => {
     const [campaignBeingEdited, setCampaignBeingEdited] = useState<CampaignItem | null>(null);
     const [apiDialogCampaign, setApiDialogCampaign] = useState<CampaignItem | null>(null);
     const [embedDialogCampaign, setEmbedDialogCampaign] = useState<CampaignItem | null>(null);
+    const [qrDialogCampaign, setQrDialogCampaign] = useState<CampaignItem | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
     const navigate = useNavigate();
 
@@ -240,21 +250,21 @@ export const AudienceInvite = () => {
         ring: string;
     }[] = [
         {
-            label: 'Active',
+            label: t('status.active'),
             value: statusCounts.active,
             dot: 'bg-success-500',
             filter: 'ACTIVE',
             ring: 'ring-success-500',
         },
         {
-            label: 'Draft',
+            label: t('status.draft'),
             value: statusCounts.draft,
             dot: 'bg-warning-500',
             filter: 'DRAFT',
             ring: 'ring-warning-500',
         },
         {
-            label: 'Inactive',
+            label: t('status.inactive'),
             value: statusCounts.inactive,
             dot: 'bg-neutral-400',
             filter: 'INACTIVE',
@@ -269,17 +279,22 @@ export const AudienceInvite = () => {
                 <div className="min-w-0">
                     <h1 className="text-2xl font-semibold leading-tight text-neutral-900">
                         {isLoading
-                            ? audienceTermPlural
-                            : `${filteredCampaigns.length.toLocaleString()} ${audienceTermPlural}`}
+                            ? t('heading.titleLoading', { term: audienceTermPlural })
+                            : t('heading.titleWithCount', {
+                                  term: audienceTermPlural,
+                                  count: filteredCampaigns.length,
+                                  formattedCount:
+                                      filteredCampaigns.length.toLocaleString(i18n.language),
+                              })}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500">
-                        Manage and share your {audienceTermPlural.toLowerCase()} across campaigns.
+                        {t('heading.subtitle', { term: audienceTermPlural.toLowerCase() })}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.LeadSettings}
-                        label="Audience settings"
+                        label={t('settingsButton')}
                     />
                     <Button
                         onClick={() => {
@@ -288,7 +303,7 @@ export const AudienceInvite = () => {
                         }}
                         className={cn('w-full shrink-0 sm:w-auto', PRIMARY_BTN)}
                     >
-                        <Plus className="mr-2 size-4" /> Add {audienceTerm}
+                        <Plus className="me-2 size-4" /> {t('addButton', { term: audienceTerm })}
                     </Button>
                 </div>
             </div>
@@ -340,11 +355,11 @@ export const AudienceInvite = () => {
                     <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
                     <Input
                         type="text"
-                        placeholder={`Search ${audienceTerm}`}
+                        placeholder={t('toolbar.searchPlaceholder', { term: audienceTerm })}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="h-10 w-full pl-8"
-                        aria-label={`Search ${audienceTerm}`}
+                        aria-label={t('toolbar.searchAriaLabel', { term: audienceTerm })}
                     />
                 </div>
                 <Select
@@ -352,7 +367,7 @@ export const AudienceInvite = () => {
                     onValueChange={(v) => handleStatusChange(v as StatusFilter)}
                 >
                     <SelectTrigger className="h-10 w-full sm:w-44">
-                        <SelectValue placeholder="Filter by Status" />
+                        <SelectValue placeholder={t('statusFilter.placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
                         {statusDropdownOptions.map((opt) => (
@@ -365,10 +380,10 @@ export const AudienceInvite = () => {
                 {((accessibleSubOrgs?.length ?? 0) > 0 || subOrgFilter !== 'ALL') && (
                     <Select value={subOrgFilter} onValueChange={handleSubOrgChange}>
                         <SelectTrigger className="h-10 w-full sm:w-44">
-                            <SelectValue placeholder="Filter by Sub-Org" />
+                            <SelectValue placeholder={t('toolbar.subOrgPlaceholder')} />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="ALL">All Sub-Orgs</SelectItem>
+                            <SelectItem value="ALL">{t('toolbar.allSubOrgs')}</SelectItem>
                             {(accessibleSubOrgs ?? []).map((so) => (
                                 <SelectItem key={so.id} value={so.id}>
                                     {so.name}
@@ -383,9 +398,9 @@ export const AudienceInvite = () => {
             {isError ? (
                 <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-neutral-200 bg-white px-6 py-16 text-center">
                     <p className="text-sm font-medium text-neutral-700">
-                        Couldn&apos;t load {audienceTermPlural.toLowerCase()}
+                        {t('errorState.title', { term: audienceTermPlural.toLowerCase() })}
                     </p>
-                    <p className="text-xs text-neutral-500">Something went wrong. Try again.</p>
+                    <p className="text-xs text-neutral-500">{t('errorState.subtitle')}</p>
                 </div>
             ) : isLoading ? (
                 <SkeletonCards />
@@ -394,12 +409,12 @@ export const AudienceInvite = () => {
                     <EmptyInvitePage />
                     <p className="text-sm text-neutral-600">
                         {hasActiveFilter
-                            ? `No ${audienceTermPlural.toLowerCase()} match your filters.`
-                            : `You haven't created any ${audienceTermPlural.toLowerCase()} yet.`}
+                            ? t('emptyState.noMatches', { term: audienceTermPlural.toLowerCase() })
+                            : t('emptyState.noneYet', { term: audienceTermPlural.toLowerCase() })}
                     </p>
                     {hasActiveFilter ? (
                         <Button variant="outline" size="sm" onClick={handleClearFilters}>
-                            Clear filters
+                            {t('emptyState.clearFilters')}
                         </Button>
                     ) : (
                         <Button
@@ -409,8 +424,8 @@ export const AudienceInvite = () => {
                                 setIsDialogOpen(true);
                             }}
                         >
-                            <Plus className="mr-2 size-4" /> Create your first{' '}
-                            {audienceTerm.toLowerCase()}
+                            <Plus className="me-2 size-4" />{' '}
+                            {t('emptyState.createFirst', { term: audienceTerm.toLowerCase() })}
                         </Button>
                     )}
                 </div>
@@ -424,9 +439,7 @@ export const AudienceInvite = () => {
 
                             const handleCampaignClick = () => {
                                 if (!campaignId) {
-                                    toast.error(
-                                        'Unable to open campaign details. Missing campaign identifier.'
-                                    );
+                                    toast.error(t('toast.missingCampaignId'));
                                     return;
                                 }
                                 navigate({
@@ -466,9 +479,17 @@ export const AudienceInvite = () => {
                                     tile: 'bg-neutral-100 text-neutral-500',
                                 };
                             })();
+                            // Bug fix: this used to naively capitalize the raw backend status
+                            // enum (e.g. "ACTIVE" -> "Active"), which only ever rendered an
+                            // English-looking label regardless of locale. Map through the
+                            // translated status labels instead — filteredCampaigns already
+                            // guarantees normalizedStatus is one of these three values.
                             const statusLabel =
-                                (campaign.status?.charAt(0).toUpperCase() ?? '') +
-                                (campaign.status?.slice(1).toLowerCase() ?? '');
+                                normalizedStatus === 'ACTIVE'
+                                    ? t('status.active')
+                                    : normalizedStatus === 'DRAFT'
+                                      ? t('status.draft')
+                                      : t('status.inactive');
                             const TypeIcon =
                                 campaign.campaign_type?.toUpperCase() === 'WEBSITE'
                                     ? Globe
@@ -486,7 +507,9 @@ export const AudienceInvite = () => {
                                             handleCampaignClick();
                                         }
                                     }}
-                                    aria-label={`Open ${campaign.campaign_name}`}
+                                    aria-label={t('card.openAriaLabel', {
+                                        campaignName: campaign.campaign_name,
+                                    })}
                                     className="group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
                                 >
                                     {/* Header */}
@@ -529,7 +552,7 @@ export const AudienceInvite = () => {
                                                 {campaign.sub_org_id && (
                                                     <span className="inline-flex items-center rounded-full bg-info-50 px-2.5 py-0.5 text-xs font-medium text-info-600">
                                                         {subOrgNameById.get(campaign.sub_org_id) ||
-                                                            'Sub-Org'}
+                                                            t('toolbar.subOrgFallback')}
                                                     </span>
                                                 )}
                                             </div>
@@ -570,13 +593,17 @@ export const AudienceInvite = () => {
                                             onClick={(e) => e.stopPropagation()}
                                         >
                                             {normalizedStatus === 'ACTIVE' ? (
-                                                <CampaignLink campaignId={campaignId} />
+                                                <CampaignLink
+                                                    campaignId={campaignId}
+                                                    enableShortLink
+                                                />
                                             ) : (
                                                 <div className="flex items-center gap-2 rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-3 py-2.5 text-sm text-neutral-500">
                                                     <Info className="size-4 shrink-0 text-neutral-400" />
                                                     <span>
-                                                        Activate this {audienceTerm.toLowerCase()}{' '}
-                                                        to generate a shareable link.
+                                                        {t('card.activateHint', {
+                                                            term: audienceTerm.toLowerCase(),
+                                                        })}
                                                     </span>
                                                 </div>
                                             )}
@@ -614,11 +641,29 @@ export const AudienceInvite = () => {
                                                         }}
                                                     >
                                                         <UserPlus className="size-3.5" />
-                                                        Add Response
+                                                        {t('actions.addResponse')}
                                                     </Button>
                                                 </TooltipTrigger>
                                                 <TooltipContent>
-                                                    <p>Add a response on behalf of a respondent</p>
+                                                    <p>{t('actions.addResponseTooltip')}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className={CARD_OUTLINE_BTN}
+                                                        onClick={() =>
+                                                            setQrDialogCampaign(campaign)
+                                                        }
+                                                    >
+                                                        <QrCode className="size-3.5" />
+                                                        {t('actions.qr')}
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>{t('actions.qrTooltip')}</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                             <Tooltip>
@@ -632,13 +677,11 @@ export const AudienceInvite = () => {
                                                         }
                                                     >
                                                         <Code className="size-3.5" />
-                                                        API
+                                                        {t('actions.api')}
                                                     </Button>
                                                 </TooltipTrigger>
                                                 <TooltipContent>
-                                                    <p>
-                                                        Get API integration details for automation
-                                                    </p>
+                                                    <p>{t('actions.apiTooltip')}</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                             <Tooltip>
@@ -652,11 +695,11 @@ export const AudienceInvite = () => {
                                                         }
                                                     >
                                                         <CodeSimple className="size-3.5" />
-                                                        Embed
+                                                        {t('actions.embed')}
                                                     </Button>
                                                 </TooltipTrigger>
                                                 <TooltipContent>
-                                                    <p>Get embed code for your website</p>
+                                                    <p>{t('actions.embedTooltip')}</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
@@ -693,6 +736,13 @@ export const AudienceInvite = () => {
                     isOpen={!!embedDialogCampaign}
                     onClose={() => setEmbedDialogCampaign(null)}
                     campaign={embedDialogCampaign}
+                />
+            )}
+            {qrDialogCampaign && (
+                <ShareQrDialog
+                    isOpen={!!qrDialogCampaign}
+                    onClose={() => setQrDialogCampaign(null)}
+                    campaign={qrDialogCampaign}
                 />
             )}
         </div>

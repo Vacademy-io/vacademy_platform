@@ -87,6 +87,25 @@ public class AuthService {
      * dies partway and leaves a half-charged run behind.
      */
     public List<UserDTO> getUsersByInstituteAndRoles(String instituteId, List<String> roles) {
+        try {
+            return requireUsersByInstituteAndRoles(instituteId, roles);
+        } catch (Exception e) {
+            log.warn("[reporting] could not expand roles {} for institute {} — no recipients resolved",
+                    roles, instituteId, e);
+            return List.of();
+        }
+    }
+
+    /**
+     * The same lookup, but a failure surfaces instead of collapsing to an empty
+     * list. Anything that RENDERS this as a roster must use this variant: an
+     * unreachable auth_service and an institute with no staff are the same empty
+     * list, and showing "no staff" for an outage is a lie the caller acts on.
+     *
+     * <p>auth_service returns ACTIVE memberships only — INVITED users are not
+     * included.
+     */
+    public List<UserDTO> requireUsersByInstituteAndRoles(String instituteId, List<String> roles) {
         if (instituteId == null || instituteId.isBlank() || roles == null || roles.isEmpty()) {
             return List.of();
         }
@@ -109,9 +128,8 @@ public class AuthService {
             return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
             });
         } catch (Exception e) {
-            log.warn("[reporting] could not expand roles {} for institute {} — no recipients resolved",
-                    roles, instituteId, e);
-            return List.of();
+            throw new VacademyException("Could not reach auth_service to resolve users for institute "
+                    + instituteId + ": " + e.getMessage());
         }
     }
 
@@ -626,6 +644,34 @@ public class AuthService {
      * down" and serve a stale value rather than silently flipping RBAC scope.
      */
     public List<String> getActiveUserIdsByRoles(String instituteId, List<String> roles) {
+        return getActiveUsersByRoles(instituteId, roles).stream()
+                // Null-element guard: before this method delegated, the mapping ran
+                // INSIDE the try below, so a null row would have surfaced as a
+                // VacademyException like every other failure here. Out here it would
+                // instead escape as a raw NPE and be rendered as a 511 by the generic
+                // RuntimeException handler. Unreachable in practice — auth_service
+                // builds the list with map(UserWithRolesDTO::new), which cannot emit
+                // null — but this path decides RBAC scope, so it does not get to
+                // depend on a remote service's serialiser staying well-behaved.
+                .filter(java.util.Objects::nonNull)
+                .map(vacademy.io.common.auth.dto.UserWithRolesDTO::getId)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * Full user records (name / email / mobile / roles) of everyone holding ANY
+     * of the given roles in the institute — the same users-of-status call
+     * {@link #getActiveUserIdsByRoles} makes, without the second round trip
+     * through {@code getUsersFromAuthServiceByUserIds} just to recover names.
+     *
+     * <p>Same STRICT failure contract: throws rather than returning an empty
+     * list, so a caller can tell "no such users" apart from "auth_service is
+     * down".
+     */
+    public List<vacademy.io.common.auth.dto.UserWithRolesDTO> getActiveUsersByRoles(
+            String instituteId, List<String> roles) {
         if (instituteId == null || instituteId.isBlank() || roles == null || roles.isEmpty()) {
             return List.of();
         }
@@ -644,13 +690,8 @@ public class AuthService {
             }
             ObjectMapper objectMapper = new ObjectMapper();
             objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-            List<vacademy.io.common.auth.dto.UserWithRolesDTO> users = objectMapper.readValue(response.getBody(),
+            return objectMapper.readValue(response.getBody(),
                     new TypeReference<List<vacademy.io.common.auth.dto.UserWithRolesDTO>>() {});
-            return users.stream()
-                    .map(vacademy.io.common.auth.dto.UserWithRolesDTO::getId)
-                    .filter(id -> id != null && !id.isEmpty())
-                    .distinct()
-                    .toList();
         } catch (VacademyException ve) {
             throw ve;
         } catch (Exception e) {

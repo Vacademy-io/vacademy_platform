@@ -1,0 +1,26 @@
+{
+  "loadError": {
+    "title": "Couldn't load badges",
+    "hint": "Something went wrong while fetching this learner's badges."
+  },
+  "award": {
+    "heading": "Award a badge",
+    "empty": "No badges configured yet. Add them in Settings → Badges & Rewards first.",
+    "badgeLabel": "Badge",
+    "badgePlaceholder": "Choose a badge to award",
+    "reasonLabel": "Reason",
+    "reasonPlaceholder": "e.g. Top scorer in the unit test",
+    "reasonRequired": "A reason is required to award this badge.",
+    "submit": "Award Badge",
+    "successToast": "Badge awarded",
+    "errorToast": "Failed to award badge"
+  },
+  "awarded": {
+    "heading": "Awarded badges",
+    "empty": "No badges awarded yet — recognise this learner with a badge above.",
+    "revokeAriaLabel": "Revoke {{name}}",
+    "badgeFallback": "badge",
+    "successToast": "Badge revoked",
+    "errorToast": "Failed to revoke badge"
+  }
+}

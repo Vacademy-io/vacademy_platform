@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CaretDown, MagnifyingGlass } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
@@ -28,8 +29,10 @@ export function MultiSelectPopover({
     selected,
     onChange,
     searchable = true,
-    emptyText = 'No options',
+    emptyText,
 }: MultiSelectPopoverProps) {
+    const { t } = useTranslation('studyLibraryMultiSelectPopover');
+    const resolvedEmptyText = emptyText ?? t('noOptions');
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
 
@@ -48,10 +51,10 @@ export function MultiSelectPopover({
 
     const triggerText =
         selected.length === 0
-            ? `All ${label.toLowerCase()}`
+            ? t('allLabel', { label: label.toLowerCase() })
             : selected.length === 1
-              ? options.find((o) => o.value === selected[0])?.label || `1 selected`
-              : `${selected.length} selected`;
+              ? options.find((o) => o.value === selected[0])?.label || t('selectedCount', { count: 1 })
+              : t('selectedCount', { count: selected.length });
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -79,14 +82,14 @@ export function MultiSelectPopover({
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder={`Search ${label.toLowerCase()}…`}
+                            placeholder={t('searchPlaceholder', { label: label.toLowerCase() })}
                             className="h-6 w-full border-none bg-transparent text-sm text-neutral-700 placeholder:text-neutral-400 focus:outline-none focus:ring-0"
                         />
                     </div>
                 )}
                 <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2">
                     <span className="text-xs font-medium text-neutral-500">
-                        {selected.length === 0 ? 'All selected' : `${selected.length} selected`}
+                        {selected.length === 0 ? t('allSelected') : t('selectedCount', { count: selected.length })}
                     </span>
                     {selected.length > 0 && (
                         <button
@@ -94,14 +97,14 @@ export function MultiSelectPopover({
                             onClick={() => onChange([])}
                             className="text-xs font-medium text-primary-600 hover:underline"
                         >
-                            Clear
+                            {t('clear')}
                         </button>
                     )}
                 </div>
                 <div className="max-h-60 overflow-y-auto py-1">
                     {filtered.length === 0 ? (
                         <div className="px-3 py-6 text-center text-xs text-neutral-400">
-                            {emptyText}
+                            {resolvedEmptyText}
                         </div>
                     ) : (
                         filtered.map((opt) => {

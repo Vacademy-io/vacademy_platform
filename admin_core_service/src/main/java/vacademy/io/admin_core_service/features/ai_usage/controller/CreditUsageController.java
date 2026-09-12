@@ -18,6 +18,8 @@ import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.Conv
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatLogRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatMessageRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatSessionRow;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlowAiUsageLogRow;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlowAiUsageSummary;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.RoleSummaryRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UsageLogRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UserUsageRow;
@@ -43,6 +45,8 @@ import java.util.List;
  *   GET /ai-usage/v1/conversations/{id}/messages    full transcript (prompts + AI answers)
  *   GET /ai-usage/v1/chatbot/summary                Student-AI aggregate data points (Chatbot Analysis)
  *   GET /ai-usage/v1/chatbot/sessions               institute-wide chats, paginated + searchable
+ *   GET /ai-usage/v1/chatbot-flows/usage            Automations chatbot AI spend + balance state
+ *   GET /ai-usage/v1/chatbot-flows/logs             per-turn charge log for those flows
  *
  * Dates are epoch millis; default window is the last 30 days.
  */
@@ -198,6 +202,37 @@ public class CreditUsageController {
         return ResponseEntity.ok(conversationService.instituteSessions(
                 instituteId, from(startDate), to(endDate), status, sessionMode, search,
                 onlyWithMessages, pageable));
+    }
+
+    // ── Automations chatbot AI credits (Automations -> Chatbot Flows) ───────
+
+    /**
+     * What the Automations chatbot's AI replies have cost in the window, per flow,
+     * plus the institute's balance and whether the feature is currently funded.
+     */
+    @GetMapping("/chatbot-flows/usage")
+    public ResponseEntity<FlowAiUsageSummary> chatbotFlowUsage(
+            HttpServletRequest request,
+            @RequestParam(required = false) Long startDate,
+            @RequestParam(required = false) Long endDate) {
+        String instituteId = requireInstituteId(request);
+        return ResponseEntity.ok(service.chatbotFlowUsage(instituteId, from(startDate), to(endDate)));
+    }
+
+    /** Per-turn charge log behind those figures, newest first; optionally one flow. */
+    @GetMapping("/chatbot-flows/logs")
+    public ResponseEntity<Page<FlowAiUsageLogRow>> chatbotFlowLogs(
+            HttpServletRequest request,
+            @RequestParam(required = false) String flowId,
+            @RequestParam(required = false) Long startDate,
+            @RequestParam(required = false) Long endDate,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        String instituteId = requireInstituteId(request);
+        String flowFilter = (flowId == null || flowId.isBlank()) ? null : flowId;
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(
+                service.chatbotFlowLogs(instituteId, flowFilter, from(startDate), to(endDate), pageable));
     }
 
     private Timestamp from(Long startDate) {

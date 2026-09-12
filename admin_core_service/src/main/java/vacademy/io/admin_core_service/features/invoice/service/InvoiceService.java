@@ -337,6 +337,8 @@ public class InvoiceService {
         PLACEHOLDER_META.put("discount_row", new PlaceholderMeta("Discount Line (hidden when none)", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("tax_amount", new PlaceholderMeta("Tax Amount", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("total_amount", new PlaceholderMeta("Total", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("totals_rows",
+                new PlaceholderMeta("Totals block (amount, discount, tax, paid)", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("currency", new PlaceholderMeta("Currency", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("notes", new PlaceholderMeta("Notes", "NOTES", true, "textarea"));
     }
@@ -456,11 +458,27 @@ public class InvoiceService {
         private final Invoice invoice;
         private final byte[] pdfBytes;
         private final boolean alreadyExisted;
+        /**
+         * How many payment logs this invoice covers — i.e. how many courses one
+         * order bought. The confirmation email needs it to say "4 courses" rather
+         * than implying the total belongs to the single course its own log names.
+         */
+        private final int paymentLogCount;
 
         public InvoiceGenerationResult(Invoice invoice, byte[] pdfBytes, boolean alreadyExisted) {
+            this(invoice, pdfBytes, alreadyExisted, 1);
+        }
+
+        public InvoiceGenerationResult(Invoice invoice, byte[] pdfBytes, boolean alreadyExisted,
+                int paymentLogCount) {
             this.invoice = invoice;
             this.pdfBytes = pdfBytes;
             this.alreadyExisted = alreadyExisted;
+            this.paymentLogCount = Math.max(1, paymentLogCount);
+        }
+
+        public int getPaymentLogCount() {
+            return paymentLogCount;
         }
 
         public Invoice getInvoice() {
@@ -558,7 +576,7 @@ public class InvoiceService {
 
             log.info("Invoice generated successfully: {} with {} payment log(s)",
                     invoiceNumber, paymentLogs.size());
-            return new InvoiceGenerationResult(invoice, pdfBytes, false);
+            return new InvoiceGenerationResult(invoice, pdfBytes, false, paymentLogs.size());
 
         } catch (Exception e) {
             log.error("Error generating invoice for userPlanId: {}, paymentLogId: {}",
@@ -590,13 +608,14 @@ public class InvoiceService {
      * @return List of payment logs that should be grouped together (single log if
      *         no related logs found)
      */
-    private List<PaymentLog> findRelatedPaymentLogsForMultiPackage(PaymentLog paymentLog, String instituteId) {
+    /** Visible for testing. */
+    List<PaymentLog> findRelatedPaymentLogsForMultiPackage(PaymentLog paymentLog, String instituteId) {
         try {
             // Check if this payment log has payment_specific_data with order_id
             String orderId = extractOrderIdFromPaymentLog(paymentLog);
 
-            if (orderId != null && isMultiPackageOrderId(orderId)) {
-                log.debug("Detected v2 multi-package order ID: {} for payment log: {}", orderId, paymentLog.getId());
+            if (orderId != null && (isMultiPackageOrderId(orderId) || isParentChildOrderId(orderId))) {
+                log.debug("Detected multi-course order ID: {} for payment log: {}", orderId, paymentLog.getId());
 
                 // Find all payment logs with the same order ID that are PAID and not already
                 // invoiced
@@ -606,10 +625,14 @@ public class InvoiceService {
                 List<PaymentLog> uninvoicedLogs = relatedLogs.stream()
                         .filter(log -> !invoicePaymentLogMappingRepository.existsByPaymentLogId(log.getId()))
                         .filter(log -> "PAID".equals(log.getPaymentStatus())) // Ensure paid status
+                        // The ORDER's own log carries the gateway total and no UserPlan; it is
+                        // the parent of these lines, not a line itself. Including it would put
+                        // a planless log first and NPE the invoice builder.
+                        .filter(log -> log.getUserPlan() != null)
                         .collect(Collectors.toList());
 
                 if (uninvoicedLogs.size() > 1) {
-                    log.info("Found {} related payment logs for multi-package invoice with order ID: {}",
+                    log.info("Found {} related payment logs for one invoice with order ID: {}",
                             uninvoicedLogs.size(), orderId);
                     return uninvoicedLogs;
                 }
@@ -662,6 +685,56 @@ public class InvoiceService {
     }
 
     /**
+     * True when this order id names a PARENT payment log that fanned out into one
+     * child log per course — the shape a product-page checkout produces.
+     *
+     * The legacy multi-package flow announced itself with an "MP" prefix on a
+     * synthetic order id. A product-page order has no such marker: its children
+     * share the parent log's UUID as their order id, so the prefix test failed and
+     * every course was invoiced separately. A real ₹949 four-subject order
+     * produced four invoices totalling ₹1,396 and four payment-confirmation
+     * emails, none of which matched the learner's bank statement.
+     *
+     * Asks the data instead of a naming convention: an order is a parent when a
+     * log with that id exists and records the children it paid for.
+     */
+    boolean isParentChildOrderId(String orderId) {
+        if (!StringUtils.hasText(orderId)) {
+            return false;
+        }
+        try {
+            return paymentLogRepository.findById(orderId)
+                    .map(PaymentLog::getPaymentSpecificData)
+                    .filter(StringUtils::hasText)
+                    .map(data -> data.contains("childPaymentLogIds"))
+                    .orElse(false);
+        } catch (Exception e) {
+            log.debug("Could not check order {} for child payment logs: {}", orderId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Whether each grouped log states what IT was charged, or merely repeats the
+     * order total.
+     *
+     * The legacy multi-package flow copies the whole order total onto every child
+     * (see MultiPackageLearnerEnrollService), so summing those amounts multiplies
+     * the invoice by the number of courses — hence that flow's lines are priced
+     * from the payment plan instead. A parent/child order allocates the real
+     * total across its children, so there the log's own amount IS the truth, and
+     * falling back to the plan's list price would re-inflate a discounted basket
+     * back to full price.
+     */
+    boolean logsCarryTheirOwnAmount(List<PaymentLog> paymentLogs) {
+        if (paymentLogs.size() <= 1) {
+            return true;
+        }
+        String orderId = extractOrderIdFromPaymentLog(paymentLogs.get(0));
+        return isParentChildOrderId(orderId);
+    }
+
+    /**
      * Find related payment logs that should be grouped in the same invoice
      *
      * NOTE: This legacy method is kept for backward compatibility but is now
@@ -684,6 +757,7 @@ public class InvoiceService {
         if (paymentLogs == null || paymentLogs.isEmpty()) {
             throw new VacademyException("Payment logs list cannot be empty");
         }
+        final boolean perLogAmounts = logsCarryTheirOwnAmount(paymentLogs);
 
         log.debug("Building invoice data from {} payment log(s) - supports both single and multiple scenarios",
                 paymentLogs.size());
@@ -784,8 +858,9 @@ public class InvoiceService {
             // For multi-package invoices, use the plan's actual_price (per-book price)
             // instead of paymentLog.getPaymentAmount() (which may contain the total gateway charge)
             BigDecimal paymentAmount;
-            if (paymentLogs.size() > 1) {
-                // Multi-package: each line item should show the individual book price
+            if (paymentLogs.size() > 1 && !perLogAmounts) {
+                // Legacy multi-package: every child log repeats the order total, so the
+                // line has to be priced from the plan or the invoice multiplies.
                 paymentAmount = planPrice;
             } else if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
                 paymentAmount = BigDecimal.valueOf(paymentLog.getPaymentAmount());
@@ -2087,6 +2162,60 @@ public class InvoiceService {
     }
 
     /**
+     * The invoice's arithmetic, rendered as rows: what the courses cost, what was
+     * taken off, tax, and what was actually paid.
+     *
+     * Why a rendered block rather than more placeholders: an invoice template has
+     * no conditionals, so a hard-coded "Discount" row prints an empty line on
+     * every full-price invoice — which is what the seeded templates do today. It
+     * also lets the rows appear only when they mean something.
+     *
+     * Why not just fix {{subtotal}}: that placeholder means PRE-TAX (total ÷ 1+rate)
+     * and 12 of the 17 live invoice templates pair it with {{tax_amount}} to show
+     * "Subtotal + Tax = Total". Redefining it as pre-DISCOUNT would silently break
+     * every one of those. {{plan_price}} already carries the gross, so this block
+     * reads from that and leaves the older placeholders exactly as they were.
+     *
+     * The gross line is omitted when nothing was discounted, because then it is
+     * the same number as the total and repeating it reads as an error.
+     */
+    static String buildTotalsRowsHtml(InvoiceData invoiceData, String currencySymbol) {
+        if (invoiceData == null) {
+            return "";
+        }
+        BigDecimal gross = invoiceData.getPlanPrice();
+        BigDecimal discount = invoiceData.getDiscountAmount();
+        BigDecimal tax = invoiceData.getTaxAmount();
+        BigDecimal total = invoiceData.getTotalAmount();
+        boolean hasDiscount = discount != null && discount.compareTo(BigDecimal.ZERO) > 0
+                && gross != null && total != null && gross.compareTo(total) > 0;
+        boolean hasTax = tax != null && tax.compareTo(BigDecimal.ZERO) > 0;
+
+        StringBuilder rows = new StringBuilder(
+                "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" "
+                        + "style=\"width:100%;font-size:13px;color:#222;\">");
+        if (hasDiscount) {
+            rows.append(totalsRow("Amount", currencySymbol + gross.toPlainString(), false));
+            rows.append(totalsRow("Discount", "-" + currencySymbol + discount.toPlainString(), false));
+        }
+        if (hasTax) {
+            String taxLabel = StringUtils.hasText(invoiceData.getTaxLabel()) ? invoiceData.getTaxLabel() : "Tax";
+            rows.append(totalsRow(taxLabel, currencySymbol + tax.toPlainString(), false));
+        }
+        rows.append(totalsRow("Total Paid",
+                currencySymbol + (total != null ? total.toPlainString() : "0.00"), true));
+        return rows.append("</table>").toString();
+    }
+
+    private static String totalsRow(String label, String value, boolean emphasised) {
+        String cell = emphasised
+                ? "padding:4px 0;font-size:15px;font-weight:700;color:#124a34;"
+                : "padding:2px 0;";
+        return "<tr><td style=\"text-align:right;" + cell + "\">" + label + ":&nbsp;&nbsp;</td>"
+                + "<td style=\"text-align:right;white-space:nowrap;" + cell + "\">" + value + "</td></tr>";
+    }
+
+    /**
      * Load default invoice PDF layout template from
      * resources/templates/invoice/default_invoice.html (same style as institute INVOICE templates).
      */
@@ -2324,6 +2453,9 @@ public class InvoiceService {
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
         filled = filled.replace("{{line_items}}", lineItemsHtml);
+
+        // The whole sum, in one conditional block — see buildTotalsRowsHtml.
+        filled = filled.replace("{{totals_rows}}", buildTotalsRowsHtml(invoiceData, currencySymbol));
 
         // Terms & Conditions
         String termsHtml = buildTermsAndConditionsHtml(invoiceData);

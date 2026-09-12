@@ -15,15 +15,9 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useState } from 'react';
-import {
-    marking_1,
-    marking_2,
-    marking_4,
-    marking_5,
-    marking_8,
-    marking_10,
-} from '../-constants/criteria';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { buildMarkingCriteria } from '../-constants/criteria';
 import { Plus, Trash } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
@@ -47,17 +41,21 @@ export const CriteriaDialog = ({
     selectedCriteria,
     onRemoveCriteria,
 }: CriteriaDialogProps) => {
+    const { t } = useTranslation('evaluatorAiCriteriaDialog');
+    const { t: tCriteria } = useTranslation('evaluatorAiCriteria');
     const [newCriteriaName, setNewCriteriaName] = useState('');
     const [newCriteriaMarks, setNewCriteriaMarks] = useState(marks);
 
+    const markingCriteria = useMemo(() => buildMarkingCriteria(tCriteria), [tCriteria]);
+
     const getCriteriaByMarks = (marks: number): Criteria[] => {
         const markingSchemes = {
-            1: marking_1,
-            2: marking_2,
-            4: marking_4,
-            5: marking_5,
-            8: marking_8,
-            10: marking_10,
+            1: markingCriteria.marking_1,
+            2: markingCriteria.marking_2,
+            4: markingCriteria.marking_4,
+            5: markingCriteria.marking_5,
+            8: markingCriteria.marking_8,
+            10: markingCriteria.marking_10,
         };
         // @ts-expect-error : //TODO: Fix this type error
         return markingSchemes[marks]?.criteria || [];
@@ -79,11 +77,11 @@ export const CriteriaDialog = ({
     return (
         <Dialog>
             <DialogTrigger asChild>
-                <Button variant="outline">View/Edit Criteria</Button>
+                <Button variant="outline">{t('viewEditCriteria')}</Button>
             </DialogTrigger>
             <DialogContent className="max-h-[60vh] min-w-[720px] overflow-y-scroll">
                 <DialogHeader className="flex-row items-center justify-between gap-x-2">
-                    <DialogTitle>Marking Criteria for {marks} marks</DialogTitle>
+                    <DialogTitle>{t('markingCriteriaForMarks', { count: marks })}</DialogTitle>
 
                     <Button
                         variant="outline"
@@ -94,27 +92,26 @@ export const CriteriaDialog = ({
                         }}
                     >
                         {availableCriteria.length === selectedCriteria.length
-                            ? 'Remove All'
-                            : 'Select All'}
+                            ? t('removeAll')
+                            : t('selectAll')}
                     </Button>
                 </DialogHeader>
 
                 <div className="mt-4">
-                    <h3 className="mb-2 font-semibold">Selected Criteria:</h3>
+                    <h3 className="mb-2 font-semibold">{t('selectedCriteria')}</h3>
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Criteria</TableHead>
-                                <TableHead>Marks</TableHead>
-                                <TableHead>Action</TableHead>
+                                <TableHead>{t('columnCriteria')}</TableHead>
+                                <TableHead>{t('columnMarks')}</TableHead>
+                                <TableHead>{t('columnAction')}</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {selectedCriteria.length === 0 && (
                                 <TableRow>
                                     <TableCell colSpan={3} className="text-center">
-                                        No criteria selected, please select criteria from available
-                                        list
+                                        {t('noCriteriaSelected')}
                                     </TableCell>
                                 </TableRow>
                             )}
@@ -140,19 +137,19 @@ export const CriteriaDialog = ({
                 {/* Add Custom Criteria Form - Always visible */}
                 <Accordion type="single" collapsible>
                     <AccordionItem value="custom-criteria">
-                        <AccordionTrigger>Custom Criteria</AccordionTrigger>
+                        <AccordionTrigger>{t('customCriteria')}</AccordionTrigger>
                         <AccordionContent>
                             <div className="">
-                                <h3 className="mb-2 font-semibold">Add Custom Criteria:</h3>
+                                <h3 className="mb-2 font-semibold">{t('addCustomCriteria')}</h3>
                                 <div className="flex items-center gap-4">
                                     <Input
-                                        placeholder="Enter criteria description"
+                                        placeholder={t('enterCriteriaDescription')}
                                         className="flex-1"
                                         value={newCriteriaName}
                                         onChange={(e) => setNewCriteriaName(e.target.value)}
                                     />
                                     <Input
-                                        placeholder="Marks"
+                                        placeholder={t('columnMarks')}
                                         type="number"
                                         className="w-24"
                                         value={newCriteriaMarks}
@@ -189,14 +186,14 @@ export const CriteriaDialog = ({
                     <>
                         <Accordion type="single" collapsible>
                             <AccordionItem value="custom-criteria">
-                                <AccordionTrigger>Predefined Criteria</AccordionTrigger>
+                                <AccordionTrigger>{t('predefinedCriteria')}</AccordionTrigger>
                                 <AccordionContent>
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead>Criteria</TableHead>
-                                                <TableHead>Marks</TableHead>
-                                                <TableHead>Action</TableHead>
+                                                <TableHead>{t('columnCriteria')}</TableHead>
+                                                <TableHead>{t('columnMarks')}</TableHead>
+                                                <TableHead>{t('columnAction')}</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>

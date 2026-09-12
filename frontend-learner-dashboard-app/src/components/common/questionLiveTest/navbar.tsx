@@ -3,6 +3,7 @@
 import type React from "react";
 
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { HelpModal } from "@/components/modals/help-modals";
 import { useAssessmentStore } from "@/stores/assessment-store";
@@ -67,13 +68,26 @@ function AutoSaveStatus({
   status: "idle" | "saving" | "success" | "failed";
   compact?: boolean;
 }) {
+  const { t } = useTranslation("questionTest");
   const map = {
-    idle: { Icon: CloudCheck, label: "Saved", tone: "text-neutral-500" },
-    success: { Icon: CloudCheck, label: "Saved", tone: "text-neutral-500" },
-    saving: { Icon: ArrowsClockwise, label: "Saving…", tone: "text-neutral-500" },
+    idle: {
+      Icon: CloudCheck,
+      label: t("navbar.autoSave.saved"),
+      tone: "text-neutral-500",
+    },
+    success: {
+      Icon: CloudCheck,
+      label: t("navbar.autoSave.saved"),
+      tone: "text-neutral-500",
+    },
+    saving: {
+      Icon: ArrowsClockwise,
+      label: t("navbar.autoSave.saving"),
+      tone: "text-neutral-500",
+    },
     failed: {
       Icon: WarningCircle,
-      label: "Not saved",
+      label: t("navbar.autoSave.notSaved"),
       tone: "text-danger-600",
     },
   } as const;
@@ -101,6 +115,7 @@ export function Navbar({
   playMode: string;
   evaluationType: string;
 }) {
+  const { t } = useTranslation("questionTest");
   const {
     settings,
     isCompact,
@@ -524,7 +539,7 @@ export function Navbar({
 
     if (!attemptId) {
       console.error("Attempt ID is missing. Cannot proceed with submission.");
-      toast.error("Submission failed: Attempt ID is missing.");
+      toast.error(t("navbar.toast.missingAttemptId"));
       throw new Error("Attempt ID missing");
     }
 
@@ -539,7 +554,7 @@ export function Navbar({
         }
 
         submitAssessment();
-        toast.success("Assessment submitted successfully!");
+        toast.success(t("navbar.toast.submitSuccess"));
         resetAssessment();
 
         // Clean up attempt-scoped local storage before navigating away.
@@ -609,7 +624,7 @@ export function Navbar({
         );
         if (attempt < MAX_ATTEMPTS) {
           toast.error(
-            `Submission failed. Retrying (${attempt}/${MAX_ATTEMPTS})...`,
+            t("navbar.toast.retrying", { attempt, max: MAX_ATTEMPTS }),
           );
           const delay = 3000 * attempt;
           await new Promise((resolve) => setTimeout(resolve, delay));
@@ -617,9 +632,7 @@ export function Navbar({
       }
     }
 
-    toast.error(
-      "Failed to submit your assessment. Please check your connection and try again.",
-    );
+    toast.error(t("navbar.toast.submitFailed"));
     throw lastError;
   };
 
@@ -720,7 +733,7 @@ export function Navbar({
 
         {showTimer && (
           <div
-            title="Time remaining"
+            title={t("navbar.timer.title")}
             className={cn(
               "flex flex-none items-center gap-1.5 rounded-lg border px-2 py-1.5 md:px-3",
               timerTone,
@@ -738,7 +751,7 @@ export function Navbar({
             <Button
               variant="outline"
               size="icon"
-              aria-label="Calculator"
+              aria-label={t("common.tools.calculator")}
               aria-pressed={activeTool === "calculator"}
               onClick={() => toggleTool("calculator")}
               className={cn(
@@ -754,7 +767,7 @@ export function Navbar({
             <Button
               variant="outline"
               size="icon"
-              aria-label="Scratchpad"
+              aria-label={t("common.tools.scratchpad")}
               aria-pressed={activeTool === "scratchpad"}
               onClick={() => toggleTool("scratchpad")}
               className={cn(
@@ -772,7 +785,7 @@ export function Navbar({
               <Button
                 variant="outline"
                 size="icon"
-                aria-label="Help and requests"
+                aria-label={t("navbar.help.ariaLabel")}
                 className="size-9 border-neutral-200"
               >
                 <Question size={17} />
@@ -780,16 +793,16 @@ export function Navbar({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setHelpType("instructions")}>
-                Instructions
+                {t("navbar.help.menu.instructions")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setHelpType("alerts")}>
-                Assessment Alerts
+                {t("navbar.help.menu.alerts")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setHelpType("reattempt")}>
-                Request Reattempt
+                {t("navbar.help.menu.reattempt")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setHelpType("time")}>
-                Request Time Increase
+                {t("navbar.help.menu.timeIncrease")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -813,7 +826,9 @@ export function Navbar({
                   className="flex h-9 items-center gap-2 px-3"
                 >
                   <FileText className="size-4" />
-                  <span className="hidden md:inline">Preview PDF</span>
+                  <span className="hidden md:inline">
+                    {t("navbar.pdf.preview")}
+                  </span>
                 </MyButton>
               ) : (
                 <MyButton
@@ -829,7 +844,9 @@ export function Navbar({
                   ) : (
                     <UploadSimple className="size-4" />
                   )}
-                  {isUploading ? "Uploading..." : "Upload"}
+                  {isUploading
+                    ? t("navbar.pdf.uploading")
+                    : t("navbar.pdf.upload")}
                 </MyButton>
               )}
             </>
@@ -839,7 +856,7 @@ export function Navbar({
               onClick={() => setShowSubmitModal(true)}
               className="h-9 rounded-lg bg-neutral-900 px-4 text-caption font-semibold text-white transition-colors hover:bg-neutral-800 md:text-body"
             >
-              Submit
+              {t("common.submit")}
             </button>
           )}
         </div>
@@ -853,7 +870,8 @@ export function Navbar({
                 PDF Preview: {pdfFile.fileName} {pdfDocumentInfo.currentPage + 1}/{pdfDocumentInfo.numPages}
               </h2> */}
               <Button variant="ghost" onClick={() => setShowPdfPreview(false)}>
-                <span className="sr-only">Back</span>← Back
+                <span className="sr-only">{t("navbar.pdf.back")}</span>←{" "}
+                {t("navbar.pdf.back")}
               </Button>
             </div>
             <div className="flex-1 overflow-auto">
@@ -872,7 +890,7 @@ export function Navbar({
                   fileInputRef.current?.click();
                 }}
               >
-                Replace PDF
+                {t("navbar.pdf.replace")}
               </MyButton>
               <MyButton
                 buttonType="primary"
@@ -881,7 +899,7 @@ export function Navbar({
                   setShowSubmitModal(true);
                 }}
               >
-                Submit
+                {t("common.submit")}
               </MyButton>
             </div>
           </div>
@@ -903,9 +921,7 @@ export function Navbar({
         <AlertDialog open={showWarningModal} onOpenChange={setShowWarningModal}>
           <AlertDialogContent>
             <AlertDialogDescription>
-              Warning: You are attempting to leave the test environment. This is
-              warning {tabSwitchCount} of 3. If you attempt to leave again, your
-              test will be automatically submitted.
+              {t("common.tabSwitchWarning", { count: tabSwitchCount })}
             </AlertDialogDescription>
             <AlertDialogAction
               onClick={() => {
@@ -915,7 +931,7 @@ export function Navbar({
                 }, 100);
               }}
             >
-              Return to Test
+              {t("common.returnToTest")}
             </AlertDialogAction>
           </AlertDialogContent>
         </AlertDialog>
@@ -930,12 +946,10 @@ export function Navbar({
       >
         <AlertDialogContent>
           <AlertDialogDescription>
-            Your test is still in progress. You cannot go back while attempting.
-            Use the Submit button when you have finished — your answers are saved
-            automatically.
+            {t("navbar.exitWarning.description")}
           </AlertDialogDescription>
           <AlertDialogAction onClick={() => setShowExitWarningModal(false)}>
-            Return to Test
+            {t("common.returnToTest")}
           </AlertDialogAction>
         </AlertDialogContent>
       </AlertDialog>

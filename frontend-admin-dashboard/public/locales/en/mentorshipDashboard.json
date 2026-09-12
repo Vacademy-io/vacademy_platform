@@ -1,0 +1,69 @@
+{
+    "loadError": "Couldn't load mentorship data.",
+    "retry": "Retry",
+    "mentorFallback": "Mentor",
+    "learnerFallback": "Learner",
+    "viewAllSessions": "View all sessions",
+    "viewAllMentors": "View all mentors",
+    "kpi": {
+        "mentors": {
+            "label": "Mentors",
+            "hint": "On your team"
+        },
+        "studentsMentored": {
+            "label": "Students mentored",
+            "hint_one": "{{count}} active pairing",
+            "hint_other": "{{count}} active pairings"
+        },
+        "sessionsAhead": {
+            "label": "Sessions ahead",
+            "hint": "Next 7 days"
+        },
+        "averageRating": {
+            "label": "Average rating",
+            "hintRated_one": "From {{count}} rated mentor",
+            "hintRated_other": "From {{count}} rated mentors",
+            "hintNone": "No ratings yet"
+        }
+    },
+    "outcomes": {
+        "cardTitle": "Session outcomes",
+        "cardSubtitle": "All-time session summary",
+        "empty": "No sessions yet. Outcomes appear here once mentors record them.",
+        "completed": "Completed",
+        "noShows": "No-shows",
+        "cancelled": "Cancelled",
+        "awaitingReview": "Awaiting review"
+    },
+    "workload": {
+        "cardTitle": "Mentor workload",
+        "cardSubtitle": "Students per mentor",
+        "empty": "No mentors yet.",
+        "countOfCap": "{{count}} / {{cap}}",
+        "fullSuffix": " · full",
+        "noUpcoming": "no upcoming",
+        "upcomingCount_one": "{{count}} upcoming",
+        "upcomingCount_other": "{{count}} upcoming"
+    },
+    "attention": {
+        "cardTitle": "Needs attention",
+        "cardSubtitle": "Things waiting on you",
+        "allCaughtUp": "All caught up",
+        "allCaughtUpDescription": "No pending requests and every session is recorded.",
+        "requestsTitle": "Learner requests waiting",
+        "requestsDetail_one": "{{count}} learner is waiting to be paired with a mentor",
+        "requestsDetail_other": "{{count}} learners are waiting to be paired with a mentor",
+        "reviewRequests": "Review requests",
+        "awaitingTitle": "Sessions awaiting review",
+        "awaitingDetail_one": "{{count}} session needs its outcome recorded",
+        "awaitingDetail_other": "{{count}} sessions need their outcome recorded",
+        "reviewSessions": "Review sessions"
+    },
+    "upcoming": {
+        "cardTitle": "Upcoming sessions",
+        "cardSubtitle": "Next 5 sessions",
+        "empty": "Nothing booked yet.",
+        "durationMinutes_one": "{{count}} min",
+        "durationMinutes_other": "{{count}} min"
+    }
+}

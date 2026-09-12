@@ -6,6 +6,7 @@
  * Everything here is purely presentational; data fetching stays in the tabs.
  */
 import { useId, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     CaretDown,
     CaretRight,
@@ -317,6 +318,7 @@ export function BreakdownBar({
     colorClass,
     onClick,
 }: BreakdownBarProps) {
+    const { t } = useTranslation('audienceManagerReportShared');
     const pct = total > 0 ? Math.min(100, (count / total) * 100) : 0;
     const cpct = converted != null && total > 0 ? Math.min(100, (converted / total) * 100) : 0;
     return (
@@ -344,7 +346,9 @@ export function BreakdownBar({
                 <span className="flex items-center gap-1 font-medium text-neutral-900">
                     {count}
                     {converted != null && (
-                        <span className="ml-1 text-xs text-green-700">({converted} conv.)</span>
+                        <span className="ms-1 text-xs text-green-700">
+                            {t('breakdownBar.converted', { count: converted })}
+                        </span>
                     )}
                     {onClick && (
                         <CaretRight
@@ -386,22 +390,24 @@ export function BreakdownBar({
 
 // ── Loading / empty / error states ─────────────────────────────────────
 
-export function EmptyHint({ message = 'No data in this range.' }: { message?: string }) {
+export function EmptyHint({ message }: { message?: string }) {
+    const { t } = useTranslation('audienceManagerReportShared');
     return (
         <div className="flex h-32 items-center justify-center text-sm text-neutral-400">
-            {message}
+            {message ?? t('emptyHint.default')}
         </div>
     );
 }
 
 /** Skeleton for a whole tab — KPI strip + a table block. */
 export function ReportTabSkeleton() {
+    const { t } = useTranslation('audienceManagerReportShared');
     const id = useId();
     return (
         <div
             className="flex animate-pulse flex-col gap-4"
             aria-busy="true"
-            aria-label="Loading report"
+            aria-label={t('skeleton.ariaLabel')}
         >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {[0, 1, 2, 3].map((i) => (
@@ -430,6 +436,7 @@ export function ReportTabSkeleton() {
  * failure, and offers a retry for the latter.
  */
 export function ReportErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+    const { t } = useTranslation('audienceManagerReportShared');
     const deployPending = isReportEndpointMissing(error);
     return (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-neutral-200 bg-white px-6 py-12 text-center shadow-sm">
@@ -439,18 +446,18 @@ export function ReportErrorState({ error, onRetry }: { error: unknown; onRetry?:
             <div className="flex flex-col gap-1">
                 <p className="text-sm font-semibold text-neutral-800">
                     {deployPending
-                        ? 'This report needs the latest backend — deploy pending'
-                        : "Couldn't load this report"}
+                        ? t('errorState.deployPendingTitle')
+                        : t('errorState.genericTitle')}
                 </p>
                 <p className="max-w-md text-xs text-neutral-500">
                     {deployPending
-                        ? 'The endpoint powering this tab is not on this environment yet. It will light up automatically after the next backend deploy.'
-                        : 'Something went wrong while fetching the data. Check your connection and try again.'}
+                        ? t('errorState.deployPendingBody')
+                        : t('errorState.genericBody')}
                 </p>
             </div>
             {!deployPending && onRetry && (
                 <Button size="sm" variant="outline" onClick={onRetry}>
-                    Retry
+                    {t('errorState.retry')}
                 </Button>
             )}
         </div>
@@ -462,12 +469,13 @@ export function ReportErrorState({ error, onRetry }: { error: unknown; onRetry?:
 export function ExportCsvButton({
     onClick,
     disabled,
-    label = 'Export CSV',
+    label,
 }: {
     onClick: () => void;
     disabled?: boolean;
     label?: string;
 }) {
+    const { t } = useTranslation('audienceManagerReportShared');
     return (
         <Button
             size="sm"
@@ -477,7 +485,7 @@ export function ExportCsvButton({
             disabled={disabled}
         >
             <DownloadSimple size={14} />
-            {label}
+            {label ?? t('export.defaultLabel')}
         </Button>
     );
 }
@@ -491,13 +499,14 @@ export function ExportWithColumnPickerButton({
     filename,
     getHeadersAndRows,
     disabled,
-    label = 'Export CSV',
+    label,
 }: {
     filename: string;
     getHeadersAndRows: () => { headers: string[]; rows: CsvCell[][] };
     disabled?: boolean;
     label?: string;
 }) {
+    const { t } = useTranslation('audienceManagerReportShared');
     const [open, setOpen] = useState(false);
     const [headers, setHeaders] = useState<string[]>([]);
     const [rows, setRows] = useState<CsvCell[][]>([]);
@@ -539,12 +548,12 @@ export function ExportWithColumnPickerButton({
                 disabled={disabled}
             >
                 <DownloadSimple size={14} />
-                {label}
+                {label ?? t('export.defaultLabel')}
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="sm:max-w-sm">
                     <DialogHeader>
-                        <DialogTitle>Choose export columns</DialogTitle>
+                        <DialogTitle>{t('export.dialogTitle')}</DialogTitle>
                     </DialogHeader>
                     <div className="flex flex-col gap-3 py-1">
                         <div className="flex items-center gap-1.5 text-xs">
@@ -553,7 +562,7 @@ export function ExportWithColumnPickerButton({
                                 onClick={() => setSelected(new Set(headers))}
                                 className="text-primary-600 hover:underline"
                             >
-                                Select all
+                                {t('export.selectAll')}
                             </button>
                             <span className="text-neutral-300">·</span>
                             <button
@@ -561,7 +570,7 @@ export function ExportWithColumnPickerButton({
                                 onClick={() => setSelected(new Set())}
                                 className="text-primary-600 hover:underline"
                             >
-                                Deselect all
+                                {t('export.deselectAll')}
                             </button>
                         </div>
                         <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto rounded-md border border-neutral-200 p-2">
@@ -581,11 +590,14 @@ export function ExportWithColumnPickerButton({
                     </div>
                     <DialogFooter className="items-center sm:justify-between">
                         <span className="text-xs text-neutral-500">
-                            {selected.size} / {headers.length} columns
+                            {t('export.columnsSelected', {
+                                selected: selected.size,
+                                total: headers.length,
+                            })}
                         </span>
                         <div className="flex gap-2">
                             <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
-                                Cancel
+                                {t('export.cancel')}
                             </Button>
                             <Button
                                 size="sm"
@@ -593,7 +605,7 @@ export function ExportWithColumnPickerButton({
                                 disabled={selected.size === 0}
                             >
                                 <DownloadSimple size={14} className="mr-1" />
-                                Export
+                                {t('export.export')}
                             </Button>
                         </div>
                     </DialogFooter>

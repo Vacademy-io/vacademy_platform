@@ -14,8 +14,10 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Badge } from '@/components/ui/badge';
 import { WorkflowStatusBadge } from '@/routes/workflow/-components/workflow-status-badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Calendar, Clock } from '@phosphor-icons/react';
+import { Calendar, Clock, Lightning } from '@phosphor-icons/react';
+import { AutomationDiagram } from '@/types/workflow/workflow-types';
 import { formatDistanceToNow } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -31,6 +33,7 @@ interface WorkflowDetailsPageProps {
     workflowId: string;
 }
 export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
+    const { t } = useTranslation('workflowDetailsPage');
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { setNavHeading } = useNavHeadingStore();
@@ -88,7 +91,7 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
             const date = new Date(dateString);
             return formatDistanceToNow(date, { addSuffix: true });
         } catch (error) {
-            return 'Unknown';
+            return t('unknownDate');
         }
     };
 
@@ -102,23 +105,23 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                     className="flex items-center gap-2"
                 >
                     <ArrowLeft size={20} />
-                    Back to Workflows
+                    {t('backToWorkflows')}
                 </Button>
             </div>
         );
-    }, [setNavHeading, navigate]);
+    }, [setNavHeading, navigate, t]);
 
     if (!workflow) {
         return (
             <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
                 <div className="text-center">
-                    <p className="text-lg font-medium text-neutral-600">Workflow not found</p>
+                    <p className="text-lg font-medium text-neutral-600">{t('notFound.title')}</p>
                     <p className="mt-2 text-sm text-neutral-500">
-                        The workflow you&apos;re looking for doesn&apos;t exist or has been removed.
+                        {t('notFound.description')}
                     </p>
                 </div>
                 <Button onClick={() => navigate({ to: '/workflow/list' })}>
-                    Back to Workflows
+                    {t('backToWorkflows')}
                 </Button>
             </div>
         );
@@ -140,7 +143,7 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                 onClick={() => navigate({ to: `/workflow/${workflowId}/edit` })}
                             >
                                 <PencilSimple size={14} />
-                                Edit
+                                {t('actions.edit')}
                             </Button>
                             <Button
                                 variant="outline"
@@ -153,7 +156,7 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                 }}
                             >
                                 <Play size={14} weight="fill" />
-                                {isRunning ? 'Running...' : 'Run now'}
+                                {isRunning ? t('actions.running') : t('actions.runNow')}
                             </Button>
                             <Button
                                 variant="outline"
@@ -162,7 +165,7 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                 onClick={() => setShowDeleteConfirm(true)}
                             >
                                 <Trash size={14} />
-                                Delete
+                                {t('actions.delete')}
                             </Button>
                         </div>
 
@@ -178,10 +181,10 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                 {runResult.message}
                                 <button
                                     type="button"
-                                    className="ml-3 underline opacity-70 hover:opacity-100"
+                                    className="ms-3 underline opacity-70 hover:opacity-100"
                                     onClick={() => setRunResult(null)}
                                 >
-                                    Dismiss
+                                    {t('actions.dismiss')}
                                 </button>
                             </div>
                         )}
@@ -189,18 +192,19 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
 
                         <div className="mt-4 flex flex-wrap items-center gap-6">
                             <div className="flex items-center gap-2">
-                                <span className="text-sm text-neutral-500">Type:</span>
+                                <span className="text-sm text-neutral-500">{t('type')}</span>
                                 <Badge variant="outline" className="font-medium text-neutral-700">
                                     {formatWorkflowType(workflow.workflow_type)}
                                 </Badge>
                             </div>
+                            <TriggerHeadline diagram={diagram} />
                             <div className="flex items-center gap-2 text-sm text-neutral-500">
                                 <Calendar size={16} weight="duotone" />
-                                <span>Created {formatDate(workflow.created_at)}</span>
+                                <span>{t('created', { time: formatDate(workflow.created_at) })}</span>
                             </div>
                             <div className="flex items-center gap-2 text-sm text-neutral-500">
                                 <Clock size={16} weight="duotone" />
-                                <span>Updated {formatDate(workflow.updated_at)}</span>
+                                <span>{t('updated', { time: formatDate(workflow.updated_at) })}</span>
                             </div>
                         </div>
                     </div>
@@ -213,24 +217,24 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Warning size={20} className="text-emerald-600" weight="fill" />
-                            Trigger workflow now?
+                            {t('runConfirm.title')}
                         </AlertDialogTitle>
                         <AlertDialogDescription asChild>
                             <div className="space-y-2 text-sm text-neutral-600">
                                 <p>
-                                    This will run <span className="font-semibold text-neutral-800">{workflow.name}</span> immediately in{' '}
-                                    <span className="font-semibold text-neutral-800">production mode</span>.
+                                    {t('runConfirm.bodyPrefix')} <span className="font-semibold text-neutral-800">{workflow.name}</span> {t('runConfirm.bodyMiddle')}{' '}
+                                    <span className="font-semibold text-neutral-800">{t('runConfirm.productionMode')}</span>.
                                 </p>
-                                <ul className="list-disc pl-4 space-y-1 text-neutral-500">
-                                    <li>Real emails will be sent to all matching recipients.</li>
-                                    <li>This cannot be undone once started.</li>
-                                    <li>Use this only when you intentionally want to fire the workflow outside its schedule.</li>
+                                <ul className="list-disc ps-4 space-y-1 text-neutral-500">
+                                    <li>{t('runConfirm.warnEmails')}</li>
+                                    <li>{t('runConfirm.warnUndo')}</li>
+                                    <li>{t('runConfirm.warnIntentional')}</li>
                                 </ul>
                             </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isRunning}>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel disabled={isRunning}>{t('actions.cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                             disabled={isRunning}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -240,18 +244,20 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                     const result = await triggerWorkflowNow(workflowId);
                                     setRunResult({
                                         ok: true,
-                                        message: `Triggered successfully. Engine status: ${(result?.status as string) ?? 'completed'}.`,
+                                        message: t('runConfirm.triggeredSuccess', {
+                                            status: (result?.status as string) ?? t('runConfirm.completedStatus'),
+                                        }),
                                     });
                                 } catch (err) {
-                                    const msg = err instanceof Error ? err.message : 'Unknown error';
-                                    setRunResult({ ok: false, message: `Failed to trigger: ${msg}` });
+                                    const msg = err instanceof Error ? err.message : t('unknownError');
+                                    setRunResult({ ok: false, message: t('runConfirm.triggerFailed', { message: msg }) });
                                 } finally {
                                     setIsRunning(false);
                                     setShowRunConfirm(false);
                                 }
                             }}
                         >
-                            {isRunning ? 'Triggering...' : 'Yes, run now'}
+                            {isRunning ? t('actions.triggering') : t('actions.yesRunNow')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -263,23 +269,23 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <Warning size={20} className="text-red-600" weight="fill" />
-                            Deactivate this workflow?
+                            {t('deactivateConfirm.title')}
                         </AlertDialogTitle>
                         <AlertDialogDescription asChild>
                             <div className="space-y-2 text-sm text-neutral-600">
                                 <p>
-                                    <span className="font-semibold text-neutral-800">{workflow.name}</span> will stop running immediately.
+                                    <span className="font-semibold text-neutral-800">{workflow.name}</span> {t('deactivateConfirm.body')}
                                 </p>
-                                <ul className="list-disc pl-4 space-y-1 text-neutral-500">
-                                    <li>No new executions will be triggered after this.</li>
-                                    <li>All past execution history will be preserved.</li>
-                                    <li>Contact your administrator to reactivate it.</li>
+                                <ul className="list-disc ps-4 space-y-1 text-neutral-500">
+                                    <li>{t('deactivateConfirm.warnNoNewExecutions')}</li>
+                                    <li>{t('deactivateConfirm.warnHistoryPreserved')}</li>
+                                    <li>{t('deactivateConfirm.warnContactAdmin')}</li>
                                 </ul>
                             </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel disabled={isDeleting}>{t('actions.cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                             disabled={isDeleting}
                             className="bg-red-600 hover:bg-red-700 text-white"
@@ -299,7 +305,7 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                 }
                             }}
                         >
-                            {isDeleting ? 'Deactivating...' : 'Yes, deactivate'}
+                            {isDeleting ? t('actions.deactivating') : t('actions.yesDeactivate')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -308,26 +314,26 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
             {/* Tabs: Diagram / Executions / Debug */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="mb-4">
-                    <TabsTrigger value="diagram">Diagram</TabsTrigger>
-                    <TabsTrigger value="configuration">Configuration</TabsTrigger>
-                    <TabsTrigger value="executions">Executions</TabsTrigger>
+                    <TabsTrigger value="diagram">{t('tabs.diagram')}</TabsTrigger>
+                    <TabsTrigger value="configuration">{t('tabs.configuration')}</TabsTrigger>
+                    <TabsTrigger value="executions">{t('tabs.executions')}</TabsTrigger>
                     <TabsTrigger value="debug">
-                        Debug
+                        {t('tabs.debug')}
                     </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="diagram">
                     {isDiagramLoading ? (
-                        <div className="flex items-center justify-center py-12 text-sm text-gray-400">Loading diagram...</div>
+                        <div className="flex items-center justify-center py-12 text-sm text-gray-400">{t('diagram.loading')}</div>
                     ) : diagramError ? (
                         <div className="flex flex-col items-center justify-center py-12 gap-2">
-                            <p className="text-sm text-red-500">Failed to load diagram</p>
-                            <p className="text-xs text-gray-400">{diagramError instanceof Error ? diagramError.message : 'Unknown error'}</p>
+                            <p className="text-sm text-red-500">{t('diagram.loadFailed')}</p>
+                            <p className="text-xs text-gray-400">{diagramError instanceof Error ? diagramError.message : t('unknownError')}</p>
                         </div>
                     ) : diagram ? (
                         <WorkflowDiagramSimple diagram={diagram} instituteId={instituteDetails?.id} />
                     ) : (
-                        <div className="flex items-center justify-center py-12 text-sm text-gray-400">No diagram data available</div>
+                        <div className="flex items-center justify-center py-12 text-sm text-gray-400">{t('diagram.noData')}</div>
                     )}
                 </TabsContent>
 
@@ -351,10 +357,10 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                         <div>
                             <div className="flex items-center justify-between mb-4">
                                 <p className="text-sm text-gray-500">
-                                    Debugging execution: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{debugExecutionId.slice(0, 8)}...</code>
+                                    {t('debug.debugging')} <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{debugExecutionId.slice(0, 8)}...</code>
                                 </p>
                                 <Button variant="outline" size="sm" onClick={() => setDebugExecutionId(null)}>
-                                    Select different execution
+                                    {t('debug.selectDifferent')}
                                 </Button>
                             </div>
                             <ExecutionFlowViewer
@@ -368,9 +374,9 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                 <Eye size={32} className="text-gray-400" />
                             </div>
                             <div className="text-center">
-                                <p className="text-sm font-medium text-gray-600">No execution selected</p>
+                                <p className="text-sm font-medium text-gray-600">{t('debug.noSelection')}</p>
                                 <p className="mt-1 text-xs text-gray-400 max-w-sm">
-                                    Go to the Executions tab, click on a run, then press "View on Diagram" to see the visual debug flow with node-level status and logs.
+                                    {t('debug.hint')}
                                 </p>
                             </div>
                             <Button
@@ -378,12 +384,47 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                 size="sm"
                                 onClick={() => setActiveTab('executions')}
                             >
-                                Go to Executions
+                                {t('debug.goToExecutions')}
                             </Button>
                         </div>
                     )}
                 </TabsContent>
             </Tabs>
+        </div>
+    );
+}
+
+/**
+ * "Event Driven" alone never told anyone what a workflow listens for. The diagram endpoint
+ * already resolves the trigger's event and the entities it is scoped to, and this page
+ * already loads it — so the headline can answer "what starts this, and for whom?" without
+ * making the admin open a node dialog or a second request.
+ */
+function TriggerHeadline({ diagram }: { diagram?: AutomationDiagram }) {
+    const { t } = useTranslation('workflowDetailsPage');
+    const triggerNode = diagram?.nodes?.find((n) => n.type === 'TRIGGER');
+    const details = triggerNode?.details as Record<string, unknown> | undefined;
+    if (!details) return null;
+
+    const firesOn = details['Fires on'] ?? details['Runs on a schedule'];
+    const scopeKey = Object.keys(details).find((k) => k.startsWith('Scope'));
+    const scope = scopeKey ? details[scopeKey] : undefined;
+    const scopeText = Array.isArray(scope) ? scope.join(', ') : scope ? String(scope) : undefined;
+
+    if (!firesOn) return null;
+    return (
+        <div className="flex items-center gap-2 text-sm">
+            <Lightning size={16} weight="duotone" className="text-amber-500" />
+            <span className="text-neutral-500">{t('trigger.firesOn')}</span>
+            <span className="font-medium text-neutral-700">{String(firesOn)}</span>
+            {scopeText && (
+                <>
+                    <span className="text-neutral-400">{t('trigger.for')}</span>
+                    <span className="font-medium text-neutral-700" title={scopeText}>
+                        {scopeText}
+                    </span>
+                </>
+            )}
         </div>
     );
 }

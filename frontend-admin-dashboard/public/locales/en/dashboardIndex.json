@@ -1,0 +1,72 @@
+{
+    "volt": {
+        "title": "Welcome to Volt",
+        "subtitle": "The future of interactive presentations.",
+        "redirecting": "Redirecting you to your workspace..."
+    },
+    "alertsDialog": {
+        "title": "System Alerts",
+        "loading": "Loading...",
+        "loadMore": "Load more",
+        "empty": "No alerts found"
+    },
+    "myCourses": {
+        "title": "My Courses",
+        "viewAll": "View All",
+        "description": "Quick access to your authored courses and submissions",
+        "authored": "Authored Courses",
+        "inReview": "In Review",
+        "loadError": "Failed to load course data"
+    },
+    "page": {
+        "title": "Dashboard",
+        "metaDescription": "This page shows the dashboard of the institute."
+    },
+    "greeting": {
+        "morning": "Good morning, <strong>{{name}}!</strong>",
+        "afternoon": "Good afternoon, <strong>{{name}}!</strong>",
+        "evening": "Good evening, <strong>{{name}}!</strong>"
+    },
+    "subtitle": {
+        "admin": "Here's how {{instituteName}} is doing today.",
+        "adminFallbackInstitute": "your institute",
+        "nonAdmin": "Track your courses and learners at a glance."
+    },
+    "header": {
+        "roleFallback": "Admin"
+    },
+    "welcomeVideo": {
+        "text": "Welcome aboard! We're excited to have you here. Let's set up your admin dashboard and make learning seamless and engaging."
+    },
+    "profileCard": {
+        "title": "Complete your institute profile",
+        "dismissAriaLabel": "Dismiss profile completion card",
+        "percentComplete": "{{percent}}% complete"
+    },
+    "namingCard": {
+        "title": "Naming Settings",
+        "description": "Customize the naming conventions used throughout your institute",
+        "button": "Naming Settings",
+        "dismissAriaLabel": "Dismiss naming settings card"
+    },
+    "revenueTrends": {
+        "subOrgTitle": "Amount collected — my organization"
+    },
+    "roleTypeCard": {
+        "title": "Role Type Users"
+    },
+    "aiCard": {
+        "dismissAriaLabel": "Dismiss AI features card",
+        "title": "Try New AI Features!",
+        "description": "Explore cutting-edge AI tools to enhance your teaching",
+        "features": {
+            "pdf": "Questions from PDF",
+            "lectureAudio": "Questions From Lecture Audio",
+            "sortTopicWise": "Sort Questions Topic wise",
+            "image": "Questions From Image",
+            "lectureFeedback": "Get Feedback of Lecture",
+            "planLecture": "Plan Your Lecture"
+        },
+        "manyMore": "Many More"
+    }
+}

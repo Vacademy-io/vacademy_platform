@@ -342,6 +342,10 @@ public class WorkflowCatalogController {
                 ctxVar("changeType", "Change type (CONVERSION_STATUS / TIER / ENQUIRY_STATUS / LEAD_STATUS)"),
                 ctxVar("oldStatus", "Previous status"),
                 ctxVar("newStatus", "New status"),
+                // Only emitted by the per-lead LEAD_STATUS path (LeadStatusService); the
+                // profile-level conversion/tier emitters don't set them.
+                ctxVar("statusChangeSource", "Who changed it: MANUAL | MANUAL_DISPOSITION | AI_CALLING | AI_WORKFLOW"),
+                ctxVar("statusChangedByUserId", "User ID of whoever changed it (blank for system changes)"),
                 ctxVar("conversionStatus", "Conversion status")));
 
         // Assessment events. Emitted cross-service by assessment_service's

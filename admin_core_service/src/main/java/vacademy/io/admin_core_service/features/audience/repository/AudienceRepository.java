@@ -21,6 +21,16 @@ import java.util.Optional;
 public interface AudienceRepository extends JpaRepository<Audience, String> {
 
     /**
+     * Bulk id -> campaign name, for screens that show which campaign a row came from
+     * without needing the audience itself. Two-column projection: the queue resolves
+     * these for a whole page at once and has no use for the rest of the row.
+     */
+    @Query(value = "SELECT a.id, a.campaign_name FROM audience a WHERE a.id IN (:ids)",
+            nativeQuery = true)
+    List<Object[]> findIdAndCampaignNameByIds(@Param("ids") java.util.Collection<String> ids);
+
+
+    /**
      * Atomically claim the right to start a bulk AI-call campaign for this audience:
      * stamps {@code last_ai_campaign_started_at = now()} only if no run was started
      * within {@code cooldownSec}. Returns 1 when claimed (proceed), 0 when a run was

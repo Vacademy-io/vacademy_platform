@@ -1,0 +1,29 @@
+{
+    "batchDialog": {
+        "moreLink_one": "+{{count}} de plus",
+        "moreLink_many": "+{{count}} de plus",
+        "moreLink_other": "+{{count}} de plus",
+        "title": "Groupes de l'évaluation"
+    },
+    "info": {
+        "createdOn": "Créé le : {{date}}",
+        "subject": "{{label}} : {{name}}",
+        "startDateTime": "Date et heure de début : {{date}}",
+        "endDateTime": "Date et heure de fin : {{date}}",
+        "duration": {
+            "label": "Durée : ",
+            "hours_one": "{{count}} h",
+            "hours_many": "{{count}} h",
+            "hours_other": "{{count}} h",
+            "minutes_one": "{{count}} min",
+            "minutes_many": "{{count}} min",
+            "minutes_other": "{{count}} min"
+        },
+        "totalParticipants_one": "Total des participants : {{count}}",
+        "totalParticipants_many": "Total des participants : {{count}}",
+        "totalParticipants_other": "Total des participants : {{count}}"
+    },
+    "joinLink": {
+        "label": "Lien de participation :"
+    }
+}

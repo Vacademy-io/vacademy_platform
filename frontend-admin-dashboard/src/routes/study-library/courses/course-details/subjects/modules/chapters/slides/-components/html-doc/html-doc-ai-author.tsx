@@ -10,6 +10,7 @@ import {
     ArrowArcRight,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -20,7 +21,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { Slide } from '../../-hooks/use-slides';
 import { getInitialHtmlDocContent } from './html-doc-utils';
-import { generateHtmlDocumentStream, HTML_CONTENT_TYPES } from './html-doc-ai-service';
+import { generateHtmlDocumentStream, buildHtmlContentTypes } from './html-doc-ai-service';
 import { HtmlSlidePreview } from '@/components/html-slide/html-slide-preview';
 
 type HtmlDocAiAuthorProps = {
@@ -45,6 +46,8 @@ function currentUserId(): string {
  * produces a new, revertible version.
  */
 export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: HtmlDocAiAuthorProps) {
+    const { t } = useTranslation('studyLibraryHtmlDocAiAuthor');
+    const htmlContentTypes = useMemo(() => buildHtmlContentTypes(t), [t]);
     const initial = useMemo(() => getInitialHtmlDocContent(slide), [slide.id]); // eslint-disable-line react-hooks/exhaustive-deps
     // Version history (in-session). versions[versionIndex] is the live doc.
     const [versions, setVersions] = useState<string[]>(initial ? [initial] : []);
@@ -140,7 +143,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
             }
             if (uploaded.length) setImages((prev) => [...prev, ...uploaded]);
         } catch {
-            toast.error('Some images failed to upload.');
+            toast.error(t('toast.someImagesFailed'));
         } finally {
             setIsUploading(false);
             if (imageInputRef.current) imageInputRef.current.value = '';
@@ -155,7 +158,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
             const fileId = await UploadFileInS3(file, () => {}, currentUserId(), 'STUDENTS');
             if (fileId) setPdf({ fileId, name: file.name });
         } catch {
-            toast.error('PDF failed to upload.');
+            toast.error(t('toast.pdfFailed'));
         } finally {
             setIsUploading(false);
             if (pdfInputRef.current) pdfInputRef.current.value = '';
@@ -170,7 +173,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
             .filter(Boolean);
         // For a first generation we need SOMETHING to work from.
         if (!hasContent && !text && !contentTypes.length && !kp.length && !pdf) {
-            toast.error('Describe the page, pick sections, add key points, or attach a PDF.');
+            toast.error(t('toast.describeRequired'));
             return;
         }
         setIsGenerating(true);
@@ -207,12 +210,12 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
             );
             pushVersion(generated);
             setPrompt('');
-            toast.success(hasContent ? 'Updated.' : 'Document created.');
+            toast.success(hasContent ? t('toast.updated') : t('toast.documentCreated'));
         } catch (e) {
             if ((e as Error)?.name === 'AbortError') {
-                toast.info('Generation cancelled.');
+                toast.info(t('toast.generationCancelled'));
             } else {
-                toast.error(e instanceof Error ? e.message : 'Generation failed.');
+                toast.error(e instanceof Error ? e.message : t('toast.generationFailed'));
             }
         } finally {
             abortRef.current = null;
@@ -226,17 +229,17 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
     const usePastedHtml = () => {
         const next = pastedHtml.trim();
         if (!next) {
-            toast.error('Paste your HTML first.');
+            toast.error(t('toast.pasteHtmlFirst'));
             return;
         }
         if (!next.includes('<')) {
-            toast.error('That does not look like HTML — paste the full page markup.');
+            toast.error(t('toast.notHtml'));
             return;
         }
         pushVersion(next);
         setPastedHtml('');
         setShowPaste(false);
-        toast.success('HTML added. Refine it with AI or edit the source anytime.');
+        toast.success(t('toast.htmlAdded'));
     };
 
     if (isLearnerView) {
@@ -253,7 +256,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
             <div className="rounded-lg border border-primary-100 bg-primary-50 p-3">
                 <div className="mb-2 flex items-center gap-2 text-subtitle font-semibold text-primary-500">
                     <MagicWand className="size-4" />
-                    {hasContent ? 'Edit with AI' : 'Create with AI'}
+                    {hasContent ? t('editWithAi') : t('createWithAi')}
                 </div>
 
                 {/* Materials (create) — attach reference PDF + images, pick sections */}
@@ -281,7 +284,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                 disable={isUploading}
                                 onClick={() => imageInputRef.current?.click()}
                             >
-                                <ImageIcon className="size-4" /> Add images
+                                <ImageIcon className="size-4" /> {t('addImages')}
                             </MyButton>
                             <MyButton
                                 buttonType="secondary"
@@ -289,7 +292,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                 disable={isUploading || !!pdf}
                                 onClick={() => pdfInputRef.current?.click()}
                             >
-                                <FilePdf className="size-4" /> Attach PDF
+                                <FilePdf className="size-4" /> {t('attachPdf')}
                             </MyButton>
                             <MyButton
                                 buttonType="secondary"
@@ -297,7 +300,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                 onClick={() => setShowPaste((s) => !s)}
                             >
                                 <Code className="size-4" />
-                                {showPaste ? 'Hide paste box' : 'Paste HTML'}
+                                {showPaste ? t('hidePasteBox') : t('pasteHtml')}
                             </MyButton>
                             {isUploading && <Spinner className="size-4 animate-spin text-primary-500" />}
                         </div>
@@ -306,9 +309,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         {showPaste && (
                             <div className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-white p-3">
                                 <span className="text-caption text-neutral-500">
-                                    Already have a page built elsewhere? Paste the complete HTML
-                                    here — no credits used. You can still refine it with AI
-                                    afterwards.
+                                    {t('pasteHtmlHint')}
                                 </span>
                                 <Textarea
                                     value={pastedHtml}
@@ -324,15 +325,14 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                         disable={!pastedHtml.trim()}
                                         onClick={usePastedHtml}
                                     >
-                                        <Code className="size-4" /> Use this HTML
+                                        <Code className="size-4" /> {t('useThisHtml')}
                                     </MyButton>
                                 </div>
                             </div>
                         )}
                         {pdf && (
                             <p className="text-caption text-neutral-400">
-                                Grounding in a PDF adds a per-page conversion charge on top of the
-                                generation cost.
+                                {t('pdfGroundingHint')}
                             </p>
                         )}
 
@@ -342,7 +342,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                 {pdf && (
                                     <span
                                         className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-caption text-neutral-600"
-                                        title="Grounding in a PDF adds a per-page conversion charge"
+                                        title={t('pdfGroundingHint')}
                                     >
                                         <FilePdf className="size-3.5 text-danger-500" />
                                         {pdf.name}
@@ -374,10 +374,10 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         {/* Content-type chips */}
                         <div className="flex flex-col gap-1.5">
                             <span className="text-caption font-medium text-neutral-500">
-                                Include (optional)
+                                {t('includeOptional')}
                             </span>
                             <div className="flex flex-wrap gap-2">
-                                {HTML_CONTENT_TYPES.map((ct) => {
+                                {htmlContentTypes.map((ct) => {
                                     const on = contentTypes.includes(ct.key);
                                     return (
                                         <button
@@ -402,7 +402,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         <Textarea
                             value={keyPoints}
                             onChange={(e) => setKeyPoints(e.target.value)}
-                            placeholder="Optional key points to cover — one per line"
+                            placeholder={t('keyPointsPlaceholder')}
                             className="min-h-16 resize-y border-neutral-300 text-caption"
                         />
                     </div>
@@ -418,7 +418,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             className="accent-primary-500"
                         />
                         <span className="flex items-center gap-1.5">
-                            Match {brandName || 'institute'} brand
+                            {t('matchBrand', { brand: brandName || t('institute') })}
                             {brandColor && (
                                 <span
                                     className="size-3 rounded-full border border-neutral-200"
@@ -438,8 +438,8 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         disabled={isGenerating}
                         placeholder={
                             hasContent
-                                ? 'Describe a change — e.g. "make the quiz harder and add a drag-drop game"'
-                                : 'Describe the page — e.g. "an interactive lesson on photosynthesis"'
+                                ? t('promptPlaceholderEdit')
+                                : t('promptPlaceholderCreate')
                         }
                         className="min-h-16 flex-1 resize-y border-neutral-300 text-body focus-visible:ring-primary-200"
                         onKeyDown={(e) => {
@@ -451,7 +451,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                     />
                     {isGenerating ? (
                         <MyButton buttonType="secondary" scale="medium" onClick={cancelGenerate}>
-                            <X className="size-4" /> Cancel
+                            <X className="size-4" /> {t('cancel')}
                         </MyButton>
                     ) : (
                         <MyButton
@@ -461,18 +461,17 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             onClick={() => void runGenerate()}
                         >
                             <MagicWand className="size-4" />
-                            {hasContent ? 'Update' : 'Generate'}
+                            {hasContent ? t('update') : t('generate')}
                             {costCredits != null && (
-                                <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 text-caption">
-                                    {costCredits} {costCredits === 1 ? 'credit' : 'credits'}
+                                <span className="ms-1 rounded-full bg-white/20 px-1.5 py-0.5 text-caption">
+                                    {t('credits', { count: costCredits })}
                                 </span>
                             )}
                         </MyButton>
                     )}
                 </div>
                 <p className="mt-2 text-caption text-neutral-400">
-                    Authored by AI so the page can be freely creative — animations, interactive
-                    quizzes and games all run. ⌘/Ctrl + Enter to generate.
+                    {t('authoredByAiHint')}
                 </p>
             </div>
 
@@ -481,17 +480,17 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                 <div className="overflow-hidden rounded-lg border border-primary-200">
                     <div className="flex items-center justify-between border-b border-primary-100 bg-primary-50 px-3 py-2">
                         <span className="flex items-center gap-2 text-caption font-medium text-primary-500">
-                            <Spinner className="size-4 animate-spin" /> Building your page…
+                            <Spinner className="size-4 animate-spin" /> {t('buildingYourPage')}
                         </span>
                         <MyButton buttonType="secondary" scale="small" onClick={cancelGenerate}>
-                            <X className="size-4" /> Cancel
+                            <X className="size-4" /> {t('cancel')}
                         </MyButton>
                     </div>
                     {streamingHtml.trim() ? (
                         <HtmlSlidePreview html={streamingHtml} />
                     ) : (
                         <div className="flex items-center justify-center gap-2 py-16 text-caption text-neutral-400">
-                            <Spinner className="size-4 animate-spin" /> Starting…
+                            <Spinner className="size-4 animate-spin" /> {t('starting')}
                         </div>
                     )}
                 </div>
@@ -502,7 +501,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         <div className="flex items-center gap-1">
                             <button
                                 type="button"
-                                title="Previous version"
+                                title={t('previousVersion')}
                                 disabled={versionIndex <= 0}
                                 onClick={() => goToVersion(versionIndex - 1)}
                                 className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
@@ -514,7 +513,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                     <button
                                         key={i}
                                         type="button"
-                                        title={`Version ${i + 1}`}
+                                        title={t('version', { number: i + 1 })}
                                         onClick={() => goToVersion(i)}
                                         className={cn(
                                             'rounded px-1.5 py-0.5 text-caption',
@@ -529,7 +528,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             </div>
                             <button
                                 type="button"
-                                title="Next version"
+                                title={t('nextVersion')}
                                 disabled={versionIndex >= versions.length - 1}
                                 onClick={() => goToVersion(versionIndex + 1)}
                                 className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
@@ -543,7 +542,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             onClick={() => setShowSource((s) => !s)}
                         >
                             <Code className="size-4" />
-                            {showSource ? 'Hide HTML' : 'View / edit HTML'}
+                            {showSource ? t('hideHtml') : t('viewEditHtml')}
                         </MyButton>
                     </div>
                     {showSource ? (
@@ -568,8 +567,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         <>
                             {testResult && (
                                 <div className="border-b border-success-100 bg-success-50 px-3 py-1.5 text-caption text-success-600">
-                                    ✓ Reports results to the gradebook — you scored {testResult} in
-                                    this preview.
+                                    {t('reportsResultsHint', { result: testResult })}
                                 </div>
                             )}
                             <HtmlSlidePreview
@@ -579,8 +577,8 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                     if (typeof r.score === 'number' && typeof r.maxScore === 'number')
                                         parts.push(`${r.score}/${r.maxScore}`);
                                     else if (typeof r.wrong === 'number')
-                                        parts.push(`${r.wrong} wrong`);
-                                    setTestResult(parts.join(' · ') || 'completed');
+                                        parts.push(t('wrongCount', { count: r.wrong }));
+                                    setTestResult(parts.join(' · ') || t('completed'));
                                 }}
                             />
                         </>
@@ -595,12 +593,10 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                 >
                     <MagicWand className="size-8 text-neutral-300" />
                     <p className="mt-3 text-body font-medium text-neutral-500">
-                        {isGenerating ? 'Creating your page…' : 'No content yet'}
+                        {isGenerating ? t('creatingYourPage') : t('noContentYet')}
                     </p>
                     <p className="mt-1 max-w-sm text-caption text-neutral-400">
-                        {isGenerating
-                            ? 'The AI is designing a rich, self-contained page from your materials. This can take up to a minute.'
-                            : 'Add materials and describe what you want, then generate — or paste HTML you already have.'}
+                        {isGenerating ? t('generatingHint') : t('addMaterialsHint')}
                     </p>
                 </div>
             )}

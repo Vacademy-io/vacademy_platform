@@ -3,6 +3,8 @@ import { ColumnDef } from '@tanstack/react-table';
 import { Link } from '@tanstack/react-router';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     CalendarCheck,
     Presentation,
@@ -40,12 +42,13 @@ interface EngMeta {
  * Only non-zero signals are listed so the cell stays compact.
  */
 function EngagementCell({ score, meta }: { score: number; meta: EngMeta }) {
+    const { t } = useTranslation('studyLibraryBatchLiveReport');
     const parts: string[] = [];
-    if (meta.talkTimeMin > 0) parts.push(`${meta.talkTimeMin}m talk`);
-    if (meta.chats > 0) parts.push(`${meta.chats} chat`);
-    if (meta.polls > 0) parts.push(`${meta.polls} poll`);
-    if (meta.raiseHand > 0) parts.push(`${meta.raiseHand} hand`);
-    if (meta.emojis > 0) parts.push(`${meta.emojis} emoji`);
+    if (meta.talkTimeMin > 0) parts.push(t('engagement.talkTime', { count: meta.talkTimeMin }));
+    if (meta.chats > 0) parts.push(t('engagement.chats', { count: meta.chats }));
+    if (meta.polls > 0) parts.push(t('engagement.polls', { count: meta.polls }));
+    if (meta.raiseHand > 0) parts.push(t('engagement.raiseHand', { count: meta.raiseHand }));
+    if (meta.emojis > 0) parts.push(t('engagement.emojis', { count: meta.emojis }));
 
     return (
         <div className="flex flex-col gap-0.5">
@@ -55,7 +58,7 @@ function EngagementCell({ score, meta }: { score: number; meta: EngMeta }) {
                     {parts.join(' · ')}
                 </span>
             ) : (
-                <span className="text-caption text-neutral-300">no interaction</span>
+                <span className="text-caption text-neutral-300">{t('engagement.none')}</span>
             )}
         </div>
     );
@@ -71,15 +74,17 @@ interface PerClassRow {
     engagement: number;
 }
 
-const perClassColumns: ColumnDef<PerClassRow>[] = [
-    { accessorKey: 'date', header: 'Date' },
-    { accessorKey: 'title', header: 'Class' },
-    { accessorKey: 'present', header: 'Present' },
-    { accessorKey: 'absent', header: 'Absent' },
-    { accessorKey: 'attendance', header: 'Attendance' },
-    { accessorKey: 'duration', header: 'Avg Duration' },
-    { accessorKey: 'engagement', header: 'Engagement' },
-];
+function buildPerClassColumns(t: TFunction): ColumnDef<PerClassRow>[] {
+    return [
+        { accessorKey: 'date', header: t('table.date') },
+        { accessorKey: 'title', header: t('table.class') },
+        { accessorKey: 'present', header: t('table.present') },
+        { accessorKey: 'absent', header: t('table.absent') },
+        { accessorKey: 'attendance', header: t('table.attendance') },
+        { accessorKey: 'duration', header: t('table.avgDuration') },
+        { accessorKey: 'engagement', header: t('table.engagement') },
+    ];
+}
 
 interface LeaderRow {
     rank: number;
@@ -91,26 +96,31 @@ interface LeaderRow {
     engMeta: EngMeta;
 }
 
-const leaderColumns: ColumnDef<LeaderRow>[] = [
-    { accessorKey: 'rank', header: 'Rank' },
-    { accessorKey: 'name', header: 'Name' },
-    { accessorKey: 'attendance', header: 'Attendance' },
-    { accessorKey: 'classes', header: 'Classes Attended' },
-    { accessorKey: 'duration', header: 'Avg Duration' },
-    {
-        accessorKey: 'engagement',
-        header: 'Engagement',
-        cell: ({ row }) => (
-            <EngagementCell score={row.original.engagement} meta={row.original.engMeta} />
-        ),
-    },
-];
+function buildLeaderColumns(t: TFunction): ColumnDef<LeaderRow>[] {
+    return [
+        { accessorKey: 'rank', header: t('table.rank') },
+        { accessorKey: 'name', header: t('table.name') },
+        { accessorKey: 'attendance', header: t('table.attendance') },
+        { accessorKey: 'classes', header: t('table.classesAttended') },
+        { accessorKey: 'duration', header: t('table.avgDuration') },
+        {
+            accessorKey: 'engagement',
+            header: t('table.engagement'),
+            cell: ({ row }) => (
+                <EngagementCell score={row.original.engagement} meta={row.original.engMeta} />
+            ),
+        },
+    ];
+}
 
 export default function BatchLiveReport() {
+    const { t } = useTranslation('studyLibraryBatchLiveReport');
     const { instituteDetails } = useInstituteDetailsStore();
     const [applied, setApplied] = useState<AppliedLiveFilters | null>(null);
     const [lbPage, setLbPage] = useState(0);
     const [exporting, setExporting] = useState(false);
+    const perClassColumns = useMemo(() => buildPerClassColumns(t), [t]);
+    const leaderColumns = useMemo(() => buildLeaderColumns(t), [t]);
 
     const { data, isFetching, isError } = useLiveBatchReport(
         applied?.packageSessionId || '',
@@ -132,7 +142,7 @@ export default function BatchLiveReport() {
                 present: c.present,
                 absent: c.total - c.present,
                 attendance: `${c.attendancePct.toFixed(0)}%`,
-                duration: formatDuration(c.avgDurationMinutes),
+                duration: formatDuration(c.avgDurationMinutes, t),
                 engagement: c.avgEngagementIndex,
             })) ?? [],
         total_pages: 1,
@@ -152,7 +162,7 @@ export default function BatchLiveReport() {
                     name: r.fullName,
                     attendance: `${r.attendancePercentage.toFixed(1)}%`,
                     classes: `${r.attended}/${r.total}`,
-                    duration: formatDuration(r.avgDurationMinutes),
+                    duration: formatDuration(r.avgDurationMinutes, t),
                     engagement: r.engagementIndex,
                     engMeta: {
                         talkTimeMin: Math.round(r.engagement.talkTimeSeconds / 60),
@@ -181,13 +191,15 @@ export default function BatchLiveReport() {
                     courseName: applied.courseName,
                     batchLabel: applied.batchLabel,
                     dateRange: `${fmtDate(applied.startDate)} — ${fmtDate(applied.endDate)}`,
-                    generatedOn: `Generated ${dayjs().format('DD MMM YYYY, HH:mm')}`,
+                    generatedOn: t('export.generatedOn', {
+                        date: dayjs().format('DD MMM YYYY, HH:mm'),
+                    }),
                 },
                 summary
             );
-            toast.success('Live class report exported');
+            toast.success(t('export.exportSuccess'));
         } catch {
-            toast.error('Failed to export PDF');
+            toast.error(t('export.exportFailed'));
         } finally {
             setExporting(false);
         }
@@ -208,15 +220,17 @@ export default function BatchLiveReport() {
 
             {isError && !isFetching && (
                 <div className="rounded-lg border border-danger-200 bg-danger-50 p-6 text-body text-danger-700">
-                    Something went wrong loading the report. Please try again.
+                    {t('errors.loadFailed')}
                 </div>
             )}
 
             {applied && !isFetching && !isError && !hasData && (
                 <div className="rounded-lg border border-neutral-200 bg-white p-10 text-center shadow-sm">
-                    <p className="text-subtitle font-semibold text-neutral-700">No live classes found</p>
+                    <p className="text-subtitle font-semibold text-neutral-700">
+                        {t('emptyState.title')}
+                    </p>
                     <p className="mt-1 text-body text-neutral-500">
-                        No live classes were held for this batch in the selected period.
+                        {t('emptyState.description')}
                     </p>
                 </div>
             )}
@@ -244,8 +258,8 @@ export default function BatchLiveReport() {
                             <div className="flex flex-wrap items-center gap-2">
                                 <Link to="/study-library/attendance-tracker">
                                     <MyButton buttonType="secondary" className="h-9 px-3 text-body">
-                                        <ArrowSquareOut className="mr-1.5 size-4" />
-                                        Attendance Tracker
+                                        <ArrowSquareOut className="me-1.5 size-4" />
+                                        {t('actions.attendanceTracker')}
                                     </MyButton>
                                 </Link>
                                 <MyButton
@@ -254,8 +268,8 @@ export default function BatchLiveReport() {
                                     disable={exporting}
                                     className="h-9 px-3 text-body"
                                 >
-                                    <Export className="mr-1.5 size-4" />
-                                    {exporting ? 'Exporting…' : 'Export PDF'}
+                                    <Export className="me-1.5 size-4" />
+                                    {exporting ? t('actions.exporting') : t('actions.exportPdf')}
                                 </MyButton>
                             </div>
                         </div>
@@ -264,43 +278,43 @@ export default function BatchLiveReport() {
                     {/* Metric cards */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <MetricCard
-                            label="Avg Attendance"
+                            label={t('metrics.avgAttendance')}
                             value={`${summary.avgAttendancePct.toFixed(1)}%`}
-                            sub={`${summary.learnerCount} learners`}
+                            sub={t('metrics.learnersCount', { count: summary.learnerCount })}
                             icon={<CalendarCheck className="size-5" />}
                         />
                         <MetricCard
-                            label="Classes Held"
+                            label={t('metrics.classesHeld')}
                             value={`${summary.totalClassesHeld}`}
                             icon={<Presentation className="size-5" />}
                         />
                         <MetricCard
-                            label="Avg Duration / Class"
-                            value={formatDuration(summary.avgDurationMinutes)}
-                            sub="present learners"
+                            label={t('metrics.avgDurationPerClass')}
+                            value={formatDuration(summary.avgDurationMinutes, t)}
+                            sub={t('metrics.presentLearners')}
                             icon={<Timer className="size-5" />}
                         />
                         <MetricCard
-                            label="Avg Engagement"
+                            label={t('metrics.avgEngagement')}
                             value={`${summary.avgEngagementIndex}`}
-                            sub="participation points"
+                            sub={t('metrics.participationPoints')}
                             icon={<ChatsCircle className="size-5" />}
-                            info="Engagement points — a weighted total of in-class participation (talk time counts most, then polls, chats and raise-hands), summed across all classes in the period. Higher = more engaged; there is no upper limit. Only available for provider-synced (Zoom/BBB) classes."
+                            info={t('metrics.engagementInfo')}
                         />
                     </div>
 
                     {/* Attendance trend */}
                     <SectionCard
-                        title="Attendance Trend"
-                        subtitle="Class-by-class attendance rate over the selected period"
+                        title={t('sections.attendanceTrendTitle')}
+                        subtitle={t('sections.attendanceTrendSubtitle')}
                     >
                         <LiveAttendanceChart data={summary.timeline} />
                     </SectionCard>
 
                     {/* Class-wise table */}
                     <SectionCard
-                        title="Class-wise Breakdown"
-                        subtitle="Attendance, duration and engagement for every class held"
+                        title={t('sections.classBreakdownTitle')}
+                        subtitle={t('sections.classBreakdownSubtitle')}
                     >
                         <div className="overflow-auto">
                             <MyTable
@@ -316,8 +330,8 @@ export default function BatchLiveReport() {
 
                     {/* Leaderboard */}
                     <SectionCard
-                        title="Leaderboard"
-                        subtitle="Ranked by attendance, then engagement. Interaction totals are summed across all classes in the selected period."
+                        title={t('sections.leaderboardTitle')}
+                        subtitle={t('sections.leaderboardSubtitle')}
                     >
                         <MyTable
                             data={leaderTable}

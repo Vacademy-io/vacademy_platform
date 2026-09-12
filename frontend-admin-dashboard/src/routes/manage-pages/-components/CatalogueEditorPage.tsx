@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
@@ -15,6 +16,7 @@ import { PropertyPanel } from './PropertyPanel';
 import { PageTabs } from './PageTabs';
 import { CanvasRenderer } from './CanvasRenderer';
 import { AiCopilotPanel } from './AiCopilotPanel';
+import { SiteAnalyticsPanel } from './SiteAnalyticsPanel';
 import { AiChromePanel } from './AiChromePanel';
 import { RevisionHistoryDialog } from './RevisionHistoryDialog';
 import { PublishCheckDialog } from './PublishCheckDialog';
@@ -23,8 +25,7 @@ import { Button } from '@/components/ui/button';
 import {
     CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
     ArrowUUpLeft as Undo2, ArrowUUpRight as Redo2, Stack as Layers,
-    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle,
-} from '@phosphor-icons/react';
+    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';
@@ -38,6 +39,7 @@ import { getComponentTemplate } from '../-utils/component-templates';
 import { Textarea } from '@/components/ui/textarea';
 
 export const CatalogueEditorPage = () => {
+    const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
     const { tagName } = Route.useParams();
     const instituteId = getCurrentInstituteId();
     const {
@@ -79,7 +81,7 @@ export const CatalogueEditorPage = () => {
             if (!active.data.current?.type || !selectedPageId || !over) return;
 
             const templateKey = active.data.current.type as string;
-            const component = getComponentTemplate(templateKey);
+            const component = getComponentTemplate(templateKey, tTemplates);
             const overId = over.id.toString();
 
             if (overId.startsWith('slot::')) {
@@ -95,13 +97,13 @@ export const CatalogueEditorPage = () => {
 
             setActiveDragLabel(null);
         },
-        [selectedPageId, addComponent, addToSlot]
+        [selectedPageId, addComponent, addToSlot, tTemplates]
     );
 
     const [jsonText, setJsonText] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
     const [sidebarTab, setSidebarTab] = useState<'components' | 'layers' | 'templates'>('components');
-    const [rightTab, setRightTab] = useState<'properties' | 'ai'>('properties');
+    const [rightTab, setRightTab] = useState<'properties' | 'ai' | 'analytics'>('properties');
     const [savedConfigJSON, setSavedConfigJSON] = useState('');
     // Autosave bookkeeping — a layman doesn't press Save.
     const [autosaving, setAutosaving] = useState(false);
@@ -550,8 +552,23 @@ export const CatalogueEditorPage = () => {
                                     <Sparkle className="size-3.5" weight="duotone" />
                                     AI
                                 </button>
+                                <button
+                                    onClick={() => setRightTab('analytics')}
+                                    className={`flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
+                                        rightTab === 'analytics'
+                                            ? 'border-b-2 border-primary-500 text-primary-500'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    <ChartLine className="size-3.5" weight="duotone" />
+                                    Traffic
+                                </button>
                             </div>
-                            {rightTab === 'properties' ? (
+                            {rightTab === 'analytics' ? (
+                                <div className="flex-1 overflow-auto">
+                                    <SiteAnalyticsPanel />
+                                </div>
+                            ) : rightTab === 'properties' ? (
                                 <div className="flex-1 overflow-auto">
                                     <PropertyPanel />
                                 </div>

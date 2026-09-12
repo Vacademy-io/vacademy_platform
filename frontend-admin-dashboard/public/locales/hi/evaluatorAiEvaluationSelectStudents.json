@@ -1,0 +1,40 @@
+{
+    "dialog": {
+        "title": "मूल्यांकन के लिए {{term}} चुनें"
+    },
+    "table": {
+        "name": "नाम",
+        "enrollmentId": "नामांकन आईडी",
+        "attemptCount": "प्रयासों की संख्या",
+        "currentPdfId": "वर्तमान पीडीएफ आईडी",
+        "notAvailable": "लागू नहीं",
+        "attemptsCount_one": "{{count}} प्रयास",
+        "attemptsCount_other": "{{count}} प्रयास",
+        "attemptLabel": "प्रयास {{number}}",
+        "evaluatingWithAssessment": "{{assessment}} के साथ {{term}} का मूल्यांकन हो रहा है...",
+        "emptyState": "कोई नामांकित {{term}} नहीं मिला।",
+        "submitSelected": "चयनित सबमिट करें ({{count}})"
+    },
+    "pagination": {
+        "pageInfo": "पृष्ठ {{current}} / {{total}}",
+        "previous": "पिछला",
+        "next": "अगला",
+        "selectedCount_one": "{{count}} चयनित",
+        "selectedCount_other": "{{count}} चयनित"
+    },
+    "common": {
+        "cancel": "रद्द करें"
+    },
+    "assessmentDialog": {
+        "title": "मूल्यांकन चुनें",
+        "assessmentLabel": "मूल्यांकन",
+        "selectPlaceholder": "एक मूल्यांकन चुनें",
+        "evaluating": "मूल्यांकन हो रहा है...",
+        "evaluateButton": "मूल्यांकन करें"
+    },
+    "toast": {
+        "selectAtLeastOneStudent": "कृपया कम से कम एक छात्र चुनें",
+        "selectAssessment": "कृपया एक मूल्यांकन चुनें",
+        "evaluationFailed": "मूल्यांकन विफल रहा। कृपया पुनः प्रयास करें।"
+    }
+}

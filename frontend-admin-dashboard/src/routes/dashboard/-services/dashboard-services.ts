@@ -28,8 +28,8 @@ import { RoleTypeSelectedFilter } from '../-components/RoleTypeComponent';
 import { z } from 'zod';
 import { inviteUsersSchema } from '../-components/InviteUsersComponent';
 import { UserRolesDataEntry } from '@/types/dashboard/user-roles';
-import { editDashboardProfileSchema } from '../-utils/edit-dashboard-profile-schema';
-import { adminProfileSchema } from '../-utils/admin-profile-schema';
+import type { EditDashboardProfileFormValues } from '../-utils/edit-dashboard-profile-schema';
+import type { AdminProfileFormValues } from '../-utils/admin-profile-schema';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getInstituteId } from '@/constants/helper';
@@ -329,7 +329,7 @@ export const handleResendUserInvitation = async (userId: string) => {
 };
 
 export const handleUpdateInstituteDashboard = async (
-    data: z.infer<typeof editDashboardProfileSchema>,
+    data: EditDashboardProfileFormValues,
     instituteId: string | undefined
 ) => {
     const convertedData = {
@@ -373,7 +373,7 @@ export const handleUpdateInstituteDashboard = async (
 };
 
 export const handleUpdateAdminDetails = async (
-    adminDetailsData: z.infer<typeof adminProfileSchema>,
+    adminDetailsData: AdminProfileFormValues,
     roles: UserRole[],
     oldRoles: string[],
     newRoles: string[]

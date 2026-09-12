@@ -9,6 +9,8 @@ import vacademy.io.auth_service.feature.notification.dto.NotificationToUserDTO;
 import vacademy.io.auth_service.feature.notification.enums.NotificationSource;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
+import vacademy.io.auth_service.feature.notification.dto.unified.UnifiedSendResponse;
+import vacademy.io.auth_service.feature.user.dto.CredentialShareResult;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.User;
@@ -45,35 +47,47 @@ public class UserOperationService {
     @Autowired
     private OriginInstituteResolver originInstituteResolver;
 
-    public String sendUserPasswords(List<String> userIds, CustomUserDetails userDetails) {
-        if (userIds == null || userIds.isEmpty()) {
-            return "Invalid input: userIds or userDetails is missing";
+    /**
+     * Shares credentials and reports what happened, per learner.
+     *
+     * <p>Returns counts rather than a sentence because every branch below is a 200: asking for
+     * learners who do not exist, or who have no email/username/password on file, mails nobody
+     * and used to be indistinguishable from a batch that went out in full.
+     */
+    public CredentialShareResult shareUserPasswords(List<String> userIds, CustomUserDetails userDetails) {
+        return shareUserPasswords(userIds, userDetails != null ? userDetails.getUserId() : "auth-service");
+    }
+
+    public CredentialShareResult shareUserPasswords(List<String> userIds, String sourceId) {
+        int requested = userIds == null ? 0 : userIds.size();
+        if (requested == 0) {
+            return CredentialShareResult.builder()
+                    .sent(0).failed(0)
+                    .message("Invalid input: userIds is missing").build();
         }
 
         List<User> users = userRepository.findUserDetailsByIds(userIds);
         if (users == null || users.isEmpty()) {
-            return "No valid users found";
+            return CredentialShareResult.builder()
+                    .sent(0).failed(requested)
+                    .message("No valid users found").build();
         }
 
-        return sendUserPasswords(users, userDetails.getUserId());
+        return sendUserPasswords(users, sourceId, requested);
     }
 
+    /**
+     * Plain-sentence reply kept for the internal route, whose callers fire and forget.
+     */
     public String sendUserPasswords(List<String> userIds) {
-        if (userIds == null || userIds.isEmpty()) {
-            return "Invalid input: userIds or userDetails is missing";
-        }
-
-        List<User> users = userRepository.findUserDetailsByIds(userIds);
-        if (users == null || users.isEmpty()) {
-            return "No valid users found";
-        }
-
-        return sendUserPasswords(users,"auth-service");
+        return shareUserPasswords(userIds, "auth-service").getMessage();
     }
 
-    public String sendUserPasswords(List<User> users, String sourceId) {
+    private CredentialShareResult sendUserPasswords(List<User> users, String sourceId, int requested) {
         if (users == null || users.isEmpty() || sourceId == null || sourceId.isBlank()) {
-            return "Invalid data for sending passwords";
+            return CredentialShareResult.builder()
+                    .sent(0).failed(requested)
+                    .message("Invalid data for sending passwords").build();
         }
 
         // One sender address covers the whole batch, so pick it from every recipient's institutes
@@ -112,12 +126,35 @@ public class UserOperationService {
         }
 
         if (notifyUsers.isEmpty()) {
-            return "No valid users to notify";
+            return CredentialShareResult.builder()
+                    .sent(0).failed(requested)
+                    .message("No valid users to notify — the selected learners have no email, "
+                            + "username or password on file.").build();
         }
 
         notificationDTO.setUsers(notifyUsers);
-        notificationService.sendEmailViaUnified(notificationDTO, instituteId);
-        return "Notification sent successfully";
+        // The unified send reports per-recipient acceptance. Discarding it is what let a batch
+        // that every recipient rejected still answer "Notification sent successfully".
+        UnifiedSendResponse response = notificationService.sendEmailViaUnified(notificationDTO, instituteId);
+        int accepted = response != null ? response.getAccepted() : notifyUsers.size();
+        int skipped = requested - notifyUsers.size();
+        int failed = requested - accepted;
+
+        StringBuilder message = new StringBuilder();
+        if (accepted == 0) {
+            message.append("Nothing was sent.");
+        } else if (failed == 0) {
+            message.append("Notification sent successfully.");
+        } else {
+            message.append("Notification sent to ").append(accepted).append(" of ").append(requested).append(".");
+        }
+        if (skipped > 0) {
+            message.append(" Skipped ").append(skipped)
+                    .append(" with no email, username or password on file.");
+        }
+
+        return CredentialShareResult.builder()
+                .sent(accepted).failed(Math.max(0, failed)).message(message.toString()).build();
     }
 
     /**

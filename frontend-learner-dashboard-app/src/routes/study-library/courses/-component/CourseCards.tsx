@@ -284,7 +284,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 )}
             </div>
 
-            <div className="flex flex-col flex-grow p-4 lg:p-5 gap-3">
+            <div className="flex flex-col flex-grow p-4 lg:p-5 gap-stack">
                 {/* Header */}
                 <div className="flex justify-between items-start gap-3">
                     <h3
@@ -345,8 +345,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 </div>
                             )}
                         </div>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-caption text-muted-foreground font-medium mb-0.5">
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                            <p className="text-caption text-muted-foreground font-medium">
                                 {toTitleCase(getTerminology(RoleTerms.Teacher, SystemTerms.Teacher))}
                             </p>
                             <div className="text-sm font-medium truncate">
@@ -464,7 +464,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 )}
             </div>
 
-            <CardFooter className="p-4 pt-0 mt-auto flex flex-col gap-2">
+            <CardFooter className="p-card pt-0 mt-auto flex flex-col gap-2">
                 <Button
                     className={cn(
                         "w-full font-semibold shadow-sm group/btn",

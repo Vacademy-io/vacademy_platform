@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.counselor_pool.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.counselor_pool.dto.*;
 import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorPoolService;
 import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorPoolShiftService;
@@ -29,6 +30,11 @@ public class CounselorPoolController {
     // ────────────────────────────────────────────────────────────────
 
     @PostMapping
+    @Auditable(
+            entityType = "COUNSELLOR_POOL",
+            action = "CREATE",
+            entityIdExpr = "#result?.body?.id",
+            descriptionExpr = "'created counsellor pool ' + (#result?.body?.name ?: '')")
     public ResponseEntity<CounselorPoolDTO> createPool(
             @RequestBody CreatePoolRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -46,6 +52,11 @@ public class CounselorPoolController {
     }
 
     @PatchMapping("/{poolId}")
+    @Auditable(
+            entityType = "COUNSELLOR_POOL",
+            action = "UPDATE",
+            entityIdExpr = "#poolId",
+            descriptionExpr = "'updated counsellor pool ' + (#result?.body?.name ?: #poolId)")
     public ResponseEntity<CounselorPoolDTO> updatePool(
             @PathVariable String poolId,
             @RequestBody UpdatePoolRequest request) {
@@ -53,6 +64,11 @@ public class CounselorPoolController {
     }
 
     @DeleteMapping("/{poolId}")
+    @Auditable(
+            entityType = "COUNSELLOR_POOL",
+            action = "DELETE",
+            entityIdExpr = "#poolId",
+            descriptionExpr = "'deleted a counsellor pool'")
     public ResponseEntity<String> deletePool(@PathVariable String poolId) {
         poolService.deletePool(poolId);
         return ResponseEntity.ok("Pool deleted");
@@ -106,6 +122,11 @@ public class CounselorPoolController {
      * Body: { counselor_user_ids: [...] }. If any id fails, nothing is added.
      */
     @PostMapping("/{poolId}/counselors")
+    @Auditable(
+            entityType = "COUNSELLOR_POOL",
+            action = "ADD_MEMBER",
+            entityIdExpr = "#poolId",
+            descriptionExpr = "'added ' + @crmAuditNarrator.peopleFor(#request?.counselorUserIds) + ' to a counsellor pool'")
     public ResponseEntity<String> addCounselorsToPool(
             @PathVariable String poolId,
             @RequestBody AddCounselorsRequest request,
@@ -115,6 +136,11 @@ public class CounselorPoolController {
     }
 
     @DeleteMapping("/{poolId}/counselors/{counselorUserId}")
+    @Auditable(
+            entityType = "COUNSELLOR_POOL",
+            action = "REMOVE_MEMBER",
+            entityIdExpr = "#poolId",
+            descriptionExpr = "'removed ' + @crmAuditNarrator.personFor(#counselorUserId) + ' from a counsellor pool'")
     public ResponseEntity<String> removeCounselorFromPool(
             @PathVariable String poolId,
             @PathVariable String counselorUserId) {
@@ -130,6 +156,12 @@ public class CounselorPoolController {
      * right actor.
      */
     @PatchMapping("/{poolId}/counselors/{counselorUserId}/status")
+    @Auditable(
+            entityType = "COUNSELLOR_POOL",
+            action = "MEMBER_STATUS_CHANGE",
+            entityIdExpr = "#poolId",
+            descriptionExpr = "'changed pool status of ' + @crmAuditNarrator.personFor(#counselorUserId) "
+                    + "+ (#request?.status != null ? ' to ' + #request.status : '')")
     public ResponseEntity<String> updateMemberStatus(
             @PathVariable String poolId,
             @PathVariable String counselorUserId,

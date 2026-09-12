@@ -3,6 +3,7 @@ package vacademy.io.auth_service.feature.user.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.auth_service.feature.user.dto.CredentialShareResult;
 import vacademy.io.auth_service.feature.user.service.UserOperationService;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -16,11 +17,20 @@ public class UserOperationController {
     @Autowired
     private UserOperationService userOperationService;
 
+    /**
+     * Shares login credentials with the given learners.
+     *
+     * <p>Answers with counts, not a sentence. Every failure mode here still returns 200 — no
+     * such user, no email/username/password on file, the mail rejected downstream — so a caller
+     * that reads the status code alone cannot tell a full send from one that mailed nobody, and
+     * the dashboard reported success either way. The internal route keeps its plain-string reply
+     * for callers that only fire-and-forget.
+     */
     @PostMapping("/send-passwords")
-    public ResponseEntity<String> sendUserPasswords(
+    public ResponseEntity<CredentialShareResult> sendUserPasswords(
             @RequestBody List<String> userIds,
             @RequestAttribute("user") CustomUserDetails userDetails) {
-        return ResponseEntity.ok(userOperationService.sendUserPasswords(userIds, userDetails));
+        return ResponseEntity.ok(userOperationService.shareUserPasswords(userIds, userDetails));
     }
 
     @PostMapping("/update-password")

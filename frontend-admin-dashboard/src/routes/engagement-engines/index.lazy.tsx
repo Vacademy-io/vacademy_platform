@@ -1,6 +1,7 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Tray, Robot } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -11,7 +12,7 @@ import { getTerminologyPlural } from '@/components/common/layout-container/sideb
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useEngines } from './-hooks';
 import { ToneBadge } from './-components/ToneBadge';
-import { ENGINE_STATUS_META } from './-constants';
+import { buildEngineStatusMeta } from './-constants';
 import { channelLabels } from './-utils';
 import type { EngagementEngine } from './-types';
 
@@ -21,8 +22,13 @@ export const Route = createLazyFileRoute('/engagement-engines/')({
 
 function EngineCard({ engine }: { engine: EngagementEngine }) {
     const navigate = useNavigate();
-    const meta = ENGINE_STATUS_META[engine.status] ?? { label: engine.status, tone: 'neutral' as const };
-    const channels = channelLabels(engine);
+    const { t } = useTranslation('engagementEnginesIndex');
+    const { t: tConstants } = useTranslation('engagementEnginesConstants');
+    const meta = buildEngineStatusMeta(tConstants)[engine.status] ?? {
+        label: engine.status,
+        tone: 'neutral' as const,
+    };
+    const channels = channelLabels(engine, tConstants);
     return (
         <Card
             role="button"
@@ -56,10 +62,10 @@ function EngineCard({ engine }: { engine: EngagementEngine }) {
                         </span>
                     ))
                 ) : (
-                    <span className="text-caption text-neutral-400">No channels enabled</span>
+                    <span className="text-caption text-neutral-400">{t('card.noChannels')}</span>
                 )}
-                <span className="ml-auto text-caption text-neutral-400">
-                    every {engine.cadenceHours}h
+                <span className="ms-auto text-caption text-neutral-400">
+                    {t('card.cadence', { hours: engine.cadenceHours })}
                 </span>
             </div>
         </Card>
@@ -70,23 +76,22 @@ function EngagementEnginesPage() {
     const navigate = useNavigate();
     const { setNavHeading } = useNavHeadingStore();
     const { data: engines, isLoading, isError } = useEngines();
+    const { t } = useTranslation('engagementEnginesIndex');
 
     useEffect(() => {
-        setNavHeading('Engagement Engines');
-    }, [setNavHeading]);
+        setNavHeading(t('title'));
+    }, [setNavHeading, t]);
 
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Engagement Engines</title>
+                <title>{t('title')}</title>
             </Helmet>
             <div className="flex flex-col gap-5 p-1">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                        <h1 className="text-h3 font-semibold text-neutral-700">Engagement Engines</h1>
-                        <p className="text-body text-neutral-500">
-                            Per-objective AI copilots that decide who to message, when, and with what.
-                        </p>
+                        <h1 className="text-h3 font-semibold text-neutral-700">{t('title')}</h1>
+                        <p className="text-body text-neutral-500">{t('subtitle')}</p>
                     </div>
                     <div className="flex items-center gap-2">
                         <MyButton
@@ -94,14 +99,14 @@ function EngagementEnginesPage() {
                             scale="medium"
                             onClick={() => navigate({ to: '/engagement-engines/inbox' })}
                         >
-                            <Tray className="mr-1 size-4" /> Task inbox
+                            <Tray className="me-1 size-4" /> {t('actions.taskInbox')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onClick={() => navigate({ to: '/engagement-engines/create' })}
                         >
-                            <Plus className="mr-1 size-4" /> New engine
+                            <Plus className="me-1 size-4" /> {t('actions.newEngine')}
                         </MyButton>
                     </div>
                 </div>
@@ -115,26 +120,27 @@ function EngagementEnginesPage() {
                 )}
 
                 {isError && (
-                    <Card className="p-6 text-center text-body text-danger-600">
-                        Could not load engines. Please refresh.
-                    </Card>
+                    <Card className="p-6 text-center text-body text-danger-600">{t('error')}</Card>
                 )}
 
                 {!isLoading && !isError && (engines?.length ?? 0) === 0 && (
                     <Card className="flex flex-col items-center gap-3 p-10 text-center">
                         <Robot className="size-10 text-neutral-300" />
-                        <p className="text-subtitle font-medium text-neutral-600">No engines yet</p>
+                        <p className="text-subtitle font-medium text-neutral-600">{t('empty.title')}</p>
                         <p className="max-w-md text-body text-neutral-500">
-                            Create an engine for one objective — like re-engaging dormant{' '}
-                            {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLowerCase()} or
-                            a 14-day challenge. It drafts every message for you to review before sending.
+                            {t('empty.description', {
+                                term: getTerminologyPlural(
+                                    RoleTerms.Learner,
+                                    SystemTerms.Learner
+                                ).toLowerCase(),
+                            })}
                         </p>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onClick={() => navigate({ to: '/engagement-engines/create' })}
                         >
-                            <Plus className="mr-1 size-4" /> Create your first engine
+                            <Plus className="me-1 size-4" /> {t('actions.createFirstEngine')}
                         </MyButton>
                     </Card>
                 )}

@@ -1,0 +1,382 @@
+{
+    "common": {
+        "viewMore": "View more",
+        "viewLess": "View less",
+        "clearSearch": "Clear search",
+        "previousSlide": "Previous slide",
+        "nextSlide": "Next slide",
+        "addToCart": "Add to Cart",
+        "remove": "Remove",
+        "inStock": "In Stock",
+        "outOfStock": "Out of Stock",
+        "onlyLeft": "Only {{count}} Left",
+        "previousPage": "Previous page",
+        "nextPage": "Next page"
+    },
+    "productPageOffer": {
+        "spendMoreForTierAmount": "Spend {{spend}} more to get {{amount}} off.",
+        "spendMoreForTierPercent": "Spend {{spend}} more to get {{percent}}% off.",
+        "addMoreForTierAmount": "Add {{count}} more {{course}} to get {{amount}} off.",
+        "addMoreForTierAmountMore": "Add {{count}} more {{course}} to get {{amount}} more off.",
+        "addMoreForTierPercent": "Add {{count}} more {{course}} to get {{percent}}% off.",
+        "finderShowing": "Showing",
+        "finderShowAll": "Show all {{courses}}",
+        "addMoreForTier": "Add {{count}} more {{course}} to get {{offer}}.",
+        "savedAmount": "saved {{amount}} · {{percent}}%",
+        "emptyConfig": "Pick a product page in the properties panel to show its {{courses}} here.",
+        "errorLoad": "Couldn't load this product page. Check that it is ACTIVE and belongs to this institute.",
+        "emptyCourses": "This product page has no {{courses}} yet — add them in its {{courses}} tab.",
+        "seeAll": "See all",
+        "seeAllCourses": "See all {{courses}}",
+        "enrolNow": "Enrol now",
+        "viewCourse": "View {{course}}",
+        "searchAndFilter": "Search and filter the full list",
+        "scrollPrevious": "Scroll to previous {{courses}}",
+        "scrollNext": "Scroll to more {{courses}}",
+        "searchPlaceholder": "Search {{courses}}...",
+        "searchAriaLabel": "Search {{courses}}",
+        "noMatches": "No matches",
+        "showingRange": "Showing {{from}}–{{to}} of {{total}}",
+        "noCoursesMatch": "No {{courses}} match “{{query}}”.",
+        "page": "Page {{number}}",
+        "coursePagesAriaLabel": "{{course}} pages",
+        "added": "Added",
+        "addToCartAriaLabel": "Add {{course}} to cart",
+        "removeFromCartAriaLabel": "Remove {{course}} from cart",
+        "selectedCount_one": "{{count}} selected",
+        "selectedCount_other": "{{count}} selected",
+        "itemsSelected_one": "{{count}} {{course}} selected",
+        "itemsSelected_other": "{{count}} {{courses}} selected",
+        "total": "Total",
+        "free": "Free",
+        "clearCart": "Clear",
+        "proceedToCheckout": "Proceed to checkout",
+        "nothingForSelection": "Nothing here for that choice yet.",
+        "showAllCourses": "Show all {{courses}}"
+    },
+    "heroSection": {
+        "defaultAlt": "{{course}} preview",
+        "defaultVideoTitle": "Hero video",
+        "goToSlide": "Go to slide {{number}}"
+    },
+    "checkoutForm": {
+        "toast": {
+            "missingEnrollmentInfo": "Missing enrollment information",
+            "otpSentWhatsapp": "OTP sent to your WhatsApp",
+            "otpSendFailed": "Failed to send OTP. Please try again",
+            "phoneVerified": "Phone verified successfully",
+            "otpInvalid": "Invalid OTP. Please try again",
+            "loadPaymentOptionsFailed": "Failed to load payment options. Please try again.",
+            "paymentSuccessful": "Payment successful!",
+            "paymentCancelled": "Payment cancelled",
+            "checkoutSuccessful": "Checkout successful!",
+            "checkoutFailedDefault": "Checkout failed. Please try again."
+        },
+        "razorpayDescription": "{{course}} Enrollment",
+        "errors": {
+            "razorpaySdkLoadFailed": "Failed to load Razorpay SDK",
+            "fullNameRequired": "Full name is required",
+            "emailRequired": "Valid email is required",
+            "phoneRequiredOtp": "Valid phone number is required to send OTP",
+            "phoneRequired": "Valid phone number is required",
+            "otpRequired": "Please enter the OTP",
+            "phoneVerificationRequired": "Phone verification is required",
+            "booksPreferenceMissing": "Unable to find Books Preference custom field. Please contact support."
+        },
+        "header": {
+            "title": "Checkout",
+            "subtitle": "Complete your information"
+        },
+        "loading": "Preparing checkout...",
+        "labels": {
+            "fullName": "Full Name",
+            "emailAddress": "Email Address",
+            "phoneWhatsapp": "Phone Number (WhatsApp)"
+        },
+        "placeholders": {
+            "name": "Enter your name",
+            "email": "email@example.com",
+            "otp": "------"
+        },
+        "buttons": {
+            "sent": "Sent",
+            "verify": "Verify",
+            "verifyOtp": "Verify OTP",
+            "proceedToPayment": "Proceed to Payment"
+        },
+        "summary": {
+            "subtotalCount_one": "Subtotal ({{count}} item)",
+            "subtotalCount_other": "Subtotal ({{count}} items)",
+            "orderTotal": "Order Total",
+            "itemsCount": "{{count}} Items",
+            "secure": "Secure"
+        },
+        "whatsappRequired": "WhatsApp verification required to continue"
+    },
+    "policy": {
+        "notFoundTitle": "Policy Not Found",
+        "notFoundDescription": "The requested policy could not be found."
+    },
+    "banner": {
+        "alt": "Banner"
+    },
+    "courseRecommendations": {
+        "untitledCourse": "Untitled {{course}}",
+        "free": "Free",
+        "by": "by {{instructor}}"
+    },
+    "cart": {
+        "emptyDefault": "Your cart is empty. Add some books!",
+        "yourBooks": "Your Books",
+        "subscriptionPlans": "Subscription Plans",
+        "noPlansAvailable": "No membership plans available at the moment.",
+        "securityDeposit": "Note: A refundable security deposit of ₹300 is included in all subscription plan prices and will be returned upon membership completion.",
+        "total": "Total",
+        "checkout": "Checkout",
+        "selectPlanFirst": "Please select a membership plan before checkout",
+        "maxBooksExceeded": "You can rent a maximum of {{max}} books in this period",
+        "noImage": "No Img",
+        "paymentStatus": "Payment Status:",
+        "dismiss": "Dismiss",
+        "subtotalCount_one": "Subtotal ({{count}} book)",
+        "subtotalCount_other": "Subtotal ({{count}} books)",
+        "crossStore": {
+            "multiple": "Your cart contains items from {{count}} different stores ({{stores}}). Each store handles its own fulfillment, so you may need to check out separately.",
+            "mismatch": "Your cart items are from {{store}}, but your active store is different. Switch stores or remove these items to keep things consistent."
+        },
+        "plan": {
+            "defaultName": "Plan",
+            "maxBooksDescription": "Maximum {{max}} books can be rented in this period",
+            "noLimitDescription": "No limit on total number of books in this period",
+            "booksAtOnce": "Books at once:",
+            "booksInPeriod": "Books in period:",
+            "selected": "Selected",
+            "select": "Select"
+        },
+        "toast": {
+            "loginRequiredAfterPayment": "Payment successful! Please log in to access your courses.",
+            "redirecting": "Payment successful. Redirecting...",
+            "loginAutomated": "Login automated successfully. Welcome!"
+        }
+    },
+    "addressForm": {
+        "label": "Delivery Address",
+        "placeholders": {
+            "houseNo": "House / Flat / Building No.",
+            "area": "Area / Street / Locality",
+            "landmark": "Landmark (optional)",
+            "pincode": "Pincode",
+            "city": "City / Town / Village",
+            "district": "District",
+            "postOffice": "Post Office"
+        },
+        "selectState": "Select State",
+        "selectPostOffice": "Select Post Office",
+        "errors": {
+            "required": "Required",
+            "pincodeRequired": "Pincode is required",
+            "pincodeDigits": "Must be 6 digits",
+            "selectState": "Select a state",
+            "pincodeNotFound": "Pincode not found — please enter address manually",
+            "indiaPostUnreachable": "Couldn't reach India Post. Enter address manually."
+        }
+    },
+    "detailBlocks": {
+        "emptyGuidance": "Add a block for each programme you want to document."
+    },
+    "mediaShowcase": {
+        "videoUnavailable": "Video unavailable",
+        "loading": "Loading...",
+        "defaultVideoTitle": "Video",
+        "goToSlide": "Go to slide {{number}}",
+        "slideAlt": "Slide {{number}}",
+        "highlightsAriaLabel": "Highlights",
+        "resumeSlideshow": "Resume automatic slideshow",
+        "pauseSlideshow": "Pause automatic slideshow"
+    },
+    "shareButton": {
+        "ariaLabel": "Share book",
+        "toast": {
+            "linkError": "Could not generate share link",
+            "linkCopied": "Link copied!"
+        },
+        "copied": "Copied!",
+        "copyLink": "Copy link",
+        "shareWhatsapp": "Share on WhatsApp"
+    },
+    "testimonial": {
+        "ratedOutOf5": "Rated {{stars}} out of 5",
+        "previous": "Previous testimonial",
+        "next": "Next testimonial",
+        "goToTestimonial": "Go to testimonial {{number}}"
+    },
+    "leadForm": {
+        "emptyConfig": "Pick an audience campaign in the properties panel — its form fields render here.",
+        "errorLoad": "Couldn't load this campaign. Check that it is ACTIVE and belongs to this institute.",
+        "emptyFields": "This campaign has no form fields yet — add them in Audience Manager.",
+        "missingFields": "Please fill in: {{fields}}",
+        "genericError": "Something went wrong — please try again.",
+        "defaultThankYou": "Thank you! We've received your details.",
+        "defaultAnotherResponse": "Submit another response",
+        "redirectingIn_one": "Redirecting in {{count}} second…",
+        "redirectingIn_other": "Redirecting in {{count}} seconds…",
+        "companyWebsite": "Company website",
+        "sending": "Sending…",
+        "submit": "Submit",
+        "placeholderPrefix": "Enter {{name}}"
+    },
+    "bookDetails": {
+        "bookAltFallback": "Book",
+        "loadingCover": "Loading Cover...",
+        "onlyLeftUppercase": "Only {{count}} Left",
+        "unknownAuthor": "Unknown Author",
+        "genre": "Genre:",
+        "price": "Price",
+        "goToCart": "Go to Cart",
+        "added": "Added",
+        "aboutThisBook": "About this Book",
+        "toast": {
+            "addedToCart": "Added to cart",
+            "missingEnrollInfo": "Cannot add to cart: Missing enrollment info"
+        },
+        "modeTag": {
+            "rent": "Rent",
+            "buy": "Buy"
+        }
+    },
+    "bookCatalogue": {
+        "untitledBook": "Untitled Book",
+        "searchPlaceholder": "Search books...",
+        "store": "Store",
+        "selectedStore": "Selected store",
+        "allStores": "All stores",
+        "pickStoreRentHint": "Pick a store to browse rental inventory",
+        "bestPriceHint": "Showing best price across all stores",
+        "browseByGenre": "Browse by Genre",
+        "rentMode": "Rent Mode",
+        "buyMode": "Buy Mode",
+        "clearAll": "Clear all",
+        "pickStoreTitle": "Pick a store to browse rentals",
+        "pickStoreDescription": "Rental books are picked up at a store, so inventory is store-specific. Choose a store above to see what's available.",
+        "noBooksFound": "No books found matching your criteria.",
+        "availableAtStores": "Available at {{count}} stores",
+        "cart": "Cart",
+        "fromPrefix": "from",
+        "lowestPriceSuffix": "— lowest price",
+        "loadingMoreBooks": "Loading more books...",
+        "endOfCatalogue": "You've reached the end of the catalogue",
+        "showingAllBooks": "Showing all {{total}} books",
+        "toast": {
+            "removedFromCart": "Removed from cart",
+            "addedToCart": "Added to cart"
+        }
+    },
+    "courseCatalog": {
+        "filters": "Filters",
+        "clearAll": "Clear All",
+        "showResults": "Show results",
+        "authors": "Authors",
+        "priceRange": "Price Range",
+        "min": "Min",
+        "max": "Max",
+        "searchPlaceholder": "Search {{courses}}...",
+        "searchAriaLabel": "Search {{courses}}",
+        "noResultsFound": "No {{courses}} found",
+        "noResultsHint": "Try adjusting your search or filters to find what you're looking for.",
+        "clearAllFilters": "Clear all filters",
+        "showLess": "Show Less",
+        "showMore": "Show More",
+        "noItemsAvailable": "No {{title}} available.",
+        "filtersUnavailable": "{{title}} filters are currently unavailable.",
+        "removedFromCart": "{{title}} removed from cart",
+        "addedToCart": "{{title}} added to cart!",
+        "missingEnrollInvite": "Cannot add item to cart: missing enroll invite ID",
+        "untitledCourse": "Untitled {{course}}",
+        "noDescriptionAvailable": "No description available",
+        "unknownInstructor": "Unknown {{teacher}}",
+        "add": "Add",
+        "openSoon": "Opens soon",
+        "enrollmentClosed": "Enrollment closed",
+        "freeLabel": "100% Free",
+        "viewCourse": "View {{course}}",
+        "previous": "Previous",
+        "next": "Next",
+        "showingRange": "Showing {{from}}–{{to}} of {{total}} {{courses}}",
+        "paginationAriaLabel": "Pagination",
+        "loadingImage": "Loading..."
+    },
+    "buyRentSection": {
+        "chooseOption": "Select the option that best fits your needs",
+        "rentTitle": "Rent a book",
+        "rentDescription": "Access books at affordable rates",
+        "buyTitle": "Buy a book",
+        "buyDescription": "Own books forever",
+        "howItWorks": "How it Works",
+        "steps": {
+            "step1Title": "Browse & Select",
+            "step1Desc": "Explore our collection and choose books.",
+            "step2Title": "Choose Option",
+            "step2Desc": "Buy for ownership or Rent for access.",
+            "step3Title": "Complete Purchase",
+            "step3Desc": "Add to cart and checkout securely.",
+            "step4Title": "Start Reading",
+            "step4Desc": "Access your books instantly."
+        },
+        "close": "Close",
+        "locationRestrictionTitle": "Location Restriction",
+        "locationRestrictionMessage": "We only allow renting books in {{city}}. Do you want to continue?",
+        "buyInstead": "Buy Instead",
+        "continue": "Continue"
+    },
+    "header": {
+        "toggleMenu": "Toggle menu",
+        "search": "Search",
+        "shoppingCart": "Shopping Cart",
+        "login": "Login",
+        "dashboard": "Dashboard",
+        "customerServices": "Customer Services",
+        "joinCommunity": "Join our community",
+        "logoAlt": "Logo",
+        "instituteLogoAlt": "Institute Logo"
+    },
+    "courseDetailsRoute": {
+        "domainResolutionErrorTitle": "Domain Resolution Error",
+        "retry": "Retry"
+    },
+    "courseDetails": {
+        "accordion": {
+            "highlightsTitle": "{{course}} Highlights",
+            "aboutThisCourse": "About This {{course}}",
+            "whatYoullLearn": "What You'll Learn",
+            "whoShouldJoin": "Who Should Join"
+        },
+        "noEmailProvided": "No email provided",
+        "unknownTeacher": "Unknown {{teacher}}",
+        "defaultWhoShouldLearn": "Anyone interested in learning this {{subject}}",
+        "defaultWhyLearn": "Gain valuable skills and knowledge",
+        "untitledCourse": "Untitled {{course}}",
+        "courseNotFoundDefault": "{{course}} not found",
+        "courseNotFoundError": "{{course}} not found.",
+        "courseNotPublicError": "This {{course}} is not available for public viewing.",
+        "loadFailedError": "Failed to load {{course}} details",
+        "courseLoadFailedDescription": "The requested {{course}} could not be loaded.",
+        "backToCatalog": "Back to Catalog",
+        "loadingCatalogueTitle": "Loading {{course}} Catalogue...",
+        "loadingCatalogueDescription": "Please wait while we load the {{course}} information.",
+        "courseOverview": "{{course}} Overview",
+        "price": "Price",
+        "rating": "Rating",
+        "duration": "Duration",
+        "enrollForFree": "Enroll for Free",
+        "enrollNow": "Enroll Now",
+        "getStarted": "Get Started",
+        "clickToRegister": "Click to register for this {{course}}",
+        "forNewUsers": "For new users",
+        "enrollmentUnavailableTitle": "Enrollment unavailable",
+        "leadFormDefaults": {
+            "fullName": "Full Name",
+            "email": "Email",
+            "phone": "Phone Number"
+        }
+    }
+}

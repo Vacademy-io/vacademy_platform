@@ -1,0 +1,102 @@
+{
+    "feePlan": {
+        "heading": "خطة الرسوم",
+        "planLabelFallback": "خطة الرسوم",
+        "installments_zero": "بدون أقساط ({{count}})",
+        "installments_one": "قسط واحد ({{count}})",
+        "installments_two": "قسطان ({{count}})",
+        "installments_few": "{{count}} أقساط",
+        "installments_many": "{{count}} قسطًا",
+        "installments_other": "{{count}} قسط",
+        "netPaid": "الصافي {{net}} · المدفوع {{paid}}",
+        "outstanding": "المستحق"
+    },
+    "accountSummary": {
+        "heading": "ملخص الحساب",
+        "totalAccrued": "إجمالي المستحق",
+        "totalPaid": "إجمالي المدفوع",
+        "due": "المستحق",
+        "pastDue": "متأخر السداد"
+    },
+    "markPaidDialog": {
+        "successToast": "تم وضع علامة \"مدفوعة\" على الفاتورة {{invoice}}",
+        "errorToast": "تعذر وضع علامة \"مدفوعة\"",
+        "title": "وضع علامة \"مدفوعة\" على الفاتورة",
+        "descriptionPrefix": "يسجل دفعة غير متصلة مقابل",
+        "descriptionFallback": "يسجل دفعة غير متصلة مقابل هذه الفاتورة.",
+        "transactionReference": "مرجع المعاملة",
+        "transactionReferencePlaceholder": "رقم الشيك، مرجع UPI، رقم الإيصال",
+        "notes": "ملاحظات",
+        "notesPlaceholder": "ملاحظة اختيارية",
+        "cancel": "إلغاء",
+        "saving": "جارٍ الحفظ…",
+        "submit": "وضع علامة \"مدفوعة\""
+    },
+    "invoicesList": {
+        "cancelSuccessToast": "تم إلغاء الفاتورة",
+        "cancelErrorToast": "تعذر إلغاء الفاتورة",
+        "copyLinkSuccessToast": "تم نسخ رابط الدفع",
+        "copyLinkErrorToast": "تعذر النسخ إلى الحافظة",
+        "emptyTitle": "لا توجد فواتير بعد",
+        "emptyHint": "ستظهر هنا الفواتير التي تم إنشاؤها لهذا المتعلم.",
+        "proforma": "أولية",
+        "proformaTitle": "فاتورة أولية — تصبح فاتورة مرقّمة عند الدفع",
+        "discountFallback": "خصم",
+        "sourceAdminInvoice": "فاتورة إدارية",
+        "sourceSubscription": "اشتراك",
+        "sourceFeePayment": "دفع رسوم",
+        "previewTitle": "معاينة ملف PDF للفاتورة دون تنزيله",
+        "preview": "معاينة",
+        "downloadTitle": "تنزيل ملف PDF للفاتورة",
+        "download": "تنزيل",
+        "copied": "تم النسخ",
+        "copyPaymentLink": "نسخ رابط الدفع",
+        "copyPaymentLinkTitle": "نسخ رابط الدفع لمشاركته مع المتعلم",
+        "editTitle": "تعديل هذه الفاتورة غير المدفوعة — يحتفظ بنفس رقم الفاتورة",
+        "edit": "تعديل",
+        "markPaidTitle": "تسجيل دفعة غير متصلة / يدوية",
+        "markPaid": "وضع علامة \"مدفوعة\"",
+        "cancelInvoiceTitle": "إبطال هذه الفاتورة — سيتوقف رابط الدفع عن العمل",
+        "cancelling": "جارٍ الإلغاء…",
+        "cancelAction": "إلغاء",
+        "paginationRange": "{{from}}–{{to}} من {{total}}",
+        "cancelDialog": {
+            "title": "هل تريد إلغاء الفاتورة {{number}}؟",
+            "description": "يؤدي هذا إلى إبطال الفاتورة نهائيًا — سيتوقف رابط الدفع عن العمل ولن يمكن وضع علامة \"مدفوعة\" عليها أبدًا. لا يمكن التراجع عن هذا الإجراء. لتصحيح خطأ، أنشئ فاتورة جديدة لاحقًا.",
+            "keep": "الاحتفاظ بالفاتورة",
+            "confirm": "إلغاء الفاتورة"
+        }
+    },
+    "invoiceStatus": {
+        "generated": "تم الإنشاء",
+        "sent": "تم الإرسال",
+        "viewed": "تمت المشاهدة",
+        "pendingPayment": "الدفع معلّق",
+        "paid": "مدفوعة",
+        "rejected": "مرفوضة"
+    },
+    "transactionHistory": {
+        "heading": "سجل المعاملات",
+        "loading": "جارٍ تحميل المعاملات…",
+        "empty": "لا يوجد سجل معاملات بعد.",
+        "pageOf": "الصفحة {{page}} من {{total}}",
+        "event": {
+            "debitAccrual": "تم إصدار الفاتورة",
+            "creditPayment": "تم استلام الدفعة",
+            "creditWaiver": "إعفاء",
+            "creditAdjustment": "تسوية",
+            "debitPenalty": "غرامة",
+            "debitReversal": "تم إلغاء الفاتورة"
+        }
+    },
+    "main": {
+        "loadInvoiceError": "تعذر تحميل الفاتورة للتعديل",
+        "noLearnerTitle": "لم يتم اختيار متعلم",
+        "noLearnerHint": "اختر متعلمًا لعرض سجل مدفوعاته.",
+        "installmentsHeading": "الأقساط",
+        "invoicesHeading": "الفواتير",
+        "invoicesHeadingCount": "الفواتير ({{count}})",
+        "createInvoice": "إنشاء فاتورة",
+        "loadingInvoices": "جارٍ تحميل الفواتير..."
+    }
+}

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { DotsThree } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 export const ComprehensiveSingleCorrectQuestionPaperTemplatePPTView = ({
     form,
@@ -20,6 +21,7 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplatePPTView = ({
     setCurrentQuestionIndex,
     className,
 }: QuestionPaperTemplateFormProps) => {
+    const { t } = useTranslation('assessmentComprehensiveSingleCorrectPPTQP');
     const { control, getValues, setValue } = form;
     const optionsType = getValues('optionsType') || '';
     const allQuestions = getValues('questions') || [];
@@ -80,7 +82,7 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplatePPTView = ({
         >
             {getValues(`questions.${currentQuestionIndex}.parentRichTextContent`) && (
                 <div className="flex w-full flex-col !flex-nowrap items-start gap-1">
-                    <span>Comprehension Text</span>
+                    <span>{t('comprehensionText')}</span>
                     <FormField
                         control={control}
                         name={`questions.${currentQuestionIndex}.parentRichTextContent`}
@@ -122,7 +124,9 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'a') : '(a.)'}
+                                    {optionsType
+                                        ? formatStructure(optionsType, 'a')
+                                        : t('optionLabelFallback', { letter: 'a' })}
                                 </span>
                             </div>
                         </div>
@@ -156,7 +160,9 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'b') : '(b.)'}
+                                    {optionsType
+                                        ? formatStructure(optionsType, 'b')
+                                        : t('optionLabelFallback', { letter: 'b' })}
                                 </span>
                             </div>
                         </div>
@@ -192,7 +198,9 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'c') : '(c.)'}
+                                    {optionsType
+                                        ? formatStructure(optionsType, 'c')
+                                        : t('optionLabelFallback', { letter: 'c' })}
                                 </span>
                             </div>
                         </div>
@@ -226,7 +234,9 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'd') : '(d.)'}
+                                    {optionsType
+                                        ? formatStructure(optionsType, 'd')
+                                        : t('optionLabelFallback', { letter: 'd' })}
                                 </span>
                             </div>
                         </div>
@@ -275,10 +285,10 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplatePPTView = ({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="mt-1">
                             <DropdownMenuItem onClick={handleDuplicateSlide}>
-                                Duplicate Slide
+                                {t('duplicateSlide')}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={handleDeleteSlide}>
-                                Delete Slide
+                                {t('deleteSlide')}
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

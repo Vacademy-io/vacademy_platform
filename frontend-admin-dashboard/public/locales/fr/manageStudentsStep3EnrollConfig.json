@@ -1,0 +1,43 @@
+{
+    "courseInviteSection": {
+        "heading": "Invitation d'inscription par {{term}}",
+        "description": "Choisissez un lien d'invitation pour chaque {{term}}. Laissez vide pour utiliser automatiquement l'invitation par défaut.",
+        "inviteLinkLabel": "Lien d'invitation",
+        "accessDaysLabel": "Remplacement des jours d'accès",
+        "accessDaysPlaceholder": "Depuis l'invitation",
+        "autoResolvedFromDefault": "(résolu automatiquement à partir de l'invitation par défaut)"
+    },
+    "globalOptions": {
+        "heading": "Options globales",
+        "notifyLearnersLabel": "Notifier les {{term}}",
+        "notifyLearnersDescription": "Envoyer des e-mails de confirmation d'inscription aux {{term}} nouvellement inscrits",
+        "sendCredentialsLabel": "Envoyer les identifiants",
+        "sendCredentialsDescription": "Envoyer un e-mail d'inscription avec les identifiants de connexion aux nouveaux {{term}}",
+        "duplicateHandling": {
+            "label": "Si le/la {{term}} est déjà inscrit(e)",
+            "skipOption": "Ignorer silencieusement (recommandé)",
+            "errorOption": "Marquer comme erreur dans le rapport",
+            "skipDescription": "Les {{term}} ayant un accès actif ou une invitation en attente seront ignorés silencieusement.",
+            "errorDescription": "Les {{term}} ayant un accès actif ou une invitation en attente apparaîtront comme des échecs dans les résultats.",
+            "alwaysReenrolled": "Les {{term}} expirés ou résiliés sont toujours réinscrits."
+        },
+        "paymentDate": {
+            "label": "Date de paiement (facultatif)",
+            "placeholder": "Sélectionner la date de paiement",
+            "description": "Date à laquelle le paiement a été effectué"
+        },
+        "transactionId": {
+            "label": "ID de transaction (facultatif)",
+            "placeholder": "Saisir l'ID de transaction",
+            "description": "Référence de transaction de paiement externe"
+        }
+    },
+    "workflows": {
+        "heading": "Workflows qui se déclencheront lors de l'inscription",
+        "loading": "Chargement des workflows liés…",
+        "noneLinked": "Aucun workflow d'automatisation n'est lié aux {{term}} sélectionnés.",
+        "global": "Global",
+        "firesOnEveryEnrollment": "Se déclenche à chaque inscription groupée :",
+        "noCourseSpecific": "Aucun workflow spécifique à ce cours n'est lié."
+    }
+}

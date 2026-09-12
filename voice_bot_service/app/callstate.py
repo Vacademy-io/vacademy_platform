@@ -77,6 +77,9 @@ class CallState:
     # The bot has said its goodbye but the line is NOT yet closing. Held open for
     # end_grace_secs so a caller who re-engages ("Yes, I can") is not hung up on.
     end_pending_since: float = 0.0
+    # When a composed reply was cancelled before it played (barge-in). A silence
+    # after that is the caller's, not "awaiting playout" of a dead reply.
+    reply_cancelled_t: float = 0.0
     # Bot audio is DUCKED (held in DuckGate) because the caller started speaking
     # over a reply. Set at VAD onset; cleared by TurnGate absorb/interrupt or by
     # the watchdog's DUCK_RESUME when the voiced sound produced no words at all.
@@ -86,6 +89,9 @@ class CallState:
     # backchannel_carry_secs of this can still be answered with "carry on"
     # rather than the model replying to a bare "haan" from a standing start.
     last_cut_t: float = 0.0
+    # reply_started_t of the reply we already covered with a latency bridge
+    # ("Just a second.") — one bridge per reply, never a loop of them.
+    bridged_reply_t: float = 0.0
 
     # ── dict-compat so existing callbacks keep working ──
     def __getitem__(self, key: str):
@@ -137,6 +143,12 @@ class WatchdogConfig:
     # missing transcript can never mute the bot indefinitely.
     duck_no_words_resume_secs: float = 2.0
     duck_max_hold_secs: float = 12.0
+    # A reply has been composing this long with no audio → say a short bridge
+    # line once. OFF by default (1e9) so the timeline harness is unchanged;
+    # run_bot passes the configured value. Call c130e39f (2026-09-09): Vertex
+    # took 5.4s to the first token, then streamed a 3-sentence reply over ~8s
+    # — 16s of silence, and the caller said "Hello?" three times into it.
+    llm_bridge_after_secs: float = 1e9
 
 
 # Decision kinds — one per watchdog side-effect branch.
@@ -151,6 +163,7 @@ IDLE_HANGUP = "idle_hangup"
 ARM_STOP = "arm_stop"
 HEARING_FAILED = "hearing_failed"
 DUCK_RESUME = "duck_resume"
+LLM_BRIDGE = "llm_bridge"
 
 
 @dataclass(frozen=True)
@@ -206,6 +219,15 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     # 3) Idle machinery pauses while either side is audibly speaking.
     if s.bot_speaking or s.user_speaking:
         return Decision(NONE)
+
+    # 3b) LLM latency bridge: the reply exists (LLMFullResponseStart stamped
+    #     reply_started_t) but nothing has reached the line since. Both sides
+    #     are quiet (checked above) and nothing is ducked (returned above).
+    #     Once per reply — bridged_reply_t remembers which one.
+    st = s.reply_started_t
+    if (st > 0 and s.bot_stopped_t < st and s.bridged_reply_t != st
+            and now - st >= cfg.llm_bridge_after_secs):
+        return Decision(LLM_BRIDGE, now - st)
 
     # 4) Audio-stall recovery (flag-gated; corrected stamp semantics assumed).
     if (cfg.stall_recovery_enabled and s.tts_gen_t > 0
@@ -305,6 +327,8 @@ def apply_decision(s: CallState, d: Decision, now: float) -> None:
     elif d.kind == STALL_RECOVER:
         s.tts_gen_t = 0.0
         s.stall_recoveries += 1
+    elif d.kind == LLM_BRIDGE:
+        s.bridged_reply_t = s.reply_started_t
     elif d.kind == ORPHAN_ASK:
         s.orphan_used = True
         # Each unheard utterance compounds; a real transcript clears it.

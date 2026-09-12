@@ -41,6 +41,14 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.time.LocalDateTime;
+import vacademy.io.notification_service.features.email_sending_controls.dto.EmailSendingStatusDTO;
+import vacademy.io.notification_service.features.email_sending_controls.entity.DeferredEmail;
+import vacademy.io.notification_service.features.email_sending_controls.service.DeferredEmailService;
+import vacademy.io.notification_service.features.email_sending_controls.service.EmailDailyQuotaService;
+import vacademy.io.notification_service.features.email_sending_controls.service.EmailUnsubscribeService;
+import vacademy.io.notification_service.features.email_sending_controls.service.SenderPolicy;
+import vacademy.io.notification_service.features.email_sending_controls.service.UnsubscribeMailer;
 
 @Service
 public class EmailService {
@@ -77,6 +85,11 @@ public class EmailService {
     private final InstituteAnnouncementSettingsService instituteAnnouncementSettingsService;
     private final BouncedEmailService bouncedEmailService;
     private final NotificationLogRepository notificationLogRepository;
+    // Sending controls: per-sender daily cap (+ overflow queue) and recipient opt-outs.
+    private final EmailDailyQuotaService emailDailyQuotaService;
+    private final DeferredEmailService deferredEmailService;
+    private final EmailUnsubscribeService emailUnsubscribeService;
+    private final UnsubscribeMailer unsubscribeMailer;
 
     @Autowired
     public EmailService(JavaMailSender mailSender, InstituteInternalService internalService,
@@ -84,7 +97,15 @@ public class EmailService {
             InstituteAnnouncementSettingsService instituteAnnouncementSettingsService,
             EmailConfigurationService emailConfigurationService,
             BouncedEmailService bouncedEmailService,
-            NotificationLogRepository notificationLogRepository) {
+            NotificationLogRepository notificationLogRepository,
+            EmailDailyQuotaService emailDailyQuotaService,
+            DeferredEmailService deferredEmailService,
+            EmailUnsubscribeService emailUnsubscribeService,
+            UnsubscribeMailer unsubscribeMailer) {
+        this.emailDailyQuotaService = emailDailyQuotaService;
+        this.deferredEmailService = deferredEmailService;
+        this.emailUnsubscribeService = emailUnsubscribeService;
+        this.unsubscribeMailer = unsubscribeMailer;
         this.mailSender = mailSender;
         this.internalService = internalService;
         this.objectMapper = objectMapper;
@@ -289,12 +310,27 @@ public class EmailService {
     }
 
     /**
+     * (mailSender, from) as before, plus the raw EMAIL_SETTING.data.<type> node it was
+     * resolved from (null when the platform default is used) so callers can read the
+     * sender's sending controls without a second institute lookup.
+     */
+    static final class ResolvedSender extends AbstractMap.SimpleEntry<JavaMailSender, String> {
+        private final JsonNode node;
+        ResolvedSender(JavaMailSender sender, String from, JsonNode node) {
+            super(sender, from);
+            this.node = node;
+        }
+        JsonNode node() { return node; }
+    }
+
+    /**
      * Get mail sender config with specific email type
      * Falls back to UTILITY_EMAIL if emailType is not provided
      */
-    private AbstractMap.SimpleEntry<JavaMailSender, String> getMailSenderConfig(String instituteId, String emailType) {
+    private ResolvedSender getMailSenderConfig(String instituteId, String emailType) {
         JavaMailSender mailSenderToUse = mailSender;
         String fromToUse = from;
+        JsonNode resolvedNode = null;
 
         if (StringUtils.hasText(instituteId)) {
             InstituteInfoDTO institute = internalService.getInstituteByInstituteId(instituteId);
@@ -314,6 +350,7 @@ public class EmailService {
                     JsonNode emailConfig = emailSettingsData.path(emailTypeToUse);
 
                     if (!emailConfig.isMissingNode()) {
+                        resolvedNode = emailConfig;
                         logger.info("Found email configuration for type: {} in institute: {}", emailTypeToUse,
                                 instituteId);
 
@@ -325,7 +362,7 @@ public class EmailService {
                         if (verifiedNode.isBoolean() && !verifiedNode.asBoolean()) {
                             logger.warn("Sender for type {} in institute {} is not SES-verified yet; "
                                     + "falling back to default sender {}", emailTypeToUse, instituteId, from);
-                            return new AbstractMap.SimpleEntry<>(mailSender, from);
+                            return new ResolvedSender(mailSender, from, emailConfig);
                         }
 
                         // Check if SMTP credentials are real or dummy placeholders
@@ -380,13 +417,13 @@ public class EmailService {
             logger.info("No instituteId provided, using default SMTP");
         }
 
-        return new AbstractMap.SimpleEntry<>(mailSenderToUse, fromToUse);
+        return new ResolvedSender(mailSenderToUse, fromToUse, resolvedNode);
     }
 
     /**
      * Legacy method for backward compatibility - uses UTILITY_EMAIL by default
      */
-    private AbstractMap.SimpleEntry<JavaMailSender, String> getMailSenderConfig(String instituteId) {
+    private ResolvedSender getMailSenderConfig(String instituteId) {
         return getMailSenderConfig(instituteId, null);
     }
 
@@ -720,25 +757,97 @@ public class EmailService {
                 correlationId, userId, null, null);
     }
 
+    /** What happened to one HTML send. Narrower overloads discard this. */
+    public enum SendOutcome { SENT, DEFERRED, SKIPPED_BLOCKED, SKIPPED_UNSUBSCRIBED }
+
     /**
      * Widest overload: adds copy recipients ({@code cc} + {@code ccMode}) on top of the ledger
      * attribution above. Copies are resolved per-institute by {@code EmailCcResolver} and passed
      * down from {@code UnifiedSendService}; all narrower overloads pass null and behave exactly
      * as before.
+     *
+     * Sending controls (both read from the sender's EMAIL_SETTING.data.<type> node):
+     *  - a recipient who unsubscribed from this institute is skipped when the send is
+     *    promotional (or the sender opted every type in via list_unsubscribe);
+     *  - a sender with max_per_day reserves a slot atomically; past the cap the email is
+     *    written to deferred_email and replayed when the next window opens.
      */
-    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
+    public SendOutcome sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
             String customFromEmail, String customFromName, String emailType,
             String correlationId, String userId, List<String> cc, String ccMode) {
+        return doSendHtml(to, subject, service, body, instituteId, customFromEmail, customFromName, emailType,
+                correlationId, userId, cc, ccMode, false);
+    }
+
+    /**
+     * Replay of a deferred row. If the cap is still reached the outcome is DEFERRED and NO new
+     * row is written — the drainer pushes the existing rows to the next window itself.
+     */
+    public SendOutcome sendDeferred(DeferredEmail d, List<String> cc) {
+        return doSendHtml(d.getToEmail(), d.getSubject(), d.getService(), d.getBody(), d.getInstituteId(),
+                d.getCustomFromEmail(), d.getCustomFromName(), d.getEmailType(), d.getCorrelationId(), d.getUserId(),
+                cc, d.getCcMode(), true);
+    }
+
+    /** True when this recipient opted out and the sender/type honours opt-outs. */
+    public boolean isUnsubscribed(String email, String instituteId, String emailType) {
+        if (instituteId == null || email == null) return false;
+        try {
+            SenderPolicy policy = SenderPolicy.from(getMailSenderConfig(instituteId, emailType).node());
+            return policy.unsubscribeApplies(emailType) && emailUnsubscribeService.isUnsubscribed(email, instituteId);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public LocalDateTime nextWindowFor(String instituteId, String emailType) {
+        try {
+            return SenderPolicy.from(getMailSenderConfig(instituteId, emailType).node()).nextWindow();
+        } catch (Exception e) {
+            return LocalDateTime.now().plusDays(1);
+        }
+    }
+
+    public EmailSendingStatusDTO sendingStatus(String instituteId, String emailType) {
+        ResolvedSender cfg = getMailSenderConfig(instituteId, emailType);
+        SenderPolicy p = SenderPolicy.from(cfg.node());
+        String fromEmail = normalizeFromAddress(cfg.getValue());
+        String key = SenderPolicy.senderKey(instituteId, emailType, fromEmail);
+        return EmailSendingStatusDTO.builder()
+                .instituteId(instituteId)
+                .emailType(emailType)
+                .fromEmail(fromEmail)
+                .maxPerDay(p.maxPerDay())
+                .sentToday(emailDailyQuotaService.sentToday(key, p.today()))
+                .deferredPending(deferredEmailService.pendingForSender(key))
+                .timezone(p.zone().getId())
+                .sendAfterHour(p.sendAfterHour())
+                .nextWindow(p.capped() ? p.nextWindow().toString() : null)
+                .unsubscribeFooter(p.unsubscribeApplies(emailType))
+                .unsubscribedCount(emailUnsubscribeService.countActive(instituteId))
+                .build();
+    }
+
+    private SendOutcome doSendHtml(String to, String subject, String service, String body, String instituteId,
+            String customFromEmail, String customFromName, String emailType,
+            String correlationId, String userId, List<String> cc, String ccMode, boolean fromQueue) {
         try {
             // Check if email is blocked (domain blocklist or bounced email blocklist)
             if (isEmailBlocked(to)) {
                 logger.info("Skipping HTML email for blocked email address: {}", to);
-                return;
+                return SendOutcome.SKIPPED_BLOCKED;
             }
 
-            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId, emailType);
+            ResolvedSender config = getMailSenderConfig(instituteId, emailType);
             final JavaMailSender finalMailSender = config.getKey();
             String fromEmail = config.getValue();
+            final SenderPolicy policy = SenderPolicy.from(config.node());
+            final boolean unsubApplies = instituteId != null && policy.unsubscribeApplies(emailType);
+
+            if (unsubApplies && emailUnsubscribeService.isUnsubscribed(to, instituteId)) {
+                logger.info("Skipping HTML email to {}: unsubscribed from institute {}", to, instituteId);
+                return SendOutcome.SKIPPED_UNSUBSCRIBED;
+            }
 
             logger.info("Sending HTML email to: {} using emailType: {} for service: {}", to, emailType, service);
 
@@ -756,7 +865,23 @@ public class EmailService {
             final String finalFromName = (customFromName != null && !customFromName.trim().isEmpty()) ? customFromName
                     : null;
 
+            // Daily cap: reserve a slot or hand the email to the deferred queue.
+            if (policy.capped()) {
+                String senderKey = SenderPolicy.senderKey(instituteId, emailType, normalizeFromAddress(finalFromEmail));
+                if (!emailDailyQuotaService.tryReserve(senderKey, policy.today(), policy.maxPerDay())) {
+                    if (!fromQueue) {
+                        deferredEmailService.defer(senderKey, policy.nextWindow(), instituteId, emailType, to, subject,
+                                body, service, customFromEmail, customFromName, correlationId, userId, cc, ccMode);
+                    }
+                    return SendOutcome.DEFERRED;
+                }
+            }
+
             String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
+            final String emailBody = unsubApplies
+                    ? unsubscribeMailer.withFooter(body, instituteId, to, policy,
+                            finalFromName != null ? finalFromName : normalizeFromAddress(finalFromEmail))
+                    : body;
 
             final boolean includeSesHeader = shouldIncludeSesConfigurationHeader(instituteId);
 
@@ -779,10 +904,14 @@ public class EmailService {
                     if (includeSesHeader) {
                         message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
                     }
+                    // RFC 8058 one-click unsubscribe headers for commercial mail
+                    if (unsubApplies) {
+                        unsubscribeMailer.addHeaders(message, instituteId, to);
+                    }
 
                     MimeMultipart multipart = new MimeMultipart();
                     MimeBodyPart htmlPart = new MimeBodyPart();
-                    htmlPart.setContent(body, "text/html; charset=utf-8");
+                    htmlPart.setContent(emailBody, "text/html; charset=utf-8");
                     multipart.addBodyPart(htmlPart);
 
                     message.setContent(multipart);
@@ -790,7 +919,7 @@ public class EmailService {
 
                     String messageId = null;
                     try { messageId = message.getMessageID(); } catch (Exception ignored) {}
-                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, userId, finalFromEmail, instituteId, correlationId);
+                    saveEmailNotificationLog(to, emailSubject, emailBody, service != null ? service : "HTML_EMAIL_SERVICE", messageId, userId, finalFromEmail, instituteId, correlationId);
 
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);
@@ -806,6 +935,7 @@ public class EmailService {
                     throw new RuntimeException("Failed to send HTML email", e);
                 }
             });
+            return SendOutcome.SENT;
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

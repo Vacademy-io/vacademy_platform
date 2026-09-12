@@ -1,3 +1,5 @@
+import i18next from 'i18next';
+import type { TFunction } from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GENERATE_HTML_DOCUMENT_URL } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
@@ -27,14 +29,16 @@ function requestBody(p: GenerateHtmlParams) {
 }
 
 /** Content sections the page can include, in order. */
-export const HTML_CONTENT_TYPES = [
-    { key: 'notes', label: 'Short notes' },
-    { key: 'summary', label: 'Summary' },
-    { key: 'flashcards', label: 'Flashcards' },
-    { key: 'quiz', label: 'Quiz' },
-    { key: 'practical_examples', label: 'Practical examples' },
-    { key: 'interactive_games', label: 'Interactive games' },
-] as const;
+export function buildHtmlContentTypes(t: TFunction) {
+    return [
+        { key: 'notes', label: t('contentTypes.notes') },
+        { key: 'summary', label: t('contentTypes.summary') },
+        { key: 'flashcards', label: t('contentTypes.flashcards') },
+        { key: 'quiz', label: t('contentTypes.quiz') },
+        { key: 'practical_examples', label: t('contentTypes.practicalExamples') },
+        { key: 'interactive_games', label: t('contentTypes.interactiveGames') },
+    ] as const;
+}
 
 export type BrandKit = {
     primaryColor?: string;
@@ -82,7 +86,8 @@ export async function generateHtmlDocument({
         { timeout: 180000 }
     );
     const html = res.data?.html || '';
-    if (!html.trim()) throw new Error('The AI returned an empty document. Try rephrasing your prompt.');
+    if (!html.trim())
+        throw new Error(i18next.t('studyLibraryHtmlDocAiService:errors.emptyDocument'));
     return html;
 }
 
@@ -119,7 +124,9 @@ export async function generateHtmlDocumentStream(
         signal,
     });
     if (!res.ok || !res.body) {
-        let detail = `Request failed (${res.status})`;
+        let detail = i18next.t('studyLibraryHtmlDocAiService:errors.requestFailed', {
+            status: res.status,
+        });
         try {
             const j = await res.json();
             detail = j?.detail || detail;
@@ -164,6 +171,7 @@ export async function generateHtmlDocumentStream(
 
     if (errorDetail) throw new Error(errorDetail);
     const html = finalHtml || acc;
-    if (!html.trim()) throw new Error('The AI returned an empty document. Try rephrasing your prompt.');
+    if (!html.trim())
+        throw new Error(i18next.t('studyLibraryHtmlDocAiService:errors.emptyDocument'));
     return html;
 }

@@ -13,12 +13,13 @@ import windowStateKeeper from 'electron-window-state';
 import { join } from 'path';
 import notifier from 'node-notifier';
 import { readFileSync } from 'fs';
+import { getActiveWebDirectory } from './ota';
 
 // Read flavor from electron-flavor.json to determine branding
 const flavorBranding: Record<string, { appName: string; iconBase: string }> = {
   ssdc: { appName: 'SSDC Horizon', iconBase: 'ssdc_horizon' },
   shikshanation: { appName: 'Shiksha Nation', iconBase: 'shiksha_nation' },
-  zoe: { appName: 'ZOE Edtech', iconBase: 'zoe' },
+  zoe: { appName: 'ZOE Online School', iconBase: 'zoe' },
 };
 let currentFlavor = 'ssdc';
 try {
@@ -102,8 +103,12 @@ export class ElectronCapacitorApp {
     }
 
     // Setup our web app loader, this lets us load apps like react, vue, and angular without changing their build chains.
+    // Store builds (Mac App Store / Microsoft Store) cannot self-update, so they
+    // patch by swapping the WEB BUNDLE instead — see ota.ts. This resolves to the
+    // packaged app/ directory for every other build, and also whenever no OTA
+    // bundle is staged or a staged one turns out to be unusable.
     this.loadWebApp = electronServe({
-      directory: join(app.getAppPath(), 'app'),
+      directory: getActiveWebDirectory(join(app.getAppPath(), 'app')),
       scheme: this.customScheme,
     });
 

@@ -20,12 +20,13 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation
+from . import annotator, callbacks, cancellation, vision_transcript
 from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
 from .rubric import RubricResolver, load_snapshot
 from .validator import validate_and_cap
+from .enforce_bridge import apply_enforcement
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,48 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             pdf_url, dpi=200, poll_interval=3.0, timeout=300.0,
             cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
         )
+
+        # 1b. Re-read the handwriting with a vision model, and merge the OCR's
+        # word-level boxes into real lines. render_worker runs PaddleOCR's
+        # PRINTED-text recogniser on handwriting, which returns fragments like
+        # 'yromrp' — grading against that does not produce lenient marks, it
+        # produces random ones, because the model reconstructs a textbook answer
+        # from keyword noise and scores it at high confidence. This step is what
+        # makes the marks mean anything. It is pinned to a known vision model
+        # rather than `preferred_model`: reading the page is not a place to let
+        # a picker choose a text-only model and silently fall back to noise.
+        cancellation.check(job_id, process_id)
+        await callbacks.progress(
+            callback_base, process_id, job_id, step="HANDWRITING_READ",
+        )
+        try:
+            layout_map = await vision_transcript.enrich_layout_with_vision(
+                pdf_url, layout_map, llm,
+                institute_id=institute_id,
+                token_sink=grader,
+                cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
+            )
+        except cancellation.Cancelled:
+            raise
+        except Exception:
+            # Never lose a copy to this step: grading can still proceed on the
+            # raw OCR, and the prompt now tells the model that transcript is
+            # unreliable so it answers with low confidence instead of inventing.
+            logger.exception("Vision transcription failed; falling back to raw OCR")
+
+        cancellation.check(job_id, process_id)
+        quality = layout_map.get("vision_quality") or {}
+        if quality and not quality.get("gradeable", True):
+            # Refuse to grade a copy we could not read. Before this gate existed
+            # nothing checked the transcript was usable, so an unreadable scan
+            # came back as confident marks. A human reading it is the correct
+            # outcome; a fabricated mark is not.
+            raise RuntimeError(
+                "answer sheet could not be read reliably "
+                f"({quality.get('legible_pages')}/{quality.get('pages')} pages legible, "
+                f"{quality.get('avg_chars_per_page')} chars/page) — needs manual evaluation"
+            )
+
         await callbacks.progress(
             callback_base, process_id, job_id, step="LAYOUT_OCR_DONE", layout_map=layout_map,
         )
@@ -146,6 +189,10 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         layout_map = await mathpix.enrich_layout_for_math(pdf_url, layout_map)
 
         # 3. Per-question grading.
+        # Java flips the process to EVALUATING on this step. Python never sent
+        # it, so that branch was dead and the UI showed "OCR done" for most of
+        # the run — the grading loop is the long part.
+        await callbacks.progress(callback_base, process_id, job_id, step="GRADING")
         total_awarded = 0.0
         total_max = 0.0
         evaluated = 0
@@ -216,6 +263,28 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         # Checkpoint first: a cancel that landed after the last question's check
         # would otherwise render, upload, and bill a copy the teacher stopped.
         cancellation.check(job_id, process_id)
+        # Between the grader and the renderer: enforce.py makes the marking
+        # correct whatever the model returned - exactly one score per attempted
+        # question in the right margin, one deduction note below the answer,
+        # praise only where the guide allows it, every annotation on a real
+        # row. A question it still cannot place is reported and left without
+        # ink; the copy ships anyway. Withholding the whole file for one gap
+        # (the first rule here) sent teachers a bare scan with the on-screen
+        # overlay instead of twenty checked answers.
+        try:
+            questions_meta = [{
+                "question_id": q.get("question_id"),
+                "paper_label": q.get("paper_label") or q.get("label"),
+                "max_marks": q.get("max_marks"),
+                "question_type": q.get("question_type"),
+            } for q in questions]
+        except Exception:
+            questions_meta = None
+        verdicts, _total, enforce_report, unmarked = apply_enforcement(
+            verdicts, layout_map, questions_meta)
+        if unmarked:
+            logger.warning("copy-check %s: enforce could not place a mark for %s; shipping the copy without them",
+                           process_id, unmarked)
         evaluated_file_id = await annotator.render_and_upload(
             pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
         )

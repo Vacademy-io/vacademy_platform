@@ -87,6 +87,7 @@ const KIND_BY_TYPE: Record<string, BulkItemKind> = {
     photo: 'IMAGE',
     video: 'VIDEO_FILE',
     mp4: 'VIDEO_FILE',
+    scorm: 'SCORM',
     youtube: 'YOUTUBE',
     yt: 'YOUTUBE',
     link: 'EXTERNAL_LINK',

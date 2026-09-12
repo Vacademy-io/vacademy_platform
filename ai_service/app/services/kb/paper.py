@@ -69,27 +69,23 @@ PASSAGES_PER_ROW = 6
 
 MAX_QUESTIONS_PER_PAPER = 120
 
-QUESTION_TYPES = ("MCQS", "ONE_WORD", "LONG_ANSWER", "NUMERIC")
+QUESTION_TYPES = ("MCQS", "MCQM", "TRUE_FALSE", "ONE_WORD", "LONG_ANSWER", "NUMERIC")
+
+# Types that carry options, i.e. where `correct_options` is the answer key rather
+# than `ans`.
+OPTION_QUESTION_TYPES = ("MCQS", "MCQM", "TRUE_FALSE")
 
 # What each blueprint type is STORED as.
 #
-# `question_format.format_questions` — the shared converter every AI question
-# source funnels through — dispatches on MCQS / MCQM / ONE_WORD / LONG_ANSWER and
-# SILENTLY SKIPS anything else. It has no NUMERIC branch, even though NUMERIC is
-# a real platform question type. So a numerical question emitted as NUMERIC is
-# dropped on the floor: it shows in the review board and then never reaches the
-# question bank.
+# This used to map NUMERIC -> ONE_WORD, because `question_format.format_questions`
+# had no NUMERIC branch and SILENTLY SKIPPED anything it could not dispatch — so a
+# question emitted as NUMERIC showed up in the review board and then vanished on
+# the way to the question bank.
 #
-# NUMERIC therefore stays a PLANNING type (it shapes the prompt — "a numerical
-# problem with a definite answer, show the working") but is stored as ONE_WORD,
-# which is what a numeric answer actually is. Removing NUMERIC from the blueprint
-# instead would cost teachers the ability to ask for numericals at all.
-STORAGE_QUESTION_TYPE = {
-    "MCQS": "MCQS",
-    "ONE_WORD": "ONE_WORD",
-    "LONG_ANSWER": "LONG_ANSWER",
-    "NUMERIC": "ONE_WORD",
-}
+# format_questions now handles NUMERIC and TRUE_FALSE natively, so the downgrade is
+# gone and every planning type is stored as itself. Questions saved BEFORE this
+# change remain stored as ONE_WORD and keep grading exactly as they did.
+STORAGE_QUESTION_TYPE = {t: t for t in QUESTION_TYPES}
 
 
 @dataclass
@@ -314,7 +310,7 @@ Produce a BLUEPRINT — the plan, not the questions. Return STRICT JSON, no pros
       "node_ids": ["ids copied EXACTLY from the outline above that this row draws on"],
       "page_start": 11,
       "page_end": 18,
-      "question_type": "MCQS | ONE_WORD | LONG_ANSWER | NUMERIC",
+      "question_type": "MCQS | MCQM | TRUE_FALSE | ONE_WORD | LONG_ANSWER | NUMERIC",
       "count": 10,
       "marks_each": 1,
       "difficulty": "EASY | MEDIUM | HARD",
@@ -472,6 +468,15 @@ image tag that is not in that list.
             '"choose all that apply". Wrong options must be plausible — a '
             "distractor nobody would pick tests nothing."
         ),
+        "MCQM": (
+            "Exactly 4 options, with TWO OR MORE correct. List every correct option "
+            "in correct_options. Wrong options must be plausible."
+        ),
+        "TRUE_FALSE": (
+            "Exactly 2 options, \"True\" and \"False\" in that order (preview_id 1 and "
+            "2). Exactly one is correct. The statement must be unambiguously one or "
+            "the other from the passages — not a matter of opinion."
+        ),
         "ONE_WORD": "Answer is a single word, number, or very short phrase.",
         "LONG_ANSWER": (
             "A structured answer worth the marks. Provide a model answer with the "
@@ -529,8 +534,8 @@ RULES THAT MATTER:
   provided solution…", no discussion of whether the source is ambiguous, no
   mention of these instructions. If the source material is unclear, silently
   pick the best-supported answer and give clean working for THAT.
-- For MCQS give EXACTLY ONE correct option. If more than one option is
-  defensible, rewrite the options so only one is.
+- For MCQS and TRUE_FALSE give EXACTLY ONE correct option. If more than one option
+  is defensible, rewrite the options so only one is. For MCQM give at least two.
 - Ground EVERY question in the passages. If the passages do not support {row.count}
   distinct questions, return fewer — a padded paper is worse than a short one.
 - "source_passage" and "source_page" must point at the passage you actually used.
@@ -784,6 +789,9 @@ async def generate_questions(
                     "topic": row.topic,
                     "marks": row.marks_each,
                     "source_page": q.get("source_page"),
+                    # The topic nodes this row drew on. Carried through to the saved
+                    # question so the bank can later be filtered by topic.
+                    "node_ids": list(row.node_ids or []),
                     # What the teacher ASKED for, which may differ from what the
                     # platform stores (see STORAGE_QUESTION_TYPE). The review
                     # board shows this one.
@@ -860,12 +868,14 @@ def validate_paper(blueprint: Blueprint, questions: Sequence[Dict[str, Any]]) ->
                 num, "warning", "missing_answer",
                 "No explanation or marking scheme — a teacher cannot mark this consistently.",
             ))
-        if qtype == "MCQS":
+        if qtype in OPTION_QUESTION_TYPES:
             options = q.get("options") or []
-            if len(options) != 4:
+            # TRUE_FALSE has two options by definition; the others are 4-option.
+            expected_options = 2 if qtype == "TRUE_FALSE" else 4
+            if len(options) != expected_options:
                 issues.append(PaperIssue(
                     num, "error", "bad_options",
-                    f"{len(options)} option(s) instead of 4.",
+                    f"{len(options)} option(s) instead of {expected_options}.",
                 ))
             correct = q.get("correct_options") or []
             if not correct:
@@ -878,14 +888,23 @@ def validate_paper(blueprint: Blueprint, questions: Sequence[Dict[str, Any]]) ->
                         num, "error", "missing_answer",
                         f"Correct option {stray} does not match any option on this question.",
                     ))
-                # MCQS is single-choice. Two correct answers means the student
-                # cannot score it and the auto-evaluation is wrong — seen live on
-                # a generated paper that otherwise "passed all checks".
-                if len(set(map(str, correct))) > 1:
+                distinct_correct = len(set(map(str, correct)))
+                # MCQS and TRUE_FALSE are single-choice. Two correct answers means the
+                # student cannot score it and the auto-evaluation is wrong — seen live
+                # on a generated paper that otherwise "passed all checks".
+                if qtype != "MCQM" and distinct_correct > 1:
                     issues.append(PaperIssue(
                         num, "error", "bad_options",
-                        f"{len(set(map(str, correct)))} options are marked correct, but this "
+                        f"{distinct_correct} options are marked correct, but this "
                         "is a single-choice question.",
+                    ))
+                # MCQM with one correct option is an MCQS wearing the wrong label: the
+                # learner sees checkboxes for a question that has a single answer.
+                if qtype == "MCQM" and distinct_correct < 2:
+                    issues.append(PaperIssue(
+                        num, "warning", "bad_options",
+                        "Only one option is marked correct on a multiple-correct "
+                        "question — it should be single-choice instead.",
                     ))
 
         # Unsubstituted figure placeholders make a question unanswerable.
@@ -958,8 +977,35 @@ def validate_paper(blueprint: Blueprint, questions: Sequence[Dict[str, Any]]) ->
     return issues
 
 
+def _provenance(
+    raw: Dict[str, Any], kb_id: Optional[str], generation_id: Optional[str]
+) -> Dict[str, Any]:
+    """What the question bank stores about where this question came from.
+
+    Everything here is already known at generation time and was previously thrown
+    away at the save boundary, which is why a saved KB question could not be traced
+    back to its book, its topic or its page — and therefore could never be found
+    again to reuse.
+    """
+    meta = raw.get("kb_meta") or {}
+    return {
+        "kb_id": kb_id,
+        "generation_id": generation_id,
+        "row_id": meta.get("row_id"),
+        "section": meta.get("section"),
+        "topic": meta.get("topic"),
+        "node_ids": meta.get("node_ids") or [],
+        # kb_meta.source_page is the one the model cited and the review board shows.
+        "source_page": meta.get("source_page") or raw.get("source_page"),
+        "figures": meta.get("figures") or [],
+        "planned_type": meta.get("planned_type"),
+    }
+
+
 def pair_with_formatted(
     raw_questions: Sequence[Dict[str, Any]],
+    kb_id: Optional[str] = None,
+    generation_id: Optional[str] = None,
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[str]]:
     """Format questions ONE AT A TIME so the two lists can never drift apart.
 
@@ -971,6 +1017,9 @@ def pair_with_formatted(
 
     Returns (raw_kept, formatted, warnings), guaranteed equal length and aligned.
     Anything dropped is reported rather than vanishing.
+
+    Also stamps each formatted question with its provenance, which the question bank
+    persists (assessment_service V42) so these questions stay findable afterwards.
     """
     from ..question_format import format_questions
 
@@ -985,8 +1034,13 @@ def pair_with_formatted(
             logger.warning("Formatting failed for question %s: %s", raw.get("question_number"), exc)
             out = []
         if out:
+            question = out[0]
+            question["source_type"] = "KNOWLEDGE_BASE"
+            question["source_meta"] = json.dumps(
+                _provenance(raw, kb_id, generation_id), ensure_ascii=False
+            )
             raw_kept.append(raw)
-            formatted.append(out[0])
+            formatted.append(question)
         else:
             dropped.append(raw.get("question_number"))
 
@@ -1003,5 +1057,6 @@ def pair_with_formatted(
 __all__ = [
     "Blueprint", "BlueprintRow", "GeneratedPaper", "PaperIssue",
     "build_blueprint", "generate_questions", "validate_paper", "pair_with_formatted",
-    "MAX_QUESTIONS_PER_PAPER", "QUESTION_TYPES", "STORAGE_QUESTION_TYPE",
+    "MAX_QUESTIONS_PER_PAPER", "QUESTION_TYPES", "OPTION_QUESTION_TYPES",
+    "STORAGE_QUESTION_TYPE",
 ]

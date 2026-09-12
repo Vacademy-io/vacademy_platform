@@ -1,0 +1,69 @@
+{
+    "status": {
+        "paid": "भुगतान हो गया",
+        "partialPaid": "आंशिक भुगतान",
+        "overdue": "अतिदेय",
+        "waived": "माफ किया गया"
+    },
+    "row": {
+        "updateSuccessToast": "किस्त अपडेट हो गई",
+        "updateErrorToast": "अपडेट विफल रहा",
+        "discountOptionNone": "कोई नहीं",
+        "discountOptionPercentage": "%",
+        "discountOptionFlat": "₹",
+        "reasonPlaceholder": "कारण",
+        "save": "सेव करें"
+    },
+    "cpoDiscount": {
+        "heading": "छूट",
+        "typeLabel": "प्रकार",
+        "discountOptionNone": "कोई नहीं",
+        "discountOptionPercentage": "कुल का %",
+        "discountOptionFlat": "फ्लैट ₹ छूट",
+        "valueLabel": "मूल्य",
+        "reasonLabel": "कारण",
+        "reasonPlaceholder": "जैसे: भाई-बहन छूट",
+        "removeSuccessToast": "CPO छूट हटा दी गई",
+        "applySuccessToast": "CPO छूट लागू कर दी गई",
+        "applyErrorToast": "CPO छूट लागू नहीं हो सकी",
+        "applying": "लागू हो रहा है…",
+        "apply": "लागू करें",
+        "remove": "हटाएं"
+    },
+    "offlinePayment": {
+        "amountRequiredError": "एक धनात्मक राशि दर्ज करें",
+        "recordedSuccessToast": "{{amount}} का ऑफ़लाइन भुगतान दर्ज किया गया",
+        "recordErrorToast": "भुगतान दर्ज करना विफल रहा",
+        "addPaymentButton": "+ भुगतान जोड़ें",
+        "heading": "भुगतान जोड़ें",
+        "amountLabel": "राशि (₹)",
+        "dateLabel": "तारीख",
+        "referenceLabel": "संदर्भ",
+        "referencePlaceholder": "चेक नंबर, UPI संदर्भ…",
+        "generateInvoiceLabel": "इनवॉइस बनाएं",
+        "saving": "सेव हो रहा है…",
+        "saveAndAllocate": "सेव करें और FIFO आवंटित करें",
+        "cancel": "रद्द करें"
+    },
+    "card": {
+        "installmentCount_one": "{{count}} किस्त",
+        "installmentCount_other": "{{count}} किस्तें",
+        "net": "शुद्ध {{amount}}",
+        "paid": "भुगतान {{amount}}",
+        "outstanding": "बकाया {{amount}}",
+        "loadingInstallments": "किस्तें लोड हो रही हैं…",
+        "loadInstallmentsError": "किस्तें लोड नहीं हो सकीं।",
+        "tableHeaders": {
+            "index": "#",
+            "startDate": "प्रारंभ तिथि",
+            "dueDate": "देय तिथि",
+            "default": "डिफ़ॉल्ट",
+            "amount": "राशि",
+            "discount": "छूट",
+            "paid": "भुगतान",
+            "status": "स्थिति"
+        }
+    },
+    "loadingPlans": "CPO योजनाएं लोड हो रही हैं…",
+    "loadPlansError": "CPO योजनाएं लोड नहीं हो सकीं।"
+}

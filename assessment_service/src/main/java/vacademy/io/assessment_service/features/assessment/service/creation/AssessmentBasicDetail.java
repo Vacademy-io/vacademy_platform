@@ -43,6 +43,10 @@ public class AssessmentBasicDetail extends IStep {
         savedData.put(AssessmentCreationEnum.BOUNDATION_START_DATE.name().toLowerCase(), assessment.get().getBoundStartTime());
         savedData.put(AssessmentCreationEnum.BOUNDATION_END_DATE.name().toLowerCase(), assessment.get().getBoundEndTime());
         savedData.put(AssessmentCreationEnum.RESULT_TYPE.name().toLowerCase(), assessment.get().getResultType());
+        // Echoed back so the Step-1 toggle shows its real saved state rather than
+        // silently resetting to the default every time the wizard is reopened.
+        savedData.put(AssessmentCreationEnum.AI_EVALUATION_ENABLED.name().toLowerCase(), assessment.get().getAiEvaluationEnabled());
+        savedData.put(AssessmentCreationEnum.AI_EVALUATION_MODEL.name().toLowerCase(), assessment.get().getAiEvaluationModel());
         setSavedData(savedData);
         updateStatusForStep();
     }

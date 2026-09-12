@@ -31,9 +31,11 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static vacademy.io.assessment_service.features.assessment.enums.AssessmentSetStatusEnum.DELETED;
@@ -73,6 +75,13 @@ public class AddQuestionPaperFromImportManager {
             options.addAll(question.getOptions());
             if (questionRequestBody.getQuestions().get(i).getParentRichText() != null) {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(questionRequestBody.getQuestions().get(i).getParentRichText()));
+            }
+            // Denormalised from the paper (V42) so the question-level browse endpoint can
+            // scope by institute without walking question -> mapping -> paper -> institute
+            // for every candidate row. Only for private papers: a public paper's questions
+            // belong to no single institute.
+            if (!isPublicPaper) {
+                question.setInstituteId(questionRequestBody.getInstituteId());
             }
             questions.add(question);
         }
@@ -155,6 +164,9 @@ public class AddQuestionPaperFromImportManager {
             if (importQuestion.getParentRichText() != null) {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
             }
+            if (!isPublicPaper) {
+                question.setInstituteId(questionRequestBody.getInstituteId());
+            }
             newQuestions.add(question);
             List<Option> questionOptions = question.getOptions();
             question.setOptions(new ArrayList<>());
@@ -175,14 +187,26 @@ public class AddQuestionPaperFromImportManager {
 
         // If not public, link to an institute
         if (!isPublicPaper) {
-            questionPaperRepository.linkInstituteToQuestionPaper(
-                    UUID.randomUUID().toString(), questionPaper.getId(),
-                    questionRequestBody.getInstituteId(), "ACTIVE",
-                    questionRequestBody.getLevelId(), questionRequestBody.getSubjectId()
-            );
+            linkOrUpdateInstitute(questionPaper.getId(), questionRequestBody.getInstituteId(),
+                    questionRequestBody.getLevelId(), questionRequestBody.getSubjectId());
         }
 
         return true;
+    }
+
+    /**
+     * Link a paper to an institute, or refresh the existing link.
+     * <p>
+     * Insert-only left a duplicate row behind on every save of an already-linked paper.
+     */
+    private void linkOrUpdateInstitute(String questionPaperId, String instituteId, String levelId, String subjectId) {
+        if (instituteId == null) return;
+        if (questionPaperRepository.countInstituteQuestionPaperLink(questionPaperId, instituteId) > 0) {
+            questionPaperRepository.updateInstituteQuestionPaperLink(questionPaperId, instituteId, "ACTIVE", levelId, subjectId);
+            return;
+        }
+        questionPaperRepository.linkInstituteToQuestionPaper(UUID.randomUUID().toString(), questionPaperId,
+                instituteId, "ACTIVE", levelId, subjectId);
     }
 
 
@@ -221,6 +245,10 @@ public class AddQuestionPaperFromImportManager {
 
     }
 
+    // Six saveAll batches plus a bulk insert. Without a transaction a failure part-way
+    // through left a half-edited paper: some questions added, others not, tags dangling.
+    // Both sibling methods (addQuestionPaper, updateQuestionPaper) are already transactional.
+    @Transactional
     public Boolean editQuestionPaper(CustomUserDetails user, EditQuestionPaperDTO questionRequestBody) throws JsonProcessingException {
         Optional<QuestionPaper> questionPaper = questionPaperRepository.findById(questionRequestBody.getId());
 
@@ -247,6 +275,7 @@ public class AddQuestionPaperFromImportManager {
             if (importQuestion.getParentRichText() != null) {
                 question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
             }
+            question.setInstituteId(questionRequestBody.getInstituteId());
             newQuestions.add(question);
             List<Option> questionOptions = question.getOptions();
             newOptions.addAll(questionOptions);
@@ -344,6 +373,14 @@ public class AddQuestionPaperFromImportManager {
         if (questionRequest.getProblemType() != null) {
             question.setProblemType((questionRequest.getProblemType()));
         }
+        // Provenance (V42). Null-guarded like everything else here, so an edit that does
+        // not resend it keeps whatever the question was originally created with.
+        if (questionRequest.getSourceType() != null) {
+            question.setSourceType(questionRequest.getSourceType());
+        }
+        if (questionRequest.getSourceMeta() != null) {
+            question.setSourceMeta(questionRequest.getSourceMeta());
+        }
         question.setQuestionType(questionRequest.getQuestionType());
         switch (questionRequest.getQuestionType()) {
             case "NUMERIC":
@@ -354,10 +391,17 @@ public class AddQuestionPaperFromImportManager {
             case "MCQM":
                 question.setQuestionResponseType(QuestionResponseTypes.OPTION.name());
                 break;
+            // Each case breaks. Without the breaks ONE_WORD fell through LONG_ANSWER
+            // into CODING and every one of them ended up as CODE. It was masked only
+            // because handleOneWordQuestion/handleLongAnswerQuestion re-set the value
+            // immediately afterwards, so adding the breaks changes nothing at runtime —
+            // it just removes a trap for the next person who reorders this method.
             case "ONE_WORD":
                 question.setQuestionResponseType(QuestionResponseTypes.ONE_WORD.name());
+                break;
             case "LONG_ANSWER":
                 question.setQuestionResponseType(QuestionResponseTypes.LONG_ANSWER.name());
+                break;
             case "CODING":
                 question.setQuestionResponseType(QuestionResponseTypes.CODE.name());
                 break;
@@ -370,6 +414,18 @@ public class AddQuestionPaperFromImportManager {
     private List<String> createOptions(Question question, QuestionDTO questionRequest) throws JsonProcessingException {
         List<Option> options = new ArrayList<>();
         MCQEvaluationDTO requestEvaluation = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson(), MCQEvaluationDTO.class);
+
+        // The incoming answer key. Null-guarded end to end: a snake_case or absent
+        // `correct_option_ids` used to leave this list null and NPE right here, taking
+        // the whole paper save down with it.
+        Set<String> incomingCorrectMarkers = new HashSet<>();
+        if (requestEvaluation != null && requestEvaluation.getData() != null
+                && requestEvaluation.getData().getCorrectOptionIds() != null) {
+            for (String marker : requestEvaluation.getData().getCorrectOptionIds()) {
+                if (marker != null) incomingCorrectMarkers.add(marker);
+            }
+        }
+
         List<String> correctOptionIds = new ArrayList<>();
         for (OptionDTO optionDTO : questionRequest.getOptions()) {
             Option option = new Option();
@@ -385,7 +441,16 @@ public class AddQuestionPaperFromImportManager {
             option.setQuestion(question);
             option.setMediaId(optionDTO.getMediaId());
 
-            if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(optionDTO.getPreviewId()))) {
+            // On CREATE the answer key refers to options by previewId. On EDIT the
+            // client sends real option ids and previewId is null — and the old code
+            // compared String.valueOf(null), i.e. the literal "null", which matched
+            // nothing. The result was an EMPTY correct-option array written back over a
+            // perfectly good answer key, after which every learner was graded INCORRECT
+            // and given negative marks.
+            //
+            // Accepting either marker is additive: everything that matched before still
+            // matches.
+            if (isMarkedCorrect(incomingCorrectMarkers, optionDTO, option.getId())) {
                 correctOptionIds.add(option.getId());
             }
             options.add(option);
@@ -393,6 +458,18 @@ public class AddQuestionPaperFromImportManager {
         question.setOptions(new ArrayList<>());
         question.setOptions(options);
         return correctOptionIds;
+    }
+
+    /** True when the answer key names this option, by previewId (create) or id (edit). */
+    private boolean isMarkedCorrect(Set<String> correctMarkers, OptionDTO optionDTO, String resolvedOptionId) {
+        if (correctMarkers.isEmpty()) return false;
+        if (optionDTO.getPreviewId() != null && correctMarkers.contains(String.valueOf(optionDTO.getPreviewId()))) {
+            return true;
+        }
+        if (optionDTO.getId() != null && correctMarkers.contains(optionDTO.getId())) {
+            return true;
+        }
+        return resolvedOptionId != null && correctMarkers.contains(resolvedOptionId);
     }
 
 
@@ -522,9 +599,24 @@ public class AddQuestionPaperFromImportManager {
         // sharing a handful of subjects would otherwise run N upsert queries instead of a few).
         Map<String, String> tagIdByName = new HashMap<>();
 
+        // Pair each saved question with ITS request, not with whatever sits at the same
+        // index. editQuestionPaper's updated-questions loop skips requests whose question
+        // no longer exists, so the two lists drift apart from the first skip onward — and
+        // every tag after that point was being attached to the wrong question.
+        Map<String, QuestionDTO> requestById = new HashMap<>();
+        for (QuestionDTO request : questionRequests) {
+            if (request.getId() != null) requestById.put(request.getId(), request);
+        }
+        boolean pairById = requestById.size() == questionRequests.size()
+                && questions.stream().allMatch(q -> requestById.containsKey(q.getId()));
+
         for (int i = 0; i < questions.size(); i++) {
             Question question = questions.get(i);
-            QuestionDTO questionRequest = questionRequests.get(i);
+            // Fall back to positional pairing only when ids cannot pair the two lists —
+            // i.e. brand-new questions, where the request carries no id yet and the lists
+            // are built in lockstep anyway.
+            QuestionDTO questionRequest = pairById ? requestById.get(question.getId()) : questionRequests.get(i);
+            if (questionRequest == null) continue;
 
             // Manual subject/topic tags entered on upload (or pre-filled from the HTML "Tags:" marker).
             for (String subjectTag : questionRequest.getSubjectTags()) {

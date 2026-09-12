@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Slide } from '../-hooks/use-slides';
 import { useMediaNavigationStore } from '../-stores/media-navigation-store';
 import { getPublicUrl } from '@/services/upload_file';
@@ -16,6 +17,7 @@ import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
 import { resolveVideoSourceType, extractVimeoId } from '@/utils/video-source-type';
 
 const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedUrl?: string }) => {
+    const { t } = useTranslation('studyLibraryVideoSlidePreview');
     const { videoSeekTime, clearVideoSeekTime } = useMediaNavigationStore();
     // Per-role enforcement: keep native video download off unless this role is allowed.
     const { canDownload } = useSlideDownloadAccess();
@@ -113,7 +115,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
 
                     setError(null);
                 } else {
-                    setError('Failed to load video URLs');
+                    setError(t('errors.loadUrlsFailed'));
                 }
             } finally {
                 setIsLoadingHtmlVideo(false);
@@ -133,7 +135,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
             }
         } catch (err) {
             console.error('Error refreshing video URL:', err);
-            if (isMountedRef.current) setError('Failed to refresh video URL');
+            if (isMountedRef.current) setError(t('errors.refreshFailed'));
         } finally {
             if (isMountedRef.current) setIsLoading(false);
         }
@@ -148,11 +150,11 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                 video.currentTime = videoSeekTime;
                 clearVideoSeekTime();
                 toast.success(
-                    `Video jumped to ${Math.floor(videoSeekTime / 60)}:${Math.floor(
-                        videoSeekTime % 60
-                    )
-                        .toString()
-                        .padStart(2, '0')}`
+                    t('toast.jumpedTo', {
+                        time: `${Math.floor(videoSeekTime / 60)}:${Math.floor(videoSeekTime % 60)
+                            .toString()
+                            .padStart(2, '0')}`,
+                    })
                 );
             };
 
@@ -199,7 +201,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                 }
             } catch (err) {
                 console.error('Error fetching video URL:', err);
-                if (isMountedRef.current) setError('Failed to load video');
+                if (isMountedRef.current) setError(t('errors.loadFailed'));
             } finally {
                 if (isMountedRef.current) setIsLoading(false);
             }
@@ -219,9 +221,13 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
             videoElement.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
         ) {
             setIsUrlExpired(true);
-            toast.error('Video URL has expired. Refreshing...');
+            toast.error(t('errors.urlExpiredRefreshing'));
         } else {
-            setError(`Video playback error: ${videoElement.error?.message || 'Unknown error'}`);
+            setError(
+                t('errors.playbackError', {
+                    message: videoElement.error?.message || t('errors.unknownError'),
+                })
+            );
         }
     };
 
@@ -312,7 +318,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                 <div className="flex h-64 items-center justify-center rounded-lg bg-gray-100">
                     <div className="flex flex-col items-center gap-3">
                         <div className="size-12 animate-spin rounded-full border-y-2 border-primary-500"></div>
-                        <p className="text-sm text-gray-600">Loading video...</p>
+                        <p className="text-sm text-gray-600">{t('loadingVideo')}</p>
                     </div>
                 </div>
             );
@@ -345,8 +351,8 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
             <div className="flex h-64 items-center justify-center rounded-lg bg-gray-100">
                 <div className="flex flex-col items-center gap-3">
                     <div className="size-12 animate-spin rounded-full border-y-2 border-primary-500"></div>
-                    <p className="text-sm text-gray-600">{error === 'work in progress' ? 'Work in progress' : 'Video is being generated...'}</p>
-                    <p className="text-xs text-gray-500">This may take a few minutes. Please check back later.</p>
+                    <p className="text-sm text-gray-600">{error === 'work in progress' ? t('workInProgress') : t('videoBeingGenerated')}</p>
+                    <p className="text-xs text-gray-500">{t('generatingHint')}</p>
                 </div>
             </div>
         );
@@ -370,7 +376,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                     onClick={refreshS3Url}
                     className="rounded-md bg-primary-500 px-4 py-2 text-white transition-colors hover:bg-primary-600"
                 >
-                    Retry
+                    {t('retry')}
                 </button>
             </div>
         );
@@ -382,7 +388,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
             <div key={`video-${activeItem.id}`} className="w-full">
                 {isUrlExpired ? (
                     <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-yellow-50 p-4">
-                        <p className="mb-4 text-yellow-700">Video URL has expired. Refreshing...</p>
+                        <p className="mb-4 text-yellow-700">{t('errors.urlExpiredRefreshing')}</p>
                         <div className="size-8 animate-spin rounded-full border-y-2 border-primary-500"></div>
                     </div>
                 ) : (
@@ -418,7 +424,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                     className="aspect-video w-full rounded-lg"
                     allow="autoplay; fullscreen; picture-in-picture"
                     allowFullScreen
-                    title="Vimeo video player"
+                    title={t('vimeoPlayerTitle')}
                 />
             </div>
         );

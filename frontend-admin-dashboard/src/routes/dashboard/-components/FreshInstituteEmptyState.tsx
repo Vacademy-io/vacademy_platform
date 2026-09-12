@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, Circle, ArrowRight } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -28,37 +29,38 @@ export default function FreshInstituteEmptyState({
     onEditProfile,
 }: FreshInstituteEmptyStateProps) {
     const navigate = useNavigate();
+    const { t } = useTranslation('dashboardFreshInstituteEmptyState');
 
     const items: ChecklistItem[] = [
         {
-            label: 'Complete your institute profile',
-            description: 'Add branding, contact, and basic details.',
+            label: t('items.profile.label'),
+            description: t('items.profile.description'),
             done: profileCompletionPercentage >= 100,
-            cta: { label: 'Edit profile', onClick: onEditProfile },
+            cta: { label: t('items.profile.cta'), onClick: onEditProfile },
         },
         {
-            label: 'Create your first level',
-            description: 'Set up the levels your institute teaches.',
+            label: t('items.level.label'),
+            description: t('items.level.description'),
             done: levelCount > 0,
-            cta: { label: 'Add level', to: '/manage-institute' },
+            cta: { label: t('items.level.cta'), to: '/manage-institute' },
         },
         {
-            label: 'Create your first course',
-            description: 'Add a course so you can enroll learners.',
+            label: t('items.course.label'),
+            description: t('items.course.description'),
             done: courseCount > 0,
-            cta: { label: 'Add course', to: '/study-library/courses' },
+            cta: { label: t('items.course.cta'), to: '/study-library/courses' },
         },
         {
-            label: 'Create your first batch',
-            description: 'Group learners into a batch with a session.',
+            label: t('items.batch.label'),
+            description: t('items.batch.description'),
             done: batchCount > 0,
-            cta: { label: 'Add batch', to: '/manage-institute' },
+            cta: { label: t('items.batch.cta'), to: '/manage-institute' },
         },
         {
-            label: 'Invite your first learner',
-            description: 'Send an invite or enroll a student manually.',
+            label: t('items.learner.label'),
+            description: t('items.learner.description'),
             done: studentCount > 0,
-            cta: { label: 'Add learner', to: '/manage-students' },
+            cta: { label: t('items.learner.cta'), to: '/manage-students' },
         },
     ];
 
@@ -71,14 +73,14 @@ export default function FreshInstituteEmptyState({
                 <div className="flex items-center justify-between gap-2">
                     <div>
                         <CardTitle className="text-sm font-semibold">
-                            Welcome — let&apos;s get your institute set up
+                            {t('header.title')}
                         </CardTitle>
-                        <CardDescription className="mt-0.5 text-[11px] text-neutral-600 sm:text-xs">
-                            Knock these out and your dashboard fills in automatically.
+                        <CardDescription className="mt-0.5 text-2xs text-neutral-600 sm:text-xs">
+                            {t('header.subtitle')}
                         </CardDescription>
                     </div>
-                    <span className="shrink-0 rounded-full border border-primary-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-primary-700">
-                        {completed} / {total}
+                    <span className="shrink-0 rounded-full border border-primary-200 bg-white px-2 py-0.5 text-2xs font-semibold text-primary-700">
+                        {t('progress', { completed, total })}
                     </span>
                 </div>
             </CardHeader>
@@ -106,7 +108,7 @@ export default function FreshInstituteEmptyState({
                                 {i + 1}. {item.label}
                             </span>
                             {!item.done && (
-                                <span className="text-[11px] text-neutral-500">
+                                <span className="text-2xs text-neutral-500">
                                     {item.description}
                                 </span>
                             )}

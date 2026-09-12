@@ -10,6 +10,8 @@ import {
     ADD_PRODUCT_PAGE_CUSTOM_FIELD,
     REMOVE_PRODUCT_PAGE_CUSTOM_FIELD,
     CREATE_PRODUCT_PAGE_CUSTOM_FIELD,
+    REORDER_PRODUCT_PAGE_CUSTOM_FIELDS,
+    UPDATE_PRODUCT_PAGE_CUSTOM_FIELD,
 } from '@/constants/urls';
 import type {
     ProductPageResponse,
@@ -100,6 +102,46 @@ export const removeCustomFieldFromProductPage = async (
 ): Promise<ProductPageResponse> => {
     const response = await authenticatedAxiosInstance.delete<ProductPageResponse>(
         REMOVE_PRODUCT_PAGE_CUSTOM_FIELD(productPageId, customFieldId),
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+/** `orderedCustomFieldIds` is the exact order the checkout form should ask in. */
+export const reorderProductPageCustomFields = async (
+    productPageId: string,
+    instituteId: string,
+    orderedCustomFieldIds: string[]
+): Promise<ProductPageResponse> => {
+    const response = await authenticatedAxiosInstance.put<ProductPageResponse>(
+        REORDER_PRODUCT_PAGE_CUSTOM_FIELDS(productPageId),
+        orderedCustomFieldIds,
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+export interface ProductPageCustomFieldUpdate {
+    field_name?: string;
+    field_type?: string;
+    is_mandatory?: boolean;
+    config?: string;
+}
+
+/**
+ * Edits a field on this page's form. Only the properties you pass are applied.
+ * They live on the shared custom field, so the change reaches every form in the
+ * institute that uses it.
+ */
+export const updateProductPageCustomField = async (
+    productPageId: string,
+    customFieldId: string,
+    instituteId: string,
+    update: ProductPageCustomFieldUpdate
+): Promise<ProductPageResponse> => {
+    const response = await authenticatedAxiosInstance.put<ProductPageResponse>(
+        UPDATE_PRODUCT_PAGE_CUSTOM_FIELD(productPageId, customFieldId),
+        update,
         { params: { instituteId } }
     );
     return response.data;

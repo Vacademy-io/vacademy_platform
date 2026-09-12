@@ -11,6 +11,12 @@ export type ChatStreamStatus = "connecting" | "open" | "closed";
 export interface UseChatStreamOptions {
   /** Fired for each CHAT_MESSAGE event. */
   onMessage?: (payload: ChatMessagePayload) => void;
+  /**
+   * CHAT_MESSAGE_UPDATED — an EXISTING message changed in place (edited or deleted). Kept separate
+   * from onMessage: an in-place change is not a new arrival, so it must not bump the unread badge or
+   * overwrite the conversation-list preview with an older message.
+   */
+  onMessageUpdated?: (payload: ChatMessagePayload) => void;
   /** Fired for each CHAT_READ event. */
   onRead?: (payload: ChatMessagePayload) => void;
   /** Fired whenever the stream (re)connects — use to catch up missed messages. */
@@ -62,6 +68,11 @@ export function useChatStream(
       if (event?.data) optionsRef.current.onMessage?.(event.data);
     };
 
+    const handleMessageUpdated = (e: MessageEvent) => {
+      const event = parse(e.data);
+      if (event?.data) optionsRef.current.onMessageUpdated?.(event.data);
+    };
+
     const handleRead = (e: MessageEvent) => {
       const event = parse(e.data);
       if (event?.data) optionsRef.current.onRead?.(event.data);
@@ -91,6 +102,10 @@ export function useChatStream(
       });
 
       es.addEventListener("CHAT_MESSAGE", handleMessage as EventListener);
+      es.addEventListener(
+        "CHAT_MESSAGE_UPDATED",
+        handleMessageUpdated as EventListener,
+      );
       es.addEventListener("CHAT_READ", handleRead as EventListener);
       // HEARTBEAT + the initial `connection` event are intentionally ignored.
 

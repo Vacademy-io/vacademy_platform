@@ -135,7 +135,7 @@ export const Doubt = ({
                         </span>
                     </button>
                     {showReplies && (
-                        <div className="mt-2 flex flex-col gap-3 border-s border-neutral-200 ps-3">
+                        <div className="mt-2 flex flex-col gap-stack border-s border-neutral-200 ps-3">
                             {doubt.replies.map((reply, key) => (
                                 <Reply
                                     key={reply.id || key}

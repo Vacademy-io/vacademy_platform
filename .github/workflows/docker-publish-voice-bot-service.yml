@@ -73,6 +73,56 @@ jobs:
           pip install -q -r requirements.txt pytest pytest-asyncio
           python -m pytest tests/ -q
 
+      # CONVERSATION GATE (2026-09-12): twelve scripted callers — every one a real
+      # caller we failed the week before — talk to the real prompt on the real
+      # production LLM, with TTS/STT replaced by text. Costs LLM tokens only
+      # (~Rs 6 a run). A hard rule failure (re-greet, not ending when asked,
+      # spoken markup, invented price, wrong weekday…) blocks the deploy.
+      # Skipped, not failed, when the Vertex secret is absent (forks).
+      - name: Run conversation simulator
+        env:
+          # The repo has no VERTEX_CREDENTIALS_JSON secret (the deploy step's
+          # copy is silently empty too); GOOGLE_APPLICATION_CREDENTIALS_JSON is
+          # the service-account JSON the other workflows use.
+          VERTEX_CREDENTIALS_JSON: ${{ secrets.VERTEX_CREDENTIALS_JSON || secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          VERTEX_PROJECT_ID: vacademy-app
+          VERTEX_LOCATION: asia-south1
+          LLM_PROVIDER: vertex
+          SIM_OUT: sim_report.json
+        run: |
+          # Presence-checked in the shell: neither `secrets` nor a job-env flag is
+          # usable in a step `if` (two skipped runs on 2026-09-12 proved it).
+          if [ -z "${VERTEX_CREDENTIALS_JSON:-}" ]; then
+            echo "VERTEX_CREDENTIALS_JSON not available — simulator skipped"; exit 0
+          fi
+          cd voice_bot_service
+          # --ci fails only on the callers' hard rules; a credential/network
+          # error is reported and skipped so a missing permission cannot block
+          # every deploy (it is printed in the log and the report artifact).
+          python -m sim.run --model prod --ci --soft-errors
+
+      # TIMING GATE (2026-09-12): the real pipeline — gates, aggregator, VAD,
+      # Smart Turn, watchdog — on a simulated line with real-speech clips and
+      # stub STT/LLM/TTS. No credentials, no vendor cost. Barge-in, ducking,
+      # held tails, farewell close, nudges: the class of bug the text
+      # simulator cannot see. A failure blocks the deploy.
+      - name: Run timing simulator
+        env:
+          HF_HOME: ${{ runner.temp }}/hf
+        run: |
+          cd voice_bot_service
+          python -m sim.timing --ci --out sim_timing.json
+
+      - name: Upload simulator report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-report
+          path: |
+            voice_bot_service/sim_report.json
+            voice_bot_service/sim_timing.json
+          if-no-files-found: ignore
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -199,4 +249,5 @@ jobs:
                echo 'SMALLEST_API_KEY=$SMALLEST_API_KEY' >> .env; \
              fi; \
              docker compose pull -q voice-bot; docker compose up -d; \
+             docker image prune -af >/dev/null 2>&1 || true; \
              sleep 5; docker compose ps"

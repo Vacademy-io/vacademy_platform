@@ -93,13 +93,22 @@ public class StudentAttemptService {
     }
 
 
+    // @Transactional is load-bearing, not decorative: without it the rows loaded by
+    // the marks calculation detach the instant their read finishes, so saveAll() falls
+    // back to merge() and fires a SELECT per row — each dragging this entity's four
+    // EAGER @ManyToOne graphs. A 42-question paper became ~84 round trips per autosave
+    // per candidate, which took a live exam's background recalcs to 29s on 2026-08-29.
+    // Inside a transaction the entities stay managed, dirty checking emits plain
+    // batched UPDATEs, and the same work costs a couple of round trips.
     @Async
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
         return CompletableFuture.completedFuture(updateStudentAttemptWithTotalAfterMarksCalculation(studentAttemptOptional));
     }
 
     @Async
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
         return updateStudentAttemptResultAfterMarksCalculationAsync(studentAttemptOptional, null);
@@ -107,6 +116,7 @@ public class StudentAttemptService {
 
     /** @param endSource see {@link #updateStudentAttemptWithResultAfterMarksCalculation(Optional, String)}. */
     @Async
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional,
                                                                                                  String endSource) {
@@ -127,6 +137,7 @@ public class StudentAttemptService {
      *                  cannot be inferred from here, because callers reach this method with
      *                  a non-ENDED attempt for several different reasons.
      */
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional,
                                                                              String endSource) {
@@ -199,7 +210,20 @@ public class StudentAttemptService {
 
         double totalMarks = calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(studentAttemptOptional);
 
-        StudentAttempt attempt = studentAttemptOptional.get();
+        // Re-read before writing. This runs async off a 60s autosave, so the
+        // learner may have submitted while it was calculating; the entity we
+        // were handed is a snapshot from before that submit. StudentAttempt has
+        // no @Version, so saving the snapshot is a full-row overwrite that
+        // resets status to LIVE and wipes submit_time/result_marks — measured at
+        // 6.6% of submits in the 1000-VU load test (2026-08-27). The submit and
+        // expiry paths compute authoritative marks, so once the attempt has
+        // ended there is nothing here worth persisting.
+        StudentAttempt attempt = studentAttemptRepository.findById(studentAttemptOptional.get().getId())
+                .orElse(studentAttemptOptional.get());
+        if (AssessmentAttemptEnum.ENDED.name().equals(attempt.getStatus()) || attempt.getSubmitTime() != null) {
+            log.debug("Skipping live-sync marks write, attempt already submitted: attemptId={}", attempt.getId());
+            return attempt;
+        }
         attempt.setTotalMarks(totalMarks);
         attempt.setTotalTimeInSeconds(timeElapsedInSeconds);
 

@@ -1,0 +1,11 @@
+{
+    "loadOlderMessages": "पुराने संदेश देखें",
+    "noMessages": "इस बातचीत में कोई संदेश नहीं है",
+    "backToConversations": "बातचीत सूची पर वापस जाएं",
+    "reply": "जवाब दें",
+    "fromAddress": "{{address}} से",
+    "sent": "भेजा गया",
+    "received": "प्राप्त हुआ",
+    "selectConversation": "एक ईमेल बातचीत चुनें",
+    "selectConversationHint": "इसकी बातचीत देखने के लिए बाईं ओर की किसी भी पंक्ति पर क्लिक करें"
+}

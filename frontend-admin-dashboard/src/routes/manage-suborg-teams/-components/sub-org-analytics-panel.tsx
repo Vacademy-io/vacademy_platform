@@ -52,6 +52,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { cn } from '@/lib/utils';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -87,6 +88,14 @@ interface Props {
      * route `/manage-custom-teams/sub-orgs/$slug` stays unaffected.
      */
     restrictedView?: boolean;
+    /**
+     * Page chrome. `'panel'` (default) is the compact card the institute-admin deep
+     * route embeds. `'page'` matches the Manage <SubOrgs> list: the underlined strip of
+     * filled tab pills, and no tile row — on that layout the headline figures live in
+     * the page header (`SubOrgStatCards`) instead, so keeping the tiles here would
+     * print the same numbers twice.
+     */
+    variant?: 'panel' | 'page';
 }
 
 /**
@@ -119,7 +128,13 @@ function resolveInvoiceUrl(inv: InvoiceSummary): string | null {
  * Renders four tiles + a learner roster + an invoice list. Click "View ledger"
  * to expand the admin's CPO installment table.
  */
-export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = false }: Props) {
+export function SubOrgAnalyticsPanel({
+    subOrgId,
+    subOrgName,
+    restrictedView = false,
+    variant = 'panel',
+}: Props) {
+    const pageChrome = variant === 'page';
     // Institutes rename this concept via Settings → Naming (Channel Partner,
     // Branch, Franchise, VLE …); user-facing labels must follow that.
     const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
@@ -450,6 +465,38 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         ? nextDueRemaining
         : (admin?.outstanding_amount ?? undefined);
 
+    /**
+     * Tab trigger classes. Under page chrome these are the Manage <SubOrgs> pills — a
+     * filled primary tab sitting on the strip's bottom border.
+     *
+     * Both colours need `!`. The shared TabsTrigger ships `data-[state=active]:bg-background`
+     * and `data-[state=active]:text-foreground`, and a `data-*` variant compiles to an
+     * attribute selector — specificity (0,2,0) against a bare utility's (0,1,0) — so an
+     * unprefixed `text-white` loses and the label renders near-black on the primary fill.
+     * tailwind-merge won't save you either: different modifiers are different class groups,
+     * so it keeps both and lets the cascade decide.
+     */
+    const tabTriggerClass = (value: string) =>
+        pageChrome
+            ? cn(
+                  'flex gap-1.5 rounded-t-md px-10 py-2.5 !shadow-none',
+                  activeTab === value
+                      ? '!bg-primary-500 !text-white'
+                      : 'border-none bg-transparent text-neutral-600'
+              )
+            : 'gap-2';
+
+    /**
+     * Count badge on a tab. The outline badge draws border + foreground text, which
+     * disappears once the trigger is a filled primary pill — so the active tab's badge
+     * borrows white at reduced alpha instead.
+     */
+    const tabBadgeClass = (value: string) =>
+        cn(
+            'ml-1 h-4 px-1.5 text-[10px]',
+            pageChrome && activeTab === value && 'border-white/40 !text-white'
+        );
+
     if (financeLoading) {
         return (
             <div className="rounded-lg border bg-white p-6 text-sm text-muted-foreground">
@@ -461,13 +508,16 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
     return (
         <div className="space-y-4">
             {/* Tile row — full view shows all 4 tiles, restricted view (sub-org admin)
-                shows only the Admin payment tile since the other tabs are hidden. */}
+                shows only the Admin payment tile since the other tabs are hidden. Page
+                chrome drops the row entirely: SubOrgStatCards already prints plan,
+                status, learners, seats and outstanding beside the page title. */}
             <div
-                className={
+                className={cn(
                     restrictedView
                         ? 'grid gap-3 sm:grid-cols-1'
-                        : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4'
-                }
+                        : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4',
+                    pageChrome && 'hidden'
+                )}
             >
                 <Tile
                     icon={<Wallet className="h-4 w-4 text-emerald-600" />}
@@ -640,44 +690,50 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                 onValueChange={(v) => setActiveTab(v as typeof activeTab)}
                 className="w-full"
             >
-                <TabsList className="w-full justify-start gap-1 overflow-x-auto rounded-md border bg-white p-1">
+                <TabsList
+                    className={
+                        pageChrome
+                            ? 'mb-4 inline-flex h-auto w-full justify-start gap-2 overflow-x-auto rounded-none border-b !bg-transparent p-0'
+                            : 'w-full justify-start gap-1 overflow-x-auto rounded-md border bg-white p-1'
+                    }
+                >
                     {canViewFinance && (
-                        <TabsTrigger value="admin" className="gap-2">
+                        <TabsTrigger value="admin" className={tabTriggerClass('admin')}>
                             <Wallet className="h-3.5 w-3.5" />
                             Admin payment
                         </TabsTrigger>
                     )}
                     {!restrictedView && (
                         <>
-                            <TabsTrigger value="courses" className="gap-2">
+                            <TabsTrigger value="courses" className={tabTriggerClass('courses')}>
                                 <BookOpen className="h-3.5 w-3.5" />
                                 Courses
-                                <Badge variant="outline" className="ml-1 h-4 px-1.5 text-[10px]">
+                                <Badge variant="outline" className={tabBadgeClass('courses')}>
                                     {psList.length}
                                 </Badge>
                             </TabsTrigger>
-                            <TabsTrigger value="learners" className="gap-2">
+                            <TabsTrigger value="learners" className={tabTriggerClass('learners')}>
                                 <GraduationCap className="h-3.5 w-3.5" />
                                 Learners
-                                <Badge variant="outline" className="ml-1 h-4 px-1.5 text-[10px]">
+                                <Badge variant="outline" className={tabBadgeClass('learners')}>
                                     {learners.length}
                                 </Badge>
                             </TabsTrigger>
                             {canViewFinance && (
-                                <TabsTrigger value="invoices" className="gap-2">
+                                <TabsTrigger
+                                    value="invoices"
+                                    className={tabTriggerClass('invoices')}
+                                >
                                     <FileText className="h-3.5 w-3.5" />
                                     Invoices
-                                    <Badge
-                                        variant="outline"
-                                        className="ml-1 h-4 px-1.5 text-[10px]"
-                                    >
+                                    <Badge variant="outline" className={tabBadgeClass('invoices')}>
                                         {invoices.length}
                                     </Badge>
                                 </TabsTrigger>
                             )}
                         </>
                     )}
-                    <TabsTrigger value="team" className="gap-2">
+                    <TabsTrigger value="team" className={tabTriggerClass('team')}>
                         <Users className="h-3.5 w-3.5" />
                         Team
                     </TabsTrigger>
@@ -1488,7 +1544,8 @@ function AccountSummaryGrid({ summary }: { summary: UserAccountSummaryDTO }) {
     );
 }
 
-function fmtMoney(v: number | null | undefined): string {
+/** Shared with the header stat cards so both render an amount the same way. */
+export function fmtMoney(v: number | null | undefined): string {
     if (v == null) return '—';
     return `₹${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }

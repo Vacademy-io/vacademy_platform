@@ -1,0 +1,12 @@
+{
+    "common": {
+        "save": "Save",
+        "exit": "Exit",
+        "addQuestion": "Add Question",
+        "questionIncomplete": "Question isn't complete",
+        "noQuestionExists": "No Question Exists."
+    },
+    "toast": {
+        "questionPaperUpdated": "Question Paper updated successfully"
+    }
+}

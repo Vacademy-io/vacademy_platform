@@ -1,0 +1,16 @@
+{
+    "validation": {
+        "courseRequired": "Course is required",
+        "sessionRequired": "Session is required",
+        "levelRequired": "Level is required",
+        "startDateRequired": "Start Date is required",
+        "endDateRequired": "End Date is required",
+        "learnerRequired": "Learner is required",
+        "dateRangeWithinMonth": "The date range should be within one month."
+    },
+    "selectPlaceholder": "Select a {{term}}",
+    "searchPlaceholder": "Search {{term}}...",
+    "loading": "Loading…",
+    "generateReport": "Generate Report",
+    "fixFollowing": "Please fix the following:"
+}

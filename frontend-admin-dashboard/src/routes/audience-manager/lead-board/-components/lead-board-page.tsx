@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     CalendarBlank,
     CircleNotch,
@@ -37,6 +39,13 @@ import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
+import { toUtmFiltersPayload, utmValueLabel } from '@/components/shared/leads/utm-filter-encoding';
+import {
+    UTM_FILTER_DIMENSIONS,
+    type UtmFilterDimension,
+    type UtmFilterSelection,
+} from '@/services/utm-list-filters';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
 import {
     decodeSelectionToEntries,
@@ -85,12 +94,15 @@ type SlaFilter =
     | 'FOLLOW_UP_DUE'
     | 'FOLLOW_UP_OVERDUE'
     | 'ANY_OVERDUE';
-const SLA_OPTIONS: { value: string; label: string }[] = [
-    { value: 'ANY_OVERDUE', label: 'Any deadline missed' },
-    { value: 'TAT_OVERDUE', label: 'First contact missed' },
-    { value: 'TAT_BEFORE', label: 'First contact coming up' },
-    { value: 'FOLLOW_UP_DUE', label: 'Follow-up coming up' },
-    { value: 'FOLLOW_UP_OVERDUE', label: 'Follow-up missed' },
+// Factory-with-parameter: these are module-scope (referenced from useMemo
+// below before any component has necessarily rendered), so the labels are
+// resolved lazily from the translator rather than baked in at import time.
+const buildSlaOptions = (t: TFunction): { value: string; label: string }[] => [
+    { value: 'ANY_OVERDUE', label: t('slaOptions.anyOverdue') },
+    { value: 'TAT_OVERDUE', label: t('slaOptions.firstContactMissed') },
+    { value: 'TAT_BEFORE', label: t('slaOptions.firstContactComingUp') },
+    { value: 'FOLLOW_UP_DUE', label: t('slaOptions.followUpComingUp') },
+    { value: 'FOLLOW_UP_OVERDUE', label: t('slaOptions.followUpMissed') },
 ];
 const SEARCH_DEBOUNCE_MS = 500;
 
@@ -110,13 +122,13 @@ const toDateInputValue = (d: Date) => {
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
 };
-const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
-    { value: '1', label: 'Last 24 hours' },
-    { value: '7', label: 'Last 7 days' },
-    { value: '15', label: 'Last 15 days' },
-    { value: '30', label: 'Last 30 days' },
-    { value: ALL_DATE_VALUE, label: 'All time' },
-    { value: CUSTOM_DATE_VALUE, label: 'Custom range' },
+const buildDateRangeOptions = (t: TFunction): { value: string; label: string }[] => [
+    { value: '1', label: t('dateRangeOptions.last24Hours') },
+    { value: '7', label: t('dateRangeOptions.last7Days') },
+    { value: '15', label: t('dateRangeOptions.last15Days') },
+    { value: '30', label: t('dateRangeOptions.last30Days') },
+    { value: ALL_DATE_VALUE, label: t('dateRangeOptions.allTime') },
+    { value: CUSTOM_DATE_VALUE, label: t('dateRangeOptions.customRange') },
 ];
 const rangeForPreset = (preset: string): { from: string; to: string } => {
     if (preset === ALL_DATE_VALUE) return { from: '', to: '' };
@@ -129,10 +141,11 @@ const rangeForPreset = (preset: string): { from: string; to: string } => {
 };
 
 export const LeadBoardPage = () => {
+    const { t } = useTranslation('audienceManagerLeadBoardPage');
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Lead Board</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('heading.title')}</h1>);
+    }, [setNavHeading, t]);
     return (
         <StudentSidebarProvider>
             <LeadBoardContent />
@@ -141,6 +154,14 @@ export const LeadBoardPage = () => {
 };
 
 const LeadBoardContent = () => {
+    const { t } = useTranslation('audienceManagerLeadBoardPage');
+    const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
+    const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
+    const tierLabels: Record<string, string> = {
+        HOT: t('filters.tier.hot'),
+        WARM: t('filters.tier.warm'),
+        COLD: t('filters.tier.cold'),
+    };
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const { setSelectedStudent } = useStudentSidebar();
@@ -210,6 +231,20 @@ const LeadBoardContent = () => {
         [customFieldFilters]
     );
 
+    // Campaign (UTM) filters — one value list per dimension. The controls
+    // render nothing while the institute's UTM setting is off.
+    const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>({});
+    const { t: tUtm } = useTranslation('utmListFilters');
+    const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) => {
+        setUtmFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[dimension];
+            else next[dimension] = values;
+            return next;
+        });
+    };
+    const utmFiltersPayload = useMemo(() => toUtmFiltersPayload(utmFilters), [utmFilters]);
+
     // Write applied filters back to the URL (replace — filter tweaks shouldn't
     // pollute browser history). The board has no status param: columns ARE the
     // statuses, and the column picker below owns visibility.
@@ -268,7 +303,7 @@ const LeadBoardContent = () => {
         const noStatusColumn: LeadStatus = {
             id: NO_STATUS_KEY,
             status_key: NO_STATUS_KEY,
-            label: 'No status',
+            label: t('board.noStatusColumnLabel'),
             color: '',
             display_order: 0,
             is_default: false,
@@ -276,7 +311,7 @@ const LeadBoardContent = () => {
             is_system: true,
         };
         return [noStatusColumn, ...catalog];
-    }, [leadStatusCatalog]);
+    }, [leadStatusCatalog, t]);
     const visibleStatuses = useMemo(
         () => orderedStatuses.filter((s) => !hiddenColumns.has(s.status_key)),
         [orderedStatuses, hiddenColumns]
@@ -305,10 +340,10 @@ const LeadBoardContent = () => {
             (audiencesQuery.data?.content ?? [])
                 .map((c) => ({
                     id: c.id || c.campaign_id || c.audience_id || '',
-                    name: c.campaign_name || 'Untitled audience',
+                    name: c.campaign_name || t('filters.audience.untitled'),
                 }))
                 .filter((opt) => opt.id !== ''),
-        [audiencesQuery.data]
+        [audiencesQuery.data, t]
     );
 
     // Joined once so the basePayload memo can depend on a stable primitive.
@@ -338,6 +373,7 @@ const LeadBoardContent = () => {
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
+            utm_filters: utmFiltersPayload,
         }),
         [
             instituteId,
@@ -352,6 +388,7 @@ const LeadBoardContent = () => {
             sourceFilter,
             callHistoryFilter,
             customFieldFiltersPayload,
+            utmFiltersPayload,
         ]
     );
 
@@ -381,11 +418,12 @@ const LeadBoardContent = () => {
                 });
             },
             canCall: (vm) => {
-                if (!vm.responseId) return { allowed: false, reason: 'Lead has no submission id' };
+                if (!vm.responseId)
+                    return { allowed: false, reason: t('callReasons.noSubmissionId') };
                 const phone = vm.phone && vm.phone !== '-' ? vm.phone : '';
-                if (!phone) return { allowed: false, reason: 'Lead has no phone on file' };
+                if (!phone) return { allowed: false, reason: t('callReasons.noPhone') };
                 if (placeCall.isPending)
-                    return { allowed: false, reason: 'Another call is starting…' };
+                    return { allowed: false, reason: t('callReasons.callInProgress') };
                 return { allowed: true };
             },
             onAiCallLead: showAiButton
@@ -399,7 +437,7 @@ const LeadBoardContent = () => {
                   }
                 : undefined,
         }),
-        [setSelectedStudent, updateTier, placeCall, showAiButton]
+        [setSelectedStudent, updateTier, placeCall, showAiButton, t]
     );
 
     // A board drop mirrors the inline status chip: refresh the table + profile
@@ -420,6 +458,7 @@ const LeadBoardContent = () => {
         setSourceFilter('');
         setCallHistoryFilter('');
         setCustomFieldFilters({});
+        setUtmFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
         setCustomTo('');
@@ -440,7 +479,7 @@ const LeadBoardContent = () => {
     const chips: { label: string; onRemove: () => void }[] = [];
     if (appliedSearch)
         chips.push({
-            label: `Search: ${appliedSearch}`,
+            label: t('chips.search', { query: appliedSearch }),
             onRemove: () => {
                 setSearchInput('');
                 setAppliedSearch('');
@@ -448,41 +487,51 @@ const LeadBoardContent = () => {
         });
     if (audienceFilters.length > 0) {
         const names = audienceFilters.map(
-            (id) => audienceOptions.find((o) => o.id === id)?.name ?? 'Selected'
+            (id) => audienceOptions.find((o) => o.id === id)?.name ?? t('chips.fallbackSelected')
         );
         chips.push({
-            label: `Audience: ${names.join(', ')}`,
+            label: t('chips.audience', { names: names.join(', ') }),
             onRemove: () => setAudienceFilters([]),
         });
     }
     if (tierFilters.length > 0)
         chips.push({
-            label: `Tier: ${tierFilters.join(', ')}`,
+            // tierFilters holds raw enum values (HOT/WARM/COLD) — map through
+            // tierLabels so the chip shows the translated label, not the enum.
+            label: t('chips.tier', { tiers: tierFilters.map((v) => tierLabels[v] ?? v).join(', ') }),
             onRemove: () => setTierFilters([]),
         });
     if (slaFilters.length > 0)
         chips.push({
-            label: `SLA: ${slaFilters.map((v) => SLA_OPTIONS.find((o) => o.value === v)?.label ?? v).join(', ')}`,
+            label: t('chips.sla', {
+                states: slaFilters
+                    .map((v) => slaOptions.find((o) => o.value === v)?.label ?? v)
+                    .join(', '),
+            }),
             onRemove: () => setSlaFilters([]),
         });
     if (counsellorFilters.length > 0) {
         const cLabels = counsellorFilters.map((id) =>
             id === UNASSIGNED_COUNSELLOR_VALUE
-                ? 'Unassigned'
-                : counsellorOptions.find((c) => c.id === id)?.full_name ?? 'Selected'
+                ? t('chips.unassigned')
+                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? t('chips.fallbackSelected'))
         );
         chips.push({
-            label: `Counsellor: ${cLabels.join(', ')}`,
+            label: t('chips.counsellor', { names: cLabels.join(', ') }),
             onRemove: () => setCounsellorFilters([]),
         });
     }
     if (sourceFilter)
-        chips.push({ label: `Source: ${sourceFilter}`, onRemove: () => setSourceFilter('') });
+        chips.push({
+            label: t('chips.source', { source: sourceFilter }),
+            onRemove: () => setSourceFilter(''),
+        });
     customFieldFiltersPayload.forEach((f) => {
         const fieldName =
-            filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
+            filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ??
+            t('chips.fallbackField');
         chips.push({
-            label: `${fieldName}: ${filterEntryValueLabel(f)}`,
+            label: t('chips.customField', { field: fieldName, value: filterEntryValueLabel(f) }),
             onRemove: () =>
                 setCustomFieldFilter(
                     f.field_id,
@@ -490,13 +539,34 @@ const LeadBoardContent = () => {
                 ),
         });
     });
+    UTM_FILTER_DIMENSIONS.forEach((dimension) => {
+        (utmFilters[dimension] ?? []).forEach((value) => {
+            chips.push({
+                label: tUtm('chip', {
+                    dimension: tUtm(
+                        `dimensions.${dimension === 'source_type' ? 'sourceType' : dimension}`
+                    ),
+                    value: utmValueLabel(value, tUtm('untagged')),
+                }),
+                onRemove: () =>
+                    setUtmFilter(
+                        dimension,
+                        (utmFilters[dimension] ?? []).filter((v) => v !== value)
+                    ),
+            });
+        });
+    });
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
         let label: string;
         if (rangeDays === CUSTOM_DATE_VALUE) {
             label =
-                customFrom && customTo ? `Date: ${customFrom} → ${customTo}` : 'Date: custom range';
+                customFrom && customTo
+                    ? t('chips.dateRangeCustomWithDates', { from: customFrom, to: customTo })
+                    : t('chips.dateRangeCustomFallback');
         } else {
-            label = DATE_RANGE_OPTIONS.find((o) => o.value === rangeDays)?.label ?? 'Date range';
+            label =
+                dateRangeOptions.find((o) => o.value === rangeDays)?.label ??
+                t('chips.dateRangeFallback');
         }
         chips.push({
             label,
@@ -511,10 +581,8 @@ const LeadBoardContent = () => {
     return (
         <div className="flex w-full flex-col gap-4">
             <div>
-                <h1 className="text-2xl font-semibold text-neutral-900">Lead Board</h1>
-                <p className="mt-0.5 text-sm text-neutral-500">
-                    Drag a lead into another column to change its status.
-                </p>
+                <h1 className="text-2xl font-semibold text-neutral-900">{t('heading.title')}</h1>
+                <p className="mt-0.5 text-sm text-neutral-500">{t('heading.subtitle')}</p>
             </div>
 
             {/* Toolbar — same filters as Recent Leads (minus the status dropdown:
@@ -523,12 +591,12 @@ const LeadBoardContent = () => {
                 <div className="flex flex-wrap items-center gap-2">
                     {showOps && (
                         <MultiSelectFilter
-                            label="All tiers"
+                            label={t('filters.tier.label')}
                             icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
                             options={[
-                                { value: 'HOT', label: 'Hot' },
-                                { value: 'WARM', label: 'Warm' },
-                                { value: 'COLD', label: 'Cold' },
+                                { value: 'HOT', label: tierLabels.HOT ?? 'HOT' },
+                                { value: 'WARM', label: tierLabels.WARM ?? 'WARM' },
+                                { value: 'COLD', label: tierLabels.COLD ?? 'COLD' },
                             ]}
                             selected={tierFilters}
                             onChange={setTierFilters}
@@ -537,9 +605,9 @@ const LeadBoardContent = () => {
                     )}
                     {showOps && (
                         <MultiSelectFilter
-                            label="All SLA states"
+                            label={t('filters.sla.label')}
                             icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
-                            options={SLA_OPTIONS}
+                            options={slaOptions}
                             selected={slaFilters}
                             onChange={setSlaFilters}
                             widthClass="w-44"
@@ -555,7 +623,7 @@ const LeadBoardContent = () => {
                         />
                     )}
                     <MultiSelectFilter
-                        label="All audiences"
+                        label={t('filters.audience.label')}
                         icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
                         options={audienceOptions.map((opt) => ({
                             value: opt.id,
@@ -574,13 +642,25 @@ const LeadBoardContent = () => {
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="ANY">Call history</SelectItem>
-                            <SelectItem value="NOT_CALLED">Not called</SelectItem>
-                            <SelectItem value="CALLED">Called (any)</SelectItem>
-                            <SelectItem value="CALLED_ONCE">Called once</SelectItem>
-                            <SelectItem value="CALLED_TWICE_PLUS">Called 2+ times</SelectItem>
-                            <SelectItem value="AI_CALLED">AI called</SelectItem>
-                            <SelectItem value="MANUAL_CALLED">Manually called</SelectItem>
+                            <SelectItem value="ANY">{t('filters.callHistory.any')}</SelectItem>
+                            <SelectItem value="NOT_CALLED">
+                                {t('filters.callHistory.notCalled')}
+                            </SelectItem>
+                            <SelectItem value="CALLED">
+                                {t('filters.callHistory.calledAny')}
+                            </SelectItem>
+                            <SelectItem value="CALLED_ONCE">
+                                {t('filters.callHistory.calledOnce')}
+                            </SelectItem>
+                            <SelectItem value="CALLED_TWICE_PLUS">
+                                {t('filters.callHistory.calledTwicePlus')}
+                            </SelectItem>
+                            <SelectItem value="AI_CALLED">
+                                {t('filters.callHistory.aiCalled')}
+                            </SelectItem>
+                            <SelectItem value="MANUAL_CALLED">
+                                {t('filters.callHistory.manualCalled')}
+                            </SelectItem>
                         </SelectContent>
                     </Select>
                     {filterCustomFields.map((f) =>
@@ -604,6 +684,12 @@ const LeadBoardContent = () => {
                             />
                         )
                     )}
+                    <UtmFilterControls
+                        surface="LEADS"
+                        instituteId={instituteId ?? ''}
+                        selection={utmFilters}
+                        onChange={setUtmFilter}
+                    />
                     <ManageListFiltersLink surface="LEADS" />
                     <Select value={rangeDays} onValueChange={setDateRange}>
                         <SelectTrigger className="h-10 w-40">
@@ -611,7 +697,7 @@ const LeadBoardContent = () => {
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {DATE_RANGE_OPTIONS.map((opt) => (
+                            {dateRangeOptions.map((opt) => (
                                 <SelectItem key={opt.value} value={opt.value}>
                                     {opt.label}
                                 </SelectItem>
@@ -624,14 +710,19 @@ const LeadBoardContent = () => {
                                 <Button variant="outline" size="sm" className="h-10">
                                     <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
                                     {customFrom && customTo
-                                        ? `${customFrom} → ${customTo}`
-                                        : 'Set dates'}
+                                        ? t('filters.customDate.rangeDisplay', {
+                                              from: customFrom,
+                                              to: customTo,
+                                          })
+                                        : t('filters.customDate.setDates')}
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent align="start" className="w-72 space-y-3">
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs text-neutral-600">From</Label>
+                                        <Label className="text-xs text-neutral-600">
+                                            {t('filters.customDate.from')}
+                                        </Label>
                                         <Input
                                             type="date"
                                             value={customFrom}
@@ -640,7 +731,9 @@ const LeadBoardContent = () => {
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs text-neutral-600">To</Label>
+                                        <Label className="text-xs text-neutral-600">
+                                            {t('filters.customDate.to')}
+                                        </Label>
                                         <Input
                                             type="date"
                                             value={customTo}
@@ -654,7 +747,7 @@ const LeadBoardContent = () => {
                                     className="w-full"
                                     onClick={() => setCustomOpen(false)}
                                 >
-                                    Done
+                                    {t('filters.customDate.done')}
                                 </Button>
                             </PopoverContent>
                         </Popover>
@@ -664,7 +757,7 @@ const LeadBoardContent = () => {
                 <div className="flex shrink-0 items-center gap-2">
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.LeadSettings}
-                        label="Lead settings"
+                        label={t('toolbar.leadSettings')}
                     />
                     <ManageColumnsPopover
                         columns={columnToggles}
@@ -688,7 +781,7 @@ const LeadBoardContent = () => {
                                 type="button"
                                 onClick={chip.onRemove}
                                 className="text-neutral-400 hover:text-neutral-700"
-                                aria-label={`Remove ${chip.label}`}
+                                aria-label={t('chips.removeAriaLabel', { label: chip.label })}
                             >
                                 <X className="size-3" />
                             </button>
@@ -699,7 +792,7 @@ const LeadBoardContent = () => {
                         onClick={handleClearFilter}
                         className="px-1 text-xs font-medium text-primary-600 hover:underline"
                     >
-                        Clear all
+                        {t('chips.clearAll')}
                     </button>
                 </div>
             )}
@@ -711,9 +804,9 @@ const LeadBoardContent = () => {
                     type="text"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
-                    placeholder="Search leads across all columns"
+                    placeholder={t('search.placeholder')}
                     className="h-10 w-full pl-8"
-                    aria-label="Search leads"
+                    aria-label={t('search.ariaLabel')}
                 />
             </div>
 
@@ -728,17 +821,17 @@ const LeadBoardContent = () => {
                     {statusesLoading ? (
                         <div className="flex items-center gap-2 py-16 text-sm text-neutral-500">
                             <CircleNotch className="size-5 animate-spin text-neutral-400" />
-                            Loading board…
+                            {t('board.loading')}
                         </div>
                     ) : orderedStatuses.length === 0 ? (
                         <LeadEmptyState
-                            title="No lead statuses configured"
-                            description="Set up your pipeline statuses in Lead settings to use the board."
+                            title={t('board.noStatusesTitle')}
+                            description={t('board.noStatusesDescription')}
                         />
                     ) : visibleStatuses.length === 0 ? (
                         <LeadEmptyState
-                            title="All columns hidden"
-                            description='Every status column is hidden — use "Manage Column" to show some.'
+                            title={t('board.allHiddenTitle')}
+                            description={t('board.allHiddenDescription')}
                             onClear={resetColumns}
                         />
                     ) : (

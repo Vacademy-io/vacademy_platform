@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { PaperPlaneTilt } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
@@ -10,10 +11,10 @@ import { QuestionDto } from "@/types/assessment";
 import { useLiveTestUi } from "./live-test-ui-context";
 import {
   getQuestionStatus,
+  getQuestionStatusLabel,
   isMarkedStatus,
   QUESTION_LEGEND_ORDER,
   QUESTION_STATUS_GRID_CLASS,
-  QUESTION_STATUS_LABEL,
   type QuestionStatus,
 } from "./question-status-colors";
 
@@ -30,6 +31,7 @@ export function QuestionNavigator({
   onClose,
   evaluationType,
 }: QuestionNavigatorProps) {
+  const { t } = useTranslation("questionTest");
   const { paletteView, setPaletteView, requestSubmit } = useLiveTestUi();
   const {
     assessment,
@@ -62,7 +64,9 @@ export function QuestionNavigator({
 
   if (!assessment) return null;
 
-  const sectionName = assessment.section_dtos?.[currentSection]?.name ?? "Section";
+  const sectionName =
+    assessment.section_dtos?.[currentSection]?.name ??
+    t("questionNavigator.sectionFallback");
   const isManual = evaluationType === "MANUAL";
 
   const handleQuestionClick = (question: QuestionDto) => {
@@ -83,8 +87,9 @@ export function QuestionNavigator({
               {sectionName}
             </p>
             <p className="text-2xs text-neutral-500">
-              {currentSectionQuestions.length}{" "}
-              {currentSectionQuestions.length === 1 ? "question" : "questions"}
+              {t("questionNavigator.questionCount", {
+                count: currentSectionQuestions.length,
+              })}
             </p>
           </div>
           <ViewToggle view={paletteView} onViewChange={setPaletteView} />
@@ -93,7 +98,7 @@ export function QuestionNavigator({
         {!isManual && (
           <div
             className="grid grid-cols-2 gap-x-3 gap-y-2"
-            aria-label="Question status legend"
+            aria-label={t("questionNavigator.legendAriaLabel")}
           >
             {QUESTION_LEGEND_ORDER.map((status) => (
               <div key={status} className="flex min-w-0 items-center gap-2">
@@ -111,7 +116,7 @@ export function QuestionNavigator({
                   )}
                 </span>
                 <span className="truncate text-2xs text-neutral-600">
-                  {QUESTION_STATUS_LABEL[status]}
+                  {getQuestionStatusLabel(status, t)}
                 </span>
               </div>
             ))}
@@ -131,7 +136,10 @@ export function QuestionNavigator({
                 <div key={question.question_id} className="relative">
                   <button
                     type="button"
-                    aria-label={`Question ${index + 1}, ${QUESTION_STATUS_LABEL[status]}`}
+                    aria-label={t("questionList.itemAriaLabel", {
+                      number: index + 1,
+                      status: getQuestionStatusLabel(status, t),
+                    })}
                     aria-current={isActive ? "true" : undefined}
                     className={cn(
                       // Square, 40px-plus tap target — the grid is the primary
@@ -164,7 +172,7 @@ export function QuestionNavigator({
           className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 text-body font-semibold text-white transition-colors hover:bg-neutral-800"
         >
           <PaperPlaneTilt size={17} weight="fill" />
-          Submit paper
+          {t("questionNavigator.submitPaper")}
         </button>
       </div>
     </div>

@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.telephony.core.dto.CallAvailabilityDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallOptionsResponseDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallResponseDTO;
@@ -11,6 +12,7 @@ import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderCapability;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
+import vacademy.io.admin_core_service.features.telephony.spi.OutboundOriginationResolver;
 import vacademy.io.admin_core_service.features.telephony.spi.ProviderNumberSelector;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.BridgeCallRequest;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
@@ -18,6 +20,7 @@ import vacademy.io.admin_core_service.features.telephony.spi.dto.OutboundCallHan
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderError;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderNumberView;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.SelectionContext;
+import vacademy.io.common.tracing.ExternalCallTimer;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -70,7 +73,12 @@ public class CallOrchestrator {
         // ── Phase 2: external HTTP (no DB connection held) ───────────────────
         OutboundCallHandle handle;
         try {
-            handle = registry.initiator(p.providerType()).initiate(p.bridge(), p.creds());
+            // Attributed to `ext`, not to us: this call is the provider dialling a real
+            // phone and it costs ~2s by nature. Counting it as our latency is what made
+            // the speed indicator tell counsellors "Vacademy is slow" while the platform
+            // was serving p50 16ms. See ExternalCallTimer.
+            handle = ExternalCallTimer.timeChecked(
+                    () -> registry.initiator(p.providerType()).initiate(p.bridge(), p.creds()));
         } catch (Exception e) {
             circuitBreaker.recordFailure(p.providerType(), e);
             tx.markFailedAfterDispatch(p.callLogId(), "provider_initiate_failure");
@@ -105,6 +113,63 @@ public class CallOrchestrator {
                 .callerId(p.callerId())
                 .eventsStreamUrl("/admin-core-service/v1/telephony/calls/" + p.callLogId() + "/events")
                 .realtimeEvents(realtimeEvents)
+                .responseId(p.responseId())
+                .build();
+    }
+
+    /**
+     * Can {@code callerUserId} place a call in this institute right now?
+     *
+     * <p>Never throws for the "no" cases — an absent/disabled config and an
+     * unprepared caller are both ordinary answers, not errors. Callers use this
+     * to decide whether to render a Call button, which happens on pages that
+     * have nothing to do with calling, so a thrown 510 there would be pure noise
+     * in the logs and a failure sample in the latency indicator.
+     *
+     * <p>Cheap: a config-cache read plus, at most, the provider's own per-caller
+     * lookup (one indexed row for Airtel, a cached auth_service record for
+     * Exotel/Plivo). No provider HTTP, no writes.
+     */
+    public CallAvailabilityDTO computeAvailability(String instituteId, String callerUserId) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return CallAvailabilityDTO.builder().enabled(false).callerReady(false).build();
+        }
+        Optional<TelephonyConfigCache.Resolved> resolved = configCache.get(instituteId)
+                .filter(r -> Boolean.TRUE.equals(r.getConfig().getEnabled()));
+        if (resolved.isEmpty()) {
+            return CallAvailabilityDTO.builder().enabled(false).callerReady(false).build();
+        }
+        String providerType = resolved.get().getConfig().getProviderType();
+
+        // A provider with no registered resolver can't originate at all. Report it
+        // as "not enabled" rather than letting the UI offer a button that would
+        // throw at dial time.
+        OutboundOriginationResolver resolver;
+        try {
+            resolver = registry.originationResolver(providerType);
+        } catch (Exception e) {
+            log.warn("no origination resolver for provider {} (institute {})", providerType, instituteId);
+            return CallAvailabilityDTO.builder()
+                    .enabled(false).callerReady(false).providerType(providerType).build();
+        }
+
+        // The readiness probe is advisory; a provider that fails to answer must not
+        // take the button away from someone who could actually dial. Degrade to
+        // "ready" and let resolve() be the authority at dial time.
+        Optional<String> blocked;
+        try {
+            blocked = resolver.callerBlockedReason(instituteId, callerUserId);
+        } catch (Exception e) {
+            log.warn("caller-readiness probe failed for {} on {}; assuming ready",
+                    callerUserId, providerType, e);
+            blocked = Optional.empty();
+        }
+
+        return CallAvailabilityDTO.builder()
+                .enabled(true)
+                .callerReady(blocked.isEmpty())
+                .reason(blocked.orElse(null))
+                .providerType(providerType)
                 .build();
     }
 
@@ -212,6 +277,9 @@ public class CallOrchestrator {
             String callLogId,
             String providerType,
             String callerId,
+            /** audience_response the call was filed under — null for a learner
+             *  with no lead row. Echoed to the UI for disposition capture. */
+            String responseId,
             BridgeCallRequest bridge,
             TelephonyConfigCache.Resolved resolved
     ) {

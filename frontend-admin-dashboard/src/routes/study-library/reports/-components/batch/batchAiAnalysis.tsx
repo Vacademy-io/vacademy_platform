@@ -1,5 +1,7 @@
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     Select,
     SelectContent,
@@ -59,28 +61,29 @@ const ALL_MODULES = [
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 4 * 60 * 1000; // 4 min per student before we consider it stuck
 
-const formSchema = z
-    .object({
-        course: z.string().min(1, 'Course is required'),
-        session: z.string().min(1, 'Session is required'),
-        level: z.string().min(1, 'Level is required'),
-        startDate: z.string().min(1, 'Start Date is required'),
-        endDate: z.string().min(1, 'End Date is required'),
-    })
-    .refine(
-        (data) => {
-            const start = new Date(data.startDate);
-            const end = new Date(data.endDate);
-            const diffInDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-            return diffInDays <= 30;
-        },
-        {
-            message: 'The difference between Start Date and End Date should be less than one month.',
-            path: ['startDate'],
-        }
-    );
+const buildFormSchema = (t: TFunction) =>
+    z
+        .object({
+            course: z.string().min(1, t('form.courseRequired')),
+            session: z.string().min(1, t('form.sessionRequired')),
+            level: z.string().min(1, t('form.levelRequired')),
+            startDate: z.string().min(1, t('form.startDateRequired')),
+            endDate: z.string().min(1, t('form.endDateRequired')),
+        })
+        .refine(
+            (data) => {
+                const start = new Date(data.startDate);
+                const end = new Date(data.endDate);
+                const diffInDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+                return diffInDays <= 30;
+            },
+            {
+                message: t('form.dateRangeTooLong'),
+                path: ['startDate'],
+            }
+        );
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<ReturnType<typeof buildFormSchema>>;
 
 type RowStatus = 'queued' | 'generating' | 'completed' | 'failed';
 
@@ -105,6 +108,7 @@ interface BatchAiAnalysisProps {
 }
 
 export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalysisProps = {}) {
+    const { t } = useTranslation('studyLibraryBatchAiAnalysis');
     const isBatchFixed = Boolean(fixedPackageSessionId);
     const { getCourseFromPackage, getSessionFromPackage, getLevelsFromPackage2, getPackageSessionId } =
         useInstituteDetailsStore();
@@ -140,7 +144,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
         clearErrors,
         formState: { errors },
     } = useForm<FormValues>({
-        resolver: zodResolver(formSchema),
+        resolver: zodResolver(buildFormSchema(t)),
         defaultValues: {
             // In fixed-batch mode the picker is hidden; seed the three fields so the
             // schema's "required" checks pass — only the date range is user-supplied.
@@ -299,7 +303,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                     setRows((prev) =>
                         prev.map((r) =>
                             r.userId === row.userId
-                                ? { ...r, status: 'failed', error: 'Could not start generation' }
+                                ? { ...r, status: 'failed', error: t('toast.generationStartFailed') }
                                 : r
                         )
                     );
@@ -313,7 +317,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                   ...r,
                                   status: finalStatus,
                                   processId,
-                                  error: finalStatus === 'failed' ? 'Generation failed or timed out' : undefined,
+                                  error: finalStatus === 'failed' ? t('toast.generationFailedOrTimedOut') : undefined,
                               }
                             : r
                     )
@@ -322,7 +326,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                 setRows((prev) =>
                     prev.map((r) =>
                         r.userId === row.userId
-                            ? { ...r, status: 'failed', error: 'Could not start generation' }
+                            ? { ...r, status: 'failed', error: t('toast.generationStartFailed') }
                             : r
                     )
                 );
@@ -342,7 +346,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
             '';
 
         if (!packageSessionId) {
-            toast.error('Could not resolve the selected batch. Check course / session / level.');
+            toast.error(t('toast.resolveBatchFailed'));
             return;
         }
         setPacageSessionId(packageSessionId);
@@ -352,23 +356,23 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
         try {
             const students = await fetchAllStudents(packageSessionId);
             if (students.length === 0) {
-                toast.error('No active learners found in this batch.');
+                toast.error(t('toast.noActiveLearners'));
                 setPreparing(false);
                 return;
             }
             setRows(students);
             setPreparing(false);
             await runQueue(students, data.startDate, data.endDate, packageSessionId);
-            toast.success('Batch report generation finished.');
+            toast.success(t('toast.generationFinished'));
         } catch {
-            toast.error('Failed to load the batch learners.');
+            toast.error(t('toast.loadLearnersFailed'));
             setPreparing(false);
         }
     };
 
     const handleStop = () => {
         stopRef.current = true;
-        toast.info('Stopping after the current learner…');
+        toast.info(t('toast.stopping'));
     };
 
     const handleRetryFailed = async () => {
@@ -385,7 +389,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
             }) ||
             '';
         if (!packageSessionId || !values.startDate || !values.endDate) {
-            toast.error('Re-select the batch and date range to retry.');
+            toast.error(t('toast.reselectRequired'));
             return;
         }
         // reset failed rows to queued
@@ -403,10 +407,10 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                 setViewName(full.name || `${row.name} — Report`);
                 setDialogOpen(true);
             } else {
-                toast.error('Report is not ready to view yet.');
+                toast.error(t('toast.reportNotReady'));
             }
         } catch {
-            toast.error('Failed to load the report.');
+            toast.error(t('toast.loadReportFailed'));
         }
     };
 
@@ -417,7 +421,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                 <div className="mb-3 flex items-center gap-2">
                     <Sparkle size={18} className="text-primary-500" weight="fill" />
                     <p className="text-sm font-medium text-neutral-700">
-                        Generate an AI report for every active learner in this batch.
+                        {t('description')}
                     </p>
                 </div>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -435,8 +439,8 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                 }))}
                                 value={selectedCourse}
                                 onChange={(value) => setValue('course', value)}
-                                placeholder={`Select a ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}
-                                searchPlaceholder={`Search ${getTerminology(ContentTerms.Course, SystemTerms.Course)}...`}
+                                placeholder={t('form.selectPlaceholder', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) })}
+                                searchPlaceholder={t('form.searchPlaceholder', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) })}
                                 triggerClassName="h-9 text-sm"
                             />
                         </div>
@@ -454,7 +458,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                 >
                                     <SelectTrigger className="h-9 text-sm">
                                         <SelectValue
-                                            placeholder={`Select a ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
+                                            placeholder={t('form.selectPlaceholder', { term: getTerminology(ContentTerms.Session, SystemTerms.Session) })}
                                         />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -481,7 +485,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                 >
                                     <SelectTrigger className="h-9 text-sm">
                                         <SelectValue
-                                            placeholder={`Select a ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`}
+                                            placeholder={t('form.selectPlaceholder', { term: getTerminology(ContentTerms.Level, SystemTerms.Level) })}
                                         />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -502,18 +506,18 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <CalendarBlank className="size-4 text-neutral-400" />
-                                    <span className="text-caption text-neutral-500">Range:</span>
+                                    <span className="text-caption text-neutral-500">{t('range.label')}</span>
                                     <span className="text-body font-medium text-neutral-700">
                                         {startDate && endDate
                                             ? `${dayjs(startDate).format('DD MMM YYYY')} — ${dayjs(endDate).format('DD MMM YYYY')}`
-                                            : 'Last 7 days'}
+                                            : t('range.last7Days')}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => setShowDateFilter((open) => !open)}
                                         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-caption font-medium text-primary-500 hover:bg-primary-50"
                                     >
-                                        {showDateFilter ? 'Hide' : 'Change'}
+                                        {showDateFilter ? t('range.hide') : t('range.change')}
                                         <CaretDown
                                             className={cn(
                                                 'size-3 transition-transform',
@@ -529,10 +533,10 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                     disabled={running || preparing}
                                 >
                                     {preparing
-                                        ? 'Loading learners…'
+                                        ? t('actions.loadingLearners')
                                         : running
-                                          ? 'Generating…'
-                                          : 'Generate AI Reports'}
+                                          ? t('actions.generating')
+                                          : t('actions.generateReports')}
                                 </MyButton>
                             </div>
                             {/* Kept mounted (only visually hidden) so DateRangeFilter's
@@ -557,10 +561,10 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                     disabled={running || preparing}
                                 >
                                     {preparing
-                                        ? 'Loading learners…'
+                                        ? t('actions.loadingLearners')
                                         : running
-                                          ? 'Generating…'
-                                          : 'Generate AI Reports'}
+                                          ? t('actions.generating')
+                                          : t('actions.generateReports')}
                                 </MyButton>
                             </div>
                         </div>
@@ -569,7 +573,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                     {Object.keys(errors).length > 0 && (
                         <div className="rounded-md border border-danger-200 bg-danger-50 p-3">
                             <div className="text-sm text-danger-800">
-                                <p className="mb-1 font-medium">Please fix the following errors:</p>
+                                <p className="mb-1 font-medium">{t('form.errorsHeading')}</p>
                                 <ul className="space-y-1">
                                     {Object.entries(errors).map(([key, error]) => (
                                         <li key={key} className="text-xs">
@@ -589,13 +593,17 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <span className="text-sm font-semibold text-neutral-800">
-                                {doneCount}/{rows.length} done
+                                {t('progress.doneCount', { done: doneCount, total: rows.length })}
                             </span>
                             {completedCount > 0 && (
-                                <span className="text-xs text-success-600">{completedCount} completed</span>
+                                <span className="text-xs text-success-600">
+                                    {t('progress.completedCount', { count: completedCount })}
+                                </span>
                             )}
                             {failedCount > 0 && (
-                                <span className="text-xs text-danger-600">{failedCount} failed</span>
+                                <span className="text-xs text-danger-600">
+                                    {t('progress.failedCount', { count: failedCount })}
+                                </span>
                             )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -606,7 +614,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                     className="h-8 px-3 text-xs"
                                     onClick={handleStop}
                                 >
-                                    Stop
+                                    {t('actions.stop')}
                                 </MyButton>
                             )}
                             {!running && failedCount > 0 && (
@@ -617,7 +625,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                     onClick={handleRetryFailed}
                                 >
                                     <ArrowClockwise size={14} className="mr-1" />
-                                    Retry failed
+                                    {t('actions.retryFailed')}
                                 </MyButton>
                             )}
                         </div>
@@ -642,7 +650,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                     )}
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
-                                    <StatusBadge status={row.status} />
+                                    <StatusBadge status={row.status} t={t} />
                                     {row.status === 'completed' && row.processId && (
                                         <MyButton
                                             type="button"
@@ -651,7 +659,7 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
                                             onClick={() => handleView(row)}
                                         >
                                             <Eye size={14} className="mr-1" />
-                                            View
+                                            {t('actions.view')}
                                         </MyButton>
                                     )}
                                 </div>
@@ -672,25 +680,25 @@ export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalys
     );
 }
 
-function StatusBadge({ status }: { status: RowStatus }) {
+function StatusBadge({ status, t }: { status: RowStatus; t: TFunction }) {
     const map: Record<RowStatus, { label: string; cls: string; icon: JSX.Element }> = {
         queued: {
-            label: 'Queued',
+            label: t('status.queued'),
             cls: 'bg-neutral-100 text-neutral-500',
             icon: <Clock size={12} />,
         },
         generating: {
-            label: 'Generating',
+            label: t('status.generating'),
             cls: 'bg-primary-50 text-primary-600',
             icon: <CircleNotch size={12} className="animate-spin" />,
         },
         completed: {
-            label: 'Completed',
+            label: t('status.completed'),
             cls: 'bg-success-50 text-success-700',
             icon: <CheckCircle size={12} weight="fill" />,
         },
         failed: {
-            label: 'Failed',
+            label: t('status.failed'),
             cls: 'bg-danger-50 text-danger-700',
             icon: <XCircle size={12} weight="fill" />,
         },

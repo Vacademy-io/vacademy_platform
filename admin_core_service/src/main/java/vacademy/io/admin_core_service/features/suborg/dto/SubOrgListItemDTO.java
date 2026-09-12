@@ -28,7 +28,12 @@ public class SubOrgListItemDTO {
     private String adminEmail;
     private String adminPhone;
     /** Address of the spawned institute (stamped at registration when the link collects
-     *  address; null for manually-created sub-orgs or links without address collection). */
+     *  address; null for manually-created sub-orgs or links without address collection).
+     *  {@code addressLine} is {@code institutes.address_line}: the registration's address
+     *  line 1 + line 2 joined, exactly as the registrant typed them. It is a separate DB
+     *  column from city/state/pincode, but registrants routinely repeat those inside it —
+     *  so treat it as free text, never as a field to compose a full address from. */
+    private String addressLine;
     private String city;
     private String state;
     private String pincode;

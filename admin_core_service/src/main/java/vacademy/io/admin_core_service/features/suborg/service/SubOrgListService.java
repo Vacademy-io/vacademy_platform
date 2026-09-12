@@ -124,7 +124,8 @@ public class SubOrgListService {
         }
 
         // 5. The spawned institutes themselves, in one query — carry the address the
-        // registration stamped on them (city/state/pincode; null when never collected).
+        // registration stamped on them (street line + city/state/pincode; null when never
+        // collected).
         Map<String, Institute> instituteBySubOrg = new HashMap<>();
         if (!subOrgIds.isEmpty()) {
             instituteRepository.findAllById(subOrgIds)
@@ -181,6 +182,7 @@ public class SubOrgListService {
                     .adminName(user != null ? user.getFullName() : null)
                     .adminEmail(user != null ? user.getEmail() : null)
                     .adminPhone(user != null ? user.getMobileNumber() : null)
+                    .addressLine(spawned != null ? spawned.getAddress() : null)
                     .city(spawned != null ? spawned.getCity() : null)
                     .state(spawned != null ? spawned.getState() : null)
                     .pincode(spawned != null ? spawned.getPinCode() : null)

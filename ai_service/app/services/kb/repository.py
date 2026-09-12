@@ -969,7 +969,8 @@ class KbRepository:
         ]
 
     def get_chunks_for_node(
-        self, *, kb_id: str, institute_id: str, node_id: str, limit: int = 40
+        self, *, kb_id: str, institute_id: str, node_id: str, limit: int = 40,
+        chunk_from: Optional[int] = None, chunk_to: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """EVERY chunk of one topic-tree section, in source order.
 
@@ -978,36 +979,84 @@ class KbRepository:
         rounds hit this), whereas the section's own chunks — kb_chunk.node_id
         is linked at ingest — ARE the section. Same dict shape as
         search_chunks so the passage builder is agnostic; similarity is 1.0
-        because membership, not ranking, is the relevance claim."""
+        because membership, not ranking, is the relevance claim.
+
+        `chunk_from` / `chunk_to` (inclusive chunk_index bounds) narrow the
+        section to one PART of it: a section too large for a single slide's
+        grounding budget is split into parts at outline time, and each part
+        must retrieve only its own window — otherwise every part would see the
+        same first 28k characters and the tail of the section would never be
+        taught."""
+        window = ""
+        params: Dict[str, Any] = {
+            "kb_id": kb_id, "institute_id": institute_id,
+            "node_id": node_id, "limit": limit,
+        }
+        if chunk_from is not None and chunk_to is not None:
+            window = "AND c.chunk_index BETWEEN :chunk_from AND :chunk_to"
+            params["chunk_from"], params["chunk_to"] = int(chunk_from), int(chunk_to)
         rows = self.db.execute(
             text(
-                """
+                f"""
                 SELECT c.id, c.content_text, c.page_start, c.page_end, c.figure_ids,
-                       c.lang, c.meta_data, c.source_id, s.title AS source_title
+                       c.lang, c.meta_data, c.source_id, s.title AS source_title,
+                       c.chunk_index
                 FROM kb_chunk c
                 JOIN knowledge_base_source s ON s.id = c.source_id
                 WHERE c.knowledge_base_id = :kb_id
                   AND c.institute_id = :institute_id
                   AND c.node_id = :node_id
                   AND s.is_active = TRUE
+                  {window}
                 ORDER BY c.chunk_index
                 LIMIT :limit
                 """
             ),
-            {
-                "kb_id": kb_id, "institute_id": institute_id,
-                "node_id": node_id, "limit": limit,
-            },
+            params,
         ).fetchall()
         return [
             {
                 "chunk_id": r[0], "content_text": r[1], "page_start": r[2], "page_end": r[3],
                 "figure_ids": list(r[4] or []), "lang": r[5], "metadata": r[6] or {},
-                "source_id": r[7], "source_title": r[8],
+                "source_id": r[7], "source_title": r[8], "chunk_index": r[9],
                 "similarity_score": 1.0,
             }
             for r in rows
         ]
+
+    def get_node_chunk_profiles(
+        self, *, kb_id: str, institute_id: str, node_ids: List[str]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Size-only view of every chunk linked to the given sections, in source
+        order: {node_id: [{chunk_index, chars, page_start, page_end}, ...]}.
+
+        One query for the whole outline. Lets the deterministic outline decide
+        which sections are too large for one slide WITHOUT pulling their text,
+        which is what a 300-page textbook with 150 sections would otherwise do
+        at outline time."""
+        if not node_ids:
+            return {}
+        rows = self.db.execute(
+            text(
+                """
+                SELECT c.node_id, c.chunk_index, length(c.content_text), c.page_start, c.page_end
+                FROM kb_chunk c
+                JOIN knowledge_base_source s ON s.id = c.source_id
+                WHERE c.knowledge_base_id = :kb_id
+                  AND c.institute_id = :institute_id
+                  AND c.node_id = ANY(:node_ids)
+                  AND s.is_active = TRUE
+                ORDER BY c.node_id, c.chunk_index
+                """
+            ),
+            {"kb_id": kb_id, "institute_id": institute_id, "node_ids": list(node_ids)},
+        ).fetchall()
+        out: Dict[str, List[Dict[str, Any]]] = {}
+        for node_id, idx, chars, ps, pe in rows:
+            out.setdefault(node_id, []).append(
+                {"chunk_index": idx, "chars": int(chars or 0), "page_start": ps, "page_end": pe}
+            )
+        return out
 
     def get_chunks_for_pages(
         self, *, kb_id: str, institute_id: str, page_start: int, page_end: int, limit: int = 40

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Clock } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { Preferences } from "@capacitor/preferences";
 import { safeParse } from "@/lib/storage";
 
 export function SectionTimer() {
+  const { t } = useTranslation("questionTest");
   const {
     currentSection,
     sectionTimers,
@@ -73,7 +75,7 @@ export function SectionTimer() {
           className={`transition-colors ${colorClass}`}
           role="timer"
           aria-live={isCritical ? "assertive" : "off"}
-          aria-label={`Section time remaining: ${minutes} minutes ${seconds} seconds`}
+          aria-label={t("sectionTimer.ariaLabel", { minutes, seconds })}
         >
           {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
         </span>

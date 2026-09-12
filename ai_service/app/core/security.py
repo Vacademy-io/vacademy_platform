@@ -43,6 +43,19 @@ def _decode_jwt_token(token: str, settings: Settings) -> Optional[dict]:
         logger.error(f"JWT Validation failed: {e}")
         return None
 
+def decode_access_token(token: str) -> Optional[dict]:
+    """
+    Verify an access token outside the HTTP dependency chain and return its
+    claims, or None if it is missing/invalid.
+
+    WebSockets cannot carry an Authorization header from a browser, so the voice
+    socket verifies the token it is handed as its first message with this.
+    """
+    if not token:
+        return None
+    return _decode_jwt_token(token, get_settings())
+
+
 async def get_optional_user(
     request: Request,
     authorization: Optional[str] = Header(None),

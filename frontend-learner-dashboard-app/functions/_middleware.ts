@@ -318,6 +318,67 @@ async function serveManifest(
   });
 }
 
+/**
+ * Per-institute /favicon.ico.
+ *
+ * The crawler branch below rewrites the icon <link> tags in the HTML, but that
+ * only helps consumers that (a) send a crawler UA we recognise and (b) read the
+ * markup at all. Google's favicon fetcher does neither reliably, and a browser
+ * with no icon link requests /favicon.ico by convention. That path used to be
+ * excluded from Functions in public/_routes.json, so every white-labelled
+ * domain served the static Vacademy "V" — which is what Google indexed and
+ * showed next to e.g. readonrent.in.
+ *
+ * Resolve the institute from the hostname and redirect to its own mark instead.
+ * A redirect (rather than proxying the bytes) reuses /branding-image, which
+ * already fixes the wrong content-type S3 hands back for branding uploads.
+ */
+async function serveFavicon(
+  context: Parameters<PagesFunction>[0],
+  url: URL
+): Promise<Response> {
+  const hostname = url.hostname;
+  const backendBase = getBackendBase(hostname);
+  const { domain, subdomain } = parseDomainParts(hostname);
+  const branding = await fetchBranding(domain, subdomain, backendBase);
+
+  // Prefer the dedicated tab icon for the same reason the manifest does: the
+  // main logo is often a wide lockup, and a favicon slot is square.
+  const iconFileId = branding
+    ? nonEmpty(branding.tabIconFileId) || nonEmpty(branding.instituteLogoFileId)
+    : "";
+  const iconSource = iconFileId ? await resolveLogoUrl(iconFileId, backendBase) : "";
+
+  if (iconSource) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `${url.origin}/branding-image?u=${encodeURIComponent(iconSource)}`,
+        // Short enough that a branding change propagates the same day. The old
+        // immutable year-long rule on *.ico pinned the wrong mark for far longer
+        // than any fix could undo.
+        "cache-control": "public, max-age=3600, must-revalidate",
+      },
+    });
+  }
+
+  // Vacademy's own hosts legitimately want the Vacademy mark.
+  if (isVacademyHost(hostname)) return context.next();
+
+  // Unresolved white-label host: no icon beats someone else's icon. Same
+  // reasoning as the cold-cache branch of the inline script in index.html.
+  return new Response(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>',
+    {
+      status: 200,
+      headers: {
+        "content-type": "image/svg+xml",
+        "cache-control": "public, max-age=300, must-revalidate",
+      },
+    }
+  );
+}
+
 export const onRequest: PagesFunction = async (context) => {
   const { request } = context;
   const ua = request.headers.get("user-agent") || "";
@@ -327,6 +388,13 @@ export const onRequest: PagesFunction = async (context) => {
   // one is for real browsers, not bots.
   if (url.pathname === "/manifest.webmanifest") {
     return serveManifest(context, url);
+  }
+
+  // Per-institute favicon. Also handled before the crawler check: the whole
+  // point is that the callers that ask for it (browsers, Google's favicon
+  // fetcher) do not identify as crawlers.
+  if (url.pathname === "/favicon.ico") {
+    return serveFavicon(context, url);
   }
 
   // Only intercept for crawlers
@@ -447,8 +515,16 @@ export const onRequest: PagesFunction = async (context) => {
       /<link\s+rel="(?:shortcut )?icon"[^>]*\/>/g,
       `<link rel="icon" href="${escapedLogo}" />`
     );
-    // Also add a favicon link if none existed
-    if (!html.includes('rel="icon"')) {
+    // Also add a favicon link if none existed.
+    //
+    // This MUST test for a real <link> tag, not the bare substring `rel="icon"`.
+    // index.html has no icon link at all (only apple-touch-icon), but its inline
+    // branding script contains the selector string 'link[rel="icon"]' — so a
+    // substring check matched the JS source and silently skipped the injection
+    // on every white-labelled domain. Crawlers then found no icon link, fell
+    // back to /favicon.ico, and Google listed those domains with the Vacademy
+    // mark.
+    if (!/<link[^>]+rel="(?:shortcut )?icon"/.test(html)) {
       html = html.replace(
         "</head>",
         `    <link rel="icon" href="${escapedLogo}" />\n  </head>`

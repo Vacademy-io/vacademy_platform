@@ -174,7 +174,11 @@ export interface SubOrgListItem {
     admin_name?: string | null;
     admin_email?: string | null;
     admin_phone?: string | null;
-    /** Address stamped on the spawned institute at registration; null when never collected. */
+    /** Address stamped on the spawned institute at registration; null when never collected.
+     *  `address_line` is the street line as typed (registration line 1 + line 2 joined) —
+     *  free text that often repeats the city/state, so it is shown as its own column rather
+     *  than composed together with the fields below. */
+    address_line?: string | null;
     city?: string | null;
     state?: string | null;
     pincode?: string | null;

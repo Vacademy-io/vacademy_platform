@@ -93,6 +93,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.status_type AS statusType,
                 lsl.engagement_data AS engagementData,
                 lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
                 fbl.details AS feedbackDetails,
                 1 AS priority
             FROM live_session_participants lsp
@@ -134,6 +135,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.status_type AS statusType,
                 lsl.engagement_data AS engagementData,
                 lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
                 fbl.details AS feedbackDetails,
                 2 AS priority
             FROM live_session_participants lsp
@@ -204,6 +206,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         fbl.details AS feedbackDetails,
         lsp.source_id AS packageSessionId,
         lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
         lsl.engagement_data AS engagementData
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
@@ -243,43 +246,72 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     @Query(
             value = """
         SELECT DISTINCT s.user_id AS studentId
-        FROM live_session_participants lsp
-        JOIN student_session_institute_group_mapping m
-            ON m.package_session_id = lsp.source_id
-            AND lsp.source_type = 'BATCH'
-            AND m.status = 'ACTIVE'
-        JOIN student s ON s.user_id = m.user_id
-        JOIN session_schedules ss ON ss.session_id = lsp.session_id
-        JOIN live_session ls ON ls.id = lsp.session_id
-        WHERE ss.meeting_date BETWEEN :startDate AND :endDate
-          AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
-          AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
-          AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
-          AND (m.enrolled_date IS NULL OR m.enrolled_date <= :endDate)
-          AND ss.status <> 'DELETED'
-          AND ls.status <> 'DELETED'
+        FROM (
+            SELECT DISTINCT ON (lsp.session_id, ss.id, m.user_id)
+                   lsp.session_id AS session_id,
+                   ss.id AS schedule_id,
+                   m.user_id AS user_id,
+                   m.package_session_id AS package_session_id,
+                   m.institute_enrollment_number AS institute_enrollment_number,
+                   m.status AS enrollment_status,
+                   m.enrolled_date AS enrolled_date
+            FROM live_session_participants lsp
+            JOIN session_schedules ss
+                ON ss.session_id = lsp.session_id
+                AND ss.status <> 'DELETED'
+                AND ss.meeting_date BETWEEN :startDate AND :endDate
+            JOIN live_session ls
+                ON ls.id = lsp.session_id
+                AND ls.status <> 'DELETED'
+            JOIN student_session_institute_group_mapping m
+                ON m.status = 'ACTIVE'
+                AND m.institute_id = :instituteId
+                AND ((lsp.source_type = 'BATCH' AND m.package_session_id = lsp.source_id)
+                  OR (lsp.source_type = 'USER' AND m.user_id = lsp.source_id))
+            WHERE (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
+            ORDER BY lsp.session_id, ss.id, m.user_id, m.enrolled_date DESC NULLS LAST
+        ) r
+        JOIN student s ON s.user_id = r.user_id
+        WHERE (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
+          AND (:batchIdsSize = 0 OR r.package_session_id IN (:batchIds))
+          AND (:liveSessionIdsSize = 0 OR r.session_id IN (:liveSessionIds))
         """,
             countQuery = """
         SELECT COUNT(DISTINCT s.user_id)
-        FROM live_session_participants lsp
-        JOIN student_session_institute_group_mapping m
-            ON m.package_session_id = lsp.source_id
-            AND lsp.source_type = 'BATCH'
-            AND m.status = 'ACTIVE'
-        JOIN student s ON s.user_id = m.user_id
-        JOIN session_schedules ss ON ss.session_id = lsp.session_id
-        JOIN live_session ls ON ls.id = lsp.session_id
-        WHERE ss.meeting_date BETWEEN :startDate AND :endDate
-          AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
-          AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
-          AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
-          AND (m.enrolled_date IS NULL OR m.enrolled_date <= :endDate)
-          AND ss.status <> 'DELETED'
-          AND ls.status <> 'DELETED'
+        FROM (
+            SELECT DISTINCT ON (lsp.session_id, ss.id, m.user_id)
+                   lsp.session_id AS session_id,
+                   ss.id AS schedule_id,
+                   m.user_id AS user_id,
+                   m.package_session_id AS package_session_id,
+                   m.institute_enrollment_number AS institute_enrollment_number,
+                   m.status AS enrollment_status,
+                   m.enrolled_date AS enrolled_date
+            FROM live_session_participants lsp
+            JOIN session_schedules ss
+                ON ss.session_id = lsp.session_id
+                AND ss.status <> 'DELETED'
+                AND ss.meeting_date BETWEEN :startDate AND :endDate
+            JOIN live_session ls
+                ON ls.id = lsp.session_id
+                AND ls.status <> 'DELETED'
+            JOIN student_session_institute_group_mapping m
+                ON m.status = 'ACTIVE'
+                AND m.institute_id = :instituteId
+                AND ((lsp.source_type = 'BATCH' AND m.package_session_id = lsp.source_id)
+                  OR (lsp.source_type = 'USER' AND m.user_id = lsp.source_id))
+            WHERE (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
+            ORDER BY lsp.session_id, ss.id, m.user_id, m.enrolled_date DESC NULLS LAST
+        ) r
+        JOIN student s ON s.user_id = r.user_id
+        WHERE (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
+          AND (:batchIdsSize = 0 OR r.package_session_id IN (:batchIds))
+          AND (:liveSessionIdsSize = 0 OR r.session_id IN (:liveSessionIds))
         """,
             nativeQuery = true
     )
     Page<String> findDistinctStudentIdsWithFilters(
+            @Param("instituteId") String instituteId,
             @Param("name") String name,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
@@ -291,63 +323,78 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     );
 
     @Query(value = """
-    SELECT 
+    SELECT
         s.user_id AS studentId,
         s.full_name AS fullName,
         s.email AS email,
         s.mobile_number AS mobileNumber,
         s.gender AS gender,
         s.date_of_birth AS dateOfBirth,
-        m.institute_enrollment_number AS instituteEnrollmentNumber,
-        m.status AS enrollmentStatus,
-        m.enrolled_date AS enrolledDate,
+        r.institute_enrollment_number AS instituteEnrollmentNumber,
+        r.enrollment_status AS enrollmentStatus,
+        r.enrolled_date AS enrolledDate,
         COALESCE(lsl.status, 'UNMARKED') AS attendanceStatus,
         lsl.details AS attendanceDetails,
         lsl.created_at AS attendanceTimestamp,
-        lsp.session_id AS sessionId,
-        ss.id AS scheduleId,
+        r.session_id AS sessionId,
+        r.schedule_id AS scheduleId,
         ls.title AS title,
         ss.meeting_date AS meetingDate,
         ss.start_time AS startTime,
         ss.last_entry_time AS lastEntryTime,
         ss.daily_attendance AS dailyAttendance,
         fbl.details AS feedbackDetails,
-        lsp.source_id AS packageSessionId,
+        r.package_session_id AS packageSessionId,
         lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+        lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
         lsl.engagement_data AS engagementData
-    FROM live_session_participants lsp
-    JOIN student_session_institute_group_mapping m
-        ON m.package_session_id = lsp.source_id
-        AND lsp.source_type = 'BATCH'
-        AND m.status = 'ACTIVE'
-    JOIN student s
-        ON s.user_id = m.user_id
-    JOIN session_schedules ss
-        ON ss.session_id = lsp.session_id
-    JOIN live_session ls
-        ON ls.id = lsp.session_id
+    FROM (
+        SELECT DISTINCT ON (lsp.session_id, ss.id, m.user_id)
+               lsp.session_id AS session_id,
+               ss.id AS schedule_id,
+               m.user_id AS user_id,
+               m.package_session_id AS package_session_id,
+               m.institute_enrollment_number AS institute_enrollment_number,
+               m.status AS enrollment_status,
+               m.enrolled_date AS enrolled_date
+        FROM live_session_participants lsp
+        JOIN session_schedules ss
+            ON ss.session_id = lsp.session_id
+            AND ss.status <> 'DELETED'
+            AND ss.meeting_date BETWEEN :startDate AND :endDate
+        JOIN live_session ls
+            ON ls.id = lsp.session_id
+            AND ls.status <> 'DELETED'
+        JOIN student_session_institute_group_mapping m
+            ON m.status = 'ACTIVE'
+            AND m.institute_id = :instituteId
+            AND m.user_id IN (:studentIds)
+            AND ((lsp.source_type = 'BATCH' AND m.package_session_id = lsp.source_id)
+              OR (lsp.source_type = 'USER' AND m.user_id = lsp.source_id))
+        WHERE (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
+        ORDER BY lsp.session_id, ss.id, m.user_id, m.enrolled_date DESC NULLS LAST
+    ) r
+    JOIN student s ON s.user_id = r.user_id
+    JOIN session_schedules ss ON ss.id = r.schedule_id
+    JOIN live_session ls ON ls.id = r.session_id
     LEFT JOIN live_session_logs lsl
         ON lsl.user_source_id = s.user_id
         AND lsl.user_source_type = 'USER'
-        AND lsl.session_id = lsp.session_id
-        AND lsl.schedule_id = ss.id
+        AND lsl.session_id = r.session_id
+        AND lsl.schedule_id = r.schedule_id
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
     LEFT JOIN live_session_logs fbl
         ON fbl.user_source_id = s.user_id
         AND fbl.user_source_type = 'USER'
-        AND fbl.session_id = lsp.session_id
-        AND fbl.schedule_id = ss.id
+        AND fbl.session_id = r.session_id
+        AND fbl.schedule_id = r.schedule_id
         AND fbl.log_type = 'FEEDBACK_SUBMITTED'
-    WHERE s.user_id IN (:studentIds)
-    AND ss.meeting_date BETWEEN :startDate AND :endDate
-    AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
-    AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
-    AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
-    AND ss.status <> 'DELETED'
-    AND ls.status <> 'DELETED'
+    WHERE (:batchIdsSize = 0 OR r.package_session_id IN (:batchIds))
+      AND (:liveSessionIdsSize = 0 OR r.session_id IN (:liveSessionIds))
     ORDER BY LOWER(s.full_name), ss.meeting_date
 """,nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportForStudentIds(
+            @Param("instituteId") String instituteId,
             @Param("studentIds") List<String> studentIds,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,

@@ -1,0 +1,17 @@
+{
+    "viewEditCriteria": "Voir/Modifier les critères",
+    "markingCriteriaForMarks_one": "Critères de notation pour {{count}} point",
+    "markingCriteriaForMarks_many": "Critères de notation pour {{count}} de points",
+    "markingCriteriaForMarks_other": "Critères de notation pour {{count}} points",
+    "removeAll": "Tout supprimer",
+    "selectAll": "Tout sélectionner",
+    "selectedCriteria": "Critères sélectionnés :",
+    "columnCriteria": "Critères",
+    "columnMarks": "Points",
+    "columnAction": "Action",
+    "noCriteriaSelected": "Aucun critère sélectionné, veuillez sélectionner un critère dans la liste disponible",
+    "customCriteria": "Critère personnalisé",
+    "addCustomCriteria": "Ajouter un critère personnalisé :",
+    "enterCriteriaDescription": "Saisir la description du critère",
+    "predefinedCriteria": "Critères prédéfinis"
+}

@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.live_session.provider.scheduler;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
@@ -36,6 +37,7 @@ public class ZoomMeetingProvisionRetryProcessor {
     private final ProviderMeetingBatchService providerMeetingBatchService;
 
     /** Runs every 5 minutes (offset to minute :02). */
+    @SchedulerLock(name = "ZoomProvisionRetry", lockAtMostFor = "PT4M", lockAtLeastFor = "PT20S")
     @Scheduled(cron = "${zoom.provision.retry.cron:0 2/5 * * * ?}")
     public void retryStuckProvisioning() {
         Date staleBefore = new Date(System.currentTimeMillis() - STALE_MILLIS);

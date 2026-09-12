@@ -1,0 +1,382 @@
+{
+    "common": {
+        "viewMore": "और देखें",
+        "viewLess": "कम देखें",
+        "clearSearch": "खोज साफ़ करें",
+        "previousSlide": "पिछली स्लाइड",
+        "nextSlide": "अगली स्लाइड",
+        "addToCart": "कार्ट में जोड़ें",
+        "remove": "हटाएं",
+        "inStock": "स्टॉक में उपलब्ध",
+        "outOfStock": "स्टॉक में नहीं",
+        "onlyLeft": "केवल {{count}} बचे हैं",
+        "previousPage": "पिछला पेज",
+        "nextPage": "अगला पेज"
+    },
+    "productPageOffer": {
+        "spendMoreForTierAmount": "{{amount}} की छूट पाने के लिए {{spend}} और खर्च करें।",
+        "spendMoreForTierPercent": "{{percent}}% की छूट पाने के लिए {{spend}} और खर्च करें।",
+        "addMoreForTierAmount": "{{amount}} की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "addMoreForTierAmountMore": "{{amount}} की अतिरिक्त छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "addMoreForTierPercent": "{{percent}}% की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "finderShowing": "दिखा रहे हैं",
+        "finderShowAll": "सभी {{courses}} दिखाएं",
+        "addMoreForTier": "{{offer}} पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "savedAmount": "{{amount}} · {{percent}}% की बचत",
+        "emptyConfig": "यहाँ {{courses}} दिखाने के लिए प्रॉपर्टीज़ पैनल में एक प्रोडक्ट पेज चुनें।",
+        "errorLoad": "यह प्रोडक्ट पेज लोड नहीं हो सका। जांचें कि यह सक्रिय है और इसी इंस्टिट्यूट से जुड़ा है।",
+        "emptyCourses": "इस प्रोडक्ट पेज में अभी तक कोई {{courses}} नहीं है — इन्हें इसके {{courses}} टैब में जोड़ें।",
+        "seeAll": "सभी देखें",
+        "seeAllCourses": "सभी {{courses}} देखें",
+        "enrolNow": "अभी नामांकन करें",
+        "viewCourse": "{{course}} देखें",
+        "searchAndFilter": "पूरी सूची में खोजें और फ़िल्टर करें",
+        "scrollPrevious": "पिछले {{courses}} तक स्क्रॉल करें",
+        "scrollNext": "और {{courses}} तक स्क्रॉल करें",
+        "searchPlaceholder": "{{courses}} खोजें...",
+        "searchAriaLabel": "{{courses}} खोजें",
+        "noMatches": "कोई मेल नहीं मिला",
+        "showingRange": "{{total}} में से {{from}}–{{to}} दिखाए जा रहे हैं",
+        "noCoursesMatch": "\"{{query}}\" से मेल खाने वाला कोई {{courses}} नहीं मिला।",
+        "page": "पेज {{number}}",
+        "coursePagesAriaLabel": "{{course}} पेज",
+        "added": "जोड़ा गया",
+        "addToCartAriaLabel": "{{course}} को कार्ट में जोड़ें",
+        "removeFromCartAriaLabel": "{{course}} को कार्ट से हटाएं",
+        "selectedCount_one": "{{count}} चयनित",
+        "selectedCount_other": "{{count}} चयनित",
+        "itemsSelected_one": "{{count}} {{course}} चयनित",
+        "itemsSelected_other": "{{count}} {{courses}} चयनित",
+        "total": "कुल",
+        "free": "मुफ़्त",
+        "clearCart": "हटाएं",
+        "proceedToCheckout": "चेकआउट पर आगे बढ़ें",
+        "nothingForSelection": "इस चुनाव के लिए अभी कुछ उपलब्ध नहीं है।",
+        "showAllCourses": "सभी {{courses}} दिखाएं"
+    },
+    "heroSection": {
+        "defaultAlt": "{{course}} पूर्वावलोकन",
+        "defaultVideoTitle": "हीरो वीडियो",
+        "goToSlide": "स्लाइड {{number}} पर जाएं"
+    },
+    "checkoutForm": {
+        "toast": {
+            "missingEnrollmentInfo": "नामांकन की जानकारी मौजूद नहीं है",
+            "otpSentWhatsapp": "OTP आपके व्हाट्सएप पर भेज दिया गया है",
+            "otpSendFailed": "OTP भेजने में विफल। कृपया फिर से कोशिश करें",
+            "phoneVerified": "फ़ोन नंबर सफलतापूर्वक सत्यापित हुआ",
+            "otpInvalid": "OTP गलत है। कृपया फिर से कोशिश करें",
+            "loadPaymentOptionsFailed": "भुगतान विकल्प लोड नहीं हो सके। कृपया फिर से कोशिश करें।",
+            "paymentSuccessful": "भुगतान सफल रहा!",
+            "paymentCancelled": "भुगतान रद्द कर दिया गया",
+            "checkoutSuccessful": "चेकआउट सफल रहा!",
+            "checkoutFailedDefault": "चेकआउट विफल रहा। कृपया फिर से कोशिश करें।"
+        },
+        "razorpayDescription": "{{course}} में नामांकन",
+        "errors": {
+            "razorpaySdkLoadFailed": "Razorpay SDK लोड नहीं हो सका",
+            "fullNameRequired": "पूरा नाम आवश्यक है",
+            "emailRequired": "सही ईमेल पता आवश्यक है",
+            "phoneRequiredOtp": "OTP भेजने के लिए सही फ़ोन नंबर आवश्यक है",
+            "phoneRequired": "सही फ़ोन नंबर आवश्यक है",
+            "otpRequired": "कृपया OTP दर्ज करें",
+            "phoneVerificationRequired": "फ़ोन नंबर का सत्यापन आवश्यक है",
+            "booksPreferenceMissing": "\"बुक्स प्रेफ़रेंस\" कस्टम फ़ील्ड नहीं मिला। कृपया सहायता टीम से संपर्क करें।"
+        },
+        "header": {
+            "title": "चेकआउट",
+            "subtitle": "अपनी जानकारी पूरी करें"
+        },
+        "loading": "चेकआउट तैयार किया जा रहा है...",
+        "labels": {
+            "fullName": "पूरा नाम",
+            "emailAddress": "ईमेल पता",
+            "phoneWhatsapp": "फ़ोन नंबर (व्हाट्सएप)"
+        },
+        "placeholders": {
+            "name": "अपना नाम दर्ज करें",
+            "email": "email@example.com",
+            "otp": "------"
+        },
+        "buttons": {
+            "sent": "भेजा गया",
+            "verify": "सत्यापित करें",
+            "verifyOtp": "OTP सत्यापित करें",
+            "proceedToPayment": "भुगतान की ओर बढ़ें"
+        },
+        "summary": {
+            "subtotalCount_one": "उप-योग ({{count}} आइटम)",
+            "subtotalCount_other": "उप-योग ({{count}} आइटम)",
+            "orderTotal": "ऑर्डर का कुल योग",
+            "itemsCount": "{{count}} आइटम",
+            "secure": "सुरक्षित"
+        },
+        "whatsappRequired": "जारी रखने के लिए व्हाट्सएप सत्यापन आवश्यक है"
+    },
+    "policy": {
+        "notFoundTitle": "नीति नहीं मिली",
+        "notFoundDescription": "अनुरोध की गई नीति नहीं मिल सकी।"
+    },
+    "banner": {
+        "alt": "बैनर"
+    },
+    "courseRecommendations": {
+        "untitledCourse": "बिना शीर्षक वाला {{course}}",
+        "free": "मुफ़्त",
+        "by": "{{instructor}} द्वारा"
+    },
+    "cart": {
+        "emptyDefault": "आपका कार्ट खाली है। कुछ किताबें जोड़ें!",
+        "yourBooks": "आपकी किताबें",
+        "subscriptionPlans": "सदस्यता योजनाएं",
+        "noPlansAvailable": "फ़िलहाल कोई सदस्यता योजना उपलब्ध नहीं है।",
+        "securityDeposit": "नोट: सभी सदस्यता योजनाओं की कीमत में ₹300 की वापसी योग्य सुरक्षा जमा राशि शामिल है, जो सदस्यता पूरी होने पर लौटा दी जाएगी।",
+        "total": "कुल",
+        "checkout": "चेकआउट",
+        "selectPlanFirst": "कृपया चेकआउट से पहले एक सदस्यता योजना चुनें",
+        "maxBooksExceeded": "आप इस अवधि में अधिकतम {{max}} किताबें किराए पर ले सकते हैं",
+        "noImage": "कोई छवि नहीं",
+        "paymentStatus": "भुगतान की स्थिति:",
+        "dismiss": "बंद करें",
+        "subtotalCount_one": "उप-योग ({{count}} किताब)",
+        "subtotalCount_other": "उप-योग ({{count}} किताबें)",
+        "crossStore": {
+            "multiple": "आपके कार्ट में {{count}} अलग-अलग स्टोर की वस्तुएं हैं ({{stores}})। हर स्टोर अपना ऑर्डर खुद पूरा करता है, इसलिए आपको अलग-अलग चेकआउट करना पड़ सकता है।",
+            "mismatch": "आपके कार्ट की वस्तुएं {{store}} से हैं, लेकिन आपका सक्रिय स्टोर अलग है। एकरूपता बनाए रखने के लिए स्टोर बदलें या इन वस्तुओं को हटाएं।"
+        },
+        "plan": {
+            "defaultName": "योजना",
+            "maxBooksDescription": "इस अवधि में अधिकतम {{max}} किताबें किराए पर ली जा सकती हैं",
+            "noLimitDescription": "इस अवधि में किताबों की कुल संख्या पर कोई सीमा नहीं है",
+            "booksAtOnce": "एक बार में किताबें:",
+            "booksInPeriod": "अवधि में किताबें:",
+            "selected": "चयनित",
+            "select": "चुनें"
+        },
+        "toast": {
+            "loginRequiredAfterPayment": "भुगतान सफल रहा! अपने कोर्स एक्सेस करने के लिए कृपया लॉग इन करें।",
+            "redirecting": "भुगतान सफल रहा। रीडायरेक्ट किया जा रहा है...",
+            "loginAutomated": "लॉग इन स्वचालित रूप से सफल रहा। स्वागत है!"
+        }
+    },
+    "addressForm": {
+        "label": "डिलीवरी पता",
+        "placeholders": {
+            "houseNo": "मकान / फ्लैट / बिल्डिंग नंबर",
+            "area": "क्षेत्र / गली / मोहल्ला",
+            "landmark": "लैंडमार्क (वैकल्पिक)",
+            "pincode": "पिन कोड",
+            "city": "शहर / कस्बा / गांव",
+            "district": "ज़िला",
+            "postOffice": "डाकघर"
+        },
+        "selectState": "राज्य चुनें",
+        "selectPostOffice": "डाकघर चुनें",
+        "errors": {
+            "required": "आवश्यक",
+            "pincodeRequired": "पिन कोड आवश्यक है",
+            "pincodeDigits": "6 अंकों का होना चाहिए",
+            "selectState": "एक राज्य चुनें",
+            "pincodeNotFound": "पिन कोड नहीं मिला — कृपया पता स्वयं दर्ज करें",
+            "indiaPostUnreachable": "India Post तक नहीं पहुंचा जा सका। पता स्वयं दर्ज करें।"
+        }
+    },
+    "detailBlocks": {
+        "emptyGuidance": "दस्तावेज़ बनाने के लिए हर कार्यक्रम के लिए एक ब्लॉक जोड़ें।"
+    },
+    "mediaShowcase": {
+        "videoUnavailable": "वीडियो उपलब्ध नहीं है",
+        "loading": "लोड हो रहा है...",
+        "defaultVideoTitle": "वीडियो",
+        "goToSlide": "स्लाइड {{number}} पर जाएं",
+        "slideAlt": "स्लाइड {{number}}",
+        "highlightsAriaLabel": "मुख्य विशेषताएं",
+        "resumeSlideshow": "स्वचालित स्लाइडशो फिर से शुरू करें",
+        "pauseSlideshow": "स्वचालित स्लाइडशो रोकें"
+    },
+    "shareButton": {
+        "ariaLabel": "किताब साझा करें",
+        "toast": {
+            "linkError": "शेयर लिंक नहीं बनाया जा सका",
+            "linkCopied": "लिंक कॉपी हो गया!"
+        },
+        "copied": "कॉपी हो गया!",
+        "copyLink": "लिंक कॉपी करें",
+        "shareWhatsapp": "व्हाट्सएप पर साझा करें"
+    },
+    "testimonial": {
+        "ratedOutOf5": "5 में से {{stars}} रेटिंग",
+        "previous": "पिछली प्रतिक्रिया",
+        "next": "अगली प्रतिक्रिया",
+        "goToTestimonial": "प्रतिक्रिया {{number}} पर जाएं"
+    },
+    "leadForm": {
+        "emptyConfig": "प्रॉपर्टीज़ पैनल में एक ऑडियंस कैंपेन चुनें — इसके फ़ॉर्म फ़ील्ड यहां दिखाई देंगे।",
+        "errorLoad": "यह कैंपेन लोड नहीं हो सका। जांचें कि यह सक्रिय है और इसी इंस्टिट्यूट से जुड़ा है।",
+        "emptyFields": "इस कैंपेन में अभी तक कोई फ़ॉर्म फ़ील्ड नहीं है — इन्हें ऑडियंस मैनेजर में जोड़ें।",
+        "missingFields": "कृपया भरें: {{fields}}",
+        "genericError": "कुछ गड़बड़ हो गई — कृपया फिर से कोशिश करें।",
+        "defaultThankYou": "धन्यवाद! हमें आपकी जानकारी मिल गई है।",
+        "defaultAnotherResponse": "एक और प्रतिक्रिया भेजें",
+        "redirectingIn_one": "{{count}} सेकंड में रीडायरेक्ट किया जा रहा है…",
+        "redirectingIn_other": "{{count}} सेकंड में रीडायरेक्ट किया जा रहा है…",
+        "companyWebsite": "कंपनी की वेबसाइट",
+        "sending": "भेजा जा रहा है…",
+        "submit": "सबमिट करें",
+        "placeholderPrefix": "{{name}} दर्ज करें"
+    },
+    "bookDetails": {
+        "bookAltFallback": "किताब",
+        "loadingCover": "कवर लोड हो रहा है...",
+        "onlyLeftUppercase": "केवल {{count}} बचे हैं",
+        "unknownAuthor": "अज्ञात लेखक",
+        "genre": "शैली:",
+        "price": "कीमत",
+        "goToCart": "कार्ट पर जाएं",
+        "added": "जोड़ा गया",
+        "aboutThisBook": "इस किताब के बारे में",
+        "toast": {
+            "addedToCart": "कार्ट में जोड़ा गया",
+            "missingEnrollInfo": "कार्ट में नहीं जोड़ा जा सका: नामांकन की जानकारी मौजूद नहीं है"
+        },
+        "modeTag": {
+            "rent": "किराया",
+            "buy": "खरीद"
+        }
+    },
+    "bookCatalogue": {
+        "untitledBook": "बिना शीर्षक वाली किताब",
+        "searchPlaceholder": "किताबें खोजें...",
+        "store": "स्टोर",
+        "selectedStore": "चयनित स्टोर",
+        "allStores": "सभी स्टोर",
+        "pickStoreRentHint": "किराये की सूची देखने के लिए एक स्टोर चुनें",
+        "bestPriceHint": "सभी स्टोर में सबसे अच्छी कीमत दिखाई जा रही है",
+        "browseByGenre": "शैली के अनुसार ब्राउज़ करें",
+        "rentMode": "किराया मोड",
+        "buyMode": "खरीद मोड",
+        "clearAll": "सभी साफ़ करें",
+        "pickStoreTitle": "किराये की किताबें देखने के लिए एक स्टोर चुनें",
+        "pickStoreDescription": "किराये की किताबें स्टोर से ली जाती हैं, इसलिए सूची स्टोर पर निर्भर करती है। उपलब्ध विकल्प देखने के लिए ऊपर एक स्टोर चुनें।",
+        "noBooksFound": "आपके मापदंडों से मेल खाने वाली कोई किताब नहीं मिली।",
+        "availableAtStores": "{{count}} स्टोर पर उपलब्ध",
+        "cart": "कार्ट",
+        "fromPrefix": "से",
+        "lowestPriceSuffix": "— सबसे कम कीमत",
+        "loadingMoreBooks": "और किताबें लोड हो रही हैं...",
+        "endOfCatalogue": "आप सूची के अंत तक पहुंच गए हैं",
+        "showingAllBooks": "सभी {{total}} किताबें दिखाई जा रही हैं",
+        "toast": {
+            "removedFromCart": "कार्ट से हटा दिया गया",
+            "addedToCart": "कार्ट में जोड़ा गया"
+        }
+    },
+    "courseCatalog": {
+        "filters": "फ़िल्टर",
+        "clearAll": "सभी साफ़ करें",
+        "showResults": "परिणाम दिखाएं",
+        "authors": "लेखक",
+        "priceRange": "कीमत की सीमा",
+        "min": "न्यूनतम",
+        "max": "अधिकतम",
+        "searchPlaceholder": "{{courses}} खोजें...",
+        "searchAriaLabel": "{{courses}} खोजें",
+        "noResultsFound": "कोई {{courses}} नहीं मिला",
+        "noResultsHint": "जो आप ढूंढ रहे हैं उसे पाने के लिए अपनी खोज या फ़िल्टर समायोजित करने का प्रयास करें।",
+        "clearAllFilters": "सभी फ़िल्टर साफ़ करें",
+        "showLess": "कम दिखाएं",
+        "showMore": "और दिखाएं",
+        "noItemsAvailable": "कोई {{title}} उपलब्ध नहीं है।",
+        "filtersUnavailable": "{{title}} फ़िल्टर फ़िलहाल उपलब्ध नहीं हैं।",
+        "removedFromCart": "{{title}} कार्ट से हटाया गया",
+        "addedToCart": "{{title}} कार्ट में जोड़ा गया!",
+        "missingEnrollInvite": "आइटम कार्ट में नहीं जोड़ा जा सका: नामांकन आमंत्रण आईडी मौजूद नहीं है",
+        "untitledCourse": "बिना शीर्षक वाला {{course}}",
+        "noDescriptionAvailable": "कोई विवरण उपलब्ध नहीं है",
+        "unknownInstructor": "अज्ञात {{teacher}}",
+        "add": "जोड़ें",
+        "openSoon": "जल्द ही खुलेगा",
+        "enrollmentClosed": "नामांकन बंद है",
+        "freeLabel": "100% मुफ़्त",
+        "viewCourse": "{{course}} देखें",
+        "previous": "पिछला",
+        "next": "अगला",
+        "showingRange": "{{total}} {{courses}} में से {{from}}–{{to}} दिखाए जा रहे हैं",
+        "paginationAriaLabel": "पेजिनेशन",
+        "loadingImage": "लोड हो रहा है..."
+    },
+    "buyRentSection": {
+        "chooseOption": "अपनी ज़रूरत के हिसाब से सबसे उपयुक्त विकल्प चुनें",
+        "rentTitle": "किताब किराए पर लें",
+        "rentDescription": "किफ़ायती दरों पर किताबें पाएं",
+        "buyTitle": "किताब खरीदें",
+        "buyDescription": "किताबें हमेशा के लिए अपनी बनाएं",
+        "howItWorks": "यह कैसे काम करता है",
+        "steps": {
+            "step1Title": "ब्राउज़ करें और चुनें",
+            "step1Desc": "हमारा संग्रह देखें और किताबें चुनें।",
+            "step2Title": "विकल्प चुनें",
+            "step2Desc": "मालिकाना हक के लिए खरीदें या एक्सेस के लिए किराए पर लें।",
+            "step3Title": "खरीद पूरी करें",
+            "step3Desc": "कार्ट में जोड़ें और सुरक्षित रूप से चेकआउट करें।",
+            "step4Title": "पढ़ना शुरू करें",
+            "step4Desc": "अपनी किताबें तुरंत एक्सेस करें।"
+        },
+        "close": "बंद करें",
+        "locationRestrictionTitle": "स्थान संबंधी सीमा",
+        "locationRestrictionMessage": "हम केवल {{city}} में किताबें किराए पर देने की अनुमति देते हैं। क्या आप जारी रखना चाहते हैं?",
+        "buyInstead": "इसके बजाय खरीदें",
+        "continue": "जारी रखें"
+    },
+    "header": {
+        "toggleMenu": "मेन्यू टॉगल करें",
+        "search": "खोजें",
+        "shoppingCart": "शॉपिंग कार्ट",
+        "login": "लॉग इन करें",
+        "dashboard": "डैशबोर्ड",
+        "customerServices": "ग्राहक सेवाएं",
+        "joinCommunity": "हमारे समुदाय से जुड़ें",
+        "logoAlt": "लोगो",
+        "instituteLogoAlt": "इंस्टिट्यूट लोगो"
+    },
+    "courseDetailsRoute": {
+        "domainResolutionErrorTitle": "डोमेन समाधान त्रुटि",
+        "retry": "फिर से कोशिश करें"
+    },
+    "courseDetails": {
+        "accordion": {
+            "highlightsTitle": "{{course}} की मुख्य बातें",
+            "aboutThisCourse": "इस {{course}} के बारे में",
+            "whatYoullLearn": "आप क्या सीखेंगे",
+            "whoShouldJoin": "किसे जुड़ना चाहिए"
+        },
+        "noEmailProvided": "कोई ईमेल नहीं दिया गया",
+        "unknownTeacher": "अज्ञात {{teacher}}",
+        "defaultWhoShouldLearn": "यह {{subject}} सीखने में रुचि रखने वाला कोई भी व्यक्ति",
+        "defaultWhyLearn": "मूल्यवान कौशल और ज्ञान प्राप्त करें",
+        "untitledCourse": "बिना शीर्षक वाला {{course}}",
+        "courseNotFoundDefault": "{{course}} नहीं मिला",
+        "courseNotFoundError": "{{course}} नहीं मिला।",
+        "courseNotPublicError": "यह {{course}} सार्वजनिक रूप से देखने के लिए उपलब्ध नहीं है।",
+        "loadFailedError": "{{course}} विवरण लोड करने में विफल",
+        "courseLoadFailedDescription": "अनुरोध किया गया {{course}} लोड नहीं हो सका।",
+        "backToCatalog": "सूची पर वापस जाएं",
+        "loadingCatalogueTitle": "{{course}} सूची लोड हो रही है...",
+        "loadingCatalogueDescription": "कृपया प्रतीक्षा करें जब तक हम {{course}} की जानकारी लोड करें।",
+        "courseOverview": "{{course}} अवलोकन",
+        "price": "कीमत",
+        "rating": "रेटिंग",
+        "duration": "अवधि",
+        "enrollForFree": "मुफ़्त में नामांकन करें",
+        "enrollNow": "अभी नामांकन करें",
+        "getStarted": "शुरू करें",
+        "clickToRegister": "इस {{course}} के लिए पंजीकरण करने हेतु क्लिक करें",
+        "forNewUsers": "नए उपयोगकर्ताओं के लिए",
+        "enrollmentUnavailableTitle": "नामांकन उपलब्ध नहीं है",
+        "leadFormDefaults": {
+            "fullName": "पूरा नाम",
+            "email": "ईमेल",
+            "phone": "फ़ोन नंबर"
+        }
+    }
+}

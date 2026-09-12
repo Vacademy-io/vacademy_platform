@@ -23,6 +23,16 @@ import java.util.Optional;
 @Repository
 public interface AudienceResponseRepository extends JpaRepository<AudienceResponse, String> {
 
+    /**
+     * Bulk lead id -> display name and number, for screens that list leads they do not
+     * otherwise load. The AI call queue resolves a whole page at once; a per-row lookup
+     * would turn one page into fifty queries.
+     */
+    @Query(value = "SELECT ar.id, ar.parent_name, ar.parent_mobile FROM audience_response ar "
+            + "WHERE ar.id IN (:ids)", nativeQuery = true)
+    List<Object[]> findIdNameAndMobileByIds(@Param("ids") java.util.Collection<String> ids);
+
+
         /**
          * Find all leads for a specific campaign, INCLUDING soft-deleted ones.
          *
@@ -1444,6 +1454,34 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         List<AudienceResponse> findAllByInstituteAndUserIds(
                         @Param("instituteId") String instituteId,
                         @Param("userIds") List<String> userIds);
+
+        /**
+         * The newest ACTIVE lead row for one person inside one institute, as either
+         * the submitter or the child the submission was for.
+         *
+         * <p>Used by click-to-call from the LMS surfaces (students list / attendance /
+         * assessment side-view), where the frontend only knows a learner's user id.
+         * A learner who ALSO came through a form gets their call filed on the same
+         * lead — same call history, same timeline, disposition still works. A learner
+         * with no lead row simply yields nothing and the call is logged against the
+         * user alone.
+         *
+         * <p>Institute-scoped through the audience join for the same reason
+         * {@link #findAllByInstituteAndIds} is: a user id alone can't be allowed to
+         * reach another tenant's lead. Paged so the LIMIT 1 stays in SQL.
+         */
+        @Query("""
+                            SELECT ar.id FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND (ar.userId = :userId OR ar.studentUserId = :userId)
+                            AND ar.audienceStatus = 'ACTIVE'
+                            ORDER BY ar.createdAt DESC
+                        """)
+        List<String> findLatestResponseIdForUserInInstitute(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId,
+                        org.springframework.data.domain.Pageable pageable);
 
         /**
          * Find audience response by parent mobile number for pre-fill lookup

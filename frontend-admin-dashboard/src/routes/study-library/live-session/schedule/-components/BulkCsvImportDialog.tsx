@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDropzone } from 'react-dropzone';
 import { UploadSimple, CircleNotch, Warning, CheckCircle } from '@phosphor-icons/react';
 import {
@@ -34,6 +35,9 @@ export function BulkCsvImportDialog({
     allowedPlatforms,
     onImport,
 }: BulkCsvImportDialogProps) {
+    // Reuses the bulkCsv.ts namespace: parseScheduleCsv's validation/error messages
+    // live there, and this dialog just needs to pass a `t` through to it.
+    const { t } = useTranslation('studyLibraryBulkCsv');
     const [parsing, setParsing] = useState(false);
     const [fileName, setFileName] = useState<string | null>(null);
     const [result, setResult] = useState<ScheduleCsvParseResult | null>(null);
@@ -48,7 +52,7 @@ export function BulkCsvImportDialog({
         setFileName(file.name);
         setParsing(true);
         setResult(null);
-        const parsed = await parseScheduleCsv(file, { batches, allowedPlatforms });
+        const parsed = await parseScheduleCsv(file, { batches, allowedPlatforms }, t);
         setResult(parsed);
         setParsing(false);
     };

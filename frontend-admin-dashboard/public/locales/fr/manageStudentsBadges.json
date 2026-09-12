@@ -1,0 +1,26 @@
+{
+  "loadError": {
+    "title": "Impossible de charger les badges",
+    "hint": "Une erreur s'est produite lors du chargement des badges de cet apprenant."
+  },
+  "award": {
+    "heading": "Attribuer un badge",
+    "empty": "Aucun badge configuré pour le moment. Ajoutez-en d'abord dans Paramètres → Badges et récompenses.",
+    "badgeLabel": "Badge",
+    "badgePlaceholder": "Choisissez un badge à attribuer",
+    "reasonLabel": "Motif",
+    "reasonPlaceholder": "ex. Meilleur score au contrôle de l'unité",
+    "reasonRequired": "Un motif est requis pour attribuer ce badge.",
+    "submit": "Attribuer le badge",
+    "successToast": "Badge attribué",
+    "errorToast": "Échec de l'attribution du badge"
+  },
+  "awarded": {
+    "heading": "Badges attribués",
+    "empty": "Aucun badge attribué pour l'instant — récompensez cet apprenant avec un badge ci-dessus.",
+    "revokeAriaLabel": "Révoquer {{name}}",
+    "badgeFallback": "badge",
+    "successToast": "Badge révoqué",
+    "errorToast": "Échec de la révocation du badge"
+  }
+}

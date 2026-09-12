@@ -1,0 +1,18 @@
+{
+    "title": "Moteurs d'engagement",
+    "subtitle": "Des copilotes IA par objectif qui décident qui contacter, quand, et avec quel message.",
+    "actions": {
+        "taskInbox": "Boîte de tâches",
+        "newEngine": "Nouveau moteur",
+        "createFirstEngine": "Créer votre premier moteur"
+    },
+    "error": "Impossible de charger les moteurs. Veuillez actualiser la page.",
+    "empty": {
+        "title": "Aucun moteur pour l'instant",
+        "description": "Créez un moteur pour un seul objectif — par exemple relancer les {{term}} inactifs ou un défi de 14 jours. Il prépare chaque message pour que vous le validiez avant l'envoi."
+    },
+    "card": {
+        "noChannels": "Aucun canal activé",
+        "cadence": "toutes les {{hours}} h"
+    }
+}

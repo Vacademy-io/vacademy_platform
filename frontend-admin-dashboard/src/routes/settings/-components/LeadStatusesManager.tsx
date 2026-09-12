@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
@@ -19,6 +20,7 @@ import { DEFAULT_STATUS_COLOR } from '@/hooks/use-lead-settings';
  * lead-status CRUD endpoints. Replaces the JSON-based customStatuses card.
  */
 export default function LeadStatusesManager() {
+    const { t } = useTranslation('settingsLeadStatusesManager');
     const queryClient = useQueryClient();
     const { statuses, isLoading } = useLeadStatuses();
 
@@ -64,10 +66,10 @@ export default function LeadStatusesManager() {
         try {
             await saveLeadStatuses(statuses, rows);
             await queryClient.invalidateQueries({ queryKey: LEAD_STATUSES_QUERY_KEY });
-            toast.success('Lead statuses saved');
+            toast.success(t('toasts.saveSuccess'));
             setHasChanges(false);
         } catch {
-            toast.error('Failed to save lead statuses');
+            toast.error(t('toasts.saveError'));
         } finally {
             setSaving(false);
         }
@@ -76,17 +78,12 @@ export default function LeadStatusesManager() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Lead Statuses</CardTitle>
-                <CardDescription>
-                    The stages a lead moves through in your pipeline (e.g. New, Interested, Converted).
-                    Rename, recolour, reorder, or set a default for new leads. Statuses can't be
-                    deleted — leads keep their history. Stored in the database so you can filter
-                    and report on them.
-                </CardDescription>
+                <CardTitle>{t('title')}</CardTitle>
+                <CardDescription>{t('description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 {isLoading ? (
-                    <p className="text-sm text-muted-foreground">Loading statuses…</p>
+                    <p className="text-sm text-muted-foreground">{t('loading')}</p>
                 ) : (
                     <>
                         {/* Live preview */}
@@ -110,7 +107,9 @@ export default function LeadStatusesManager() {
                                                 style={{ backgroundColor: s.color }}
                                             />
                                             {s.label}
-                                            {s.is_default && <span className="opacity-60">· default</span>}
+                                            {s.is_default && (
+                                                <span className="opacity-60">{t('preview.defaultBadge')}</span>
+                                            )}
                                         </span>
                                     ))}
                             </div>
@@ -120,7 +119,7 @@ export default function LeadStatusesManager() {
                         <div className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200">
                             {rows.length === 0 && (
                                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                                    No statuses yet. Add your first pipeline stage below.
+                                    {t('empty')}
                                 </p>
                             )}
                             {rows.map((s, i) => (
@@ -135,19 +134,21 @@ export default function LeadStatusesManager() {
                                         className="relative size-7 shrink-0 cursor-pointer rounded-md border border-neutral-200 shadow-sm transition-transform hover:scale-105"
                                         // Inline style: arbitrary user-picked status colour.
                                         style={{ backgroundColor: s.color || DEFAULT_STATUS_COLOR }}
-                                        title="Change colour"
+                                        title={t('row.changeColorTitle')}
                                     >
                                         <input
                                             type="color"
                                             value={s.color || DEFAULT_STATUS_COLOR}
                                             onChange={(e) => update(i, { color: e.target.value })}
                                             className="absolute inset-0 size-full cursor-pointer opacity-0"
-                                            aria-label={`Colour for ${s.label || 'status'}`}
+                                            aria-label={t('row.colorAriaLabel', {
+                                                name: s.label || t('row.statusFallback'),
+                                            })}
                                         />
                                     </label>
 
                                     <Input
-                                        placeholder="Status name (e.g. Interested)"
+                                        placeholder={t('row.namePlaceholder')}
                                         value={s.label}
                                         onChange={(e) => update(i, { label: e.target.value })}
                                         className="h-9 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-input focus-visible:bg-white"
@@ -157,7 +158,11 @@ export default function LeadStatusesManager() {
                                         buttonType="text"
                                         layoutVariant="icon"
                                         scale="small"
-                                        aria-label={s.is_default ? 'Default status' : 'Set as default'}
+                                        aria-label={
+                                            s.is_default
+                                                ? t('row.defaultStatusAriaLabel')
+                                                : t('row.setAsDefaultAriaLabel')
+                                        }
                                         onClick={() => setDefault(i)}
                                         className={
                                             s.is_default
@@ -171,9 +176,9 @@ export default function LeadStatusesManager() {
                                     {s.is_system && (
                                         <span
                                             className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500"
-                                            title="System default — can be renamed/recoloured"
+                                            title={t('row.systemDefaultTitle')}
                                         >
-                                            Default
+                                            {t('row.systemDefaultBadge')}
                                         </span>
                                     )}
                                 </div>
@@ -187,13 +192,13 @@ export default function LeadStatusesManager() {
                         >
                             <span className="flex items-center gap-2">
                                 <Plus className="size-4" />
-                                Add status
+                                {t('addStatus')}
                             </span>
                         </MyButton>
 
                         <div className="flex items-center justify-between border-t border-neutral-200 pt-3">
                             <span className="text-xs text-muted-foreground">
-                                The starred status is applied to brand-new leads.
+                                {t('footer.hint')}
                             </span>
                             <MyButton
                                 buttonType="primary"
@@ -201,7 +206,7 @@ export default function LeadStatusesManager() {
                                 onClick={handleSave}
                                 disable={saving || !hasChanges}
                             >
-                                {saving ? 'Saving…' : 'Save statuses'}
+                                {saving ? t('footer.saving') : t('footer.save')}
                             </MyButton>
                         </div>
                     </>

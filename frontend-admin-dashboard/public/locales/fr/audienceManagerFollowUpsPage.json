@@ -1,0 +1,69 @@
+{
+    "navHeading": "Suivis",
+    "heading": {
+        "team": "Suivis",
+        "mine": "Mes suivis"
+    },
+    "subline": {
+        "teamAllCaughtUp": "L'équipe est à jour",
+        "selfAllCaughtUp": "Vous êtes à jour",
+        "tasksDueToday_admin_one": "L'équipe a {{count}} tâche à faire aujourd'hui",
+        "tasksDueToday_admin_many": "L'équipe a {{count}} tâche à faire aujourd'hui",
+        "tasksDueToday_admin_other": "L'équipe a {{count}} tâches à faire aujourd'hui",
+        "tasksDueToday_user_one": "Vous avez {{count}} tâche à faire aujourd'hui",
+        "tasksDueToday_user_many": "Vous avez {{count}} tâche à faire aujourd'hui",
+        "tasksDueToday_user_other": "Vous avez {{count}} tâches à faire aujourd'hui",
+        "overdueSuffix_one": " · {{count}} en retard",
+        "overdueSuffix_many": " · {{count}} en retard",
+        "overdueSuffix_other": " · {{count}} en retard"
+    },
+    "tabs": {
+        "list": "Liste",
+        "calendar": "Calendrier"
+    },
+    "showing": {
+        "prefix": "Affichage de",
+        "suffix_one": "suivi",
+        "suffix_many": "suivi",
+        "suffix_other": "suivis",
+        "suffix_overdue_one": "suivi en retard",
+        "suffix_overdue_many": "suivi en retard",
+        "suffix_overdue_other": "suivis en retard",
+        "suffix_today_one": "suivi à faire aujourd'hui",
+        "suffix_today_many": "suivi à faire aujourd'hui",
+        "suffix_today_other": "suivis à faire aujourd'hui",
+        "suffix_upcoming_one": "suivi à venir",
+        "suffix_upcoming_many": "suivi à venir",
+        "suffix_upcoming_other": "suivis à venir"
+    },
+    "table": {
+        "actionHeader": "Action"
+    },
+    "callReasons": {
+        "noSubmissionId": "Ce lead n'a pas d'identifiant de soumission",
+        "noPhone": "Ce lead n'a aucun numéro de téléphone enregistré",
+        "callInProgress": "Un autre appel est en cours de démarrage…"
+    },
+    "errors": {
+        "loadFailedTitle": "Impossible de charger les suivis",
+        "loadFailedDescription": "Une erreur s'est produite lors du chargement des suivis. Réessayez."
+    },
+    "empty": {
+        "title": {
+            "teamAllCaughtUp": "Aucun suivi en attente pour toute l'équipe",
+            "selfAllCaughtUp": "Tout est à jour",
+            "noOverdue": "Aucun suivi en retard",
+            "nothingToday": "Rien à faire aujourd'hui",
+            "noUpcoming": "Aucun suivi à venir dans les 7 prochains jours",
+            "default": "Aucun suivi"
+        },
+        "description": {
+            "overdueNudge_one": "Vous avez {{count}} tâche en retard — basculez sur « En attente » ci-dessus.",
+            "overdueNudge_many": "Vous avez {{count}} tâche en retard — basculez sur « En attente » ci-dessus.",
+            "overdueNudge_other": "Vous avez {{count}} tâches en retard — basculez sur « En attente » ci-dessus.",
+            "upcomingNudge": "Basculez sur « À venir » ci-dessus pour voir ce qui arrive ensuite.",
+            "teamAllCaughtUp": "L'équipe est à jour sur tous les suivis de cette vue.",
+            "selfAllCaughtUp": "Vous n'avez aucun suivi en attente dans cette vue."
+        }
+    }
+}

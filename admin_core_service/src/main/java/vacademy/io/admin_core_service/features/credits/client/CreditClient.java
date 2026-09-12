@@ -209,6 +209,108 @@ public class CreditClient {
     }
 
     /**
+     * Token-metered deduction WITH per-user attribution (academy-credits Phase 3).
+     *
+     * <p>Same pricing path as {@link #deductCredits} — ai_service prices the real token
+     * counts against the model's USD rates — but it also carries who the spend belongs
+     * to, so the row shows up in the per-user AI usage screens instead of as an
+     * unattributed system charge, and a {@code batchId} so related charges can be
+     * grouped (the chatbot passes the flow id).
+     *
+     * <p>{@code allow_negative} is true: the tokens were already burned at the provider
+     * by the time we get here, so a charge for delivered work must never be silently
+     * dropped because a concurrent spend slipped the balance below the pre-flight
+     * estimate. Affordability is gated BEFORE the call (see hasActiveCredits).
+     *
+     * @param subjectUserId who the work was about when that differs from the actor
+     *                      (a chatbot reply is FOR the learner, not the bot)
+     * @return true when ai_service acknowledged the deduction
+     */
+    public boolean deductAttributedTokenUsage(
+            String instituteId,
+            String requestType,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            String usageLogId,
+            String userId,
+            String userRole,
+            String subjectUserId,
+            String description,
+            String batchId) {
+        try {
+            String url = aiServiceUrl + "/ai-service/credits/v1/deduct";
+
+            HttpHeaders headers = buildInternalHeaders();
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("request_type", requestType != null ? requestType : "content");
+            body.put("model", model != null ? model : "unknown");
+            body.put("prompt_tokens", promptTokens);
+            body.put("completion_tokens", completionTokens);
+            body.put("allow_negative", true);
+            // Null-safe puts: HashMap (not Map.of) precisely so the optional
+            // attribution fields can be omitted rather than sent as "".
+            if (usageLogId != null && !usageLogId.isBlank()) body.put("usage_log_id", usageLogId);
+            if (userId != null && !userId.isBlank()) body.put("user_id", userId);
+            if (userRole != null && !userRole.isBlank()) body.put("user_role", userRole);
+            if (subjectUserId != null && !subjectUserId.isBlank()) body.put("subject_user_id", subjectUserId);
+            if (description != null && !description.isBlank()) body.put("description", clampDescription(description));
+            if (batchId != null && !batchId.isBlank()) body.put("batch_id", batchId);
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
+            @SuppressWarnings("unchecked")
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    request,
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                if (Boolean.TRUE.equals(response.getBody().get("success"))) {
+                    return true;
+                }
+                log.warn("Attributed deduction not applied for institute {} ({}): {}",
+                        instituteId, requestType, response.getBody().get("message"));
+                return false;
+            }
+            log.warn("Attributed deduction HTTP {} for institute {} ({})",
+                    response.getStatusCode(), instituteId, requestType);
+            return false;
+        } catch (Exception e) {
+            log.error("Error in attributed deduction for institute {} ({}): {}",
+                    instituteId, requestType, e.getMessage());
+            return false;
+        }
+    }
+
+    /** Fire-and-forget variant of {@link #deductAttributedTokenUsage}. */
+    @Async
+    public CompletableFuture<Void> deductAttributedTokenUsageAsync(
+            String instituteId,
+            String requestType,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            String usageLogId,
+            String userId,
+            String userRole,
+            String subjectUserId,
+            String description,
+            String batchId) {
+        return CompletableFuture.runAsync(() -> deductAttributedTokenUsage(
+                instituteId, requestType, model, promptTokens, completionTokens,
+                usageLogId, userId, userRole, subjectUserId, description, batchId));
+    }
+
+    /** ai_service validates description at 500 chars; an over-long one fails the whole charge. */
+    private static String clampDescription(String description) {
+        return description.length() <= 500 ? description : description.substring(0, 499) + "…";
+    }
+
+    /**
      * Deduct a PRECOMPUTED credit amount (the caller already priced the work — e.g.
      * per-minute call metering) with an idempotency key. ai_service short-circuits a
      * repeated key against credit_transactions.external_reference_id (V243 partial

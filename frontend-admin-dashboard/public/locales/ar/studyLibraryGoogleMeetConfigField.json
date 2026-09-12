@@ -1,0 +1,13 @@
+{
+    "loadingGoogleAccounts": "جارٍ تحميل حسابات Google…",
+    "notSetUpMessage": "لم يتم إعداد تكامل Google Meet لهذه المؤسسة. قم بربط حساب Google Workspace ضمن <strong>الإعدادات ← الحصة المباشرة ← تكامل Google Meet</strong>، أو الصق رابط اجتماع في حقل رابط الحصة المباشرة أدناه.",
+    "googleMeetSettings": "إعدادات Google Meet",
+    "googleAccountOrganizer": "حساب Google (المنظّم)",
+    "defaultSuffix": "(افتراضي)",
+    "linkCreatedOnAccount": "يتم إنشاء رابط Google Meet على هذا الحساب.",
+    "anyoneWithLinkJoins": "يمكن لأي شخص لديه الرابط الانضمام مباشرة (دون طَرق) — الأنسب للمتعلمين.",
+    "guestsMustKnock": "يجب على الضيوف الطرق، ويقوم المضيف بقبول كل واحد منهم.",
+    "autoRecordingOn": "التسجيل التلقائي مُفعّل — يجب حضور معلم مسجّل الدخول إلى Workspace الخاص بالمؤسسة.",
+    "autoRecordingOff": "التسجيل التلقائي غير مُفعّل.",
+    "manageJoinAccessAndRecording": "أدر إذن الانضمام والتسجيل لكل حساب ضمن الإعدادات ← الحصة المباشرة ← تكامل Google Meet."
+}

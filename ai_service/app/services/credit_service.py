@@ -88,6 +88,10 @@ MODEL_TIER_MAPPING = {
 DEFAULT_PRICING = {
     "content": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
     "agent": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    # Automations chatbot (WhatsApp flow AI_RESPONSE turn). Same rates as `agent`
+    # but bucketed separately so usage analytics can tell "the bot replied to a
+    # learner" apart from "an admin used the agent". Seeded in credit_pricing by V501.
+    "chatbot": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
     "copilot": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
     "analytics": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
     "outline": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},

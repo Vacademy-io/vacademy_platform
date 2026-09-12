@@ -96,6 +96,102 @@ export function useLeadColumnPrefs(storageKey: string, defaultHidden: string[] =
     return { hiddenColumns, toggleColumn, resetColumns };
 }
 
+/** Never let a drag shrink a column past this — a 0px column can't be grabbed back. */
+export const MIN_COLUMN_WIDTH = 72;
+/** Upper bound, so one runaway drag can't push every other column off screen. */
+export const MAX_COLUMN_WIDTH = 640;
+
+/**
+ * Per-user column WIDTHS for a table, persisted to localStorage beside the show/hide and
+ * order preferences above. Stored as an id → pixels map; a column absent from the map
+ * falls back to its natural (content-driven) width, so this only ever records the columns
+ * someone has actually dragged.
+ *
+ * Kept as its own hook and key so a surface can adopt resizing without touching how it
+ * stores visibility or order — and so clearing widths is a separate, safe operation.
+ */
+export function useColumnWidthPrefs(storageKey: string) {
+    const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+        try {
+            const raw = localStorage.getItem(storageKey);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    // Re-validate every entry: a stale or hand-edited value must not be able
+                    // to render a column at 0px (ungrabbable) or 5000px (table unusable).
+                    return Object.fromEntries(
+                        Object.entries(parsed as Record<string, unknown>)
+                            .filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+                            .map(([k, v]) => [
+                                k,
+                                Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, v as number)),
+                            ])
+                    );
+                }
+            }
+        } catch {
+            /* corrupt or unavailable storage — fall back to natural widths */
+        }
+        return {};
+    });
+
+    const persist = useCallback(
+        (next: Record<string, number>) => {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(next));
+            } catch {
+                /* storage blocked/full — keep the in-memory width, just don't persist */
+            }
+        },
+        [storageKey]
+    );
+
+    /**
+     * Called on every pointermove of a drag, so it deliberately does NOT write to storage —
+     * only the in-memory state moves. `commitColumnWidth` persists once, on pointerup.
+     */
+    const setColumnWidth = useCallback((id: string, width: number) => {
+        setColumnWidths((prev) => ({
+            ...prev,
+            [id]: Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Math.round(width))),
+        }));
+    }, []);
+
+    const commitColumnWidths = useCallback(() => {
+        setColumnWidths((prev) => {
+            persist(prev);
+            return prev;
+        });
+    }, [persist]);
+
+    /** Drop one column back to its natural width (double-click on the handle). */
+    const clearColumnWidth = useCallback(
+        (id: string) => {
+            setColumnWidths((prev) => {
+                if (!(id in prev)) return prev;
+                const next = { ...prev };
+                delete next[id];
+                persist(next);
+                return next;
+            });
+        },
+        [persist]
+    );
+
+    const resetColumnWidths = useCallback(() => {
+        setColumnWidths({});
+        persist({});
+    }, [persist]);
+
+    return {
+        columnWidths,
+        setColumnWidth,
+        commitColumnWidths,
+        clearColumnWidth,
+        resetColumnWidths,
+    };
+}
+
 /**
  * Per-user column ORDER for a table, persisted to localStorage beside the show/hide
  * preference above. Kept as a separate hook (and a separate storage key) so a surface can

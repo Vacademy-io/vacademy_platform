@@ -1,0 +1,14 @@
+{
+    "emptySelection": "Nothing selected — the paper will draw from everything.",
+    "selectedCount_one": "{{count}} of {{total}} subtopic selected",
+    "selectedCount_other": "{{count}} of {{total}} subtopics selected",
+    "actions": {
+        "clearAll": "Clear all",
+        "selectAll": "Select all"
+    },
+    "selectTopicAriaLabel": "Select {{title}}",
+    "subtopicsPartial_one": "{{count}} of {{total}} subtopic",
+    "subtopicsPartial_other": "{{count}} of {{total}} subtopics",
+    "subtopicsTotal_one": "{{count}} subtopic",
+    "subtopicsTotal_other": "{{count}} subtopics"
+}

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { SubOrgAnalyticsPanel } from './-components/sub-org-analytics-panel';
+import { SubOrgStatCards } from './-components/sub-org-stat-cards';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -116,33 +117,42 @@ function ManageSubOrgTeams() {
                     {selectedSubOrg ? `${selectedSubOrg.name} — ${subOrgTerm}` : subOrgTerm}
                 </title>
             </Helmet>
-            <div className="p-6">
-                <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                        <h1 className="text-h2 font-bold text-neutral-900">
+            <div className="p-5">
+                {/* Same header shape as the Manage <SubOrgs> list: title and subtitle on
+                    the left, the headline figures on the right. Stacking the cards
+                    full-width below pushed the tabs off a laptop screen there, and this
+                    page carries the same amount of chrome. */}
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                    <div className="max-w-md">
+                        <h1 className="text-3xl font-bold text-neutral-900">
                             {selectedSubOrg?.name || subOrgTerm}
                         </h1>
-                        <p className="text-caption text-neutral-500">
-                            Your {subOrgTerm.toLowerCase()}&apos;s payments, learners and team.
-                            The ledger is read-only — the parent institute admin manages
-                            installments and discounts.
+                        <p className="mt-1 text-sm text-neutral-500">
+                            Your {subOrgTerm.toLowerCase()}&apos;s payments, learners and team. The
+                            ledger is read-only — the parent institute admin manages installments
+                            and discounts.
                         </p>
                     </div>
-                    {subOrgs.length > 1 && (
-                        <div className="flex flex-col gap-1">
-                            <span className="text-caption text-neutral-500">
-                                Switch {subOrgTerm.toLowerCase()}
-                            </span>
-                            <MyDropdown
-                                dropdownList={dropdownList}
-                                currentValue={selectedSubOrg?.name || ''}
-                                placeholder={`Select ${subOrgTerm.toLowerCase()}`}
-                                handleChange={(value: string) => setSelectedId(value)}
-                                className="min-w-[220px]"
-                            />
-                        </div>
-                    )}
+                    {selectedSubOrg && <SubOrgStatCards subOrgId={selectedSubOrg.id} />}
                 </div>
+
+                {/* The switcher gets its own row rather than the header's right slot,
+                    which now belongs to the cards. Only rendered when the caller actually
+                    holds more than one sub-org. */}
+                {subOrgs.length > 1 && (
+                    <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+                        <span className="text-xs font-medium text-neutral-600">
+                            Switch {subOrgTerm.toLowerCase()}
+                        </span>
+                        <MyDropdown
+                            dropdownList={dropdownList}
+                            currentValue={selectedSubOrg?.name || ''}
+                            placeholder={`Select ${subOrgTerm.toLowerCase()}`}
+                            handleChange={(value: string) => setSelectedId(value)}
+                            className="min-w-56"
+                        />
+                    </div>
+                )}
 
                 {isLoading ? (
                     <DashboardLoader />
@@ -162,6 +172,7 @@ function ManageSubOrgTeams() {
                         subOrgId={selectedSubOrg.id}
                         subOrgName={selectedSubOrg.name}
                         restrictedView
+                        variant="page"
                     />
                 )}
             </div>

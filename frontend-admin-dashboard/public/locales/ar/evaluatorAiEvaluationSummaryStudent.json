@@ -1,0 +1,58 @@
+{
+    "header": {
+        "back": "← رجوع",
+        "title": "ملخص التقييم",
+        "exportReport": "تصدير التقرير",
+        "sendReport": "إرسال التقرير"
+    },
+    "sendDialog": {
+        "title": "إرسال تقرير التقييم",
+        "recipientEmailPlaceholder": "البريد الإلكتروني للمستلم",
+        "subjectPlaceholder": "الموضوع (اختياري)",
+        "remarksPlaceholder": "ملاحظات (اختياري)",
+        "sendButton": "إرسال"
+    },
+    "sections": {
+        "studentInformation": "معلومات الطالب",
+        "evaluationDetails": "تفاصيل التقييم",
+        "performanceBreakdown": "تحليل الأداء",
+        "questionWiseMarking": "التقييم حسب السؤال"
+    },
+    "fields": {
+        "name": "الاسم:",
+        "learnerId": "معرّف المتعلم:",
+        "assessment": "التقييم:",
+        "summary": "الملخص:",
+        "totalMarks": "الدرجة الكلية:"
+    },
+    "table": {
+        "questionNo": "رقم السؤال",
+        "question": "السؤال",
+        "answer": "الإجابة",
+        "marks": "الدرجات",
+        "feedback": "الملاحظات",
+        "description": "الوصف",
+        "viewMore": "عرض المزيد"
+    },
+    "previewDialog": {
+        "heading": "عرض السؤال",
+        "questionLabel": "السؤال",
+        "extractedAnswerLabel": "الإجابة المستخرجة"
+    },
+    "loading": {
+        "generatingPdf": "جارٍ إنشاء ملف PDF...",
+        "sendingMail": "جارٍ إرسال البريد...",
+        "pleaseWait": "قد يستغرق هذا بعض الوقت، يرجى الانتظار."
+    },
+    "toast": {
+        "emailSent": "تم إرسال البريد الإلكتروني بنجاح",
+        "emailFailed": "حدث خطأ أثناء إرسال البريد"
+    },
+    "validation": {
+        "invalidEmail": "عنوان بريد إلكتروني غير صالح"
+    },
+    "email": {
+        "defaultSubject": "تقرير التقييم",
+        "defaultStudentName": "طالب"
+    }
+}

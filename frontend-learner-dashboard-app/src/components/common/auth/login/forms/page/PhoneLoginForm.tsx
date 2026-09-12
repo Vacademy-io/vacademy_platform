@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { z } from "zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -30,7 +30,10 @@ import { REQUEST_WHATSAPP_OTP, VERIFY_WHATSAPP_OTP_LOGIN } from "@/constants/url
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { getPreferredPhoneCountries } from "@/services/domain-routing";
+import {
+    phoneFieldHasInput,
+    usePreferredPhoneCountries,
+} from "@/hooks/use-preferred-phone-countries";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 import { phoneSchema as phoneValidationSchema } from "@/lib/phone-validation";
 import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
@@ -83,10 +86,6 @@ export function PhoneLoginForm({
         [i18nInstance.language]
     );
     const [isOtpSent, setIsOtpSent] = useState(false);
-    const { defaultCountry, preferredCountries } = useMemo(
-        () => getPreferredPhoneCountries(),
-        [],
-    );
     const [phoneDial, setPhoneDial] = useState("");
     const [timer, setTimer] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -107,6 +106,15 @@ export function PhoneLoginForm({
         defaultValues: {
             phone: "",
         },
+    });
+
+    // Resolved after `phoneForm` so the freeze flag can read the field. The
+    // login page is public and can render before domain routing replies, which
+    // is exactly the case this hook corrects; it never moves the country once a
+    // number has been typed.
+    const typedPhone = useWatch({ control: phoneForm.control, name: "phone" });
+    const { defaultCountry, preferredCountries } = usePreferredPhoneCountries({
+        freeze: phoneFieldHasInput(typedPhone),
     });
     const startTimer = () => {
         setTimer(60);

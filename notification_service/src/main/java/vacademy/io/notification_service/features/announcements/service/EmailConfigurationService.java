@@ -157,6 +157,11 @@ public class EmailConfigurationService {
                             .type(emailType)
                             .description("Email configuration for " + formatEmailTypeName(emailType))
                             .displayText(displayName + " (" + fromEmail + ")")
+                            .maxPerDay(configNode.has(NotificationConstants.MAX_PER_DAY) ? configNode.path(NotificationConstants.MAX_PER_DAY).asInt(0) : null)
+                            .timezone(configNode.hasNonNull(NotificationConstants.TIMEZONE) ? configNode.path(NotificationConstants.TIMEZONE).asText() : null)
+                            .sendAfterHour(configNode.has(NotificationConstants.SEND_AFTER_HOUR) ? configNode.path(NotificationConstants.SEND_AFTER_HOUR).asInt(0) : null)
+                            .postalAddress(configNode.hasNonNull(NotificationConstants.POSTAL_ADDRESS) ? configNode.path(NotificationConstants.POSTAL_ADDRESS).asText() : null)
+                            .listUnsubscribe(configNode.has(NotificationConstants.LIST_UNSUBSCRIBE) ? configNode.path(NotificationConstants.LIST_UNSUBSCRIBE).asBoolean(false) : null)
                             .build();
                     
                     configs.add(dto);
@@ -255,6 +260,7 @@ public class EmailConfigurationService {
                     ? addEmail
                     : (addName + " <" + addEmail + ">");
             newConfigNode.put(NotificationConstants.FROM, fromValue);
+            applySendingControls(newConfigNode, emailConfig);
             newConfigNode.put(NotificationConstants.HOST, "smtp.gmail.com");
             newConfigNode.put(NotificationConstants.PORT, 587);
             newConfigNode.put(NotificationConstants.USERNAME, "SMTP_USERNAME");
@@ -298,6 +304,25 @@ public class EmailConfigurationService {
         }
     }
     
+    /**
+     * Sending controls are optional and PATCH-like: a null field leaves the stored value alone,
+     * so an admin editing the display name never wipes a daily cap set earlier.
+     */
+    private void applySendingControls(ObjectNode node, EmailConfigDTO dto) {
+        if (dto.getMaxPerDay() != null) node.put(NotificationConstants.MAX_PER_DAY, Math.max(0, dto.getMaxPerDay()));
+        if (dto.getTimezone() != null) {
+            String tz = dto.getTimezone().trim();
+            if (tz.isEmpty()) node.remove(NotificationConstants.TIMEZONE);
+            else { java.time.ZoneId.of(tz); node.put(NotificationConstants.TIMEZONE, tz); } // throws on a bad zone → 400
+        }
+        if (dto.getSendAfterHour() != null) node.put(NotificationConstants.SEND_AFTER_HOUR, Math.max(0, Math.min(23, dto.getSendAfterHour())));
+        if (dto.getPostalAddress() != null) {
+            String a = dto.getPostalAddress().trim();
+            if (a.isEmpty()) node.remove(NotificationConstants.POSTAL_ADDRESS); else node.put(NotificationConstants.POSTAL_ADDRESS, a);
+        }
+        if (dto.getListUnsubscribe() != null) node.put(NotificationConstants.LIST_UNSUBSCRIBE, dto.getListUnsubscribe());
+    }
+
     /**
      * Ensure EMAIL_SETTING.data structure exists in settings
      */
@@ -440,6 +465,7 @@ public class EmailConfigurationService {
 
             String newFrom = treatAsNoName ? newEmail : (newName + " <" + newEmail + ">");
             existingConfigNode.put(NotificationConstants.FROM, newFrom);
+            applySendingControls(existingConfigNode, emailConfig);
 
             String updatedSettings = objectMapper.writeValueAsString(rootNode);
             boolean persisted = instituteInternalService.updateInstituteSettings(

@@ -1,4 +1,5 @@
 import { Star, Fire, Trophy, Lock, CheckCircle } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ export function AchievementsDialog({
   onOpenChange: (v: boolean) => void;
   data: PlayGamificationData | null;
 }) {
+  const { t } = useTranslation("dashboard");
   const badges = data?.badges ?? [];
   const unlockedCount = badges.filter((b) => b.unlocked).length;
   const totalXp = data?.totalXp ?? 0;
@@ -52,17 +54,17 @@ export function AchievementsDialog({
         <DialogHeader className="border-b border-border p-4">
           <DialogTitle className="flex items-center gap-2">
             <Trophy weight="fill" className="h-5 w-5 text-warning-500" />
-            Your achievements
+            {t("achievements.title")}
           </DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="max-h-96">
           <div className="space-y-4 p-4">
             {/* Level + points */}
-            <div className="rounded-xl border border-primary-100 bg-primary-50 p-4">
+            <div className="rounded-xl border border-primary-100 bg-primary-50 p-4 [.ui-play_&]:rounded-play-card [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-gold-soft [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-transparent [.ui-cleaner-play_&]:bg-cp-gold-tint">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100">
-                  <Star weight="fill" size={22} className="text-primary-500" />
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100 [.ui-play_&]:bg-play-gold [.ui-cleaner-play_&]:bg-cp-gold">
+                  <Star weight="fill" size={22} className="text-primary-500 [.ui-play_&]:text-white [.ui-cleaner-play_&]:text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-1">
@@ -70,11 +72,11 @@ export function AchievementsDialog({
                       {totalXp.toLocaleString()}
                     </span>
                     <span className="text-caption font-semibold text-muted-foreground">
-                      XP
+                      {t("xp.xpUnit")}
                     </span>
                   </div>
                   <p className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
-                    Level {level}
+                    {t("xp.levelLong", { level })}
                   </p>
                 </div>
                 {streak > 0 && (
@@ -86,22 +88,22 @@ export function AchievementsDialog({
                   </div>
                 )}
               </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-primary-100">
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-primary-100 [.ui-play_&]:h-2.5 [.ui-play_&]:bg-play-surface">
                 <div
-                  className="h-full rounded-full bg-primary-500 transition-all duration-700"
+                  className="h-full rounded-full bg-primary-500 transition-all duration-700 [.ui-play_&]:bg-play-success"
                   style={{ width: `${progress}%` }} // design-lint-ignore: dynamic XP progress within the current level
                 />
               </div>
               <p className="mt-1 text-caption text-muted-foreground">
-                {xpToNext} XP to level {level + 1}
+                {t("achievements.xpToNextLevel", { xp: xpToNext, level: level + 1 })}
               </p>
             </div>
 
             {/* How points are earned */}
             {breakdown.length > 0 && (
-              <div className="rounded-xl border border-border p-3">
-                <p className="mb-1.5 text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  How you earn points
+              <div className="rounded-xl border border-border p-3 space-y-1.5">
+                <p className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t("xp.howYouEarnPoints")}
                 </p>
                 <div className="space-y-1">
                   {breakdown.map((b) => (
@@ -121,7 +123,7 @@ export function AchievementsDialog({
             {badges.length > 0 && (
               <div className="space-y-2">
                 <p className="text-caption font-semibold text-foreground">
-                  Badges · {unlockedCount}/{badges.length} unlocked
+                  {t("achievements.badgesUnlocked", { unlocked: unlockedCount, total: badges.length })}
                 </p>
                 <div className="space-y-2">
                   {ordered.map((badge) => (
@@ -155,13 +157,20 @@ function BadgeRow({ badge }: { badge: PlayBadge }) {
     <div
       className={cn(
         "flex items-center gap-3 rounded-xl border p-3",
-        unlocked ? "border-primary-100 bg-primary-50" : "border-border bg-card"
+        "[.ui-play_&]:rounded-play-card-sm",
+        unlocked
+          ? "border-primary-100 bg-primary-50 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-gold-soft [.ui-cleaner-play_&]:border-transparent [.ui-cleaner-play_&]:bg-cp-gold-tint"
+          : "border-border bg-card"
       )}
     >
       <div
         className={cn(
           "relative flex h-14 w-14 shrink-0 items-center justify-center rounded-xl",
-          !isLib && (unlocked ? "bg-primary-100" : "bg-muted")
+          "[.ui-play_&]:rounded-play-card-sm",
+          !isLib &&
+            (unlocked
+              ? "bg-primary-100 [.ui-play_&]:bg-play-gold [.ui-cleaner-play_&]:bg-cp-gold"
+              : "bg-muted")
         )}
       >
         <BadgeVisual
@@ -170,7 +179,9 @@ function BadgeRow({ badge }: { badge: PlayBadge }) {
           weight={unlocked ? "fill" : "regular"}
           size={44}
           className={cn(
-            unlocked ? "text-primary-500" : "text-muted-foreground opacity-40 grayscale"
+            unlocked
+              ? "text-primary-500 [.ui-play_&]:text-white [.ui-cleaner-play_&]:text-white"
+              : "text-muted-foreground opacity-40 grayscale"
           )}
         />
         {!unlocked && (

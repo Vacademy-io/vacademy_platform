@@ -1,0 +1,49 @@
+{
+  "menu": {
+    "changeRoleType": "Change Role Type",
+    "disableUser": "Disable user",
+    "enableUser": "Enable user",
+    "deleteUser": "Delete user"
+  },
+  "changeRoleType": {
+    "title": "Change Roles",
+    "roleTypeLabel": "Role Type",
+    "submit": "Submit",
+    "validation": {
+      "roleRequired": "At least one role type is required"
+    },
+    "toast": {
+      "success": "User roles has been changed successfully!"
+    }
+  },
+  "disableUser": {
+    "title": "Disable User",
+    "attention": "Attention",
+    "confirmPrefix": "Are you sure you want to disable",
+    "confirmSuffix": "?",
+    "confirmButton": "Yes",
+    "toast": {
+      "success": "User has been disabled successfully!"
+    }
+  },
+  "enableUser": {
+    "title": "Enable User",
+    "attention": "Attention",
+    "confirmPrefix": "Are you sure you want to enable",
+    "confirmSuffix": "?",
+    "confirmButton": "Yes",
+    "toast": {
+      "success": "User has been enabled successfully!"
+    }
+  },
+  "deleteUser": {
+    "title": "Delete User",
+    "attention": "Attention",
+    "confirmPrefix": "Are you sure you want to delete",
+    "confirmSuffix": "?",
+    "confirmButton": "Yes",
+    "toast": {
+      "success": "User has been deleted successfully!"
+    }
+  }
+}

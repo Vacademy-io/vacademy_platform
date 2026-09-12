@@ -15,12 +15,14 @@ import AiSettings from '../-components/AiSettings';
 import ScheduledReportsSettings from '../-components/ScheduledReportsSettings';
 import SchoolSettings from '../-components/School/SchoolSettings';
 import WhiteLabelSettings from '../-components/WhiteLabelSettings';
+import AppStatusSettings from '../-components/AppStatusSettings';
 import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 import LeadSettings from '../-components/LeadSettings';
 import GuardianSettings from '../-components/GuardianSettings';
 import OnboardingSettings from '../-components/OnboardingSettings';
 import GtmSettings from '../-components/GtmSettings';
+import UtmSettings from '../-components/UtmSettings';
 import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
 import DoubtManagementSettings from '../-components/DoubtManagementSettings';
@@ -110,6 +112,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.WhiteLabel,
             value: 'White-Label Setup',
             component: WhiteLabelSettings,
+            domain: 'General',
+            group: 'Branding & Identity',
+        },
+        {
+            tab: SettingsTabs.AppStatus,
+            value: 'App Status',
+            component: AppStatusSettings,
             domain: 'General',
             group: 'Branding & Identity',
         },
@@ -396,6 +405,16 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.GtmSettings,
             value: 'GTM Settings',
             component: GtmSettings,
+            domain: 'Integrations',
+            group: 'Third-Party Connections',
+        },
+        {
+            // Its own entry, not a section of GTM: attribution is first-party
+            // and needs no tag manager, so an institute that has never used
+            // one would never think to look under "GTM" for campaign links.
+            tab: SettingsTabs.UtmSettings,
+            value: 'Campaign Links (UTM)',
+            component: UtmSettings,
             domain: 'Integrations',
             group: 'Third-Party Connections',
         },

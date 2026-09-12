@@ -114,6 +114,9 @@ public class AudienceService {
     private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver utmListFilterResolver;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -2993,6 +2996,19 @@ public class AudienceService {
         if (cfResolution.shortCircuitsToEmpty()) {
             return Page.empty(pageable);
         }
+        // Campaign (UTM) filter rides the same matched-id channel: resolve the
+        // touches into response ids and AND them with the custom-field set, so
+        // neither native query needs to know attribution exists.
+        if (vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver
+                .hasFilter(filterDTO.getUtmFilters())) {
+            cfResolution = cfResolution.and(utmListFilterResolver.resolve(
+                    filterDTO.getUtmFilters(),
+                    vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.RESPONSE,
+                    filterDTO.getInstituteId()));
+            if (cfResolution.shortCircuitsToEmpty()) {
+                return Page.empty(pageable);
+            }
+        }
         String customFieldMatchedIdsCsv = cfResolution.matchedIdsCsv();
         String customFieldExcludedIdsCsv = cfResolution.excludedIdsCsv();
 
@@ -3645,6 +3661,304 @@ public class AudienceService {
 
     private String resolveScope(LeadDeleteRequestDTO request) {
         return StringUtils.hasText(request.getScope()) ? request.getScope().toUpperCase() : "RESPONSE";
+    }
+
+    /**
+     * Chunk size for the {@code lead_score} lookup a migration does, keeping that IN-list well
+     * under Postgres' bind-parameter limit however many leads are moved at once.
+     */
+    private static final int MIGRATE_BATCH_SIZE = 500;
+
+    /**
+     * Move leads from one lead list to another. ADMIN only.
+     *
+     * <p>A list is an {@code audience} and a lead is an {@code audience_response}, attached by a
+     * plain {@code audience_id} column — so the move itself is one column update. Everything keyed
+     * by response id (status history, follow-ups, timeline, calls, engagement) follows the row with
+     * no work. Two things do not, because they denormalise the audience:</p>
+     * <ul>
+     *   <li>{@code lead_score.audience_id} — updated here, or scores stay attributed to the old
+     *       list.</li>
+     *   <li>{@code audience_response.initial_score} — a snapshot of the SOURCE list's
+     *       {@code default_initial_score} taken at creation. Deliberately kept: re-snapshotting
+     *       would silently rescore historical leads as a side effect of an admin tidying up.</li>
+     * </ul>
+     *
+     * <p>Partial success: colliding leads are skipped and reported. Merging two lists collides by
+     * definition, and an all-or-nothing batch would be unusable at the sizes this runs at.</p>
+     *
+     * @return counts plus the per-lead skip reasons.
+     */
+    @Transactional
+    public MigrateLeadsResponseDTO migrateLeads(MigrateLeadsRequestDTO request, CustomUserDetails actor) {
+        if (request == null || CollectionUtils.isEmpty(request.getResponseIds())) {
+            throw new InvalidRequestException("At least one response id is required");
+        }
+        if (!StringUtils.hasText(request.getInstituteId())) {
+            throw new InvalidRequestException("instituteId is required");
+        }
+        if (!StringUtils.hasText(request.getTargetAudienceId())) {
+            throw new InvalidRequestException("targetAudienceId is required");
+        }
+        if (!hasAdminRole(actor, request.getInstituteId())) {
+            throw new ForbiddenException("Only an admin can move a lead to another list");
+        }
+
+        String instituteId = request.getInstituteId();
+        String targetAudienceId = request.getTargetAudienceId();
+
+        // SECURITY: resolve the TARGET through the institute too. The ADMIN check above only proves
+        // the caller administers the institute they named, and resolveMigrateTargets below only
+        // proves the SOURCE rows belong to it — neither says anything about the destination. Without
+        // this, a legitimate admin could move their own institute's leads into another tenant's list
+        // by passing its id. The vague not-found mirrors the delete path: naming the mismatch would
+        // confirm the existence of a list the caller is not entitled to see.
+        Audience targetAudience = audienceRepository.findById(targetAudienceId)
+                .filter(a -> instituteId.equals(a.getInstituteId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Lead list not found"));
+
+        // CONSENT: the opt-out list is not an ordinary list. Opting out moves the person's response
+        // into it and leaves the OPTED_OUT flag on the row it replaced — so the row sitting IN the
+        // opt-out list carries no flag of its own. Moving those rows out would re-subscribe people
+        // who explicitly asked not to be contacted, past every suppression predicate in the system.
+        // Moving INTO it is equally wrong: AudienceOptOutService also copies custom fields and fires
+        // the opt-out workflow, none of which a bare column update would do.
+        String optOutAudienceId = audienceRepository.findOptOutAudienceByInstituteId(instituteId)
+                .map(Audience::getId)
+                .orElse(null);
+        if (targetAudienceId.equals(optOutAudienceId)) {
+            throw new InvalidRequestException(
+                    "Leads cannot be moved into the opt-out list. Use the opt-out action instead.");
+        }
+
+        MigrateLeadsRequestDTO.WorkflowAnchorMode anchorMode = resolveWorkflowAnchorMode(request);
+
+        List<AudienceResponse> targets = resolveMigrateTargets(request, actor);
+
+        List<MigrateLeadsResponseDTO.SkippedLead> skipped = new ArrayList<>();
+        List<AudienceResponse> movable = new ArrayList<>();
+        // Users already holding a response in the target list. Seeded from the DB, then extended as
+        // this batch moves people in — otherwise two selected responses for the SAME person would
+        // both pass the check and land in the target together, creating exactly the duplicate the
+        // one-response-per-person-per-list invariant forbids.
+        Set<String> usersInTarget = new HashSet<>();
+
+        for (AudienceResponse response : targets) {
+            String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+
+            if (targetAudienceId.equals(response.getAudienceId())) {
+                skipped.add(skip(response, MigrateLeadsResponseDTO.SkipReason.ALREADY_IN_TARGET_LIST,
+                        "Already in this lead list."));
+                continue;
+            }
+            if (optOutAudienceId != null && optOutAudienceId.equals(response.getAudienceId())) {
+                skipped.add(skip(response, MigrateLeadsResponseDTO.SkipReason.IN_OPT_OUT_LIST,
+                        "This lead has opted out and cannot be moved out of the opt-out list."));
+                continue;
+            }
+            if ("OPTED_OUT".equalsIgnoreCase(response.getOverallStatus())) {
+                skipped.add(skip(response, MigrateLeadsResponseDTO.SkipReason.OPTED_OUT,
+                        "This lead has opted out of contact."));
+                continue;
+            }
+            if (AudienceStatusEnum.INACTIVE.name().equalsIgnoreCase(response.getAudienceStatus())) {
+                skipped.add(skip(response, MigrateLeadsResponseDTO.SkipReason.LEAD_DELETED,
+                        "This lead is deleted. Restore it before moving it."));
+                continue;
+            }
+            if (leadUserId != null && isConverted(leadUserId, instituteId)) {
+                skipped.add(skip(response, MigrateLeadsResponseDTO.SkipReason.LEAD_CONVERTED,
+                        "This lead has already converted."));
+                continue;
+            }
+            if (StringUtils.hasText(leadUserId)
+                    && (usersInTarget.contains(leadUserId)
+                            || audienceResponseRepository.existsByAudienceIdAndUserId(targetAudienceId, leadUserId))) {
+                skipped.add(skip(response, MigrateLeadsResponseDTO.SkipReason.DUPLICATE_USER_IN_TARGET,
+                        "This person already has a lead in the target list."));
+                continue;
+            }
+
+            // The institute's dedup rule, evaluated against the TARGET list — dedup is scoped per
+            // list, so a lead that is unique where it sits can still collide once moved. Excluding
+            // this row keeps it from matching itself under INSTITUTE scope.
+            //
+            // LIMITATION: this reads the row's own parent_email / parent_mobile, whereas intake
+            // passes the incoming USER's email/mobile. Leads created through the simple submit flow
+            // keep their contact details only on the auth user, leaving parent_* blank — and
+            // checkDuplicate no-ops on a blank field, so those leads move without a dedup check.
+            // It fails OPEN, matching what intake itself does when the field is blank, and the
+            // same-person case is still caught by the DUPLICATE_USER_IN_TARGET guard above; what
+            // slips through is only a DIFFERENT user record sharing an email/phone. Closing it
+            // properly means resolving the moved set through auth_service first.
+            Optional<LeadDeduplicationService.DuplicateMatch> dupMatch = leadDeduplicationService.checkDuplicate(
+                    instituteId, targetAudienceId, response.getParentEmail(), response.getParentMobile(),
+                    response.getId());
+            if (dupMatch.isPresent()
+                    && dupMatch.get().action() == LeadDedupSettingService.DedupAction.REJECT) {
+                skipped.add(skip(response, MigrateLeadsResponseDTO.SkipReason.DUPLICATE_IN_TARGET,
+                        dupMatch.get().rejectionMessage()));
+                continue;
+            }
+
+            movable.add(response);
+            if (StringUtils.hasText(leadUserId)) {
+                usersInTarget.add(leadUserId);
+            }
+        }
+
+        // Recomputed once, not per lead: it derives from the target audience alone.
+        Timestamp resetAnchor = anchorMode == MigrateLeadsRequestDTO.WorkflowAnchorMode.RESET_TO_TARGET
+                ? calculateWorkflowActivateDayAt(targetAudience)
+                : null;
+
+        int migrated = 0;
+        for (AudienceResponse response : movable) {
+            String fromAudienceId = response.getAudienceId();
+
+            // Written once and never overwritten, so it keeps pointing at where the lead STARTED
+            // however many times it is moved afterwards.
+            if (!StringUtils.hasText(response.getOriginalAudienceId()) && StringUtils.hasText(fromAudienceId)) {
+                response.setOriginalAudienceId(fromAudienceId);
+            }
+            response.setAudienceId(targetAudienceId);
+            if (resetAnchor != null) {
+                response.setWorkflowActivateDayAt(resetAnchor);
+            }
+            migrated++;
+
+            logLeadListChangeEvent(response, actor, fromAudienceId, targetAudience, anchorMode, instituteId);
+        }
+        // These entities came from a repository query inside this transaction, so they are managed:
+        // the field writes above are already dirty-checked and flushed at commit. saveAll() here is
+        // explicitness, not a second write.
+        //
+        // NOTE: this is one transaction, and the persistence context holds every moved row for its
+        // duration. That is fine at the sizes the UI can select, but it is NOT the batched,
+        // per-chunk-commit write path a true bulk move needs — that work is tracked separately
+        // alongside the same problem in deleteLeads and CounsellorReassignService.
+        audienceResponseRepository.saveAll(movable);
+
+        // lead_score denormalises audience_id (NOT NULL), so it has to follow the row or the score
+        // stays attributed to the list the lead just left. Chunked read/write over the moved ids
+        // rather than a lookup per lead.
+        syncLeadScoreAudience(movable, targetAudienceId);
+
+        logger.info("Migrated {} lead(s) into audience {} (skipped {}, anchor={}) by user {}",
+                migrated, targetAudienceId, skipped.size(), anchorMode, actor.getUserId());
+
+        return MigrateLeadsResponseDTO.builder()
+                .migrated(migrated)
+                .skipped(skipped)
+                .build();
+    }
+
+    private MigrateLeadsResponseDTO.SkippedLead skip(AudienceResponse response,
+            MigrateLeadsResponseDTO.SkipReason reason, String detail) {
+        return MigrateLeadsResponseDTO.SkippedLead.builder()
+                .responseId(response.getId())
+                .reason(reason.name())
+                .detail(detail)
+                .build();
+    }
+
+    private MigrateLeadsRequestDTO.WorkflowAnchorMode resolveWorkflowAnchorMode(MigrateLeadsRequestDTO request) {
+        if (!StringUtils.hasText(request.getWorkflowAnchor())) {
+            return MigrateLeadsRequestDTO.WorkflowAnchorMode.PRESERVE;
+        }
+        try {
+            return MigrateLeadsRequestDTO.WorkflowAnchorMode.valueOf(
+                    request.getWorkflowAnchor().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            // Fail closed. An unrecognised value must not fall through to the mode that sends
+            // messages.
+            throw new InvalidRequestException(
+                    "workflow_anchor must be PRESERVE or RESET_TO_TARGET");
+        }
+    }
+
+    /**
+     * Keep {@code lead_score.audience_id} in step with the rows that just moved. Batched over the
+     * moved responses; leads with no score row simply have nothing to update.
+     */
+    private void syncLeadScoreAudience(List<AudienceResponse> moved, String targetAudienceId) {
+        List<String> responseIds = moved.stream()
+                .map(AudienceResponse::getId)
+                .filter(StringUtils::hasText)
+                .toList();
+        for (int start = 0; start < responseIds.size(); start += MIGRATE_BATCH_SIZE) {
+            List<String> batch = responseIds.subList(
+                    start, Math.min(start + MIGRATE_BATCH_SIZE, responseIds.size()));
+            List<LeadScore> scores = leadScoreRepository.findByAudienceResponseIdIn(batch);
+            if (scores.isEmpty()) {
+                continue;
+            }
+            scores.forEach(s -> s.setAudienceId(targetAudienceId));
+            leadScoreRepository.saveAll(scores);
+        }
+    }
+
+    /**
+     * Resolve the rows a migration acts on, enforcing the ADMIN check and institute ownership —
+     * the same shape as {@link #resolveDeleteTargets}, and for the same reason: resolving by raw id
+     * would let an admin pass their own institute_id together with another tenant's response ids.
+     */
+    private List<AudienceResponse> resolveMigrateTargets(MigrateLeadsRequestDTO request, CustomUserDetails actor) {
+        List<AudienceResponse> found = audienceResponseRepository
+                .findAllByInstituteAndIds(request.getInstituteId(), request.getResponseIds());
+        if (found.size() != new HashSet<>(request.getResponseIds()).size()) {
+            throw new ResourceNotFoundException("Lead not found");
+        }
+
+        String scope = StringUtils.hasText(request.getScope()) ? request.getScope().toUpperCase() : "RESPONSE";
+        if (!"USER".equalsIgnoreCase(scope)) {
+            return found;
+        }
+
+        List<String> userIds = found.stream()
+                .map(r -> r.getUserId() != null ? r.getUserId() : r.getStudentUserId())
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        if (userIds.isEmpty()) {
+            return found;
+        }
+        return audienceResponseRepository.findAllByInstituteAndUserIds(request.getInstituteId(), userIds);
+    }
+
+    /** Best-effort audit trail for a list change — a move must be attributable, but must not fail
+     *  over logging. */
+    private void logLeadListChangeEvent(AudienceResponse response, CustomUserDetails actor,
+            String fromAudienceId, Audience targetAudience,
+            MigrateLeadsRequestDTO.WorkflowAnchorMode anchorMode, String instituteId) {
+        String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+        if (!StringUtils.hasText(leadUserId)) {
+            return;
+        }
+        try {
+            String fromName = fromAudienceId == null ? null
+                    : audienceRepository.findById(fromAudienceId).map(Audience::getCampaignName).orElse(null);
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("response_id", response.getId());
+            metadata.put("from_audience_id", fromAudienceId != null ? fromAudienceId : "");
+            metadata.put("from_campaign_name", fromName != null ? fromName : "");
+            metadata.put("to_audience_id", targetAudience.getId());
+            metadata.put("to_campaign_name",
+                    targetAudience.getCampaignName() != null ? targetAudience.getCampaignName() : "");
+            metadata.put("workflow_anchor", anchorMode.name());
+            metadata.put("actor", actor.getUsername() != null ? actor.getUsername() : "");
+            String typeId = userLeadProfileService.resolveProfileId(leadUserId, instituteId);
+            timelineEventService.logJourneyEvent(
+                    "USER_LEAD_PROFILE", typeId, LeadJourneyActionType.LEAD_LIST_CHANGED,
+                    "ADMIN", actor.getUserId(), actor.getUsername(),
+                    "Lead list changed",
+                    "Moved from " + (fromName != null ? fromName : "another list")
+                            + " to " + targetAudience.getCampaignName(),
+                    metadata, leadUserId);
+        } catch (Exception e) {
+            logger.warn("Failed to log LEAD_LIST_CHANGED event for response {}: {}",
+                    response.getId(), e.getMessage());
+        }
     }
 
     /** True when this user's lead profile at this institute is marked CONVERTED. */
@@ -5695,6 +6009,21 @@ public class AudienceService {
                 .findActiveByAudienceId(request.getAudienceId());
         if (CollectionUtils.isEmpty(allResponses)) {
             throw new VacademyException("No leads found for audience: " + request.getAudienceId());
+        }
+
+        // 2b. Narrow to the rows the caller ticked in the lead table, if any. Filtering the
+        // audience's own ACTIVE list (rather than looking the ids up directly) keeps both
+        // invariants: a response id from another audience or a soft-deleted one can never
+        // be smuggled into a send. No ids supplied → the whole audience, as before.
+        if (!CollectionUtils.isEmpty(request.getResponseIds())) {
+            Set<String> wanted = new HashSet<>(request.getResponseIds());
+            allResponses = allResponses.stream()
+                    .filter(r -> wanted.contains(r.getId()))
+                    .collect(Collectors.toList());
+            if (allResponses.isEmpty()) {
+                throw new VacademyException(
+                        "None of the selected leads belong to audience: " + request.getAudienceId());
+            }
         }
 
         String channel = request.getChannel();

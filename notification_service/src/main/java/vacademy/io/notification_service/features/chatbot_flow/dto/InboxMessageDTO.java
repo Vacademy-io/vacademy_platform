@@ -36,4 +36,18 @@ public class InboxMessageDTO {
     private String headerType;
     /** Actual media URL for an IMAGE/VIDEO/DOCUMENT header, so the UI can display the attachment. */
     private String headerMediaUrl;
+
+    /**
+     * What we tried to send on a failed non-template message: text, interactive, media, template.
+     * Present only alongside {@code deliveryStatus == FAILED}.
+     */
+    private String attemptedType;
+
+    // --- Free-form media (an image/video/audio/document sent from the Inbox, not via a template) ---
+    /** image, video, audio or document. Null on a plain text message. */
+    private String mediaType;
+    /** Public URL of the attachment, for the UI to render inline. */
+    private String mediaUrl;
+    /** Original filename — what a document bubble shows, and what WATI derived the type from. */
+    private String mediaFilename;
 }

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Microphone, MicrophoneSlash, SpinnerGap } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
@@ -22,6 +23,7 @@ export const MicButton: React.FC<MicButtonProps> = ({
   disabled,
   sessionId,
 }) => {
+  const { t } = useTranslation("chatFeatureB");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -100,7 +102,7 @@ export const MicButton: React.FC<MicButtonProps> = ({
         type="button"
         disabled
         className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground"
-        title="Transcribing..."
+        title={t("micButton.transcribing")}
       >
         <SpinnerGap className="h-4 w-4 animate-spin" />
       </button>
@@ -113,7 +115,7 @@ export const MicButton: React.FC<MicButtonProps> = ({
         type="button"
         className="flex items-center gap-1.5 h-7 px-2 rounded-md text-red-500 hover:bg-red-500/10 transition-colors"
         onClick={handleClick}
-        title="Stop recording"
+        title={t("micButton.stopRecording")}
       >
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
@@ -137,7 +139,7 @@ export const MicButton: React.FC<MicButtonProps> = ({
       )}
       onClick={handleClick}
       disabled={disabled}
-      title="Voice to text"
+      title={t("micButton.voiceToText")}
     >
       <Microphone className="h-4 w-4" />
     </button>

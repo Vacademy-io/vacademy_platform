@@ -1,0 +1,14 @@
+{
+    "navHeading": "جدولي",
+    "heading": "جدولي",
+    "subtitle": "الاجتماعات التي تستضيفها",
+    "viewList": "قائمة",
+    "viewCalendar": "تقويم",
+    "bookingPagesTitle": "إنشاء صفحات الحجز وإدارتها",
+    "bookingPages": "صفحات الحجز",
+    "newMeeting": "اجتماع جديد",
+    "emptyTitle": "لا توجد اجتماعات هذا الأسبوع",
+    "emptyDescription": "حدد موعدًا لاجتماع أو شارك رابط الحجز الخاص بك لملء تقويمك.",
+    "nextMeetingLabel": "الاجتماع القادم:",
+    "goToThatWeek": "الانتقال إلى ذلك الأسبوع"
+}

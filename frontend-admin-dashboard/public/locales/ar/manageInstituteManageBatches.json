@@ -1,0 +1,13 @@
+{
+    "navHeading": "إدارة الدفعات",
+    "fetchError": "تعذّر جلب الدفعات. يرجى المحاولة مرة أخرى لاحقًا.",
+    "heading": "دفعات {{learner}}",
+    "subheading": "إدارة وتنظيم دفعات {{learner}} حسب {{session}}.",
+    "selectSessionPlaceholder": "اختر {{session}}",
+    "emptyState": {
+        "noBatchesForSession": "لم يتم العثور على دفعات لـ {{session}}",
+        "noSessionsAvailable": "لا توجد جلسات متاحة",
+        "createBatchHint": "أنشئ دفعة جديدة في هذه الجلسة للبدء.",
+        "createSessionHint": "يرجى إنشاء جلسة أولاً قبل إضافة الدفعات."
+    }
+}

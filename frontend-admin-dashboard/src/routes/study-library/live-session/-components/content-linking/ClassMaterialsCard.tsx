@@ -4,6 +4,8 @@
 // See docs/LIVE_CLASS_PAST_SESSIONS_AND_CONTENT_LINKING_PLAN.md, "Track B".
 
 import { useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { toast } from 'sonner';
 import {
     FilePdf,
@@ -49,9 +51,12 @@ const isLikelyYoutubeUrl = (url: string) =>
     /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(url.trim());
 
 export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batches }: Props) {
+    const { t, i18n } = useTranslation('studyLibraryClassMaterialsCard');
     const [panel, setPanel] = useState<PanelMode>(null);
     const [videoTab, setVideoTab] = useState<VideoTab>('UPLOAD');
-    const [title, setTitle] = useState(() => buildDefaultTitle(sessionTitle));
+    const [title, setTitle] = useState(() =>
+        buildDefaultTitle(t, i18n.language, sessionTitle)
+    );
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -70,7 +75,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
 
     const openPanel = (mode: PanelMode) => {
         setPanel(mode);
-        setTitle(buildDefaultTitle(sessionTitle));
+        setTitle(buildDefaultTitle(t, i18n.language, sessionTitle));
         setYoutubeUrl('');
         setSelectedFile(null);
         setVideoTab('UPLOAD');
@@ -84,7 +89,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
     const handleSubmit = async (payload: DestinationPickerSubmitPayload) => {
         const instituteId = getInstituteId();
         if (!instituteId) {
-            toast.error('Could not resolve your institute.');
+            toast.error(t('couldNotResolveInstitute'));
             return;
         }
 
@@ -104,7 +109,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                     undefined,
                     false
                 );
-                if (!fileId) throw new Error('Could not upload the PDF.');
+                if (!fileId) throw new Error(t('couldNotUploadPdf'));
             } else if (videoTab === 'UPLOAD') {
                 sourceKind = 'UPLOAD_VIDEO';
                 setIsUploading(true);
@@ -116,7 +121,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                     undefined,
                     false
                 );
-                if (!fileId) throw new Error('Could not upload the video.');
+                if (!fileId) throw new Error(t('couldNotUploadVideo'));
             } else {
                 sourceKind = 'YOUTUBE';
                 url = youtubeUrl.trim();
@@ -126,7 +131,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                 session_id: sessionId,
                 schedule_id: scheduleId,
                 source: { kind: sourceKind, file_id: fileId, url },
-                title: title.trim() || buildDefaultTitle(sessionTitle),
+                title: title.trim() || buildDefaultTitle(t, i18n.language, sessionTitle),
                 slide_status: payload.slideStatus,
                 notify: payload.notify,
                 position: payload.position,
@@ -136,7 +141,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
             openPanel(null);
         } catch (err) {
             const message = extractContentLinkErrorMessage(err);
-            toast.error(message || (err instanceof Error ? err.message : 'Could not add this material.'));
+            toast.error(message || (err instanceof Error ? err.message : t('couldNotAddMaterial')));
         } finally {
             setIsUploading(false);
         }
@@ -150,7 +155,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                         <div className="flex size-10 items-center justify-center rounded-xl bg-primary-500/10 text-primary-600 shadow-sm">
                             <Notebook className="size-5" />
                         </div>
-                        Class Materials
+                        {t('classMaterials')}
                     </CardTitle>
                     <div className="flex flex-wrap items-center gap-2">
                         <button
@@ -162,7 +167,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                             )}
                         >
                             <FilePdf className="size-3" />
-                            Upload PDF
+                            {t('uploadPdf')}
                         </button>
                         <button
                             type="button"
@@ -173,7 +178,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                             )}
                         >
                             <Video className="size-3" />
-                            Add Video
+                            {t('addVideo')}
                         </button>
                     </div>
                 </div>
@@ -181,10 +186,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
             <Separator />
             <CardContent className="flex flex-col gap-3 p-4 sm:p-6">
                 {materialLinks.length === 0 && !panel && (
-                    <p className="text-xs text-muted-foreground">
-                        No class materials added yet. Upload a PDF or add a video to link it to a
-                        chapter.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t('noMaterialsYet')}</p>
                 )}
 
                 {materialLinks.length > 0 && (
@@ -210,7 +212,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                     <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-3">
                         <MyInput
                             inputType="text"
-                            label="Title"
+                            label={t('titleLabel')}
                             input={title}
                             onChangeFunction={(e) => setTitle(e.target.value)}
                             size="large"
@@ -222,13 +224,13 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                             <div className="flex gap-2">
                                 <TabButton
                                     active={videoTab === 'UPLOAD'}
-                                    label="Upload file"
+                                    label={t('uploadFile')}
                                     icon={<UploadSimple className="size-3.5" />}
                                     onClick={() => setVideoTab('UPLOAD')}
                                 />
                                 <TabButton
                                     active={videoTab === 'YOUTUBE'}
-                                    label="YouTube URL"
+                                    label={t('youtubeUrl')}
                                     icon={<YoutubeLogo className="size-3.5" />}
                                     onClick={() => setVideoTab('YOUTUBE')}
                                 />
@@ -255,13 +257,13 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                         {panel === 'VIDEO' && videoTab === 'YOUTUBE' && (
                             <MyInput
                                 inputType="text"
-                                label="YouTube URL"
+                                label={t('youtubeUrl')}
                                 inputPlaceholder="https://www.youtube.com/watch?v=..."
                                 input={youtubeUrl}
                                 onChangeFunction={(e) => setYoutubeUrl(e.target.value)}
                                 size="large"
                                 className="w-full sm:w-full"
-                                error={youtubeUrl.trim() && !youtubeValid ? 'Enter a valid YouTube URL' : undefined}
+                                error={youtubeUrl.trim() && !youtubeValid ? t('invalidYoutubeUrl') : undefined}
                                 required
                             />
                         )}
@@ -272,7 +274,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                             onSubmit={handleSubmit}
                             isSubmitting={linkMutation.isPending || isUploading}
                             submitDisabled={!canSubmitContent}
-                            submitLabel={isUploading ? 'Uploading…' : 'Add'}
+                            submitLabel={isUploading ? t('uploadingEllipsis') : t('add')}
                         />
 
                         <div className="flex justify-end">
@@ -282,7 +284,7 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                                 scale="small"
                                 onClick={() => openPanel(null)}
                             >
-                                Cancel
+                                {t('cancel')}
                             </MyButton>
                         </div>
                     </div>
@@ -320,12 +322,12 @@ function TabButton({
     );
 }
 
-function buildDefaultTitle(sessionTitle: string | undefined): string {
-    const label = sessionTitle?.trim() || 'Session';
-    const formatted = new Date().toLocaleDateString(undefined, {
+function buildDefaultTitle(t: TFunction, language: string, sessionTitle: string | undefined): string {
+    const label = sessionTitle?.trim() || t('sessionFallback');
+    const formatted = new Date().toLocaleDateString(language, {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
     });
-    return `${label} – Notes (${formatted})`;
+    return t('defaultTitle', { label, formatted });
 }

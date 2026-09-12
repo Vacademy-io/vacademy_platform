@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { ChatCircle, EnvelopeSimple } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,13 +16,13 @@ interface Props {
 }
 
 export function RecentActivity({ items, loading, hasMore, loadingMore, onLoadMore }: Props) {
+    const { t, i18n } = useTranslation('communicationRecentActivity');
+
     return (
         <Card className="rounded-lg border-gray-200">
             <CardHeader className="py-3">
-                <CardTitle className="text-base">Recent learner activity</CardTitle>
-                <p className="text-xs text-gray-400">
-                    Latest WhatsApp messages and email replies from your audience
-                </p>
+                <CardTitle className="text-base">{t('title')}</CardTitle>
+                <p className="text-xs text-gray-400">{t('subtitle')}</p>
             </CardHeader>
             <CardContent className="p-0">
                 {loading && items.length === 0 ? (
@@ -30,9 +32,7 @@ export function RecentActivity({ items, loading, hasMore, loadingMore, onLoadMor
                         ))}
                     </div>
                 ) : items.length === 0 ? (
-                    <div className="py-8 text-center text-sm text-gray-400">
-                        No incoming learner activity yet.
-                    </div>
+                    <div className="py-8 text-center text-sm text-gray-400">{t('emptyState')}</div>
                 ) : (
                     <>
                         <ul className="divide-y">
@@ -62,7 +62,7 @@ export function RecentActivity({ items, loading, hasMore, loadingMore, onLoadMor
                                             </p>
                                         </div>
                                         <span className="text-[11px] text-gray-400 whitespace-nowrap">
-                                            {formatTime(item.timestamp)}
+                                            {formatTime(item.timestamp, t, i18n.language)}
                                         </span>
                                     </div>
                                 </li>
@@ -77,13 +77,13 @@ export function RecentActivity({ items, loading, hasMore, loadingMore, onLoadMor
                                     disabled={loadingMore || !hasMore}
                                     className="text-xs"
                                 >
-                                    {loadingMore ? 'Loading…' : 'Load more'}
+                                    {loadingMore ? t('loadingMore') : t('loadMore')}
                                 </Button>
                             </div>
                         )}
                         {!hasMore && items.length > 0 && !loadingMore && (
                             <p className="text-center text-[11px] text-muted-foreground py-3 border-t">
-                                No more activity
+                                {t('noMoreActivity')}
                             </p>
                         )}
                     </>
@@ -108,19 +108,19 @@ function ChannelIcon({ channel }: { channel: HubRecentItem['channel'] }) {
     );
 }
 
-function formatTime(timestamp: string): string {
+function formatTime(timestamp: string, t: TFunction, locale: string): string {
     try {
         const d = new Date(timestamp);
         const now = new Date();
         const diffMs = now.getTime() - d.getTime();
         const diffMin = Math.floor(diffMs / 60000);
-        if (diffMin < 1) return 'now';
-        if (diffMin < 60) return `${diffMin}m`;
+        if (diffMin < 1) return t('time.now');
+        if (diffMin < 60) return t('time.minutes', { count: diffMin });
         const diffH = Math.floor(diffMin / 60);
-        if (diffH < 24) return `${diffH}h`;
+        if (diffH < 24) return t('time.hours', { count: diffH });
         const diffD = Math.floor(diffH / 24);
-        if (diffD < 7) return `${diffD}d`;
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        if (diffD < 7) return t('time.days', { count: diffD });
+        return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
     } catch {
         return '';
     }

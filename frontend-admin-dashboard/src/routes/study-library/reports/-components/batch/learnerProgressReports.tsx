@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { CaretRight, MagnifyingGlass, Warning, X } from '@phosphor-icons/react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -65,12 +67,12 @@ const initials = (name: string) =>
         .join('') || '?';
 
 /** Completion → chip. Same bands the side-view hero uses for its ring tone. */
-const completionStatus = (value: number): { status: StatusType; label: string } => {
-    if (value >= 100) return { status: 'SUCCESS', label: 'Completed' };
-    if (value >= 75) return { status: 'SUCCESS', label: 'On track' };
-    if (value >= 40) return { status: 'INFO', label: 'In progress' };
-    if (value > 0) return { status: 'WARNING', label: 'Behind' };
-    return { status: 'DANGER', label: 'Not started' };
+const completionStatus = (t: TFunction, value: number): { status: StatusType; label: string } => {
+    if (value >= 100) return { status: 'SUCCESS', label: t('status.completed') };
+    if (value >= 75) return { status: 'SUCCESS', label: t('status.onTrack') };
+    if (value >= 40) return { status: 'INFO', label: t('status.inProgress') };
+    if (value > 0) return { status: 'WARNING', label: t('status.behind') };
+    return { status: 'DANGER', label: t('status.notStarted') };
 };
 
 /**
@@ -161,6 +163,7 @@ export default function LearnerProgressReports({
     packageSessionId,
     courseId,
 }: LearnerProgressReportsProps = {}) {
+    const { t } = useTranslation('studyLibraryLearnerProgressReports');
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const sessionTerm = getTerminology(ContentTerms.Session, SystemTerms.Session);
@@ -354,7 +357,9 @@ export default function LearnerProgressReports({
                 header: learnerTerm,
                 size: 320,
                 cell: ({ row }) => {
-                    const name = row.original.full_name || `Unnamed ${learnerTerm.toLowerCase()}`;
+                    const name =
+                        row.original.full_name ||
+                        t('unnamedLearner', { learner: learnerTerm.toLowerCase() });
                     const pct = row.original.coursePercentage;
                     return (
                         // max-w-sm bounds the cell: MyTable's <table> is auto-layout,
@@ -387,7 +392,7 @@ export default function LearnerProgressReports({
             },
             {
                 accessorKey: 'coursePercentage',
-                header: `${courseTerm} progress`,
+                header: t('columns.courseProgress', { course: courseTerm }),
                 size: 300,
                 cell: ({ row }) =>
                     row.original.isProgressLoading ? (
@@ -398,19 +403,19 @@ export default function LearnerProgressReports({
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columns.status'),
                 size: 170,
                 cell: ({ row }) => {
                     if (row.original.isProgressLoading) {
-                        return <span className="text-caption text-neutral-400">Loading…</span>;
+                        return <span className="text-caption text-neutral-400">{t('loading')}</span>;
                     }
-                    const { status, label } = completionStatus(row.original.coursePercentage);
+                    const { status, label } = completionStatus(t, row.original.coursePercentage);
                     return <StatusChip status={status} textSize="text-caption" text={label} />;
                 },
             },
             {
                 id: 'content',
-                header: 'Chapters done',
+                header: t('columns.chaptersDone'),
                 size: 150,
                 cell: ({ row }) => {
                     const { chaptersDone, chaptersTotal } = contentCounts(row.original.subjects);
@@ -444,10 +449,10 @@ export default function LearnerProgressReports({
                         type="button"
                         buttonType="secondary"
                         scale="small"
-                        aria-label={`View progress breakdown for ${row.original.full_name}`}
+                        aria-label={t('viewProgressBreakdownAriaLabel', { name: row.original.full_name })}
                         onClick={() => setExpandedUserId(row.original.user_id)}
                     >
-                        View
+                        {t('view')}
                         <CaretRight className="size-3" weight="bold" />
                     </MyButton>
                 ),
@@ -478,8 +483,8 @@ export default function LearnerProgressReports({
                         }))}
                         value={selectedCourse}
                         onChange={setSelectedCourse}
-                        placeholder={`Select a ${courseTerm.toLowerCase()}`}
-                        searchPlaceholder={`Search ${courseTerm.toLowerCase()}...`}
+                        placeholder={t('picker.selectA', { term: courseTerm.toLowerCase() })}
+                        searchPlaceholder={t('picker.searchTerm', { term: courseTerm.toLowerCase() })}
                         triggerClassName="h-9 text-body"
                     />
                 </div>
@@ -494,7 +499,7 @@ export default function LearnerProgressReports({
                         disabled={!sessionList.length}
                     >
                         <SelectTrigger className="h-9 text-body">
-                            <SelectValue placeholder={`Select a ${sessionTerm.toLowerCase()}`} />
+                            <SelectValue placeholder={t('picker.selectA', { term: sessionTerm.toLowerCase() })} />
                         </SelectTrigger>
                         <SelectContent>
                             {sessionList.map((session) => (
@@ -514,7 +519,7 @@ export default function LearnerProgressReports({
                         disabled={!levelList.length}
                     >
                         <SelectTrigger className="h-9 text-body">
-                            <SelectValue placeholder={`Select a ${levelTerm.toLowerCase()}`} />
+                            <SelectValue placeholder={t('picker.selectA', { term: levelTerm.toLowerCase() })} />
                         </SelectTrigger>
                         <SelectContent>
                             {levelList.map((level) => (
@@ -538,13 +543,15 @@ export default function LearnerProgressReports({
                 <div className="rounded-lg border border-dashed border-neutral-300 bg-white p-8 text-center">
                     <p className="text-body font-medium text-neutral-700">
                         {isBatchFixed
-                            ? `Select a batch to view ${learnerTerm.toLowerCase()} progress.`
-                            : `Select a ${courseTerm.toLowerCase()} to see ${learnerTerm.toLowerCase()} progress.`}
+                            ? t('emptyBatch.selectBatch', { learner: learnerTerm.toLowerCase() })
+                            : t('emptyBatch.selectCourse', {
+                                  course: courseTerm.toLowerCase(),
+                                  learner: learnerTerm.toLowerCase(),
+                              })}
                     </p>
                     {!isBatchFixed && (
                         <p className="mt-1 text-caption text-neutral-500">
-                            {sessionTerm} and {levelTerm} are picked automatically when there is
-                            only one.
+                            {t('emptyBatch.autoPicked', { session: sessionTerm, level: levelTerm })}
                         </p>
                     )}
                 </div>
@@ -560,22 +567,25 @@ export default function LearnerProgressReports({
                 caption says so rather than implying a whole-batch average. */}
             <div className="flex flex-wrap gap-3">
                 <ProfileStat
-                    label={`Enrolled ${learnerTerm.toLowerCase()}s`}
+                    label={t('stats.enrolled', {
+                        count: studentPage?.total_elements ?? 0,
+                        learner: learnerTerm.toLowerCase(),
+                    })}
                     value={studentPage?.total_elements ?? 0}
                     tone="primary"
                 />
                 <ProfileStat
-                    label="Avg progress (this page)"
+                    label={t('stats.avgProgressThisPage')}
                     value={`${Math.round(pageSummary.average)}%`}
                     tone={pageSummary.average >= 40 ? 'success' : 'warning'}
                 />
                 <ProfileStat
-                    label="Completed (this page)"
+                    label={t('stats.completedThisPage')}
                     value={pageSummary.completed}
                     tone="success"
                 />
                 <ProfileStat
-                    label="Not started (this page)"
+                    label={t('stats.notStartedThisPage')}
                     value={pageSummary.notStarted}
                     tone={pageSummary.notStarted > 0 ? 'danger' : 'neutral'}
                 />
@@ -589,14 +599,14 @@ export default function LearnerProgressReports({
                             inputType="text"
                             input={searchInput}
                             onChangeFunction={(event) => setSearchInput(event.target.value)}
-                            inputPlaceholder={`Search ${learnerTerm.toLowerCase()} by name`}
-                            label="Search"
+                            inputPlaceholder={t('search.placeholder', { learner: learnerTerm.toLowerCase() })}
+                            label={t('search.label')}
                             size="medium"
-                            className="w-full pl-8 sm:w-80"
+                            className="w-full ps-8 sm:w-80"
                         />
                         <MagnifyingGlass
                             size={16}
-                            className="pointer-events-none absolute bottom-2.5 left-2.5 text-neutral-400"
+                            className="pointer-events-none absolute bottom-2.5 start-2.5 text-neutral-400"
                         />
                     </div>
                     {search && (
@@ -607,16 +617,17 @@ export default function LearnerProgressReports({
                             onClick={() => setSearchInput('')}
                         >
                             <X size={14} />
-                            Clear
+                            {t('search.clear')}
                         </MyButton>
                     )}
                 </div>
                 <span className="text-caption text-neutral-500">
                     {isFetching
-                        ? 'Loading…'
-                        : `${studentPage?.total_elements ?? 0} enrolled ${learnerTerm.toLowerCase()}${
-                              (studentPage?.total_elements ?? 0) === 1 ? '' : 's'
-                          }`}
+                        ? t('loading')
+                        : t('search.enrolledCount', {
+                              count: studentPage?.total_elements ?? 0,
+                              learner: learnerTerm.toLowerCase(),
+                          })}
                 </span>
             </div>
 
@@ -624,7 +635,7 @@ export default function LearnerProgressReports({
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-danger-200 bg-danger-50 p-6 text-center">
                     <Warning size={22} className="text-danger-600" />
                     <p className="text-body text-danger-600">
-                        Could not load enrolled {learnerTerm.toLowerCase()}s for this batch.
+                        {t('error.loadFailed', { learner: learnerTerm.toLowerCase() })}
                     </p>
                     <MyButton
                         type="button"
@@ -632,20 +643,20 @@ export default function LearnerProgressReports({
                         scale="medium"
                         onClick={() => refetch()}
                     >
-                        Retry
+                        {t('error.retry')}
                     </MyButton>
                 </div>
             ) : !isLearnersLoading && rows.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-neutral-300 bg-white p-8 text-center">
                     <p className="text-body font-medium text-neutral-700">
                         {search
-                            ? `No ${learnerTerm.toLowerCase()} matches “${search}”.`
-                            : `No ${learnerTerm.toLowerCase()} is enrolled in this batch yet.`}
+                            ? t('empty.noMatch', { learner: learnerTerm.toLowerCase(), search })
+                            : t('empty.noneEnrolled', { learner: learnerTerm.toLowerCase() })}
                     </p>
                     <p className="mt-1 text-caption text-neutral-500">
                         {search
-                            ? 'Try a different name.'
-                            : `Progress appears here once ${learnerTerm.toLowerCase()}s are enrolled.`}
+                            ? t('empty.tryDifferentName')
+                            : t('empty.progressAppearsHere', { learner: learnerTerm.toLowerCase() })}
                     </p>
                 </div>
             ) : (
@@ -700,7 +711,7 @@ export default function LearnerProgressReports({
                                     <span className="flex min-w-0 flex-col">
                                         <span className="truncate text-subtitle font-semibold text-neutral-800">
                                             {openLearner.full_name ||
-                                                `Unnamed ${learnerTerm.toLowerCase()}`}
+                                                t('unnamedLearner', { learner: learnerTerm.toLowerCase() })}
                                         </span>
                                         <span className="truncate text-caption font-regular text-neutral-500">
                                             {openLearner.email || openLearner.username || '—'}
@@ -710,14 +721,16 @@ export default function LearnerProgressReports({
                                 <div className="flex flex-wrap items-center gap-2 pt-1">
                                     <StatusChip
                                         status={
-                                            completionStatus(openLearner.coursePercentage).status
+                                            completionStatus(t, openLearner.coursePercentage).status
                                         }
                                         textSize="text-caption"
-                                        text={completionStatus(openLearner.coursePercentage).label}
+                                        text={completionStatus(t, openLearner.coursePercentage).label}
                                     />
                                     <span className="text-caption text-neutral-500">
-                                        {Math.round(openLearner.coursePercentage)}% of{' '}
-                                        {courseTerm.toLowerCase()} complete
+                                        {t('drawer.percentComplete', {
+                                            percent: Math.round(openLearner.coursePercentage),
+                                            course: courseTerm.toLowerCase(),
+                                        })}
                                     </span>
                                 </div>
                                 <ProfileMiniBar value={openLearner.coursePercentage} label="" />

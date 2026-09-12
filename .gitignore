@@ -159,3 +159,4 @@ vacademy_devops/hetzner/values-prod-hetzner.yaml
 
 # Local dev config per service (hardcoded secrets for terminal runs) — never commit
 **/src/main/resources/application-local.properties
+loadtest/answer-sheet.pdf

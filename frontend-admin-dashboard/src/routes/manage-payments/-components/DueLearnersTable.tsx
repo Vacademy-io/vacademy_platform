@@ -15,6 +15,8 @@ interface DueLearnersTableProps {
     error: unknown;
     currentPage: number;
     onPageChange: (page: number) => void;
+    /** Opens the balance breakdown for one learner. */
+    onSelectLearner?: (learner: OutstandingLearner) => void;
 }
 
 const initialsOf = (name?: string | null): string => {
@@ -62,6 +64,7 @@ export function DueLearnersTable({
     error,
     currentPage,
     onPageChange,
+    onSelectLearner,
 }: DueLearnersTableProps) {
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
 
@@ -101,8 +104,8 @@ export function DueLearnersTable({
                             {row.original.course_name || '—'}
                         </div>
                         {row.original.plan_count > 1 && (
-                            <div className="text-xs text-neutral-500">
-                                +{row.original.plan_count - 1} more
+                            <div className="text-xs text-primary-500">
+                                +{row.original.plan_count - 1} more · view all
                             </div>
                         )}
                     </div>
@@ -235,6 +238,8 @@ export function DueLearnersTable({
                     scrollable={true}
                     enableColumnResizing={true}
                     enableColumnPinning={false}
+                    onCellClick={(row) => onSelectLearner?.(row)}
+                    className={onSelectLearner ? '[&_tbody_tr]:cursor-pointer' : undefined}
                 />
             )}
 

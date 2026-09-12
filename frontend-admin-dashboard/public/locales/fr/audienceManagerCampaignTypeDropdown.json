@@ -1,0 +1,10 @@
+{
+    "placeholder": "Sélectionner le type de campagne",
+    "optionWebsite": "Site web",
+    "optionGoogleAds": "Google Ads",
+    "optionSocialMedia": "Réseaux sociaux",
+    "addCustomType": "Ajouter un type de demande personnalisé",
+    "customInputPlaceholder": "Saisir le type de campagne",
+    "cancel": "Annuler",
+    "save": "Enregistrer"
+}

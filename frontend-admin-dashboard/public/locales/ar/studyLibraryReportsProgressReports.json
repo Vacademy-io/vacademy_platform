@@ -1,0 +1,40 @@
+{
+    "validation": {
+        "courseRequired": "الدورة مطلوبة",
+        "sessionRequired": "الجلسة مطلوبة",
+        "levelRequired": "المستوى مطلوب"
+    },
+    "toast": {
+        "exportSuccess": "تم تصدير التقرير",
+        "exportFailed": "فشل تصدير ملف PDF"
+    },
+    "form": {
+        "selectA": "اختر {{term}}",
+        "searchTerm": "ابحث عن {{term}}...",
+        "nameLabel": "الاسم",
+        "selectStudent": "اختر الطالب",
+        "searchStudent": "ابحث عن طالب...",
+        "noStudentsFound": "لم يتم العثور على طلاب",
+        "generateReport": "إنشاء التقرير",
+        "fixErrorsPrefix": "يرجى تصحيح الأخطاء التالية:"
+    },
+    "report": {
+        "exporting": "جارٍ التصدير...",
+        "exportPdf": "تصدير PDF",
+        "subjectWiseHeading": "تقرير التقدم حسب المادة"
+    },
+    "pdf": {
+        "batchSubjectWiseProgress": "التقدم حسب {{subjectTerm}} لـ {{batchTerm}}",
+        "learnerProgressReport": "تقرير تقدم المتعلم",
+        "learnerLabel": "المتعلم",
+        "termCompleted": "{{term}} مكتمل",
+        "termsTracked": "{{term}} متتبَّعة",
+        "termWiseProgress": "التقدم حسب {{term}}",
+        "termColonName": "{{term}}: {{name}}",
+        "completed": "مكتمل",
+        "dailyTimeAvg": "متوسط الوقت اليومي",
+        "termDailyTimeAvg": "متوسط الوقت اليومي لـ {{term}}",
+        "termWiseProgressReport": "تقرير التقدم حسب {{term}}",
+        "learningProgressReport": "تقرير تقدم التعلم"
+    }
+}

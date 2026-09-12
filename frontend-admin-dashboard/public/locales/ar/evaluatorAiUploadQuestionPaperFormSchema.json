@@ -1,0 +1,22 @@
+{
+    "questionPaperIdRequired": "معرّف ورقة الأسئلة مطلوب",
+    "questionPaperIdMustBeNumber": "يجب أن يكون معرّف ورقة الأسئلة رقمًا",
+    "questionFieldRequired": "حقل السؤال مطلوب",
+    "questionFieldMustBeString": "يجب أن يكون حقل السؤال نصًا",
+    "optionFieldRequired": "حقل الخيار مطلوب",
+    "optionFieldMustBeString": "يجب أن يكون حقل الخيار نصًا",
+    "answerFieldRequired": "حقل الإجابة مطلوب",
+    "answerFieldMustBeString": "يجب أن يكون حقل الإجابة نصًا",
+    "explanationFieldRequired": "حقل الشرح مطلوب",
+    "explanationFieldMustBeString": "يجب أن يكون حقل الشرح نصًا",
+    "fileUploadRequired": "تحميل الملف مطلوب ويجب أن يكون ملفًا صالحًا",
+    "questionNameRequired": "اسم السؤال مطلوب",
+    "mcqsMustHaveSingleChoiceOptions": "يجب أن تحتوي أسئلة الاختيار الفردي على singleChoiceOptions",
+    "mcqsMustHaveAtLeast2Options": "يجب أن يحتوي سؤال الاختيار الفردي على خيارين على الأقل",
+    "mcqsMustHaveExactlyOneSelected": "يجب تحديد خيار واحد بالضبط في سؤال الاختيار الفردي",
+    "optionIsRequired": "الخيار {{number}} مطلوب",
+    "mcqmMustHaveMultipleChoiceOptions": "يجب أن تحتوي أسئلة الاختيار المتعدد على multipleChoiceOptions",
+    "mcqmMustHaveAtLeast2Options": "يجب أن يحتوي سؤال الاختيار المتعدد على خيارين على الأقل",
+    "mcqmMustHaveAtLeastOneSelected": "يجب تحديد خيار واحد على الأقل في سؤال الاختيار المتعدد",
+    "incorrectAnswerTypeEntered": "نوع الإجابة المُدخل غير صحيح {{numericType}}"
+}

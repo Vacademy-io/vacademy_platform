@@ -1,0 +1,45 @@
+{
+    "table": {
+        "date": "Date",
+        "class": "Cours",
+        "status": "Statut",
+        "present": "Présent",
+        "absent": "Absent",
+        "duration": "Durée",
+        "talkTime": "Temps de parole",
+        "chats": "Discussions",
+        "polls": "Sondages",
+        "raiseHand": "Main levée"
+    },
+    "export": {
+        "generatedOn": "Généré {{date}}",
+        "exportSuccess": "Rapport de l'apprenant exporté",
+        "exportFailed": "Échec de l'exportation du PDF"
+    },
+    "errors": {
+        "loadFailed": "Une erreur s'est produite lors du chargement du rapport. Veuillez réessayer."
+    },
+    "emptyState": {
+        "title": "Aucun cours en direct trouvé",
+        "description": "Cet apprenant n'avait aucun cours en direct programmé durant la période sélectionnée."
+    },
+    "actions": {
+        "attendanceTracker": "Suivi de présence",
+        "exporting": "Exportation…",
+        "exportPdf": "Exporter en PDF"
+    },
+    "metrics": {
+        "attendance": "Présence",
+        "batchPercentage": "Groupe {{value}}%",
+        "classesAttended": "Cours suivis",
+        "avgDurationPerClass": "Durée moy. / cours",
+        "batchDuration": "Groupe {{value}}",
+        "engagement": "Engagement",
+        "batchEngagement": "Groupe {{value}} · sur 100",
+        "engagementInfo": "Score d'engagement (0–100) basé sur la participation en classe — temps de parole, discussions, sondages et mains levées, mesuré par cours. 100 = l'apprenant le plus actif de ce groupe. Disponible uniquement pour les cours synchronisés avec un fournisseur (Zoom/BBB)."
+    },
+    "sections": {
+        "classHistoryTitle": "Historique des cours",
+        "classHistorySubtitle": "Présence et participation pour chaque cours de la période"
+    }
+}

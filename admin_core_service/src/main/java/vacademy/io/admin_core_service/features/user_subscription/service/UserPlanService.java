@@ -120,11 +120,22 @@ public class UserPlanService {
     @Autowired
     private vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
 
+    /**
+     * @Lazy breaks a startup cycle: PlanChangeService needs PaymentService to open an
+     * upgrade checkout, and PaymentService needs this service back.
+     */
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
+
     @Autowired
     private vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponRedemptionService couponRedemptionService;
 
     @Autowired
     private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+
+    @Autowired
+    private UserInstitutePaymentGatewayMappingService mandateService;
 
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
@@ -558,6 +569,62 @@ public class UserPlanService {
         }
     }
 
+    /**
+     * Transaction-scoped claim on the credential email, so ONE checkout sends ONE.
+     *
+     * A multi-course order activates a UserPlan per course inside a single webhook
+     * transaction, and each activation reached the credential mail — a learner who
+     * bought four subjects got four identical "Course Enrollment" emails seconds
+     * apart. Identical is the point: that mail is
+     * createLearnerEnrollmentNewUserEmailBody(institute, name, username, password,
+     * loginUrl, theme), which takes no course at all, so the copies carried nothing
+     * the first one did not. The learner has one set of credentials.
+     *
+     * Deliberately NOT done by folding the enrollment WORKFLOW: LEARNER_BATCH_ENROLLMENT
+     * triggers are matched per package session, and one institute has 16 of them
+     * driving Moodle and LearnDash provisioning. Coalescing there would enrol a
+     * four-course learner into one course downstream.
+     *
+     * Scoped to the transaction because that is exactly one checkout, and released
+     * on completion — this thread is pooled, and a resource left bound would
+     * swallow the NEXT learner's credentials. With no transaction active there is
+     * nothing to coalesce, so the mail goes out as before.
+     *
+     * @return true when this caller owns the send
+     */
+    // Visible for testing.
+    boolean claimCredentialEmail(String userId, String instituteId) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager
+                .isSynchronizationActive()) {
+            return true;
+        }
+        final String key = "credentialEmailSent:" + instituteId + '|' + userId;
+        if (org.springframework.transaction.support.TransactionSynchronizationManager
+                .hasResource(key)) {
+            logger.info("Credential email already claimed for userId={} in this checkout; "
+                    + "not sending a duplicate.", userId);
+            return false;
+        }
+        // Register BEFORE binding. registerSynchronization is the call that can
+        // throw here, and a resource bound with no synchronization to release it
+        // would leak onto this pooled thread — silently swallowing the credentials
+        // of every later learner it serves.
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (org.springframework.transaction.support.TransactionSynchronizationManager
+                                .hasResource(key)) {
+                            org.springframework.transaction.support.TransactionSynchronizationManager
+                                    .unbindResourceIfPossible(key);
+                        }
+                    }
+                });
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .bindResource(key, Boolean.TRUE);
+        return true;
+    }
+
     public void applyOperationsOnFirstPayment(UserPlan userPlan) {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
 
@@ -792,10 +859,10 @@ public class UserPlanService {
             // Send credential email asynchronously to avoid blocking the payment webhook thread.
             // Gated by showSendCredentials so the post-payment path can't ship credentials the
             // admin disabled at the institute level.
-            if (showSendCredentials) {
+            if (showSendCredentials && claimCredentialEmail(userDTO.getId(), instituteId)) {
                 String learnerPortalUrl = resolveLearnerPortalUrl(packageSessionIds, instituteId);
                 asyncEnrollmentEmailService.sendCredentialEmailForPaidEnrollment(userDTO, instituteId, learnerPortalUrl);
-            } else {
+            } else if (!showSendCredentials) {
                 logger.info("Skipping credential email after payment: COURSE_SETTING.showSendCredentials=false " +
                         "for institute {}", instituteId);
             }
@@ -1219,6 +1286,37 @@ public class UserPlanService {
         userPlanRepository.saveAll(userPlans);
     }
 
+    // ── Plan change (admin side) ────────────────────────────────────────────
+
+    /**
+     * The plans an admin could move this learner onto. Same eligibility rules as the
+     * learner-facing listing — an admin cannot move someone onto a plan the institute has
+     * not flagged as switchable — with the proration figures included for information.
+     */
+    public vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeOptionsDTO getPlanChangeOptions(
+            String userPlanId, String instituteId) {
+        return planChangeService.getChangeOptions(findById(userPlanId), instituteId);
+    }
+
+    /**
+     * Admin override: swap the plan with no payment taken. The access window is untouched
+     * (see {@code PlanChangeService.adminApplyChange}); the new price bills at the next
+     * renewal.
+     *
+     * <p>Evicts the same caches as a bulk status change — the side-view membership card,
+     * the plan listing and the membership roster all read through them, and a stale entry
+     * would show the learner on the plan they just left.
+     */
+    @CacheEvict(value = { "userPlanById", "userPlansByUser", "userPlanWithPaymentLogs",
+            "membershipDetails" }, allEntries = true)
+    public UserPlanDTO adminChangePlan(String userPlanId, String instituteId,
+            vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeRequestDTO request,
+            vacademy.io.common.auth.model.CustomUserDetails adminDetails) {
+        UserPlan updated = planChangeService.adminApplyChange(
+                findById(userPlanId), instituteId, request, adminDetails);
+        return mapToDTO(updated);
+    }
+
     /**
      * Activates a stacked PENDING plan when the current plan expires.
      * 1. Updates stacked plan status to ACTIVE.
@@ -1290,7 +1388,29 @@ public class UserPlanService {
                 .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
 
         userPlan.setStatus(force ? UserPlanStatusEnum.TERMINATED.name() : UserPlanStatusEnum.CANCELED.name());
+        // Cancelling has to stop autopay too. Leaving auto_renewal_enabled = true meant a
+        // cancelled plan was excluded from the renewal sweep only by its status, so any later
+        // reactivation (the manual "pay to continue" flow reuses the SAME UserPlan and flips it
+        // back to ACTIVE) silently resumed charging someone who had cancelled. Mirrors
+        // SubscriptionService.cancelSubscription, which the learner self-service path already did.
+        userPlan.setAutoRenewalEnabled(false);
         userPlanRepository.save(userPlan);
+
+        // Revoke the stored mandate for the same reason. Wrapped so a mandate failure
+        // can never undo the cancel itself.
+        try {
+            String mandateInstituteId = userPlan.getEnrollInvite() != null
+                    ? userPlan.getEnrollInvite().getInstituteId() : null;
+            String mandateVendor = userPlan.getEnrollInvite() != null
+                    ? userPlan.getEnrollInvite().getVendor() : null;
+            if (mandateInstituteId != null && !mandateInstituteId.isBlank()
+                    && mandateVendor != null && !mandateVendor.isBlank()) {
+                mandateService.revokeMandate(userPlan.getUserId(), mandateInstituteId,
+                        mandateVendor, userPlan.getId());
+            }
+        } catch (Exception me) {
+            logger.warn("Failed to revoke mandate on cancel for plan {}: {}", userPlanId, me.getMessage());
+        }
 
         // Fire the matching workflow trigger so admin/learner workflows can react
         // (welcome-back nudge on CANCEL, access-revoked email on TERMINATED, etc.).

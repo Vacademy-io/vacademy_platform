@@ -1,0 +1,24 @@
+{
+    "status": {
+        "pending": "قيد الانتظار",
+        "ongoing": "جارٍ",
+        "overdue": "متأخر",
+        "completed": "مكتمل"
+    },
+    "card": {
+        "closedReason": "أُغلقت: {{reason}}"
+    },
+    "widget": {
+        "title": "المتابعات",
+        "openCount_zero": "{{count}} متابعة مفتوحة",
+        "openCount_one": "{{count}} متابعة مفتوحة",
+        "openCount_two": "{{count}} متابعة مفتوحة",
+        "openCount_few": "{{count}} متابعات مفتوحة",
+        "openCount_many": "{{count}} متابعة مفتوحة",
+        "openCount_other": "{{count}} متابعة مفتوحة"
+    },
+    "emptyState": {
+        "title": "لا توجد متابعات مفتوحة",
+        "description": "جدول واحدة أدناه باستخدام علامة التبويب متابعة"
+    }
+}

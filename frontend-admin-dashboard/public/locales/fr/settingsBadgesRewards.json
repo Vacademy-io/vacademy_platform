@@ -1,0 +1,70 @@
+{
+    "loading": "Chargement...",
+    "header": {
+        "title": "Badges & récompenses",
+        "description": "Définissez les badges de réussite que les apprenants peuvent débloquer sur le tableau de bord ludifié. Choisissez le nom de chaque badge, son apparence et la condition qui le débloque.",
+        "resetDefaults": "Réinitialiser aux valeurs par défaut",
+        "saveChanges": "Enregistrer les modifications",
+        "saving": "Enregistrement..."
+    },
+    "enableCard": {
+        "label": "Activer les badges et le classement",
+        "description": "Interrupteur principal. Lorsqu'il est désactivé, les badges et le classement du cours sont masqués partout — dans l'application apprenant comme dans l'onglet classement des rapports d'apprentissage de l'administration."
+    },
+    "unsavedBanner": {
+        "text": "Vous avez des modifications non enregistrées. N'oubliez pas de les enregistrer."
+    },
+    "disabledBanner": {
+        "before": "Les badges et le classement sont actuellement",
+        "disabled": "désactivés",
+        "after": "pour cet établissement. Activez l'interrupteur pour configurer les badges, les points et le classement."
+    },
+    "scoring": {
+        "title": "Points & pointage",
+        "description": "Le nombre de points que vaut chaque action. Ces valeurs déterminent les points et le niveau de l'apprenant ainsi que le classement du cours. Réglez un facteur sur 0 pour l'ignorer.",
+        "pointsUnit": "points"
+    },
+    "leaderboardNames": {
+        "title": "Afficher les noms complets sur les classements",
+        "description": "Par défaut, les classements affichent les apprenants sous forme d'initiales anonymisées (par ex. « A.G. »). Activez cette option pour afficher les noms complets à la fois sur le lien public partageable et sur le classement dans l'application. La ligne de chaque apprenant affiche toujours « Vous »."
+    },
+    "libraryArt": {
+        "title": "Afficher des illustrations prêtes à l'emploi au lieu d'icônes simples",
+        "description": "Donnez à chaque badge un look soigné et à paliers, adapté à ce qui le débloque. Vous pouvez toujours affiner un badge depuis la bibliothèque.",
+        "button": "Utiliser les illustrations de la bibliothèque"
+    },
+    "emptyState": {
+        "text": "Aucun badge configuré. Ajoutez-en un pour commencer."
+    },
+    "addBadge": "Ajouter un badge",
+    "badgeCard": {
+        "untitled": "Badge sans titre",
+        "hidden": "Masqué",
+        "defaultDescription": "Ajoutez une courte description ci-dessous",
+        "on": "Activé",
+        "off": "Désactivé",
+        "deleteAriaLabel": "Supprimer le badge",
+        "nameLabel": "Nom du badge",
+        "namePlaceholder": "ex. Premiers pas",
+        "iconLabel": "Icône",
+        "iconPlaceholder": "Image personnalisée",
+        "uploadTitle": "Importer une image personnalisée",
+        "iconHint": {
+            "library": "Badge de la bibliothèque sélectionné.",
+            "custom": "Image personnalisée importée.",
+            "default": "Choisissez une icône, sélectionnez-en une dans la bibliothèque ou importez la vôtre."
+        },
+        "descriptionLabel": "Description",
+        "descriptionPlaceholder": "Affichée au survol, ex. Maintenir une série de 7 jours",
+        "triggerLabel": "Se débloque selon",
+        "thresholdLabel": "Seuil ({{unit}})"
+    },
+    "toasts": {
+        "badgesSaved": "Badges enregistrés",
+        "saveFailed": "Échec de l'enregistrement des badges",
+        "imageUploaded": "Image importée",
+        "uploadFailed": "Échec de l'importation de l'image",
+        "libraryArtApplied": "Badges basculés vers les illustrations de la bibliothèque",
+        "nameRequired": "Chaque badge doit avoir un nom"
+    }
+}

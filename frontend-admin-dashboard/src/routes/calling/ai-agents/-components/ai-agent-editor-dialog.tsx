@@ -29,6 +29,7 @@ import type { AssistDerived } from '@/routes/settings/-services/ai-agent-assist'
 import {
     DEFAULT_SAMPLE_TEXT,
     EXPRESSIVENESS_OPTIONS,
+    VOICE_MODULATION_OPTIONS,
     FALLBACK_VOICES,
     TTS_MODELS,
     creditLine,
@@ -320,6 +321,39 @@ export function AiAgentEditorDialog({
                         </Select>
                         <p className="text-caption text-neutral-500">
                             How much the voice varies its intonation and emotion.
+                        </p>
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label>Voice modulation</Label>
+                        <Select
+                            value={
+                                VOICE_MODULATION_OPTIONS.find(
+                                    (o) => o.factor === draft.voiceModulation
+                                )?.value ?? 'default'
+                            }
+                            onValueChange={(v) =>
+                                patch({
+                                    voiceModulation: VOICE_MODULATION_OPTIONS.find(
+                                        (o) => o.value === v
+                                    )?.factor,
+                                })
+                            }
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {VOICE_MODULATION_OPTIONS.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>
+                                        {o.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-caption text-neutral-500">
+                            How much the pitch rises and falls. Applied to the audio itself, so it
+                            works with every voice and engine — a flat, read-out tone becomes
+                            conversational.
                         </p>
                     </div>
                 </div>

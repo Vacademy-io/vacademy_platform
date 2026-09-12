@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { addWeeks } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { CaretUpDown, Check, FunnelSimple, UsersThree } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -37,10 +38,11 @@ function TeamMeetingsRoute() {
 }
 
 function TeamMeetingsPage() {
+    const { t } = useTranslation('meetingsTeamIndexLazy');
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Team Meetings</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
 
     const instituteId = getInstituteId();
     const [weekAnchor, setWeekAnchor] = useState(() => new Date());
@@ -75,11 +77,11 @@ function TeamMeetingsPage() {
         const byId = new Map<string, string>();
         for (const booking of bookings ?? []) {
             if (booking.host_user_id) {
-                byId.set(booking.host_user_id, booking.host_name || 'Unknown host');
+                byId.set(booking.host_user_id, booking.host_name || t('unknownHost'));
             }
         }
         return [...byId.entries()].map(([id, name]) => ({ id, name }));
-    }, [bookings]);
+    }, [bookings, t]);
 
     const filteredBookings = useMemo(() => {
         const all = bookings ?? [];
@@ -99,13 +101,8 @@ function TeamMeetingsPage() {
         return (
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white py-16 text-center">
                 <UsersThree className="size-10 text-neutral-300" />
-                <p className="text-body font-semibold text-neutral-700">
-                    You don&apos;t manage a team yet
-                </p>
-                <p className="max-w-md text-caption text-neutral-500">
-                    Team Meetings shows the schedules of everyone reporting to you. Once team members
-                    report to you, their meetings will appear here.
-                </p>
+                <p className="text-body font-semibold text-neutral-700">{t('noTeamTitle')}</p>
+                <p className="max-w-md text-caption text-neutral-500">{t('noTeamDescription')}</p>
             </div>
         );
     }
@@ -114,10 +111,8 @@ function TeamMeetingsPage() {
         <div className="flex w-full flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-semibold text-neutral-900">Team Meetings</h1>
-                    <p className="mt-0.5 text-sm text-neutral-500">
-                        Meetings hosted by you and your team
-                    </p>
+                    <h1 className="text-2xl font-semibold text-neutral-900">{t('heading')}</h1>
+                    <p className="mt-0.5 text-sm text-neutral-500">{t('subtitle')}</p>
                 </div>
                 {hostOptions.length > 0 && (
                     <HostFilter
@@ -135,8 +130,8 @@ function TeamMeetingsPage() {
                 isLoading={isLoading}
                 error={scopeError ?? error}
                 showHost
-                emptyTitle="No team meetings this week"
-                emptyDescription="Meetings hosted by you or your team will appear here."
+                emptyTitle={t('emptyTitle')}
+                emptyDescription={t('emptyDescription')}
             />
         </div>
     );
@@ -152,11 +147,13 @@ function HostFilter({
     value: string;
     onChange: (next: string) => void;
 }) {
+    const { t } = useTranslation('meetingsTeamIndexLazy');
     const [open, setOpen] = useState(false);
+    const allHostsLabel = t('allHosts', { count: options.length });
     const selectedLabel =
         value === ALL_HOSTS_VALUE
-            ? `All hosts (${options.length})`
-            : (options.find((o) => o.id === value)?.name ?? 'Filter by host');
+            ? allHostsLabel
+            : (options.find((o) => o.id === value)?.name ?? t('filterByHost'));
 
     const select = (next: string) => {
         onChange(next);
@@ -171,7 +168,7 @@ function HostFilter({
                     buttonType="secondary"
                     scale="medium"
                     className="w-full justify-between font-normal sm:w-56 sm:min-w-0"
-                    aria-label="Filter meetings by host"
+                    aria-label={t('hostFilterAriaLabel')}
                 >
                     <span className="flex min-w-0 items-center gap-2">
                         <FunnelSimple size={16} className="shrink-0 text-neutral-400" />
@@ -182,12 +179,12 @@ function HostFilter({
             </PopoverTrigger>
             <PopoverContent className="w-64 p-0" align="end">
                 <Command>
-                    <CommandInput placeholder="Search host…" />
+                    <CommandInput placeholder={t('searchHostPlaceholder')} />
                     <CommandList>
-                        <CommandEmpty>No host found.</CommandEmpty>
+                        <CommandEmpty>{t('noHostFound')}</CommandEmpty>
                         <CommandGroup>
                             <CommandItem
-                                value="All hosts"
+                                value={allHostsLabel}
                                 onSelect={() => select(ALL_HOSTS_VALUE)}
                                 className="gap-2"
                             >
@@ -197,7 +194,7 @@ function HostFilter({
                                         value === ALL_HOSTS_VALUE ? 'opacity-100' : 'opacity-0'
                                     )}
                                 />
-                                All hosts ({options.length})
+                                {allHostsLabel}
                             </CommandItem>
                             {options.map((host) => (
                                 <CommandItem

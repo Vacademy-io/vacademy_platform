@@ -7,6 +7,7 @@ import {
 import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
 import { Clock, Lock, XCircle } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 
 const AssessmentClosedExpiredComponent = ({
   isExpired,
@@ -19,6 +20,7 @@ const AssessmentClosedExpiredComponent = ({
   isPrivate?: boolean;
   externalBranding?: InstituteBranding | null;
 }) => {
+  const { t } = useTranslation("registrationA");
   const { data: instituteDetails } = useInstituteDetails();
 
   const branding: InstituteBranding = externalBranding || {
@@ -37,9 +39,9 @@ const AssessmentClosedExpiredComponent = ({
         ringColor: "ring-amber-100",
         badgeVariant: "secondary" as const,
         badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
-        badgeText: "Access Denied",
-        title: "Assessment Access Denied",
-        description: "You are not registered for this assessment.",
+        badgeText: t("closedExpired.accessDenied.badge"),
+        title: t("closedExpired.accessDenied.title"),
+        description: t("closedExpired.accessDenied.description"),
       }
     : isExpired
       ? {
@@ -49,10 +51,9 @@ const AssessmentClosedExpiredComponent = ({
           ringColor: "ring-red-100",
           badgeVariant: "destructive" as const,
           badgeClass: "bg-red-50 text-red-700 border-red-200",
-          badgeText: "Expired",
-          title: "Assessment Expired",
-          description:
-            "This assessment is no longer available. The window for taking this test has closed.",
+          badgeText: t("closedExpired.expired.badge"),
+          title: t("closedExpired.expired.title"),
+          description: t("closedExpired.expired.description"),
         }
       : {
           Icon: Clock,
@@ -61,10 +62,9 @@ const AssessmentClosedExpiredComponent = ({
           ringColor: "ring-orange-100",
           badgeVariant: "secondary" as const,
           badgeClass: "bg-orange-50 text-orange-700 border-orange-200",
-          badgeText: "Closed",
-          title: "Registration Closed",
-          description:
-            "Registration for this assessment has closed. Please contact your institute for more information.",
+          badgeText: t("closedExpired.closed.badge"),
+          title: t("closedExpired.closed.title"),
+          description: t("closedExpired.closed.description"),
         };
 
   const { Icon } = config;
@@ -79,11 +79,11 @@ const AssessmentClosedExpiredComponent = ({
       >
         <Card className="border-0 shadow-xl shadow-slate-200/60 overflow-hidden">
           {/* Header strip */}
-          <div className="h-1.5 bg-gradient-to-r from-orange-400 via-red-400 to-pink-400" />
+          <div className="h-1.5 bg-gradient-to-r from-primary-400 via-danger-400 to-pink-400" />
 
           <CardContent className="p-8 sm:p-10">
             {/* Branding */}
-            <div className="flex flex-col items-center gap-3 mb-6">
+            <div className="flex flex-col items-center gap-stack mb-6">
               <InstituteBrandingComponent
                 branding={branding}
                 size="medium"
@@ -134,9 +134,9 @@ const AssessmentClosedExpiredComponent = ({
             </div>
 
             {/* Assessment name */}
-            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
-              <p className="text-caption font-medium text-slate-500 uppercase tracking-wider mb-1">
-                Assessment
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-1">
+              <p className="text-caption font-medium text-slate-500 uppercase tracking-wider">
+                {t("closedExpired.assessmentLabel")}
               </p>
               <p className="text-sm font-medium text-slate-900 truncate">
                 {assessmentName}

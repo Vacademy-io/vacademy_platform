@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "@tanstack/react-router";
 import AssessmentStartModal from "./StartAssessment";
 import { Preferences } from "@capacitor/preferences";
@@ -19,6 +20,7 @@ import { useLiveTestStore } from "@/stores/live-test-store";
 import { bottomSafeAreaInset } from "@/utils/safe-area";
 
 const InstructionPage = () => {
+  const { t } = useTranslation("layoutCommonB");
   const [instructions, setInstructions] = useState<RichText>();
   const [assessmentInfo, setAssessmentInfo] = useState<AssessmentType>();
   const [isLoading, setIsLoading] = useState(true);
@@ -104,18 +106,17 @@ const InstructionPage = () => {
                 weight="bold"
               />
               <p className="text-body text-neutral-500">
-                Loading assessment details…
+                {t("instructionPage.instructionPage.loadingDetails")}
               </p>
             </div>
           ) : hasError || !assessmentInfo ? (
             <div className="flex min-h-reg-320 flex-col items-center justify-center gap-4 text-center">
               <WarningCircle size={48} className="text-danger-400" weight="duotone" />
               <p className="text-title font-semibold text-neutral-700">
-                Assessment details unavailable
+                {t("instructionPage.instructionPage.detailsUnavailable")}
               </p>
               <p className="max-w-sm text-body text-neutral-500">
-                We couldn&apos;t load this assessment. Please go back and try
-                again.
+                {t("instructionPage.instructionPage.loadFailed")}
               </p>
             </div>
           ) : (
@@ -147,8 +148,7 @@ const InstructionPage = () => {
                   className="mt-0.5 size-4 flex-none accent-primary-500"
                 />
                 <span className="text-body leading-relaxed text-neutral-700">
-                  I have read the instructions and understand that leaving full
-                  screen is recorded and may auto-submit my paper.
+                  {t("instructionPage.instructionPage.acknowledgement")}
                 </span>
               </label>
             </>
@@ -166,7 +166,7 @@ const InstructionPage = () => {
           <AssessmentStartModal disabled={!isReady || !agreed} />
           {isReady && !agreed && (
             <p className="mt-2 text-center text-caption text-neutral-400">
-              Tick the acknowledgement above to begin.
+              {t("instructionPage.instructionPage.tickToBegin")}
             </p>
           )}
         </div>

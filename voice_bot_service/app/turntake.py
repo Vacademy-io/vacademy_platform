@@ -26,6 +26,8 @@ are reviewable as data.
 """
 from __future__ import annotations
 
+import re
+
 ABSORB = "absorb"
 INTERRUPT = "interrupt"
 
@@ -241,6 +243,119 @@ _ASK_AGAIN_WORDS = frozenset({
     "repeat", "again", "dobara", "phir", "dubara", "samajh", "sunai", "sunayi",
     "kya", "pardon", "sorry", "दोबारा", "फिर", "समझ", "सुनाई",
 })
+
+
+_END_PHRASES = (
+    "cut the call", "end the call", "hang up", "don't call", "dont call", "do not call",
+    "stop calling", "not interested", "no interest", "don't need", "dont need", "do not need",
+    "wrong number", "galat number", "not required", "remove my number", "unsubscribe",
+    "phone rakh", "call rakh", "rakhti hoon", "rakhta hoon", "band karo", "zaroorat nahi",
+    "jarurat nahi", "nahi chahiye", "interest nahi", "mat karo call", "call mat",
+)
+_BYE_WORDS = frozenset({"bye", "goodbye", "byebye", "bbye", "tata", "alvida"})
+
+
+_FAREWELL_RE = re.compile(
+    r"(namaste|namaskar|good ?bye|bye|take care|have a (good|great|nice) (day|evening|one)|"
+    r"shubh din|alvida|dhanyavaad|dhanyawad|नमस्ते|नमस्कार|अलविदा|शुभ दिन|धन्यवाद)", re.I)
+
+
+def is_farewell(response_text: str) -> bool:
+    """Does the bot's response END on a goodbye? PURE.
+
+    Recordings 4acc56a6 / 6fa15c09 (2026-09-09/10): the model said
+    "आपके समय के लिए धन्यवाद, नमस्ते" WITHOUT <<END_CALL>>, so nothing closed the
+    line; eight seconds later the idle clock nudged "Hello, can you hear me?"
+    after the goodbye. A goodbye is a goodbye whether or not the marker came.
+    Narrow on purpose: last sentence only, short, no question, and it must
+    carry a farewell word — "जी सर, धन्यवाद। क्या मैं…" mid-call is not one."""
+    t = " ".join((response_text or "").split())
+    if not t or "?" in t or "？" in t:
+        return False
+    parts = [p for p in re.split(r"(?<=[.!।])\s+", t) if p.strip()]
+    last = parts[-1] if parts else t
+    if len(last.split()) > 14:
+        return False
+    return bool(_FAREWELL_RE.search(last))
+
+
+def caller_wants_to_end(text: str) -> bool:
+    """Did the caller just ask us to stop — end the call, don't call, not
+    interested, wrong number, or a goodbye? PURE.
+
+    Calls ada2e60c and the simulator (2026-09-12): to "I don't need your
+    assistance, cut the call" the model replied "Just to clarify…" — twice on
+    Gemini even with a prompt rule saying not to. A prompt rule is a request;
+    this is the enforcement: the turn-gate cues a one-line goodbye and the
+    sentinel ends the call whatever the model writes. Deliberately narrow —
+    "not now" / "busy" / "later" are NOT here (those want a call-back)."""
+    t = " ".join((text or "").casefold().split())
+    if not t:
+        return False
+    if any(p in t for p in _END_PHRASES):
+        return True
+    ws = _words(t)
+    return bool(ws) and (ws[-1] in _BYE_WORDS or (len(ws) <= 4 and bool(set(ws) & _BYE_WORDS)))
+
+
+_PRESENCE_WORDS = frozenset({"hello", "hallo", "helo", "hullo", "hi", "haan", "ji", "yes", "yeah"})
+_PRESENCE_PHRASES = ("are you there", "you there", "still there", "can you hear", "sun rahe",
+                     "sun rahi", "sun pa rahe", "awaaz aa rahi", "aawaz aa rahi", "hai kya", "koi hai")
+
+
+def caller_checking_presence(text: str) -> bool:
+    """"Hello? Hello, hello?" / "Are you there?" — the caller lost the thread
+    and is checking the line, not answering. Call f08f5712 (2026-09-12): after
+    the bot's question the caller said "Hello?" and got "Yes, I'm here." with
+    the question never repeated; they said hello four more times and hung up."""
+    t = (text or "").casefold()
+    if t.startswith("["):
+        return False                       # a synthetic cue, not speech
+    if any(p in t for p in _PRESENCE_PHRASES):
+        return True
+    ws = re.findall(r"[a-z\u0900-\u097f']+", t)   # _words keeps the '?' on 'hello?'
+    return 1 <= len(ws) <= 6 and all(w in _PRESENCE_WORDS for w in ws) and "hello" in ws
+
+
+def presence_cue(question: str) -> str:
+    """The turn-gate's cue when the caller is checking the line: confirm, then
+    put the question they lost back on it. Shared with the text simulator."""
+    return ("[The caller is checking whether you are still on the line — they did not "
+            "hear or lost your question. Reply in ONE breath: confirm in two or three "
+            "words, then ask this again in the same words: \"" + question + "\" Nothing else.]")
+
+
+def last_question_in(text: str) -> str:
+    """The last question sentence in a block of bot speech, skipping the bot's
+    own line checks ("Hello? Are you still there?"), or ''."""
+    sents = [x.strip() for x in re.split(r"(?<=[.!?।])\s+", text or "") if x.strip()]
+    qs = [x for x in sents if x.endswith(("?", "？")) and not caller_checking_presence(x)]
+    return qs[-1] if qs else ""
+
+
+_TERMINAL = (".", "?", "!", "।", "？", "…")
+
+
+def is_fragment_continuation(prev: str, text: str, dt: float, window: float = 1.0) -> bool:
+    """Smallest finalizes the decoded PREFIX at our VAD stop and the remainder
+    arrives as its own final 0.3-0.9 s later: "…say somet" + "hing", "frie" +
+    "nd", "? It makes" + "some" (call 31763255, 2026-09-12). The second piece is
+    the same utterance, not a new one — it must never count as a barge-in."""
+    if not prev or not text or dt < 0 or dt > window:
+        return False
+    t = text.strip()
+    if t.startswith("["):
+        return False
+    if caller_checking_presence(t) or caller_wants_to_end(t):
+        return False                      # "Hello." / "cut the call" are never a tail
+    if prev.rstrip().endswith(_TERMINAL):
+        return False                      # the previous piece was a finished sentence
+    first = t[0]
+    if first.islower() and first.isascii():
+        return True                       # "hing", "nd", "some", "me?" — the engine
+                                          # only capitalises a sentence START
+    # Neither piece is punctuated as a sentence and the tail is short: one breath.
+    return not t.endswith(_TERMINAL) and len(t.split()) <= 4
 
 
 def caller_asked_to_repeat(text: str) -> bool:

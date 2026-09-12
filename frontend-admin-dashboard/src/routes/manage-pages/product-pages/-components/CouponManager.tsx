@@ -15,6 +15,7 @@ interface LocalCoupon {
     discountValue: number;
     maxDiscountValue?: number;
     maxUses?: number;
+    minItems?: number;
     redeemEndDate?: string;
 }
 
@@ -32,6 +33,7 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
         discountValue: string;
         maxDiscountValue: string;
         maxUses: string;
+        minItems: string;
         redeemEndDate: string;
     }>({
         code: '',
@@ -39,6 +41,7 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
         discountValue: '',
         maxDiscountValue: '',
         maxUses: '',
+        minItems: '',
         redeemEndDate: '',
     });
 
@@ -56,10 +59,11 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
                     discountValue: variables.discount_value,
                     maxDiscountValue: variables.max_discount_value,
                     maxUses: variables.max_uses,
+                    minItems: variables.min_items,
                     redeemEndDate: variables.redeem_end_date,
                 },
             ]);
-            setForm({ code: '', discountType: 'PERCENTAGE', discountValue: '', maxDiscountValue: '', maxUses: '', redeemEndDate: '' });
+            setForm({ code: '', discountType: 'PERCENTAGE', discountValue: '', maxDiscountValue: '', maxUses: '', minItems: '', redeemEndDate: '' });
             setShowForm(false);
         },
         onError: () => {
@@ -87,6 +91,7 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
             discount_value: parseFloat(form.discountValue),
             max_discount_value: form.maxDiscountValue ? parseFloat(form.maxDiscountValue) : undefined,
             max_uses: form.maxUses ? parseInt(form.maxUses, 10) : undefined,
+            min_items: form.minItems ? parseInt(form.minItems, 10) : undefined,
             redeem_end_date: form.redeemEndDate || undefined,
         };
         createMutation.mutate(payload);
@@ -179,6 +184,20 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
                                     className="focus:border-primary-400 focus:ring-primary-300"
                                 />
                             </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs text-neutral-500">Minimum Courses</Label>
+                                <Input
+                                    type="number"
+                                    min={2}
+                                    placeholder="No minimum"
+                                    value={form.minItems}
+                                    onChange={(e) => setForm({ ...form, minItems: e.target.value })}
+                                    className="focus:border-primary-400 focus:ring-primary-300"
+                                />
+                                <p className="text-caption text-neutral-400">
+                                    Only usable once the cart holds this many courses.
+                                </p>
+                            </div>
                         </div>
 
                         <div className="space-y-1">
@@ -234,6 +253,11 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
                                         : `${coupon.discountValue} off`}
                                     {coupon.maxDiscountValue ? ` (max ${coupon.maxDiscountValue})` : ''}
                                 </span>
+                                {coupon.minItems && (
+                                    <span className="rounded bg-neutral-100 px-2 py-0.5 text-caption text-neutral-500">
+                                        min {coupon.minItems} courses
+                                    </span>
+                                )}
                                 {coupon.maxUses && (
                                     <span className="text-xs text-neutral-400">
                                         max {coupon.maxUses} uses

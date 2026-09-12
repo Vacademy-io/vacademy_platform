@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.audience.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.audience.dto.CloseLeadFollowupRequest;
 import vacademy.io.admin_core_service.features.audience.dto.CreateLeadFollowupRequest;
 import vacademy.io.admin_core_service.features.audience.dto.LeadFollowupDto;
@@ -20,6 +21,12 @@ public class LeadFollowupController {
     private final LeadFollowupService leadFollowupService;
 
     @PostMapping
+    @Auditable(
+            entityType = "LEAD_FOLLOWUP",
+            action = "CREATE",
+            entityIdExpr = "#result?.body?.id",
+            descriptionExpr = "'scheduled a follow-up for lead ' "
+                    + "+ @crmAuditNarrator.leadFor(#request?.audienceResponseId)")
     public ResponseEntity<LeadFollowupDto> create(@RequestBody CreateLeadFollowupRequest request,
                                                    @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(leadFollowupService.create(request, user));
@@ -46,6 +53,11 @@ public class LeadFollowupController {
     }
 
     @PutMapping("/{id}")
+    @Auditable(
+            entityType = "LEAD_FOLLOWUP",
+            action = "UPDATE",
+            entityIdExpr = "#id",
+            descriptionExpr = "'rescheduled a follow-up for lead ' + @crmAuditNarrator.followupLeadFor(#id)")
     public ResponseEntity<LeadFollowupDto> update(@PathVariable String id,
                                                    @RequestBody UpdateLeadFollowupRequest request,
                                                    @RequestAttribute("user") CustomUserDetails user) {
@@ -53,6 +65,11 @@ public class LeadFollowupController {
     }
 
     @PutMapping("/{id}/close")
+    @Auditable(
+            entityType = "LEAD_FOLLOWUP",
+            action = "CLOSE",
+            entityIdExpr = "#id",
+            descriptionExpr = "'closed a follow-up for lead ' + @crmAuditNarrator.followupLeadFor(#id)")
     public ResponseEntity<LeadFollowupDto> close(@PathVariable String id,
                                                   @RequestBody CloseLeadFollowupRequest request,
                                                   @RequestAttribute("user") CustomUserDetails user) {

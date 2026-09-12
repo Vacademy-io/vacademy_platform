@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { fetchPendingAdjustments } from '@/services/manage-finances';
 import { getUpcomingSessions } from '@/routes/study-library/live-session/-services/utils';
 import { fetchInstituteDashboardDetails } from './dashboard-services';
@@ -91,7 +92,7 @@ const fetchTeamMemberCount = async (instituteId: string): Promise<number> => {
 };
 
 
-const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
+const buildAdminKpis = async (instituteId: string, t: TFunction): Promise<DashboardKpi[]> => {
     const [counts, dues, sessions, teamCount] = await Promise.all([
         fetchInstituteCounts(instituteId),
         safe(fetchPendingAdjustments()),
@@ -124,22 +125,24 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
             id: 'activeLearners',
             // "Active", not "Total" — the value is the active count, and labelling it
             // Total made it read as contradicting Learner Management's own Total badge.
-            label: `Active ${learnersPlural}`,
+            label: t('dashboardKpisService:kpis.activeLearners.label', { learners: learnersPlural }),
             value: activeLearners,
             format: 'number',
-            subtitle: `of ${totalLearners.toLocaleString('en-IN')} total`,
+            subtitle: t('dashboardKpisService:kpis.activeLearners.subtitle', {
+                total: totalLearners.toLocaleString('en-IN'),
+            }),
             deepLink: '/manage-students/students-list',
             // Always rendered, zeros included — "0 terminated" is itself the answer
             // an admin is looking for. Empty buckets drop to a neutral tone so a
             // healthy institute isn't showing amber/red chips for nothing.
             breakdown: [
                 {
-                    label: 'Inactive',
+                    label: t('dashboardKpisService:breakdown.inactive'),
                     value: inactiveLearners,
                     tone: inactiveLearners > 0 ? 'warning' : 'neutral',
                 },
                 {
-                    label: 'Terminated',
+                    label: t('dashboardKpisService:breakdown.terminated'),
                     value: terminatedLearners,
                     tone: terminatedLearners > 0 ? 'danger' : 'neutral',
                 },
@@ -147,53 +150,64 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
         },
         {
             id: 'totalCourses',
-            label: `Total ${coursesPlural}`,
+            label: t('dashboardKpisService:kpis.totalCourses.label', { courses: coursesPlural }),
             value: counts?.course_count || 0,
             format: 'number',
-            subtitle: `Active ${coursesPlural.toLowerCase()}`,
+            subtitle: t('dashboardKpisService:kpis.totalCourses.subtitle', {
+                courses: coursesPlural.toLowerCase(),
+            }),
             deepLink: '/study-library/courses',
         },
         {
             id: 'teamMembers',
-            label: 'Team Members',
+            label: t('dashboardKpisService:kpis.teamMembers.label'),
             value: teamCount,
             format: 'number',
-            subtitle: `${getTerminologyPlural(RoleTerms.Admin, SystemTerms.Admin)}, ${getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher).toLowerCase()} & staff`,
+            subtitle: t('dashboardKpisService:kpis.teamMembers.subtitle', {
+                admins: getTerminologyPlural(RoleTerms.Admin, SystemTerms.Admin),
+                teachers: getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher).toLowerCase(),
+            }),
         },
         {
             id: 'outstandingFees',
-            label: 'Outstanding Fees',
+            label: t('dashboardKpisService:kpis.outstandingFees.label'),
             value: Math.round(outstanding),
             format: 'currency',
-            subtitle: 'Due across overdue items',
+            subtitle: t('dashboardKpisService:kpis.outstandingFees.subtitle'),
         },
         {
             id: 'overdueItems',
-            label: 'Overdue Items',
+            label: t('dashboardKpisService:kpis.overdueItems.label'),
             value: overdueCount,
             format: 'number',
-            subtitle: 'Need follow-up',
+            subtitle: t('dashboardKpisService:kpis.overdueItems.subtitle'),
         },
         {
             id: 'classesToday',
-            label: `${liveSessionsPlural} Today`,
+            label: t('dashboardKpisService:kpis.classesToday.label', { sessions: liveSessionsPlural }),
             value: classesToday,
             format: 'number',
-            subtitle: `Scheduled ${liveSessionsPlural.toLowerCase()}`,
+            subtitle: t('dashboardKpisService:kpis.classesToday.subtitle', {
+                sessions: liveSessionsPlural.toLowerCase(),
+            }),
             deepLink: '/study-library/live-session',
         },
     ];
 };
 
-const buildTeacherKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
+const buildTeacherKpis = async (instituteId: string, t: TFunction): Promise<DashboardKpi[]> => {
     const sessions = instituteId ? await safe(getUpcomingSessions(instituteId)) : null;
     const today = todayKey();
     const classesToday =
         sessions?.find((d) => (d.date || '').slice(0, 10) === today)?.sessions?.length || 0;
+    const liveSessionsPlural = getTerminologyPlural(
+        ContentTerms.LiveSession,
+        SystemTerms.LiveSession
+    );
     return [
         {
             id: 'classesToday',
-            label: `${getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession)} Today`,
+            label: t('dashboardKpisService:kpis.classesToday.label', { sessions: liveSessionsPlural }),
             value: classesToday,
             format: 'number',
             deepLink: '/study-library/live-session',
@@ -204,20 +218,23 @@ const buildTeacherKpis = async (instituteId: string): Promise<DashboardKpi[]> =>
 export interface GetDashboardKpisArgs {
     instituteId: string;
     roles: string[];
+    t: TFunction;
+    /** Current i18next language — included so the query cache re-fetches on language switch. */
+    language: string;
 }
 
 export const getDashboardKpis = async (args: GetDashboardKpisArgs): Promise<DashboardKpi[]> => {
-    const { instituteId, roles } = args;
-    if (roles.includes('ADMIN')) return buildAdminKpis(instituteId);
-    if (roles.includes('TEACHER')) return buildTeacherKpis(instituteId);
+    const { instituteId, roles, t } = args;
+    if (roles.includes('ADMIN')) return buildAdminKpis(instituteId, t);
+    if (roles.includes('TEACHER')) return buildTeacherKpis(instituteId, t);
     return [];
 };
 
 export const getDashboardKpisQuery = (args: GetDashboardKpisArgs) => {
-    const { instituteId, roles } = args;
+    const { instituteId, roles, t, language } = args;
     return {
-        queryKey: ['DASHBOARD_KPIS', instituteId, roles] as const,
-        queryFn: () => getDashboardKpis({ instituteId, roles }),
+        queryKey: ['DASHBOARD_KPIS', instituteId, roles, language] as const,
+        queryFn: () => getDashboardKpis({ instituteId, roles, t, language }),
         staleTime: 60_000,
         retry: false,
     };

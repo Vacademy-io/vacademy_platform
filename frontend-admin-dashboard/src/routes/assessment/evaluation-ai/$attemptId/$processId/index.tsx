@@ -1,6 +1,16 @@
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router';
-import { ArrowLeft, Check, Circle, CheckCircle, WarningCircle, PencilSimple } from '@phosphor-icons/react';
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import {
+    ArrowLeft,
+    Check,
+    Circle,
+    CheckCircle,
+    WarningCircle,
+    PencilSimple,
+    CaretLeft,
+} from '@phosphor-icons/react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18next from 'i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,7 +43,6 @@ import {
 import { getPublicUrl } from '@/services/upload_file';
 import { FileText } from '@phosphor-icons/react';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
-import { CaretLeft } from 'phosphor-react';
 import {
     PdfAnnotationOverlay,
     type Annotation,
@@ -50,31 +59,32 @@ export const Route = createFileRoute('/assessment/evaluation-ai/$attemptId/$proc
 const showStatusMessage = (status: string) => {
     switch (status) {
         case 'PENDING':
-            return 'Evaluation is yet to start';
+            return i18next.t('assessmentEvaluationAi:status.pending');
         case 'IN_PROGRESS':
-            return 'Evaluation is in progress';
+            return i18next.t('assessmentEvaluationAi:status.inProgress');
         case 'STARTED':
-            return 'Evaluation has initiated';
+            return i18next.t('assessmentEvaluationAi:status.initiated');
         case 'PROCESSING':
-            return 'Processing student answer sheet';
+            return i18next.t('assessmentEvaluationAi:status.processing');
         case 'EXTRACTING':
-            return 'Extracting Student Answers';
+            return i18next.t('assessmentEvaluationAi:status.extracting');
         case 'EVALUATING':
-            return 'Evaluating Student Answers';
+            return i18next.t('assessmentEvaluationAi:status.evaluating');
         case 'GRADING':
-            return 'Grading evaluated answers';
+            return i18next.t('assessmentEvaluationAi:status.grading');
         case 'COMPLETED':
-            return 'Evaluation has completed';
+            return i18next.t('assessmentEvaluationAi:status.completed');
         case 'FAILED':
-            return 'Evaluation has failed';
+            return i18next.t('assessmentEvaluationAi:status.failed');
         case 'CANCELLED':
-            return 'Evaluation has been cancelled';
+            return i18next.t('assessmentEvaluationAi:status.cancelled');
         default:
-            return 'Unknown';
+            return i18next.t('assessmentEvaluationAi:status.unknown');
     }
 };
 
 function RouteComponent() {
+    const { t } = useTranslation('assessmentEvaluationAi');
     const { attemptId, processId } = Route.useParams();
     const navigate = useNavigate();
     const router = useRouter();
@@ -86,6 +96,9 @@ function RouteComponent() {
     const [isStopEvaluation, setIsStopEvaluation] = useState(false);
     const [isPdfPanelOpen, setIsPdfPanelOpen] = useState(false);
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    // Which file id `pdfUrl` was resolved from, so a switch from the raw sheet
+    // (shown while the run is in progress) to the checked copy reloads the viewer.
+    const [pdfFileId, setPdfFileId] = useState<string | null>(null);
     const [isLoadingPdf, setIsLoadingPdf] = useState(false);
     const [duration, setDuration] = useState('0s');
     // Callback ref triggers a re-render with the populated element so the
@@ -129,11 +142,11 @@ function RouteComponent() {
     const stopEvaluationMutation = useMutation({
         ...useStopEvaluation(),
         onSuccess: () => {
-            toast.success('Evaluation stopped successfully!');
+            toast.success(t('toasts.evaluationStopped'));
             setIsStopEvaluation(true);
         },
         onError: () => {
-            toast.error('Failed to stop evaluation');
+            toast.error(t('toasts.stopFailed'));
         },
     });
 
@@ -145,6 +158,21 @@ function RouteComponent() {
         staleTime: 5 * 60_000,
     });
     const layoutMap = (layoutMapData ?? null) as LayoutMap | null;
+
+    // The checked copy THIS run rendered (progress.file_id — ticks, notes and
+    // marks already drawn into the PDF; the backend serves it from the run's own
+    // complete payload, never the attempt's latest, so an older run's page never
+    // shows a newer run's marks). When it exists the viewer shows it as-is and
+    // the JSON overlay stays off — drawing the same annotations again on top
+    // produced a second set of green ticks, boxes and notes over the pen marks.
+    // The overlay is keyed to the file actually on screen (pdfFileId), not the
+    // one wanted: while the checked copy is still loading, or if that load
+    // failed, the raw sheet keeps its overlay instead of going bare.
+    const checkedFileId: string | null =
+        progress?.overall_status === 'COMPLETED' && progress?.file_id ? progress.file_id : null;
+    const answerSheetFileId: string | null =
+        checkedFileId ?? (attemptDetails as string | null) ?? null;
+    const showOverlay = !checkedFileId || pdfFileId !== checkedFileId;
 
     const annotations: Annotation[] = useMemo(() => {
         const out: Annotation[] = [];
@@ -231,11 +259,11 @@ function RouteComponent() {
     // Handle completion
     useEffect(() => {
         if (progress?.overall_status === 'COMPLETED') {
-            toast.success('Evaluation completed successfully!', {
+            toast.success(t('toasts.evaluationCompleted'), {
                 duration: 5000,
             });
         } else if (progress?.overall_status === 'FAILED') {
-            toast.error('Evaluation failed. Please try again.', {
+            toast.error(t('toasts.evaluationFailedRetry'), {
                 duration: 5000,
             });
         }
@@ -245,10 +273,11 @@ function RouteComponent() {
         const heading = (
             <div className="flex items-center gap-4">
                 <CaretLeft onClick={() => router.history.back()} className="cursor-pointer" />
-                <div>Evaluation Progress</div>
+                <div>{t('nav.heading')}</div>
             </div>
         );
         setNavHeading(heading);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const allSectionQuestions = questionsData ? Object.values(questionsData).flat() : [];
@@ -280,38 +309,55 @@ function RouteComponent() {
         return status === 'STARTED' || status === 'PROCESSING' || status === 'EXTRACTING';
     };
 
+    const loadAnswerSheet = async (fileId: string) => {
+        setIsLoadingPdf(true);
+        try {
+            const url = await getPublicUrl(fileId);
+            if (url) {
+                setPdfUrl(url);
+                setPdfFileId(fileId);
+                setIsPdfPanelOpen(true);
+            } else {
+                toast.error(t('toasts.answerSheetLoadFailed'));
+            }
+        } catch (error) {
+            console.error('Error loading PDF:', error);
+            toast.error(t('toasts.answerSheetLoadFailed'));
+        } finally {
+            setIsLoadingPdf(false);
+        }
+    };
+
     const handleViewAnswerSheet = async () => {
         if (isPdfPanelOpen) {
             setIsPdfPanelOpen(false);
             return;
         }
 
-        if (pdfUrl) {
+        if (!answerSheetFileId) {
+            toast.error(t('toasts.answerSheetUnavailable'));
+            return;
+        }
+
+        if (pdfUrl && pdfFileId === answerSheetFileId) {
             setIsPdfPanelOpen(true);
             return;
         }
 
-        if (!attemptDetails) {
-            toast.error('Answer sheet not available');
-            return;
-        }
-
-        setIsLoadingPdf(true);
-        try {
-            const url = await getPublicUrl(attemptDetails);
-            if (url) {
-                setPdfUrl(url);
-                setIsPdfPanelOpen(true);
-            } else {
-                toast.error('Failed to load answer sheet');
-            }
-        } catch (error) {
-            console.error('Error loading PDF:', error);
-            toast.error('Failed to load answer sheet');
-        } finally {
-            setIsLoadingPdf(false);
-        }
+        await loadAnswerSheet(answerSheetFileId);
     };
+
+    // Panel open on the raw sheet when the run finishes → swap to the checked
+    // copy. One automatic attempt per file id: a failed load already toasts, and
+    // retrying it from here would loop; the button reloads on the next click.
+    const autoLoadedFor = useRef<string | null>(null);
+    useEffect(() => {
+        if (!isPdfPanelOpen || isLoadingPdf || !answerSheetFileId) return;
+        if (pdfFileId === answerSheetFileId || autoLoadedFor.current === answerSheetFileId) return;
+        autoLoadedFor.current = answerSheetFileId;
+        void loadAnswerSheet(answerSheetFileId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [answerSheetFileId, isPdfPanelOpen, isLoadingPdf, pdfFileId]);
 
     if (isLoading || !progress) {
         return <DashboardLoader />;
@@ -321,22 +367,22 @@ function RouteComponent() {
         return (
             <div className="flex min-h-screen items-center justify-center bg-neutral-50">
                 <div className="text-center">
-                    <h2 className="mb-2 text-xl font-bold text-red-600">Error Loading Progress</h2>
+                    <h2 className="mb-2 text-xl font-bold text-red-600">{t('error.title')}</h2>
                     <p className="text-neutral-600">
                         {error instanceof Error
                             ? error.message
-                            : 'Failed to load evaluation progress'}
+                            : t('error.loadFailed')}
                     </p>
                     <MyButton onClick={() => navigate({ to: -1 as any })} className="mt-4">
-                        Go Back
+                        {t('error.goBack')}
                     </MyButton>
                 </div>
             </div>
         );
     }
 
-    const userFullName = progress?.participant_details?.name || 'Loading...';
-    const assessmentName = assessmentData?.[0]?.saved_data?.name || 'Loading...';
+    const userFullName = progress?.participant_details?.name || t('common.loading');
+    const assessmentName = assessmentData?.[0]?.saved_data?.name || t('common.loading');
 
     return (
         <LayoutContainer>
@@ -348,25 +394,25 @@ function RouteComponent() {
                     {/* Header */}
                     <Card className="mb-2 flex items-center justify-between">
                         <CardContent className="p-4">
-                            <p className="mb-1 text-sm text-neutral-600">Participant</p>
+                            <p className="mb-1 text-sm text-neutral-600">{t('header.participant')}</p>
                             <p className="text-sm font-medium">{userFullName}</p>
                         </CardContent>
                         <CardContent className="p-4">
-                            <p className="mb-1 text-sm text-neutral-600">Assessment</p>
+                            <p className="mb-1 text-sm text-neutral-600">{t('header.assessment')}</p>
                             <p className="text-sm font-medium">{assessmentName}</p>
                         </CardContent>
                         <CardContent className="p-4">
-                            <p className="mb-1 text-sm text-neutral-600">Status</p>
+                            <p className="mb-1 text-sm text-neutral-600">{t('header.status')}</p>
                             <div className="flex items-center gap-2">
                                 <p className="text-sm font-semibold">{progress.overall_status}</p>
                             </div>
                         </CardContent>
                         <CardContent className="p-4">
-                            <p className="mb-1 text-sm text-neutral-600">Duration</p>
+                            <p className="mb-1 text-sm text-neutral-600">{t('header.duration')}</p>
                             <p className="text-sm font-medium">{duration}</p>
                         </CardContent>
                         <CardContent className="w-1/2 p-4">
-                            <p className="mb-1 text-sm text-neutral-600">Progress</p>
+                            <p className="mb-1 text-sm text-neutral-600">{t('header.progress')}</p>
                             <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-neutral-200">
                                 <div
                                     className="h-full bg-primary-500 transition-all"
@@ -387,7 +433,9 @@ function RouteComponent() {
                                         className="bg-red-600 hover:bg-red-700"
                                         scale={'small'}
                                     >
-                                        {stopEvaluationMutation.isPending ? 'Stopping...' : 'Stop'}
+                                        {stopEvaluationMutation.isPending
+                                            ? t('header.stopping')
+                                            : t('header.stop')}
                                     </MyButton>
                                 </CardContent>
                             )}
@@ -397,25 +445,25 @@ function RouteComponent() {
                     <Card className="my-2 flex items-center justify-between">
                         <CardContent className="flex gap-8 p-4">
                             <div>
-                                <p className="text-sm text-neutral-600">Total Score</p>
+                                <p className="text-sm text-neutral-600">{t('summary.totalScore')}</p>
                                 <p className="text-2xl font-bold">
                                     {totalScore.toFixed(1)}/{maxScore}
                                 </p>
                             </div>
                             <div>
-                                <p className="text-sm text-neutral-600">Percentage</p>
+                                <p className="text-sm text-neutral-600">{t('summary.percentage')}</p>
                                 <p className="text-2xl font-bold">
                                     {maxScore > 0 ? ((totalScore / maxScore) * 100).toFixed(1) : 0}%
                                 </p>
                             </div>
                             <div>
-                                <p className="text-sm text-neutral-600">Completed</p>
+                                <p className="text-sm text-neutral-600">{t('summary.completed')}</p>
                                 <p className="text-2xl font-bold text-green-600">
                                     {progress.progress.completed}
                                 </p>
                             </div>
                             <div>
-                                <p className="text-sm text-neutral-600">Pending</p>
+                                <p className="text-sm text-neutral-600">{t('summary.pending')}</p>
                                 <p className="text-2xl font-bold text-orange-600">
                                     {progress.progress.total - progress.progress.completed}
                                 </p>
@@ -429,25 +477,25 @@ function RouteComponent() {
                                 onClick={() => setFilterTab('all')}
                                 scale={'small'}
                             >
-                                All
+                                {t('filters.all')}
                             </MyButton>
                             <MyButton
                                 buttonType={filterTab === 'completed' ? 'primary' : 'secondary'}
                                 onClick={() => setFilterTab('completed')}
                                 scale={'small'}
                             >
-                                Completed
+                                {t('filters.completed')}
                             </MyButton>
                             <MyButton
                                 buttonType={filterTab === 'pending' ? 'primary' : 'secondary'}
                                 onClick={() => setFilterTab('pending')}
                                 scale={'small'}
                             >
-                                Pending
+                                {t('filters.pending')}
                             </MyButton>
 
                             {/* View Answer Sheet Button */}
-                            {attemptDetails && !isPdfPanelOpen && (
+                            {answerSheetFileId && !isPdfPanelOpen && (
                                 <MyButton
                                     onClick={handleViewAnswerSheet}
                                     disabled={isLoadingPdf}
@@ -456,7 +504,7 @@ function RouteComponent() {
                                     className="flex items-center gap-2"
                                 >
                                     <FileText size={16} />
-                                    {isLoadingPdf ? 'Loading...' : 'Answer Sheet'}
+                                    {isLoadingPdf ? t('answerSheet.loading') : t('answerSheet.button')}
                                 </MyButton>
                             )}
                         </CardContent>
@@ -467,8 +515,7 @@ function RouteComponent() {
                         {progress.overall_status === 'COMPLETED' && (
                             <div className="mb-2 rounded-lg border border-primary-200 bg-primary-50 p-4">
                                 <p className="text-sm font-medium text-primary-700">
-                                    AI has drafted this evaluation. Review each question, adjust any
-                                    marks or feedback, then release the result.
+                                    {t('banners.aiDrafted')}
                                 </p>
                             </div>
                         )}
@@ -480,10 +527,7 @@ function RouteComponent() {
                                     className="mt-0.5 shrink-0 text-danger-600"
                                 />
                                 <p className="text-sm font-medium text-danger-700">
-                                    {needsReviewCount} question{needsReviewCount > 1 ? 's' : ''} could
-                                    not be graded automatically and need{needsReviewCount > 1 ? '' : 's'}{' '}
-                                    your review. Open {needsReviewCount > 1 ? 'them' : 'it'} below to
-                                    enter marks before releasing the result.
+                                    {t('banners.needsReview', { count: needsReviewCount })}
                                 </p>
                             </div>
                         )}
@@ -496,7 +540,13 @@ function RouteComponent() {
                         {filteredQuestions.length === 0 && !showShimmer(progress.overall_status) ? (
                             <div className="rounded-lg bg-white p-8 text-center shadow">
                                 <p className="text-neutral-600">
-                                    No {filterTab === 'all' ? '' : filterTab} questions to display
+                                    {t(
+                                        filterTab === 'all'
+                                            ? 'emptyState.all'
+                                            : filterTab === 'completed'
+                                              ? 'emptyState.completed'
+                                              : 'emptyState.pending'
+                                    )}
                                 </p>
                             </div>
                         ) : (
@@ -556,10 +606,12 @@ function RouteComponent() {
                 {/* Right Panel - PDF Viewer */}
                 {isPdfPanelOpen && (
                     <div className="w-1/2 transition-all duration-300">
-                        <div className="sticky top-6 h-[calc(100vh-100px)] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
+                        <div
+                            className="sticky top-6 h-[calc(100vh-100px)] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg" // design-lint-ignore: sticky panel filling viewport below fixed header offset; no matching height token
+                        >
                             <div className="flex items-center justify-between border-b bg-neutral-50 px-4 py-3">
                                 <h3 className="font-semibold text-neutral-700">
-                                    Student Answer Sheet
+                                    {t('answerSheet.panelTitle')}
                                 </h3>
                                 <button
                                     onClick={() => setIsPdfPanelOpen(false)}
@@ -575,12 +627,14 @@ function RouteComponent() {
                                         className="relative h-full w-full"
                                     >
                                         <SimplePDFViewer pdfUrl={pdfUrl} />
-                                        <PdfAnnotationOverlay
-                                            pdfContainerEl={pdfContainerEl}
-                                            layoutMap={layoutMap}
-                                            annotations={annotations}
-                                            scores={questionScores}
-                                        />
+                                        {showOverlay && (
+                                            <PdfAnnotationOverlay
+                                                pdfContainerEl={pdfContainerEl}
+                                                layoutMap={layoutMap}
+                                                annotations={annotations}
+                                                scores={questionScores}
+                                            />
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="flex h-full items-center justify-center">
@@ -613,6 +667,7 @@ function QuestionCard({
     questionDetails,
     currentRubricVersion,
 }: QuestionCardProps) {
+    const { t } = useTranslation('assessmentEvaluationAi');
     const queryClient = useQueryClient();
     const isCompleted = question.status === 'COMPLETED';
     const isFailed = question.status === 'FAILED';
@@ -632,11 +687,11 @@ function QuestionCard({
                 feedback: feedbackInput,
             }),
         onSuccess: () => {
-            toast.success('Marks updated');
+            toast.success(t('toasts.marksUpdated'));
             setIsEditing(false);
             queryClient.invalidateQueries({ queryKey: ['EVALUATION_PROGRESS', processId] });
         },
-        onError: () => toast.error('Failed to update marks. Please try again.'),
+        onError: () => toast.error(t('toasts.marksUpdateFailed')),
     });
 
     // Parse evaluation_json to get correct option IDs
@@ -674,11 +729,13 @@ function QuestionCard({
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div className="flex size-10 items-center justify-center rounded-lg bg-white font-bold">
-                            Q{question.question_number}
+                            {t('question.qLabel', { number: question.question_number })}
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h3 className="font-semibold">Question {question.question_number}</h3>
+                                <h3 className="font-semibold">
+                                    {t('question.title', { number: question.question_number })}
+                                </h3>
                                 <RubricChangedBadge
                                     evaluationVersion={question.rubric_version}
                                     currentVersion={currentRubricVersion}
@@ -686,14 +743,14 @@ function QuestionCard({
                             </div>
                             {isCompleted && (
                                 <p className="text-sm text-neutral-600">
-                                    {question.is_edited ? 'Reviewed by you · ' : ''}
-                                    Completed {completedTime}
+                                    {question.is_edited ? t('question.reviewedPrefix') : ''}
+                                    {t('question.completedAt', { time: completedTime })}
                                 </p>
                             )}
                             {isFailed && (
                                 <>
                                     <p className="text-sm font-medium text-red-600">
-                                        AI could not grade this — needs your review
+                                        {t('question.failedGradeMessage')}
                                     </p>
                                     {question.error_detail && (
                                         <p className="mt-0.5 font-mono text-xs text-neutral-500">
@@ -703,7 +760,7 @@ function QuestionCard({
                                 </>
                             )}
                             {!isCompleted && !isFailed && (
-                                <p className="text-sm text-neutral-600">Pending</p>
+                                <p className="text-sm text-neutral-600">{t('question.pendingStatus')}</p>
                             )}
                         </div>
                     </div>
@@ -712,7 +769,7 @@ function QuestionCard({
                             <>
                                 {question.is_edited && (
                                     <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
-                                        Edited
+                                        {t('question.editedBadge')}
                                     </span>
                                 )}
                                 <div className="text-right">
@@ -726,7 +783,7 @@ function QuestionCard({
                         ) : isFailed ? (
                             <span className="flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
                                 <WarningCircle size={16} weight="fill" />
-                                Needs review
+                                {t('question.needsReviewBadge')}
                             </span>
                         ) : (
                             <Circle size={24} className="animate-spin text-orange-500" />
@@ -752,13 +809,13 @@ function QuestionCard({
                                     <div>
                                         <p className="text-sm font-medium text-neutral-800">
                                             {isFailed
-                                                ? 'This question was not graded automatically.'
-                                                : 'AI-drafted marks'}
+                                                ? t('teacherReview.failedTitle')
+                                                : t('teacherReview.aiDraftedTitle')}
                                         </p>
                                         <p className="text-xs text-neutral-500">
                                             {isFailed
-                                                ? 'Enter marks and feedback to grade it yourself.'
-                                                : 'Adjust the marks or feedback if you disagree with the AI.'}
+                                                ? t('teacherReview.failedHint')
+                                                : t('teacherReview.aiDraftedHint')}
                                         </p>
                                     </div>
                                     <MyButton
@@ -776,14 +833,16 @@ function QuestionCard({
                                         }}
                                     >
                                         <PencilSimple size={14} className="mr-1" />
-                                        {isFailed ? 'Grade manually' : 'Edit'}
+                                        {isFailed
+                                            ? t('teacherReview.gradeManually')
+                                            : t('teacherReview.edit')}
                                     </MyButton>
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-3">
                                     <div className="flex items-center gap-2">
                                         <label className="text-sm font-medium text-neutral-700">
-                                            Marks
+                                            {t('teacherReview.marksLabel')}
                                         </label>
                                         <input
                                             type="number"
@@ -800,14 +859,14 @@ function QuestionCard({
                                     </div>
                                     <div>
                                         <label className="mb-1 block text-sm font-medium text-neutral-700">
-                                            Feedback
+                                            {t('teacherReview.feedbackLabel')}
                                         </label>
                                         <textarea
                                             value={feedbackInput}
                                             onChange={(e) => setFeedbackInput(e.target.value)}
                                             rows={3}
                                             className="w-full rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                                            placeholder="Feedback for this question"
+                                            placeholder={t('teacherReview.feedbackPlaceholder')}
                                         />
                                     </div>
                                     <div className="flex justify-end gap-2">
@@ -818,7 +877,7 @@ function QuestionCard({
                                             onClick={() => setIsEditing(false)}
                                             disabled={overrideMutation.isPending}
                                         >
-                                            Cancel
+                                            {t('teacherReview.cancel')}
                                         </MyButton>
                                         <MyButton
                                             type="button"
@@ -827,7 +886,9 @@ function QuestionCard({
                                             onClick={() => overrideMutation.mutate()}
                                             disabled={overrideMutation.isPending}
                                         >
-                                            {overrideMutation.isPending ? 'Saving...' : 'Save marks'}
+                                            {overrideMutation.isPending
+                                                ? t('teacherReview.saving')
+                                                : t('teacherReview.save')}
                                         </MyButton>
                                     </div>
                                 </div>
@@ -839,7 +900,7 @@ function QuestionCard({
                     {questionDetails?.question?.content && (
                         <div>
                             <h4 className="mb-2 text-xs font-semibold uppercase text-neutral-500">
-                                Question
+                                {t('details.questionHeading')}
                             </h4>
 
                             <TipTapEditor
@@ -856,7 +917,7 @@ function QuestionCard({
                         correctOptionIds.length > 0 && (
                             <div>
                                 <h4 className="mb-2 text-xs font-semibold uppercase text-neutral-500">
-                                    Correct Answer
+                                    {t('details.correctAnswerHeading')}
                                 </h4>
                                 <div className="rounded-md bg-green-50 p-3">
                                     {questionDetails.options_with_explanation
@@ -878,7 +939,7 @@ function QuestionCard({
                     {question.extracted_answer && (
                         <div>
                             <h4 className="mb-2 text-xs font-semibold uppercase text-neutral-500">
-                                Student's Answer
+                                {t('details.studentAnswerHeading')}
                             </h4>
                             <Card className="rounded-sm p-4">
                                 <LatexRenderer
@@ -893,7 +954,7 @@ function QuestionCard({
                     {question.feedback && (
                         <div>
                             <h4 className="mb-2 text-xs font-semibold uppercase text-neutral-500">
-                                Feedback
+                                {t('details.feedbackHeading')}
                             </h4>
                             <p className="rounded-md bg-neutral-50 p-3 text-sm">
                                 {question.feedback}
@@ -905,20 +966,20 @@ function QuestionCard({
                     {question.evaluation_details_json?.criteria_breakdown && (
                         <div>
                             <h4 className="mb-3 text-xs font-semibold uppercase text-neutral-500">
-                                Grading Breakdown
+                                {t('details.gradingBreakdownHeading')}
                             </h4>
                             <div className="overflow-hidden rounded-md border border-neutral-200">
                                 <table className="w-full">
                                     <thead className="bg-neutral-100">
                                         <tr>
                                             <th className="p-3 text-left text-xs font-semibold uppercase text-neutral-600">
-                                                Criteria
+                                                {t('table.criteria')}
                                             </th>
                                             <th className="p-3 text-left text-xs font-semibold uppercase text-neutral-600">
-                                                Reason
+                                                {t('table.reason')}
                                             </th>
                                             <th className="w-24 p-3 text-right text-xs font-semibold uppercase text-neutral-600">
-                                                Marks
+                                                {t('table.marks')}
                                             </th>
                                         </tr>
                                     </thead>
@@ -943,7 +1004,7 @@ function QuestionCard({
                                                 colSpan={2}
                                                 className="p-3 text-right text-sm font-semibold text-primary-700"
                                             >
-                                                Total Marks Awarded:
+                                                {t('table.totalMarksAwarded')}
                                             </td>
                                             <td className="p-3 text-right text-sm font-bold text-primary-700">
                                                 {question.marks_awarded?.toFixed(1) || 0}

@@ -1,0 +1,140 @@
+{
+    "page": {
+        "heading": "विज्ञापन प्लेटफ़ॉर्म इंटीग्रेशन",
+        "description": "अपनी ऑडियंस में लीड कैप्चर करने के लिए Google Ads और Meta Lead Ads को कनेक्ट करें। हर फ़ॉर्म/कैंपेन एक ऑडियंस से जुड़ता है — कई ऑडियंस के लिए कई कनेक्टर जोड़ें।"
+    },
+    "activeConnectors": {
+        "title": "सक्रिय कनेक्टर",
+        "description": "हर पंक्ति एक विज्ञापन प्लेटफ़ॉर्म फ़ॉर्म को एक ऑडियंस से जोड़ती है।",
+        "loading": "कनेक्टर लोड हो रहे हैं...",
+        "loadError": "कनेक्टर लोड नहीं हो सके। हो सकता है इंटीग्रेशन API अभी डिप्लॉय न हुआ हो।"
+    },
+    "addConnector": {
+        "title": "नया कनेक्टर जोड़ें",
+        "metaButton": "Meta Lead Ads",
+        "googleButton": "Google Lead Forms"
+    },
+    "table": {
+        "emptyTitle": "अभी तक कोई कनेक्टर नहीं",
+        "emptyDescription": "लीड प्राप्त करना शुरू करने के लिए नीचे एक Meta या Google कनेक्टर जोड़ें।",
+        "headers": {
+            "platform": "प्लेटफ़ॉर्म",
+            "formCampaign": "फ़ॉर्म / कैंपेन",
+            "audience": "ऑडियंस",
+            "source": "स्रोत",
+            "status": "स्थिति",
+            "webhook": "वेबहुक"
+        },
+        "statusActive": "सक्रिय",
+        "statusActionNeeded": "कार्रवाई आवश्यक",
+        "copyWebhookUrl": "वेबहुक URL कॉपी करें",
+        "autoLabel": "ऑटो",
+        "syncNow": "लीड अभी सिंक करें (Meta से पिछले 24 घंटे की लीड लाएं)",
+        "testConnection": "कनेक्शन परखें",
+        "resubscribeTooltip": "फिर से सब्सक्राइब करें (पूर्ण नियंत्रण देने के बाद)",
+        "editDefaultValues": "डिफ़ॉल्ट मान संपादित करें",
+        "deactivateConnector": "कनेक्टर निष्क्रिय करें"
+    },
+    "vendor": {
+        "meta": "Meta",
+        "google": "Google"
+    },
+    "health": {
+        "overall": {
+            "verified": "सत्यापित",
+            "degraded": "क्षीण",
+            "actionRequired": "कार्रवाई आवश्यक",
+            "broken": "खराब",
+            "unknown": "अज्ञात"
+        },
+        "dialogTitle": "कनेक्शन परीक्षण",
+        "statusLabel": "स्थिति:",
+        "lastLead": "अंतिम लीड",
+        "resubscribe": "फिर से सब्सक्राइब करें",
+        "close": "बंद करें"
+    },
+    "editDialog": {
+        "title": "डिफ़ॉल्ट मान संपादित करें",
+        "description": "इस कनेक्टर से आने वाली हर लीड पर लागू होने वाले की/वैल्यू जोड़े। हर की एक ऑडियंस कस्टम फ़ील्ड के नाम से मेल खानी चाहिए (अन्यथा वह वैल्यू फ़ॉर्म के कच्चे डेटा के रूप में ही आगे बढ़ती है)। फ़ॉर्म से आने वाले मान हमेशा डिफ़ॉल्ट मानों पर प्राथमिकता पाते हैं।",
+        "keyHeader": "की",
+        "valueHeader": "वैल्यू",
+        "keyPlaceholder": "ऑडियंस फ़ील्ड का नाम",
+        "valuePlaceholder": "लागू करने के लिए वैल्यू",
+        "removeRow": "पंक्ति हटाएं",
+        "addField": "फ़ील्ड जोड़ें",
+        "duplicateKeys": "डुप्लीकेट की मिलीं — हर की के लिए केवल अंतिम वैल्यू रखी जाएगी।",
+        "cancel": "रद्द करें",
+        "saving": "सहेजा जा रहा है…",
+        "save": "सहेजें"
+    },
+    "fieldMapping": {
+        "label": "फ़ील्ड मैपिंग",
+        "description": "हर प्लेटफ़ॉर्म फ़ील्ड को एक ऑडियंस कस्टम फ़ील्ड से मैप करें। बिना मैप की गई फ़ील्ड अपने मूल नाम के साथ बनी रहती हैं।",
+        "platformField": "प्लेटफ़ॉर्म फ़ील्ड",
+        "audienceField": "ऑडियंस फ़ील्ड",
+        "skipOption": "— छोड़ें —"
+    },
+    "google": {
+        "keyLabel": "Google Key",
+        "keyPlaceholder": "उदा. my-leads-abc123",
+        "audienceLabel": "ऑडियंस",
+        "selectAudiencePlaceholder": "ऑडियंस चुनें...",
+        "saveError": "Google कनेक्टर सहेजने में विफल",
+        "saving": "सहेजा जा रहा है...",
+        "save": "सहेजें"
+    },
+    "meta": {
+        "sessionExpiredReconnect": "आपका Meta सेशन समाप्त हो गया है। कृपया Meta को फिर से कनेक्ट करें।",
+        "oauthFailed": "Meta OAuth विफल: {{error}}",
+        "startOauthError": "Meta OAuth शुरू करने में विफल",
+        "sessionExpiredRetry": "आपका Meta सेशन समाप्त हो गया है। कृपया Meta को फिर से कनेक्ट करके पुनः प्रयास करें।",
+        "saveError": "Meta कनेक्टर सहेजने में विफल",
+        "pageAdded": "\"{{name}}\" Page जोड़ी गई",
+        "addPageError": "वह Page नहीं जोड़ी जा सकी। Page ID दोबारा जांचें।",
+        "sessionInvalid": "सेशन समाप्त या अमान्य है। कृपया फिर से कनेक्ट करें।",
+        "connectButton": "Meta खाता कनेक्ट करें",
+        "redirecting": "रीडायरेक्ट हो रहा है...",
+        "connectHint": "कनेक्ट करने के बाद, आप कई फ़ॉर्म जोड़ सकते हैं — हर एक अलग ऑडियंस से जुड़ा हुआ।",
+        "loadingPages": "पेज लोड हो रहे हैं...",
+        "connectedBanner": "Meta कनेक्ट हो गया है। नीचे फ़ॉर्म → ऑडियंस मैपिंग जोड़ें। आप कई जोड़ सकते हैं।",
+        "pageLabel": "Facebook Page",
+        "selectPagePlaceholder": "एक Page चुनें...",
+        "needsFullControl": " — पूर्ण नियंत्रण आवश्यक",
+        "noPageListedHint": "आपकी Page सूची में नहीं है। इसकी Page ID पेस्ट करें (यह Facebook कनेक्ट डायलॉग में, या Page Settings → About में दिखती है)।",
+        "pageNotListedHint": "Page सूची में नहीं है? इसे ID से जोड़ें।",
+        "pageIdPlaceholder": "उदा. 336149566246129",
+        "addingPage": "जोड़ा जा रहा है...",
+        "addPage": "Page जोड़ें",
+        "leadFormLabel": "लीड जनरेशन फ़ॉर्म",
+        "loadingForms": "फ़ॉर्म लोड हो रहे हैं...",
+        "selectFormPlaceholder": "एक फ़ॉर्म चुनें...",
+        "pasteFormIdPlaceholder": "अपनी लीड फ़ॉर्म ID पेस्ट करें",
+        "selectPageFirstPlaceholder": "पहले एक Page चुनें",
+        "cantAutoListForms": "इस Page के फ़ॉर्म अपने आप सूचीबद्ध नहीं हो सकते। लीड फ़ॉर्म ID पेस्ट करें — यह Meta Business Suite → All tools → Instant Forms में (या अपने विज्ञापन के लीड फ़ॉर्म में) मिलेगी। मैपिंग होते ही लीड कैप्चर काम करने लगेगा।",
+        "audienceLabel": "ऑडियंस",
+        "selectAudiencePlaceholder": "ऑडियंस चुनें...",
+        "sourceTypeLabel": "स्रोत प्रकार",
+        "facebook": "Facebook",
+        "instagram": "Instagram",
+        "stampFieldLabel": "ऑडियंस फ़ील्ड में मान भरें",
+        "noneOption": "— कोई नहीं —",
+        "valueLabel": "वैल्यू",
+        "valuePlaceholder": "लागू करने के लिए वैल्यू",
+        "stampValueHint": "फ़ॉर्म के नाम के पहले शब्द से पहले से भरा गया है। ऊपर कोई फ़ील्ड चुने जाने पर यह इस कनेक्टर की हर लीड पर लागू होता है।",
+        "saving": "सहेजा जा रहा है...",
+        "save": "सहेजें"
+    },
+    "toasts": {
+        "metaAccountConnected": "Meta खाता कनेक्ट हो गया",
+        "connectorDeactivated": "कनेक्टर निष्क्रिय कर दिया गया",
+        "deactivateFailed": "कनेक्टर निष्क्रिय करने में विफल",
+        "healthCheckFailed": "कनेक्शन परीक्षण नहीं चल सका",
+        "resubscribeFailedFallback": "फिर से सब्सक्राइब करना विफल रहा",
+        "syncFailedFallback": "सिंक विफल रहा",
+        "connectorUpdated": "कनेक्टर अपडेट कर दिया गया",
+        "updateFailedFallback": "कनेक्टर अपडेट करने में विफल",
+        "noNewLeads": "पिछले 24 घंटों में Meta से कोई नई लीड नहीं",
+        "syncedLeads_one": "Meta से {{count}} लीड सिंक की गई",
+        "syncedLeads_other": "Meta से {{count}} लीड सिंक की गईं"
+    }
+}

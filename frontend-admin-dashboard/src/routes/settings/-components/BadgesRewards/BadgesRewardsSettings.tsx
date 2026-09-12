@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     BookOpen,
@@ -90,6 +91,7 @@ function BadgeIcon({ name, className }: { name: string; className?: string }) {
 }
 
 export default function BadgesRewardsSettings() {
+    const { t } = useTranslation('settingsBadgesRewards');
     const queryClient = useQueryClient();
     const [badges, setBadges] = useState<BadgeDefinitionConfig[]>([]);
     const [enabled, setEnabled] = useState(false);
@@ -121,11 +123,11 @@ export default function BadgesRewardsSettings() {
             publicShowFullNames: boolean;
         }) => saveBadgesSettings(vars.badges, vars.enabled, vars.scoring, vars.publicShowFullNames),
         onSuccess: () => {
-            toast.success('Badges saved');
+            toast.success(t('toasts.badgesSaved'));
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['badges-settings'] });
         },
-        onError: () => toast.error('Failed to save badges'),
+        onError: () => toast.error(t('toasts.saveFailed')),
     });
 
     const toggleEnabled = (v: boolean) => {
@@ -156,10 +158,10 @@ export default function BadgesRewardsSettings() {
             );
             if (fileId) {
                 updateBadge(index, { icon: fileId });
-                toast.success('Image uploaded');
+                toast.success(t('toasts.imageUploaded'));
             }
         } catch {
-            toast.error('Failed to upload image');
+            toast.error(t('toasts.uploadFailed'));
         }
     };
 
@@ -223,20 +225,20 @@ export default function BadgesRewardsSettings() {
             })
         );
         setHasChanges(true);
-        toast.success('Switched badges to library artwork');
+        toast.success(t('toasts.libraryArtApplied'));
     };
 
     const handleSave = () => {
         const invalid = badges.find((b) => !b.name.trim());
         if (invalid) {
-            toast.error('Every badge needs a name');
+            toast.error(t('toasts.nameRequired'));
             return;
         }
         save({ badges, enabled, scoring, publicShowFullNames });
     };
 
     if (isLoading) {
-        return <div className="flex items-center justify-center p-8">Loading...</div>;
+        return <div className="flex items-center justify-center p-8">{t('loading')}</div>;
     }
 
     return (
@@ -245,22 +247,18 @@ export default function BadgesRewardsSettings() {
                 <div className="space-y-1">
                     <h1 className="flex items-center gap-2 text-lg font-bold">
                         <MedalHeader className="size-6" weight="fill" />
-                        Badges &amp; Rewards
+                        {t('header.title')}
                     </h1>
-                    <p className="text-sm text-neutral-500">
-                        Define the achievement badges learners can unlock on the gamified
-                        dashboard. Pick what each badge is named, how it looks, and the condition
-                        that unlocks it.
-                    </p>
+                    <p className="text-sm text-neutral-500">{t('header.description')}</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <MyButton buttonType="secondary" onClick={resetDefaults} disabled={saving}>
                         <ArrowCounterClockwise className="mr-2 size-4" />
-                        Reset to defaults
+                        {t('header.resetDefaults')}
                     </MyButton>
                     <MyButton onClick={handleSave} disabled={saving || !hasChanges}>
                         <FloppyDisk className="mr-2 size-4" />
-                        {saving ? 'Saving...' : 'Save Changes'}
+                        {saving ? t('header.saving') : t('header.saveChanges')}
                     </MyButton>
                 </div>
             </div>
@@ -268,14 +266,8 @@ export default function BadgesRewardsSettings() {
             <Card>
                 <CardContent className="flex items-center justify-between gap-4 p-4">
                     <div className="space-y-0.5">
-                        <Label className="text-sm font-semibold">
-                            Enable Badges &amp; Leaderboard
-                        </Label>
-                        <p className="text-xs text-neutral-500">
-                            Master switch. When off, badges and the course leaderboard are hidden
-                            everywhere — across the learner app and the admin Learning Reports
-                            leaderboard tab.
-                        </p>
+                        <Label className="text-sm font-semibold">{t('enableCard.label')}</Label>
+                        <p className="text-xs text-neutral-500">{t('enableCard.description')}</p>
                     </div>
                     <Switch checked={enabled} onCheckedChange={toggleEnabled} />
                 </CardContent>
@@ -283,18 +275,16 @@ export default function BadgesRewardsSettings() {
 
             {hasChanges && (
                 <div className="rounded-lg border border-warning-200 bg-warning-50 p-3">
-                    <p className="text-sm text-warning-700">
-                        You have unsaved changes. Don&apos;t forget to save.
-                    </p>
+                    <p className="text-sm text-warning-700">{t('unsavedBanner.text')}</p>
                 </div>
             )}
 
             {!enabled && (
                 <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
                     <p className="text-sm text-neutral-600">
-                        Badges &amp; leaderboard are currently <strong>disabled</strong> for this
-                        institute. Turn the switch on to configure badges, points and the
-                        leaderboard.
+                        {t('disabledBanner.before')}{' '}
+                        <strong>{t('disabledBanner.disabled')}</strong>{' '}
+                        {t('disabledBanner.after')}
                     </p>
                 </div>
             )}
@@ -305,13 +295,9 @@ export default function BadgesRewardsSettings() {
                 <CardContent className="space-y-4 p-4">
                     <div>
                         <h2 className="text-base font-semibold text-neutral-800">
-                            Points &amp; Scoring
+                            {t('scoring.title')}
                         </h2>
-                        <p className="text-sm text-neutral-500">
-                            How many points each action is worth. These drive the learner&apos;s
-                            points &amp; level and the course leaderboard ranking. Set a factor to 0
-                            to ignore it.
-                        </p>
+                        <p className="text-sm text-neutral-500">{t('scoring.description')}</p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                         {SCORING_FIELDS.map((f) => (
@@ -327,7 +313,9 @@ export default function BadgesRewardsSettings() {
                                         }
                                         className="w-24"
                                     />
-                                    <span className="text-xs text-neutral-400">points</span>
+                                    <span className="text-xs text-neutral-400">
+                                        {t('scoring.pointsUnit')}
+                                    </span>
                                 </div>
                                 <p className="text-xs text-neutral-400">{f.help}</p>
                             </div>
@@ -341,13 +329,10 @@ export default function BadgesRewardsSettings() {
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <h2 className="text-base font-semibold text-neutral-800">
-                                Show full names on leaderboards
+                                {t('leaderboardNames.title')}
                             </h2>
                             <p className="text-sm text-neutral-500">
-                                By default leaderboards show learners as anonymized initials
-                                (e.g. &quot;A.G.&quot;). Turn this on to show full names on both the
-                                shareable public link and the in-app leaderboard learners see. Each
-                                learner&apos;s own row always reads &quot;You&quot;.
+                                {t('leaderboardNames.description')}
                             </p>
                         </div>
                         <Switch
@@ -367,11 +352,10 @@ export default function BadgesRewardsSettings() {
                         <Images className="mt-0.5 size-5 shrink-0 text-primary-500" weight="fill" />
                         <div>
                             <p className="text-sm font-semibold text-neutral-800">
-                                Show ready-made artwork instead of plain icons
+                                {t('libraryArt.title')}
                             </p>
                             <p className="text-xs text-neutral-500">
-                                Give every badge a polished tiered look, matched to what unlocks it.
-                                You can still fine-tune any badge from the library.
+                                {t('libraryArt.description')}
                             </p>
                         </div>
                     </div>
@@ -381,7 +365,7 @@ export default function BadgesRewardsSettings() {
                         className="shrink-0"
                     >
                         <Images className="mr-2 size-4" />
-                        Use library artwork
+                        {t('libraryArt.button')}
                     </MyButton>
                 </div>
             )}
@@ -390,12 +374,10 @@ export default function BadgesRewardsSettings() {
                 <Card>
                     <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
                         <Trophy className="size-8 text-neutral-300" weight="fill" />
-                        <p className="text-sm text-neutral-500">
-                            No badges configured. Add one to get started.
-                        </p>
+                        <p className="text-sm text-neutral-500">{t('emptyState.text')}</p>
                         <MyButton buttonType="secondary" onClick={addBadge}>
                             <Plus className="mr-2 size-4" />
-                            Add Badge
+                            {t('addBadge')}
                         </MyButton>
                     </CardContent>
                 </Card>
@@ -428,17 +410,17 @@ export default function BadgesRewardsSettings() {
                                     <div className="min-w-0 flex-1 pt-1">
                                         <div className="flex items-center gap-2">
                                             <p className="truncate text-base font-semibold text-neutral-800">
-                                                {badge.name.trim() || 'Untitled badge'}
+                                                {badge.name.trim() || t('badgeCard.untitled')}
                                             </p>
                                             {!badge.enabled && (
                                                 <span className="shrink-0 rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-600">
-                                                    Hidden
+                                                    {t('badgeCard.hidden')}
                                                 </span>
                                             )}
                                         </div>
                                         <p className="truncate text-sm text-neutral-500">
                                             {badge.description.trim() ||
-                                                'Add a short description below'}
+                                                t('badgeCard.defaultDescription')}
                                         </p>
                                         {triggerLabel && (
                                             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-600">
@@ -456,14 +438,16 @@ export default function BadgesRewardsSettings() {
                                                 }
                                             />
                                             <span className="w-6 text-xs text-neutral-500">
-                                                {badge.enabled ? 'On' : 'Off'}
+                                                {badge.enabled
+                                                    ? t('badgeCard.on')
+                                                    : t('badgeCard.off')}
                                             </span>
                                         </div>
                                         <button
                                             type="button"
                                             onClick={() => removeBadge(index)}
                                             className="rounded-md p-2 text-danger-500 hover:bg-danger-50"
-                                            aria-label="Delete badge"
+                                            aria-label={t('badgeCard.deleteAriaLabel')}
                                         >
                                             <Trash className="size-4" />
                                         </button>
@@ -474,17 +458,21 @@ export default function BadgesRewardsSettings() {
                                 <div className="space-y-4 p-4">
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label className="text-sm">Badge name</Label>
+                                            <Label className="text-sm">
+                                                {t('badgeCard.nameLabel')}
+                                            </Label>
                                             <Input
                                                 value={badge.name}
-                                                placeholder="e.g. First Steps"
+                                                placeholder={t('badgeCard.namePlaceholder')}
                                                 onChange={(e) =>
                                                     updateBadge(index, { name: e.target.value })
                                                 }
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label className="text-sm">Icon</Label>
+                                            <Label className="text-sm">
+                                                {t('badgeCard.iconLabel')}
+                                            </Label>
                                             <div className="flex items-center gap-2">
                                                 <div className="flex-1">
                                                     <Select
@@ -498,7 +486,11 @@ export default function BadgesRewardsSettings() {
                                                         }
                                                     >
                                                         <SelectTrigger>
-                                                            <SelectValue placeholder="Custom image" />
+                                                            <SelectValue
+                                                                placeholder={t(
+                                                                    'badgeCard.iconPlaceholder'
+                                                                )}
+                                                            />
                                                         </SelectTrigger>
                                                         <SelectContent>
                                                             {BADGE_ICON_NAMES.map((name) => (
@@ -522,7 +514,7 @@ export default function BadgesRewardsSettings() {
                                                     }
                                                 />
                                                 <label
-                                                    title="Upload a custom image"
+                                                    title={t('badgeCard.uploadTitle')}
                                                     className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-neutral-200 text-neutral-500 hover:bg-neutral-50"
                                                 >
                                                     <UploadSimple className="size-4" />
@@ -541,19 +533,23 @@ export default function BadgesRewardsSettings() {
                                             </div>
                                             <p className="text-xs text-neutral-400">
                                                 {isLibraryToken(badge.icon)
-                                                    ? 'Library badge selected.'
+                                                    ? t('badgeCard.iconHint.library')
                                                     : !isBuiltInBadgeIcon(badge.icon) && badge.icon
-                                                      ? 'Custom image uploaded.'
-                                                      : 'Pick an icon, choose from the library, or upload your own.'}
+                                                      ? t('badgeCard.iconHint.custom')
+                                                      : t('badgeCard.iconHint.default')}
                                             </p>
                                         </div>
                                     </div>
 
                                     <div className="space-y-2">
-                                        <Label className="text-sm">Description</Label>
+                                        <Label className="text-sm">
+                                            {t('badgeCard.descriptionLabel')}
+                                        </Label>
                                         <Input
                                             value={badge.description}
-                                            placeholder="Shown on hover, e.g. Maintain a 7-day streak"
+                                            placeholder={t(
+                                                'badgeCard.descriptionPlaceholder'
+                                            )}
                                             onChange={(e) =>
                                                 updateBadge(index, {
                                                     description: e.target.value,
@@ -564,7 +560,9 @@ export default function BadgesRewardsSettings() {
 
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label className="text-sm">Unlocks based on</Label>
+                                            <Label className="text-sm">
+                                                {t('badgeCard.triggerLabel')}
+                                            </Label>
                                             <Select
                                                 value={badge.trigger}
                                                 onValueChange={(v) =>
@@ -590,7 +588,9 @@ export default function BadgesRewardsSettings() {
                                         </div>
                                         <div className="space-y-2">
                                             <Label className="text-sm">
-                                                Threshold ({meta.unit})
+                                                {t('badgeCard.thresholdLabel', {
+                                                    unit: meta.unit,
+                                                })}
                                             </Label>
                                             <Input
                                                 type="number"
@@ -615,7 +615,7 @@ export default function BadgesRewardsSettings() {
             {badges.length > 0 && (
                 <MyButton buttonType="secondary" onClick={addBadge}>
                     <Plus className="mr-2 size-4" />
-                    Add Badge
+                    {t('addBadge')}
                 </MyButton>
             )}
                 </>

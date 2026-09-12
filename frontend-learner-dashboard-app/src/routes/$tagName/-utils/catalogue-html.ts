@@ -20,14 +20,24 @@
  */
 import DOMPurify from 'dompurify';
 
-/** Structural/text tags only — no script/style/iframe/svg/media/form inputs. */
+/** Structural/text tags only — no script/style/iframe/svg/media/form inputs.
+ *
+ *  del/ins/strike are here for one reason: a struck-through original price is
+ *  the single most common thing a marketing page needs, and `<del>` is what
+ *  every author (human or AI) writes for it. Leaving it out did not fail
+ *  loudly — DOMPurify keeps the CHILDREN of a disallowed tag, so
+ *  `<del>₹1,599</del>` rendered as bare `₹1,599`, and the `.price del { … }`
+ *  rule in the same blob matched nothing. The page looked like it had simply
+ *  ignored the edit, so it got "fixed" by hand over and over. They are
+ *  presentational text-level elements with no scripting surface; their `cite`
+ *  attribute is deliberately NOT allowed (it is a URL). */
 const ALLOWED_TAGS = [
     'a', 'article', 'aside', 'b', 'blockquote', 'br', 'button', 'caption',
-    'cite', 'code', 'dd', 'div', 'dl', 'dt', 'em', 'figcaption', 'figure',
-    'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'i', 'img',
-    'li', 'mark', 'nav', 'ol', 'p', 'pre', 's', 'section', 'small', 'span',
-    'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead',
-    'time', 'tr', 'u', 'ul',
+    'cite', 'code', 'dd', 'del', 'div', 'dl', 'dt', 'em', 'figcaption',
+    'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr',
+    'i', 'img', 'ins', 'li', 'mark', 'nav', 'ol', 'p', 'pre', 's', 'section',
+    'small', 'span', 'strike', 'strong', 'sub', 'sup', 'table', 'tbody', 'td',
+    'tfoot', 'th', 'thead', 'time', 'tr', 'u', 'ul',
 ];
 
 const ALLOWED_ATTR = [
@@ -77,8 +87,20 @@ const MEDIA_HOST_RE =
     /^https:\/\/(([a-z0-9-]+\.)*vacademy\.io|vacademy-media-storage-public\.s3\.amazonaws\.com|d1om4dxj9e7kkd\.cloudfront\.net)\//i;
 
 const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
+// The WHOLE statement, not just the keyword. Removing only `@import` left
+// ` "tailwindcss";` behind, and CSS error recovery treats that junk as the
+// prelude of a rule — consuming everything up to the NEXT {...} block and
+// dropping it. On a real imported page the next block was the :host variable
+// palette, so one ghost token silently deleted every colour on the page.
+// Found by reading the parsed CSSOM over CDP: the rule was in textContent
+// and absent from sheet.cssRules.
+const CSS_IMPORT_STMT_RE = /@import\b[^;]*(;|$)/gi;
 const CSS_URL_RE = /url\s*\([^)]*\)/gi;
-const CSS_BANNED_RE = /@import\b|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/gi;
+// `behavior:` targets the legacy IE binding property. Without a boundary it
+// also matches INSIDE scroll-behavior, overscroll-behavior and
+// transition-behavior, truncating them to `scroll- smooth` — caught by
+// simulating a real page's CSS, where it silently killed smooth scrolling.
+const CSS_BANNED_RE = /@import\b|expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript\s*:/gi;
 const MAX_HTML = 30000;
 const MAX_CSS = 20000;
 
@@ -91,15 +113,21 @@ export const scrubCss = (css: string, page = false): string =>
     css
         .slice(0, page ? MAX_PAGE_CSS : MAX_CSS)
         .replace(CSS_COMMENT_RE, '')
-        // :root does not match inside a shadow root — it selects the document
-        // element, which is outside the boundary. A pasted page almost always
-        // defines its palette there (`:root { --brand: … }`), so every rule
-        // using those variables silently loses its value: a real bundle we
-        // imported had 17 custom properties on :root and 257 rules reading
-        // them, and the whole design fell back to nothing. :host is the shadow
-        // equivalent. Page mode only — an existing htmlBlock with dead :root
-        // rules should not suddenly start applying them.
+        .replace(CSS_IMPORT_STMT_RE, '')
+        // :root, html and body cannot match inside a shadow root: the first two
+        // select the document element and the third does not exist there at
+        // all — the content sits directly under the root. A pasted page uses
+        // all three for exactly the things you notice when they are missing.
+        // The real bundle we imported put 17 custom properties on :root (read
+        // by 257 rules) and its page background, text colour and base font on
+        // `body`. Rewriting :root alone restored the VARIABLES while the rule
+        // that USED them still matched nothing, so the page stayed grey.
+        // :host is the shadow equivalent of all three.
+        //
+        // Page mode only — an existing htmlBlock carrying dead :root/body
+        // rules should not suddenly start applying them to a published page.
         .replace(page ? /(^|[\s,{}])\:root\b/g : /(?!)/g, '$1:host')
+        .replace(page ? /(^|[\s,{}>+~])(?:html|body)\b/g : /(?!)/g, '$1:host')
         // Keep url() when it points at our own media (an uploaded @font-face
         // or background); strip every other host. Blanket stripping meant a
         // pasted page always lost its custom fonts.

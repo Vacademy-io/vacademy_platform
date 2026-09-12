@@ -26,6 +26,12 @@ public class BasicAssessmentDetailsDTO {
     private Boolean hasOmrMode;
     private Integer defaultReattemptCount = 1;
     private String resultType;
+
+    // Evaluate every submission with AI, without a teacher pressing anything (V43).
+    // Null means "not sent" and leaves the stored value alone, so a partial basic-details
+    // save cannot silently switch credit-spending on or off.
+    private Boolean aiEvaluationEnabled;
+    private String aiEvaluationModel;
     private String source;
     private String sourceId;
 

@@ -24,7 +24,10 @@ import vacademy.io.common.auth.filter.JwtAuthFilter;
 @EnableMethodSecurity
 public class CommunityApplicationSecurityConfig {
 
-    private static final String[] INTERNAL_PATHS = {};
+    private static final String[] INTERNAL_PATHS = {
+            // Service-to-service only (HMAC via InternalAuthFilter) — never exposed to browsers.
+            // admin_core_service's institute-facing app-status endpoint reads through this.
+            "/community-service/internal/**" };
 
     private static final String[] ALLOWED_PATHS = { "/community-service/engage/learner/**",
             "/community-service/engage/**", "/community-service/subject/**", "/community-service/chapter/**",

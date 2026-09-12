@@ -709,9 +709,16 @@ async def parse_youtube(url: str, language_hint: Optional[str] = None) -> Parsed
         preferred = [language_hint] if language_hint else []
         preferred += ["en", "hi"]
         try:
-            listing = YouTubeTranscriptApi.list_transcripts(video_id)
+            # youtube-transcript-api 1.x: instance API; older: static list_transcripts.
+            if hasattr(YouTubeTranscriptApi, "list_transcripts"):
+                listing = YouTubeTranscriptApi.list_transcripts(video_id)
+            else:
+                listing = YouTubeTranscriptApi().list(video_id)
         except Exception as exc:  # noqa: BLE001
-            raise ValueError(f"Could not read captions for that video: {exc}") from exc
+            name = type(exc).__name__
+            if "block" in name.lower() or "block" in str(exc).lower():
+                raise ValueError("YouTube blocks caption requests from this server's IP") from exc
+            raise ValueError(f"Could not read captions for that video: {str(exc)[:200]}") from exc
 
         transcript = None
         try:
@@ -727,11 +734,12 @@ async def parse_youtube(url: str, language_hint: Optional[str] = None) -> Parsed
                     break
         if transcript is None:
             raise ValueError("That video has no captions, so there is no transcript to ingest")
-        return " ".join(
-            (seg.get("text") or "").strip()
-            for seg in transcript.fetch()
-            if (seg.get("text") or "").strip()
-        )
+
+        def _text(seg: Any) -> str:
+            # 1.x yields FetchedTranscriptSnippet objects; older versions dicts.
+            return str((seg.get("text") if isinstance(seg, dict) else getattr(seg, "text", "")) or "").strip()
+
+        return " ".join(t for t in (_text(seg) for seg in transcript.fetch()) if t)
 
     # The library is synchronous and does network I/O — keep it off the event loop.
     text_out = (await asyncio.to_thread(_fetch)).strip()

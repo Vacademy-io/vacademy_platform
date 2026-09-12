@@ -47,6 +47,21 @@ public class Assessment {
     @Column(name = "evaluation_type", nullable = false)
     private String evaluationType;
 
+    /**
+     * Evaluate every submission with AI, without a teacher pressing anything (V43).
+     *
+     * NULL means off. AI evaluation charges institute credits per graded question, so
+     * this is deliberately opt-in: an assessment never starts spending on its own.
+     * Independent of {@link #evaluationType} -- that decides how the AUTO scorer treats
+     * the paper, this decides whether the AI grader is additionally enqueued on submit.
+     */
+    @Column(name = "ai_evaluation_enabled")
+    private Boolean aiEvaluationEnabled;
+
+    /** Preferred model for those runs. NULL falls back to the ai_service default. */
+    @Column(name = "ai_evaluation_model")
+    private String aiEvaluationModel;
+
     @Column(name = "submission_type", nullable = false)
     private String submissionType;
 

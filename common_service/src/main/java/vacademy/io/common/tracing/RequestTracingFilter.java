@@ -74,6 +74,10 @@ public class RequestTracingFilter implements Filter {
 
         // Start timing
         long startTime = System.nanoTime();
+        // Start attributing third-party wait separately, so a slow provider does not
+        // read as us being slow. Cleared in the finally below — it is a ThreadLocal on
+        // a pooled thread.
+        ExternalCallTimer.begin();
 
         // Add start breadcrumb to Sentry
         addRequestStartBreadcrumb(method, fullPath, clientIp);
@@ -118,6 +122,9 @@ public class RequestTracingFilter implements Filter {
 
             // Add completion breadcrumb to Sentry
             addRequestCompleteBreadcrumb(method, fullPath, status, durationMs);
+
+            // Never leave the counter on a pooled thread.
+            ExternalCallTimer.clear();
         }
     }
 
@@ -187,7 +194,7 @@ public class RequestTracingFilter implements Filter {
                     return;
                 }
                 long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
-                setHeader("Server-Timing", "app;dur=" + durationMs);
+                setHeader("Server-Timing", buildServerTimingValue(durationMs));
                 // Required for the value to be readable cross-origin via the Resource
                 // Timing API; reading it off a fetch/axios response additionally needs
                 // Access-Control-Expose-Headers, set in each service's CorsConfig.
@@ -196,6 +203,26 @@ public class RequestTracingFilter implements Filter {
                 // Observability must never break the response it is observing.
             }
         }
+    }
+
+    /**
+     * Build the header value, splitting our own compute from third-party wait:
+     *
+     *   Server-Timing: app;dur=95, ext;dur=2035
+     *
+     * `app` is what the browser judges us on, so it must exclude time spent waiting
+     * on someone else's API (see {@link ExternalCallTimer}). `ext` is emitted only
+     * when there was such a wait, so endpoints that call nobody keep a single clean
+     * metric. Clamped at zero because the two clocks are read a moment apart and a
+     * tiny negative would otherwise be possible.
+     */
+    private static String buildServerTimingValue(long durationMs) {
+        long externalMs = ExternalCallTimer.elapsedMillis();
+        if (externalMs <= 0) {
+            return "app;dur=" + durationMs;
+        }
+        long appMs = Math.max(0, durationMs - externalMs);
+        return "app;dur=" + appMs + ", ext;dur=" + externalMs;
     }
 
     /**
@@ -223,7 +250,7 @@ public class RequestTracingFilter implements Filter {
                 return;
             }
 
-            response.setHeader("Server-Timing", "app;dur=" + durationMs);
+            response.setHeader("Server-Timing", buildServerTimingValue(durationMs));
             response.setHeader("Timing-Allow-Origin", "*");
         } catch (Exception e) {
             // Observability must never break the response it is observing.

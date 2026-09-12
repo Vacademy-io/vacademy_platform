@@ -1,0 +1,140 @@
+{
+    "page": {
+        "heading": "Ad Platform Integrations",
+        "description": "Connect Google Ads and Meta Lead Ads to capture leads into your audiences. Each form/campaign maps to one audience — add multiple connectors for multiple audiences."
+    },
+    "activeConnectors": {
+        "title": "Active Connectors",
+        "description": "Each row links one ad platform form to one audience.",
+        "loading": "Loading connectors...",
+        "loadError": "Could not load connectors. The integration API may not be deployed yet."
+    },
+    "addConnector": {
+        "title": "Add New Connector",
+        "metaButton": "Meta Lead Ads",
+        "googleButton": "Google Lead Forms"
+    },
+    "table": {
+        "emptyTitle": "No connectors yet",
+        "emptyDescription": "Add a Meta or Google connector below to start receiving leads.",
+        "headers": {
+            "platform": "Platform",
+            "formCampaign": "Form / Campaign",
+            "audience": "Audience",
+            "source": "Source",
+            "status": "Status",
+            "webhook": "Webhook"
+        },
+        "statusActive": "ACTIVE",
+        "statusActionNeeded": "Action needed",
+        "copyWebhookUrl": "Copy webhook URL",
+        "autoLabel": "auto",
+        "syncNow": "Sync leads now (pull the last 24h from Meta)",
+        "testConnection": "Test connection",
+        "resubscribeTooltip": "Re-subscribe (after granting Full control)",
+        "editDefaultValues": "Edit default values",
+        "deactivateConnector": "Deactivate connector"
+    },
+    "vendor": {
+        "meta": "Meta",
+        "google": "Google"
+    },
+    "health": {
+        "overall": {
+            "verified": "Verified",
+            "degraded": "Degraded",
+            "actionRequired": "Action required",
+            "broken": "Broken",
+            "unknown": "Unknown"
+        },
+        "dialogTitle": "Connection test",
+        "statusLabel": "Status:",
+        "lastLead": "last lead",
+        "resubscribe": "Re-subscribe",
+        "close": "Close"
+    },
+    "editDialog": {
+        "title": "Edit default values",
+        "description": "Key/value pairs stamped onto every lead from this connector. Each key should match an audience custom field name (otherwise the value is just carried through as raw form data). Form payload values always take precedence over defaults.",
+        "keyHeader": "Key",
+        "valueHeader": "Value",
+        "keyPlaceholder": "Audience field name",
+        "valuePlaceholder": "Value to stamp",
+        "removeRow": "Remove row",
+        "addField": "Add field",
+        "duplicateKeys": "Duplicate keys detected — only the last value for each key will be kept.",
+        "cancel": "Cancel",
+        "saving": "Saving…",
+        "save": "Save"
+    },
+    "fieldMapping": {
+        "label": "Field Mapping",
+        "description": "Map each platform field to an audience custom field. Unmapped fields are kept with original names.",
+        "platformField": "Platform Field",
+        "audienceField": "Audience Field",
+        "skipOption": "— skip —"
+    },
+    "google": {
+        "keyLabel": "Google Key",
+        "keyPlaceholder": "e.g. my-leads-abc123",
+        "audienceLabel": "Audience",
+        "selectAudiencePlaceholder": "Select audience...",
+        "saveError": "Failed to save Google connector",
+        "saving": "Saving...",
+        "save": "Save"
+    },
+    "meta": {
+        "sessionExpiredReconnect": "Your Meta session expired. Please reconnect Meta.",
+        "oauthFailed": "Meta OAuth failed: {{error}}",
+        "startOauthError": "Failed to start Meta OAuth",
+        "sessionExpiredRetry": "Your Meta session expired. Please reconnect Meta and try again.",
+        "saveError": "Failed to save Meta connector",
+        "pageAdded": "Added Page \"{{name}}\"",
+        "addPageError": "Could not add that Page. Double-check the Page ID.",
+        "sessionInvalid": "Session expired or invalid. Please reconnect.",
+        "connectButton": "Connect Meta Account",
+        "redirecting": "Redirecting...",
+        "connectHint": "After connecting, you can add multiple forms — each linked to a different audience.",
+        "loadingPages": "Loading pages...",
+        "connectedBanner": "Meta connected. Add a form → audience mapping below. You can add multiple.",
+        "pageLabel": "Facebook Page",
+        "selectPagePlaceholder": "Select a page...",
+        "needsFullControl": " — needs Full control",
+        "noPageListedHint": "Your Page isn't listed. Paste its Page ID (shown in the Facebook connect dialog, or Page Settings → About).",
+        "pageNotListedHint": "Page not listed? Add it by ID.",
+        "pageIdPlaceholder": "e.g. 336149566246129",
+        "addingPage": "Adding...",
+        "addPage": "Add Page",
+        "leadFormLabel": "Lead Gen Form",
+        "loadingForms": "Loading forms...",
+        "selectFormPlaceholder": "Select a form...",
+        "pasteFormIdPlaceholder": "Paste your Lead Form ID",
+        "selectPageFirstPlaceholder": "Select a page first",
+        "cantAutoListForms": "Can't auto-list this Page's forms. Paste the Lead Form ID — find it in Meta Business Suite → All tools → Instant Forms (or your ad's lead form). Lead capture still works once mapped.",
+        "audienceLabel": "Audience",
+        "selectAudiencePlaceholder": "Select audience...",
+        "sourceTypeLabel": "Source Type",
+        "facebook": "Facebook",
+        "instagram": "Instagram",
+        "stampFieldLabel": "Stamp audience field",
+        "noneOption": "— none —",
+        "valueLabel": "Value",
+        "valuePlaceholder": "Value to stamp",
+        "stampValueHint": "Pre-filled with the first token of the form name. Stamped onto every lead from this connector if a field is selected above.",
+        "saving": "Saving...",
+        "save": "Save"
+    },
+    "toasts": {
+        "metaAccountConnected": "Meta account connected",
+        "connectorDeactivated": "Connector deactivated",
+        "deactivateFailed": "Failed to deactivate connector",
+        "healthCheckFailed": "Could not run the connection test",
+        "resubscribeFailedFallback": "Re-subscribe failed",
+        "syncFailedFallback": "Sync failed",
+        "connectorUpdated": "Connector updated",
+        "updateFailedFallback": "Failed to update connector",
+        "noNewLeads": "No new leads from Meta in the last 24 hours",
+        "syncedLeads_one": "Synced {{count}} lead from Meta",
+        "syncedLeads_other": "Synced {{count}} leads from Meta"
+    }
+}

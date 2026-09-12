@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { QuestionDisplay } from "./question-display";
 import { SectionTabs } from "./section-tabs";
 import { Navbar } from "./navbar";
@@ -173,6 +174,7 @@ export default function Page() {
 }
 
 function LiveTestShell() {
+  const { t } = useTranslation("questionTest");
   const { loadState, saveState, currentQuestion } = useAssessmentStore();
   const {
     settings,
@@ -259,7 +261,7 @@ function LiveTestShell() {
         await sendFormattedData();
         if (hasShownSaveFailureToastRef.current) {
           hasShownSaveFailureToastRef.current = false;
-          toast.success("Your responses are being saved again");
+          toast.success(t("page.toast.savingResumed"));
         }
       } catch (error) {
         console.error("Error in periodic data sending:", error);
@@ -267,7 +269,7 @@ function LiveTestShell() {
         // NetworkStatus banner keeps the user informed after that.
         if (!hasShownSaveFailureToastRef.current) {
           hasShownSaveFailureToastRef.current = true;
-          toast.error("Your responses are not being recorded");
+          toast.error(t("page.toast.savingFailed"));
         }
       }
     };

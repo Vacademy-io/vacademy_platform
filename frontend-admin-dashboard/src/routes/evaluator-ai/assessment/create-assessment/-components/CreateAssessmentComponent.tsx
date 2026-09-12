@@ -5,6 +5,7 @@ import { Helmet } from 'react-helmet';
 import { useSidebar } from '@/components/ui/sidebar';
 import { useNavigate } from '@tanstack/react-router';
 import { LayoutContainer } from '@/routes/evaluator-ai/-components/layout-container/layout-container';
+import { useTranslation } from 'react-i18next';
 // Define interfaces for props
 interface CreateAssessmentSidebarProps {
     steps: {
@@ -64,15 +65,16 @@ const CreateAssessmentSidebar: React.FC<CreateAssessmentSidebarProps> = ({
 };
 
 const CreateAssessmentComponent = () => {
+    const { t } = useTranslation('evaluatorAiCreateAssessmentComponent');
     const navigate = useNavigate();
 
     const steps = [
         {
-            label: 'Basic Info',
+            label: t('steps.basicInfo'),
             id: 'basic-info',
         },
         {
-            label: 'Add Question',
+            label: t('steps.addQuestion'),
             id: 'add-question',
         },
     ];
@@ -112,11 +114,8 @@ const CreateAssessmentComponent = () => {
             }
         >
             <Helmet>
-                <title>Create Assessment</title>
-                <meta
-                    name="description"
-                    content="This page is for creating an assessment for students via admin."
-                />
+                <title>{t('pageTitle')}</title>
+                <meta name="description" content={t('pageDescription')} />
             </Helmet>
             <MainStepComponent
                 currentStep={currentStep}

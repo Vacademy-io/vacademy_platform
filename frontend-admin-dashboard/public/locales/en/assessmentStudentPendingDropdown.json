@@ -1,0 +1,21 @@
+{
+    "dialogs": {
+        "attentionLabel": "Attention",
+        "sendReminder": {
+            "title": "Send Reminder",
+            "confirmMessagePrefix": "A reminder will be sent to",
+            "confirmMessageSuffix": "who hasn’t yet appeared for the Assessment",
+            "send": "Send"
+        },
+        "removeParticipant": {
+            "title": "Remove Participant",
+            "confirmMessagePrefix": "Are you sure you want remove",
+            "confirmMessageSuffix": "from this Assessment?",
+            "remove": "Remove"
+        }
+    },
+    "dropdown": {
+        "sendReminder": "Send Reminder",
+        "removeParticipants": "Remove Participants"
+    }
+}

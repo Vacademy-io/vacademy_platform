@@ -213,7 +213,7 @@ public class LeadStatusService {
                 .build());
 
         logStatusChangeToTimeline(saved, oldStatusId, target, actorUserId, source);
-        emitStatusChanged(saved, instituteId, oldStatusId, target);
+        emitStatusChanged(saved, instituteId, oldStatusId, target, source, actorUserId);
 
         // Keep the user's profile conversion_status (what the side-view reads) in sync with this
         // per-response change, so the leads list and the side-view never disagree. Best-effort —
@@ -282,7 +282,8 @@ public class LeadStatusService {
         }
     }
 
-    private void emitStatusChanged(AudienceResponse lead, String instituteId, String oldStatusId, LeadStatus target) {
+    private void emitStatusChanged(AudienceResponse lead, String instituteId, String oldStatusId, LeadStatus target,
+                                   String source, String actorUserId) {
         if (instituteId == null || instituteId.isBlank()) return;
         try {
             String oldKey = oldStatusId == null ? null
@@ -291,6 +292,13 @@ public class LeadStatusService {
             leadTriggerContextBuilder.put(ctx, "changeType", "LEAD_STATUS");
             leadTriggerContextBuilder.put(ctx, "oldStatus", oldKey);
             leadTriggerContextBuilder.put(ctx, "newStatus", target.getStatusKey());
+            // WHO moved the status — the same token written to lead_status_history.source
+            // ("MANUAL" | "MANUAL_DISPOSITION" | "AI_CALLING" | "AI_WORKFLOW" | ...). Without
+            // it a workflow on this event cannot tell a human's change from one the workflow
+            // itself caused, and a graph that reacts to a status by writing another status
+            // re-triggers itself (this event has no idempotency dedup — strategy UUID).
+            leadTriggerContextBuilder.put(ctx, "statusChangeSource", source != null ? source : "MANUAL");
+            leadTriggerContextBuilder.put(ctx, "statusChangedByUserId", actorUserId);
             workflowTriggerService.handleTriggerEvents(
                     WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(), lead.getId(), instituteId, ctx);
         } catch (Exception ex) {

@@ -1,0 +1,16 @@
+{
+    "overduePayment": {
+        "title": "{{name}} — {{amount}} बकाया",
+        "subtitle_one": "{{count}} दिन देर · {{feeType}}",
+        "subtitle_other": "{{count}} दिन देर · {{feeType}}",
+        "defaultFeeType": "शुल्क"
+    },
+    "pendingApproval": {
+        "title": "{{name}} के समायोजन को स्वीकृति दें",
+        "subtitle": "{{type}} · {{amount}}",
+        "defaultType": "समायोजन"
+    },
+    "unreadAlert": {
+        "defaultTitle": "सूचना"
+    }
+}

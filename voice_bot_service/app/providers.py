@@ -16,6 +16,7 @@ from pipecat.services.tts_service import InterruptibleTTSService, TTSService
 from .config import get_settings
 
 import asyncio
+import json
 import logging
 import re
 
@@ -72,7 +73,7 @@ def _register_saaras_v4() -> bool:
 
 def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None,
               mode: str | None = None):
-    """STT factory with an A/B provider switch (STT_PROVIDER=sarvam|google).
+    """STT factory with a provider switch (STT_PROVIDER=sarvam|google|smallest).
 
     Why the switch exists: across the founder's four 2026-08-05 test calls the
     chronic offender was Saaras — interjections the VAD heard but STT never
@@ -115,6 +116,23 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
                 # the turn-gate see words sooner than Sarvam ever could.
                 enable_interim_results=True,
             ),
+        )
+    if s.stt_provider == "smallest":
+        from pipecat.services.smallest.stt import SmallestSTTService
+        # Per-agent pins arrive as BCP-47 ("hi-IN"); Pulse wants bare codes and
+        # has no Hinglish code, "hi" IS the code-switching mode. Unknown → default.
+        tag = (language or "").strip().lower()
+        lang = {"hi-in": "hi", "hi": "hi", "hinglish": "hi", "en-in": "en", "en": "en",
+                "en-us": "en", "mr-in": "mr", "gu-in": "gu", "bn-in": "bn", "ta-in": "ta",
+                "te-in": "te", "kn-in": "kn", "ml-in": "ml", "or-in": "or",
+                "multi": "multi"}.get(tag) or s.smallest_stt_language
+        if not s.smallest_api_key:
+            raise RuntimeError("STT_PROVIDER=smallest but SMALLEST_API_KEY is empty")
+        return SmallestSTTService(
+            api_key=s.smallest_api_key,
+            sample_rate=sample_rate,
+            settings=SmallestSTTService.Settings(language=lang),
+            ttfs_p99_latency=s.smallest_ttfs_p99,
         )
     # ── Sarvam (default) ──
     mode = (mode or s.sarvam_stt_mode or "transcribe").strip()
@@ -171,9 +189,116 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     )
 
 
-def build_llm():
+class _PersistentClientSession:
+    """Wraps an aiobotocore session so `create_client(...)` hands back ONE
+    long-lived client instead of building a new one per request.
+
+    pipecat 1.4's AWSBedrockLLMService opens `async with
+    session.create_client(...)` inside every generation. Measured from the
+    Mumbai box (2026-09-10): that costs 2.0-2.2s PER TURN before the request
+    even leaves — with a reused client the same call answers in 0.2-0.4s. For
+    a voice agent that difference is the whole product, so the client is
+    created once and closed when the service stops."""
+
+    def __init__(self, session):
+        self._session = session
+        self._client = None
+        self._cm = None
+        self._lock = asyncio.Lock()
+
+    def create_client(self, service_name, **kwargs):
+        outer = self
+
+        class _Reuse:
+            async def __aenter__(self_):
+                async with outer._lock:
+                    if outer._client is None:
+                        outer._cm = outer._session.create_client(service_name, **kwargs)
+                        outer._client = await outer._cm.__aenter__()
+                return outer._client
+
+            async def __aexit__(self_, *exc):
+                return False          # keep it open; close() ends it
+
+        return _Reuse()
+
+    async def close(self):
+        cm, self._cm, self._client = self._cm, None, None
+        if cm is not None:
+            try:
+                await cm.__aexit__(None, None, None)
+            except Exception:
+                logger.debug("bedrock: client close failed", exc_info=True)
+
+
+def _build_bedrock(s):
+    from pipecat.services.aws.llm import AWSBedrockLLMService
+
+    # Not on EC2. With a bearer token and no static keys, botocore's credential
+    # chain probes the instance-metadata address and waits for it to time out:
+    # measured 2.21s per service construction on the Mumbai box vs 0.02s with
+    # the probe disabled (calls 09c5279a / f225f71e opened at +4.5-4.8s
+    # instead of +1-2s). The token is read from AWS_BEARER_TOKEN_BEDROCK
+    # regardless, so nothing is lost by skipping the probe.
+    import os
+    os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
+
+    try:
+        extra = json.loads(s.bedrock_extra_json) if s.bedrock_extra_json.strip() else {}
+        if not isinstance(extra, dict):
+            raise ValueError("BEDROCK_EXTRA_JSON must be a JSON object")
+    except Exception:
+        logger.warning("bedrock: BEDROCK_EXTRA_JSON invalid — sending no extra fields")
+        extra = {}
+
+    class _BedrockLLM(AWSBedrockLLMService):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self._aws_session = _PersistentClientSession(self._aws_session)
+
+        async def _warm(self):
+            try:
+                async with self._aws_session.create_client(
+                        service_name="bedrock-runtime", **self._aws_params):
+                    pass
+            except Exception:
+                logger.warning("bedrock: client warm-up failed — first turn will open it",
+                               exc_info=True)
+
+        async def start(self, frame):
+            # Open the client at pipeline start, while the greeting is still
+            # being spoken — otherwise the FIRST reply of every call pays the
+            # ~2s client creation (measured 2.93s TTFT on turn 1 vs 0.56s after).
+            # In the BACKGROUND: awaiting it here held the StartFrame, so the
+            # whole pipeline (and the greeting audio) waited for it — call
+            # 09c5279a was ready at +7.1s and the caller's hello sat unanswered.
+            await super().start(frame)
+            self._warm_task = asyncio.get_running_loop().create_task(self._warm())
+
+        async def stop(self, frame):
+            await super().stop(frame)
+            await self._aws_session.close()
+
+        async def cancel(self, frame):
+            await super().cancel(frame)
+            await self._aws_session.close()
+
+    svc = _BedrockLLM(
+        model=s.bedrock_model,
+        aws_region=s.bedrock_region,
+        params=AWSBedrockLLMService.InputParams(
+            temperature=0.35, max_tokens=300,
+            additional_model_request_fields=extra),
+    )
+    return _tag_engine(svc, "bedrock", s.bedrock_model)
+
+
+def build_llm(provider: str | None = None):
+    """`provider` overrides LLM_PROVIDER for one call (per-agent POC routing —
+    see Settings.sarvam_llm_agents). None = the configured default."""
     s = get_settings()
-    if s.llm_provider == "vertex":
+    prov = (provider or s.llm_provider or "").strip().lower()
+    if prov == "vertex":
         # Gemini on Vertex AI, served from vertex_location (asia-south1 = Mumbai):
         # in-country inference → low TTFT with no cross-ocean RTT. Auth = service
         # account JSON.
@@ -213,7 +338,7 @@ def build_llm():
                 thinking=GoogleLLMService.ThinkingConfig(
                     thinking_budget=s.vertex_thinking_budget)),
         )
-    if s.llm_provider == "google":
+    if prov == "google":
         # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop).
         # reasoning_effort 'none' via extra_body: 3.1 thinks by default.
         return OpenAILLMService(
@@ -225,7 +350,7 @@ def build_llm():
                 extra={"extra_body": {"reasoning_effort": "none"}},
             ),
         )
-    if s.llm_provider == "openrouter":
+    if prov == "openrouter":
         from pipecat.services.openrouter.llm import OpenRouterLLMService
 
         return OpenRouterLLMService(
@@ -233,6 +358,9 @@ def build_llm():
             model=s.openrouter_model,
             params=OpenRouterLLMService.InputParams(temperature=0.35, max_tokens=300),
         )
+    if prov == "bedrock":
+        # Amazon Bedrock in Mumbai (see config.bedrock_model for the POC data).
+        return _build_bedrock(s)
     # Sarvam's OpenAI-compatible chat API. reasoning_effort MUST be the literal
     # JSON null (Python None inside extra_body — the SDK drops None kwargs but
     # keeps them in extra_body): the ONLY value that disables hybrid thinking.
@@ -259,6 +387,50 @@ def _tag_engine(svc, slug: str, model: str):
     """
     try:
         svc._vacademy_engine = (slug, model or "")
+    except Exception:
+        pass
+    return _apply_speech_term_map(svc)
+
+
+def normalize_for_speech(text: str, term_map=None) -> str:
+    """Deterministic pronunciation fixes for ANY engine. PURE.
+
+    Sibling of normalize_for_rumik, and for the same reason — a prompt rule cannot
+    stop the model writing a word the way it wants to — but not tied to one vendor.
+    Applied to the text sent for synthesis only; transcripts and LLM context keep
+    the written form, so the report still shows what the model actually composed.
+    """
+    if not text:
+        return text
+    mapping = term_map if term_map is not None else get_settings().speech_term_map
+    for src, dst in mapping:
+        if src and src in text:
+            text = text.replace(src, dst)
+    return text
+
+
+def _apply_speech_term_map(svc):
+    """Wrap run_tts so the map applies however the engine synthesises.
+
+    At the ONE point every engine passes through, rather than per vendor: five
+    services with five different internals, and a sixth added later would silently
+    miss out. run_tts receives whole SENTENCES (pipecat aggregates before calling
+    it), so a multi-word key still matches — which it would not if this hooked the
+    token stream further upstream.
+
+    Inert when the map is empty, which is the default, so no existing agent is
+    touched. Never raises: a wrapper failure must not cost the call its voice.
+    """
+    try:
+        if not get_settings().speech_term_map:
+            return svc
+        original = svc.run_tts
+
+        async def run_tts(text, *args, **kwargs):
+            async for frame in original(normalize_for_speech(text), *args, **kwargs):
+                yield frame
+
+        svc.run_tts = run_tts
     except Exception:
         pass
     return svc
@@ -316,7 +488,8 @@ def rumik_term_map_version() -> str:
 
 def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=None,
               tts_model: str | None = None,
-              pace: float | None = None, temperature: float | None = None):
+              pace: float | None = None, temperature: float | None = None,
+              language: str | None = None):
     """TTS factory. `aiohttp_session` is accepted for call-site compatibility but
     unused on 1.4 (Sarvam's service owns its own websocket).
 
@@ -396,11 +569,20 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                 cand = model.split(":", 1)[1].strip()
                 if cand:
                     sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
+            elif model.endswith("_pro") or model.endswith("-pro"):
+                # The engine key stored on an agent is "smallest_pro", not the
+                # "smallest:<model>" form this parser was written for, so the two
+                # conventions never met and a _pro agent silently got the STANDARD
+                # model. Smallest hard-rejects a cross-model voice, so every _pro
+                # voice (mrunal, manasi, ketaki, meher) was being sent somewhere it
+                # does not exist - proven by /preview.mp3 returning 502 for
+                # smallest_pro/mrunal while smallest/devansh returns audio.
+                sm_model = sm_model if sm_model.endswith("_pro") else sm_model + "_pro"
             sm_voice = (voice or s.smallest_voice).strip() or s.smallest_voice
             try:
                 return _tag_engine(
                     _build_smallest(SmallestTTSService, s, sm_model, sm_voice,
-                                    _clamp(eff_pace, 0.5, 2.0)),
+                                    _clamp(eff_pace, 0.5, 2.0), language),
                     "smallest", sm_model)
             except Exception:
                 logger.exception("tts: smallest unavailable — falling back to Sarvam")
@@ -454,7 +636,8 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
     ), "sarvam", s.sarvam_tts_model)
 
 
-def _build_smallest(cls, s, model: str, voice: str, speed: float):
+def _build_smallest(cls, s, model: str, voice: str, speed: float,
+                    language: str | None = None):
     """Construct Smallest.ai Lightning. Split out so build_tts can wrap it in one
     try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
     which only responds to prose), and its voice palettes are per-model — the API
@@ -463,7 +646,7 @@ def _build_smallest(cls, s, model: str, voice: str, speed: float):
         api_key=s.smallest_api_key,
         sample_rate=s.smallest_sample_rate,
         settings=cls.Settings(model=model, voice=voice,
-                              language=_smallest_language(), speed=speed),
+                              language=_smallest_language(language), speed=speed),
     )
 
 
@@ -478,11 +661,26 @@ def _google_language(tag: str):
         return None
 
 
-def _smallest_language():
-    """Lightning takes a language string; Hindi voices code-switch into English
-    natively, so hi is right for Hinglish agents too."""
+def _smallest_language(agent_language: str | None = None):
+    """Lightning takes a language tag, and it must be the AGENT's, not a constant.
+
+    This used to return HI for every agent. Calls c9aa4062 / e73a839b / 0e26a0c9
+    (2026-09-09, an ENGLISH agent on lightning_v3.1_pro/mrunal): English text
+    tagged `hi` makes the vendor return a ~200 Hz DRONE instead of speech for
+    short interjection openers — measured by replaying the calls' own sentences
+    against the API from the box: "Ah, okay, so you've got some automation in
+    place." came back as 72.5 s of tone, "Perfect." 45.8 s, "Got it." 2.4 s (4 of
+    101 sentences); tagged `en`, 0 of 101. The transport dutifully played the
+    drone (the caller heard a hum), the real sentences queued behind it, and
+    Call Health reported a 15-19 s "agent's audio wasn't ready" stall.
+
+    Hindi/Hinglish agents keep `hi`: those voices code-switch into English
+    natively, so `hi` is right for mixed text."""
     try:
         from pipecat.transcriptions.language import Language
+        raw = (agent_language or "").strip().lower()
+        if raw.startswith("en"):
+            return Language.EN
         return Language.HI
     except Exception:
         return None

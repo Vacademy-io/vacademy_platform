@@ -74,8 +74,8 @@ export const PaymentConfirmationDialog: React.FC<
 
             {/* Payment Details */}
             {paymentData && (
-              <div className="mb-6 rounded-lg bg-gray-50 p-4 text-start">
-                <h3 className="mb-3 font-medium text-gray-900">
+              <div className="mb-6 rounded-lg bg-gray-50 p-4 text-start space-y-stack">
+                <h3 className="font-medium text-gray-900">
                   Payment Details
                 </h3>
                 <div className="space-y-2 text-sm">

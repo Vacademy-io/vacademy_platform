@@ -4,6 +4,7 @@ import { LiveSession } from '../schedule/-services/utils';
 import React, { useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import { DownloadSimple } from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -33,6 +34,7 @@ interface PreviousSessionCardProps {
 }
 
 export default function PreviousSessionCard({ session }: PreviousSessionCardProps) {
+    const { t } = useTranslation('studyLibraryPreviousSessionCard');
     const [openDialog, setOpenDialog] = useState<boolean>(false);
     const [scheduledSessionDetails, setScheduleSessionDetails] =
         useState<SessionDetailsResponse | null>(null);
@@ -136,21 +138,26 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
             }
 
             return {
-                '#': idx + 1,
-                'Name': item.fullName,
-                'Email': item.email || '',
-                // 'Batch': batchValue,
-                'Course': courseValue,
-                'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : item.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
-                'Mode': item.statusType || '',
-                'Duration (min)': duration,
-                'Active Points': activePoints,
-                'Talk Time (min)': talkTimeMin,
-                'Talk Segments': talks,
-                'Raise Hands': raiseHands,
-                'Emojis': emojis,
-                'Chats': chats,
-                'Poll Votes': pollVotes,
+                [t('csv.number')]: idx + 1,
+                [t('csv.name')]: item.fullName,
+                [t('csv.email')]: item.email || '',
+                // [t('csv.batch')]: batchValue,
+                [t('csv.course')]: courseValue,
+                [t('csv.status')]:
+                    item.attendanceStatus === 'PRESENT'
+                        ? t('status.present')
+                        : item.attendanceStatus === 'ABSENT'
+                          ? t('status.absent')
+                          : t('status.unmarked'),
+                [t('csv.mode')]: item.statusType || '',
+                [t('csv.durationMin')]: duration,
+                [t('csv.activePoints')]: activePoints,
+                [t('csv.talkTimeMin')]: talkTimeMin,
+                [t('csv.talkSegments')]: talks,
+                [t('csv.raiseHands')]: raiseHands,
+                [t('csv.emojis')]: emojis,
+                [t('csv.chats')]: chats,
+                [t('csv.pollVotes')]: pollVotes,
             };
         });
         const csv = Papa.unparse(csvData);
@@ -164,7 +171,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         setIsAttendanceExporting(false);
-        toast.success('Attendance report downloaded successfully.');
+        toast.success(t('toast.attendanceDownloaded'));
     };
 
     // Convert LiveSessionReport to StudentTable format
@@ -233,14 +240,14 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
     const handleSendWhatsApp = () => {
         if (selectedStudents.length === 0) {
-            toast.error('Please select at least one student');
+            toast.error(t('toast.selectAtLeastOneStudent'));
             return;
         }
 
         const bulkActionInfo: BulkActionInfo = {
             selectedStudentIds,
             selectedStudents,
-            displayText: `${selectedStudents.length} students`,
+            displayText: t('studentsCount', { count: selectedStudents.length }),
         };
 
         openBulkSendMessageDialog(bulkActionInfo);
@@ -248,7 +255,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
     const handleSendEmail = () => {
         if (selectedStudents.length === 0) {
-            toast.error('Please select at least one student');
+            toast.error(t('toast.selectAtLeastOneStudent'));
             return;
         }
 
@@ -261,7 +268,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
         const bulkActionInfo: BulkActionInfo = {
             selectedStudentIds,
             selectedStudents,
-            displayText: `${selectedStudents.length} students`,
+            displayText: t('studentsCount', { count: selectedStudents.length }),
         };
 
         openBulkSendEmailDialog(bulkActionInfo);
@@ -367,17 +374,17 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-black">Start Date & Time:</span>
+                    <span className="text-black">{t('labels.startDateTime')}</span>
                     <span>{formattedDateTime}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-black">End Time:</span>
+                    <span className="text-black">{t('labels.endTime')}</span>
                     <span>{session.last_entry_time}</span>
                 </div>
                 {session.package_session_details && session.package_session_details.length > 0 && (
                     <div className="flex items-center gap-2">
-                        <span className="text-black">Batches:</span>
+                        <span className="text-black">{t('labels.batches')}</span>
                         <span>
                             {session.package_session_details
                                 .map((d) => `${d.level_name} ${d.package_name}`)
@@ -400,7 +407,11 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                         });
                     }}
                 >
-                    <span>View {getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Details</span>
+                    <span>
+                        {t('actions.viewDetails', {
+                            term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
+                        })}
+                    </span>
                 </button>
                 <span className="hidden text-gray-300 sm:inline">|</span>
                 <button
@@ -408,7 +419,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                     className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
                     onClick={handleOpenDialog}
                 >
-                    <span>View Attendance Report</span>
+                    <span>{t('actions.viewAttendanceReport')}</span>
                 </button>
                 <span className="hidden text-gray-300 sm:inline">|</span>
                 <button
@@ -421,13 +432,13 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                         });
                     }}
                 >
-                    <span>View Recordings</span>
+                    <span>{t('actions.viewRecordings')}</span>
                 </button>
             </div>
 
             {/* Attendance Report Dialog */}
             <MyDialog
-                heading="Attendance Report"
+                heading={t('dialog.heading')}
                 open={openDialog}
                 onOpenChange={handleOpenDialog}
                 className="w-[95vw] max-w-4xl sm:w-[80vw]"
@@ -446,26 +457,26 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
                     {/* Basic Details */}
                     <div className="rounded-lg">
-                        <h3 className="mb-1 font-semibold">Basic Class Details</h3>
+                        <h3 className="mb-1 font-semibold">{t('dialog.basicClassDetails')}</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2">
                             <div className="flex gap-2">
-                                <span className="font-bold">Session:</span>
+                                <span className="font-bold">{t('dialog.session')}</span>
                                 <span>
                                     {scheduledSessionDetails?.accessLevel === 'private'
-                                        ? 'Paid Members'
-                                        : 'Open Session'}
+                                        ? t('dialog.paidMembers')
+                                        : t('dialog.openSession')}
                                 </span>
                             </div>
                             <div className="flex gap-2">
-                                <span className="font-bold">Occurrence:</span>
+                                <span className="font-bold">{t('dialog.occurrence')}</span>
                                 <span>{scheduledSessionDetails?.recurrenceType}</span>
                             </div>
                             <div className="flex gap-2">
-                                <span className="font-bold">Type:</span>
+                                <span className="font-bold">{t('dialog.type')}</span>
                                 <span>{scheduledSessionDetails?.accessLevel}</span>
                             </div>
                             <div className="flex gap-2">
-                                <span className="font-bold">Duration:</span>
+                                <span className="font-bold">{t('dialog.duration')}</span>
                                 <span>{duration}</span>
                             </div>
                         </div>
@@ -473,7 +484,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
                     {/* Description */}
                     <div className="rounded-lg">
-                        <h3 className="mb-1 text-lg font-semibold">Description</h3>
+                        <h3 className="mb-1 text-lg font-semibold">{t('dialog.description')}</h3>
                         <div className="prose prose-sm max-w-none text-neutral-600">
                             {scheduledSessionDetails?.descriptionHtml ? (
                                 <div
@@ -482,19 +493,19 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                     }}
                                 />
                             ) : (
-                                'No description available.'
+                                t('dialog.noDescriptionAvailable')
                             )}
                         </div>
                     </div>
 
                     {/* Insights & Attendance */}
                     <div className="rounded-lg">
-                        <h3 className="mb-2 text-lg font-semibold">Participants Insights</h3>
+                        <h3 className="mb-2 text-lg font-semibold">{t('dialog.participantsInsights')}</h3>
                         <div className="flex flex-col items-center justify-center gap-4 rounded-md bg-neutral-100 p-4 sm:flex-row">
                             <div className="flex w-full flex-col items-center justify-center gap-3 sm:w-1/2">
                                 <MyPieChart data={pieChartData} />
                                 <div className="text-lg font-semibold">
-                                    Total Participants: {attendanceSummary.total}
+                                    {t('dialog.totalParticipants', { count: attendanceSummary.total })}
                                 </div>
                             </div>
                             <div className="flex w-full flex-col gap-4 sm:w-1/2">
@@ -502,7 +513,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                     <div className="flex items-center gap-2">
                                         <div className="size-4 rounded-full bg-success-400"></div>
                                         <div className="flex items-center gap-2 text-black">
-                                            <span className="font-medium">Attendees:</span>
+                                            <span className="font-medium">{t('dialog.attendees')}</span>
                                             <span className="font-semibold text-success-600">
                                                 {attendanceSummary.present}
                                             </span>
@@ -511,7 +522,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                     <div className="flex items-center gap-2">
                                         <div className="size-4 rounded-full bg-success-200"></div>
                                         <div className="flex items-center gap-2 text-black">
-                                            <span className="font-medium">Not Attendees:</span>
+                                            <span className="font-medium">{t('dialog.notAttendees')}</span>
                                             <span className="font-semibold text-red-600">
                                                 {attendanceSummary.absent}
                                             </span>
@@ -521,7 +532,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                 <div className="rounded-lg p-3">
                                     <div className="text-left">
                                         <div className="text-sm font-medium text-neutral-600">
-                                            Attendance Percentage
+                                            {t('dialog.attendancePercentage')}
                                         </div>
                                         <div className="text-xl font-bold text-primary-500">
                                             {attendanceSummary.total > 0
@@ -541,7 +552,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
                     <div className="mt-4 rounded-lg">
                         <div className="mb-4 flex items-center justify-between">
-                            <h3 className="text-lg font-semibold">Attendance</h3>
+                            <h3 className="text-lg font-semibold">{t('dialog.attendance')}</h3>
                             <div className="flex items-center gap-2">
                                 {/* Bulk Actions */}
                                 {reportResponse && reportResponse.length > 0 && (
@@ -564,12 +575,12 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                     {isAttendanceExporting ? (
                                         <>
                                             <div className="mr-2 size-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                                            <span>Exporting...</span>
+                                            <span>{t('actions.exporting')}</span>
                                         </>
                                     ) : (
                                         <>
                                             <DownloadSimple size={20} className="mr-2" />
-                                            CSV
+                                            {t('actions.csv')}
                                         </>
                                     )}
                                 </MyButton>

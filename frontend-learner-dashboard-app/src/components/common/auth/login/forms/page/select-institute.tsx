@@ -255,8 +255,8 @@ export function InstituteSelection() {
                 className="w-full max-w-md"
             >
                 <div className="bg-white rounded-md shadow-md border border-gray-200 p-5 lg:p-6">
-                    <div className="text-center mb-6">
-                        <div className="w-12 h-12 bg-gray-900 rounded-lg mx-auto flex items-center justify-center mb-4">
+                    <div className="text-center mb-6 space-y-4">
+                        <div className="w-12 h-12 bg-gray-900 rounded-lg mx-auto flex items-center justify-center">
                             <svg
                                 className="w-6 h-6 text-white"
                                 fill="none"

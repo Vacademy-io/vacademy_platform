@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { FilterChips } from '@/components/design-system/chips';
 import { MyButton } from '@/components/design-system/button';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
@@ -38,38 +40,123 @@ interface Props {
     onStartAdmission?: (data: Partial<StudentSearchResult> | null, sessionId?: string) => void;
 }
 
-const DATE_RANGES = [
-    { id: 'today', label: 'Today' },
-    { id: 'last_7_days', label: 'Last 7 Days' },
-    { id: 'last_30_days', label: 'Last 30 Days' },
-    { id: 'last_3_months', label: 'Last 3 Months' },
-    { id: 'last_6_months', label: 'Last 6 Months' },
-    { id: 'last_year', label: 'Last Year' },
+const buildDateRanges = (t: TFunction) => [
+    { id: 'today', label: t('dateRanges.today') },
+    { id: 'last_7_days', label: t('dateRanges.last7Days') },
+    { id: 'last_30_days', label: t('dateRanges.last30Days') },
+    { id: 'last_3_months', label: t('dateRanges.last3Months') },
+    { id: 'last_6_months', label: t('dateRanges.last6Months') },
+    { id: 'last_year', label: t('dateRanges.lastYear') },
 ];
 
-const OVERALL_STATUSES = [
-    { id: 'APPLICATION', label: 'Application' },
-    { id: 'ADMISSION', label: 'Admission' },
+const buildOverallStatuses = (t: TFunction) => [
+    { id: 'APPLICATION', label: t('overallStatuses.application') },
+    { id: 'ADMISSION', label: t('overallStatuses.admission') },
 ];
 
-const SOURCE_TYPES = [
-    { id: 'WEBSITE', label: 'Website' },
-    { id: 'GOOGLE_ADS', label: 'Google Ads' },
-    { id: 'FACEBOOK', label: 'Facebook' },
-    { id: 'GOOGLE', label: 'Google' },
-    { id: 'FRIENDS', label: 'Friends' },
-    { id: 'ZOHO_FORMS', label: 'Zoho Forms' },
-    { id: 'AUDIENCE_CAMPAIGN', label: 'Audience Campaign' },
-    { id: 'DIRECT_APPLICATION', label: 'Direct Application' },
-    { id: 'MANUAL_ADMISSION', label: 'Manual Admission' },
-    { id: 'OTHER', label: 'Other' },
+const buildSourceTypes = (t: TFunction) => [
+    { id: 'WEBSITE', label: t('sourceTypes.website') },
+    { id: 'GOOGLE_ADS', label: t('sourceTypes.googleAds') },
+    { id: 'FACEBOOK', label: t('sourceTypes.facebook') },
+    { id: 'GOOGLE', label: t('sourceTypes.google') },
+    { id: 'FRIENDS', label: t('sourceTypes.friends') },
+    { id: 'ZOHO_FORMS', label: t('sourceTypes.zohoForms') },
+    { id: 'AUDIENCE_CAMPAIGN', label: t('sourceTypes.audienceCampaign') },
+    { id: 'DIRECT_APPLICATION', label: t('sourceTypes.directApplication') },
+    { id: 'MANUAL_ADMISSION', label: t('sourceTypes.manualAdmission') },
+    { id: 'OTHER', label: t('sourceTypes.other') },
 ];
 
+// Internal logic keys — NOT translated. `searchBy` state holds one of these literal
+// keys and is used only for SEARCH_BY_MAP lookup and backend `search_by` payload
+// resolution; the strings shown to users are looked up separately via
+// `getSearchByLabel()` below.
 const SEARCH_BY_MAP: Record<string, string> = {
     'Student Name': 'STUDENT_NAME',
     'Parent Mobile': 'PARENT_MOBILE',
     'Enquiry No': 'ENQUIRY_NO',
     'Application No': 'APPLICATION_NO',
+};
+
+const getSearchByLabel = (t: TFunction, searchBy: string): string => {
+    switch (searchBy) {
+        case 'Student Name':
+            return t('searchByOptions.studentName');
+        case 'Application No':
+            return t('searchByOptions.applicationNo');
+        case 'Parent Mobile':
+            return t('searchByOptions.parentMobile');
+        default:
+            return searchBy;
+    }
+};
+
+// `status` values come straight from the backend (enquiry/application/admission
+// pipeline). Translate the known set for display; fall back to the raw value for
+// anything unrecognized so new backend statuses never render blank.
+// `gender` values come from the backend as 'MALE' | 'FEMALE' | 'OTHER'. Translate
+// the known set; fall back to the raw value for anything unrecognized.
+const getGenderLabel = (t: TFunction, gender: string | undefined): string => {
+    switch (gender) {
+        case 'MALE':
+            return t('genderLabels.male');
+        case 'FEMALE':
+            return t('genderLabels.female');
+        case 'OTHER':
+            return t('genderLabels.other');
+        default:
+            return gender || '-';
+    }
+};
+
+const getStatusLabel = (t: TFunction, status: string | undefined): string => {
+    switch (status) {
+        case 'NEW':
+            return t('statusLabels.new');
+        case 'CONTACTED':
+            return t('statusLabels.contacted');
+        case 'FOLLOW_UP':
+            return t('statusLabels.followUp');
+        case 'QUALIFIED':
+            return t('statusLabels.qualified');
+        case 'NOT_ELIGIBLE':
+            return t('statusLabels.notEligible');
+        case 'ENQUIRY':
+            return t('statusLabels.enquiry');
+        case 'APPLICATION':
+            return t('statusLabels.application');
+        case 'ADMISSION':
+            return t('statusLabels.admission');
+        default:
+            return status || '-';
+    }
+};
+
+const getSourceLabel = (t: TFunction, source: string | undefined): string => {
+    switch (source) {
+        case 'WEBSITE':
+            return t('sourceTypes.website');
+        case 'GOOGLE_ADS':
+            return t('sourceTypes.googleAds');
+        case 'FACEBOOK':
+            return t('sourceTypes.facebook');
+        case 'GOOGLE':
+            return t('sourceTypes.google');
+        case 'FRIENDS':
+            return t('sourceTypes.friends');
+        case 'ZOHO_FORMS':
+            return t('sourceTypes.zohoForms');
+        case 'AUDIENCE_CAMPAIGN':
+            return t('sourceTypes.audienceCampaign');
+        case 'DIRECT_APPLICATION':
+            return t('sourceTypes.directApplication');
+        case 'MANUAL_ADMISSION':
+            return t('sourceTypes.manualAdmission');
+        case 'OTHER':
+            return t('sourceTypes.other');
+        default:
+            return source || '-';
+    }
 };
 
 const getDateRange = (rangeValue: string) => {
@@ -109,6 +196,7 @@ const formatDate = (dateStr: string | null | undefined): string => {
 };
 
 export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
+    const { t } = useTranslation('admissionsAdmissionEntryScreen');
     const navigate = useNavigate();
     const { instituteDetails, getDetailsFromPackageSessionId } = useInstituteDetailsStore();
 
@@ -148,6 +236,10 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             }));
     }, [allBatches, selectedSessionId]);
 
+    const dateRangeOptions = useMemo(() => buildDateRanges(t), [t]);
+    const overallStatusOptions = useMemo(() => buildOverallStatuses(t), [t]);
+    const sourceTypeOptions = useMemo(() => buildSourceTypes(t), [t]);
+
     const [searchBy, setSearchBy] = useState('Student Name');
     const [searchValue, setSearchValue] = useState('');
     const [searchResults, setSearchResults] = useState<any[] | null>(null);
@@ -156,7 +248,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     // Default to Admission on initial load.
     const [statusFilters, setStatusFilters] = useState<{ id: string; label: string }[]>([
-        { id: 'ADMISSION', label: 'Admission' },
+        { id: 'ADMISSION', label: t('overallStatuses.admission') },
     ]);
     const [sourceFilters, setSourceFilters] = useState<{ id: string; label: string }[]>([]);
     const [dateRangeFilters, setDateRangeFilters] = useState<{ id: string; label: string }[]>([]);
@@ -257,7 +349,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const handleFetchApplication = async () => {
         if (!applicationId.trim() && !applicationPhone.trim()) {
-            alert('Please enter either application ID or phone number');
+            alert(t('alerts.enterIdOrPhone'));
             return;
         }
         setIsLoadingLookup(true);
@@ -281,7 +373,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
             const results = response.data?.content || [];
             if (results.length === 0) {
-                alert('No application found with the given details.');
+                alert(t('alerts.noApplicationFound'));
                 setIsLoadingLookup(false);
                 return;
             }
@@ -310,7 +402,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             navigateToForm(mapped, selectedSessionId);
         } catch (error) {
             console.error('Error fetching application:', error);
-            alert('Failed to fetch application details. Please check the ID or phone number.');
+            alert(t('alerts.fetchFailed'));
         } finally {
             setIsLoadingLookup(false);
         }
@@ -410,7 +502,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         <div className="flex h-full flex-col p-6 animate-in fade-in duration-300">
             {/* Header with Academic Year + Admission Form button */}
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
-                <h1 className="text-2xl font-bold text-gray-800">Default Admission Form</h1>
+                <h1 className="text-2xl font-bold text-gray-800">{t('header.title')}</h1>
                 <div className="flex items-center gap-3">
                     {sessions.length > 0 && (
                         <select
@@ -419,7 +511,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                 setSelectedSessionId(e.target.value);
                                 setSearchResults(null);
                             }}
-                            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none min-w-[180px]"
+                            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none min-w-44"
                         >
                             {sessions.map((s) => (
                                 <option key={s.id} value={s.id}>{s.session_name}</option>
@@ -433,7 +525,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                         </svg>
-                        Admission Form
+                        {t('header.admissionForm')}
                     </button>
                     <MyButton
                         buttonType="secondary"
@@ -441,7 +533,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                         onClick={() => setIsBulkImportOpen(true)}
                         className="px-4 py-2"
                     >
-                        Bulk Import
+                        {t('header.bulkImport')}
                     </MyButton>
                 </div>
             </div>
@@ -449,8 +541,8 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             {/* Filter Chips */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
                 <FilterChips
-                    label="Status"
-                    filterList={OVERALL_STATUSES}
+                    label={t('filters.status')}
+                    filterList={overallStatusOptions}
                     selectedFilters={statusFilters}
                     handleSelect={(option) => {
                         const exists = statusFilters.some((f) => f.id === option.id);
@@ -460,8 +552,8 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     clearFilters={false}
                 />
                 <FilterChips
-                    label="Source"
-                    filterList={SOURCE_TYPES}
+                    label={t('filters.source')}
+                    filterList={sourceTypeOptions}
                     selectedFilters={sourceFilters}
                     handleSelect={(option) => {
                         const exists = sourceFilters.some((f) => f.id === option.id);
@@ -471,8 +563,8 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     clearFilters={false}
                 />
                 <FilterChips
-                    label="Date Range"
-                    filterList={DATE_RANGES}
+                    label={t('filters.dateRange')}
+                    filterList={dateRangeOptions}
                     selectedFilters={dateRangeFilters}
                     handleSelect={(option) => {
                         const exists = dateRangeFilters.some((f) => f.id === option.id);
@@ -483,7 +575,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 />
                 {packageSessionOptions.length > 0 && (
                     <FilterChips
-                        label="Class"
+                        label={t('filters.class')}
                         filterList={packageSessionOptions}
                         selectedFilters={packageSessionFilters}
                         handleSelect={(option) => {
@@ -501,7 +593,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 )}
                 {sectionFilterOptions.length > 0 && (
                     <FilterChips
-                        label="Section"
+                        label={t('filters.section')}
                         filterList={sectionFilterOptions}
                         selectedFilters={sectionFilters}
                         handleSelect={(option) => {
@@ -519,11 +611,11 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                             disabled={isSearching}
                             className="h-8 px-3 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black transition-colors disabled:opacity-60"
                         >
-                            {isSearching ? 'Applying...' : 'Apply Filter'}
+                            {isSearching ? t('filters.applying') : t('filters.applyFilter')}
                         </button>
                         <MyButton buttonType="secondary" scale="small" onClick={clearAllFilters} className="h-8 px-2 text-xs">
                             <X className="mr-1 h-3 w-3" />
-                            Clear All
+                            {t('filters.clearAll')}
                         </MyButton>
                     </>
                 )}
@@ -535,31 +627,31 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                     </svg>
-                    <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Search Criteria</h2>
+                    <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{t('search.criteriaHeading')}</h2>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                     <div className="flex flex-col gap-1.5 flex-1">
-                        <label className="text-xs font-medium text-gray-600">Search By</label>
+                        <label className="text-xs font-medium text-gray-600">{t('search.searchByLabel')}</label>
                         <select
                             value={searchBy}
                             onChange={(e) => setSearchBy(e.target.value)}
                             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
                         >
-                            <option value="Student Name">Student Name</option>
-                            <option value="Application No">Application No</option>
-                            <option value="Parent Mobile">Parent Mobile</option>
+                            <option value="Student Name">{t('searchByOptions.studentName')}</option>
+                            <option value="Application No">{t('searchByOptions.applicationNo')}</option>
+                            <option value="Parent Mobile">{t('searchByOptions.parentMobile')}</option>
                         </select>
                     </div>
 
                     <div className="flex flex-col gap-1.5 flex-1">
-                        <label className="text-xs font-medium text-gray-600">Enter Details</label>
+                        <label className="text-xs font-medium text-gray-600">{t('search.enterDetailsLabel')}</label>
                         <input
                             type="text"
                             value={searchValue}
                             onChange={(e) => setSearchValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                            placeholder={`Enter ${searchBy}`}
+                            placeholder={t('search.enterDetailsPlaceholder', { field: getSearchByLabel(t, searchBy) })}
                             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
                         />
                     </div>
@@ -570,7 +662,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                             disabled={isSearching}
                             className="w-full px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-900 transition-colors disabled:opacity-60"
                         >
-                            {isSearching ? 'Searching...' : 'Search'}
+                            {isSearching ? t('search.searching') : t('search.searchButton')}
                         </button>
                     </div>
                 </div>
@@ -581,25 +673,25 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 <div className="bg-white rounded-lg border border-orange-200 shadow-sm overflow-hidden flex-1 flex flex-col">
                     {searchResults.length > 0 && (
                         <div className="px-6 py-3 border-b border-orange-100 bg-orange-50/60">
-                            <p className="text-sm text-gray-700">Total Responses: <span className="font-semibold text-orange-700">{totalResponses}</span></p>
+                            <p className="text-sm text-gray-700">{t('results.totalResponses')} <span className="font-semibold text-orange-700">{totalResponses}</span></p>
                         </div>
                     )}
                     <div className="overflow-x-auto flex-1">
-                        <table className="w-full text-left border-collapse min-w-[1200px]">
+                        <table className="w-full text-start border-collapse min-w-[1200px]"> {/* design-lint-ignore: table min-width for horizontal-scroll layout, no scale token close enough */}
                             <thead>
                                 <tr className="bg-orange-50 text-gray-700 text-xs uppercase tracking-wider border-b border-orange-200">
-                                    <th className="px-4 py-3 font-semibold">S.No</th>
-                                    <th className="px-4 py-3 font-semibold">Class</th>
-                                    <th className="px-4 py-3 font-semibold">Student Name</th>
-                                    <th className="px-4 py-3 font-semibold">Gender</th>
-                                    <th className="px-4 py-3 font-semibold">Date of Birth</th>
-                                    <th className="px-4 py-3 font-semibold">Parent Name</th>
-                                    <th className="px-4 py-3 font-semibold">Parent Email</th>
-                                    <th className="px-4 py-3 font-semibold">Parent Mobile</th>
-                                    <th className="px-4 py-3 font-semibold">Tracking ID</th>
-                                    <th className="px-4 py-3 font-semibold">Status</th>
-                                    <th className="px-4 py-3 font-semibold">Source</th>
-                                    <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.sNo')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.class')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.studentName')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.gender')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.dateOfBirth')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.parentName')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.parentEmail')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.parentMobile')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.trackingId')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.status')}</th>
+                                    <th className="px-4 py-3 font-semibold">{t('table.source')}</th>
+                                    <th className="px-4 py-3 font-semibold text-end">{t('table.actions')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 text-sm">
@@ -610,10 +702,10 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                             <td className="px-4 py-3.5 text-gray-600">{idx + 1}</td>
                                             <td className="px-4 py-3.5 font-medium text-orange-700">{getDisplayClass(result)}</td>
                                             <td className="px-4 py-3.5 font-medium text-gray-900">{result.student_name || '-'}</td>
-                                            <td className="px-4 py-3.5 text-gray-700">{result.gender || '-'}</td>
+                                            <td className="px-4 py-3.5 text-gray-700">{getGenderLabel(t, result.gender)}</td>
                                             <td className="px-4 py-3.5 text-orange-600">{formatDate(result.date_of_birth)}</td>
                                             <td className="px-4 py-3.5 text-gray-700">{result.parent_name || '-'}</td>
-                                            <td className="px-4 py-3.5 text-gray-600 max-w-[180px] truncate" title={result.parent_email || ''}>
+                                            <td className="px-4 py-3.5 text-gray-600 max-w-44 truncate" title={result.parent_email || ''}>
                                                 {result.parent_email || '-'}
                                             </td>
                                             <td className="px-4 py-3.5 text-gray-700">{result.parent_mobile || '-'}</td>
@@ -628,20 +720,20 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                                     result.status === 'ENQUIRY' ? 'bg-orange-100 text-orange-800' :
                                                     'bg-gray-100 text-gray-700'
                                                 }`}>
-                                                    {result.status || '-'}
+                                                    {getStatusLabel(t, result.status)}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3.5 text-gray-600">{result.source || '-'}</td>
+                                            <td className="px-4 py-3.5 text-gray-600">{getSourceLabel(t, result.source)}</td>
                                             <td className="px-4 py-3.5 text-right">
                                                 {result.status !== 'ADMISSION' ? (
                                                     <button
                                                         onClick={() => handleSelectResult(result)}
                                                         className="inline-flex items-center justify-center px-3 py-1.5 border border-orange-500 text-orange-600 hover:bg-orange-500 hover:text-white rounded text-xs font-medium transition-colors whitespace-nowrap"
                                                     >
-                                                        Create Admission
+                                                        {t('results.createAdmission')}
                                                     </button>
                                                 ) : (
-                                                    <span className="text-xs text-gray-400">Already Admitted</span>
+                                                    <span className="text-xs text-gray-400">{t('results.alreadyAdmitted')}</span>
                                                 )}
                                             </td>
                                         </tr>
@@ -653,7 +745,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                                 <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                                                 </svg>
-                                                <p>No records found matching your search criteria.</p>
+                                                <p>{t('results.noRecordsFound')}</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -672,9 +764,9 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
                         </svg>
                     </div>
-                    <h3 className="text-lg font-medium text-gray-800 mb-1">Select a student to begin</h3>
+                    <h3 className="text-lg font-medium text-gray-800 mb-1">{t('emptyState.title')}</h3>
                     <p className="text-sm text-gray-500 max-w-md">
-                        Use the search panel above to find an existing Enquiry or Application. Alternatively, click 'Admission Form' to start a fresh form.
+                        {t('emptyState.description')}
                     </p>
                 </div>
             )}
@@ -684,12 +776,12 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
                         <div className="mb-4 flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-neutral-900">Choose Admission Type</h2>
+                            <h2 className="text-lg font-semibold text-neutral-900">{t('admissionTypeModal.title')}</h2>
                             <button onClick={() => setShowAdmissionTypeModal(false)} className="text-neutral-400 hover:text-neutral-600">
                                 <X className="size-5" />
                             </button>
                         </div>
-                        <p className="mb-6 text-sm text-neutral-600">Select how you would like to create a new admission</p>
+                        <p className="mb-6 text-sm text-neutral-600">{t('admissionTypeModal.subtitle')}</p>
                         <div className="space-y-3">
                             <button
                                 onClick={handleNewAdmission}
@@ -701,8 +793,8 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                     </svg>
                                 </div>
                                 <div>
-                                    <h3 className="font-medium text-neutral-900">New Admission</h3>
-                                    <p className="text-sm text-neutral-600">Start a fresh admission form</p>
+                                    <h3 className="font-medium text-neutral-900">{t('admissionTypeModal.newAdmissionTitle')}</h3>
+                                    <p className="text-sm text-neutral-600">{t('admissionTypeModal.newAdmissionDesc')}</p>
                                 </div>
                             </button>
 
@@ -716,8 +808,8 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                     </svg>
                                 </div>
                                 <div>
-                                    <h3 className="font-medium text-neutral-900">From Enquiry</h3>
-                                    <p className="text-sm text-neutral-600">Create admission from existing enquiry</p>
+                                    <h3 className="font-medium text-neutral-900">{t('admissionTypeModal.fromEnquiryTitle')}</h3>
+                                    <p className="text-sm text-neutral-600">{t('admissionTypeModal.fromEnquiryDesc')}</p>
                                 </div>
                             </button>
 
@@ -731,8 +823,8 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                     </svg>
                                 </div>
                                 <div>
-                                    <h3 className="font-medium text-neutral-900">From Application</h3>
-                                    <p className="text-sm text-neutral-600">Create admission from existing application</p>
+                                    <h3 className="font-medium text-neutral-900">{t('admissionTypeModal.fromApplicationTitle')}</h3>
+                                    <p className="text-sm text-neutral-600">{t('admissionTypeModal.fromApplicationDesc')}</p>
                                 </div>
                             </button>
                         </div>
@@ -751,7 +843,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
                         <div className="mb-4 flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-neutral-900">Enter Application Details</h2>
+                            <h2 className="text-lg font-semibold text-neutral-900">{t('applicationModal.title')}</h2>
                             <button
                                 onClick={() => { setShowApplicationModal(false); setApplicationId(''); setApplicationPhone(''); }}
                                 className="text-neutral-400 hover:text-neutral-600"
@@ -761,11 +853,11 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                         </div>
                         <div className="space-y-4">
                             <div>
-                                <Label htmlFor="admApplicationId">Application ID / Tracking ID</Label>
+                                <Label htmlFor="admApplicationId">{t('applicationModal.applicationIdLabel')}</Label>
                                 <Input
                                     id="admApplicationId"
                                     type="text"
-                                    placeholder="e.g., APP-12345"
+                                    placeholder={t('applicationModal.applicationIdPlaceholder')}
                                     value={applicationId}
                                     onChange={(e) => setApplicationId(e.target.value)}
                                     className="mt-1"
@@ -773,22 +865,22 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                             </div>
                             <div className="flex items-center gap-3">
                                 <div className="h-px flex-1 bg-neutral-200"></div>
-                                <span className="text-xs text-neutral-500">OR</span>
+                                <span className="text-xs text-neutral-500">{t('applicationModal.or')}</span>
                                 <div className="h-px flex-1 bg-neutral-200"></div>
                             </div>
                             <div>
-                                <Label htmlFor="admApplicationPhone">Phone Number</Label>
+                                <Label htmlFor="admApplicationPhone">{t('applicationModal.phoneLabel')}</Label>
                                 <Input
                                     id="admApplicationPhone"
                                     type="tel"
-                                    placeholder="e.g., 9876543210"
+                                    placeholder={t('applicationModal.phonePlaceholder')}
                                     value={applicationPhone}
                                     onChange={(e) => setApplicationPhone(e.target.value)}
                                     className="mt-1"
                                 />
                             </div>
                             <p className="text-xs text-neutral-500">
-                                Enter either the application ID or phone number of the application you want to convert to an admission
+                                {t('applicationModal.helperText')}
                             </p>
                             <div className="flex gap-3">
                                 <MyButton
@@ -796,7 +888,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                     onClick={() => { setShowApplicationModal(false); setApplicationId(''); setApplicationPhone(''); }}
                                     className="flex-1"
                                 >
-                                    Cancel
+                                    {t('applicationModal.cancel')}
                                 </MyButton>
                                 <MyButton
                                     buttonType="primary"
@@ -804,7 +896,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                     disabled={isLoadingLookup || (!applicationId.trim() && !applicationPhone.trim())}
                                     className="flex-1"
                                 >
-                                    {isLoadingLookup ? 'Loading...' : 'Continue'}
+                                    {isLoadingLookup ? t('applicationModal.loading') : t('applicationModal.continueButton')}
                                 </MyButton>
                             </div>
                         </div>

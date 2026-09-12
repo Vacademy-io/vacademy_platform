@@ -30,4 +30,20 @@ public class FlowExecutionContext {
 
     /** Session-accumulated context variables */
     private Map<String, Object> sessionVariables;
+
+    /**
+     * Set by an executor that already wrote a FAILED notification_log row for the message it was
+     * sending (see {@code WhatsAppSendFailureService}). The engine reads-and-clears it so it does
+     * not also log the same message as delivered — one bubble per attempt in the Inbox.
+     */
+    @Builder.Default
+    private boolean sendFailureLogged = false;
+
+    /**
+     * Provider message id (Meta wamid) returned by the send an executor just made. The engine
+     * reads-and-clears it when it writes the outgoing notification_log row, so the row carries the
+     * id the status webhooks join on — without it a bot reply is stuck on one grey tick forever,
+     * however many delivered/read events arrive for it.
+     */
+    private String lastProviderMessageId;
 }

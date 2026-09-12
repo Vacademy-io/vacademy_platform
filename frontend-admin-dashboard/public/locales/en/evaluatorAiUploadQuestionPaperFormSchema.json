@@ -1,0 +1,22 @@
+{
+    "questionPaperIdRequired": "Question Paper ID is required",
+    "questionPaperIdMustBeNumber": "Question Paper ID must be a number",
+    "questionFieldRequired": "Question field is required",
+    "questionFieldMustBeString": "Question field must be a string",
+    "optionFieldRequired": "Option field is required",
+    "optionFieldMustBeString": "Option field must be a string",
+    "answerFieldRequired": "Answer field is required",
+    "answerFieldMustBeString": "Answer field must be a string",
+    "explanationFieldRequired": "Explanation field is required",
+    "explanationFieldMustBeString": "Explanation field must be a string",
+    "fileUploadRequired": "File upload is required and must be a valid file",
+    "questionNameRequired": "Question name is required",
+    "mcqsMustHaveSingleChoiceOptions": "MCQS questions must have singleChoiceOptions",
+    "mcqsMustHaveAtLeast2Options": "MCQS must have at least 2 options",
+    "mcqsMustHaveExactlyOneSelected": "MCQS must have exactly one option selected",
+    "optionIsRequired": "Option {{number}} is required",
+    "mcqmMustHaveMultipleChoiceOptions": "MCQM questions must have multipleChoiceOptions",
+    "mcqmMustHaveAtLeast2Options": "MCQM must have at least 2 options",
+    "mcqmMustHaveAtLeastOneSelected": "MCQM must have at least one option selected",
+    "incorrectAnswerTypeEntered": "Not correct answer type is entered {{numericType}}"
+}

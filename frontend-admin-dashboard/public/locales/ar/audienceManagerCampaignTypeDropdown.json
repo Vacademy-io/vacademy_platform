@@ -1,0 +1,10 @@
+{
+    "placeholder": "اختر نوع الحملة",
+    "optionWebsite": "الموقع الإلكتروني",
+    "optionGoogleAds": "إعلانات جوجل",
+    "optionSocialMedia": "وسائل التواصل الاجتماعي",
+    "addCustomType": "إضافة نوع استفسار مخصص",
+    "customInputPlaceholder": "أدخل نوع الحملة",
+    "cancel": "إلغاء",
+    "save": "حفظ"
+}

@@ -10,8 +10,21 @@ export interface StatBucket {
 export interface PaymentSummary {
     total: StatBucket;
     paid: StatBucket;
+    /**
+     * Unsettled records on a LIVE enrolment — money genuinely still in flight. Backs the "Payment
+     * pending" card.
+     */
     pending: StatBucket;
+    /** The balance still owed. Same rows as `pending`; kept separate because the two cards fall
+     * back to different server figures. */
+    due: StatBucket;
     failed: StatBucket;
+    /**
+     * Unsettled records on a cancelled / terminated / expired enrolment. Deliberately in NO card:
+     * this money will never arrive, so showing it as pending or due overstated both. The rows stay
+     * in the table under "All" for audit.
+     */
+    notCounted: StatBucket;
 }
 
 const emptyBucket = (): StatBucket => ({ count: 0, amountByCurrency: {} });
@@ -20,7 +33,9 @@ export const emptyPaymentSummary = (): PaymentSummary => ({
     total: emptyBucket(),
     paid: emptyBucket(),
     pending: emptyBucket(),
+    due: emptyBucket(),
     failed: emptyBucket(),
+    notCounted: emptyBucket(),
 });
 
 const addToBucket = (bucket: StatBucket, amount: number, currency: string) => {
@@ -33,6 +48,32 @@ const addToBucket = (bucket: StatBucket, amount: number, currency: string) => {
 
 /** Which KPI bucket a single payment falls into. */
 export type PaymentBucketKey = 'paid' | 'pending' | 'failed';
+
+/**
+ * Enrolment statuses that still owe money. Mirrors `billed_plans` in getBillingSummary
+ * (`up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')`) so these client-side figures and the server's
+ * can never disagree about what is due.
+ *
+ * A whitelist of the live statuses, deliberately not a blacklist of the dead ones: production
+ * carries CANCELED *and* CANCELLED, plus TERMINATED, EXPIRED, DELETED, INACTIVE, PAYMENT_FAILED
+ * and the typo PENDING_FOR_PAYMNET, so a blacklist would quietly start billing whichever status
+ * somebody adds next.
+ */
+const LIVE_PLAN_STATUSES = new Set(['ACTIVE', 'PENDING_FOR_PAYMENT']);
+
+/**
+ * Is this row money the institute is still owed?
+ *
+ * A cancelled, terminated or expired enrolment is not: its unfinished payment log is an abandoned
+ * checkout, not a debt, and counting it reported dues nobody would ever collect (Suchbliss showed
+ * ₹19,201 of them against ₹7,241 of real dues). Rows with no user_plan stay eligible — they are
+ * admin-raised invoices, which the server bills through its own `billed_invoices` arm.
+ */
+export const isDueEligibleEntry = (entry: PaymentLogEntry): boolean => {
+    const status = entry.user_plan?.status;
+    if (!status) return true;
+    return LIVE_PLAN_STATUSES.has(status.trim().toUpperCase());
+};
 
 /**
  * A voided (REJECTED) invoice. It stays visible in the table for audit, but is deliberately
@@ -67,8 +108,19 @@ export const computePaymentSummary = (entries: PaymentLogEntry[]): PaymentSummar
         const amount = entry.payment_log?.payment_amount || 0;
         const currency = resolveEntryCurrency(entry);
 
+        const bucket = classifyEntry(entry);
         addToBucket(summary.total, amount, currency);
-        addToBucket(summary[classifyEntry(entry)], amount, currency);
+
+        // An unsettled record on a dead enrolment is money that will never arrive. It belongs in
+        // neither card — counting it as "pending" overstated the gateway backlog exactly as
+        // counting it as "due" overstated the debt.
+        if (bucket === 'pending' && !isDueEligibleEntry(entry)) {
+            addToBucket(summary.notCounted, amount, currency);
+            continue;
+        }
+
+        addToBucket(summary[bucket], amount, currency);
+        if (bucket === 'pending') addToBucket(summary.due, amount, currency);
     }
 
     return summary;
@@ -170,7 +222,10 @@ export const computeBillingFromEntries = (entries: PaymentLogEntry[]): EntryBill
         if (!key) continue;
 
         const learner = learners.get(key) ?? { plans: new Map(), paid: 0 };
-        if (planId) {
+        // A cancelled/terminated/expired enrolment is billed at nothing — the server's billed_plans
+        // filters those out, and without the same guard here the fallback invented dues for them.
+        // `collected` below still counts their payments, exactly as the server's `paid` CTE does.
+        if (planId && isDueEligibleEntry(entry)) {
             // The price belongs to the plan, not to the row — record it once, don't accumulate.
             learner.plans.set(planId, entry.user_plan?.payment_plan_dto?.actual_price || 0);
         }

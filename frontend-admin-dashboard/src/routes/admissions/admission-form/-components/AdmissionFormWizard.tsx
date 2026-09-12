@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import Step1StudentDetails from './steps/Step1StudentDetails';
@@ -125,18 +127,14 @@ export interface AdmissionFormData {
     sendEmail: boolean;
 }
 
-const getSteps = () => {
-    const learnerLabel = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
-    return [
-        { id: 1, title: `${learnerLabel} Details` },
-        { id: 2, title: 'Previous School & Personal Details' },
-        { id: 3, title: `${learnerLabel} Parent Details` },
-        { id: 4, title: 'Address Details' },
-        { id: 5, title: 'Finish' },
-        { id: 6, title: 'Fee Assignment' },
-    ];
-};
-const STEPS = getSteps();
+const buildSteps = (t: TFunction, learnerLabel: string) => [
+    { id: 1, title: t('steps.studentDetails', { learnerLabel }) },
+    { id: 2, title: t('steps.previousSchoolPersonalDetails') },
+    { id: 3, title: t('steps.parentDetails', { learnerLabel }) },
+    { id: 4, title: t('steps.addressDetails') },
+    { id: 5, title: t('steps.finish') },
+    { id: 6, title: t('steps.feeAssignment') },
+];
 
 /** Convert ValidationError[] to a Record<field, message> for easy lookup */
 function errorsToMap(errors: ValidationError[]): Record<string, string> {
@@ -148,9 +146,12 @@ function errorsToMap(errors: ValidationError[]): Record<string, string> {
 }
 
 export default function AdmissionFormWizard() {
+    const { t } = useTranslation('admissionsAdmissionFormWizard');
     const navigate = useNavigate();
     const routerState = useRouterState();
     const locationState = routerState.location.state as any;
+    const learnerLabel = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+    const STEPS = useMemo(() => buildSteps(t, learnerLabel), [t, learnerLabel]);
     const [currentStep, setCurrentStep] = useState(1);
     const [admissionId, setAdmissionId] = useState('');
     const [admissionSubmitResult, setAdmissionSubmitResult] =
@@ -287,11 +288,11 @@ export default function AdmissionFormWizard() {
 
     const handleDownloadPdf = useCallback(async () => {
         if (!targetRef.current) {
-            toast.error('PDF template not ready. Please try again.');
+            toast.error(t('toast.pdfTemplateNotReady'));
             return;
         }
         setIsGeneratingPdf(true);
-        toast.info('Generating PDF...');
+        toast.info(t('toast.generatingPdf'));
         try {
             const canvas = await html2canvas(targetRef.current, {
                 scale: 2,
@@ -328,27 +329,30 @@ export default function AdmissionFormWizard() {
             }
 
             pdf.save(getPdfFilename());
-            toast.success('PDF downloaded!');
+            toast.success(t('toast.pdfDownloaded'));
         } catch (error) {
             console.error('PDF generation failed:', error);
-            toast.error('Failed to generate PDF. Please try again.');
+            toast.error(t('toast.pdfGenerationFailed'));
         } finally {
             setIsGeneratingPdf(false);
         }
-    }, [getPdfFilename]);
+    }, [getPdfFilename, t]);
 
     const handlePrint = useCallback(() => {
         if (!printTemplateRef.current) return;
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
-            toast.error('Pop-up blocked. Please allow pop-ups to print.');
+            toast.error(t('toast.popupBlocked'));
             return;
         }
+        const printTitle = t('printDocumentTitle', {
+            studentName: `${formData.studentFirstName} ${formData.studentLastName}`,
+        });
         printWindow.document.write(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Admission Form - ${formData.studentFirstName} ${formData.studentLastName}</title>
+                <title>${printTitle}</title>
                 <style>
                     @media print { body { margin: 0; } }
                     body { margin: 0; padding: 0; }
@@ -362,7 +366,7 @@ export default function AdmissionFormWizard() {
             printWindow.print();
             printWindow.close();
         };
-    }, [formData.studentFirstName, formData.studentLastName]);
+    }, [formData.studentFirstName, formData.studentLastName, t]);
 
     const handleChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -505,7 +509,9 @@ export default function AdmissionFormWizard() {
             if (data.enquiryTrackingId) {
                 setSourceTrackingId(data.enquiryTrackingId);
                 setSourceTrackingLabel(
-                    data.sourceType === 'APPLICATION' ? 'Application Tracking ID' : 'Enquiry Tracking ID'
+                    data.sourceType === 'APPLICATION'
+                        ? t('trackingLabel.application')
+                        : t('trackingLabel.enquiry')
                 );
             }
         } else if (sessionId) {
@@ -518,7 +524,7 @@ export default function AdmissionFormWizard() {
         if (!validateAllSteps()) return;
 
         if (!instituteId) {
-            toast.error('Institute details not available. Please try again.');
+            toast.error(t('toast.instituteDetailsUnavailable'));
             return;
         }
 
@@ -611,14 +617,14 @@ export default function AdmissionFormWizard() {
                 const data = response.data as AdmissionSubmitResult;
                 setAdmissionSubmitResult(data);
                 setAdmissionTrackingId(data.tracking_id || null);
-                toast.success(`Admission submitted successfully! ID: ${admissionId}`);
+                toast.success(t('toast.admissionSubmitted', { admissionId }));
                 setCurrentStep(6);
             } else {
-                toast.error('Failed to submit admission form. Please try again.');
+                toast.error(t('toast.admissionSubmitFailed'));
             }
         } catch (error) {
             console.error('Error submitting form:', error);
-            toast.error('An error occurred. Please check your network and try again.');
+            toast.error(t('toast.submissionError'));
         } finally {
             setIsSubmitting(false);
         }
@@ -631,7 +637,7 @@ export default function AdmissionFormWizard() {
                     <button
                         onClick={() => navigate({ to: '/admissions/admission-list' })}
                         className="rounded-md p-1 transition-colors hover:bg-gray-200"
-                        title="Back to Admission List"
+                        title={t('backToAdmissionList')}
                     >
                         <svg
                             className="h-5 w-5 text-gray-600"
@@ -647,7 +653,7 @@ export default function AdmissionFormWizard() {
                             ></path>
                         </svg>
                     </button>
-                    Admission Form
+                    {t('pageTitle')}
                 </h1>
                 <div className="flex items-center gap-2">
                     <MyButton
@@ -660,7 +666,7 @@ export default function AdmissionFormWizard() {
                         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+                        {isGeneratingPdf ? t('downloadingPdf') : t('downloadPdf')}
                     </MyButton>
                     <MyButton
                         onClick={handlePrint}
@@ -671,7 +677,7 @@ export default function AdmissionFormWizard() {
                         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                         </svg>
-                        Print
+                        {t('print')}
                     </MyButton>
                 </div>
             </div>
@@ -769,7 +775,7 @@ export default function AdmissionFormWizard() {
                         disabled={currentStep === 1}
                         className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
                     >
-                        Previous
+                        {t('previous')}
                     </MyButton>
 
                     {currentStep === 5 ? (
@@ -782,10 +788,10 @@ export default function AdmissionFormWizard() {
                                     : 'bg-green-600 hover:bg-green-700'
                             }`}
                         >
-                            {isSubmitting ? 'Submitting...' : 'Submit Admission'}
+                            {isSubmitting ? t('submitting') : t('submitAdmission')}
                         </MyButton>
                     ) : (
-                        <MyButton onClick={nextStep}>Save & Next</MyButton>
+                        <MyButton onClick={nextStep}>{t('saveNext')}</MyButton>
                     )}
                 </div>
             )}
@@ -798,7 +804,9 @@ export default function AdmissionFormWizard() {
                         formData={formData}
                         instituteName={instituteName}
                         instituteLogo={logoBase64}
-                        trackingLabel={admissionTrackingId ? 'Admission Tracking ID' : sourceTrackingLabel}
+                        trackingLabel={
+                            admissionTrackingId ? t('trackingLabel.admission') : sourceTrackingLabel
+                        }
                         trackingId={admissionTrackingId || sourceTrackingId || ''}
                     />
                 </div>

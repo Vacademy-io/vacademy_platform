@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { quickActionsForRoles, type QuickAction } from '../-config/dashboard-quick-actions';
 
 interface QuickActionsStripProps {
@@ -7,7 +8,8 @@ interface QuickActionsStripProps {
 
 export default function QuickActionsStrip({ roles }: QuickActionsStripProps) {
     const navigate = useNavigate();
-    const actions = quickActionsForRoles(roles);
+    const { t } = useTranslation('dashboardQuickActions');
+    const actions = quickActionsForRoles(roles, t);
     if (actions.length === 0) return null;
 
     return (

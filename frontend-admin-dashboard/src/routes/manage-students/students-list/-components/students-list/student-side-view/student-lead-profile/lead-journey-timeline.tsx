@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_ALL_LEAD_EVENTS } from '@/constants/urls';
 import { cn } from '@/lib/utils';
@@ -88,136 +90,142 @@ type ActionConfig = {
     label: string;
 };
 
-const ACTION_CONFIG: Record<string, ActionConfig> = {
-    // JOURNEY events
-    LEAD_SUBMITTED: {
-        Icon: UserPlus,
-        dotBg: 'bg-info-50 ring-info-200',
-        iconColor: 'text-info-600',
-        label: 'Lead Submitted',
-    },
-    COUNSELOR_ASSIGNED: {
-        Icon: UserCheck,
-        dotBg: 'bg-primary-50 ring-primary-200',
-        iconColor: 'text-primary-600',
-        label: 'Counselor Assigned',
-    },
-    STATUS_CHANGED: {
-        Icon: ArrowsLeftRight,
-        dotBg: 'bg-secondary ring-border',
-        iconColor: 'text-muted-foreground',
-        label: 'Status Changed',
-    },
-    SCORE_UPDATED: {
-        Icon: TrendUp,
-        dotBg: 'bg-warning-50 ring-warning-200',
-        iconColor: 'text-warning-600',
-        label: 'Score Updated',
-    },
-    MANUAL_SCORE_UPDATE: {
-        Icon: PencilSimple,
-        dotBg: 'bg-primary-50 ring-primary-200',
-        iconColor: 'text-primary-600',
-        label: 'Manual Score',
-    },
-    FOLLOWUP: {
-        Icon: CalendarCheck,
-        dotBg: 'bg-info-50 ring-info-200',
-        iconColor: 'text-info-500',
-        label: 'Follow-up',
-    },
-    REACHOUT: {
-        Icon: ChatCircle,
-        dotBg: 'bg-primary-50 ring-primary-200',
-        iconColor: 'text-primary-500',
-        label: 'Reachout',
-    },
-    LEAD_CONVERTED: {
-        Icon: CheckCircle,
-        dotBg: 'bg-success-50 ring-success-300',
-        iconColor: 'text-success-600',
-        label: 'Converted',
-    },
-    LEAD_LOST: {
-        Icon: XCircle,
-        dotBg: 'bg-danger-50 ring-danger-200',
-        iconColor: 'text-danger-600',
-        label: 'Lead Lost',
-    },
-    DUPLICATE_MERGED: {
-        Icon: GitMerge,
-        dotBg: 'bg-warning-50 ring-warning-200',
-        iconColor: 'text-warning-600',
-        label: 'Duplicate Merged',
-    },
-    PAYMENT_RECEIVED: {
-        Icon: CurrencyCircleDollar,
-        dotBg: 'bg-success-50 ring-success-200',
-        iconColor: 'text-success-600',
-        label: 'Payment Received',
-    },
-    ENROLLMENT_COMPLETED: {
-        Icon: GraduationCap,
-        dotBg: 'bg-success-50 ring-success-200',
-        iconColor: 'text-success-700',
-        label: 'Enrolled',
-    },
-    // ACTIVITY events
-    NOTE: {
-        Icon: Note,
-        dotBg: 'bg-secondary ring-border',
-        iconColor: 'text-neutral-500',
-        label: 'Note',
-    },
-    CALL: {
-        Icon: Phone,
-        dotBg: 'bg-secondary ring-border',
-        iconColor: 'text-neutral-500',
-        label: 'Call',
-    },
-    // Outbound call placed via the telephony integration (Exotel etc.).
-    // Recording playback is rendered inline in EventMeta when a
-    // recording_storage_key is present on the metadata.
-    CALL_MADE: {
-        Icon: Phone,
-        dotBg: 'bg-primary-50 ring-primary-200',
-        iconColor: 'text-primary-600',
-        label: 'Outbound Call',
-    },
-    WALK_IN_NOTE: {
-        Icon: Note,
-        dotBg: 'bg-secondary ring-border',
-        iconColor: 'text-neutral-500',
-        label: 'Walk-in Note',
-    },
-    FOLLOWUP_SCHEDULED: {
-        Icon: CalendarCheck,
-        dotBg: 'bg-info-50 ring-info-200',
-        iconColor: 'text-info-500',
-        label: 'Follow-up Scheduled',
-    },
-    STATUS_CHANGE: {
-        Icon: ArrowsLeftRight,
-        dotBg: 'bg-secondary ring-border',
-        iconColor: 'text-muted-foreground',
-        label: 'Status Changed',
-    },
-};
+// Sentinel key for the fallback config entry — kept inside the same map (rather
+// than a separate constant) so buildActionConfig has a single t()-driven source.
+const FALLBACK_ACTION_KEY = '__fallback__';
 
-const FALLBACK_CONFIG: ActionConfig = {
-    Icon: Warning,
-    dotBg: 'bg-secondary ring-border',
-    iconColor: 'text-muted-foreground',
-    label: 'Event',
-};
+function buildActionConfig(t: TFunction): Record<string, ActionConfig> {
+    return {
+        // JOURNEY events
+        LEAD_SUBMITTED: {
+            Icon: UserPlus,
+            dotBg: 'bg-info-50 ring-info-200',
+            iconColor: 'text-info-600',
+            label: t('actionConfig.leadSubmitted'),
+        },
+        COUNSELOR_ASSIGNED: {
+            Icon: UserCheck,
+            dotBg: 'bg-primary-50 ring-primary-200',
+            iconColor: 'text-primary-600',
+            label: t('actionConfig.counselorAssigned'),
+        },
+        STATUS_CHANGED: {
+            Icon: ArrowsLeftRight,
+            dotBg: 'bg-secondary ring-border',
+            iconColor: 'text-muted-foreground',
+            label: t('actionConfig.statusChanged'),
+        },
+        SCORE_UPDATED: {
+            Icon: TrendUp,
+            dotBg: 'bg-warning-50 ring-warning-200',
+            iconColor: 'text-warning-600',
+            label: t('actionConfig.scoreUpdated'),
+        },
+        MANUAL_SCORE_UPDATE: {
+            Icon: PencilSimple,
+            dotBg: 'bg-primary-50 ring-primary-200',
+            iconColor: 'text-primary-600',
+            label: t('actionConfig.manualScoreUpdate'),
+        },
+        FOLLOWUP: {
+            Icon: CalendarCheck,
+            dotBg: 'bg-info-50 ring-info-200',
+            iconColor: 'text-info-500',
+            label: t('actionConfig.followup'),
+        },
+        REACHOUT: {
+            Icon: ChatCircle,
+            dotBg: 'bg-primary-50 ring-primary-200',
+            iconColor: 'text-primary-500',
+            label: t('actionConfig.reachout'),
+        },
+        LEAD_CONVERTED: {
+            Icon: CheckCircle,
+            dotBg: 'bg-success-50 ring-success-300',
+            iconColor: 'text-success-600',
+            label: t('actionConfig.leadConverted'),
+        },
+        LEAD_LOST: {
+            Icon: XCircle,
+            dotBg: 'bg-danger-50 ring-danger-200',
+            iconColor: 'text-danger-600',
+            label: t('actionConfig.leadLost'),
+        },
+        DUPLICATE_MERGED: {
+            Icon: GitMerge,
+            dotBg: 'bg-warning-50 ring-warning-200',
+            iconColor: 'text-warning-600',
+            label: t('actionConfig.duplicateMerged'),
+        },
+        PAYMENT_RECEIVED: {
+            Icon: CurrencyCircleDollar,
+            dotBg: 'bg-success-50 ring-success-200',
+            iconColor: 'text-success-600',
+            label: t('actionConfig.paymentReceived'),
+        },
+        ENROLLMENT_COMPLETED: {
+            Icon: GraduationCap,
+            dotBg: 'bg-success-50 ring-success-200',
+            iconColor: 'text-success-700',
+            label: t('actionConfig.enrollmentCompleted'),
+        },
+        // ACTIVITY events
+        NOTE: {
+            Icon: Note,
+            dotBg: 'bg-secondary ring-border',
+            iconColor: 'text-neutral-500',
+            label: t('actionConfig.note'),
+        },
+        CALL: {
+            Icon: Phone,
+            dotBg: 'bg-secondary ring-border',
+            iconColor: 'text-neutral-500',
+            label: t('actionConfig.call'),
+        },
+        // Outbound call placed via the telephony integration (Exotel etc.).
+        // Recording playback is rendered inline in EventMeta when a
+        // recording_storage_key is present on the metadata.
+        CALL_MADE: {
+            Icon: Phone,
+            dotBg: 'bg-primary-50 ring-primary-200',
+            iconColor: 'text-primary-600',
+            label: t('actionConfig.callMade'),
+        },
+        WALK_IN_NOTE: {
+            Icon: Note,
+            dotBg: 'bg-secondary ring-border',
+            iconColor: 'text-neutral-500',
+            label: t('actionConfig.walkInNote'),
+        },
+        FOLLOWUP_SCHEDULED: {
+            Icon: CalendarCheck,
+            dotBg: 'bg-info-50 ring-info-200',
+            iconColor: 'text-info-500',
+            label: t('actionConfig.followupScheduled'),
+        },
+        STATUS_CHANGE: {
+            Icon: ArrowsLeftRight,
+            dotBg: 'bg-secondary ring-border',
+            iconColor: 'text-muted-foreground',
+            label: t('actionConfig.statusChange'),
+        },
+        [FALLBACK_ACTION_KEY]: {
+            Icon: Warning,
+            dotBg: 'bg-secondary ring-border',
+            iconColor: 'text-muted-foreground',
+            label: t('actionConfig.fallback'),
+        },
+    };
+}
 
-function getConfig(actionType: string): ActionConfig {
-    return ACTION_CONFIG[actionType] ?? FALLBACK_CONFIG;
+function getConfig(actionType: string, config: Record<string, ActionConfig>): ActionConfig {
+    return config[actionType] ?? config[FALLBACK_ACTION_KEY]!;
 }
 
 // ── Metadata renderers ────────────────────────────────────────────────────────
 
 function StatusChangeMeta({ meta }: { meta: Record<string, unknown> }) {
+    const { t } = useTranslation('manageStudentsLeadJourneyTimeline');
     const from = (meta.from_status_label as string) || (meta.from_status_key as string) || (meta.old_status as string) || null;
     const to =
         (meta.to_status_label as string) ||
@@ -232,7 +240,7 @@ function StatusChangeMeta({ meta }: { meta: Record<string, unknown> }) {
                     {from}
                 </span>
             ) : (
-                <span className="text-xs text-muted-foreground italic">Previous</span>
+                <span className="text-xs text-muted-foreground italic">{t('statusChangeMeta.previous')}</span>
             )}
             <ArrowRight weight="bold" className="size-3 shrink-0 text-muted-foreground" />
             {to && (
@@ -303,6 +311,7 @@ function ScoreUpdateMeta({ meta }: { meta: Record<string, unknown> }) {
 }
 
 function CounselorMeta({ meta }: { meta: Record<string, unknown> }) {
+    const { t } = useTranslation('manageStudentsLeadJourneyTimeline');
     const name = meta.counselor_name as string | undefined;
     const source = meta.assignment_source as string | undefined;
     if (!name && !meta.counselor_id) return null;
@@ -312,10 +321,10 @@ function CounselorMeta({ meta }: { meta: Record<string, unknown> }) {
             <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700 text-xs font-bold">
                 {initial}
             </div>
-            <span className="text-xs font-medium text-neutral-700">{name ?? 'Unknown'}</span>
+            <span className="text-xs font-medium text-neutral-700">{name ?? t('counselorMeta.unknown')}</span>
             {source && (
                 <span className="rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground border border-border">
-                    {source === 'AUTO' ? 'Auto (pool)' : 'Manual'}
+                    {source === 'AUTO' ? t('counselorMeta.autoPool') : t('counselorMeta.manual')}
                 </span>
             )}
         </div>
@@ -384,6 +393,7 @@ function CallRecordingMeta({
      *  call". Empty array means no linked notes. */
     linkedNotes: TimelineEvent[];
 }) {
+    const { t } = useTranslation('manageStudentsLeadJourneyTimeline');
     const instituteId = getCurrentInstituteId() ?? '';
     const callLogId = typeof meta.call_log_id === 'string' ? meta.call_log_id : null;
     const callerId = typeof meta.caller_id === 'string' ? meta.caller_id : null;
@@ -429,7 +439,7 @@ function CallRecordingMeta({
                 {status && (
                     <span
                         className={cn(
-                            'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                            'rounded-full px-1.5 py-0.5 text-2xs font-medium',
                             status === 'COMPLETED'
                                 ? 'bg-success-50 text-success-700'
                                 : status === 'NO_ANSWER' || status === 'BUSY'
@@ -439,14 +449,14 @@ function CallRecordingMeta({
                                 : 'bg-neutral-100 text-neutral-600'
                         )}
                     >
-                        {formatStatus(status)}
+                        {formatStatus(status, t)}
                     </span>
                 )}
                 {durationSeconds != null && durationSeconds > 0 && (
-                    <span className="text-neutral-600">{formatDuration(durationSeconds)}</span>
+                    <span className="text-neutral-600">{formatDuration(durationSeconds, t)}</span>
                 )}
                 {callerId && (
-                    <span className="text-neutral-400">· from {callerId}</span>
+                    <span className="text-neutral-400">{t('callRecording.from', { caller: callerId })}</span>
                 )}
             </div>
 
@@ -467,10 +477,10 @@ function CallRecordingMeta({
                             <a
                                 href={url}
                                 download={`call-${callLogId}.mp3`}
-                                className="inline-flex items-center gap-1 text-[11px] text-primary-600 hover:underline"
+                                className="inline-flex items-center gap-1 text-2xs text-primary-600 hover:underline"
                             >
                                 <DownloadSimple className="size-3" />
-                                Download
+                                {t('callRecording.download')}
                             </a>
                         </div>
                     ) : (
@@ -479,14 +489,14 @@ function CallRecordingMeta({
                             onClick={resolveUrl}
                             disabled={loading || !callLogId}
                             className={cn(
-                                'inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 transition-colors',
+                                'inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-2xs text-neutral-700 transition-colors',
                                 loading || !callLogId
                                     ? 'cursor-not-allowed opacity-60'
                                     : 'hover:bg-neutral-50 hover:border-primary-300'
                             )}
                         >
                             <PlayCircle className="size-3.5" />
-                            {loading ? 'Loading…' : 'Play recording'}
+                            {loading ? t('callRecording.loading') : t('callRecording.playRecording')}
                         </button>
                     )}
                 </div>
@@ -520,10 +530,10 @@ function CallRecordingMeta({
                     <button
                         type="button"
                         onClick={() => setNoteDialogOpen(true)}
-                        className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 hover:bg-neutral-50 hover:border-primary-300"
+                        className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-2xs text-neutral-700 hover:bg-neutral-50 hover:border-primary-300"
                     >
                         <NotePencil className="size-3.5" />
-                        Add note
+                        {t('callRecording.addNote')}
                     </button>
                 </div>
             )}
@@ -547,6 +557,7 @@ function CallRecordingMeta({
  * parent CALL_MADE row's card, not as a top-level timeline event.
  */
 function LinkedCallNote({ note }: { note: TimelineEvent }) {
+    const { t } = useTranslation('manageStudentsLeadJourneyTimeline');
     const outcome =
         note.metadata && typeof note.metadata.call_outcome === 'string'
             ? (note.metadata.call_outcome as string)
@@ -560,15 +571,15 @@ function LinkedCallNote({ note }: { note: TimelineEvent }) {
             <div className="flex flex-wrap items-center gap-1.5">
                 <NotePencil weight="fill" className="size-3 text-primary-500 shrink-0" />
                 {outcome && (
-                    <span className="rounded-full bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-700">
-                        {formatCallOutcome(outcome)}
+                    <span className="rounded-full bg-primary-50 px-1.5 py-0.5 text-2xs font-medium text-primary-700">
+                        {formatCallOutcome(outcome, t)}
                     </span>
                 )}
                 {note.actor_name && (
-                    <span className="text-[11px] text-neutral-500">{note.actor_name}</span>
+                    <span className="text-2xs text-neutral-500">{note.actor_name}</span>
                 )}
                 {ts && !isNaN(ts.getTime()) && (
-                    <span className="text-[11px] text-neutral-400">
+                    <span className="text-2xs text-neutral-400">
                         · {format(ts, 'MMM d, h:mm a')}
                     </span>
                 )}
@@ -586,52 +597,54 @@ function LinkedCallNote({ note }: { note: TimelineEvent }) {
 /** Outcome key → friendly label. Mirrors CALL_OUTCOME_LABELS from
  *  call-activity.ts; duplicated here to avoid a cross-feature import
  *  for one lookup. */
-function formatCallOutcome(key: string): string {
+function formatCallOutcome(key: string, t: TFunction): string {
     switch (key) {
-        case 'CONNECTED': return 'Connected';
-        case 'NO_ANSWER': return 'No answer';
-        case 'BUSY': return 'Busy';
-        case 'LEFT_VOICEMAIL': return 'Left voicemail';
-        case 'CALL_BACK_LATER': return 'Call back later';
-        case 'NOT_REACHABLE': return 'Not reachable';
-        case 'SWITCHED_OFF': return 'Switched off';
-        case 'WRONG_NUMBER': return 'Wrong number';
-        case 'INTERESTED': return 'Interested';
-        case 'NOT_INTERESTED': return 'Not interested';
-        case 'FOLLOW_UP_SCHEDULED': return 'Follow-up scheduled';
-        case 'DEMO_SCHEDULED': return 'Demo scheduled';
-        case 'CONVERTED': return 'Converted';
-        case 'DO_NOT_CALL': return 'Do not call';
+        case 'CONNECTED': return t('callOutcome.connected');
+        case 'NO_ANSWER': return t('callOutcome.noAnswer');
+        case 'BUSY': return t('callOutcome.busy');
+        case 'LEFT_VOICEMAIL': return t('callOutcome.leftVoicemail');
+        case 'CALL_BACK_LATER': return t('callOutcome.callBackLater');
+        case 'NOT_REACHABLE': return t('callOutcome.notReachable');
+        case 'SWITCHED_OFF': return t('callOutcome.switchedOff');
+        case 'WRONG_NUMBER': return t('callOutcome.wrongNumber');
+        case 'INTERESTED': return t('callOutcome.interested');
+        case 'NOT_INTERESTED': return t('callOutcome.notInterested');
+        case 'FOLLOW_UP_SCHEDULED': return t('callOutcome.followUpScheduled');
+        case 'DEMO_SCHEDULED': return t('callOutcome.demoScheduled');
+        case 'CONVERTED': return t('callOutcome.converted');
+        case 'DO_NOT_CALL': return t('callOutcome.doNotCall');
         default: return key;
     }
 }
 
-function formatDuration(seconds: number): string {
-    if (seconds <= 0) return '0s';
+function formatDuration(seconds: number, t: TFunction): string {
+    if (seconds <= 0) return t('duration.zero');
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
-    return m === 0 ? `${s}s` : `${m}m ${s}s`;
+    return m === 0
+        ? t('duration.secondsOnly', { count: s })
+        : t('duration.minutesSeconds', { minutes: m, seconds: s });
 }
 
-function formatStatus(status: string): string {
+function formatStatus(status: string, t: TFunction): string {
     switch (status) {
         case 'COMPLETED':
-            return 'Connected';
+            return t('callStatus.connected');
         case 'NO_ANSWER':
-            return 'No answer';
+            return t('callStatus.noAnswer');
         case 'BUSY':
-            return 'Busy';
+            return t('callStatus.busy');
         case 'FAILED':
-            return 'Failed';
+            return t('callStatus.failed');
         case 'CANCELLED':
-            return 'Cancelled';
+            return t('callStatus.cancelled');
         case 'IN_PROGRESS':
-            return 'In progress';
+            return t('callStatus.inProgress');
         case 'COUNSELLOR_RINGING':
         case 'COUNSELLOR_ANSWERED':
-            return 'Ringing';
+            return t('callStatus.ringing');
         case 'QUEUED':
-            return 'Queued';
+            return t('callStatus.queued');
         default:
             return status;
     }
@@ -692,6 +705,7 @@ function EventRow({
     isLast,
     userId,
     linkedNotes,
+    actionConfig,
 }: {
     event: TimelineEvent;
     isLast: boolean;
@@ -700,8 +714,12 @@ function EventRow({
      *  this call's call_log_id — rendered inline under the recording so they
      *  travel with the call instead of as separate timeline rows. */
     linkedNotes: TimelineEvent[];
+    /** Built once in the parent via buildActionConfig(t) and threaded down so
+     *  every row doesn't need its own translation lookup for icon/label config. */
+    actionConfig: Record<string, ActionConfig>;
 }) {
-    const config = getConfig(event.action_type);
+    const { t } = useTranslation('manageStudentsLeadJourneyTimeline');
+    const config = getConfig(event.action_type, actionConfig);
     const { Icon, dotBg, iconColor } = config;
     const isConverted = event.action_type === 'LEAD_CONVERTED';
     const isLost = event.action_type === 'LEAD_LOST';
@@ -771,17 +789,17 @@ function EventRow({
                 <div className="mt-1.5 flex items-center gap-1.5">
                     {isSystem ? (
                         <span className="rounded-full bg-secondary border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
-                            System
+                            {t('eventRow.system')}
                         </span>
                     ) : event.actor_name ? (
                         <p className="text-xs text-muted-foreground">
-                            by{' '}
+                            {t('eventRow.byPrefix')}{' '}
                             <span className="font-medium text-neutral-600">{event.actor_name}</span>
                         </p>
                     ) : null}
                     {isActivity && (
                         <span className="rounded-full bg-secondary border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
-                            Activity
+                            {t('eventRow.activity')}
                         </span>
                     )}
                 </div>
@@ -813,12 +831,13 @@ function SkeletonRows() {
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 function EmptyState() {
+    const { t } = useTranslation('manageStudentsLeadJourneyTimeline');
     return (
         <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 py-8 text-center">
             <Path weight="duotone" className="size-8 text-muted-foreground/50" />
-            <p className="text-sm font-medium text-muted-foreground">No events yet</p>
+            <p className="text-sm font-medium text-muted-foreground">{t('emptyState.title')}</p>
             <p className="text-xs text-muted-foreground/70 max-w-xs">
-                Events appear here as the lead progresses — submissions, scores, notes, and more
+                {t('emptyState.description')}
             </p>
         </div>
     );
@@ -834,11 +853,13 @@ interface LeadJourneyTimelineProps {
 }
 
 export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineProps) {
+    const { t } = useTranslation('manageStudentsLeadJourneyTimeline');
     const [open, setOpen] = useState(false);
     const [page, setPage] = useState(0);
     const pageSize = 50;
     const queryClient = useQueryClient();
     const queryKey = ['lead-all-events', userId, responseId, page];
+    const actionConfig = useMemo(() => buildActionConfig(t), [t]);
 
     const { data, isLoading, isError, isFetching } = useQuery({
         queryKey,
@@ -894,7 +915,7 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                     <Path weight="fill" className="size-3.5 text-primary-500" />
                 </div>
                 <span className="flex-1 text-left text-sm font-semibold text-neutral-700">
-                    Lead Journey
+                    {t('header.title')}
                 </span>
                 {totalCount !== undefined && totalCount > 0 && (
                     <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-semibold text-primary-600">
@@ -904,8 +925,8 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                 <button
                     onClick={handleRefresh}
                     className="flex size-5 items-center justify-center rounded-full hover:bg-muted transition-colors duration-150 cursor-pointer"
-                    title="Refresh"
-                    aria-label="Refresh journey events"
+                    title={t('header.refresh')}
+                    aria-label={t('header.refreshAria')}
                 >
                     <ArrowsClockwise
                         weight="bold"
@@ -924,7 +945,7 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                     {!userId && (
                         <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 py-6 text-center">
                             <Path weight="duotone" className="size-7 text-muted-foreground/40" />
-                            <p className="text-xs text-muted-foreground">No lead profile linked</p>
+                            <p className="text-xs text-muted-foreground">{t('noProfileLinked')}</p>
                         </div>
                     )}
 
@@ -933,14 +954,14 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                     {userId && isError && (
                         <div className="flex flex-col items-center gap-2 rounded-lg border border-danger-200 bg-danger-50/50 py-5 text-center">
                             <p className="text-xs font-medium text-danger-600">
-                                Failed to load events
+                                {t('errorState.title')}
                             </p>
                             <MyButton
                                 buttonType="secondary"
                                 scale="small"
                                 onClick={() => setPage(0)}
                             >
-                                Retry
+                                {t('errorState.retry')}
                             </MyButton>
                         </div>
                     )}
@@ -965,13 +986,17 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                                                       ] ?? []
                                                     : []
                                             }
+                                            actionConfig={actionConfig}
                                         />
                                     ))}
 
                                     {data.totalPages > 1 && (
                                         <div className="mt-1 flex items-center justify-between border-t border-border pt-3">
                                             <span className="text-xs text-muted-foreground">
-                                                {page + 1} / {data.totalPages}
+                                                {t('pagination.pageOf', {
+                                                    current: page + 1,
+                                                    total: data.totalPages,
+                                                })}
                                             </span>
                                             <div className="flex gap-1.5">
                                                 <MyButton
@@ -982,7 +1007,7 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                                                     }
                                                     disabled={page === 0}
                                                 >
-                                                    Prev
+                                                    {t('pagination.prev')}
                                                 </MyButton>
                                                 <MyButton
                                                     buttonType="secondary"
@@ -994,7 +1019,7 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                                                     }
                                                     disabled={page >= data.totalPages - 1}
                                                 >
-                                                    Next
+                                                    {t('pagination.next')}
                                                 </MyButton>
                                             </div>
                                         </div>

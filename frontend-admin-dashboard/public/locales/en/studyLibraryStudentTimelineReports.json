@@ -1,0 +1,38 @@
+{
+    "form": {
+        "courseRequired": "Course is required",
+        "sessionRequired": "Session is required",
+        "levelRequired": "Level is required",
+        "studentRequired": "Student is required",
+        "startDateRequired": "Start Date is required",
+        "endDateRequired": "End Date is required",
+        "dateRangeTooLong": "The difference between Start Date and End Date should be less than one month.",
+        "selectPlaceholder": "Select a {{term}}",
+        "searchPlaceholder": "Search {{term}}...",
+        "nameLabel": "Name",
+        "selectStudent": "Select Student",
+        "searchStudent": "Search Student...",
+        "noStudentsFound": "No students found",
+        "errorsHeading": "Please fix the following errors:"
+    },
+    "actions": {
+        "generateReport": "Generate Report",
+        "exporting": "Exporting…",
+        "exportPdf": "Export PDF"
+    },
+    "toast": {
+        "exportSuccess": "Learner report exported",
+        "exportFailed": "Failed to export PDF"
+    },
+    "report": {
+        "duration": "Duration:",
+        "courseCompletedLabel": "{{term}} Completed",
+        "dailyTimeSpentAvg": "Daily Time Spent (Avg)",
+        "concentrationScoreAvg": "Concentration Score (Avg)",
+        "dailyLearningPerformance": "Daily Learning Performance",
+        "trackDailyProgress": "Track daily progress and activity patterns",
+        "activitySummary": "Activity Summary",
+        "learningTimeline": "Learning Timeline",
+        "dateLabel": "Date:"
+    }
+}

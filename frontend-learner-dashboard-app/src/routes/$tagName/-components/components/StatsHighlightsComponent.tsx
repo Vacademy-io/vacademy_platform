@@ -195,7 +195,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
             "group relative flex h-full flex-col items-center text-center",
             minimal
               ? "px-4 py-6"
-              : "rounded-2xl border border-catalogue-border-subtle bg-catalogue-bg-elevated p-7 sm:p-8 shadow-sm transition-transform duration-300 ease-out will-change-transform hover:-translate-y-1",
+              : "rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg-elevated p-7 sm:p-8 shadow-sm transition-transform duration-300 ease-out will-change-transform hover:-translate-y-1",
           )}
         >
           {/* Soft brand-green glow — animates via OPACITY only (GPU-smooth),
@@ -203,12 +203,12 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
           {!minimal && (
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 shadow-xl shadow-primary-500/30 transition-opacity duration-300 ease-out group-hover:opacity-100"
+              className="pointer-events-none absolute inset-0 rounded-catalogue-lg opacity-0 shadow-xl shadow-primary-500/30 transition-opacity duration-300 ease-out group-hover:opacity-100"
             />
           )}
 
           {/* Brand icon chip */}
-          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-50 to-primary-100 ring-1 ring-primary-100 transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-primary-200">
+          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-catalogue-lg bg-gradient-to-br from-primary-50 to-primary-100 ring-1 ring-primary-100 transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-primary-200">
             <Icon className="h-7 w-7 text-primary-500" weight="duotone" />
           </div>
 
@@ -271,7 +271,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
             {groups!.map((group, groupIndex) => (
               <div
                 key={groupIndex}
-                className="rounded-2xl border border-catalogue-border-subtle bg-catalogue-bg-elevated p-5 shadow-sm sm:p-8"
+                className="rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg-elevated p-5 shadow-sm sm:p-8"
               >
                 <div className="text-center mb-6">
                   <h3 className="text-base sm:text-lg font-semibold text-primary-500">

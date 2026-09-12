@@ -1,0 +1,17 @@
+{
+    "navHeading": "التقييم",
+    "assessmentListHeading": "قائمة التقييمات",
+    "createAssessment": "إنشاء تقييم",
+    "assessmentIdLabel": "معرّف التقييم: {{id}}",
+    "loadingDetails": "جارٍ تحميل تفاصيل التقييم...",
+    "columnQuestion": "السؤال",
+    "columnAnswer": "الإجابة",
+    "columnCriteria": "المعايير",
+    "confirmDeleteAssessment": "هل أنت متأكد من رغبتك في حذف هذا التقييم؟ ",
+    "delete": "حذف",
+    "failedToLoadDetails": "فشل تحميل تفاصيل التقييم",
+    "noAssessmentsAvailable": "لا توجد تقييمات متاحة",
+    "noAnswerAvailable": "لا توجد إجابة متاحة",
+    "viewLess": "عرض أقل",
+    "viewMore": "عرض المزيد"
+}

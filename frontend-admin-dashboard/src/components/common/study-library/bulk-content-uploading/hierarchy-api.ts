@@ -54,9 +54,14 @@ export const createModule = async (
     return id;
 };
 
+/**
+ * chapterOrder null → the backend appends (maxChapterOrder + 1 for the package
+ * session, 1-based). Pass null for new named chapters created in folder order;
+ * a literal 0 would pin them all to the top where they tie and shuffle.
+ */
 export const createChapter = async (
     chapterName: string,
-    chapterOrder: number,
+    chapterOrder: number | null,
     subjectId: string,
     moduleId: string,
     packageSessionIds: string

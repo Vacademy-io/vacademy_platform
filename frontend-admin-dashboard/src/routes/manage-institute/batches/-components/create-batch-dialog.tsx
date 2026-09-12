@@ -13,6 +13,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { Plus } from '@phosphor-icons/react';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { useTranslation } from 'react-i18next';
 
 interface FormData {
     // Course step
@@ -33,9 +34,10 @@ interface FormData {
 }
 
 export const CreateBatchDialog = () => {
+    const { t } = useTranslation('manageInstituteCreateBatchDialog');
     const triggerButton = (
         <MyButton scale="medium" buttonType="primary" className="flex items-center">
-            <Plus size={18} className="mr-2" /> Create Batch
+            <Plus size={18} className="mr-2" /> {t('trigger.createBatch')}
         </MyButton>
     );
     const [currentStep, setCurrentStep] = useState(0);
@@ -121,11 +123,11 @@ export const CreateBatchDialog = () => {
                                 },
                                 {
                                     onSuccess: () => {
-                                        toast.success('Study material copied successfully');
+                                        toast.success(t('toast.studyMaterialCopiedSuccess'));
                                     },
                                     onError: (error) => {
                                         toast.error(
-                                            error.message || 'Failed to copy study material'
+                                            error.message || t('toast.studyMaterialCopyFailed')
                                         );
                                     },
                                 }
@@ -134,7 +136,7 @@ export const CreateBatchDialog = () => {
                     }
 
                     // responseData contains the API response
-                    toast.success('Batch created successfully');
+                    toast.success(t('toast.batchCreatedSuccess'));
                     handleOpenManageBatchDialog(false);
                     setCurrentStep(0);
                     // Reset form data
@@ -152,7 +154,7 @@ export const CreateBatchDialog = () => {
                     });
                 },
                 onError: (error) => {
-                    toast.error(error.message || 'Failed to create batch');
+                    toast.error(error.message || t('toast.batchCreateFailed'));
                 },
             }
         );
@@ -239,11 +241,11 @@ export const CreateBatchDialog = () => {
 
     const backButton = (
         <MyButton buttonType="secondary" onClick={prevStep} className="font-normal">
-            Back
+            {t('button.back')}
         </MyButton>
     );
 
-    const nextButtonText = currentStep === 2 ? 'Create Batch' : 'Next Step';
+    const nextButtonText = currentStep === 2 ? t('trigger.createBatch') : t('button.nextStep');
     const nextButtonIcon = currentStep === 2 ? <Plus size={18} className="mr-1.5" /> : null;
 
     const nextButton = (
@@ -279,12 +281,20 @@ export const CreateBatchDialog = () => {
         <CreateLevelStep key="level" />,
     ];
 
-    const stepTitles = [`Select ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`, `Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`, `Select ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`];
+    const stepTitles = [
+        t('step.selectTerm', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+        t('step.selectTerm', { term: getTerminology(ContentTerms.Session, SystemTerms.Session) }),
+        t('step.selectTerm', { term: getTerminology(ContentTerms.Level, SystemTerms.Level) }),
+    ];
 
     return (
         <MyDialog
             trigger={triggerButton}
-            heading={`Create ${getTerminology(ContentTerms.Batch, SystemTerms.Batch)} - Step ${currentStep + 1}: ${stepTitles[currentStep]}`}
+            heading={t('dialog.heading', {
+                batchTerm: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
+                step: currentStep + 1,
+                title: stepTitles[currentStep],
+            })}
             footer={footer}
             dialogWidth="w-[600px]"
             open={openManageBatchDialog}

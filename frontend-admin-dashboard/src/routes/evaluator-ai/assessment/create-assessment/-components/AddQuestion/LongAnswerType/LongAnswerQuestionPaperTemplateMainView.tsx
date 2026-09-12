@@ -5,14 +5,16 @@ import { formatStructure } from '@/routes/assessment/question-papers/-utils/help
 import { useEffect } from 'react';
 import { CollapsibleQuillEditor } from '../CollapsibleQuillEditor';
 import { QuestionPaperTemplateFormProps } from '../MainViewComponentFactory';
+import { useTranslation } from 'react-i18next';
 
 export const LongAnswerQuestionPaperTemplateMainView = ({
     form,
     currentQuestionIndex,
     className,
 }: QuestionPaperTemplateFormProps) => {
+    const { t } = useTranslation('evaluatorAiLongAnswerMainView');
     const { control, getValues } = form;
-    const explanationsType = getValues('explanationsType') || 'Explanation:';
+    const explanationsType = getValues('explanationsType') || t('explanationDefault');
     const questionsType = getValues('questionsType') || '';
     const allQuestions = getValues('questions') || [];
 
@@ -26,7 +28,7 @@ export const LongAnswerQuestionPaperTemplateMainView = ({
     if (allQuestions.length === 0) {
         return (
             <div className="flex h-screen w-full items-center justify-center">
-                <h1>Please add a question to show question details</h1>
+                <h1>{t('noQuestionsMessage')}</h1>
             </div>
         );
     }
@@ -35,7 +37,7 @@ export const LongAnswerQuestionPaperTemplateMainView = ({
         <div className={className}>
             {getValues(`questions.${currentQuestionIndex}.parentRichTextContent`) && (
                 <div className="flex w-full flex-col !flex-nowrap items-start gap-1">
-                    <span>Comprehension Text</span>
+                    <span>{t('comprehensionText')}</span>
                     <FormField
                         control={control}
                         name={`questions.${currentQuestionIndex}.parentRichTextContent`}
@@ -56,7 +58,7 @@ export const LongAnswerQuestionPaperTemplateMainView = ({
             )}
             <div className="flex w-full flex-col !flex-nowrap items-start gap-1">
                 <span>
-                    Question&nbsp;
+                    {t('questionLabel')}&nbsp;
                     {questionsType
                         ? formatStructure(questionsType, currentQuestionIndex + 1)
                         : currentQuestionIndex + 1}
@@ -80,7 +82,7 @@ export const LongAnswerQuestionPaperTemplateMainView = ({
             </div>
 
             <div className="flex w-full flex-col !flex-nowrap items-start gap-1">
-                <span>Answer</span>
+                <span>{t('answerLabel')}</span>
                 <FormField
                     control={control}
                     name={`questions.${currentQuestionIndex}.subjectiveAnswerText`}

@@ -75,7 +75,7 @@ export function CleanerPlayDashboardHero(
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-stack">
       {/* Live / imminent class banner */}
       {isLoadingLive ? (
         <div className="h-11 w-full max-w-md animate-pulse self-start rounded-full bg-cp-bg-deep" />

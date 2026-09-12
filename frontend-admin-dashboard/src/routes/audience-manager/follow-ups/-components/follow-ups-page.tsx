@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { CalendarBlank, ListBullets } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -71,10 +73,11 @@ const HIDDEN_COLUMNS = new Set(['score', 'source']);
 const INVALIDATE_KEYS: string[][] = [['follow-ups'], ['lead-profiles-batch']];
 
 export const FollowUpsPage = () => {
+    const { t } = useTranslation('audienceManagerFollowUpsPage');
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Follow-ups</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
     return (
         <StudentSidebarProvider>
             <FollowUpsContent />
@@ -83,6 +86,7 @@ export const FollowUpsPage = () => {
 };
 
 const FollowUpsContent = () => {
+    const { t } = useTranslation('audienceManagerFollowUpsPage');
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const { setSelectedStudent } = useStudentSidebar();
@@ -218,15 +222,16 @@ const FollowUpsContent = () => {
                 });
             },
             canCall: (vm) => {
-                if (!vm.responseId) return { allowed: false, reason: 'Lead has no submission id' };
+                if (!vm.responseId)
+                    return { allowed: false, reason: t('callReasons.noSubmissionId') };
                 const phone = vm.phone && vm.phone !== '-' ? vm.phone : '';
-                if (!phone) return { allowed: false, reason: 'Lead has no phone on file' };
+                if (!phone) return { allowed: false, reason: t('callReasons.noPhone') };
                 if (placeCall.isPending)
-                    return { allowed: false, reason: 'Another call is starting…' };
+                    return { allowed: false, reason: t('callReasons.callInProgress') };
                 return { allowed: true };
             },
         }),
-        [setSelectedStudent, updateTier, isAdmin, placeCall]
+        [setSelectedStudent, updateTier, isAdmin, placeCall, t]
     );
 
     // Inline "Mark complete" row action — the close flow for the follow-up the
@@ -238,7 +243,7 @@ const FollowUpsContent = () => {
         () => [
             {
                 id: 'complete',
-                header: 'Action',
+                header: t('table.actionHeader'),
                 thClass: 'w-32',
                 render: (vm) =>
                     vm.responseId && vm.userId ? (
@@ -260,7 +265,7 @@ const FollowUpsContent = () => {
                     ),
             },
         ],
-        []
+        [t]
     );
 
     const handleStatusUpdated = () => queryClient.invalidateQueries({ queryKey: ['follow-ups'] });
@@ -292,8 +297,8 @@ const FollowUpsContent = () => {
     } else if (error) {
         viewBody = (
             <LeadEmptyState
-                title="Couldn't load follow-ups"
-                description="Something went wrong fetching follow-ups. Try again."
+                title={t('errors.loadFailedTitle')}
+                description={t('errors.loadFailedDescription')}
             />
         );
     } else {
@@ -312,8 +317,8 @@ const FollowUpsContent = () => {
                 extraColumns={extraColumns}
                 emptyState={
                     <LeadEmptyState
-                        title={emptyTitle(isAdmin, bucket, counts)}
-                        description={emptyDescription(isAdmin, bucket, counts)}
+                        title={buildEmptyTitle(t, isAdmin, bucket, counts)}
+                        description={buildEmptyDescription(t, isAdmin, bucket, counts)}
                     />
                 }
             />
@@ -321,13 +326,18 @@ const FollowUpsContent = () => {
     }
 
     // Subline copy (counts-aware so a counsellor sees workload immediately).
-    const sublineRole = isAdmin ? 'Team has' : 'You have';
-    const sublineNoun = counts.today === 1 ? 'task' : 'tasks';
     const subline =
         counts.today === 0 && counts.overdue === 0
-            ? `${isAdmin ? 'Team is' : "You're"} all caught up`
-            : `${sublineRole} ${counts.today} ${sublineNoun} due today${
-                  counts.overdue > 0 ? ` · ${counts.overdue} overdue` : ''
+            ? isAdmin
+                ? t('subline.teamAllCaughtUp')
+                : t('subline.selfAllCaughtUp')
+            : `${t('subline.tasksDueToday', {
+                  count: counts.today,
+                  context: isAdmin ? 'admin' : 'user',
+              })}${
+                  counts.overdue > 0
+                      ? t('subline.overdueSuffix', { count: counts.overdue })
+                      : ''
               }`;
 
     return (
@@ -336,7 +346,7 @@ const FollowUpsContent = () => {
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-semibold text-neutral-900">
-                        {canFilterCounsellors ? 'Follow-ups' : 'My Follow-ups'}
+                        {canFilterCounsellors ? t('heading.team') : t('heading.mine')}
                     </h1>
                     <p
                         className={`mt-0.5 text-sm ${
@@ -373,11 +383,11 @@ const FollowUpsContent = () => {
                 <TabsList>
                     <TabsTrigger value="list" className="gap-1.5">
                         <ListBullets className="size-4" />
-                        List
+                        {t('tabs.list')}
                     </TabsTrigger>
                     <TabsTrigger value="calendar" className="gap-1.5">
                         <CalendarBlank className="size-4" />
-                        Calendar
+                        {t('tabs.calendar')}
                     </TabsTrigger>
                 </TabsList>
             </Tabs>
@@ -385,9 +395,12 @@ const FollowUpsContent = () => {
             {/* Showing N {bucket} — list view only */}
             {view === 'list' && (
                 <div className="flex items-center justify-end gap-1 text-body text-muted-foreground">
-                    Showing{' '}
+                    {t('showing.prefix')}{' '}
                     <span className="font-semibold text-card-foreground">{sortedVms.length}</span>{' '}
-                    {bucket === 'all' ? 'follow-ups' : `${bucketLabel(bucket)} follow-ups`}
+                    {t('showing.suffix', {
+                        count: sortedVms.length,
+                        context: bucket === 'all' ? undefined : bucket,
+                    })}
                 </div>
             )}
 
@@ -437,33 +450,22 @@ const FollowUpsContent = () => {
     );
 };
 
-const bucketLabel = (b: FollowUpBucket): string => {
-    switch (b) {
-        case 'overdue':
-            return 'overdue';
-        case 'today':
-            return 'due today';
-        case 'upcoming':
-            return 'upcoming';
-        default:
-            return '';
-    }
-};
-
-const emptyTitle = (
+const buildEmptyTitle = (
+    t: TFunction,
     isAdmin: boolean,
     bucket: FollowUpBucket,
     counts: Record<FollowUpBucket, number>
 ): string => {
     if (counts.all === 0)
-        return isAdmin ? 'No pending follow-ups across the team' : 'All caught up';
-    if (bucket === 'overdue') return 'No overdue follow-ups';
-    if (bucket === 'today') return 'Nothing due today';
-    if (bucket === 'upcoming') return 'No upcoming follow-ups in the next 7 days';
-    return 'No follow-ups';
+        return isAdmin ? t('empty.title.teamAllCaughtUp') : t('empty.title.selfAllCaughtUp');
+    if (bucket === 'overdue') return t('empty.title.noOverdue');
+    if (bucket === 'today') return t('empty.title.nothingToday');
+    if (bucket === 'upcoming') return t('empty.title.noUpcoming');
+    return t('empty.title.default');
 };
 
-const emptyDescription = (
+const buildEmptyDescription = (
+    t: TFunction,
     isAdmin: boolean,
     bucket: FollowUpBucket,
     counts: Record<FollowUpBucket, number>
@@ -471,14 +473,12 @@ const emptyDescription = (
     // When the active bucket is empty but other buckets have items, nudge the
     // user to switch — that's what the cards above are for.
     if (bucket === 'today' && counts.overdue > 0) {
-        return `You have ${counts.overdue} overdue ${
-            counts.overdue === 1 ? 'task' : 'tasks'
-        } — switch to "Pending" above.`;
+        return t('empty.description.overdueNudge', { count: counts.overdue });
     }
     if (bucket === 'today' && counts.upcoming > 0) {
-        return `Switch to "Upcoming" above to see what's due next.`;
+        return t('empty.description.upcomingNudge');
     }
     return isAdmin
-        ? 'The team is all caught up on follow-ups for this view.'
-        : 'You have no pending follow-ups in this view.';
+        ? t('empty.description.teamAllCaughtUp')
+        : t('empty.description.selfAllCaughtUp');
 };

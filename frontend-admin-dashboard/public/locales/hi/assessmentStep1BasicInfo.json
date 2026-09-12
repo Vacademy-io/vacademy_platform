@@ -1,0 +1,141 @@
+{
+    "navigation": {
+        "updateSurvey": "सर्वेक्षण अपडेट करें",
+        "updateAssessment": "मूल्यांकन अपडेट करें",
+        "createSurvey": "सर्वेक्षण बनाएं",
+        "createAssessment": "मूल्यांकन बनाएं"
+    },
+    "toasts": {
+        "updateSuccess": "चरण 1 का डेटा सफलतापूर्वक अपडेट कर दिया गया है!",
+        "saveSuccess": "चरण 1 का डेटा सफलतापूर्वक सहेज लिया गया है!"
+    },
+    "errors": {
+        "saveFailed": "बुनियादी जानकारी सहेजने में विफल।"
+    },
+    "header": {
+        "title": "बुनियादी जानकारी",
+        "description": "नाम, समय-सारणी, मूल्यांकन पद्धति और परिणाम जारी करने की प्राथमिकताओं सहित अपने मूल्यांकन के बुनियादी विवरण कॉन्फ़िगर करें।",
+        "updateButton": "अपडेट करें",
+        "nextButton": "आगे"
+    },
+    "basicInfoSection": {
+        "titleSurvey": "सर्वेक्षण जानकारी",
+        "titleAssessment": "बुनियादी जानकारी",
+        "description": "नाम, विषय, और प्रतिभागियों को दिखाए जाने वाले निर्देश।",
+        "titlePlaceholder": "शीर्षक जोड़ें",
+        "nameLabelSurvey": "सर्वेक्षण का नाम",
+        "nameLabelAssessment": "मूल्यांकन का नाम",
+        "instructionsLabelSurvey": "सर्वेक्षण निर्देश",
+        "instructionsLabelAssessment": "मूल्यांकन निर्देश",
+        "instructionsPlaceholderSurvey": "सर्वेक्षण निर्देश लिखें",
+        "instructionsPlaceholderAssessment": "मूल्यांकन निर्देश लिखें"
+    },
+    "liveDateRangeSection": {
+        "title": "लाइव तिथि सीमा",
+        "description": "प्रतिभागी कब शुरू कर सकते हैं और उन्हें कब तक मूल्यांकन पूरा करना होगा।",
+        "startDateLabel": "प्रारंभ तिथि और समय",
+        "endDateLabel": "समाप्ति तिथि और समय"
+    },
+    "attemptSettingsSection": {
+        "title": "प्रयास सेटिंग्स",
+        "description": "नियंत्रित करें कि प्रतिभागी यह मूल्यांकन कैसे देते हैं।",
+        "reattemptCountPlaceholder": "पुनः प्रयास संख्या",
+        "reattemptCountLabel": "पुनः प्रयास संख्या",
+        "resultEvaluationType": {
+            "label": "परिणाम और मूल्यांकन प्रकार",
+            "options": {
+                "autoAfterSubmission": {
+                    "label": "स्वचालित — सबमिशन के बाद जारी करें",
+                    "help": "सिस्टम स्वचालित रूप से अंक देता है। शिक्षार्थी के सबमिट करते ही परिणाम उन्हें दिखाई देने लगते हैं।"
+                },
+                "autoAfterAssessmentEnd": {
+                    "label": "स्वचालित — परीक्षा समाप्त होने के बाद जारी करें",
+                    "help": "सिस्टम स्वचालित रूप से अंक देता है। परिणाम केवल मूल्यांकन का समाप्ति समय बीतने के बाद ही दिखाई देते हैं।"
+                },
+                "noAutoRelease": {
+                    "label": "स्वचालित — मैन्युअल रूप से जारी करें",
+                    "help": "सिस्टम स्वचालित रूप से अंक देता है। जब तक आप सबमिशन टैब में \"परिणाम जारी करें\" पर क्लिक नहीं करते, तब तक परिणाम छिपे रहते हैं।"
+                },
+                "manual": {
+                    "label": "मैन्युअल मूल्यांकन और रिलीज़",
+                    "help": "शिक्षक प्रत्येक सबमिशन को स्वयं जांचते हैं। जब तक आप स्वयं मूल्यांकन करके जारी नहीं करते, तब तक परिणाम छिपे रहते हैं।"
+                }
+            }
+        },
+        "submissionType": {
+            "label": "सबमिशन प्रकार",
+            "helper": "छात्र अपने उत्तर कैसे सबमिट करते हैं (जैसे, फ़ाइल अपलोड, PDF)।"
+        },
+        "assessmentPreview": {
+            "labelSurvey": "सर्वेक्षण पूर्वावलोकन की अनुमति दें",
+            "labelAssessment": "मूल्यांकन पूर्वावलोकन की अनुमति दें",
+            "description": "प्रतिभागियों को शुरू करने से पहले मूल्यांकन का पूर्वावलोकन करने दें।",
+            "timeLimitLabel": "पूर्वावलोकन समय सीमा"
+        },
+        "switchSections": {
+            "label": "{{role}} को अनुभागों के बीच स्विच करने की अनुमति दें",
+            "description": "प्रतिभागी अनुभागों के बीच आगे-पीछे जा सकते हैं।"
+        },
+        "aiEvaluation": {
+            "label": "AI से मूल्यांकन करें",
+            "description": "प्रत्येक सबमिशन को जमा होते ही स्वतः जाँचें। प्रति प्रश्न संस्थान क्रेडिट खर्च होते हैं; परिणाम शिक्षक द्वारा जाँचकर ही जारी किया जाता है।"
+        }
+    },
+    "unusedFields": {
+        "testCreation": {
+            "titlePlaceholder": "शीर्षक जोड़ें",
+            "nameLabelSurvey": "सर्वेक्षण का नाम",
+            "nameLabelAssessment": "मूल्यांकन का नाम"
+        },
+        "liveDateRange": {
+            "startDateLabel": "प्रारंभ तिथि और समय",
+            "endDateLabel": "समाप्ति तिथि और समय"
+        },
+        "assessmentInstructions": {
+            "labelSurvey": "सर्वेक्षण निर्देश",
+            "labelAssessment": "मूल्यांकन निर्देश",
+            "placeholderSurvey": "सर्वेक्षण निर्देश जोड़ें",
+            "placeholderAssessment": "मूल्यांकन निर्देश जोड़ें"
+        },
+        "assessmentPreview": {
+            "enableLabel": "मूल्यांकन पूर्वावलोकन सक्षम करें",
+            "timeLimitLabel": "पूर्वावलोकन समय सीमा"
+        },
+        "reattemptCount": {
+            "placeholder": "पुनः प्रयास संख्या दर्ज करें",
+            "label": "पुनः प्रयास संख्या"
+        },
+        "submissionType": {
+            "label": "सबमिशन प्रकार",
+            "options": {
+                "autoSubmit": "स्वचालित सबमिट",
+                "manualSubmit": "मैन्युअल सबमिट"
+            }
+        },
+        "durationDistribution": {
+            "label": "अवधि वितरण",
+            "helper": "चुनें कि समय सीमा पूरे टेस्ट पर, प्रति अनुभाग, या प्रति प्रश्न लागू होगी।",
+            "options": {
+                "entireAssessment": "संपूर्ण मूल्यांकन",
+                "sectionWise": "अनुभागवार",
+                "questionWise": "प्रश्नवार"
+            }
+        },
+        "evaluationType": {
+            "label": "मूल्यांकन प्रकार",
+            "options": {
+                "auto": "स्वचालित मूल्यांकन",
+                "manual": "मैन्युअल मूल्यांकन"
+            }
+        },
+        "switchSections": {
+            "label": "अनुभागों के बीच स्विच करने की अनुमति दें"
+        },
+        "reattemptRequest": {
+            "label": "छात्रों को पुनः प्रयास अनुरोध उठाने की अनुमति दें"
+        },
+        "timeIncreaseRequest": {
+            "label": "छात्रों को समय वृद्धि अनुरोध उठाने की अनुमति दें"
+        }
+    }
+}

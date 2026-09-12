@@ -1,0 +1,11 @@
+{
+    "removedFrom": "أُزيل من {{chapterName}}",
+    "couldNotRemove": "تعذّرت إزالة الرابط. يرجى المحاولة مرة أخرى.",
+    "addedTo": "أُضيف إلى",
+    "removeFromAriaLabel": "إزالة من {{chapterName}}",
+    "remove": "إزالة",
+    "removeThisSlideTitle": "إزالة هذه الشريحة؟",
+    "removeThisSlideDescription": "سيؤدي هذا أيضًا إلى إزالة الشريحة من الفصل.",
+    "cancel": "إلغاء",
+    "removingEllipsis": "جارٍ الإزالة…"
+}

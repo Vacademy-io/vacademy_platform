@@ -6,7 +6,12 @@ import {
     rangeToLocalIsoWindow,
     resolvePreset,
 } from '../dateRange';
-import { classifyEntry, computeBillingFromEntries, computePaymentSummary } from '../paymentSummary';
+import {
+    classifyEntry,
+    computeBillingFromEntries,
+    computePaymentSummary,
+    isDueEligibleEntry,
+} from '../paymentSummary';
 import { computePaymentAnalytics } from '../paymentAnalytics';
 import type { PaymentLogEntry } from '@/types/payment-logs';
 
@@ -274,8 +279,110 @@ describe('dashboard analytics vs KPI cards', () => {
         const summary = computePaymentSummary(rows);
 
         expect(analytics.totalEntries).toBe(summary.total.count);
-        expect(analytics.outstanding.count).toBe(summary.pending.count);
+        // `due`, not `pending`: both sides exclude rows hanging off a dead enrolment, so this is
+        // the pair that has to agree. Comparing against `pending` only held while no fixture here
+        // carried a user_plan, and would have gone quietly false on real data.
+        expect(analytics.outstanding.count).toBe(summary.due.count);
         expect(analytics.outstanding.amount).toBe(0);
         expect(analytics.collected.amount).toBe(1000);
+    });
+
+    it('keeps analytics and the Due card agreeing once a dead enrolment is in the set', () => {
+        const onPlan = (planStatus: string, status: string, amount: number) =>
+            ({
+                payment_log: {
+                    payment_amount: amount,
+                    currency: 'INR',
+                    created_at: '2026-08-18T10:00:00Z',
+                },
+                user_plan: { id: `p-${planStatus}`, status: planStatus },
+                current_payment_status: status,
+                user: {},
+            }) as unknown as PaymentLogEntry;
+
+        const rows = [
+            onPlan('ACTIVE', 'PAYMENT_PENDING', 7200),
+            onPlan('CANCELED', 'PAYMENT_PENDING', 14400),
+            entry('PAID', 1000),
+        ];
+        const analytics = computePaymentAnalytics(rows);
+        const summary = computePaymentSummary(rows);
+
+        // Neither side calls the cancelled enrolment a debt.
+        expect(analytics.outstanding.amount).toBe(7200);
+        expect(analytics.outstanding.count).toBe(summary.due.count);
+        expect(summary.due.amountByCurrency.INR).toBe(7200);
+
+        // ...but the funnel still describes every record it says it counts, dead plan included.
+        const invoiced = analytics.funnel.find((stage) => stage.label === 'Invoiced')!;
+        expect(invoiced.count).toBe(3);
+        expect(invoiced.amount).toBe(1000 + 7200 + 14400);
+    });
+});
+
+/**
+ * A cancelled enrolment still owns its abandoned payment attempt. Counting that attempt as money
+ * owed invented dues nobody would ever collect — Suchbliss reported ₹19,201 of them (CANCELED
+ * ₹14,400 + TERMINATED ₹4,800 + EXPIRED ₹1) on top of ₹7,241 of genuine dues.
+ */
+describe('due excludes dead enrolments', () => {
+    const planEntry = (planStatus: string | null, paymentStatus: string | null, amount: number) =>
+        ({
+            payment_log: { payment_status: paymentStatus, payment_amount: amount, currency: 'INR' },
+            current_payment_status: paymentStatus ?? 'NOT_INITIATED',
+            user_plan: planStatus
+                ? { id: `plan-${planStatus}-${amount}`, status: planStatus, payment_plan_dto: { actual_price: amount } }
+                : undefined,
+            user: { id: `u-${planStatus}-${amount}` },
+        }) as unknown as PaymentLogEntry;
+
+    it('treats only ACTIVE and PENDING_FOR_PAYMENT as still owed', () => {
+        expect(isDueEligibleEntry(planEntry('ACTIVE', 'PAYMENT_PENDING', 1))).toBe(true);
+        expect(isDueEligibleEntry(planEntry('PENDING_FOR_PAYMENT', 'PAYMENT_PENDING', 1))).toBe(true);
+        for (const dead of ['CANCELED', 'CANCELLED', 'TERMINATED', 'EXPIRED', 'DELETED', 'INACTIVE']) {
+            expect(isDueEligibleEntry(planEntry(dead, 'PAYMENT_PENDING', 1))).toBe(false);
+        }
+    });
+
+    it('keeps an admin-raised invoice (no user_plan) due', () => {
+        expect(isDueEligibleEntry(planEntry(null, 'PAYMENT_PENDING', 500))).toBe(true);
+    });
+
+    it('is case- and whitespace-insensitive about the status', () => {
+        expect(isDueEligibleEntry(planEntry(' active ', 'PAYMENT_PENDING', 1))).toBe(true);
+        expect(isDueEligibleEntry(planEntry('canceled', 'PAYMENT_PENDING', 1))).toBe(false);
+    });
+
+    it('drops a cancelled enrolment from Due but keeps it in Pending', () => {
+        const summary = computePaymentSummary([
+            planEntry('ACTIVE', 'PAYMENT_PENDING', 7200),
+            planEntry('CANCELED', 'PAYMENT_PENDING', 14400),
+            planEntry('TERMINATED', 'PAYMENT_PENDING', 4800),
+            planEntry('EXPIRED', null, 1),
+        ]);
+        // Pending still describes every unsettled gateway record.
+        expect(summary.pending.count).toBe(4);
+        expect(summary.pending.amountByCurrency.INR).toBe(26401);
+        // Due is only the live enrolment.
+        expect(summary.due.count).toBe(1);
+        expect(summary.due.amountByCurrency.INR).toBe(7200);
+    });
+
+    it('does not bill a cancelled enrolment in the fallback billing figures', () => {
+        const billing = computeBillingFromEntries([
+            planEntry('ACTIVE', 'PAYMENT_PENDING', 7200),
+            planEntry('CANCELED', 'PAYMENT_PENDING', 14400),
+        ]);
+        expect(billing.due).toBe(7200);
+        expect(billing.planCount).toBe(1);
+        expect(billing.totalBilled).toBe(billing.collected + billing.due);
+    });
+
+    it('still counts what a cancelled enrolment actually paid as collected', () => {
+        // Money received is money received — the server's `paid` CTE does not filter on plan status
+        // either, so dropping it here would make the two disagree.
+        const billing = computeBillingFromEntries([planEntry('CANCELED', 'PAID', 5000)]);
+        expect(billing.collected).toBe(5000);
+        expect(billing.due).toBe(0);
     });
 });

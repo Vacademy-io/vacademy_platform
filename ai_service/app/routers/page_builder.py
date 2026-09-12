@@ -97,13 +97,19 @@ def _sanitize_html(value: str) -> str:
 # structural/text tags only, class-based styling via a separate scrubbed CSS
 # blob, images only from vetted URLs, no scripts/iframes/svg/forms/media.
 
+# del/ins/strike: a struck-through original price is the commonest thing a
+# marketing section needs and <del> is what authors write for it. nh3 keeps a
+# disallowed tag's CHILDREN, so omitting it turned "<del>₹1,599</del>" into
+# bare "₹1,599" and left the matching `del { … }` CSS rule dead — a silent
+# no-op that reads as "the edit did not save". No scripting surface; their
+# "cite" attribute stays disallowed (it is a URL).
 _CUSTOM_HTML_TAGS = {
     "a", "article", "aside", "b", "blockquote", "br", "button", "caption",
-    "cite", "code", "dd", "div", "dl", "dt", "em", "figcaption", "figure",
-    "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "i", "img",
-    "li", "mark", "nav", "ol", "p", "pre", "s", "section", "small", "span",
-    "strong", "sub", "sup", "table", "tbody", "td", "tfoot", "th", "thead",
-    "time", "tr", "u", "ul",
+    "cite", "code", "dd", "del", "div", "dl", "dt", "em", "figcaption",
+    "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr",
+    "i", "img", "ins", "li", "mark", "nav", "ol", "p", "pre", "s", "section",
+    "small", "span", "strike", "strong", "sub", "sup", "table", "tbody", "td",
+    "tfoot", "th", "thead", "time", "tr", "u", "ul",
 }
 _CUSTOM_HTML_ATTRS = {
     "*": {"class", "id", "style", "title", "role", "aria-label", "aria-hidden"},
@@ -122,7 +128,7 @@ _MAX_HTML_BLOCKS_PER_PAGE = 3
 
 _CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
 _CSS_URL_RE = re.compile(r"url\s*\([^)]*\)", re.I)
-_CSS_BANNED_RE = re.compile(r"@import\b|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:", re.I)
+_CSS_BANNED_RE = re.compile(r"@import\b|expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript\s*:", re.I)
 _IMG_SRC_RE = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]*)(")', re.I)
 
 
@@ -3534,9 +3540,11 @@ def _build_chrome_prompt(req: SiteChromeRequest, catalog: Dict[str, Any]) -> str
     )
     parts.append(
         "## HEADER RULES\n"
-        "- `navigation`: [{label, route, openInSameTab}] — the main menu. `route` is a page route "
+        "- `navigation`: [{label, route, openInSameTab, enabled}] — the main menu. `route` is a page route "
         "from the PAGES list below (use \"\" for home), an #anchor, or an absolute URL. NEVER invent "
-        "a route: a menu item pointing at a page that does not exist is a dead link.\n"
+        "a route: a menu item pointing at a page that does not exist is a dead link. `enabled: false` "
+        "means the admin deliberately hid that link; carry the flag through untouched unless the "
+        "instruction is to show or hide it.\n"
         "- `authLinks`: [{label, route}] — the buttons on the RIGHT. Use route 'login' for Login and "
         "'signup' for Sign Up. An enquiry/registration button that opens a campaign form needs an "
         "audienceId the ADMIN must choose, so emit it with route '' and NO audienceId; the admin "

@@ -1,0 +1,20 @@
+{
+    "overduePayment": {
+        "title": "{{name}} — {{amount}} متأخر السداد",
+        "subtitle_zero": "{{count}} يوم متأخر · {{feeType}}",
+        "subtitle_one": "{{count}} يوم واحد متأخر · {{feeType}}",
+        "subtitle_two": "{{count}} يومان متأخران · {{feeType}}",
+        "subtitle_few": "{{count}} أيام متأخرة · {{feeType}}",
+        "subtitle_many": "{{count}} يومًا متأخرًا · {{feeType}}",
+        "subtitle_other": "{{count}} يوم متأخر · {{feeType}}",
+        "defaultFeeType": "رسوم"
+    },
+    "pendingApproval": {
+        "title": "الموافقة على التسوية لـ {{name}}",
+        "subtitle": "{{type}} · {{amount}}",
+        "defaultType": "تسوية"
+    },
+    "unreadAlert": {
+        "defaultTitle": "إشعار"
+    }
+}

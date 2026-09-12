@@ -154,6 +154,25 @@ export interface OutstandingLearner {
     currency: string | null;
 }
 
+export const LEARNER_PLAN_BREAKDOWN_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/learner-plan-breakdown`;
+
+/** One enrolment on the Due side view. */
+export interface LearnerPlanBreakdown {
+    user_plan_id: string;
+    course_name: string | null;
+    plan_status: string | null;
+    payment_type: string | null;
+    billed: number;
+    paid: number;
+    due: number;
+    /**
+     * False for a cancelled / terminated / expired enrolment. Such a plan is still returned so the
+     * side view can show it, but it contributes 0 to the learner's balance.
+     */
+    counts_towards_due: boolean;
+    currency: string | null;
+}
+
 export interface OutstandingLearnersPage {
     content: OutstandingLearner[];
     totalPages: number;
@@ -194,4 +213,28 @@ export const fetchOutstandingLearners = async (
         size: typeof d.size === 'number' ? d.size : pageSize,
         last: d.last ?? true,
     };
+};
+
+/**
+ * Every enrolment behind one learner's Due row, cancelled ones included and flagged.
+ *
+ * The Due list nets a learner down to one figure, which gave an admin who had just cancelled
+ * somebody's plan no way to confirm the cancellation was honoured. This is that proof.
+ */
+export const fetchLearnerPlanBreakdown = async (
+    userId: string,
+    requestBody: BillingSummaryRequest = {}
+): Promise<LearnerPlanBreakdown[]> => {
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) {
+        throw new Error('Institute ID not found');
+    }
+    // Same window and course scope the Due row was computed under — otherwise the sheet's
+    // enrolments would not add up to the totals shown above them.
+    const response = await authenticatedAxiosInstance.post(
+        LEARNER_PLAN_BREAKDOWN_URL,
+        { ...requestBody, institute_id: instituteId },
+        { params: { userId } }
+    );
+    return Array.isArray(response.data) ? (response.data as LearnerPlanBreakdown[]) : [];
 };

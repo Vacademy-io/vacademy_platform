@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.audience.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.audience.dto.LeadStatusDTO;
 import vacademy.io.admin_core_service.features.audience.service.LeadStatusService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -31,6 +32,11 @@ public class LeadStatusController {
     }
 
     @PostMapping
+    @Auditable(
+            entityType = "LEAD_STATUS",
+            action = "CREATE",
+            entityIdExpr = "#result?.body?.id",
+            descriptionExpr = "'created lead status ' + (#dto?.label ?: #dto?.statusKey)")
     public ResponseEntity<LeadStatusDTO> create(@RequestParam String instituteId,
                                                 @RequestBody LeadStatusDTO dto,
                                                 @RequestAttribute("user") CustomUserDetails user) {
@@ -38,6 +44,13 @@ public class LeadStatusController {
     }
 
     @PutMapping("/{id}")
+    @Auditable(
+            entityType = "LEAD_STATUS",
+            action = "UPDATE",
+            entityIdExpr = "#id",
+            captureBefore = "@crmAuditNarrator.leadStatusSnapshot(#id)",
+            descriptionExpr = "'updated lead status ' + (#dto?.label "
+                    + "?: @crmAuditNarrator.nameFromSnapshot(#before, #id))")
     public ResponseEntity<LeadStatusDTO> update(@PathVariable String id,
                                                 @RequestBody LeadStatusDTO dto,
                                                 @RequestAttribute("user") CustomUserDetails user) {
@@ -45,6 +58,12 @@ public class LeadStatusController {
     }
 
     @DeleteMapping("/{id}")
+    @Auditable(
+            entityType = "LEAD_STATUS",
+            action = "DELETE",
+            entityIdExpr = "#id",
+            captureBefore = "@crmAuditNarrator.leadStatusSnapshot(#id)",
+            descriptionExpr = "'deleted lead status ' + @crmAuditNarrator.nameFromSnapshot(#before, #id)")
     public ResponseEntity<Void> delete(@PathVariable String id,
                                        @RequestAttribute("user") CustomUserDetails user) {
         leadStatusService.deactivate(id);
@@ -53,6 +72,12 @@ public class LeadStatusController {
 
     /** Set a lead's current status (manual change from the leads UI). */
     @PostMapping("/lead/{audienceResponseId}")
+    @Auditable(
+            entityType = "LEAD",
+            action = "STATUS_CHANGE",
+            entityIdExpr = "#audienceResponseId",
+            descriptionExpr = "'changed lead status of ' + @crmAuditNarrator.leadFor(#audienceResponseId) "
+                    + "+ ' to ' + @crmAuditNarrator.leadStatusFor(#statusId)")
     public ResponseEntity<String> setLeadStatus(@PathVariable String audienceResponseId,
                                                 @RequestParam String statusId,
                                                 @RequestParam(required = false, defaultValue = "MANUAL") String source,

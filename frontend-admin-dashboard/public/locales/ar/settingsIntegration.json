@@ -1,0 +1,144 @@
+{
+    "page": {
+        "heading": "تكاملات منصات الإعلانات",
+        "description": "اربط Google Ads و Meta Lead Ads لالتقاط العملاء المحتملين في جماهيرك. يرتبط كل نموذج/حملة بجمهور واحد — أضف عدة موصلات لعدة جماهير."
+    },
+    "activeConnectors": {
+        "title": "الموصلات النشطة",
+        "description": "يربط كل صف نموذجًا من منصة إعلانية بجمهور واحد.",
+        "loading": "جارٍ تحميل الموصلات...",
+        "loadError": "تعذّر تحميل الموصلات. قد لا تكون واجهة برمجة التكامل منشورة بعد."
+    },
+    "addConnector": {
+        "title": "إضافة موصل جديد",
+        "metaButton": "Meta Lead Ads",
+        "googleButton": "Google Lead Forms"
+    },
+    "table": {
+        "emptyTitle": "لا توجد موصلات بعد",
+        "emptyDescription": "أضف موصل Meta أو Google أدناه لبدء استقبال العملاء المحتملين.",
+        "headers": {
+            "platform": "المنصة",
+            "formCampaign": "النموذج / الحملة",
+            "audience": "الجمهور",
+            "source": "المصدر",
+            "status": "الحالة",
+            "webhook": "الويب هوك"
+        },
+        "statusActive": "نشط",
+        "statusActionNeeded": "يتطلب إجراءً",
+        "copyWebhookUrl": "نسخ رابط الويب هوك",
+        "autoLabel": "تلقائي",
+        "syncNow": "مزامنة العملاء المحتملين الآن (سحب آخر 24 ساعة من Meta)",
+        "testConnection": "اختبار الاتصال",
+        "resubscribeTooltip": "إعادة الاشتراك (بعد منح التحكم الكامل)",
+        "editDefaultValues": "تعديل القيم الافتراضية",
+        "deactivateConnector": "إلغاء تفعيل الموصل"
+    },
+    "vendor": {
+        "meta": "Meta",
+        "google": "Google"
+    },
+    "health": {
+        "overall": {
+            "verified": "موثّق",
+            "degraded": "متدهور",
+            "actionRequired": "يتطلب إجراءً",
+            "broken": "معطّل",
+            "unknown": "غير معروف"
+        },
+        "dialogTitle": "اختبار الاتصال",
+        "statusLabel": "الحالة:",
+        "lastLead": "آخر عميل محتمل",
+        "resubscribe": "إعادة الاشتراك",
+        "close": "إغلاق"
+    },
+    "editDialog": {
+        "title": "تعديل القيم الافتراضية",
+        "description": "أزواج مفتاح/قيمة تُضاف إلى كل عميل محتمل يأتي من هذا الموصل. يجب أن يطابق كل مفتاح اسم حقل مخصص في الجمهور (وإلا فسيتم تمرير القيمة كما هي كبيانات نموذج خام). قيم بيانات النموذج تأخذ الأولوية دائمًا على القيم الافتراضية.",
+        "keyHeader": "المفتاح",
+        "valueHeader": "القيمة",
+        "keyPlaceholder": "اسم حقل الجمهور",
+        "valuePlaceholder": "القيمة المراد تعيينها",
+        "removeRow": "إزالة الصف",
+        "addField": "إضافة حقل",
+        "duplicateKeys": "تم العثور على مفاتيح مكررة — سيتم الاحتفاظ فقط بآخر قيمة لكل مفتاح.",
+        "cancel": "إلغاء",
+        "saving": "جارٍ الحفظ…",
+        "save": "حفظ"
+    },
+    "fieldMapping": {
+        "label": "ربط الحقول",
+        "description": "اربط كل حقل من المنصة بحقل مخصص في الجمهور. تحتفظ الحقول غير المرتبطة بأسمائها الأصلية.",
+        "platformField": "حقل المنصة",
+        "audienceField": "حقل الجمهور",
+        "skipOption": "— تخطٍّ —"
+    },
+    "google": {
+        "keyLabel": "مفتاح Google",
+        "keyPlaceholder": "مثال: my-leads-abc123",
+        "audienceLabel": "الجمهور",
+        "selectAudiencePlaceholder": "اختر جمهورًا...",
+        "saveError": "فشل حفظ موصل Google",
+        "saving": "جارٍ الحفظ...",
+        "save": "حفظ"
+    },
+    "meta": {
+        "sessionExpiredReconnect": "انتهت صلاحية جلسة Meta الخاصة بك. يرجى إعادة الاتصال بـ Meta.",
+        "oauthFailed": "فشلت مصادقة OAuth لـ Meta: {{error}}",
+        "startOauthError": "فشل بدء مصادقة OAuth لـ Meta",
+        "sessionExpiredRetry": "انتهت صلاحية جلسة Meta الخاصة بك. يرجى إعادة الاتصال بـ Meta والمحاولة مرة أخرى.",
+        "saveError": "فشل حفظ موصل Meta",
+        "pageAdded": "تمت إضافة الصفحة \"{{name}}\"",
+        "addPageError": "تعذّرت إضافة تلك الصفحة. تحقق من معرّف الصفحة.",
+        "sessionInvalid": "الجلسة منتهية الصلاحية أو غير صالحة. يرجى إعادة الاتصال.",
+        "connectButton": "ربط حساب Meta",
+        "redirecting": "جارٍ إعادة التوجيه...",
+        "connectHint": "بعد الاتصال، يمكنك إضافة عدة نماذج — كل منها مرتبط بجمهور مختلف.",
+        "loadingPages": "جارٍ تحميل الصفحات...",
+        "connectedBanner": "تم الاتصال بـ Meta. أضف ربط نموذج ← جمهور أدناه. يمكنك إضافة عدة روابط.",
+        "pageLabel": "صفحة فيسبوك",
+        "selectPagePlaceholder": "اختر صفحة...",
+        "needsFullControl": " — يتطلب التحكم الكامل",
+        "noPageListedHint": "صفحتك غير مدرجة. الصق معرّف الصفحة (يظهر في مربع حوار اتصال فيسبوك، أو إعدادات الصفحة ← نبذة).",
+        "pageNotListedHint": "الصفحة غير مدرجة؟ أضفها بالمعرّف.",
+        "pageIdPlaceholder": "مثال: 336149566246129",
+        "addingPage": "جارٍ الإضافة...",
+        "addPage": "إضافة الصفحة",
+        "leadFormLabel": "نموذج جذب العملاء المحتملين",
+        "loadingForms": "جارٍ تحميل النماذج...",
+        "selectFormPlaceholder": "اختر نموذجًا...",
+        "pasteFormIdPlaceholder": "الصق معرّف نموذج العملاء المحتملين",
+        "selectPageFirstPlaceholder": "اختر صفحة أولاً",
+        "cantAutoListForms": "يتعذّر إدراج نماذج هذه الصفحة تلقائيًا. الصق معرّف نموذج العملاء المحتملين — يمكنك العثور عليه في Meta Business Suite ← جميع الأدوات ← النماذج الفورية (أو في نموذج العملاء المحتملين الخاص بإعلانك). سيعمل التقاط العملاء المحتملين فور إتمام الربط.",
+        "audienceLabel": "الجمهور",
+        "selectAudiencePlaceholder": "اختر جمهورًا...",
+        "sourceTypeLabel": "نوع المصدر",
+        "facebook": "فيسبوك",
+        "instagram": "إنستغرام",
+        "stampFieldLabel": "حقل الجمهور المراد تعيينه",
+        "noneOption": "— بلا —",
+        "valueLabel": "القيمة",
+        "valuePlaceholder": "القيمة المراد تعيينها",
+        "stampValueHint": "مُعبَّأ مسبقًا بالكلمة الأولى من اسم النموذج. يُطبَّق على كل عميل محتمل من هذا الموصل عند اختيار حقل أعلاه.",
+        "saving": "جارٍ الحفظ...",
+        "save": "حفظ"
+    },
+    "toasts": {
+        "metaAccountConnected": "تم ربط حساب Meta",
+        "connectorDeactivated": "تم إلغاء تفعيل الموصل",
+        "deactivateFailed": "فشل إلغاء تفعيل الموصل",
+        "healthCheckFailed": "تعذّر تشغيل اختبار الاتصال",
+        "resubscribeFailedFallback": "فشلت إعادة الاشتراك",
+        "syncFailedFallback": "فشلت المزامنة",
+        "connectorUpdated": "تم تحديث الموصل",
+        "updateFailedFallback": "فشل تحديث الموصل",
+        "noNewLeads": "لا يوجد عملاء محتملون جدد من Meta خلال آخر 24 ساعة",
+        "syncedLeads_zero": "لم تتم مزامنة أي عملاء محتملين ({{count}}) من Meta",
+        "syncedLeads_one": "تمت مزامنة {{count}} عميل محتمل من Meta",
+        "syncedLeads_two": "تمت مزامنة {{count}} عميلين محتملين من Meta",
+        "syncedLeads_few": "تمت مزامنة {{count}} عملاء محتملين من Meta",
+        "syncedLeads_many": "تمت مزامنة {{count}} عميلًا محتملًا من Meta",
+        "syncedLeads_other": "تمت مزامنة {{count}} عميل محتمل من Meta"
+    }
+}

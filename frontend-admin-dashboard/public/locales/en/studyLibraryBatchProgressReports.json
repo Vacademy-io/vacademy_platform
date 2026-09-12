@@ -1,0 +1,36 @@
+{
+    "validation": {
+        "courseRequired": "Course is required",
+        "sessionRequired": "Session is required",
+        "levelRequired": "Level is required"
+    },
+    "toast": {
+        "noDataToExport": "No data to export yet",
+        "exportSuccess": "Report exported",
+        "exportFailed": "Failed to export PDF"
+    },
+    "form": {
+        "selectA": "Select a {{term}}",
+        "searchTerm": "Search {{term}}...",
+        "generateReport": "Generate Report"
+    },
+    "report": {
+        "exporting": "Exporting...",
+        "exportPdf": "Export PDF",
+        "subjectWiseOverview": "{{term}}-wise Overview"
+    },
+    "pdf": {
+        "batchSubjectWiseProgress": "{{batchTerm}} {{subjectTerm}}-wise Progress",
+        "learnerProgressReport": "Learner Progress Report",
+        "learnerLabel": "Learner",
+        "termCompleted": "{{term}} Completed",
+        "termsTracked": "{{term}}s Tracked",
+        "termWiseProgress": "{{term}}-wise Progress",
+        "termColonName": "{{term}}: {{name}}",
+        "completed": "Completed",
+        "dailyTimeAvg": "Daily Time (Avg)",
+        "termDailyTimeAvg": "{{term}} Daily Time (Avg)",
+        "termWiseProgressReport": "{{term}}-wise Progress Report",
+        "learningProgressReport": "Learning Progress Report"
+    }
+}

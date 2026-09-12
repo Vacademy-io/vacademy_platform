@@ -1,0 +1,88 @@
+{
+    "pageTitle": "Create question paper",
+    "fallbackKnowledgeBase": "Knowledge base",
+    "steps": {
+        "chooseMaterial": "Choose material",
+        "planPaper": "Plan the paper",
+        "reviewQuestions": "Review questions"
+    },
+    "errors": {
+        "notEnoughCredits": "Not enough credits.",
+        "reopenFailed": "Could not reopen that paper",
+        "rebuildTopicMapFailed": "Could not rebuild the topic map",
+        "planFailed": "Could not plan the paper",
+        "startGenerationFailed": "Could not start generating",
+        "generationFailed": "Generation failed",
+        "sectionMissing": "This question’s section is no longer in the plan.",
+        "rewriteFailed": "Could not rewrite that question",
+        "saveFailed": "Could not save the paper"
+    },
+    "toasts": {
+        "topicMapRebuilt": "Topic map rebuilt",
+        "questionRewritten": "Question rewritten",
+        "savedToQuestionBank": "Saved to your question bank"
+    },
+    "resumingMessage": "Reopening your paper…",
+    "scope": {
+        "materialHeading": "What should the paper cover?",
+        "materialDescription": "The topics found across everything in this knowledge base. Pick a topic to include all of it, or open it to choose subtopics. Leave everything unticked to draw from the whole knowledge base.",
+        "rebuildButton": "Rebuild",
+        "rebuildingButton": "Rebuilding…",
+        "noTopicMap": "No topic map yet. It is built automatically once a document finishes processing.",
+        "buildTopicMapButton": "Build the topic map",
+        "buildingButton": "Building…",
+        "paperKindHeading": "What kind of paper?",
+        "numQuestionsLabel": "Number of questions",
+        "numQuestionsPlaceholder": "20",
+        "durationLabel": "Duration (minutes)",
+        "durationPlaceholder": "90",
+        "difficultyLabel": "Overall difficulty",
+        "difficulty": {
+            "easy": "Easy",
+            "medium": "Medium",
+            "hard": "Hard",
+            "mixed": "Mixed"
+        },
+        "gradeLabel": "Class or level",
+        "gradePlaceholder": "e.g. Class 9",
+        "examStyleLabel": "Follow a pattern (optional)",
+        "examStylePlaceholder": "e.g. CBSE board pattern",
+        "planPaperButton": "Plan the paper",
+        "planningButton": "Planning…",
+        "planHint": "You will see the full plan and can change it before any question is written."
+    },
+    "blueprint": {
+        "questionsCount_one": "{{count}} question",
+        "questionsCount_other": "{{count}} questions",
+        "marksCount_one": "{{formatted}} mark",
+        "marksCount_other": "{{formatted}} marks",
+        "durationSuffix": " · {{minutes}} min",
+        "changeMaterialButton": "Change material",
+        "generateButton_one": "Generate {{count}} question",
+        "generateButton_other": "Generate {{count}} questions",
+        "generateCreditsSuffix": " · ≈{{credits}} credits",
+        "insufficientCredits": "This needs about {{needed}} credits but only {{available}} are available.",
+        "askForChangeHeading": "Ask for a change",
+        "suggestions": {
+            "numericals": "Add a section of numericals",
+            "harderSectionB": "Make section B harder",
+            "moreApplicationBased": "More application-based questions"
+        },
+        "refinePlaceholder": "e.g. drop the long answers and add 5 more MCQs from chapter 2",
+        "updatePlanButton": "Update plan",
+        "updatingButton": "Updating…"
+    },
+    "generating": {
+        "writingHeading_one": "Writing {{count}} question from your material",
+        "writingHeading_other": "Writing {{count}} questions from your material",
+        "hint": "This usually takes a few minutes. You can leave this page — the paper keeps generating and will be waiting in your question bank drafts."
+    },
+    "review": {
+        "deliveredCount": "{{delivered}} of {{planned}} questions written",
+        "needFixing_one": "{{count}} need fixing",
+        "needFixing_other": "{{count}} need fixing",
+        "allChecksPassed": "All checks passed",
+        "saveButton": "Save to question bank",
+        "savingButton": "Saving…"
+    }
+}

@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.audience.dto.AdConnectorSetupRequest;
 import vacademy.io.admin_core_service.features.audience.dto.ConnectorHealthDTO;
 import vacademy.io.admin_core_service.features.audience.dto.ConnectorListItemDTO;
@@ -396,6 +397,20 @@ public class MetaOAuthController {
      */
     @PostMapping("/connector")
     @Transactional
+    @Auditable(
+            entityType = "LEAD_CONNECTOR",
+            action = "CREATE",
+            entityIdExpr = "#result?.body != null ? #result.body['connector_id'] : null",
+            // This mapping answers a missing sessionKey/formId with a 400-carrying
+            // ResponseEntity instead of throwing, and the aspect only ever sees a
+            // successful return — without this guard a rejected request would be
+            // logged as a connector that was created.
+            conditionExpr = "#result?.body != null and #result.body['connector_id'] != null",
+            // The body carries OAuth session keys — never persist it.
+            payload = Auditable.PayloadMode.NONE,
+            descriptionExpr = "'connected Meta lead form ' + (#request?.platformFormName "
+                    + "?: #request?.platformFormId) + (#request?.audienceId != null ? ' to audience ' "
+                    + "+ @crmAuditNarrator.audienceFor(#request.audienceId) : '')")
     public ResponseEntity<Map<String, String>> saveConnector(
             @RequestBody AdConnectorSetupRequest request) {
 
@@ -506,6 +521,16 @@ public class MetaOAuthController {
     // ── Google connector (no OAuth) ───────────────────────────────────────────
 
     @PostMapping("/google/connector")
+    @Auditable(
+            entityType = "LEAD_CONNECTOR",
+            action = "CREATE",
+            entityIdExpr = "#result?.body != null ? #result.body['connector_id'] : null",
+            // Same 400-without-throwing shape as the Meta connector above.
+            conditionExpr = "#result?.body != null and #result.body['connector_id'] != null",
+            // googleKey is a credential — keep it out of the audit table.
+            payload = Auditable.PayloadMode.NONE,
+            descriptionExpr = "'connected a Google lead form' + (#request?.audienceId != null "
+                    + "? ' to audience ' + @crmAuditNarrator.audienceFor(#request.audienceId) : '')")
     public ResponseEntity<Map<String, String>> saveGoogleConnector(
             @RequestBody AdConnectorSetupRequest request) {
 
@@ -571,6 +596,11 @@ public class MetaOAuthController {
      */
     @DeleteMapping("/connectors/{connectorId}")
     @Transactional
+    @Auditable(
+            entityType = "LEAD_CONNECTOR",
+            action = "DELETE",
+            entityIdExpr = "#connectorId",
+            descriptionExpr = "'disconnected a lead connector'")
     public ResponseEntity<Map<String, String>> deactivateConnector(
             @PathVariable String connectorId) {
         FormWebhookConnector connector = connectorRepository.findById(connectorId)
@@ -600,6 +630,11 @@ public class MetaOAuthController {
      */
     @PutMapping("/connectors/{connectorId}")
     @Transactional
+    @Auditable(
+            entityType = "LEAD_CONNECTOR",
+            action = "UPDATE",
+            entityIdExpr = "#connectorId",
+            descriptionExpr = "'updated lead connector ' + (#result?.body?.platformFormName ?: #connectorId)")
     public ResponseEntity<ConnectorListItemDTO> updateConnector(
             @PathVariable String connectorId,
             @RequestBody ConnectorUpdateRequest request) {
@@ -654,6 +689,11 @@ public class MetaOAuthController {
      */
     @PostMapping("/connectors/{connectorId}/resubscribe")
     @Transactional
+    @Auditable(
+            entityType = "LEAD_CONNECTOR",
+            action = "RESUBSCRIBE",
+            entityIdExpr = "#connectorId",
+            descriptionExpr = "'re-subscribed a lead connector to its page webhook'")
     public ResponseEntity<Map<String, String>> resubscribeConnector(
             @PathVariable String connectorId) {
         FormWebhookConnector connector = connectorRepository.findById(connectorId)

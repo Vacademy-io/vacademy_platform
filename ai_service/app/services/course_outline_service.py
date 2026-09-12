@@ -139,6 +139,19 @@ class CourseOutlineGenerationService:
                     institute_id=request.institute_id,
                     node_ids=grounding.node_ids,
                 )
+                # Sections too large for one slide's grounding budget become
+                # "Part i of n" slides, each owning a window of the section's
+                # chunks — otherwise a big section is taught from its first
+                # 28k characters and the rest silently disappears.
+                parts_by_node = (
+                    course_grounding.plan_section_parts(
+                        db,
+                        kb_id=grounding.knowledge_base_id,
+                        institute_id=request.institute_id,
+                        sections=picked["sections"],
+                    )
+                    if picked else {}
+                )
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Deterministic KB outline unavailable ({e}); using LLM outline")
             return None
@@ -156,10 +169,26 @@ class CourseOutlineGenerationService:
             chapter_title = (topic.get("title") or "").strip() or f"Section {ci}"
             # A topic with no subtopics still becomes a chapter with one slide
             # teaching the topic itself.
-            slides = topic.get("subtopics") or [topic]
+            slides: list = []
+            for node in (topic.get("subtopics") or [topic]):
+                parts = parts_by_node.get(node.get("id") or "")
+                if not parts:
+                    slides.append(node)
+                    continue
+                base_title = (node.get("title") or "").strip() or chapter_title
+                for part in parts:
+                    slides.append({
+                        **node,
+                        "title": f"{base_title} (Part {part['index']} of {part['count']})",
+                        "page_start": part.get("page_start") or node.get("page_start"),
+                        "page_end": part.get("page_end") or node.get("page_end"),
+                        "_part": part,
+                        "_base_title": base_title,
+                    })
             slide_nodes: list = []
             for si, node in enumerate(slides, start=1):
                 title = (node.get("title") or "").strip() or f"{chapter_title} — part {si}"
+                part = node.get("_part")
                 pages = ""
                 if node.get("page_start"):
                     pages = (
@@ -193,6 +222,13 @@ class CourseOutlineGenerationService:
                             "own order and terminology, and do not add topics from "
                             "outside it."
                             + (f" Section overview: {summary}" if summary else "")
+                            + (
+                                f" This slide is part {part['index']} of {part['count']} of the "
+                                f"section '{node.get('_base_title')}': teach only the passages "
+                                "provided for this part, and do not summarise or repeat the "
+                                "other parts."
+                                if part else ""
+                            )
                         ),
                         order=len(todos) + 1,
                         chapter_name=chapter_title,
@@ -200,6 +236,15 @@ class CourseOutlineGenerationService:
                             "node_id": node.get("id"),
                             "kb_page_start": node.get("page_start"),
                             "kb_page_end": node.get("page_end"),
+                            **(
+                                {
+                                    "kb_chunk_from": part["chunk_from"],
+                                    "kb_chunk_to": part["chunk_to"],
+                                    "kb_part_index": part["index"],
+                                    "kb_part_count": part["count"],
+                                }
+                                if part else {}
+                            ),
                         },
                     )
                 )
@@ -219,6 +264,11 @@ class CourseOutlineGenerationService:
                 f"Outline built directly from the material's own structure: "
                 f"{len(sections)} section(s), {len(todos)} slide(s), in the "
                 "source's order with its original titles."
+                + (
+                    f" {len(parts_by_node)} large section(s) were split into parts so "
+                    "every slide fits its own material."
+                    if parts_by_node else ""
+                )
             ),
             tree=[
                 CourseNode(
@@ -250,8 +300,8 @@ class CourseOutlineGenerationService:
             ),
         )
         logger.info(
-            "Deterministic KB outline: %d chapters / %d slides from %s",
-            len(sections), len(todos), picked["kb_name"],
+            "Deterministic KB outline: %d chapters / %d slides (%d sections split) from %s",
+            len(sections), len(todos), len(parts_by_node), picked["kb_name"],
         )
         return response
 
@@ -319,6 +369,9 @@ class CourseOutlineGenerationService:
                             node_id=(todo.metadata or {}).get("node_id"),
                             page_start=(todo.metadata or {}).get("kb_page_start"),
                             page_end=(todo.metadata or {}).get("kb_page_end"),
+                            # Split sections: only this part's chunk window.
+                            chunk_from=(todo.metadata or {}).get("kb_chunk_from"),
+                            chunk_to=(todo.metadata or {}).get("kb_chunk_to"),
                         )
                 except Exception:  # noqa: BLE001
                     logger.warning("KB grounding failed for %s", todo.path, exc_info=True)

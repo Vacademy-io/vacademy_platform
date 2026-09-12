@@ -27,6 +27,8 @@ import {
 } from '@phosphor-icons/react';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     listTemplates,
     type WhatsAppTemplateDTO,
@@ -52,27 +54,32 @@ import { useDialogStore } from '../../../../-hooks/useDialogStore';
 // branch), but multi-recipient: variables are resolved per selected student and the
 // whole selection goes out in one unified send (queued as a durable batch when the
 // selection is larger than one, so the request never hangs on per-recipient sends).
-const STEP_TITLES = ['Select Template', 'Map Variables', 'Review & Send'];
+const buildStepTitles = (t: TFunction): string[] => [
+    t('steps.selectTemplate'),
+    t('steps.mapVariables'),
+    t('steps.reviewSend'),
+];
 
 // Student fields a template variable can be mapped to, resolved per recipient.
-const SYSTEM_FIELDS: Array<{ value: string; label: string; resolve: (s: StudentTable) => string }> =
-    [
-        { value: 'system:full_name', label: 'Full Name', resolve: (s) => s.full_name || '' },
-        { value: 'system:email', label: 'Email', resolve: (s) => s.email || '' },
-        {
-            value: 'system:mobile_number',
-            label: 'Mobile Number',
-            resolve: (s) => s.mobile_number || '',
-        },
-        { value: 'system:city', label: 'City', resolve: (s) => s.city || '' },
-        { value: 'system:region', label: 'Region', resolve: (s) => s.region || '' },
-        { value: 'system:gender', label: 'Gender', resolve: (s) => s.gender || '' },
-        {
-            value: 'system:enrollment_id',
-            label: 'Enrollment ID',
-            resolve: (s) => s.institute_enrollment_id || '',
-        },
-    ];
+const buildSystemFields = (
+    t: TFunction
+): Array<{ value: string; label: string; resolve: (s: StudentTable) => string }> => [
+    { value: 'system:full_name', label: t('systemFields.fullName'), resolve: (s) => s.full_name || '' },
+    { value: 'system:email', label: t('systemFields.email'), resolve: (s) => s.email || '' },
+    {
+        value: 'system:mobile_number',
+        label: t('systemFields.mobileNumber'),
+        resolve: (s) => s.mobile_number || '',
+    },
+    { value: 'system:city', label: t('systemFields.city'), resolve: (s) => s.city || '' },
+    { value: 'system:region', label: t('systemFields.region'), resolve: (s) => s.region || '' },
+    { value: 'system:gender', label: t('systemFields.gender'), resolve: (s) => s.gender || '' },
+    {
+        value: 'system:enrollment_id',
+        label: t('systemFields.enrollmentId'),
+        resolve: (s) => s.institute_enrollment_id || '',
+    },
+];
 
 function extractPlaceholders(text: string): string[] {
     const matches = text.match(/\{\{(\w+)\}\}/g);
@@ -98,10 +105,14 @@ function autoMapVariable(varKey: string): string | undefined {
 }
 
 export const SendMessageDialog = () => {
+    const { t } = useTranslation('manageStudentsSendMessageDialog');
     const { isSendMessageOpen, bulkActionInfo, selectedStudent, isBulkAction, closeAllDialogs } =
         useDialogStore();
 
     const instituteId = getCurrentInstituteId() || '';
+
+    const STEP_TITLES = useMemo(() => buildStepTitles(t), [t]);
+    const SYSTEM_FIELDS = useMemo(() => buildSystemFields(t), [t]);
 
     // Step
     const [step, setStep] = useState(1);
@@ -163,7 +174,7 @@ export const SendMessageDialog = () => {
                 if (!cancelled) setTemplates(data);
             })
             .catch(() => {
-                if (!cancelled) toast.error('Failed to load WhatsApp templates');
+                if (!cancelled) toast.error(t('toasts.loadTemplatesFailed'));
             })
             .finally(() => {
                 if (!cancelled) setLoadingTemplates(false);
@@ -171,7 +182,7 @@ export const SendMessageDialog = () => {
         return () => {
             cancelled = true;
         };
-    }, [isSendMessageOpen, instituteId]);
+    }, [isSendMessageOpen, instituteId, t]);
 
     // Load custom field setup once per open (non-fatal if it fails)
     useEffect(() => {
@@ -190,15 +201,15 @@ export const SendMessageDialog = () => {
     }, [isSendMessageOpen, instituteId]);
 
     const approvedTemplates = useMemo(
-        () => templates.filter((t) => t.status === 'APPROVED'),
+        () => templates.filter((tpl) => tpl.status === 'APPROVED'),
         [templates]
     );
 
     const handleTemplateSelect = useCallback(
         (templateName: string) => {
-            const t = approvedTemplates.find((x) => x.name === templateName) ?? null;
-            setSelectedTemplate(t);
-            if (t?.language) setLanguageCode(t.language);
+            const tpl = approvedTemplates.find((x) => x.name === templateName) ?? null;
+            setSelectedTemplate(tpl);
+            if (tpl?.language) setLanguageCode(tpl.language);
             setVariableMapping({});
         },
         [approvedTemplates]
@@ -238,7 +249,7 @@ export const SendMessageDialog = () => {
                 label: f.field_name || f.field_key,
             }));
         return [...SYSTEM_FIELDS.map((f) => ({ value: f.value, label: f.label })), ...customs];
-    }, [customFieldSetup]);
+    }, [customFieldSetup, SYSTEM_FIELDS]);
 
     // Resolve one variable for one student
     const resolveValue = useCallback(
@@ -256,7 +267,7 @@ export const SendMessageDialog = () => {
             }
             return '';
         },
-        [variableMapping]
+        [variableMapping, SYSTEM_FIELDS]
     );
 
     const handleMappingChange = useCallback((varKey: string, fieldValue: string) => {
@@ -293,11 +304,11 @@ export const SendMessageDialog = () => {
     // -----------------------------------------------------------------------
     const handleSend = useCallback(async () => {
         if (!selectedTemplate) {
-            toast.error('Select a WhatsApp template first.');
+            toast.error(t('toasts.selectTemplateFirst'));
             return;
         }
         if (recipients.length === 0) {
-            toast.error('No valid recipients with a mobile number.');
+            toast.error(t('toasts.noValidRecipients'));
             return;
         }
         setIsSending(true);
@@ -347,23 +358,25 @@ export const SendMessageDialog = () => {
             const acceptedCount = result.accepted ?? 0;
             const totalCount = result.total ?? recipients.length;
             if (result.status === 'FAILED' || acceptedCount === 0) {
-                toast.error('Failed to send WhatsApp messages. Please try again.');
+                toast.error(t('toasts.sendFailed'));
             } else if (failedCount > 0) {
                 toast.warning(
-                    `Accepted for ${acceptedCount} of ${totalCount} — ${failedCount} failed. See the list below.`,
+                    t('toasts.partialSuccess', {
+                        accepted: acceptedCount,
+                        total: totalCount,
+                        failed: failedCount,
+                    }),
                     { duration: 8000 }
                 );
             } else {
-                toast.success(`WhatsApp message accepted for ${acceptedCount} recipients`);
+                toast.success(t('toasts.sendSuccess', { count: acceptedCount }));
             }
         } catch (err) {
-            toast.error(
-                err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.'
-            );
+            toast.error(err instanceof Error ? err.message : t('toasts.unexpectedError'));
         } finally {
             setIsSending(false);
         }
-    }, [selectedTemplate, recipients, instituteId, languageCode, variableKeys, resolveValue]);
+    }, [selectedTemplate, recipients, instituteId, languageCode, variableKeys, resolveValue, t]);
 
     // -----------------------------------------------------------------------
     // Step indicator
@@ -412,19 +425,19 @@ export const SendMessageDialog = () => {
     const renderTemplateStep = () => (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Label>Template</Label>
+                <Label>{t('templateStep.templateLabel')}</Label>
                 {loadingTemplates ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <CircleNotch className="size-4 animate-spin" />
-                        Loading templates...
+                        {t('templateStep.loadingTemplates')}
                     </div>
                 ) : (
                     <TemplateSearchableSelect
                         options={toTemplateOptions(approvedTemplates)}
                         value={selectedTemplate?.name ?? ''}
                         onChange={handleTemplateSelect}
-                        placeholder="Select an approved template"
-                        emptyText="No approved template matches your search."
+                        placeholder={t('templateStep.selectPlaceholder')}
+                        emptyText={t('templateStep.emptyText')}
                         // Inside a Radix Dialog: react-remove-scroll blocks scrolling on
                         // portalled nodes, so the list must render inline.
                         portal={false}
@@ -432,13 +445,13 @@ export const SendMessageDialog = () => {
                 )}
                 {!loadingTemplates && approvedTemplates.length === 0 && (
                     <p className="text-xs text-muted-foreground">
-                        No approved WhatsApp templates found for this institute.
+                        {t('templateStep.noTemplatesFound')}
                     </p>
                 )}
             </div>
 
             <div className="space-y-2">
-                <Label>Language Code</Label>
+                <Label>{t('templateStep.languageCodeLabel')}</Label>
                 <Input
                     value={languageCode}
                     onChange={(e) => setLanguageCode(e.target.value)}
@@ -449,7 +462,7 @@ export const SendMessageDialog = () => {
 
             {selectedTemplate && (
                 <div className="space-y-2">
-                    <Label>Template Preview</Label>
+                    <Label>{t('templateStep.templatePreviewLabel')}</Label>
                     <div className="whitespace-pre-wrap rounded-md border bg-muted/30 p-4 text-sm">
                         {selectedTemplate.bodyText}
                     </div>
@@ -458,13 +471,12 @@ export const SendMessageDialog = () => {
 
             <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
                 <span className="font-medium text-foreground">
-                    {recipients.length} recipient{recipients.length === 1 ? '' : 's'}
+                    {t('templateStep.recipientsNotice', { count: recipients.length })}
                 </span>
-                <span className="text-muted-foreground"> will receive this message.</span>
                 {skippedCount > 0 && (
                     <span className="text-muted-foreground">
                         {' '}
-                        ({skippedCount} skipped — no mobile number)
+                        {t('templateStep.skippedNotice', { count: skippedCount })}
                     </span>
                 )}
             </div>
@@ -479,7 +491,7 @@ export const SendMessageDialog = () => {
             return (
                 <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
                     <CheckCircle className="size-8" />
-                    <p className="text-sm">No variables to map. You can proceed.</p>
+                    <p className="text-sm">{t('variableMappingStep.noVariables')}</p>
                 </div>
             );
         }
@@ -487,13 +499,12 @@ export const SendMessageDialog = () => {
         return (
             <div className="space-y-1">
                 <p className="mb-3 text-sm text-muted-foreground">
-                    Map each template variable to a student field, or set a fixed value. Values are
-                    resolved per student on send.
+                    {t('variableMappingStep.mapHint')}
                 </p>
                 <div className="rounded-md border">
                     <div className="grid grid-cols-2 gap-4 border-b bg-muted/40 px-4 py-2 text-xs font-semibold text-muted-foreground">
-                        <span>Variable</span>
-                        <span>Mapped Field</span>
+                        <span>{t('variableMappingStep.columnVariable')}</span>
+                        <span>{t('variableMappingStep.columnMappedField')}</span>
                     </div>
                     {variableKeys.map((varKey) => {
                         const currentValue = variableMapping[varKey] ?? '';
@@ -522,10 +533,16 @@ export const SendMessageDialog = () => {
                                         }
                                     >
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Select field..." />
+                                            <SelectValue
+                                                placeholder={t(
+                                                    'variableMappingStep.selectFieldPlaceholder'
+                                                )}
+                                            />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="__static__">Static value…</SelectItem>
+                                            <SelectItem value="__static__">
+                                                {t('variableMappingStep.staticValueOption')}
+                                            </SelectItem>
                                             {mappingOptions.map((opt) => (
                                                 <SelectItem key={opt.value} value={opt.value}>
                                                     {opt.label}
@@ -542,7 +559,9 @@ export const SendMessageDialog = () => {
                                                     `static:${e.target.value}`
                                                 )
                                             }
-                                            placeholder='e.g. "Student"'
+                                            placeholder={t(
+                                                'variableMappingStep.staticValuePlaceholder'
+                                            )}
                                         />
                                     )}
                                 </div>
@@ -570,27 +589,32 @@ export const SendMessageDialog = () => {
                         <XCircle className="size-12 text-danger-500" />
                     )}
                     <h3 className="text-lg font-semibold">
-                        {isSuccess ? 'Messages Sent' : 'Send Completed'}
+                        {isSuccess ? t('reviewStep.messagesSent') : t('reviewStep.sendCompleted')}
                     </h3>
                     <div className="w-full max-w-sm space-y-2 rounded-md border p-4 text-sm">
                         <div className="flex justify-between">
-                            <span className="text-muted-foreground">Recipients</span>
+                            <span className="text-muted-foreground">
+                                {t('reviewStep.recipientsLabel')}
+                            </span>
                             <span className="font-medium">{sendResult.total}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-muted-foreground">Sent</span>
+                            <span className="text-muted-foreground">
+                                {t('reviewStep.sentLabel')}
+                            </span>
                             <span className="font-medium text-success-600">
                                 {sendResult.accepted}
                             </span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-muted-foreground">Failed</span>
+                            <span className="text-muted-foreground">
+                                {t('reviewStep.failedLabel')}
+                            </span>
                             <span className="font-medium text-danger-600">{failed}</span>
                         </div>
                         {sendResult.status === 'PROCESSING' && (
                             <p className="text-xs text-muted-foreground">
-                                Still processing in the background — final counts appear in the
-                                communication history.
+                                {t('reviewStep.stillProcessing')}
                             </p>
                         )}
                     </div>
@@ -605,7 +629,7 @@ export const SendMessageDialog = () => {
                         </div>
                     )}
                     <Button variant="outline" onClick={() => closeAllDialogs()} className="mt-2">
-                        Close
+                        {t('reviewStep.close')}
                     </Button>
                 </div>
             );
@@ -617,37 +641,48 @@ export const SendMessageDialog = () => {
                     <div className="flex items-center gap-3">
                         <WhatsappLogo className="size-5 text-primary" />
                         <div>
-                            <p className="text-sm font-semibold">WhatsApp</p>
-                            <p className="text-xs text-muted-foreground">Channel</p>
+                            <p className="text-sm font-semibold">
+                                {t('reviewStep.channelLabel')}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                {t('reviewStep.channelHeading')}
+                            </p>
                         </div>
                     </div>
                     <div className="border-t pt-3">
-                        <p className="text-xs text-muted-foreground">Template</p>
+                        <p className="text-xs text-muted-foreground">
+                            {t('reviewStep.templateLabel')}
+                        </p>
                         <p className="text-sm font-medium">{selectedTemplate?.name || '-'}</p>
                     </div>
                     <div className="border-t pt-3">
-                        <p className="text-xs text-muted-foreground">Recipients</p>
+                        <p className="text-xs text-muted-foreground">
+                            {t('reviewStep.recipientsLabel')}
+                        </p>
                         <p className="text-sm font-medium">
-                            {recipients.length} selected student
-                            {recipients.length === 1 ? '' : 's'}
+                            {t('reviewStep.selectedStudentsCount', { count: recipients.length })}
                             {skippedCount > 0 && (
                                 <span className="text-muted-foreground">
                                     {' '}
-                                    ({skippedCount} skipped — no mobile number)
+                                    {t('templateStep.skippedNotice', { count: skippedCount })}
                                 </span>
                             )}
                         </p>
                     </div>
                     {variableKeys.some((k) => variableMapping[k]) && (
                         <div className="border-t pt-3">
-                            <p className="mb-2 text-xs text-muted-foreground">Variable Mappings</p>
+                            <p className="mb-2 text-xs text-muted-foreground">
+                                {t('reviewStep.variableMappingsLabel')}
+                            </p>
                             <div className="space-y-1">
                                 {variableKeys
                                     .filter((k) => variableMapping[k])
                                     .map((varKey) => {
                                         const mapped = variableMapping[varKey] ?? '';
                                         const label = mapped.startsWith('static:')
-                                            ? `Static: "${mapped.slice('static:'.length)}"`
+                                            ? t('reviewStep.staticValueLabel', {
+                                                  value: mapped.slice('static:'.length),
+                                              })
                                             : (mappingOptions.find((o) => o.value === mapped)
                                                   ?.label ?? mapped);
                                         return (
@@ -672,13 +707,12 @@ export const SendMessageDialog = () => {
                     {isSending ? (
                         <>
                             <CircleNotch className="mr-2 size-4 animate-spin" />
-                            Sending...
+                            {t('reviewStep.sending')}
                         </>
                     ) : (
                         <>
                             <PaperPlaneTilt className="mr-2 size-4" />
-                            Send to {recipients.length} student
-                            {recipients.length === 1 ? '' : 's'}
+                            {t('reviewStep.sendButton', { count: recipients.length })}
                         </>
                     )}
                 </Button>
@@ -690,10 +724,8 @@ export const SendMessageDialog = () => {
         <Dialog open={isSendMessageOpen} onOpenChange={handleClose}>
             <DialogContent className="max-h-screen w-full overflow-y-auto overflow-x-hidden sm:max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle>Send WhatsApp Message</DialogTitle>
-                    <DialogDescription>
-                        Send an approved WhatsApp template to the selected students.
-                    </DialogDescription>
+                    <DialogTitle>{t('dialogTitle')}</DialogTitle>
+                    <DialogDescription>{t('dialogDescription')}</DialogDescription>
                 </DialogHeader>
 
                 {renderStepIndicator()}
@@ -714,7 +746,7 @@ export const SendMessageDialog = () => {
                                     disabled={isSending}
                                 >
                                     <CaretLeft className="mr-1 size-4" />
-                                    Back
+                                    {t('footer.back')}
                                 </Button>
                             )}
                         </div>
@@ -725,7 +757,7 @@ export const SendMessageDialog = () => {
                                     onClick={() => setStep((s) => s + 1)}
                                     disabled={!canProceed}
                                 >
-                                    Next
+                                    {t('footer.next')}
                                     <CaretRight className="ml-1 size-4" />
                                 </Button>
                             )}

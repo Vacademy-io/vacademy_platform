@@ -1,0 +1,16 @@
+{
+    "validation": {
+        "courseRequired": "कोर्स आवश्यक है",
+        "sessionRequired": "सेशन आवश्यक है",
+        "levelRequired": "लेवल आवश्यक है",
+        "startDateRequired": "आरंभ तिथि आवश्यक है",
+        "endDateRequired": "समाप्ति तिथि आवश्यक है",
+        "learnerRequired": "लर्नर आवश्यक है",
+        "dateRangeWithinMonth": "तिथि सीमा एक महीने के भीतर होनी चाहिए।"
+    },
+    "selectPlaceholder": "{{term}} चुनें",
+    "searchPlaceholder": "{{term}} खोजें...",
+    "loading": "लोड हो रहा है…",
+    "generateReport": "रिपोर्ट बनाएं",
+    "fixFollowing": "कृपया निम्न को ठीक करें:"
+}

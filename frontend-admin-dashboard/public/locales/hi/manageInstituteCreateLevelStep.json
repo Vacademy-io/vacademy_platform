@@ -1,0 +1,17 @@
+{
+    "form": {
+        "levelSelectionLabel": "{{term}} चयन",
+        "selectExisting": "मौजूदा {{term}} चुनें",
+        "createNew": "नया {{term}} बनाएं",
+        "selectALevelPlaceholder": "एक {{term}} चुनें",
+        "durationDays_one": "अवधि: {{count}} दिन",
+        "durationDays_other": "अवधि: {{count}} दिन",
+        "duplicateFromPreExisting": "पहले से मौजूद {{term}} से अध्ययन सामग्री कॉपी करें",
+        "duplicateFrom": "{{term}} से कॉपी करें",
+        "selectForDuplication": "कॉपी करने के लिए {{term}} चुनें"
+    },
+    "validation": {
+        "pleaseSelectLevel": "कृपया एक स्तर चुनें",
+        "pleaseSelectSessionToDuplicate": "कृपया कॉपी करने के लिए एक सत्र चुनें"
+    }
+}

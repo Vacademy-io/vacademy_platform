@@ -145,8 +145,8 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
     }
 
     @Override
-    public void sendInteractive(String phone, Map<String, Object> interactivePayload,
-                                 String instituteId, String businessChannelId) {
+    public String sendInteractive(String phone, Map<String, Object> interactivePayload,
+                                   String instituteId, String businessChannelId) {
         ProviderConfig config = resolveConfig(instituteId);
         if (config == null) throw new RuntimeException("COMBOT/META config not found for institute: " + instituteId);
 
@@ -199,7 +199,7 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
         payload.put("type", "interactive");
         payload.put("interactive", interactive);
 
-        sendPayload(config, payload);
+        return sendPayload(config, payload);
     }
 
     @Override
@@ -218,7 +218,7 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
     }
 
     @Override
-    public void sendMedia(String phone, String mediaType, String mediaUrl, String caption,
+    public String sendMedia(String phone, String mediaType, String mediaUrl, String caption,
                            String filename, String instituteId, String businessChannelId) {
         ProviderConfig config = resolveConfig(instituteId);
         if (config == null) throw new RuntimeException("COMBOT/META config not found for institute: " + instituteId);
@@ -240,7 +240,7 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
         payload.put("type", mediaType);
         payload.put(mediaType, mediaObj); // "image": {...}, "video": {...}, etc.
 
-        sendPayload(config, payload);
+        return sendPayload(config, payload);
     }
 
     private String sendPayload(ProviderConfig config, Map<String, Object> payload) {

@@ -1,0 +1,31 @@
+{
+    "form": {
+        "questionsLabel": "الأسئلة",
+        "optionsLabel": "الخيارات",
+        "answersLabel": "الإجابات",
+        "explanationsLabel": "الشروحات",
+        "docxHelp": {
+            "before": "إذا واجهت مشكلة أثناء تحميل ملف docx، فيرجى تحويل ملفك إلى html من",
+            "linkText": "هنا",
+            "after": "ثم حاول إعادة التحميل.",
+            "step1": "الخطوة 1 - انتقل إلى هذا الموقع",
+            "step2": "الخطوة 2 - فعّل تضمين الصور",
+            "step3": "الخطوة 3 - نزّل ملف html الخاص بك بعد التحويل",
+            "imageAlt": "شعار"
+        },
+        "fileSizeProgress": "{{uploaded}} ميجابايت / {{total}} ميجابايت"
+    },
+    "common": {
+        "loading": "جارٍ التحميل...",
+        "preview": "معاينة",
+        "addQuestions": "إضافة أسئلة",
+        "done": "تم"
+    },
+    "defaults": {
+        "sectionName": "القسم 1"
+    },
+    "toast": {
+        "questionPaperAdded": "تمت إضافة ورقة الأسئلة بنجاح",
+        "questionsIncomplete": "بعض أسئلتك غير مكتملة أو تحتاج إلى مراجعة!"
+    }
+}

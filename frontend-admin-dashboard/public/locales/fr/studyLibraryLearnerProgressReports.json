@@ -1,0 +1,56 @@
+{
+    "loading": "Chargement…",
+    "view": "Voir",
+    "unnamedLearner": "{{learner}} sans nom",
+    "viewProgressBreakdownAriaLabel": "Voir le détail de la progression de {{name}}",
+    "status": {
+        "completed": "Terminé",
+        "onTrack": "En bonne voie",
+        "inProgress": "En cours",
+        "behind": "En retard",
+        "notStarted": "Pas commencé"
+    },
+    "columns": {
+        "courseProgress": "Progression du {{course}}",
+        "status": "Statut",
+        "chaptersDone": "Chapitres terminés"
+    },
+    "picker": {
+        "selectA": "Sélectionner un(e) {{term}}",
+        "searchTerm": "Rechercher {{term}}..."
+    },
+    "emptyBatch": {
+        "selectBatch": "Sélectionnez un groupe pour voir la progression des {{learner}}.",
+        "selectCourse": "Sélectionnez un(e) {{course}} pour voir la progression des {{learner}}.",
+        "autoPicked": "{{session}} et {{level}} sont sélectionnés automatiquement lorsqu'il n'y en a qu'un seul."
+    },
+    "stats": {
+        "enrolled_one": "{{learner}} inscrit",
+        "enrolled_many": "{{learner}}s inscrits",
+        "enrolled_other": "{{learner}}s inscrits",
+        "avgProgressThisPage": "Progression moyenne (cette page)",
+        "completedThisPage": "Terminé (cette page)",
+        "notStartedThisPage": "Pas commencé (cette page)"
+    },
+    "search": {
+        "placeholder": "Rechercher {{learner}} par nom",
+        "label": "Rechercher",
+        "clear": "Effacer",
+        "enrolledCount_one": "{{count}} {{learner}} inscrit",
+        "enrolledCount_many": "{{count}} {{learner}}s inscrits",
+        "enrolledCount_other": "{{count}} {{learner}}s inscrits"
+    },
+    "error": {
+        "loadFailed": "Impossible de charger les {{learner}}s inscrits pour ce groupe.",
+        "retry": "Réessayer"
+    },
+    "empty": {
+        "noMatch": "Aucun {{learner}} ne correspond à « {{search}} ».",
+        "noneEnrolled": "Aucun {{learner}} n'est encore inscrit dans ce groupe.",
+        "tryDifferentName": "Essayez un autre nom.",
+        "progressAppearsHere": "La progression apparaît ici une fois que des {{learner}}s sont inscrits."
+    },
+    "drawer": {
+        "percentComplete": "{{percent}} % du {{course}} terminé"
+    }
+}

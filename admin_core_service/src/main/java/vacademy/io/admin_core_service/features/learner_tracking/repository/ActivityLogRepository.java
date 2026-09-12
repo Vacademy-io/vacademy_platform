@@ -2259,6 +2259,29 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("slideId") String slideId);
 
     /**
+     * Every learner's LATEST processed analysis for one source (an assessment).
+     *
+     * <p>Backs the class-level AI report: rather than spending a fresh LLM call
+     * per assessment, that report aggregates the per-learner analyses already
+     * generated here — topics, Bloom's levels and shared misconceptions — so it
+     * costs no additional AI credits.
+     *
+     * <p>DISTINCT ON keeps one row per learner: a re-attempted assessment leaves
+     * several processed rows behind, and counting them all would weight those
+     * learners twice in every class average.
+     */
+    @Query(value = """
+            SELECT DISTINCT ON (a.user_id) a.*
+            FROM activity_log a
+            WHERE a.source_id = :sourceId
+              AND a.source_type = 'llm_assessment'
+              AND a.status = 'processed'
+              AND a.processed_json IS NOT NULL
+            ORDER BY a.user_id, a.created_at DESC
+            """, nativeQuery = true)
+    List<ActivityLog> findProcessedBySourceId(@Param("sourceId") String sourceId);
+
+    /**
      * Find processed activity logs by user_id and source_id
      * Used by LLM analytics API to fetch processed data for specific source
      */

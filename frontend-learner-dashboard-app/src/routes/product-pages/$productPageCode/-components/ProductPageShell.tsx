@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { resolveInitialSelection } from "../-utils/custom-field-aggregator";
 import {
@@ -6,6 +7,7 @@ import {
   pushProductPageView,
 } from "@/components/common/enroll-by-invite/-utils/gtm";
 import { CatalogStep } from "./CatalogStep";
+import { isFinderUsable, parseCourseFinder } from "../-utils/course-finder";
 import { CartStep } from "./CartStep";
 import { MultiEnrollForm } from "./MultiEnrollForm";
 import { CombinedPaymentStep } from "./CombinedPaymentStep";
@@ -13,10 +15,12 @@ import { CpoInstallmentsCheckoutStep } from "./CpoInstallmentsCheckoutStep";
 import { ProductPageSuccess } from "./ProductPageSuccess";
 import { CheckoutLayout } from "./CheckoutLayout";
 import { CatalogueChrome } from "@/routes/$tagName/-components/CatalogueChrome";
+import { requestCourseFinder } from "@/routes/$tagName/-utils/reopen-course-finder";
 import type {
   ProductPageSettings,
   PageJson,
   ProductPageData,
+  ProductPageStep,
 } from "../-types/product-page-types";
 
 interface ProductPageShellProps {
@@ -27,6 +31,8 @@ interface ProductPageShellProps {
   defaultTab?: "CATALOG" | "CART" | "PAYMENT";
   /** Catalogue the visitor came from — supplies header, footer and theme. */
   tagName?: string;
+  /** Comma-separated level names the browse step is restricted to. */
+  levels?: string;
   utmParams: Record<string, string | undefined>;
 }
 
@@ -59,12 +65,71 @@ export const ProductPageShell = ({
   courseIds,
   defaultTab,
   tagName,
+  levels,
   utmParams,
 }: ProductPageShellProps) => {
   const { step, setPageData, setStep, setSelection, setUtmParams, selectedPsOptionIds } =
     useProductPageStore();
   const gtmFired = useRef(false);
   const initialized = useRef(false);
+  const navigate = useNavigate();
+
+  /**
+   * Where "Back" from the cart leads.
+   *
+   * A visitor who arrived from a catalogue with a basket already filled
+   * (defaultTab=CART) has never seen THIS page's own catalogue step, so
+   * dropping them there is a place they have never been — a different grid of
+   * the same courses, with the basket bar they were just using replaced by
+   * another one. Send them back where they came from instead; the catalogue
+   * restores their basket from sessionStorage, so nothing is lost.
+   *
+   * Once they have actually visited this page's catalogue step, that becomes
+   * the honest destination again.
+   *
+   * Set from the RESOLVED start step in the layout effect below, not from the
+   * store: the store initialises to CATALOG and is corrected to CART before
+   * paint, but a passive effect reading `step` still sees that first CATALOG
+   * and would mark the visitor as having been somewhere they never went —
+   * which sent every Back to this page's own catalogue instead of theirs.
+   */
+  const sawOwnCatalog = useRef(false);
+
+  /**
+   * Set when the Course Finder sent the visitor straight from a class pick to
+   * the details step. Back from that form must then return to the catalogue —
+   * dropping them on the cart would be a step they have never seen, showing a
+   * basket that filled itself.
+   */
+  const cartSkipped = useRef(false);
+  const prevStep = useRef<ProductPageStep | null>(null);
+  useEffect(() => {
+    const previous = prevStep.current;
+    prevStep.current = step;
+    // Only a real navigation INTO the catalogue counts; the initial value is
+    // not a place anyone has been.
+    if (previous !== null && previous !== "CATALOG" && step === "CATALOG") {
+      sawOwnCatalog.current = true;
+    }
+  }, [step]);
+
+  const backFromCart = () => {
+    // Any visitor who arrived from a catalogue carries its slug. If they have
+    // not since browsed THIS page's catalogue step, that slug is where Back
+    // belongs — the catalogue restores their basket from sessionStorage.
+    if (tagName && !sawOwnCatalog.current) {
+      // Going back to choose is exactly when the Course Finder earns its keep,
+      // but its once-ever seen flag would suppress it. Ask for it explicitly.
+      requestCourseFinder(tagName);
+      // The params form, not a template path: real catalogue tags contain
+      // spaces, parentheses and even leading slashes ("Home Page", "Arabian
+      // International Stem Hub (AISH)", "/cement-factory"), which the router
+      // encodes here and a hand-built `/${tagName}` would not.
+      navigate({ to: "/$tagName", params: { tagName } });
+      return;
+    }
+    setStep("CATALOG");
+  };
 
   // useLayoutEffect runs synchronously before the browser paints — ensures the
   // correct step is set before any frame is visible, preventing a flash of the
@@ -81,16 +146,39 @@ export const ProductPageShell = ({
       DEFAULT_SETTINGS,
     );
 
+    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
+    const initialSelection = resolveInitialSelection(pageData.mappings, courseIds);
+
     const resolvedStep = defaultTab ?? settings.defaultStep;
-    const startStep =
+    const configuredStep =
       resolvedStep === "CART"
         ? "CART"
         : resolvedStep === "PAYMENT"
           ? "FORM"
           : "CATALOG";
 
-    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
-    setSelection(resolveInitialSelection(pageData.mappings, courseIds));
+    /**
+     * A Course Finder is a gate: it decides WHICH courses the visitor may see,
+     * and it lives on the catalogue step. A page configured to land on Cart or
+     * Payment therefore skips the question and drops the visitor on an empty
+     * basket — "Nothing in your cart yet", with no way to choose anything.
+     *
+     * So when a usable finder exists and nothing has been selected for them,
+     * the catalogue wins over the configured landing step. A link that DOES
+     * carry a basket (?courseIds=) has answered the question and is honoured
+     * as configured.
+     */
+    const finderGates =
+      isFinderUsable(parseCourseFinder(pageData.settings_json), pageData.mappings) &&
+      initialSelection.length === 0;
+    const startStep = finderGates ? "CATALOG" : configuredStep;
+
+    // Starting ON this page's catalogue means it IS where Back belongs. Recorded
+    // here, in the layout effect, because it runs before any passive effect can
+    // misread the store's transient initial step.
+    sawOwnCatalog.current = startStep === "CATALOG";
+
+    setSelection(initialSelection);
 
     const utmFiltered = Object.fromEntries(
       Object.entries(utmParams).filter(([, v]) => v !== undefined),
@@ -147,6 +235,23 @@ export const ProductPageShell = ({
     setStep(isCpoSelection ? "CPO_INSTALLMENTS" : "PAYMENT");
   };
 
+  const jumpToForm = () => {
+    cartSkipped.current = true;
+    setStep("FORM");
+  };
+
+  const backFromForm = () => {
+    if (cartSkipped.current) {
+      // Returning to the catalogue means returning to the finder's answer, not
+      // the finder itself — the pick is still stored, so they land on their
+      // class with the way to change it in reach.
+      cartSkipped.current = false;
+      setStep("CATALOG");
+      return;
+    }
+    setStep("CART");
+  };
+
   return (
     <div className="min-h-screen w-full bg-white">
       {/* Only the browse step wears the catalogue chrome. The checkout steps
@@ -158,21 +263,37 @@ export const ProductPageShell = ({
         <CatalogueChrome
           tagName={pageHasOwnChrome ? undefined : tagName}
           instituteId={instituteId}
+          showFooter
         >
           <CatalogStep
             pageData={pageData}
             settings={settings}
             tagName={tagName}
             productPageCode={productPageCode}
+            levels={levels}
+            courseIds={courseIds}
             onNext={() => setStep("CART")}
+            onJumpToForm={jumpToForm}
           />
         </CatalogueChrome>
       )}
 
+      {/* Checkout wears the SAME chrome as the catalogue the visitor came from.
+          The header changing character mid-purchase — site header while
+          browsing, a bare coloured bar once money is involved — reads as
+          having left the site. A page that declares its own header/footer keeps
+          them instead (tagName undefined makes this a passthrough), so nothing
+          stacks two headers. */}
       {(step === "CART" || step === "FORM" || step === "PAYMENT" || step === "CPO_INSTALLMENTS") && (
+        <CatalogueChrome
+          tagName={pageHasOwnChrome ? undefined : tagName}
+          instituteId={instituteId}
+          showFooter
+        >
         <CheckoutLayout
           pageData={pageData}
           pageJson={pageJson}
+          settings={settings}
           primaryColor={primaryColor}
         >
           {step === "CART" && (
@@ -180,7 +301,7 @@ export const ProductPageShell = ({
               pageData={pageData}
               settings={settings}
               primaryColor={primaryColor}
-              onBack={() => setStep("CATALOG")}
+              onBack={backFromCart}
               onNext={() => setStep("FORM")}
             />
           )}
@@ -190,7 +311,7 @@ export const ProductPageShell = ({
               settings={settings}
               primaryColor={primaryColor}
               courseIds={courseIds}
-              onBack={() => setStep("CART")}
+              onBack={backFromForm}
               onNext={handleFormNext}
             />
           )}
@@ -216,6 +337,7 @@ export const ProductPageShell = ({
             />
           )}
         </CheckoutLayout>
+        </CatalogueChrome>
       )}
 
       {step === "SUCCESS" && <ProductPageSuccess pageData={pageData} />}

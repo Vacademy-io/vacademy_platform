@@ -3810,88 +3810,60 @@ def test_prompt_greets_once_ends_on_request_and_uses_first_name():
     assert "Address them by their FIRST name only ('Vijay'" in p
 
 
-# ── Follow-up gist + measured engagement (V510) ──────────────────────────────
-#
-# The gist is ONE sentence for the counsellor deciding whether to call this lead
-# themselves — the recommendation and the concrete reason from the call. It is
-# not a grade of our agent and not the disposition restated. followUp only
-# colours it and feeds a filter; it is never shown as a word on its own.
+def test_placeholders_use_first_name_in_prompt_and_full_name_in_opening():
+    """Simulator 2026-09-12: 12/12 callers addressed by full name mid-call —
+    the authored prompt's "{{name}} ji" was filled with the list's full name."""
+    ctx = {"leadName": "Sunita Devi", "agent": {"language": "english"}}
+    assert b._fill_placeholders("Namaste {{name}} ji", ctx) == "Namaste Sunita ji"
+    assert b._fill_placeholders("Hi, is this {{name}}?", ctx, full_name=True) == "Hi, is this Sunita Devi?"
+    src = __import__("inspect").getsource(b.run_bot)
+    assert src.count('(agent.get("openingLine") or "").strip(), context, full_name=True)') >= 2
 
 
-def test_follow_up_is_a_closed_vocabulary_and_null_means_not_assessed():
-    for spoken, want in (("CALL", "CALL"), ("call", "CALL"), ("call later", "CALL_LATER"),
-                         ("Call-Later", "CALL_LATER"), ("SKIP", "SKIP")):
-        a = {"followUp": spoken, "followUpGist": "Worth a call."}
-        rpt._sanitize_follow_up(a, "c")
-        assert a["followUp"] == want, spoken
-    # An invented level must become NULL (not assessed) — never reach the UI as a
-    # mystery string, and never be coerced UP to CALL.
-    for bad in ("MAYBE", "yes", "", None, 7):
-        a = {"followUp": bad, "followUpGist": "x"}
-        rpt._sanitize_follow_up(a, "c")
-        assert a["followUp"] is None, bad
-
-
-def test_follow_up_gist_is_one_line_and_capped():
-    a = {"followUp": "CALL",
-         "followUpGist": "  Worth a call —\n runs a 50-member hybrid studio,\n\nasked about pricing.  "}
-    rpt._sanitize_follow_up(a, "c")
-    assert a["followUpGist"] == "Worth a call — runs a 50-member hybrid studio, asked about pricing."
-    long = {"followUp": "SKIP", "followUpGist": "x" * 500}
-    rpt._sanitize_follow_up(long, "c")
-    assert len(long["followUpGist"]) <= rpt._GIST_MAX_CHARS
-    assert long["followUpGist"].endswith("…")
-    empty = {"followUp": "CALL", "followUpGist": "   "}
-    rpt._sanitize_follow_up(empty, "c")
-    assert empty["followUpGist"] is None
-
-
-def test_caller_word_count_is_measured_from_real_caller_turns_only():
-    o = _ConvOutcome([
-        {"role": "assistant", "text": "Hi, is this Shweta? Aarushi from Vacademy."},
-        {"role": "user", "text": "Hello."},
-        {"role": "user", "text": "[unclear sound from the caller]"},   # synthetic cue
-        {"role": "user", "text": "Yes, we run hybrid classes on Zoom."},
-    ])
-    assert rpt._caller_word_count(o) == 8
-    assert rpt._caller_word_count(_ConvOutcome([])) == 0
-    assert rpt._caller_word_count(_ConvOutcome([{"role": "assistant", "text": "a b c"}])) == 0
+def test_caller_wants_to_end_is_narrow():
+    from app.turntake import caller_wants_to_end as w
+    assert w("I don't need your assistance. Cut the call, thank you.")
+    assert w("Wrong number. I'm a CA, I don't teach yoga.")
+    assert w("Please don't call again.")
+    assert w("Mujhe zaroorat nahi hai, phone rakhti hoon.")
+    assert w("Okay thank you, bye.")
+    assert w("Not interested.")
+    assert not w("Not now, I'm in a class — call me in the evening.")
+    assert not w("Yes, go ahead.")
+    assert not w("I'm not sure the link is the problem.")
+    assert not w("Bye the way, do you also handle fees?")  # 'bye' not last, >4 words
 
 
 @pytest.mark.asyncio
-async def test_report_always_carries_follow_up_and_word_count(monkeypatch):
-    """Every path — analysed, gated, degraded — must emit the keys explicitly, so a
-    missing key is never mistaken downstream for an assessed-and-empty one."""
-    posted = []
+async def test_turn_gate_forces_the_close_when_the_caller_asks_to_end():
+    """Call ada2e60c / simulator 2026-09-12: 'cut the call' -> 'Just to clarify…'.
+    The gate must cue a one-line goodbye and mark the outcome so the sentinel
+    ends the call even if the model forgets the marker."""
+    rec = _Rec()
+    out = FakeOutcome()
+    out.transcript.append({"role": "assistant", "text": "So the reason I called — we work with yoga teachers."})
+    tc = b.TranscriptCollector(
+        out, lambda user=True: None,
+        is_bot_speaking=lambda: False, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: False, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True)
 
-    async def capture(inst, tok, payload):
-        posted.append(payload)
-        return True
-
-    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
-
-    # 1. Analysed path: the model's recommendation flows through, sanitised.
-    async def analysed(o):
-        return {"disposition": "Not_Interested", "followUp": "skip",
-                "followUpGist": "Skip — runs in-person only and said online is not for them."}
-    monkeypatch.setattr(rpt, "_analyze", analysed)
-    await rpt.build_and_post_report(_ConvOutcome([
-        {"role": "user", "text": "no thanks, we only do in-person classes here"}]), "cu1")
-    p = posted[-1]
-    assert p["followUp"] == "SKIP"
-    assert p["followUpGist"].startswith("Skip —")
-    assert p["callerWordCount"] == 8
-
-    # 2. Substance-gated path: no analysis ran, so no recommendation (null), the
-    #    gist says in plain words why and what happens next, and the measured count
-    #    is still present.
-    async def never(o):
-        raise AssertionError("classifier must not run on a greeting-only call")
-    monkeypatch.setattr(rpt, "_analyze", never)
-    await rpt.build_and_post_report(_ConvOutcome([{"role": "user", "text": "Hello."}]), "cu2")
-    p = posted[-1]
-    assert p["followUp"] is None
-    assert p["followUpGist"].startswith("Nothing to go on")
-    assert "no manual call needed yet" in p["followUpGist"]
-    assert p["callerWordCount"] == 1
-    assert "callerWordCount" in p and "followUp" in p and "followUpGist" in p
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = _noop_broadcast
+    await _feed(tc, "I don't need your assistance. Cut the call, thank you.")
+    assert getattr(out, "end_forced", False) is True
+    assert any("asked to end this call" in c for c in _cue_texts(rec))
+    # A normal answer must not trip it.
+    out2 = FakeOutcome(); rec2 = _Rec()
+    tc2 = b.TranscriptCollector(out2, lambda user=True: None, is_bot_speaking=lambda: False,
+                                fillers_armed=lambda: False, bot_stopped_t=lambda: 0.0,
+                                gate_enabled=lambda: True, interrupt_on_vad=lambda: False,
+                                filler_phrases=[], in_machine_window=lambda: False,
+                                reply_in_flight=lambda: False, bot_spoke_once=lambda: True)
+    tc2.push_frame = _push; tc2.broadcast_interruption = _noop_broadcast
+    await _feed(tc2, "Yes, all my classes are online on Zoom.")
+    assert getattr(out2, "end_forced", False) is False

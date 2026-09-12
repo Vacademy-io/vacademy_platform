@@ -3917,3 +3917,34 @@ def test_fast_opener_rule_reaches_every_prompt_branch_and_has_a_kill_switch(monk
         assert MARK not in off and OLD in off
     finally:
         _gs.cache_clear()
+
+
+def test_stt_provider_smallest_maps_agent_language_pins_and_honours_the_hold(monkeypatch):
+    """2026-09-12 switch. Three-way bench on real recordings (see config.py):
+    Smallest Pulse beat Sarvam on finality tail (p90 0.23 s vs 1.86 s) and word
+    error, and hears the lone 'haan' Sarvam drops. The factory must (a) hand
+    Pulse a bare code — agents pin 'hi-IN', Pulse rejects it, and 'hi' IS its
+    code-switching mode; (b) keep the pipeline sample rate (16 kHz measured
+    WORSE); (c) pass the measured turn-stop hold; (d) refuse to start without a
+    key rather than dial a caller into a silent STT."""
+    from app import providers as pv
+    from app.config import get_settings as _gs
+    monkeypatch.setenv("STT_PROVIDER", "smallest")
+    monkeypatch.setenv("SMALLEST_API_KEY", "sk_test")
+    monkeypatch.setenv("SMALLEST_TTFS_P99", "0.5")
+    _gs.cache_clear()
+    try:
+        from pipecat.services.smallest.stt import SmallestSTTService
+        stt = pv.build_stt(8000, language="hi-IN")
+        assert isinstance(stt, SmallestSTTService)
+        assert stt._settings.language == "hi"
+        assert stt._ttfs_p99_latency == 0.5 or getattr(stt, "ttfs_p99_latency", 0.5) == 0.5
+        assert pv.build_stt(8000, language="en-IN")._settings.language == "en"
+        assert pv.build_stt(8000, language="klingon")._settings.language == "hi"
+        monkeypatch.setenv("SMALLEST_API_KEY", "")
+        _gs.cache_clear()
+        import pytest
+        with pytest.raises(RuntimeError):
+            pv.build_stt(8000)
+    finally:
+        _gs.cache_clear()

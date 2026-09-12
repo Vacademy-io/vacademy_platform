@@ -73,7 +73,7 @@ def _register_saaras_v4() -> bool:
 
 def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None,
               mode: str | None = None):
-    """STT factory with an A/B provider switch (STT_PROVIDER=sarvam|google).
+    """STT factory with a provider switch (STT_PROVIDER=sarvam|google|smallest).
 
     Why the switch exists: across the founder's four 2026-08-05 test calls the
     chronic offender was Saaras — interjections the VAD heard but STT never
@@ -116,6 +116,23 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
                 # the turn-gate see words sooner than Sarvam ever could.
                 enable_interim_results=True,
             ),
+        )
+    if s.stt_provider == "smallest":
+        from pipecat.services.smallest.stt import SmallestSTTService
+        # Per-agent pins arrive as BCP-47 ("hi-IN"); Pulse wants bare codes and
+        # has no Hinglish code, "hi" IS the code-switching mode. Unknown → default.
+        tag = (language or "").strip().lower()
+        lang = {"hi-in": "hi", "hi": "hi", "hinglish": "hi", "en-in": "en", "en": "en",
+                "en-us": "en", "mr-in": "mr", "gu-in": "gu", "bn-in": "bn", "ta-in": "ta",
+                "te-in": "te", "kn-in": "kn", "ml-in": "ml", "or-in": "or",
+                "multi": "multi"}.get(tag) or s.smallest_stt_language
+        if not s.smallest_api_key:
+            raise RuntimeError("STT_PROVIDER=smallest but SMALLEST_API_KEY is empty")
+        return SmallestSTTService(
+            api_key=s.smallest_api_key,
+            sample_rate=sample_rate,
+            settings=SmallestSTTService.Settings(language=lang),
+            ttfs_p99_latency=s.smallest_ttfs_p99,
         )
     # ── Sarvam (default) ──
     mode = (mode or s.sarvam_stt_mode or "transcribe").strip()

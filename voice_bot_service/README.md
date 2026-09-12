@@ -103,6 +103,30 @@ word-for-word; ~0.013× realtime on one core.
 If STT ever transcribes the ambience via handset echo, lower `AMBIENCE_VOLUME`
 rather than adding filtering.
 
+## Speech-to-text provider (`STT_PROVIDER`)
+
+`sarvam` (code default) | `google` | `smallest`. The Mumbai box runs **smallest**
+(Pulse) since 2026-09-12, chosen by a three-way bench that drove each engine through
+its pipecat service exactly like a live call (8 kHz, VAD stop at 0.2 s) over four real
+AI-call recordings and seven studio clips:
+
+| | Sarvam saaras:v4 | Smallest Pulse | Gnani hi-IN |
+|---|---|---|---|
+| final after VAD stop, median / p90 | 0.14 / 1.86 s | 0.12 / 0.23 s | 0.65 / 0.80 s |
+| turns slower than 1 s | 11 of 67 | 2 of 63 | 1 of 114 |
+| word error vs reference | 0.99 | 0.74 | 1.06 |
+| hears a lone "haan" | never | yes (~2.5 s late) | yes |
+| English in the transcript | forced into Devanagari | Latin script | Devanagari |
+| price | ₹30/hr | ~₹20/hr | n/a |
+
+Smallest's "TTFT 64 ms" is time to the first *partial* on 16 kHz lab audio; the
+pipeline waits for the *final* after the caller stops, and on 8 kHz line audio the
+first partial arrived ~1.2 s after speech start. Running Pulse at 16 kHz was worse
+(median 0.76 s) — keep the pipeline rate. `SMALLEST_STT_LANGUAGE` (default `hi`,
+Pulse's code-switching mode; agents' `hi-IN`/`en-IN` pins are mapped) and
+`SMALLEST_TTFS_P99` (0.5) are the knobs. Rollback: `STT_PROVIDER=sarvam` in `.env`,
+restart.
+
 ## First-sentence latency lever
 
 TTS starts the moment the model's first sentence is complete (NoRepeatGate splits on

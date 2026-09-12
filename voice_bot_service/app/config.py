@@ -68,6 +68,22 @@ class Settings:
     stt_provider: str = field(default_factory=lambda: _env("STT_PROVIDER", "sarvam"))
     google_stt_language: str = field(
         default_factory=lambda: _env("GOOGLE_STT_LANGUAGE", "hi-IN"))
+    # Smallest Pulse STT (STT_PROVIDER=smallest). Chosen 2026-09-12 from a
+    # three-way bench on 4 real AI-call recordings (63-114 turns) driven through
+    # the pipecat services exactly like a live call: final-after-VAD-stop median
+    # 0.12 s / p90 0.23 s vs Sarvam 0.14 / 1.86 (11 of 67 turns over 1 s, up to
+    # 3.8 s) and Gnani 0.65 / 0.80; word error 0.74 vs Sarvam 0.99; hears the lone
+    # "haan" Sarvam drops every time; clean mixed-script text instead of English
+    # forced into Devanagari; ~₹20/hr vs ₹30. Known: a lone "haan" finalises ~2.5 s
+    # late, two real turns took 5-7 s; 16 kHz was WORSE (median 0.76 s) — stay 8 kHz.
+    # Pulse's "hi" covers Hindi-English code-switching; "multi" auto-detects.
+    smallest_stt_language: str = field(
+        default_factory=lambda: _env("SMALLEST_STT_LANGUAGE", "hi"))
+    # Turn-stop hold for Pulse's final (see sarvam_ttfs_p99): measured p90 0.23 s
+    # on real recordings; 0.5 keeps parity with Sarvam's hold, the slow outliers
+    # are beyond any sane hold and Smart Turn's own cap covers them.
+    smallest_ttfs_p99: float = field(
+        default_factory=lambda: float(_env("SMALLEST_TTFS_P99", "0.5")))
     # "telephony", NOT "latest_long": measured on the caller channel of real call
     # 31a1acf1 (8 kHz Hindi phone audio), latest_long dropped most of every
     # utterance ("क्या बात कर रहा है?" for a 15-word sentence) while telephony

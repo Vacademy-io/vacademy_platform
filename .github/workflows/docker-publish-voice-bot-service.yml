@@ -249,4 +249,5 @@ jobs:
                echo 'SMALLEST_API_KEY=$SMALLEST_API_KEY' >> .env; \
              fi; \
              docker compose pull -q voice-bot; docker compose up -d; \
+             docker image prune -af >/dev/null 2>&1 || true; \
              sleep 5; docker compose ps"

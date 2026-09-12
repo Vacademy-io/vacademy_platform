@@ -10,16 +10,31 @@ export interface EmailConfiguration {
     type: string;
     description?: string;
     displayText?: string;
+    // Sending controls (see EMAIL_SETTING.data.<type> on the backend)
+    maxPerDay?: number | null;
+    timezone?: string | null;
+    sendAfterHour?: number | null;
+    postalAddress?: string | null;
+    listUnsubscribe?: boolean | null;
 }
 
-export interface CreateEmailConfigurationRequest {
+/** PATCH-like: a field left undefined keeps its stored value. */
+export interface SendingControls {
+    maxPerDay?: number;
+    timezone?: string;
+    sendAfterHour?: number;
+    postalAddress?: string;
+    listUnsubscribe?: boolean;
+}
+
+export interface CreateEmailConfigurationRequest extends SendingControls {
     email: string;
     name: string;
     type: string;
     description?: string;
 }
 
-export interface UpdateEmailConfigurationRequest {
+export interface UpdateEmailConfigurationRequest extends SendingControls {
     email?: string;
     name?: string;
     type?: string;

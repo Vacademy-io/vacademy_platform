@@ -489,6 +489,7 @@ public class UnifiedSendService implements SendChannelRouter {
                 }
 
                 // Check for attachments
+                EmailService.SendOutcome outcome = EmailService.SendOutcome.SENT;
                 if (r.getAttachments() != null && !r.getAttachments().isEmpty()) {
                     Map<String, byte[]> attachmentMap = new HashMap<>();
                     for (UnifiedSendRequest.Attachment att : r.getAttachments()) {
@@ -504,20 +505,33 @@ public class UnifiedSendService implements SendChannelRouter {
                     // Engine sends carry attribution: source → notification_log.source,
                     // sourceId → correlation_id (action id), userId → user attribution
                     // (guard against callers that pass an email address as userId).
-                    emailService.sendHtmlEmail(email, subject,
+                    outcome = emailService.sendHtmlEmail(email, subject,
                             ENGAGEMENT_ENGINE_SOURCE, body,
                             request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType,
                             opts.getSourceId(),
                             userId != null && !userId.contains("@") ? userId : null,
                             finalCopyRecipients, finalCopyMode);
                 } else {
-                    emailService.sendHtmlEmail(email, subject, "unified-send", body,
+                    outcome = emailService.sendHtmlEmail(email, subject, "unified-send", body,
                             request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType,
                             null, null, finalCopyRecipients, finalCopyMode);
                 }
 
-                results.add(UnifiedSendResponse.RecipientResult.builder()
-                        .email(email).success(true).status("SENT").build());
+                // Sending controls decide the final status: an over-cap send is queued (still a
+                // success from the caller's point of view), an opt-out or bounce is a skip.
+                switch (outcome) {
+                    case DEFERRED -> results.add(UnifiedSendResponse.RecipientResult.builder()
+                            .email(email).success(true).status("DEFERRED")
+                            .error("Daily cap reached for this sender - queued for the next window").build());
+                    case SKIPPED_UNSUBSCRIBED -> results.add(UnifiedSendResponse.RecipientResult.builder()
+                            .email(email).success(false).status("SKIPPED_UNSUBSCRIBED")
+                            .error("Recipient unsubscribed from this institute's emails").build());
+                    case SKIPPED_BLOCKED -> results.add(UnifiedSendResponse.RecipientResult.builder()
+                            .email(email).success(false).status("SKIPPED_BLOCKED")
+                            .error("Recipient address is blocklisted (bounced)").build());
+                    default -> results.add(UnifiedSendResponse.RecipientResult.builder()
+                            .email(email).success(true).status("SENT").build());
+                }
             } catch (Exception e) {
                 String errorMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
 

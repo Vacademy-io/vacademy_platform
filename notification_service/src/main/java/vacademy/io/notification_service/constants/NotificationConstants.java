@@ -24,6 +24,14 @@ public class NotificationConstants {
     public static final String VERIFICATION_IDENTITY = "verification_identity"; // the email or domain sent to SES
     public static final String VERIFIED_AT = "verified_at";                 // epoch millis when it became VERIFIED
 
+    // Sending controls (stored inside each EMAIL_SETTING.data.<type> node; all optional)
+    public static final String PROMOTIONAL_EMAIL = "PROMOTIONAL_EMAIL";
+    public static final String MAX_PER_DAY = "max_per_day";               // int, 0/absent = unlimited
+    public static final String TIMEZONE = "timezone";                     // IANA zone the day boundary is measured in
+    public static final String SEND_AFTER_HOUR = "send_after_hour";       // local hour (0-23) the next day's window opens
+    public static final String POSTAL_ADDRESS = "postal_address";         // CAN-SPAM footer address
+    public static final String LIST_UNSUBSCRIBE = "list_unsubscribe";     // boolean: add unsubscribe headers/footer for non-promotional types too
+
     // WhatsApp constants
     public static final String WHATSAPP_SETTING = "WHATSAPP_SETTING";
     public static final String UTILITY_WHATSAPP = "UTILITY_WHATSAPP";

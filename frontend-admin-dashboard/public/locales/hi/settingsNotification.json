@@ -290,6 +290,19 @@
             "verificationEmailSent": "सत्यापन ईमेल भेजा गया",
             "verificationStartFailed": "सत्यापन शुरू नहीं हो सका",
             "refreshFailed": "स्थिति रीफ़्रेश नहीं हो सकी"
+        },
+        "controls": {
+            "controlsTitle": "Sending controls",
+            "controlsHint": "Optional. Cap how many emails this sender may send per day (overflow is queued for the next day) and add the unsubscribe footer required for commercial email.",
+            "maxPerDay": "Max emails per day",
+            "maxPerDayPlaceholder": "0 = unlimited",
+            "timezone": "Day boundary time zone",
+            "timezonePlaceholder": "e.g. America/New_York",
+            "sendAfterHour": "Next day's window opens at (hour, 0–23)",
+            "postalAddress": "Postal address for the footer",
+            "postalAddressPlaceholder": "Required by CAN-SPAM for commercial email",
+            "listUnsubscribe": "Add unsubscribe link and headers to every email from this sender",
+            "listUnsubscribeHint": "Promotional emails always get them; turn this on to add them to other purposes too."
         }
     }
 }

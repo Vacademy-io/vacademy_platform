@@ -761,10 +761,15 @@ export const StudentCommunicationTimeline = () => {
         staleTime: 30000,
     });
 
-    const isLoading =
-        (wantMessages && hasContact && messagesLoading) || (wantCalls && !!userId && callsLoading);
-    // Under ALL, a failed call fetch must not blank the messages — degrade to
-    // messages-only. Under CALL there is nothing else to show, so surface it.
+    // The loading gate follows the PRIMARY source only. Under ALL that is the
+    // messages: they render the moment notification_service answers, exactly as
+    // before this channel existed, and calls merge in when admin_core answers.
+    // Gating on both would make a working view slower whenever admin_core is —
+    // and a hung calls request would hold the whole tab on a skeleton. Under the
+    // CALL chip there is no other source, so it waits for calls.
+    const isLoading = wantMessages ? hasContact && messagesLoading : !!userId && callsLoading;
+    // Same principle for errors: under ALL a failed call fetch must not blank
+    // the messages — degrade to messages-only. Under CALL, surface it.
     const error = wantMessages ? messagesError : callsError;
 
     // ─── Guard states ────────────────────────────────────────────────────────

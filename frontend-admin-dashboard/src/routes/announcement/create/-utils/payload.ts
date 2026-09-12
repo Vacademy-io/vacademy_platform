@@ -109,13 +109,14 @@ export function expandRecipients(
                 break;
 
             case 'AUDIENCE':
-                if (rule.campaignId)
+                rule.campaignIds.forEach((id) => {
                     out.push({
                         recipientType: 'AUDIENCE',
-                        recipientId: rule.campaignId,
-                        recipientName: rule.campaignName,
+                        recipientId: id,
+                        recipientName: rule.campaignNames[id] || undefined,
                         ...shared,
                     });
+                });
                 break;
 
             case 'CUSTOM_FIELD_FILTER':

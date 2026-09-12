@@ -19,6 +19,10 @@ export interface CallLogItem {
     // Nullable on INBOUND rows that fell through to voicemail with no agent
     // matched. Outbound rows always carry the actor user id.
     counsellorUserId: string | null;
+    // Display name for counsellorUserId, resolved server-side in one batched
+    // lookup per page. Null when unassigned (inbound to voicemail) or when the
+    // lookup was unavailable.
+    counsellorName?: string | null;
     responseId?: string | null;
     userId: string;
     // AI-call disposition (e.g. "Interested", "No_Response", "Callback") for

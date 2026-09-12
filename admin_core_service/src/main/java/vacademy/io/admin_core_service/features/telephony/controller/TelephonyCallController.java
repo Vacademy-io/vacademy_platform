@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.telephony.core.CallOrchestrator;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallAvailabilityDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallLogDTO;
@@ -44,6 +45,9 @@ public class TelephonyCallController {
 
     @Autowired
     private AiCallResultRepository aiCallResultRepo;
+
+    @Autowired
+    private AuthService authService;
 
     @PostMapping("/connect")
     public ResponseEntity<ConnectCallResponseDTO> connect(
@@ -126,6 +130,14 @@ public class TelephonyCallController {
         } catch (Exception e) {
             log.warn("AI enrichment failed for call list; returning list without it", e);
         }
+        // Own scope, not the block above: this one goes to auth_service, and an
+        // outage there must not also drop the AI attempt overlay that shares
+        // that try. Names are a nicety; the list renders without them.
+        try {
+            enrichWithCounsellorNames(result.getContent());
+        } catch (Exception e) {
+            log.warn("counsellor-name hydration failed for call list; returning list without it", e);
+        }
         return ResponseEntity.ok(result);
     }
 
@@ -163,6 +175,33 @@ public class TelephonyCallController {
                 dto.setAiDisposition(r.getDisposition());
             }
         });
+    }
+
+    /**
+     * Resolve each row's counsellor_user_id to a display name — one batched
+     * auth_service call for the whole page, mirroring CallSearchService's
+     * fetchNames. Best-effort: a lookup failure leaves the names null and the
+     * list still renders. The map is a HashMap on purpose: an unassigned INBOUND
+     * row has a null counsellor id, and Map.of().get(null) throws.
+     */
+    private void enrichWithCounsellorNames(List<CallLogDTO> dtos) {
+        if (dtos == null || dtos.isEmpty()) return;
+        List<String> ids = dtos.stream()
+                .map(CallLogDTO::getCounsellorUserId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) return;
+        Map<String, String> names = new HashMap<>();
+        for (vacademy.io.common.auth.dto.UserDTO u : authService.getUsersFromAuthServiceByUserIds(ids)) {
+            if (u != null && u.getId() != null) {
+                String name = u.getFullName();
+                if (name == null || name.isBlank()) name = u.getEmail();
+                if (name == null || name.isBlank()) name = u.getUsername();
+                names.put(u.getId(), name);
+            }
+        }
+        dtos.forEach(dto -> dto.setCounsellorName(names.get(dto.getCounsellorUserId())));
     }
 
     /**

@@ -641,6 +641,13 @@ const CallItemBody = ({ item, instituteId }: { item: CallLogItem; instituteId: s
     const statusLabel = t(`call.status.${item.status}`, { defaultValue: item.status });
     return (
         <div className="mt-1.5 rounded-md border border-neutral-200 bg-white p-2.5">
+            {/* Who placed it. An admin reading a student's history needs to know
+                which colleague made the call, not just that one happened. */}
+            {item.counsellorName && (
+                <p className="mb-1.5 text-2xs text-neutral-600">
+                    {t('call.byCounsellor', { name: item.counsellorName })}
+                </p>
+            )}
             <div className="flex flex-wrap items-center gap-1.5">
                 <span
                     className={cn(
@@ -688,12 +695,20 @@ function toCallTimelineItem(
         : item.direction === 'INBOUND'
           ? t('call.inbound')
           : t('call.outbound');
+    const when = new Date(callTimestamp(item));
     return {
         id: `call-${item.id}`,
         icon: isAi ? Robot : item.direction === 'INBOUND' ? PhoneIncoming : PhoneOutgoing,
         tone: callStatusTone(item.status),
         title: <span className="truncate font-medium text-neutral-800">{title}</span>,
-        meta: formatDistanceToNow(new Date(callTimestamp(item)), { addSuffix: true }),
+        // Exact timestamp, not "2 days ago": a call is a dated event someone may
+        // need to reconcile against a provider bill or a complaint. Relative
+        // form stays available on hover.
+        meta: (
+            <span title={formatDistanceToNow(when, { addSuffix: true })}>
+                {format(when, 'd MMM yyyy, h:mm a')}
+            </span>
+        ),
         body: <CallItemBody item={item} instituteId={instituteId} />,
     };
 }

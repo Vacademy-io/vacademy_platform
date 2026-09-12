@@ -29,6 +29,14 @@ public class CallLogDTO {
     private BigDecimal price;
     private boolean hasRecording;
     private String counsellorUserId;
+    /**
+     * Display name of the person who placed (or answered) the call — resolved
+     * from auth_service in one batched lookup per page by the controller, never
+     * by this builder. Null when the row has no counsellor (an unassigned
+     * inbound call) or the lookup was unavailable. The UI shows it as "by X" so
+     * an admin reading a student's history can see which colleague called.
+     */
+    private String counsellorName;
     private String responseId;
     private String userId;
     /** AI-call disposition, joined in at read time from ai_call_result; null for non-AI/Exotel calls. */

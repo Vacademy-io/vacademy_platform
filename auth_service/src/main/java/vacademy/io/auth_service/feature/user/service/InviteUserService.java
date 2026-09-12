@@ -83,24 +83,12 @@ public class InviteUserService {
     }
 
     private void sendInvitationEmail(UserDTO userDTO, String instituteId) {
-        InstituteInfoDTO instituteInfoDTO=null;
-
-        String instituteName = "Vacademy"; // Default fallback
-        String theme="#E67E22";
-        String adminLoginUrl="https://dash.vacademy.io";
-        if (StringUtils.hasText(instituteId)) {
-            instituteInfoDTO=instituteInternalService.getInstituteByInstituteId(instituteId);
-            if(instituteInfoDTO.getInstituteName()!=null)
-                instituteName=instituteInfoDTO.getInstituteName();
-            if(instituteInfoDTO.getInstituteThemeCode()!=null)
-                theme=instituteInfoDTO.getInstituteThemeCode();
-            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
-                adminLoginUrl=instituteInfoDTO.getAdminPortalUrl();
-        }
+        InstituteBranding branding = resolveBranding(instituteId, "invitation", userDTO.getId());
         GenericEmailRequest emailRequest = createEmailRequest(
-                userDTO.getEmail(), "Invitation Mail",
+                userDTO.getEmail(), InviteUserEmailBody.inviteSubject(branding.name()),
                 InviteUserEmailBody.createInviteUserEmail(
-                        userDTO.getFullName(), userDTO.getUsername(), userDTO.getPassword(), userDTO.getRoles(), theme,instituteName,adminLoginUrl)
+                        userDTO.getFullName(), userDTO.getUsername(), userDTO.getPassword(), userDTO.getRoles(),
+                        branding.theme(), branding.name(), branding.loginUrl())
         );
         notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
     }
@@ -109,12 +97,26 @@ public class InviteUserService {
         // Carries the invitee's password — an arbitrary role would send it from another
         // institute's address.
         String instituteId = InstituteChoice.forUser(originInstituteResolver, user);
+        InstituteBranding branding = resolveBranding(instituteId, "invitation reminder", user.getId());
 
-        // Sign off and link as the sending institute, like the initial invitation does.
-        // The reminder never depended on admin-core before this lookup, so a failure here
-        // must not block the resend — it falls back to the platform defaults the template
-        // used to hardcode.
+        GenericEmailRequest emailRequest = createEmailRequest(
+                user.getEmail(), InviteUserEmailBody.reminderSubject(branding.name()),
+                InviteUserEmailBody.createReminderEmail(
+                        user.getFullName(), user.getUsername(), user.getPassword(), getUserRoleNames(user),
+                        branding.theme(), branding.name(), branding.loginUrl())
+        );
+        notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
+    }
+
+    /** What the email signs off as, links to, and colours its accents with. */
+    private record InstituteBranding(String name, String theme, String loginUrl) {}
+
+    // Sign off and link as the sending institute. A branding lookup failure must not block
+    // the invite itself — the user row and roles are already written by the time we get
+    // here — so it falls back to the platform defaults the template used to hardcode.
+    private InstituteBranding resolveBranding(String instituteId, String purpose, String userId) {
         String instituteName = "Vacademy";
+        String theme = null; // template substitutes its own default for null/unknown codes
         String adminLoginUrl = DEFAULT_ADMIN_LOGIN_URL;
         if (StringUtils.hasText(instituteId)) {
             try {
@@ -122,22 +124,17 @@ public class InviteUserService {
                 if (instituteInfoDTO != null) {
                     if (StringUtils.hasText(instituteInfoDTO.getInstituteName()))
                         instituteName = instituteInfoDTO.getInstituteName();
+                    if (StringUtils.hasText(instituteInfoDTO.getInstituteThemeCode()))
+                        theme = instituteInfoDTO.getInstituteThemeCode();
                     if (StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl()))
                         adminLoginUrl = toLoginUrl(instituteInfoDTO.getAdminPortalUrl());
                 }
             } catch (Exception e) {
-                log.warn("Institute branding lookup failed for invitation reminder (user {}, institute {}): {}",
-                        user.getId(), instituteId, e.getMessage());
+                log.warn("Institute branding lookup failed for {} (user {}, institute {}): {}",
+                        purpose, userId, instituteId, e.getMessage());
             }
         }
-
-        GenericEmailRequest emailRequest = createEmailRequest(
-                user.getEmail(), "Invitation Reminder Mail",
-                InviteUserEmailBody.createReminderEmail(
-                        user.getFullName(), user.getUsername(), user.getPassword(), getUserRoleNames(user),
-                        instituteName, adminLoginUrl)
-        );
-        notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
+        return new InstituteBranding(instituteName, theme, adminLoginUrl);
     }
 
     // admin_portal_base_url is stored scheme-less for some institutes ("admin.shikshanation.com");

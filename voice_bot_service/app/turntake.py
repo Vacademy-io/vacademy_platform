@@ -26,6 +26,8 @@ are reviewable as data.
 """
 from __future__ import annotations
 
+import re
+
 ABSORB = "absorb"
 INTERRUPT = "interrupt"
 
@@ -251,6 +253,30 @@ _END_PHRASES = (
     "jarurat nahi", "nahi chahiye", "interest nahi", "mat karo call", "call mat",
 )
 _BYE_WORDS = frozenset({"bye", "goodbye", "byebye", "bbye", "tata", "alvida"})
+
+
+_FAREWELL_RE = re.compile(
+    r"(namaste|namaskar|good ?bye|bye|take care|have a (good|great|nice) (day|evening|one)|"
+    r"shubh din|alvida|dhanyavaad|dhanyawad|नमस्ते|नमस्कार|अलविदा|शुभ दिन|धन्यवाद)", re.I)
+
+
+def is_farewell(response_text: str) -> bool:
+    """Does the bot's response END on a goodbye? PURE.
+
+    Recordings 4acc56a6 / 6fa15c09 (2026-09-09/10): the model said
+    "आपके समय के लिए धन्यवाद, नमस्ते" WITHOUT <<END_CALL>>, so nothing closed the
+    line; eight seconds later the idle clock nudged "Hello, can you hear me?"
+    after the goodbye. A goodbye is a goodbye whether or not the marker came.
+    Narrow on purpose: last sentence only, short, no question, and it must
+    carry a farewell word — "जी सर, धन्यवाद। क्या मैं…" mid-call is not one."""
+    t = " ".join((response_text or "").split())
+    if not t or "?" in t or "？" in t:
+        return False
+    parts = [p for p in re.split(r"(?<=[.!।])\s+", t) if p.strip()]
+    last = parts[-1] if parts else t
+    if len(last.split()) > 14:
+        return False
+    return bool(_FAREWELL_RE.search(last))
 
 
 def caller_wants_to_end(text: str) -> bool:

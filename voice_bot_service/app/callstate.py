@@ -77,6 +77,9 @@ class CallState:
     # The bot has said its goodbye but the line is NOT yet closing. Held open for
     # end_grace_secs so a caller who re-engages ("Yes, I can") is not hung up on.
     end_pending_since: float = 0.0
+    # When a composed reply was cancelled before it played (barge-in). A silence
+    # after that is the caller's, not "awaiting playout" of a dead reply.
+    reply_cancelled_t: float = 0.0
     # Bot audio is DUCKED (held in DuckGate) because the caller started speaking
     # over a reply. Set at VAD onset; cleared by TurnGate absorb/interrupt or by
     # the watchdog's DUCK_RESUME when the voiced sound produced no words at all.

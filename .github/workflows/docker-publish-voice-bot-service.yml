@@ -53,11 +53,6 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    # `secrets` is not a valid context in a step's `if` (the file failed to parse
-    # and every push since 724bd8c408 ran nothing). Job-level env IS visible to a
-    # step `if`, so the gate's presence check reads it from here.
-    env:
-      HAS_VERTEX_SA: ${{ secrets.VERTEX_CREDENTIALS_JSON != '' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -85,7 +80,6 @@ jobs:
       # spoken markup, invented price, wrong weekday…) blocks the deploy.
       # Skipped, not failed, when the Vertex secret is absent (forks).
       - name: Run conversation simulator
-        if: ${{ env.HAS_VERTEX_SA == 'true' }}
         env:
           VERTEX_CREDENTIALS_JSON: ${{ secrets.VERTEX_CREDENTIALS_JSON }}
           VERTEX_PROJECT_ID: vacademy-app
@@ -93,11 +87,16 @@ jobs:
           LLM_PROVIDER: vertex
           SIM_OUT: sim_report.json
         run: |
+          # Presence-checked in the shell: neither `secrets` nor a job-env flag is
+          # usable in a step `if` (two skipped runs on 2026-09-12 proved it).
+          if [ -z "${VERTEX_CREDENTIALS_JSON:-}" ]; then
+            echo "VERTEX_CREDENTIALS_JSON not available — simulator skipped"; exit 0
+          fi
           cd voice_bot_service
           python -m sim.run --model prod --ci
 
       - name: Upload simulator report
-        if: ${{ always() && env.HAS_VERTEX_SA == 'true' }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: sim-report

@@ -3867,3 +3867,14 @@ async def test_turn_gate_forces_the_close_when_the_caller_asks_to_end():
     tc2.push_frame = _push; tc2.broadcast_interruption = _noop_broadcast
     await _feed(tc2, "Yes, all my classes are online on Zoom.")
     assert getattr(out2, "end_forced", False) is False
+
+
+def test_is_farewell_is_narrow():
+    from app.turntake import is_farewell as f
+    assert f("ठीक है सर, कल के लिए मैं आपकी कॉल शेड्यूल कर देती हूँ। आपके समय के लिए धन्यवाद, नमस्ते।")
+    assert f("No problem at all — thanks for your time. Namaste.")
+    assert f("Okay, take care, bye!")
+    assert not f("जी सर, धन्यवाद। क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?")   # question
+    assert not f("Namaste Aditi ji, I'm Aarushi from Vacademy. We came to know you take yoga classes — do you have two minutes?")
+    assert not f("Thank you. So the reason I called — we work with yoga teachers on everything around their online classes.")
+    assert not f("")

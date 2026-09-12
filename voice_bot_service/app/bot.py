@@ -93,7 +93,7 @@ from .providers import (build_llm, build_stt, build_tts, engine_of,
 from . import ttscache
 from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
-                       caller_asked_to_repeat, caller_wants_to_end, normalize_spoken,
+                       caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
                        question_topic, strip_echo_opener, ABSORB)
 
 logger = logging.getLogger(__name__)
@@ -1524,6 +1524,15 @@ class SentinelGate(FrameProcessor):
                 elif self._buffer.startswith("<<"):
                     self._end_this_response = True
                 self._buffer = ""
+            # The model said goodbye but forgot the marker (recordings 4acc56a6,
+            # 6fa15c09: "…धन्यवाद, नमस्ते", then 8-11 s of silence, then a nudge).
+            # Not in the opening seconds: "Namaste Aditi ji, I'm Aarushi…" is a greeting.
+            if (not self._end_this_response and self._spoke_this_response
+                    and time.time() - getattr(self._outcome, "connected_at", 0.0) > 20
+                    and is_farewell(self._utterance)):
+                logger.info("sentinel: farewell without marker %r — ending corr=%s",
+                            self._utterance[-60:], self._outcome.corr)
+                self._end_this_response = True
             if self._end_this_response or getattr(self._outcome, "end_forced", False):
                 if not self._end_this_response:
                     logger.info("sentinel: caller asked to end and the model did not append "
@@ -2915,7 +2924,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if flags["ducked_since"] > 0:
             return "ducked_%.1fs" % (now - flags["ducked_since"])
         st = flags["reply_started_t"]
-        if st and flags["bot_stopped_t"] < st:
+        if st and flags["bot_stopped_t"] < st and flags["reply_cancelled_t"] < st:
             return "awaiting_playout_%.1fs" % (now - st)   # LLM/TTS composed, no audio
         if flags["user_speaking"]:
             return "caller_speaking"
@@ -3419,6 +3428,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if flags["tts_gen_t"] != 0.0 and not flags["bot_speaking"]:
             if flags["unplayed_pending_t"] == 0.0:
                 flags["unplayed_pending_t"] = time.time()
+        # A cancelled reply is no longer "awaiting playout": without this every
+        # later silence was tagged awaiting_playout_<stale seconds> — 401 of
+        # 549 s of "dead air" across the 8 worst calls of 2026-09-09..12, while
+        # the recordings held no such gaps.
+        flags["reply_cancelled_t"] = time.time()
     sentinel.set_on_interrupted(_note_killed_before_playout)
 
     def _defer_stop():
@@ -3436,6 +3450,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     @aggregators.user().event_handler("on_user_turn_idle")
     async def _on_idle(_agg, *_args):
         if flags["stopping_since"] is not None or flags["ducked_since"] > 0:
+            return
+        if flags["end_pending_since"] > 0 or outcome.end_requested:
+            # The goodbye has been said; a "Hello? Are you still there?" after
+            # it is the worst possible last impression. Close now.
+            logger.info("idle: after farewell — closing, not nudging corr=%s", corr)
+            await _begin_stop()
             return
         if flags["nudge_count"] < settings.max_nudges:
             flags["nudge_count"] += 1

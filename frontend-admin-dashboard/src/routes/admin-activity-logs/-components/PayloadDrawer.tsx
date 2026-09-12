@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { MyButton } from '@/components/design-system/button';
@@ -47,6 +49,7 @@ const isEmptyPayload = (value: unknown): boolean =>
     (Array.isArray(value) && value.length === 0);
 
 export function PayloadDrawer({ log, open, onClose, onFilterByActor }: Props) {
+    const { t, i18n } = useTranslation('adminActivityLogsPayloadDrawer');
     return (
         <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
             {/*
@@ -57,7 +60,14 @@ export function PayloadDrawer({ log, open, onClose, onFilterByActor }: Props) {
               had no bounded height to scroll within.
             */}
             <SheetContent className="flex size-full flex-col gap-0 p-0 sm:max-w-2xl">
-                {log && <DrawerBody log={log} onFilterByActor={onFilterByActor} />}
+                {log && (
+                    <DrawerBody
+                        log={log}
+                        onFilterByActor={onFilterByActor}
+                        t={t}
+                        locale={i18n.language}
+                    />
+                )}
             </SheetContent>
         </Sheet>
     );
@@ -66,9 +76,13 @@ export function PayloadDrawer({ log, open, onClose, onFilterByActor }: Props) {
 function DrawerBody({
     log,
     onFilterByActor,
+    t,
+    locale,
 }: {
     log: AdminActivityLog;
     onFilterByActor?: (actorId: string) => void;
+    t: TFunction;
+    locale: string;
 }) {
     const hasBefore = !isEmptyPayload(log.before_payload);
     const hasPayload = !isEmptyPayload(log.request_payload);
@@ -84,24 +98,27 @@ function DrawerBody({
                 </div>
                 <SheetTitle className="mt-2 text-subtitle font-semibold leading-snug text-neutral-700">
                     {log.description ||
-                        `${log.action.toLowerCase()} ${log.entity_type.toLowerCase().replace(/_/g, ' ')}`}
+                        t('titleFallback', {
+                            action: log.action.toLowerCase(),
+                            entityType: log.entity_type.toLowerCase().replace(/_/g, ' '),
+                        })}
                 </SheetTitle>
                 <SheetDescription className="mt-1 text-body text-neutral-500">
                     <span className="font-medium text-neutral-600">
-                        {log.actor_name || log.actor_email || 'Unknown user'}
+                        {log.actor_name || log.actor_email || t('unknownUser')}
                     </span>
                     {' · '}
-                    {log.created_at && new Date(log.created_at).toLocaleString()}
+                    {log.created_at && new Date(log.created_at).toLocaleString(locale)}
                 </SheetDescription>
             </header>
 
             {/* The only scroll container in the drawer. */}
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                 <div className="flex flex-col gap-6">
-                    <Section title="Performed by" icon={<User className="size-4" />}>
-                        <KeyValue label="Name" value={log.actor_name} />
-                        <KeyValue label="Email" value={log.actor_email} />
-                        <KeyValue label="User ID" value={log.actor_id} mono />
+                    <Section title={t('sections.performedBy')} icon={<User className="size-4" />}>
+                        <KeyValue label={t('fields.name')} value={log.actor_name} />
+                        <KeyValue label={t('fields.email')} value={log.actor_email} />
+                        <KeyValue label={t('fields.userId')} value={log.actor_id} mono />
                         {log.actor_id && onFilterByActor && (
                             <div className="pt-1">
                                 <MyButton
@@ -110,54 +127,62 @@ function DrawerBody({
                                     className="sm:!min-w-0"
                                     onClick={() => onFilterByActor(log.actor_id as string)}
                                 >
-                                    See everything this person did
+                                    {t('buttons.seeEverythingByPerson')}
                                 </MyButton>
                             </div>
                         )}
                     </Section>
 
-                    <Section title="Request" icon={<Globe className="size-4" />}>
-                        <KeyValue label="Method" value={log.http_method} />
-                        <KeyValue label="Endpoint" value={log.endpoint} mono />
-                        <KeyValue label="IP address" value={log.ip_address} mono />
+                    <Section title={t('sections.request')} icon={<Globe className="size-4" />}>
+                        <KeyValue label={t('fields.method')} value={log.http_method} />
+                        <KeyValue label={t('fields.endpoint')} value={log.endpoint} mono />
+                        <KeyValue label={t('fields.ipAddress')} value={log.ip_address} mono />
                         <KeyValue
-                            label="Response"
+                            label={t('fields.response')}
                             value={log.response_status?.toString() ?? null}
                             valueClassName={statusTone(log.response_status)}
                         />
                         <KeyValue
-                            label="Latency"
+                            label={t('fields.latency')}
                             value={
                                 log.response_time_ms != null ? `${log.response_time_ms} ms` : null
                             }
                         />
-                        <KeyValue label="Entity ID" value={log.entity_id} mono />
-                        <KeyValue label="Log ID" value={log.id} mono />
-                        <KeyValue label="Device" value={log.user_agent} />
+                        <KeyValue label={t('fields.entityId')} value={log.entity_id} mono />
+                        <KeyValue label={t('fields.logId')} value={log.id} mono />
+                        <KeyValue label={t('fields.device')} value={log.user_agent} />
                     </Section>
 
                     {hasBefore ? (
-                        <Section title="What changed" icon={<Database className="size-4" />}>
+                        <Section
+                            title={t('sections.whatChanged')}
+                            icon={<Database className="size-4" />}
+                        >
                             <div className="flex flex-col gap-4">
                                 <PayloadBlock
-                                    label="Before"
+                                    label={t('payload.before')}
                                     value={log.before_payload}
                                     tone="muted"
+                                    t={t}
                                 />
                                 <PayloadBlock
-                                    label="After (submitted)"
+                                    label={t('payload.afterSubmitted')}
                                     value={log.request_payload}
                                     tone="accent"
+                                    t={t}
                                 />
                             </div>
                         </Section>
                     ) : (
-                        <Section title="Submitted data" icon={<Database className="size-4" />}>
+                        <Section
+                            title={t('sections.submittedData')}
+                            icon={<Database className="size-4" />}
+                        >
                             {hasPayload ? (
-                                <PayloadBlock value={log.request_payload} />
+                                <PayloadBlock value={log.request_payload} t={t} />
                             ) : (
                                 <p className="text-body italic text-neutral-500">
-                                    No payload captured for this action.
+                                    {t('payload.noPayloadCaptured')}
                                 </p>
                             )}
                         </Section>
@@ -230,10 +255,12 @@ function PayloadBlock({
     value,
     label,
     tone = 'default',
+    t,
 }: {
     value: unknown;
     label?: string;
     tone?: 'default' | 'muted' | 'accent';
+    t: TFunction;
 }) {
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -273,7 +300,7 @@ function PayloadBlock({
                         className="sm:!min-w-0"
                         onClick={() => setShowRaw((prev) => !prev)}
                     >
-                        {showRaw ? 'Fields' : 'Raw JSON'}
+                        {showRaw ? t('buttons.fields') : t('buttons.rawJson')}
                     </MyButton>
                     <MyButton
                         buttonType="text"
@@ -284,12 +311,12 @@ function PayloadBlock({
                         {copied ? (
                             <>
                                 <Check className="mr-1 size-3.5" />
-                                Copied
+                                {t('buttons.copied')}
                             </>
                         ) : (
                             <>
                                 <Copy className="mr-1 size-3.5" />
-                                Copy
+                                {t('buttons.copy')}
                             </>
                         )}
                     </MyButton>
@@ -301,7 +328,7 @@ function PayloadBlock({
                         {formatted}
                     </pre>
                 ) : (
-                    <JsonFields value={value} />
+                    <JsonFields value={value} t={t} />
                 )}
             </div>
         </div>
@@ -309,14 +336,24 @@ function PayloadBlock({
 }
 
 /** Recursive field renderer: objects become labelled rows, arrays become lists. */
-function JsonFields({ value, depth = 0 }: { value: unknown; depth?: number }) {
+function JsonFields({
+    value,
+    depth = 0,
+    t,
+}: {
+    value: unknown;
+    depth?: number;
+    t: TFunction;
+}) {
     if (value == null) {
-        return <span className="text-body italic text-neutral-500">null</span>;
+        return <span className="text-body italic text-neutral-500">{t('payload.null')}</span>;
     }
 
     if (Array.isArray(value)) {
         if (value.length === 0) {
-            return <span className="text-body italic text-neutral-500">empty list</span>;
+            return (
+                <span className="text-body italic text-neutral-500">{t('payload.emptyList')}</span>
+            );
         }
         return (
             <ol className="flex list-none flex-col gap-2">
@@ -326,7 +363,7 @@ function JsonFields({ value, depth = 0 }: { value: unknown; depth?: number }) {
                             {index + 1}.
                         </span>
                         <div className="min-w-0 flex-1">
-                            <JsonFields value={item} depth={depth + 1} />
+                            <JsonFields value={item} depth={depth + 1} t={t} />
                         </div>
                     </li>
                 ))}
@@ -337,7 +374,9 @@ function JsonFields({ value, depth = 0 }: { value: unknown; depth?: number }) {
     if (isPlainObject(value)) {
         const entries = Object.entries(value);
         if (entries.length === 0) {
-            return <span className="text-body italic text-neutral-500">no fields</span>;
+            return (
+                <span className="text-body italic text-neutral-500">{t('payload.noFields')}</span>
+            );
         }
         return (
             <dl className="flex flex-col gap-1.5">
@@ -367,7 +406,7 @@ function JsonFields({ value, depth = 0 }: { value: unknown; depth?: number }) {
                                     nested && 'border-l border-neutral-200 pl-3'
                                 )}
                             >
-                                <JsonFields value={child} depth={depth + 1} />
+                                <JsonFields value={child} depth={depth + 1} t={t} />
                             </dd>
                         </div>
                     );
@@ -379,7 +418,7 @@ function JsonFields({ value, depth = 0 }: { value: unknown; depth?: number }) {
     if (typeof value === 'boolean') {
         return (
             <span className={value ? 'text-success-600' : 'text-neutral-500'}>
-                {value ? 'Yes' : 'No'}
+                {value ? t('payload.yes') : t('payload.no')}
             </span>
         );
     }

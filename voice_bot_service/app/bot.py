@@ -93,8 +93,8 @@ from .providers import (build_llm, build_stt, build_tts, engine_of,
 from . import ttscache
 from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
-                       caller_asked_to_repeat, normalize_spoken, question_topic,
-                       strip_echo_opener, ABSORB)
+                       caller_asked_to_repeat, caller_wants_to_end, normalize_spoken,
+                       question_topic, strip_echo_opener, ABSORB)
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +160,9 @@ class CallOutcome:
     transfer_requested: bool = False
     transfer_registered: bool = False
     end_requested: bool = False
+    # The CALLER asked to stop (turntake.caller_wants_to_end): the next reply
+    # ends the call whether or not the model appends the marker.
+    end_forced: bool = False
     # Set by main.py when run_bot raises: the report must say "failed", not
     # "no-answer" — a crash is our fault and must never read as the lead's.
     crashed: bool = False
@@ -587,6 +590,17 @@ class TranscriptCollector(FrameProcessor):
                 self._last_filler_t = time.time()
                 await self.push_frame(
                     TTSSpeakFrame(random.choice(self._filler_phrases)), direction)
+            # "Cut the call" / "not interested" / "wrong number" / "bye": the
+            # model gets ONE line, and the sentinel ends the call after it no
+            # matter what it wrote (call ada2e60c: "Just to clarify…" instead).
+            if caller_wants_to_end(text) and self._bot_spoke_once():
+                self._outcome.end_forced = True
+                logger.info("turn-gate: caller asked to end (%r) — forcing the close", text[:40])
+                await self.push_frame(LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content":
+                               "[The caller just asked to end this call. Reply with ONE short, "
+                               "polite goodbye line — no question, no offer, no clarification, "
+                               "no pitch — and append " + END_MARKER + ".]"}]), direction)
         await self.push_frame(frame, direction)
 
 
@@ -1510,7 +1524,10 @@ class SentinelGate(FrameProcessor):
                 elif self._buffer.startswith("<<"):
                     self._end_this_response = True
                 self._buffer = ""
-            if self._end_this_response:
+            if self._end_this_response or getattr(self._outcome, "end_forced", False):
+                if not self._end_this_response:
+                    logger.info("sentinel: caller asked to end and the model did not append "
+                                "the marker — ending anyway corr=%s", self._outcome.corr)
                 self._outcome.end_requested = True
                 self._end_this_response = False
             self._response_active = False
@@ -1972,7 +1989,7 @@ def _lead_field(context: Dict[str, Any], *names: str) -> str | None:
     return None
 
 
-def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
+def _fill_placeholders(text: str, context: Dict[str, Any], sink=None, *, full_name: bool = False) -> str:
     """Substitute the author's {{placeholders}} with real call values BEFORE the model
     sees the prompt. Left literal, `{{institute_name}}` etc. reach the model, which then
     improvises or fills them wrong (observed: {{institute_name}} became our account's
@@ -1982,6 +1999,13 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
     if not text or "{{" not in text:
         return text
     lead_name = context.get("leadName")
+    # Simulator run 2026-09-12: 12/12 callers were addressed by their FULL name
+    # mid-call ("Namaste Sunita Devi ji") because the authored prompt says
+    # "{{name}} ji" and {{name}} was the list's full name. A person is addressed
+    # by first name; the full name belongs only in the identity check of the
+    # opening line ("Hi, is this Vijay Madhekar?") — full_name=True there.
+    if lead_name and not full_name:
+        lead_name = str(lead_name).split()[0]
     agent_cfg = context.get("agent") or {}
     # "aap" in an ENGLISH opening ("Hello, am I speaking with aap?") is as broken
     # as a blank — for English agents an unknown name renders as nothing and the
@@ -2613,7 +2637,10 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
                 f"append {END_MARKER}. If the caller asks you to end the call, says they are "
                 f"not interested, or says they do not need this: ONE short polite line and "
-                f"{END_MARKER} immediately — never a clarifying question, never one more pitch.")
+                f"{END_MARKER} immediately — never a clarifying question, never one more pitch. "
+                f"The same when they say goodbye, 'I'll think about it', or that they have to go: "
+                f"thank them in one line and {END_MARKER} — do not offer a demo, a WhatsApp "
+                f"overview or another call at that point.")
     human_line = (
         f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting "
         f"them and append {TRANSFER_MARKER}."
@@ -2668,7 +2695,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # Naming the opening verbatim also gives LANGUAGE STABILITY something to anchor
     # to on the first turn, when the model has no previous turns of its own.
     opening_line = _clean_opening(_fill_placeholders(
-        (agent.get("openingLine") or "").strip(), context))
+        (agent.get("openingLine") or "").strip(), context, full_name=True))
     # Does the opening actually INTRODUCE anyone, or is it just a greeting? This
     # decides the difference between two opposite instructions, and getting it
     # wrong is what call 2fc70065 sounded like. The opening line had been changed
@@ -3054,7 +3081,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # strftime with glibc-only directives. A warm target is not worth that.
     try:
         _opening_for_cache = _clean_opening(_fill_placeholders(
-            (agent.get("openingLine") or "").strip(), context))
+            (agent.get("openingLine") or "").strip(), context, full_name=True))
     except Exception:
         logger.exception("tts-cache: could not resolve the opening line for warming")
         _opening_for_cache = ""
@@ -3428,7 +3455,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         LLM). Scripted openings are spoken directly — NO manual context append on
         1.4, the assistant aggregator captures spoken text itself."""
         opening = _clean_opening(_fill_placeholders(
-            (agent.get("openingLine") or "").strip(), context))
+            (agent.get("openingLine") or "").strip(), context, full_name=True))
         connect_t = time.time()
         # SUBSTANTIVE speech only. This used to test transcript_t, i.e. ANY
         # transcript, so one stray word decided whether we opened at all — and

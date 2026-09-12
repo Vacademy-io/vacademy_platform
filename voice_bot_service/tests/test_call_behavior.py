@@ -3808,3 +3808,62 @@ def test_prompt_greets_once_ends_on_request_and_uses_first_name():
     assert "GREET ONCE" in p
     assert "never a clarifying question" in p
     assert "Address them by their FIRST name only ('Vijay'" in p
+
+
+def test_placeholders_use_first_name_in_prompt_and_full_name_in_opening():
+    """Simulator 2026-09-12: 12/12 callers addressed by full name mid-call —
+    the authored prompt's "{{name}} ji" was filled with the list's full name."""
+    ctx = {"leadName": "Sunita Devi", "agent": {"language": "english"}}
+    assert b._fill_placeholders("Namaste {{name}} ji", ctx) == "Namaste Sunita ji"
+    assert b._fill_placeholders("Hi, is this {{name}}?", ctx, full_name=True) == "Hi, is this Sunita Devi?"
+    src = __import__("inspect").getsource(b.run_bot)
+    assert src.count('(agent.get("openingLine") or "").strip(), context, full_name=True)') >= 2
+
+
+def test_caller_wants_to_end_is_narrow():
+    from app.turntake import caller_wants_to_end as w
+    assert w("I don't need your assistance. Cut the call, thank you.")
+    assert w("Wrong number. I'm a CA, I don't teach yoga.")
+    assert w("Please don't call again.")
+    assert w("Mujhe zaroorat nahi hai, phone rakhti hoon.")
+    assert w("Okay thank you, bye.")
+    assert w("Not interested.")
+    assert not w("Not now, I'm in a class — call me in the evening.")
+    assert not w("Yes, go ahead.")
+    assert not w("I'm not sure the link is the problem.")
+    assert not w("Bye the way, do you also handle fees?")  # 'bye' not last, >4 words
+
+
+@pytest.mark.asyncio
+async def test_turn_gate_forces_the_close_when_the_caller_asks_to_end():
+    """Call ada2e60c / simulator 2026-09-12: 'cut the call' -> 'Just to clarify…'.
+    The gate must cue a one-line goodbye and mark the outcome so the sentinel
+    ends the call even if the model forgets the marker."""
+    rec = _Rec()
+    out = FakeOutcome()
+    out.transcript.append({"role": "assistant", "text": "So the reason I called — we work with yoga teachers."})
+    tc = b.TranscriptCollector(
+        out, lambda user=True: None,
+        is_bot_speaking=lambda: False, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: False, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = _noop_broadcast
+    await _feed(tc, "I don't need your assistance. Cut the call, thank you.")
+    assert getattr(out, "end_forced", False) is True
+    assert any("asked to end this call" in c for c in _cue_texts(rec))
+    # A normal answer must not trip it.
+    out2 = FakeOutcome(); rec2 = _Rec()
+    tc2 = b.TranscriptCollector(out2, lambda user=True: None, is_bot_speaking=lambda: False,
+                                fillers_armed=lambda: False, bot_stopped_t=lambda: 0.0,
+                                gate_enabled=lambda: True, interrupt_on_vad=lambda: False,
+                                filler_phrases=[], in_machine_window=lambda: False,
+                                reply_in_flight=lambda: False, bot_spoke_once=lambda: True)
+    tc2.push_frame = _push; tc2.broadcast_interruption = _noop_broadcast
+    await _feed(tc2, "Yes, all my classes are online on Zoom.")
+    assert getattr(out2, "end_forced", False) is False

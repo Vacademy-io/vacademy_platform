@@ -555,6 +555,20 @@ def chk_fragment_tail(res):
     return f
 
 
+def chk_voicemail(res):
+    """Call 24089872: the carrier's recording spoke, nobody else did. No nudge,
+    no farewell — hang up as soon as the idle clock fires."""
+    f = []
+    if res["nudges"]:
+        f.append(f"nudged {res['nudges']}x a voicemail")
+    if res["ended_at"] is None or res["ended_at"] > 25.0:   # idle clock 8 s + end grace, after a ~6 s announcement
+        f.append(f"call still open at {res['ended_at']}s — should hang up on the first idle tick")
+    texts = " ".join(_assistant_texts(res))
+    if "lost you" in texts or "still there" in texts:
+        f.append("spoke a nudge/farewell to the machine")
+    return f
+
+
 def chk_cached_opener(res):
     """Call 994162b0 (2026-09-12): 'Thank you.' from the cache, then 3.6 s of
     nothing before the pitch. A cached sentence's own audio context only closed
@@ -589,6 +603,11 @@ def chk_cached_opener(res):
 
 
 SCENARIOS: List[Scenario] = [
+    Scenario("voicemail_hangs_up",
+             caller=[Say("Your call has been forwarded to voicemail.", 2.4, at=0.3, stt_latency=0.3),
+                     Say("At the tone, please record your message.", 2.2, at=4.0, stt_latency=0.3)],
+             replies=[], checks=chk_voicemail, max_secs=30,
+             note="call 24089872: two nudges and a farewell spoken to an answering machine"),
     Scenario("fragment_tail_is_not_a_barge_in",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
                      Say("It makes some sense", 1.6, after_bot_stop=2, offset=0.8,

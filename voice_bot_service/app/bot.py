@@ -231,6 +231,7 @@ class TranscriptCollector(FrameProcessor):
         # longer waits for it, because the fragment that does the damage is the
         # FIRST one and it is never the recognisable one.
         self._carrier_seen = False
+        self._human_turns = 0          # finals that reached the model as the callee's
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -446,6 +447,7 @@ class TranscriptCollector(FrameProcessor):
             self._last_text = text.casefold()
             self._last_text_t = now
             self._outcome.transcript.append({"role": "user", "text": text})
+            self._human_turns += 1
             self._on_activity(user=True)
             # Mid-reply = a reply is audibly playing, OR held by a duck. NOT
             # "ducked" by itself: ducked with nothing held and the bot quiet
@@ -664,6 +666,15 @@ class TranscriptCollector(FrameProcessor):
                     await self.push_frame(LLMMessagesAppendFrame(
                         messages=[{"role": "user", "content": presence_cue(q)}]), direction)
         await self.push_frame(frame, direction)
+
+    def looks_like_voicemail(self) -> bool:
+        """The carrier's recording is the only thing that has spoken. Call
+        24089872 (2026-09-12): "forwarded to voicemail… at the tone" was the
+        whole caller side, and the bot still nudged twice and left a
+        "lost you" farewell — 40 s of telephony and three TTS lines to a
+        machine. Only carrier PHRASES arm this (is_carrier_announcement), never
+        a scrap or silence, so a quiet human is not mistaken for a recording."""
+        return self._carrier_seen and self._human_turns == 0
 
     def _last_played_question(self) -> str:
         """The last question the caller HEARD (played transcript), or ''."""
@@ -3635,6 +3646,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # The goodbye has been said; a "Hello? Are you still there?" after
             # it is the worst possible last impression. Close now.
             logger.info("idle: after farewell — closing, not nudging corr=%s", corr)
+            await _begin_stop()
+            return
+        if transcript.looks_like_voicemail():
+            # Nothing to nudge and nobody to say goodbye to (call 24089872).
+            diag.idle_hangup = True
+            logger.info("idle: voicemail and no human turn — hanging up corr=%s", corr)
+            outcome.end_requested = True
             await _begin_stop()
             return
         if flags["nudge_count"] < settings.max_nudges:

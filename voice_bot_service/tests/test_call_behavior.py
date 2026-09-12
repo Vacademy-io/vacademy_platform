@@ -4149,3 +4149,24 @@ async def test_a_real_new_utterance_after_a_finished_one_still_barges_in():
     rec.interruptions = 0
     await _feed(tc, "Actually wait, I have a question about the fees.")
     assert rec.interruptions == 1
+
+
+@pytest.mark.asyncio
+async def test_voicemail_is_recognised_only_from_carrier_phrases():
+    """Call 24089872 (2026-09-12): the bot nudged twice and said goodbye to
+    "forwarded to voicemail… at the tone". A carrier phrase with no human turn
+    is voicemail; a scrap, silence, or any real caller words are not."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    assert tc.looks_like_voicemail() is False          # silence is not a machine
+    await _feed(tc, "Hi.")                              # a scrap is not a machine
+    assert tc.looks_like_voicemail() is False
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    assert tc.looks_like_voicemail() is True
+    tc2 = _replay_collector(rec)
+    tc2._bot_spoke_once = lambda: False
+    await _feed(tc2, "Your call has been forwarded to voicemail.")
+    tc2._bot_spoke_once = lambda: True
+    await _feed(tc2, "haan ji bol raha hoon")           # a human after all
+    assert tc2.looks_like_voicemail() is False

@@ -267,9 +267,10 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         # correct whatever the model returned - exactly one score per attempted
         # question in the right margin, one deduction note below the answer,
         # praise only where the guide allows it, every annotation on a real
-        # row. It also names any question that ended with no ink, and a copy
-        # with one of those is not shipped: the grades are already reported,
-        # the file is withheld rather than sent out half-checked.
+        # row. A question it still cannot place is reported and left without
+        # ink; the copy ships anyway. Withholding the whole file for one gap
+        # (the first rule here) sent teachers a bare scan with the on-screen
+        # overlay instead of twenty checked answers.
         try:
             questions_meta = [{
                 "question_id": q.get("question_id"),
@@ -282,13 +283,11 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         verdicts, _total, enforce_report, unmarked = apply_enforcement(
             verdicts, layout_map, questions_meta)
         if unmarked:
-            logger.error("copy-check %s: enforce found unmarked questions %s; withholding the file",
-                         process_id, unmarked)
-            evaluated_file_id = None
-        else:
-            evaluated_file_id = await annotator.render_and_upload(
-                pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
-            )
+            logger.warning("copy-check %s: enforce could not place a mark for %s; shipping the copy without them",
+                           process_id, unmarked)
+        evaluated_file_id = await annotator.render_and_upload(
+            pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
+        )
 
         # 5. Done.
         await callbacks.complete(

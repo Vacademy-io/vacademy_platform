@@ -157,6 +157,22 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
             last = max((a["target"] for a in anns), key=lambda r: (rows[r]["page_id"], rows[r]["index"]))
         if not last and ar:
             last = _resolve(ar[-1], res.get("extracted_answer", "")[-60:], None, rows, report, tag + ".last")
+        # The model graded from text it read on the page but pointed at no
+        # row (no answer_rows, no annotations). That text is still on the
+        # page: find it. Try the tail of the extracted answer, then the
+        # leading "10)"-style label the model often copies into it.
+        ext = str(res.get("extracted_answer") or "").strip()
+        if not last and ext:
+            last = _resolve(None, ext[-60:], None, rows, report, tag + ".text")
+        if not last and ext:
+            m_lbl = re.match(r"\s*(?:[Qq](?:ue)?s?\.?\s*)?(\d{1,2})\s*[).:\-]", ext)
+            if m_lbl:
+                lbl = m_lbl.group(1)
+                hit = next((rid for rid, r in rows.items()
+                            if re.match(rf"\s*(?:[Qq](?:ue)?s?\.?\s*)?{lbl}\s*[).:\-]", r["text"])), None)
+                if hit:
+                    report.append(f"{tag}: no rows given, anchored to label row {hit} ({rows[hit]['text'][:30]!r})")
+                    last = hit
         if not last:
             unmarked.append(qid)
             report.append(f"{tag}: NO ROW FOUND - question will be unmarked")
@@ -270,7 +286,7 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
         total = {"style": "total", "q": "total", "target": first_row, "page_id": pid,
                  "placement": "right_margin", "text": f"{_fmt(awarded_sum)}/{_fmt(mx_total)}"}
     if unmarked:
-        report.append(f"UNMARKED QUESTIONS: {', '.join(unmarked)} - do not ship this copy")
+        report.append(f"UNMARKED QUESTIONS: {', '.join(unmarked)} - shipped without a mark")
     return Result(out, total, report, unmarked)
 
 

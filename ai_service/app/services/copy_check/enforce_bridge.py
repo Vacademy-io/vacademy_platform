@@ -204,5 +204,5 @@ def apply_enforcement(verdicts: list[dict[str, Any]], layout_map: dict[str, Any]
     for line in fixed.report:
         logger.info("enforce: %s", line)
     if fixed.unmarked:
-        logger.error("enforce: UNMARKED QUESTIONS %s - copy must not ship", fixed.unmarked)
+        logger.warning("enforce: UNMARKED QUESTIONS %s - shipped without a mark", fixed.unmarked)
     return verdicts, fixed.total, fixed.report, fixed.unmarked

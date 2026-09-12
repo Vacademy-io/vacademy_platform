@@ -39,6 +39,13 @@ import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
+import { toUtmFiltersPayload, utmValueLabel } from '@/components/shared/leads/utm-filter-encoding';
+import {
+    UTM_FILTER_DIMENSIONS,
+    type UtmFilterDimension,
+    type UtmFilterSelection,
+} from '@/services/utm-list-filters';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
 import {
     decodeSelectionToEntries,
@@ -224,6 +231,20 @@ const LeadBoardContent = () => {
         [customFieldFilters]
     );
 
+    // Campaign (UTM) filters — one value list per dimension. The controls
+    // render nothing while the institute's UTM setting is off.
+    const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>({});
+    const { t: tUtm } = useTranslation('utmListFilters');
+    const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) => {
+        setUtmFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[dimension];
+            else next[dimension] = values;
+            return next;
+        });
+    };
+    const utmFiltersPayload = useMemo(() => toUtmFiltersPayload(utmFilters), [utmFilters]);
+
     // Write applied filters back to the URL (replace — filter tweaks shouldn't
     // pollute browser history). The board has no status param: columns ARE the
     // statuses, and the column picker below owns visibility.
@@ -352,6 +373,7 @@ const LeadBoardContent = () => {
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
+            utm_filters: utmFiltersPayload,
         }),
         [
             instituteId,
@@ -366,6 +388,7 @@ const LeadBoardContent = () => {
             sourceFilter,
             callHistoryFilter,
             customFieldFiltersPayload,
+            utmFiltersPayload,
         ]
     );
 
@@ -435,6 +458,7 @@ const LeadBoardContent = () => {
         setSourceFilter('');
         setCallHistoryFilter('');
         setCustomFieldFilters({});
+        setUtmFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
         setCustomTo('');
@@ -513,6 +537,23 @@ const LeadBoardContent = () => {
                     f.field_id,
                     removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
                 ),
+        });
+    });
+    UTM_FILTER_DIMENSIONS.forEach((dimension) => {
+        (utmFilters[dimension] ?? []).forEach((value) => {
+            chips.push({
+                label: tUtm('chip', {
+                    dimension: tUtm(
+                        `dimensions.${dimension === 'source_type' ? 'sourceType' : dimension}`
+                    ),
+                    value: utmValueLabel(value, tUtm('untagged')),
+                }),
+                onRemove: () =>
+                    setUtmFilter(
+                        dimension,
+                        (utmFilters[dimension] ?? []).filter((v) => v !== value)
+                    ),
+            });
         });
     });
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
@@ -643,6 +684,12 @@ const LeadBoardContent = () => {
                             />
                         )
                     )}
+                    <UtmFilterControls
+                        surface="LEADS"
+                        instituteId={instituteId ?? ''}
+                        selection={utmFilters}
+                        onChange={setUtmFilter}
+                    />
                     <ManageListFiltersLink surface="LEADS" />
                     <Select value={rangeDays} onValueChange={setDateRange}>
                         <SelectTrigger className="h-10 w-40">

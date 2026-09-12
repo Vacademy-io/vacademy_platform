@@ -114,6 +114,9 @@ public class AudienceService {
     private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver utmListFilterResolver;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -2992,6 +2995,19 @@ public class AudienceService {
                 cfResolution = resolveCustomFieldFilters(filterDTO.getCustomFieldFilters());
         if (cfResolution.shortCircuitsToEmpty()) {
             return Page.empty(pageable);
+        }
+        // Campaign (UTM) filter rides the same matched-id channel: resolve the
+        // touches into response ids and AND them with the custom-field set, so
+        // neither native query needs to know attribution exists.
+        if (vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver
+                .hasFilter(filterDTO.getUtmFilters())) {
+            cfResolution = cfResolution.and(utmListFilterResolver.resolve(
+                    filterDTO.getUtmFilters(),
+                    vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.RESPONSE,
+                    filterDTO.getInstituteId()));
+            if (cfResolution.shortCircuitsToEmpty()) {
+                return Page.empty(pageable);
+            }
         }
         String customFieldMatchedIdsCsv = cfResolution.matchedIdsCsv();
         String customFieldExcludedIdsCsv = cfResolution.excludedIdsCsv();

@@ -23,5 +23,12 @@
     "columns": {
         "filter": "Filter",
         "sort": "Sort"
+    },
+    "utm": {
+        "title": "Campaign (UTM) filters",
+        "description": "Filter this list by the campaign, source, medium and channel that brought each person in. Switches on automatically when Campaign Links (UTM) are enabled in Settings; turn it off here for lists that don't need it.",
+        "disabledHint": "Campaign Links (UTM) are switched off for this institute, so no campaign filters can be shown.",
+        "openSettings": "Open Campaign Links settings",
+        "autoHint": "(auto — shown once data exists)"
     }
 }

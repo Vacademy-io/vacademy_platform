@@ -72,7 +72,10 @@ public class WebSecurityConfig {
      * so they win over the broad "/notification-service/v1/**" permitAll entry.
      */
     private static final String[] SECURED_PATHS = {
-            "/notification-service/v1/send-email"
+            "/notification-service/v1/send-email",
+            // Sending controls: per-institute quota status and the opt-out list (email addresses)
+            // plus add/remove — admin data, must not sit under the broad v1 permitAll.
+            "/notification-service/v1/email-sending/**"
     };
 
     @Autowired

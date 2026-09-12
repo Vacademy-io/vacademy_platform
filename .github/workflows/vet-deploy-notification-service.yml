@@ -144,7 +144,6 @@ jobs:
             "INBOUND_EMAIL_AWS_SECRET_KEY=${{ secrets.INBOUND_EMAIL_AWS_SECRET_KEY }}" \
             "INBOUND_EMAIL_SQS_QUEUE_NAME=${{ secrets.INBOUND_EMAIL_SQS_QUEUE_NAME }}" \
             "INBOUND_EMAIL_S3_BUCKET=${{ secrets.INBOUND_EMAIL_S3_BUCKET }}" \
-            # Email sending controls: unsubscribe-link HMAC key, CAN-SPAM footer address, public link origin (quoted: address has spaces; empty secret = app default)
             "EMAIL_UNSUBSCRIBE_SECRET=${{ secrets.EMAIL_UNSUBSCRIBE_SECRET }}" \
             "EMAIL_SENDER_POSTAL_ADDRESS=${{ secrets.EMAIL_SENDER_POSTAL_ADDRESS }}" \
             "EMAIL_UNSUBSCRIBE_BASE_URL=${{ secrets.EMAIL_UNSUBSCRIBE_BASE_URL }}" \

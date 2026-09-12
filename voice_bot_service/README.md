@@ -132,3 +132,29 @@ False)` — auto-hangup MUST stay off or the `<Redirect>` handoff can never fire
   global `AAVTAAR_WEBHOOK_SECRET`) so end-of-call report POSTs are
   authenticated; without one, the receiver accepts unauthenticated reports
   (same open-mode posture as Aavtaar today).
+
+## Conversation simulator (`sim/`) — test calls without TTS or STT
+
+Twelve scripted callers, each one a real caller we failed in the week of
+2026-09-08 (the greeter who says "good morning" back, "cut the call", all-offline,
+the permanent Meet link, the price-pusher, "day after tomorrow", the Hindi switcher,
+wrong number, the bare "Yes", "just WhatsApp me", the busy teacher, the objector),
+are played by a cheap LLM against the **real agent prompt** (`build_system_prompt`
+on a saved call context), the **real production LLM**, and the **real text gates**
+(SentinelGate marker/tool-call handling, NoRepeatGate). TTS and STT are replaced by
+text, so a full run costs LLM tokens only (~₹6). What the caller would have heard is
+graded by hard rules (re-greet, not ending when asked, spoken markup, full name,
+invented price or time, wrong weekday, Hindi not kept, online pitch after "all
+offline"…) plus a judge score for "did it listen".
+
+```
+docker compose exec voice-bot python -m sim.run                     # prod model, all personas
+python -m sim.run --model sarvam:sarvam-105b --reps 3               # any model spec (see sim/llm.py)
+python -m sim.run --agent <ai_agent id>                             # a live agent's real context
+python -m sim.run --ci                                              # exit 1 on a hard fail
+```
+
+It runs in CI after the unit harness (`Run conversation simulator`) and blocks the
+deploy on a hard fail; the JSON report is an artifact. **Run it before any model,
+voice, prompt-rule or turn-taking change** — that is the whole point. Not covered:
+how the voice sounds, real line acoustics, STT mishearings (listen to recordings).

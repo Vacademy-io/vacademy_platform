@@ -243,6 +243,35 @@ _ASK_AGAIN_WORDS = frozenset({
 })
 
 
+_END_PHRASES = (
+    "cut the call", "end the call", "hang up", "don't call", "dont call", "do not call",
+    "stop calling", "not interested", "no interest", "don't need", "dont need", "do not need",
+    "wrong number", "galat number", "not required", "remove my number", "unsubscribe",
+    "phone rakh", "call rakh", "rakhti hoon", "rakhta hoon", "band karo", "zaroorat nahi",
+    "jarurat nahi", "nahi chahiye", "interest nahi", "mat karo call", "call mat",
+)
+_BYE_WORDS = frozenset({"bye", "goodbye", "byebye", "bbye", "tata", "alvida"})
+
+
+def caller_wants_to_end(text: str) -> bool:
+    """Did the caller just ask us to stop — end the call, don't call, not
+    interested, wrong number, or a goodbye? PURE.
+
+    Calls ada2e60c and the simulator (2026-09-12): to "I don't need your
+    assistance, cut the call" the model replied "Just to clarify…" — twice on
+    Gemini even with a prompt rule saying not to. A prompt rule is a request;
+    this is the enforcement: the turn-gate cues a one-line goodbye and the
+    sentinel ends the call whatever the model writes. Deliberately narrow —
+    "not now" / "busy" / "later" are NOT here (those want a call-back)."""
+    t = " ".join((text or "").casefold().split())
+    if not t:
+        return False
+    if any(p in t for p in _END_PHRASES):
+        return True
+    ws = _words(t)
+    return bool(ws) and (ws[-1] in _BYE_WORDS or (len(ws) <= 4 and bool(set(ws) & _BYE_WORDS)))
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))

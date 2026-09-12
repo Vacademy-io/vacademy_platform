@@ -93,11 +93,14 @@ import {
     fetchRecordingUrl,
     isCallLogEndpointMissing,
     normalizeDispositionKey,
+    rowCallGist,
     rowCallHealth,
+    rowCallQuality,
     toMillis,
     type BulkResult,
     type CallLogFilters,
     type CallLogScope,
+    type CallQuality,
     type CallRow,
     type DispositionCount,
     type DispositionOption,
@@ -1670,17 +1673,75 @@ function DispositionCell({
         ? labels.get(normalizeDispositionKey(current)) ?? humanizeCallStatus(current)
         : null;
     return (
-        <div className="flex items-center gap-2">
-            {label ? (
-                <span className="inline-flex whitespace-nowrap rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
-                    {label}
+        <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+                {label ? (
+                    <span className="inline-flex whitespace-nowrap rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                        {label}
+                    </span>
+                ) : (
+                    <span className="text-xs text-neutral-400">—</span>
+                )}
+                <MyButton buttonType="text" scale="small" onClick={onEdit}>
+                    {row.disposition_key ? t('disposition.edit') : t('disposition.set')}
+                </MyButton>
+            </div>
+            <CallSentiment row={row} />
+        </div>
+    );
+}
+
+/**
+ * One-line verdict on how the call went, directly under the disposition: a
+ * colour chip (GOOD / NEEDS_WORK / POOR) and the bot's one-sentence gist. This
+ * grades OUR assistant's handling, not the lead's interest and not the audio
+ * pipeline — the technical health dot exists for that and is admin-only; this is
+ * for whoever is reading the log.
+ *
+ * Renders NOTHING when the call was not assessed. A human call, an older bot, or a
+ * call the caller never spoke on carries a null quality, and an empty cell is the
+ * honest rendering of "not assessed" — never a grey "fine", and never a chip
+ * standing in for a verdict that was not given.
+ */
+const SENTIMENT_STYLE: Record<CallQuality, { chip: string; labelKey: string; titleKey: string }> = {
+    GOOD: {
+        chip: 'bg-success-50 text-success-700 ring-success-200',
+        labelKey: 'sentiment.good',
+        titleKey: 'sentiment.titleGood',
+    },
+    NEEDS_WORK: {
+        chip: 'bg-warning-50 text-warning-700 ring-warning-200',
+        labelKey: 'sentiment.needsWork',
+        titleKey: 'sentiment.titleNeedsWork',
+    },
+    POOR: {
+        chip: 'bg-danger-50 text-danger-700 ring-danger-200',
+        labelKey: 'sentiment.poor',
+        titleKey: 'sentiment.titlePoor',
+    },
+};
+
+function CallSentiment({ row }: { row: CallRow }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
+    const quality = rowCallQuality(row);
+    const gist = rowCallGist(row);
+    if (!quality && !gist) return null;
+    const style = quality ? SENTIMENT_STYLE[quality] : null;
+    return (
+        <div className="flex max-w-xs items-start gap-1.5">
+            {style && (
+                <span
+                    className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-caption font-medium ring-1 ring-inset ${style.chip}`}
+                    title={t(style.titleKey)}
+                >
+                    {t(style.labelKey)}
                 </span>
-            ) : (
-                <span className="text-xs text-neutral-400">—</span>
             )}
-            <MyButton buttonType="text" scale="small" onClick={onEdit}>
-                {row.disposition_key ? t('disposition.edit') : t('disposition.set')}
-            </MyButton>
+            {gist && (
+                <span className="line-clamp-2 text-caption leading-snug text-neutral-600" title={gist}>
+                    {gist}
+                </span>
+            )}
         </div>
     );
 }

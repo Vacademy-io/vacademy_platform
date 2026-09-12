@@ -87,6 +87,15 @@
         "edit": "Edit",
         "set": "Set"
     },
+    "sentiment": {
+        "good": "Good call",
+        "needsWork": "Needs work",
+        "poor": "Poor call",
+        "titleGood": "The assistant handled this call well",
+        "titleNeedsWork": "The assistant got through, but something needs improving",
+        "titlePoor": "The assistant could not serve this caller",
+        "notAssessed": "Call quality not assessed"
+    },
     "recording": {
         "loading": "Loading…",
         "play": "Play"

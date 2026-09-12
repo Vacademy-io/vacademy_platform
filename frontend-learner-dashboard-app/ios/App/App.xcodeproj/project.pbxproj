@@ -3079,7 +3079,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation-SK/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
@@ -3102,7 +3102,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation-SK/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";

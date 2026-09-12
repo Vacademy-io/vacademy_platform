@@ -32,6 +32,11 @@
         "summaryNone": "Aucune sélection — le workflow se déclenche pour chaque {{type}} de votre établissement.",
         "summarySelected_one": "Le workflow se déclenche uniquement pour le {{type}} sélectionné.",
         "summarySelected_many": "Le workflow se déclenche pour {{count}} {{type}} sélectionnés. Une ligne de déclenchement sera créée par sélection.",
-        "summarySelected_other": "Le workflow se déclenche pour {{count}} {{type}}(s) sélectionné(s). Une ligne de déclenchement sera créée par sélection."
+        "summarySelected_other": "Le workflow se déclenche pour {{count}} {{type}}(s) sélectionné(s). Une ligne de déclenchement sera créée par sélection.",
+        "searchPlaceholder": "Rechercher des {{type}}...",
+        "noMatches": "Aucun résultat pour « {{search}} ».",
+        "hiddenBySearch_one": "{{count}} élément sélectionné est masqué par la recherche",
+        "hiddenBySearch_many": "{{count}} éléments sélectionnés sont masqués par la recherche",
+        "hiddenBySearch_other": "{{count}} éléments sélectionnés sont masqués par la recherche"
     }
 }

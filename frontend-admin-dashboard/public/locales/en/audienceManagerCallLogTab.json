@@ -33,7 +33,11 @@
     "providers": {
         "exotel": "Exotel",
         "aavtaarAi": "AI (Aavtaar)",
-        "airtel": "Airtel"
+        "airtel": "Airtel",
+        "vacademyAi": "AI (Vacademy agent)",
+        "plivo": "Vacademy Voice",
+        "manual": "Manual upload",
+        "mock": "AI (test)"
     },
     "table": {
         "heading": "Calls",

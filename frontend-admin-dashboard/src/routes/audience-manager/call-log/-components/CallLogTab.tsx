@@ -128,13 +128,53 @@ export interface CallLogTabProps {
 const PAGE_SIZE = 25;
 const ALL = '__ALL__';
 
-/** Provider filter/label vocabulary — labels come from the translation catalog. */
-function buildProviderOptions(t: TFunction) {
+/**
+ * Provider vocabulary — every value `telephony_call_log.provider_type` can hold
+ * (backend `ProviderType`), grouped by the call type it implies so the provider
+ * filter can follow the Type filter.
+ *
+ * This list used to be three entries (Exotel, Aavtaar, Airtel), written when
+ * those were the only providers. VACADEMY_AI — our own voice bot, by now the
+ * majority of AI calls on several institutes — was never added, so choosing
+ * Type = AI offered "AI (Aavtaar)" as the only provider and there was no way to
+ * filter to (or even name, in the detail panel) the institute's own agent. PLIVO
+ * (Vacademy Voice click-to-call) and MANUAL uploads were likewise unfilterable.
+ *
+ * Grouping is the backend's own rule, mirrored: a row is AI when its provider is
+ * AAVTAAR / VACADEMY_AI / MOCK or an ai_call_result has landed for it
+ * (CallSearchService.AI_LATERAL); everything else is HUMAN.
+ */
+type ProviderGroup = 'AI' | 'HUMAN';
+
+function buildProviderOptions(t: TFunction): ReadonlyArray<{
+    value: string;
+    label: string;
+    group: ProviderGroup;
+    /** Hidden from the filter dropdown (test-only), still labelled in the detail panel. */
+    filterable: boolean;
+}> {
     return [
-        { value: 'EXOTEL', label: t('providers.exotel') },
-        { value: 'AAVTAAR', label: t('providers.aavtaarAi') },
-        { value: 'AIRTEL', label: t('providers.airtel') },
-    ] as const;
+        { value: 'VACADEMY_AI', label: t('providers.vacademyAi'), group: 'AI', filterable: true },
+        { value: 'AAVTAAR', label: t('providers.aavtaarAi'), group: 'AI', filterable: true },
+        { value: 'MOCK', label: t('providers.mock'), group: 'AI', filterable: false },
+        { value: 'PLIVO', label: t('providers.plivo'), group: 'HUMAN', filterable: true },
+        { value: 'AIRTEL', label: t('providers.airtel'), group: 'HUMAN', filterable: true },
+        { value: 'EXOTEL', label: t('providers.exotel'), group: 'HUMAN', filterable: true },
+        { value: 'MANUAL', label: t('providers.manual'), group: 'HUMAN', filterable: true },
+    ];
+}
+
+/**
+ * The provider options to OFFER given the current Type filter: all filterable
+ * providers when Type is "All", otherwise only the group that type implies. A
+ * provider from the other group would always return zero rows, so listing it
+ * is worse than useless — it is exactly how "AI shows only Aavtaar" read as a
+ * broken filter.
+ */
+function providerOptionsFor(t: TFunction, callType: string) {
+    return buildProviderOptions(t).filter(
+        (p) => p.filterable && (callType === ALL || p.group === callType)
+    );
 }
 
 // ── Formatting ─────────────────────────────────────────────────────────────
@@ -635,7 +675,18 @@ export default function CallLogTab({
                         <FilterSelect
                             label={t('filters.type')}
                             value={callType}
-                            onChange={setCallType}
+                            onChange={(v) => {
+                                setCallType(v);
+                                // A provider from the other group can no longer match
+                                // anything — drop it rather than leave a filter that
+                                // silently returns an empty list.
+                                if (
+                                    providerType !== ALL &&
+                                    !providerOptionsFor(t, v).some((p) => p.value === providerType)
+                                ) {
+                                    setProviderType(ALL);
+                                }
+                            }}
                             options={[
                                 { value: 'HUMAN', label: t('filters.typeHuman') },
                                 { value: 'AI', label: t('filters.typeAi') },
@@ -645,7 +696,7 @@ export default function CallLogTab({
                             label={t('filters.provider')}
                             value={providerType}
                             onChange={setProviderType}
-                            options={buildProviderOptions(t).map((p) => ({
+                            options={providerOptionsFor(t, callType).map((p) => ({
                                 value: p.value,
                                 label: p.label,
                             }))}

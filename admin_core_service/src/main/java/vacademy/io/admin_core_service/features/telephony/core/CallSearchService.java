@@ -474,8 +474,13 @@ public class CallSearchService {
                 sb.append(" AND (acr.acr_id IS NOT NULL"
                         + " OR tcl.provider_type IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
             } else if ("HUMAN".equalsIgnoreCase(f.getCallType().trim())) {
+                // COALESCE: `NULL NOT IN (...)` is NULL, so a row with no provider
+                // matched NEITHER filter while the call_type column in the SELECT
+                // rendered it HUMAN — it showed in the unfiltered list and vanished
+                // the moment Type = Human was chosen. Keep the filter and the column
+                // on the same rule.
                 sb.append(" AND (acr.acr_id IS NULL"
-                        + " AND tcl.provider_type NOT IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
+                        + " AND COALESCE(tcl.provider_type, '') NOT IN ('AAVTAAR', 'VACADEMY_AI', 'MOCK'))");
             }
         }
         // Disposition filter matches the EFFECTIVE outcome — the same value the

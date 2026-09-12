@@ -33,7 +33,11 @@
     "providers": {
         "exotel": "Exotel",
         "aavtaarAi": "الذكاء الاصطناعي (Aavtaar)",
-        "airtel": "Airtel"
+        "airtel": "Airtel",
+        "vacademyAi": "ذكاء اصطناعي (وكيل Vacademy)",
+        "plivo": "Vacademy Voice",
+        "manual": "رفع يدوي",
+        "mock": "ذكاء اصطناعي (اختبار)"
     },
     "table": {
         "heading": "المكالمات",

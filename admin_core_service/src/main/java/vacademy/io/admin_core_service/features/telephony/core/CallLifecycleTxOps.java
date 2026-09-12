@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.telephony.core;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -145,15 +146,9 @@ public class CallLifecycleTxOps {
      * <p>LMS path (userId only): the learner must be enrolled in THIS institute,
      * checked against student_session_institute_group_mapping. Without that check a
      * user id alone would let anyone with a calling-enabled institute dial any user
-     * in the platform, since the phone lookup is a global auth_service call.
-     *
-     * <p>A learner call is filed under the learner ONLY — never attached to a lead
-     * row, even when the same person once came through a form. An earlier version
-     * linked the two for a "unified history", but that put learner calls into the
-     * CRM lead profile, where they read as sales activity on a closed lead and
-     * confused the counsellors. Learner calls surface in the student side-view's
-     * Communication tab instead; the CRM Call Log still lists them (it needs no
-     * lead row) so billing, call-intelligence and exports stay complete.
+     * in the platform, since the phone lookup is a global auth_service call. We then
+     * best-effort attach the learner's newest lead row so a learner who also came
+     * through a form keeps one unified call history + timeline.
      */
     private Subject resolveSubject(String instituteId, ConnectCallRequestDTO req) {
         if (req.getResponseId() != null && !req.getResponseId().isBlank()) {
@@ -174,7 +169,10 @@ public class CallLifecycleTxOps {
         if (!enrolledHere) {
             throw new VacademyException("This learner is not enrolled in this institute");
         }
-        return new Subject(null, userId, userMobileResolver.findMobile(userId).orElse(null));
+        String responseId = audienceResponseRepo
+                .findLatestResponseIdForUserInInstitute(instituteId, userId, PageRequest.of(0, 1))
+                .stream().findFirst().orElse(null);
+        return new Subject(responseId, userId, userMobileResolver.findMobile(userId).orElse(null));
     }
 
     /**

@@ -12,10 +12,10 @@ import lombok.NoArgsConstructor;
  * <ul>
  *   <li>{@code responseId} — a CRM lead (audience_response). The phone comes
  *       off the lead row, falling back to the user's auth record.</li>
- *   <li>{@code userId} alone — an enrolled learner, called from the LMS
- *       surfaces (students list / attendance / assessment side-view). The phone
- *       comes from auth_service and the call is filed under the learner only,
- *       never under a lead row.</li>
+ *   <li>{@code userId} alone — an enrolled learner with no lead row, called
+ *       from the LMS surfaces (students list / attendance / assessment
+ *       side-view). The phone comes from auth_service and the orchestrator
+ *       links a matching lead row when the learner happens to have one.</li>
  * </ul>
  * At least one of the two is required.
  */

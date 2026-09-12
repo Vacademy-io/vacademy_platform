@@ -1241,7 +1241,7 @@ export function DashboardComponent() {
                 <Card className="h-full overflow-hidden border-0 shadow-sm relative bg-white">
                   <CardContent className="p-0 relative h-full flex items-center justify-center min-h-72">
                     <img
-                      src="/yoga-dashboard.png"
+                      src="/yoga-dashboard.webp"
                       alt={t("dashboardPage.holistic.yogaIllustrationAlt")}
                       className="object-contain max-h-72"
                     />

@@ -14,7 +14,7 @@ const HeroSectionCourseCatalog: React.FC = () => {
   const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
 
 
-  const defaultStaticBannerUrl = '/images/banner.png';
+  const defaultStaticBannerUrl = '/images/banner.webp';
   const { getPrimaryColorCode } = useTheme();
 
   useEffect(() => {
@@ -70,7 +70,7 @@ const HeroSectionCourseCatalog: React.FC = () => {
 
   if (!bannerImageUrl) {
     // This will render if bannerImageUrl is a fetched URL or the defaultStaticBannerUrl
-    bannerContent = <img src='./images/banner.png' alt={bannerAlt} className='w-full h-full object-cover' />;
+    bannerContent = <img src='./images/banner.webp' alt={bannerAlt} className='w-full h-full object-cover' />;
   } else if (apiFetchedInstituteDetails && apiFetchedInstituteDetails.institute_theme_code) {
     // This condition is met if bannerImageUrl is null AND theme_code exists
     const themeStyle: React.CSSProperties = {

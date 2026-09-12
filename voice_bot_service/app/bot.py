@@ -605,6 +605,7 @@ class PlayedTranscriptRecorder(FrameProcessor):
         super().__init__()
         self._outcome = outcome
         self._last_chunk = ""
+        self._entry_chunks: set = set()
 
     # Since the speech cache put each sentence in its own audio context
     # (2026-08-25), pipecat's sequencer force-completes a slot at the end of
@@ -624,14 +625,23 @@ class PlayedTranscriptRecorder(FrameProcessor):
         if isinstance(frame, TTSTextFrame) and frame.text and frame.text.strip():
             t = self._outcome.transcript
             chunk = frame.text.strip()
+            norm = " ".join(chunk.split()).casefold()
             if t and t[-1]["role"] == "assistant":
-                if self._same(chunk, self._last_chunk) or self._same(t[-1]["text"], chunk):
+                # Not only the previous chunk: the sequencer re-emits a whole
+                # GROUP ("Okay, I understand. Thank you for your time, namaste."
+                # twice on call ada2e60c). Within one assistant entry — no caller
+                # turn between — a repeated sentence of three or more words is
+                # that artefact, never speech.
+                if (self._same(chunk, self._last_chunk) or self._same(t[-1]["text"], chunk)
+                        or (len(chunk.split()) >= 3 and norm in self._entry_chunks)):
                     logger.info("played: dropping duplicate text frame %r", chunk[:48])
                     await self.push_frame(frame, direction)
                     return
                 t[-1]["text"] = (t[-1]["text"] + " " + chunk).strip()
+                self._entry_chunks.add(norm)
             else:
                 t.append({"role": "assistant", "text": chunk})
+                self._entry_chunks = {norm}
             self._last_chunk = chunk
         await self.push_frame(frame, direction)
 
@@ -842,6 +852,7 @@ class NoRepeatGate(FrameProcessor):
         # everything, i.e. the old behaviour.
         self._played_text = played_text
         self._spoken: list = []
+        self._greeted = False              # one greeting per call (see _GREETING_RE)
         # topic -> the normalized QUESTION we actually asked about it. A dict,
         # not a set: topic membership alone is not evidence of a re-ask — see
         # _TOPIC_REASK_THRESHOLD for the call that proved it.
@@ -948,8 +959,23 @@ class NoRepeatGate(FrameProcessor):
         """The next response continues a cut reply — hold it to the strict bar."""
         self._continuation_next = True
 
+    # A sentence that is ONLY a greeting. Under is_repeat's 22-char floor by
+    # design (acks recur legitimately) — but a greeting does not: call
+    # 862aa6a0 (2026-09-12) said "Good morning!" FIVE times in 30 s, once per
+    # barge-in regeneration, because the caller kept answering with "Good
+    # morning" and every regenerated reply re-greeted. One per call, then gone.
+    _GREETING_RE = re.compile(
+        r"^\W*(good\s+(morning|afternoon|evening)|hello|hi|hey|namaste|namaskar|"
+        r"नमस्ते|नमस्कार|हेलो|हैलो)(\s+(ji|जी|sir|ma'?am|madam))?\W*$", re.I)
+
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
+            return True
+        if self._GREETING_RE.match(sentence or ""):
+            if self._greeted:
+                logger.info("no-repeat: dropping second greeting %r", sentence.strip()[:24])
+                return False
+            self._greeted = True
             return True
         if caller_asked_to_repeat(self._last_caller_text()):
             return True            # they ASKED us to say it again
@@ -2469,7 +2495,9 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
     # gives the time; this makes the model USE it for the greeting, overriding a fixed one.
     greeting_rule = (
-        "- GREET FOR THE CURRENT TIME shown above: say 'good morning' before 12 noon, "
+        "- GREET ONCE, at the very start, and never again — if the caller says hello or "
+        "good morning later, do not greet back; just continue. "
+        "GREET FOR THE CURRENT TIME shown above: say 'good morning' before 12 noon, "
         "'good afternoon' from 12 noon to 5 PM, and 'good evening' after 5 PM. If your "
         "scripted opening contains a fixed greeting, ADAPT it to the current time — never "
         "say 'good morning' in the afternoon or evening."
@@ -2539,7 +2567,11 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "later use a word of the other language, not after an interruption. If they ask for "
         "English, speak plain English only: no Hindi words, no Devanagari."
     )
-    lead_name_line = f"The caller's name is {lead_name}." if lead_name else ""
+    # "Vijay Madhekar ji" (call ada2e60c, 2026-09-12): a full name plus honorific is
+    # how a form reads, not how a person is addressed. First name only.
+    lead_name_line = (f"The caller's name is {lead_name}. Address them by their FIRST name "
+                      f"only ('{str(lead_name).split()[0]}' / '{str(lead_name).split()[0]} ji'), "
+                      f"never the full name." if lead_name else "")
     # Call c9aa4062: the close asked "which number should I send the invite to?",
     # the caller said "the same number we're talking on", and the agent then made
     # her DICTATE it digit by digit — a number we dialled ourselves. Give the
@@ -2579,7 +2611,9 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     )
     fields_line = _lead_fields_line(context)
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
-                f"append {END_MARKER}.")
+                f"append {END_MARKER}. If the caller asks you to end the call, says they are "
+                f"not interested, or says they do not need this: ONE short polite line and "
+                f"{END_MARKER} immediately — never a clarifying question, never one more pitch.")
     human_line = (
         f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting "
         f"them and append {TRANSFER_MARKER}."

@@ -86,6 +86,34 @@ def _llm_target(s):
 _NO_SENDS: Dict[str, Any] = {"promisedSends": [], "declinedSends": [], "conditionsMet": [], "whatsappNumber": None, "email": None}
 
 
+def _parse_analysis_json(content: str):
+    """The analyser's JSON, or None. Tolerates fences, prose around the object,
+    trailing commas, and a truncated tail (cuts back to the last complete
+    top-level field) — the shapes seen in production. Never raises."""
+    if not content:
+        return None
+    m = re.search(r"\{.*\}", content, re.DOTALL) or re.search(r"\{.*", content, re.DOTALL)
+    if not m:
+        return None
+    raw = m.group(0)
+    for cand in (raw, re.sub(r",\s*([}\]])", r"\1", raw)):
+        try:
+            return json.loads(cand)
+        except Exception:
+            pass
+    trimmed = raw
+    for _ in range(40):
+        i = max(trimmed.rfind(",\n"), trimmed.rfind(", \""), trimmed.rfind(",\""))
+        if i <= 0:
+            break
+        trimmed = trimmed[:i]
+        try:
+            return json.loads(trimmed + "}")
+        except Exception:
+            continue
+    return None
+
+
 async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     s = get_settings()
     agent = outcome.context.get("agent") or {}
@@ -207,7 +235,10 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.1,
-        "max_tokens": 500,
+        # 500 truncated a 226 s call's JSON mid-object (call 862aa6a0, 2026-09-12:
+        # "Expecting ',' delimiter … char 1807") and the whole analysis degraded
+        # to "unavailable". The schema plus a long extractedQa needs ~900.
+        "max_tokens": 1400,
     }
     if base_url == s.sarvam_llm_base_url:
         # Literal null disables Sarvam's hybrid thinking — without it the whole
@@ -226,8 +257,23 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
             # `or ""`: reasoning models (e.g. Sarvam-30b/-105b) return content=None
             # when max_tokens dies mid-think — degrade to the heuristic, don't crash.
             content = resp.json()["choices"][0]["message"].get("content") or ""
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        parsed = json.loads(match.group(0)) if match else {}
+        parsed = _parse_analysis_json(content)
+        if parsed is None:
+            # One retry with the model told what went wrong — cheaper than a
+            # lost analysis, and it never loops.
+            logger.warning("analysis JSON unparseable corr=%s — retrying once", outcome.corr)
+            payload["messages"].append({"role": "assistant", "content": content[:4000]})
+            payload["messages"].append({"role": "user", "content":
+                "That was not valid JSON. Return ONLY the JSON object, complete and valid, "
+                "nothing before or after it."})
+            async with httpx.AsyncClient(timeout=_ANALYSIS_TIMEOUT) as client:
+                resp = await client.post(f"{base_url}/chat/completions",
+                                         headers={"Authorization": f"Bearer {api_key}"}, json=payload)
+                resp.raise_for_status()
+                content = resp.json()["choices"][0]["message"].get("content") or ""
+            parsed = _parse_analysis_json(content)
+            if parsed is None:
+                raise ValueError("analysis JSON unparseable after retry")
         _coerce_disposition(parsed, dispositions, outcome.corr)
         return parsed
     except Exception:

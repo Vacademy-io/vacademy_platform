@@ -3,7 +3,8 @@
         "EMAIL": "Email",
         "WHATSAPP": "WhatsApp",
         "PUSH": "Push",
-        "SMS": "SMS"
+        "SMS": "SMS",
+        "CALL": "Call"
     },
     "statuses": {
         "PENDING": "Pending",
@@ -47,7 +48,8 @@
         "noCommunicationsTitle": "No communications found",
         "noChannelMessages": "No {{channel}} messages yet. Try selecting \"{{allLabel}}\" to see other channels.",
         "noMessagesYet": "No messages have been sent to or received from this student yet.",
-        "sendFirstMessage": "Send first message"
+        "sendFirstMessage": "Send first message",
+        "noCalls": "No calls with this student yet. Use the Call button on the Overview tab to place one."
     },
     "sendCard": {
         "heading": "Send Notification",
@@ -59,5 +61,28 @@
         "pageOf": "Page {{current}} of {{total}}"
     },
     "totalCount_one": "{{count}} total",
-    "totalCount_other": "{{count}} total"
+    "totalCount_other": "{{count}} total",
+    "call": {
+        "outbound": "Outbound call",
+        "inbound": "Inbound call",
+        "aiCall": "AI call",
+        "status": {
+            "COMPLETED": "Answered",
+            "NO_ANSWER": "No answer",
+            "BUSY": "Busy",
+            "FAILED": "Failed",
+            "CANCELLED": "Cancelled",
+            "IN_PROGRESS": "In progress",
+            "QUEUED": "Placed",
+            "INITIATED": "Placed",
+            "COUNSELLOR_RINGING": "Ringing",
+            "COUNSELLOR_ANSWERED": "Connecting"
+        },
+        "duration": "{{minutes}}m {{seconds}}s",
+        "outcome": "Outcome",
+        "attempt": "Attempt {{n}}",
+        "recordingHeading": "Recording",
+        "noRecording": "No recording for this call",
+        "byCounsellor": "by {{name}}"
+    }
 }

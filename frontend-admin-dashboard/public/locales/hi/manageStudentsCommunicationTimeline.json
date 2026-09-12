@@ -3,7 +3,8 @@
         "EMAIL": "ईमेल",
         "WHATSAPP": "व्हाट्सएप",
         "PUSH": "पुश सूचना",
-        "SMS": "एसएमएस"
+        "SMS": "एसएमएस",
+        "CALL": "कॉल"
     },
     "statuses": {
         "PENDING": "लंबित",
@@ -47,7 +48,8 @@
         "noCommunicationsTitle": "कोई संदेश नहीं मिला",
         "noChannelMessages": "अभी तक कोई {{channel}} संदेश नहीं है। अन्य चैनल देखने के लिए \"{{allLabel}}\" चुनें।",
         "noMessagesYet": "इस विद्यार्थी को अभी तक कोई संदेश भेजा या प्राप्त नहीं हुआ है।",
-        "sendFirstMessage": "पहला संदेश भेजें"
+        "sendFirstMessage": "पहला संदेश भेजें",
+        "noCalls": "इस छात्र के साथ अभी तक कोई कॉल नहीं। कॉल करने के लिए ओवरव्यू टैब पर कॉल बटन का उपयोग करें।"
     },
     "sendCard": {
         "heading": "सूचना भेजें",
@@ -59,5 +61,28 @@
         "pageOf": "पृष्ठ {{current}} / {{total}}"
     },
     "totalCount_one": "कुल {{count}}",
-    "totalCount_other": "कुल {{count}}"
+    "totalCount_other": "कुल {{count}}",
+    "call": {
+        "outbound": "आउटबाउंड कॉल",
+        "inbound": "इनबाउंड कॉल",
+        "aiCall": "AI कॉल",
+        "status": {
+            "COMPLETED": "उत्तर दिया",
+            "NO_ANSWER": "कोई उत्तर नहीं",
+            "BUSY": "व्यस्त",
+            "FAILED": "विफल",
+            "CANCELLED": "रद्द",
+            "IN_PROGRESS": "चल रही है",
+            "QUEUED": "लगाई गई",
+            "INITIATED": "लगाई गई",
+            "COUNSELLOR_RINGING": "घंटी बज रही है",
+            "COUNSELLOR_ANSWERED": "जोड़ा जा रहा है"
+        },
+        "duration": "{{minutes}} मि {{seconds}} से",
+        "outcome": "परिणाम",
+        "attempt": "प्रयास {{n}}",
+        "recordingHeading": "रिकॉर्डिंग",
+        "noRecording": "इस कॉल की कोई रिकॉर्डिंग नहीं",
+        "byCounsellor": "{{name}} द्वारा"
+    }
 }

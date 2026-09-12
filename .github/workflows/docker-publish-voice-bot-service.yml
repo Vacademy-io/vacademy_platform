@@ -80,7 +80,7 @@ jobs:
       # spoken markup, invented price, wrong weekday…) blocks the deploy.
       # Skipped, not failed, when the Vertex secret is absent (forks).
       - name: Run conversation simulator
-        if: ${{ env.VERTEX_CREDENTIALS_JSON != '' }}
+        if: ${{ secrets.VERTEX_CREDENTIALS_JSON != '' }}
         env:
           VERTEX_CREDENTIALS_JSON: ${{ secrets.VERTEX_CREDENTIALS_JSON }}
           VERTEX_PROJECT_ID: vacademy-app
@@ -92,7 +92,7 @@ jobs:
           python -m sim.run --model prod --ci
 
       - name: Upload simulator report
-        if: ${{ always() && env.VERTEX_CREDENTIALS_JSON != '' }}
+        if: ${{ always() && secrets.VERTEX_CREDENTIALS_JSON != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: sim-report

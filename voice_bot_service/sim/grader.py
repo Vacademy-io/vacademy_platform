@@ -144,7 +144,13 @@ Transcript:
 
 async def judge(chat, convo: List[Dict]) -> Dict:
     lines = "\n".join(f"{'CALLER' if t['role']=='user' else 'AGENT'}: {t['text']}" for t in convo)
-    text, _ = await chat("You are a strict but fair call-quality reviewer.", [{"role": "user", "content": JUDGE_PROMPT + lines}], 300, 0.0)
+    msgs = [{"role": "user", "content": JUDGE_PROMPT + lines}]
+    text, _ = await chat("You are a strict but fair call-quality reviewer.", msgs, 400, 0.0)
+    if not re.search(r'"score"\s*:\s*\d', text or ""):
+        # Gemini occasionally returns prose or nothing (~1 in 8 runs); one nudge.
+        msgs += [{"role": "assistant", "content": text or "(empty)"},
+                 {"role": "user", "content": "Return ONLY the JSON object {\"score\": <0-10>, \"problems\": [...]}."}]
+        text, _ = await chat("You are a strict but fair call-quality reviewer.", msgs, 400, 0.0)
     m = re.search(r"\{.*\}", text, re.S)
     try:
         d = json.loads(m.group(0)) if m else {}

@@ -1,9 +1,12 @@
-import { useState, useMemo } from 'react';
-import { ArrowLeft, Plus, Trash, WarningCircle } from '@phosphor-icons/react';
+import { useState, useMemo, useRef } from 'react';
+import { ArrowLeft, CircleNotch, Plus, Trash, UploadSimple, WarningCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { getInstituteId } from '@/constants/helper';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getPublicUrl } from '@/services/upload_file';
+import { getUserId } from '@/utils/userDetails';
 import { cn } from '@/lib/utils';
 import { getBackendErrorBody, reportApiError } from '@/lib/report-api-error';
 import { createTemplateDraft, updateTemplate, submitToMeta, WhatsAppTemplateDTO, TemplateButton } from '../-services/template-api';
@@ -39,8 +42,44 @@ const buttonFieldClass = 'w-full px-2 py-1 text-xs border rounded';
 /** Applied to whichever input the local check or the server pointed at. */
 const invalidClass = 'border-danger-400 bg-danger-50 focus:border-danger-500';
 
+/**
+ * What Meta accepts as a media-header sample, per header type. Checked before the upload so a
+ * wrong file is refused here, instead of surfacing as SAMPLE_MEDIA_UPLOAD_FAILED after the round
+ * trip through S3 and Meta's resumable-upload API.
+ */
+const SAMPLE_MEDIA_RULES: Record<string, { accept: string; mimes: string[]; extensions: string[]; maxBytes: number }> = {
+    IMAGE: {
+        accept: 'image/jpeg,image/png',
+        mimes: ['image/jpeg', 'image/png'],
+        extensions: ['.jpg', '.jpeg', '.png'],
+        maxBytes: 5 * 1024 * 1024,
+    },
+    VIDEO: {
+        accept: 'video/mp4,video/3gpp',
+        mimes: ['video/mp4', 'video/3gpp'],
+        extensions: ['.mp4', '.3gp'],
+        maxBytes: 16 * 1024 * 1024,
+    },
+    DOCUMENT: {
+        accept: 'application/pdf',
+        mimes: ['application/pdf'],
+        extensions: ['.pdf'],
+        maxBytes: 100 * 1024 * 1024,
+    },
+};
+
+/** Browsers leave `file.type` empty for unregistered extensions, so fall back to the name. */
+function isAllowedSampleFile(file: File, rule: (typeof SAMPLE_MEDIA_RULES)[string]): boolean {
+    if (file.type) return rule.mimes.includes(file.type.toLowerCase());
+    const name = file.name.toLowerCase();
+    return rule.extensions.some((ext) => name.endsWith(ext));
+}
+
 export function TemplateBuilder({ template, onClose }: Props) {
     const { t } = useTranslation('communicationTemplateBuilder');
+    // The validators' messages live in their own catalog; handing them the builder's `t` renders
+    // every problem as a raw key like `bodyRequired`.
+    const { t: tValidation } = useTranslation('communicationTemplateValidation');
     const LANGUAGES = useMemo(() => buildLanguages(t), [t]);
     const isEditing = !!template?.id;
     const instituteId = getInstituteId() || '';
@@ -65,9 +104,61 @@ export function TemplateBuilder({ template, onClose }: Props) {
     // to its id so a retry updates that row instead of creating a second one and hitting the
     // duplicate-name 409, which used to strand the admin with an invisible orphan draft.
     const [draftId, setDraftId] = useState<string | undefined>(template?.id);
+    const [uploadingSample, setUploadingSample] = useState(false);
+    const sampleFileInputRef = useRef<HTMLInputElement>(null);
+    const { uploadFile } = useFileUpload();
 
     const invalidFields = useMemo(() => problemFields(problems), [problems]);
     const isInvalid = (field: string) => invalidFields.has(field);
+
+    /**
+     * Upload the header sample and drop its public URL into the field, so the admin doesn't need
+     * somewhere else to host the file. `publicUrl` copies the object to the public bucket and the
+     * URL never expires — Meta downloads it during review, and the renderer reuses it as the header
+     * media on every send of this template, so a signed/expiring URL would break sends later.
+     */
+    const handleSampleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        // Clear the input so choosing the same file again after a rejection still fires onChange.
+        e.target.value = '';
+        const rule = SAMPLE_MEDIA_RULES[headerType];
+        if (!file || !rule) return;
+
+        const kind = t(`headerKind.${headerType.toLowerCase()}`);
+        const formats = t(`fields.headerSampleFormats.${headerType.toLowerCase()}`);
+        if (!isAllowedSampleFile(file, rule)) {
+            toast.error(t('toast.sampleWrongType', { kind, formats }));
+            return;
+        }
+        if (file.size > rule.maxBytes) {
+            toast.error(t('toast.sampleTooLarge', { formats }));
+            return;
+        }
+
+        setUploadingSample(true);
+        try {
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: setUploadingSample,
+                userId: getUserId(),
+                source: 'WHATSAPP_TEMPLATE_MEDIA',
+                sourceId: instituteId || 'ADMIN',
+                publicUrl: true,
+            });
+            const url = fileId ? await getPublicUrl(fileId) : '';
+            if (!url) throw new Error('Upload finished but the media service returned no public URL');
+            setHeaderSampleUrl(url);
+            setProblems((prev) => prev.filter((p) => p.field !== 'headerSampleUrl'));
+            toast.success(t('toast.sampleUploaded', { kind }));
+        } catch (err) {
+            reportApiError(err, {
+                feature: 'whatsapp-template-sample-upload',
+                fallbackMessage: t('toast.sampleUploadFailed', { kind }),
+            });
+        } finally {
+            setUploadingSample(false);
+        }
+    };
 
     // How many distinct variables the body declares: {{1}} … {{N}}. Uses the highest index rather
     // than the match count so a body that repeats {{1}} still asks for exactly one sample.
@@ -144,7 +235,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
     };
 
     const handleSaveDraft = async () => {
-        const found = validateDraft(t, { name, category, bodyText });
+        const found = validateDraft(tValidation, { name, category, bodyText });
         if (found.length > 0) { showLocalProblems(found); return; }
 
         setSaving(true);
@@ -164,7 +255,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
     };
 
     const handleSubmit = async () => {
-        const found = validateForSubmit(t, {
+        const found = validateForSubmit(tValidation, {
             name,
             language,
             category,
@@ -322,12 +413,35 @@ export function TemplateBuilder({ template, onClose }: Props) {
                                 className={cn(fieldClass, 'mt-2', isInvalid('headerSampleValues') && invalidClass)} />
                         )}
                         {headerType !== 'NONE' && headerType !== 'TEXT' && (
-                            <input type="text" value={headerSampleUrl} onChange={(e) => setHeaderSampleUrl(e.target.value)}
-                                placeholder={t('fields.headerSampleUrlPlaceholder', {
-                                    kind: t(`headerKind.${headerType.toLowerCase()}`),
-                                })}
-                                aria-invalid={isInvalid('headerSampleUrl')}
-                                className={cn(fieldClass, 'mt-2', isInvalid('headerSampleUrl') && invalidClass)} />
+                            <div className="mt-2">
+                                <div className="flex items-start gap-2">
+                                    <input type="text" value={headerSampleUrl} onChange={(e) => setHeaderSampleUrl(e.target.value)}
+                                        placeholder={t('fields.headerSampleUrlPlaceholder', {
+                                            kind: t(`headerKind.${headerType.toLowerCase()}`),
+                                        })}
+                                        aria-invalid={isInvalid('headerSampleUrl')}
+                                        className={cn(fieldClass, 'min-w-0 flex-1', isInvalid('headerSampleUrl') && invalidClass)} />
+                                    {/* Hidden picker; `accept` follows the header type so the OS dialog
+                                        only offers files Meta will take. */}
+                                    <input ref={sampleFileInputRef} type="file" className="hidden"
+                                        accept={SAMPLE_MEDIA_RULES[headerType]?.accept}
+                                        onChange={handleSampleFile}
+                                        data-testid="header-sample-file" />
+                                    <button type="button" onClick={() => sampleFileInputRef.current?.click()}
+                                        disabled={uploadingSample || saving}
+                                        className="mt-1 flex shrink-0 items-center gap-1 rounded border px-2.5 py-1.5 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60">
+                                        {uploadingSample
+                                            ? <CircleNotch size={14} className="animate-spin" />
+                                            : <UploadSimple size={14} />}
+                                        {uploadingSample ? t('fields.headerSampleUploading') : t('fields.headerSampleUpload')}
+                                    </button>
+                                </div>
+                                <p className="mt-1 text-caption text-gray-500">
+                                    {t('fields.headerSampleUrlHint', {
+                                        formats: t(`fields.headerSampleFormats.${headerType.toLowerCase()}`),
+                                    })}
+                                </p>
+                            </div>
                         )}
                     </div>
 

@@ -25,7 +25,11 @@
         "approvedByMeta": "Modèle approuvé par Meta et prêt à l'emploi.",
         "submittedToMeta": "Modèle soumis à Meta pour approbation.",
         "metaRejected": "Meta a rejeté le modèle. Votre brouillon a été enregistré.",
-        "draftSavedRetry": "Votre brouillon est enregistré — corrigez le problème ci-dessus et soumettez à nouveau."
+        "draftSavedRetry": "Votre brouillon est enregistré — corrigez le problème ci-dessus et soumettez à nouveau.",
+        "sampleUploaded": "Exemple {{kind}} téléversé — l'URL publique a été renseignée.",
+        "sampleUploadFailed": "Impossible de téléverser l'exemple {{kind}}.",
+        "sampleWrongType": "Ce fichier n'est pas un {{kind}} pris en charge. Utilisez {{formats}}.",
+        "sampleTooLarge": "Ce fichier est trop volumineux. Utilisez {{formats}}."
     },
     "problemsBanner": {
         "single": "Ce modèle nécessite une correction",
@@ -72,7 +76,15 @@
         "buttonPhonePlaceholder": "+919876543210",
         "addQuickReply": "+ Réponse rapide",
         "addUrlButton": "+ Bouton URL",
-        "addPhone": "+ Téléphone"
+        "addPhone": "+ Téléphone",
+        "headerSampleUpload": "Téléverser",
+        "headerSampleUploading": "Téléversement…",
+        "headerSampleUrlHint": "Téléversez un fichier ou collez une URL publique — Meta la télécharge pour la révision. {{formats}}.",
+        "headerSampleFormats": {
+            "image": "JPG ou PNG, jusqu’à 5 Mo",
+            "video": "MP4, jusqu’à 16 Mo",
+            "document": "PDF, jusqu’à 100 Mo"
+        }
     },
     "headerKind": {
         "image": "image",

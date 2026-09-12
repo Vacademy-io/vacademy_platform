@@ -1212,11 +1212,13 @@ async def test_a_cached_sentence_closes_its_own_per_sentence_context(
     async for f in tts.run_tts(line, "ctx-thanks"):
         if f is not None:
             order.append(type(f).__name__)
-            if removed:
-                order.append("<removed>")
     assert "TTSAudioRawFrame" in order and "TTSTextFrame" in order
-    assert order[-2:] == ["TTSStoppedFrame", "<removed>"] or (
-        order[-1] == "TTSStoppedFrame" and removed == ["ctx-thanks"]), order
+    assert order[-1] == "TTSStoppedFrame", order
+    # The close waits for the blob's own playout (400 ms here): closing at once
+    # stamped the next sentence's words early (call 859c20ee).
+    assert removed == [], "closed before the audio could have played"
+    import asyncio as _a
+    await _a.sleep(0.6)
     assert removed == ["ctx-thanks"]
     # the stop bracket must come AFTER the text frame, which comes after audio
     assert order.index("TTSTextFrame") > order.index("TTSAudioRawFrame")
@@ -1275,3 +1277,43 @@ async def test_a_push_text_frames_engine_is_left_to_the_base_class(
         temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
     kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-2") if f is not None]
     assert "TTSAudioRawFrame" in kinds and removed == []
+
+
+def test_force_complete_leaves_queued_sentences_alone():
+    """Call 859c20ee: every sentence after a cache hit recorded twice, because
+    the hit's context end force-completed the slots of sentences still queued
+    behind it. Only slots of ended/playing contexts may be flushed."""
+    class _Slot:
+        def __init__(self, cid, complete=False):
+            self.context_id, self.spoken, self.complete, self.tracker = cid, True, complete, object()
+
+    class _Seq:
+        def __init__(self):
+            self._slots = [_Slot("playing"), _Slot("queued-1"), _Slot("queued-2")]
+            self.calls = []
+
+        def force_complete(self, pts):
+            self.calls.append([s.context_id for s in self._slots])
+            for s in self._slots:
+                s.complete = True
+            return []
+
+    class _T:
+        _aggregated_frame_sequencer = _Seq()
+        _playing_context_id = "playing"
+
+        def audio_context_available(self, cid):
+            return cid in ("playing", "queued-1", "queued-2")
+
+    t = _T()
+    assert ttscache.scope_force_complete_to_ended_contexts(t) is True
+    assert ttscache.scope_force_complete_to_ended_contexts(t) is False, "idempotent"
+    seq = t._aggregated_frame_sequencer
+    seq.force_complete(0)
+    assert seq.calls == [["playing"]], "queued sentences must not be flushed"
+    assert [s.context_id for s in seq._slots] == ["playing", "queued-1", "queued-2"], "order restored"
+    assert [s.complete for s in seq._slots] == [True, False, False]
+    # once their contexts are gone (played, deleted) they are flushed normally
+    t.audio_context_available = lambda cid: False
+    seq.force_complete(0)
+    assert seq.calls[-1] == ["playing", "queued-1", "queued-2"]

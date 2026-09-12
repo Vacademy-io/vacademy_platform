@@ -163,6 +163,50 @@ def mode_allows(mode: str, is_fixed_line: bool) -> bool:
     return False
 
 
+def scope_force_complete_to_ended_contexts(tts) -> bool:
+    """pipecat force-completes EVERY pending sentence slot whenever an audio
+    context ends (its assumption: one context per turn, so the end of a
+    context is the end of the turn). With one context per SENTENCE that flush
+    fires at every sentence end — and when a cached sentence's context closes
+    promptly, the sentences queued behind it have their full text emitted at
+    once, and then again word by word as they actually play. Every sentence
+    after a cache hit landed twice in the played transcript and the model's
+    own context (call 859c20ee, 2026-09-12: "Would you be open to a short
+    demo…? Would you be open to a short demo…?").
+
+    While a force-complete runs, hide the slots whose audio context is still
+    queued (registered, not the one playing) — those sentences have not been
+    spoken yet and their own context end will flush them. Idempotent."""
+    seq = getattr(tts, "_aggregated_frame_sequencer", None)
+    if seq is None or getattr(seq, "_vacademy_scoped", False):
+        return False
+    orig = seq.force_complete
+
+    def _scoped(last_word_pts):
+        try:
+            playing = getattr(tts, "_playing_context_id", None)
+            avail = getattr(tts, "audio_context_available", None)
+            slots = list(seq._slots)
+            hidden = [s for s in slots if s.spoken and not s.complete
+                      and s.context_id != playing
+                      and avail is not None and avail(s.context_id)]
+        except Exception:
+            logger.exception("tts-cache: scoped force-complete fell back to pipecat's")
+            return orig(last_word_pts)
+        if not hidden:
+            return orig(last_word_pts)
+        seq._slots = [s for s in slots if s not in hidden]
+        try:
+            return orig(last_word_pts)
+        finally:
+            kept = set(map(id, seq._slots))
+            seq._slots = [s for s in slots if s in hidden or id(s) in kept]
+
+    seq.force_complete = _scoped
+    seq._vacademy_scoped = True
+    return True
+
+
 def owns_text_frame(tts) -> bool:
     """Whether WE must emit the TTSTextFrame for a cached sentence.
 
@@ -1152,6 +1196,8 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
         tts._reuse_context_id_within_turn = False
         logger.info("tts-cache: per-sentence audio contexts enabled for {} — "
                     "cached audio can now be served mid-turn", engine_l)
+    if per_sentence_contexts(tts):
+        scope_force_complete_to_ended_contexts(tts)
 
     def _bump(name: str, *args) -> None:
         if diag is None:
@@ -1308,11 +1354,28 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                     # aggregation mode — so the frame is indistinguishable from
                     # one the engine produced.
                     if own_text:
-                        text_frame = TTSTextFrame(
-                            text, aggregated_by=AggregationType.SENTENCE)
-                        text_frame.context_id = context_id
-                        text_frame.will_be_spoken = True
-                        yield text_frame
+                        add_words = getattr(tts, "add_word_timestamps", None)
+                        if add_words is not None and per_sentence_contexts(tts):
+                            # Feed the words the way the vendor's word-timing
+                            # messages would, spread over the blob. pipecat then
+                            # builds the TTSTextFrames at playout position AND
+                            # completes this sentence's sequencer slot. A bare
+                            # TTSTextFrame here left the slot open: the next
+                            # sentence's words matched no slot ("not recognised
+                            # by any slot, emitting as passthrough") and its
+                            # full text was then force-completed at the stop —
+                            # every sentence after a cache hit recorded twice
+                            # (call 859c20ee, 2026-09-12).
+                            words = text.split()
+                            per = (entry.duration_ms / 1000.0) / max(1, len(words))
+                            await add_words([(w, i * per) for i, w in enumerate(words)],
+                                            context_id)
+                        else:
+                            text_frame = TTSTextFrame(
+                                text, aggregated_by=AggregationType.SENTENCE)
+                            text_frame.context_id = context_id
+                            text_frame.will_be_spoken = True
+                            yield text_frame
 
                     if own_stop:
                         yield TTSStoppedFrame(context_id=context_id)
@@ -1343,7 +1406,27 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                             yield TTSStoppedFrame(context_id=context_id)
                         remove = getattr(tts, "remove_audio_context", None)
                         if remove is not None:
-                            await remove(context_id)
+                            # NOT immediately. pipecat stamps the NEXT context's
+                            # word timestamps from the moment its first audio
+                            # chunk is enqueued, and vendor audio outruns real
+                            # time — so closing now, while this blob is still
+                            # playing, put the following sentence's words up to
+                            # a blob-length EARLY in the played transcript and the
+                            # model's own context ("Would Great. Would tomorrow…",
+                            # and the sentence recorded twice; call 859c20ee,
+                            # 2026-09-12). Hold the sentinel for the blob's own
+                            # playout, which is what the vendor's 'done' amounts
+                            # to. An interruption in the meantime tears the
+                            # context down and the late remove is a logged no-op.
+                            hold = max(0.0, entry.duration_ms / 1000.0 - 0.05)
+
+                            async def _close_after_playout(cid=context_id, secs=hold):
+                                await asyncio.sleep(secs)
+                                try:
+                                    await remove(cid)
+                                except Exception:
+                                    logger.exception("tts-cache: late context close failed")
+                            asyncio.get_running_loop().create_task(_close_after_playout())
                     return
 
         # Counted here rather than at entry, so the denominator is "sentences the

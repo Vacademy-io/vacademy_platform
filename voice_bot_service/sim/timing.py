@@ -579,6 +579,12 @@ def chk_cached_opener(res):
     for s in ("Thank you", "daily link"):
         if s not in texts:
             f.append(f"{s!r} never reached the played transcript")
+    # Order and single occurrence: call 859c20ee (2026-09-12) recorded the
+    # sentence AFTER a cached one before it, and then again after it.
+    if "Thank you" in texts and "So the reason" in texts and texts.index("So the reason") < texts.index("Thank you"):
+        f.append("played transcript out of order: the vendor sentence precedes the cached opener")
+    if texts.count("So the reason I called") > 1:
+        f.append("a sentence was recorded twice in the played transcript")
     return f
 
 

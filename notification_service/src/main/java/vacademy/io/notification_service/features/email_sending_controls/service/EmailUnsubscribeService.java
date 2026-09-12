@@ -48,7 +48,10 @@ public class EmailUnsubscribeService {
         this.repository = repository;
         this.configuredSecret = configuredSecret;
         this.fallbackSecretSource = fallbackSecretSource;
-        this.baseUrl = baseUrl.replaceAll("/+$", "");
+        // kubectl set env with an unset secret yields "" (not absent), which would bypass the
+        // property default — treat blank as "use the public gateway".
+        String origin = (baseUrl == null || baseUrl.isBlank()) ? "https://backend-stage.vacademy.io" : baseUrl;
+        this.baseUrl = origin.trim().replaceAll("/+$", "");
     }
 
     @PostConstruct

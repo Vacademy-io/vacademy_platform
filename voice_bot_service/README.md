@@ -103,6 +103,17 @@ word-for-word; ~0.013× realtime on one core.
 If STT ever transcribes the ambience via handset echo, lower `AMBIENCE_VOLUME`
 rather than adding filtering.
 
+## First-sentence latency lever
+
+TTS starts the moment the model's first sentence is complete (NoRepeatGate splits on
+sentence ends), so the first sentence's length IS the caller's wait after the LLM's
+first token. Measured on the conversation simulator with the old soft rule: median 5
+words, p90 11. `FAST_OPENER_ENABLED` (default `true`) makes the prompt ask for a
+COMPLETE sentence of at most four words that carries the answer itself ("Haan, shivir
+mein hi hai." / "No charge at all."), never a filler noise or a greeting, with the
+detail and the one question after it. Prompt-only: no gate, splitter or TTS change;
+`false` restores the previous wording verbatim without a deploy.
+
 ## Ops checklist
 
 - Deploy in **ap-south-1** (Plivo India media anchoring), public **WSS** ingress.

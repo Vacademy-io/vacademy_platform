@@ -550,6 +550,14 @@ class Settings:
     # 3.2 st (+15%). Prompt rule, every agent; kill switch keeps the same shape.
     prosody_hints_enabled: bool = field(
         default_factory=lambda: _env("PROSODY_HINTS_ENABLED", "true").lower() == "true")
+    # Latency lever, 2026-09-12. TTS starts at the first sentence boundary, so the
+    # caller waits for however long the model's FIRST sentence is. Measured on the
+    # simulator with today's soft rule: median 5 words, p90 11 (about 1 s of
+    # generation before audio). This asks for a COMPLETE sentence of at most four
+    # words — real substance, never a filler noise — then the detail. Prompt-only:
+    # no gate, splitter or TTS change. `false` restores the previous rule text.
+    fast_opener_enabled: bool = field(
+        default_factory=lambda: _env("FAST_OPENER_ENABLED", "true").lower() == "true")
     # Voice modulation on the AUDIO (app/prosody.py) — the vendor-agnostic fix
     # for the same complaint: pitch excursions around the voice's median are
     # scaled by this factor. 1.0 = off; 1.6 = conversational. The dashboard's

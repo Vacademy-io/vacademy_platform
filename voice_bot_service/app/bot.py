@@ -2485,7 +2485,27 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "'10-minute'), 'two minutes', 'nine thirty', 'twenty five'. Digits like '10' get read "
         "out as 'one zero'. The ONLY exception is a phone number, which you read digit by digit."
     )
+    # The audio path starts TTS the moment the first sentence is complete
+    # (NoRepeatGate splits on sentence ends), so the first sentence's length IS the
+    # caller's wait. FAST_OPENER_ENABLED (default on) makes that sentence a complete
+    # four-word-or-shorter sentence carrying the answer itself; off restores the
+    # older, softer wording verbatim. Both prompt branches use this one variable.
+    # Measured 2026-09-12 (sim, 24 runs each): this wording took the first sentence
+    # from p50 5 / p90 11 words to p50 5 / p90 9, judge 6.4 -> 6.8, fillers flat. A
+    # sharper "shape: <4 words>. <rest>" version at the TOP of the rules got p50 3
+    # but the model met it with FILLER ("Right.", "Great, thanks.") — judge 6.0,
+    # fillers up — the very robotic-Hmm pattern the founder flagged. Keep this one.
     fast_open_rule = (
+        "- FIRST SENTENCE RULE: begin every reply with a COMPLETE sentence of at most "
+        "FOUR words, ended with a full stop, then continue. It must carry SUBSTANCE — the "
+        "direct answer, the key fact, or a real reaction — never a filler noise, a "
+        "greeting, or a restatement of what the caller said. Good: \u2018Haan, shivir mein "
+        "hi hai.\u2019 / \u2018Sunday ko hai.\u2019 / \u2018Bilkul possible hai.\u2019 / \u2018Fair point.\u2019 / "
+        "\u2018No charge at all.\u2019 Bad: \u2018Hmm.\u2019 / \u2018Achha.\u2019 / \u2018Okay.\u2019 / \u2018Theek hai.\u2019 / "
+        "\u2018Right.\u2019 — callers heard constant Hmm-ing as robotic, so such noises are "
+        "allowed at most one reply in five. The detail, and the one question if any, "
+        "come in the sentences after it."
+        if get_settings().fast_opener_enabled else
         "- Keep the FIRST sentence of every reply short (a few words) so it reaches the "
         "caller fast — but make it SUBSTANCE, not a filler sound. Do NOT open replies with "
         "\u2018Hmm\u2019, \u2018Achha\u2019, \u2018Theek hai\u2019, \u2018Okay\u2019, \u2018Right\u2019 or similar acknowledgment noises "

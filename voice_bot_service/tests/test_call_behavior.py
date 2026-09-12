@@ -3887,3 +3887,33 @@ def test_no_repeat_drops_questions_once_the_caller_asked_to_end():
     flag["v"] = True
     assert g._keep("Just to clarify, do you take online classes?") is False
     assert g._keep("No problem at all, thank you for your time.") is True
+
+
+def test_fast_opener_rule_reaches_every_prompt_branch_and_has_a_kill_switch(monkeypatch):
+    """2026-09-12 latency lever. TTS starts at the first sentence boundary, so
+    the first sentence's length is the caller's wait (simulator baseline with
+    the soft rule: median 5 words, p90 11). The strong rule must ride BOTH
+    prompt branches; FAST_OPENER_ENABLED=false must restore the older wording
+    verbatim so the lever can be pulled back without a deploy."""
+    MARK = "FIRST SENTENCE RULE"
+    OLD = "Keep the FIRST sentence of every reply short (a few words)"
+    authored = b.build_system_prompt({"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+        "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}})
+    thin = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    for p in (authored, thin):
+        assert MARK in p and OLD not in p
+        # the opener must never be a greeting (NoRepeatGate drops a second one)
+        # and the existing anti-Hmm limit survives inside the new rule
+        assert "never a filler noise, a greeting" in p
+        assert "one reply in five" in p
+    monkeypatch.setenv("FAST_OPENER_ENABLED", "false")
+    from app.config import get_settings as _gs
+    _gs.cache_clear()
+    try:
+        off = b.build_system_prompt({"agent": {
+            "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+        assert MARK not in off and OLD in off
+    finally:
+        _gs.cache_clear()

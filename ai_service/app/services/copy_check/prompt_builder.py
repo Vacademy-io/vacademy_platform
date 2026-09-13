@@ -33,13 +33,35 @@ CRITERIA_SYSTEM = (
 )
 
 
+# Platform question types that carry one right answer and nothing to explain.
+# The platform's own enum is MCQS/MCQM/…; the older aliases stay for callers
+# that pass free-text type names.
+OBJECTIVE_TYPES = frozenset({
+    "MCQ", "MCQS", "MCQM", "ONE_WORD", "SHORT_ANSWER", "TRUE_FALSE",
+    "FILL_BLANK", "FILL_IN_THE_BLANK", "NUMERIC",
+})
+
+
+def is_objective_question(question_type: str | None, max_marks: float, has_options: bool = False) -> bool:
+    """One criterion, full marks or nothing.
+
+    Type alone is not enough: a paper's MCQs are often stored as LONG_ANSWER
+    (the copy-check flow requires it), and then the generator invented
+    "justification" and "elimination of other options" sub-marks for a
+    1-mark objective question, so a correct option earned 0.4 and a deduction
+    note. Options on the question, or a single mark, mean objective.
+    """
+    return (question_type or "").upper() in OBJECTIVE_TYPES or has_options or max_marks <= 1
+
+
 def build_criteria_prompt(
     subject: str,
     question_type: str,
     max_marks: float,
     question_text: str,
+    has_options: bool = False,
 ) -> str:
-    if (question_type or "").upper() in ("MCQ", "ONE_WORD", "SHORT_ANSWER", "TRUE_FALSE", "FILL_BLANK"):
+    if is_objective_question(question_type, max_marks, has_options):
         return (
             f"Create an evaluation rubric for the following {question_type} question.\n\n"
             f"Subject: {subject}\nMax marks: {max_marks}\n\nQuestion:\n{question_text}\n\n"

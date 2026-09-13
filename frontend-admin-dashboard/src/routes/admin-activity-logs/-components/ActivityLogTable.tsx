@@ -75,6 +75,7 @@ const RESOURCE_LABELS: Record<string, string> = {
     LEARNER: 'Learner',
     GUARDIAN_LINK: 'Guardian link',
     INSTITUTE_SETTING: 'Settings',
+    LEARNER_BADGE: 'Learner badge',
 };
 
 const resourceLabel = (entityType: string): string =>

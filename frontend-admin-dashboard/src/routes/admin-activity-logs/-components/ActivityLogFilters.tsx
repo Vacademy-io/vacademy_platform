@@ -70,6 +70,7 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
             { value: 'LEARNER', label: 'Learner' },
             { value: 'GUARDIAN_LINK', label: 'Guardian link' },
             { value: 'INSTITUTE_SETTING', label: 'Settings' },
+            { value: 'LEARNER_BADGE', label: 'Learner badge' },
         ],
     },
     {
@@ -192,6 +193,8 @@ const ACTIVITY_OPTIONS: MultiSelectOption[] = [
     { value: 'DEACTIVATE', label: 'Deactivated (record)' },
     { value: 'PROVISION_BOOKING_PAGE', label: 'Booking page provisioned' },
     { value: 'MAKE_DEFAULT', label: 'Made default' },
+    { value: 'AWARD', label: 'Awarded' },
+    { value: 'REVOKE', label: 'Revoked' },
     { value: 'APPROVE', label: 'Approved' },
     { value: 'REJECT', label: 'Rejected' },
     { value: 'DECLINE', label: 'Declined' },

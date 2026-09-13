@@ -92,7 +92,16 @@ import cleanerIconLive from "@/assets/cleaner-play/icon-live-sessions.webp";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
-import { computeGamificationData } from "@/services/play-gamification";
+import {
+  computeGamificationData,
+  findNewlyUnlockedSince,
+  readCelebrationBaseline,
+  shouldCelebrateBadge,
+  writeCelebrationBaseline,
+} from "@/services/play-gamification";
+import { getUserId } from "@/constants/getUserId";
+import { celebrateMilestone } from "@/lib/play-celebration";
+import { BadgeVisual } from "./-components/badge-icons";
 import { syncBadgeUnlocks } from "@/services/badge-sync";
 import {
   getBadgeConfig,
@@ -260,7 +269,9 @@ export function DashboardComponent() {
   const { instituteId } = useInstituteFeatureStore();
 
   // Fetch study library data with React Query (5-minute cache)
-  const { data: studyLibraryData } = useQuery(getStudyLibraryQuery(batchId));
+  const { data: studyLibraryData, fetchStatus: studyLibraryFetchStatus } = useQuery(
+    getStudyLibraryQuery(batchId)
+  );
 
   // Add weekly attendance query
   const { data: weeklyAttendance, isLoading: isLoadingAttendance } =
@@ -564,6 +575,16 @@ export function DashboardComponent() {
           ? await fetchLiveAttendanceStats()
           : { count: 0, streak: 0 };
 
+        // Celebrations compare against the baseline of the last COMPLETE run, never the
+        // display cache: this effect re-runs as each input query lands, and an early run
+        // without the course tree / attendance computes completion- and XP-based badges as
+        // locked, which would otherwise read as "newly unlocked" on every fresh session.
+        // "Settled" = the study-library query is not fetching (success, error or disabled)
+        // and attendance has loaded.
+        const inputsSettled = studyLibraryFetchStatus === "idle" && !isLoadingAttendance;
+        const learnerId = await getUserId();
+        const baseline = inputsSettled ? readCelebrationBaseline(instituteId, learnerId) : null;
+
         const gamificationData = computeGamificationData({
           dashboard: data,
           activities,
@@ -579,6 +600,59 @@ export function DashboardComponent() {
         });
 
         setGamificationData(gamificationData);
+
+        // Celebration moment: confetti once + one toast per badge that unlocked
+        // since the last complete run (guarded once per badge id per tab). Only a
+        // settled run may celebrate or advance the baseline; no baseline = first load → quiet.
+        const newlyUnlocked =
+          inputsSettled && gamificationData.badgesEnabled
+            ? findNewlyUnlockedSince(baseline, gamificationData).filter((b) =>
+                shouldCelebrateBadge(b.id)
+              )
+            : [];
+        if (inputsSettled) {
+          writeCelebrationBaseline(instituteId, learnerId, gamificationData);
+        }
+        if (newlyUnlocked.length > 0) {
+          celebrateMilestone();
+          newlyUnlocked.forEach((badge) => {
+            toast.custom(
+              (toastId) => (
+                <button
+                  type="button"
+                  onClick={() => toast.dismiss(toastId)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-primary-100 bg-card p-3 text-start shadow-lg [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-gold-soft [.ui-cleaner-play_&]:border-transparent [.ui-cleaner-play_&]:bg-cp-gold-tint"
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-100 [.ui-play_&]:bg-play-gold [.ui-cleaner-play_&]:bg-cp-gold">
+                    <BadgeVisual
+                      icon={badge.icon}
+                      fill
+                      weight="fill"
+                      size={26}
+                      className="text-primary-500 [.ui-play_&]:text-white [.ui-cleaner-play_&]:text-white"
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-caption font-semibold uppercase tracking-wide text-muted-foreground">
+                      {badge.isAdminAwarded
+                        ? t("badges.celebrateAwardedTitle")
+                        : t("badges.celebrateTitle")}
+                    </span>
+                    <span className="block truncate text-body font-bold text-foreground">
+                      {badge.name}
+                    </span>
+                    {badge.isAdminAwarded && badge.awardReason ? (
+                      <span className="block truncate text-caption text-muted-foreground">
+                        {badge.awardReason}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              ),
+              { duration: 6000 }
+            );
+          });
+        }
 
         // Persist auto-unlocked badges server-side so they show on the leaderboards
         // (best-effort, throttled per institute inside the service).
@@ -602,10 +676,13 @@ export function DashboardComponent() {
   }, [
     data,
     weeklyAttendance,
+    isLoadingAttendance,
     instituteId,
     studyLibraryData,
+    studyLibraryFetchStatus,
     setGamificationData,
     showGamification,
+    t,
   ]);
 
   const handleJoinSession = async (session: SessionDetails) => {

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementPlanDTO;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementPlanRequest;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementSlotDTO;
@@ -15,7 +16,14 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import java.util.List;
 import java.util.Map;
 
-/** Teacher/admin authoring and tracking for daily engagement. */
+/**
+ * Teacher/admin authoring and tracking for daily engagement.
+ *
+ * <p>Every endpoint proves staff membership of the institute it names. Without that
+ * check the instituteId is just a string the caller supplies, so any authenticated
+ * user — including a learner — could publish content straight onto another
+ * institute's learner home pages, or read their plans back.
+ */
 @RestController
 @RequestMapping("/admin-core-service/engagement/admin/v1")
 @RequiredArgsConstructor
@@ -24,12 +32,14 @@ public class EngagementAdminController {
 
     private final EngagementPlanService planService;
     private final EngagementTrackingService trackingService;
+    private final InstituteAccessValidator instituteAccessValidator;
 
     @PostMapping("/plan")
     public ResponseEntity<EngagementPlanDTO> createPlan(
             @RequestParam String instituteId,
             @RequestBody EngagementPlanRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         return ResponseEntity.ok(planService.createPlan(request, instituteId, user.getUserId()));
     }
 
@@ -39,6 +49,7 @@ public class EngagementAdminController {
             @RequestParam String instituteId,
             @RequestBody EngagementPlanRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         return ResponseEntity.ok(planService.updatePlan(planId, request, instituteId));
     }
 
@@ -47,6 +58,7 @@ public class EngagementAdminController {
             @PathVariable String planId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         return ResponseEntity.ok(planService.getPlan(planId, instituteId));
     }
 
@@ -55,6 +67,7 @@ public class EngagementAdminController {
             @RequestParam String instituteId,
             @RequestParam(required = false) String packageSessionId,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         return ResponseEntity.ok(planService.listPlans(instituteId, packageSessionId));
     }
 
@@ -63,6 +76,7 @@ public class EngagementAdminController {
             @PathVariable String planId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         planService.deletePlan(planId, instituteId);
         return ResponseEntity.ok(Map.of("deleted", true));
     }
@@ -73,6 +87,7 @@ public class EngagementAdminController {
             @RequestParam String instituteId,
             @RequestBody EngagementSlotRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         return ResponseEntity.ok(planService.upsertSlot(planId, request, instituteId));
     }
 
@@ -81,6 +96,7 @@ public class EngagementAdminController {
             @PathVariable String slotId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         planService.deleteSlot(slotId, instituteId);
         return ResponseEntity.ok(Map.of("deleted", true));
     }
@@ -91,6 +107,7 @@ public class EngagementAdminController {
             @PathVariable String itemId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         return ResponseEntity.ok(trackingService.getItemTracking(itemId, instituteId));
     }
 }

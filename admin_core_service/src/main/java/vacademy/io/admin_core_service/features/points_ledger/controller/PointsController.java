@@ -68,12 +68,19 @@ public class PointsController {
                 "rowsWritten", written));
     }
 
-    /** Admin: one learner's points summary (student detail view). */
+    /**
+     * Staff: one learner's points summary (student detail view).
+     *
+     * Requires staff membership of the institute — this reads ANOTHER learner's
+     * totals by id, so without the check any authenticated user could walk other
+     * people's points by changing the userId.
+     */
     @GetMapping("/v1/learner/summary")
     public ResponseEntity<PointsSummaryDTO> learnerSummary(
             @RequestParam String instituteId,
             @RequestParam String userId,
             @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
         return ResponseEntity.ok(pointsLedgerService.getSummary(instituteId, userId));
     }
 }

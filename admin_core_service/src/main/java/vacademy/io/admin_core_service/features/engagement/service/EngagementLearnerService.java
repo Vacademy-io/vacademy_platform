@@ -75,7 +75,8 @@ public class EngagementLearnerService {
             return new EngagementFeedDTO(List.of(), List.of(), 0, 0, false);
         }
 
-        List<EngagementPlan> plans = planRepository.findPublishedForPackageSessions(packageSessionIds);
+        List<EngagementPlan> plans =
+                planRepository.findPublishedForPackageSessions(packageSessionIds, instituteId);
         if (plans.isEmpty()) {
             return new EngagementFeedDTO(List.of(), List.of(), 0, 0, false);
         }

@@ -23,9 +23,17 @@ public interface EngagementPlanRepository extends JpaRepository<EngagementPlan, 
     @Query("SELECT p FROM EngagementPlan p WHERE p.status = 'PUBLISHED'")
     List<EngagementPlan> findAllPublished();
 
-    /** Published plans for the batches a learner is enrolled in — the feed entry point. */
+    /**
+     * Published plans for the batches a learner is enrolled in — the feed entry point.
+     *
+     * Scoped by institute as well as by batch. Without the institute predicate a plan
+     * created under institute A against a batch belonging to institute B was served to
+     * B's learners, payload and all — while getItem/submit correctly refused it, so the
+     * card could be read but never opened.
+     */
     @Query("SELECT p FROM EngagementPlan p WHERE p.packageSessionId IN :packageSessionIds " +
-            "AND p.status = 'PUBLISHED'")
+            "AND p.instituteId = :instituteId AND p.status = 'PUBLISHED'")
     List<EngagementPlan> findPublishedForPackageSessions(
-            @Param("packageSessionIds") List<String> packageSessionIds);
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("instituteId") String instituteId);
 }

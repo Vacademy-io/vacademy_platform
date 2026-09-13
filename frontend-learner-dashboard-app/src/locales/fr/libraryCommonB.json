@@ -273,6 +273,10 @@
             "skippable": " (Peut être ignoré)",
             "required": " (Requis)",
             "navigationDisabled": " (Navigation désactivée)"
+        },
+        "live": {
+            "ended": "Cette session est terminée",
+            "notStarted": "Commence à l’heure prévue"
         }
     }
 }

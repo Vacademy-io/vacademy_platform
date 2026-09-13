@@ -279,6 +279,10 @@
       "skippable": " (يمكن تخطيه)",
       "required": " (مطلوب)",
       "navigationDisabled": " (التنقل معطّل)"
+    },
+    "live": {
+      "ended": "انتهت هذه الجلسة",
+      "notStarted": "تبدأ في الوقت المحدد"
     }
   }
 }

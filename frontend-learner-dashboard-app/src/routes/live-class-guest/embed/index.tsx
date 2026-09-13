@@ -12,6 +12,7 @@ import { useGuestAccessRecovery } from "../-hooks/useGuestAccessRecovery";
 import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
 import ZohoEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
+import { useServerTime } from "@/hooks/use-server-time";
 import { BASE_URL } from "@/constants/urls";
 import axios from "axios";
 
@@ -43,6 +44,9 @@ function GuestEmbedComponent() {
   // Paid session opened without a local registration (new browser): bounce to
   // the registration page to recover identity instead of showing a 403 error.
   useGuestAccessRecovery(sessionId, error);
+  // Server clock for the live-class sync: the player positions the video by
+  // "now − scheduled start", and a guest's device clock is not to be trusted.
+  const { data: serverTimeData } = useServerTime();
   // If safety modal is disabled, we are "verified" by default.
   const [isSafetyVerified, setIsSafetyVerified] = useState(!ENABLE_LIVE_CLASS_SAFETY_MODAL);
 
@@ -174,6 +178,11 @@ function GuestEmbedComponent() {
             enableConcentrationScore={false}
             liveClassStartTime={
               isLive ? sessionStartTime.toISOString() : undefined
+            }
+            liveClockOffsetMs={
+              serverTimeData
+                ? serverTimeData.serverTimestamp - serverTimeData.fetchedAt
+                : 0
             }
           />
         </div>

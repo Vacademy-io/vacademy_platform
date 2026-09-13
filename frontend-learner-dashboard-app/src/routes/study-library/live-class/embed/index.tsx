@@ -421,6 +421,13 @@ function EmbedComponent() {
         );
       }
 
+      // The player derives the live position from "now − scheduled start". Hand
+      // it the server's view of "now" so a phone whose clock runs a few minutes
+      // off does not put its owner a few minutes away from the rest of the class.
+      const liveClockOffsetMs = serverTimeData
+        ? serverTimeData.serverTimestamp - serverTimeData.fetchedAt
+        : 0;
+
       return (
         <div className="w-full h-full flex flex-col gap-4">
           <YouTubePlayerWrapper
@@ -431,6 +438,7 @@ function EmbedComponent() {
             liveClassStartTime={
               isLive && sessionStartTime ? sessionStartTime.toISOString() : undefined
             }
+            liveClockOffsetMs={liveClockOffsetMs}
             enableConcentrationScore={false}
           />
           <LearnerActionButtons config={learnerButtonConfig} />

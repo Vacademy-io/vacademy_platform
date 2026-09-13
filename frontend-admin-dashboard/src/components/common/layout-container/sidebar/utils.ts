@@ -303,7 +303,9 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'teams',
             },
             {
-                subItem: sidebarT('sidebar:subOrgTeams', { term: getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg) }),
+                subItem: sidebarT('sidebar:subOrgTeams', {
+                    term: getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg),
+                }),
                 subItemLink: '/manage-suborg-teams',
                 subItemId: 'suborg-teams',
             },
@@ -311,17 +313,23 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 // Institute-admin surface — sub-orgs list + drilldown to a sub-org's
                 // analytics deep page. Sibling to "Sub-Org Teams" (which is the
                 // sub-org-admin's narrow view). Both default off; institutes opt in.
-                subItem: sidebarT('sidebar:manageInstituteSubOrgs', { term: getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg) }),
+                subItem: sidebarT('sidebar:manageInstituteSubOrgs', {
+                    term: getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg),
+                }),
                 subItemLink: '/manage-custom-teams',
                 subItemId: 'manage-institute-suborgs',
             },
             {
-                subItem: sidebarT('sidebar:inventoryManagement', { term: getTerminology(OtherTerms.Inventory, SystemTerms.Inventory) }),
+                subItem: sidebarT('sidebar:inventoryManagement', {
+                    term: getTerminology(OtherTerms.Inventory, SystemTerms.Inventory),
+                }),
                 subItemLink: '/manage-inventory',
                 subItemId: 'inventory-management',
             },
             {
-                subItem: sidebarT('sidebar:managePackages', { term: getTerminologyPlural(ContentTerms.Package, SystemTerms.Package) }),
+                subItem: sidebarT('sidebar:managePackages', {
+                    term: getTerminologyPlural(ContentTerms.Package, SystemTerms.Package),
+                }),
                 subItemLink: '/admin-package-management',
                 subItemId: 'manage-packages',
                 adminOnly: true,
@@ -340,7 +348,9 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'all-contacts',
             },
             {
-                subItem: sidebarT('sidebar:linkedCourseContacts', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+                subItem: sidebarT('sidebar:linkedCourseContacts', {
+                    term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                }),
                 subItemLink: '/manage-students/students-list',
                 subItemId: 'linked-contacts',
             },
@@ -355,7 +365,9 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'link-tag',
             },
             {
-                subItem: sidebarT('sidebar:inviteUsers', { term: getTerminology(OtherTerms.Invite, SystemTerms.Invite) }),
+                subItem: sidebarT('sidebar:inviteUsers', {
+                    term: getTerminology(OtherTerms.Invite, SystemTerms.Invite),
+                }),
                 subItemLink: '/manage-students/invite',
                 subItemId: 'invite',
             },
@@ -444,7 +456,9 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'membership-expiry-sub',
             },
             {
-                subItem: sidebarT('sidebar:inviteStats', { term: getTerminology(OtherTerms.Invite, SystemTerms.Invite) }),
+                subItem: sidebarT('sidebar:inviteStats', {
+                    term: getTerminology(OtherTerms.Invite, SystemTerms.Invite),
+                }),
                 subItemLink: '/membership-stats',
                 subItemId: 'membership-stats-sub',
             },
@@ -927,17 +941,23 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: PlusCircle,
-        title: sidebarT('sidebar:courseCreation', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+        title: sidebarT('sidebar:courseCreation', {
+            term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+        }),
         id: 'course-creation',
         category: 'LMS',
         subItems: [
             {
-                subItem: sidebarT('sidebar:createNewCourseFromScratch', { term: getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase() }),
+                subItem: sidebarT('sidebar:createNewCourseFromScratch', {
+                    term: getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase(),
+                }),
                 subItemLink: '/study-library/courses?action=create',
                 subItemId: 'create-course-scratch',
             },
             {
-                subItem: sidebarT('sidebar:createCourseFromAi', { term: getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase() }),
+                subItem: sidebarT('sidebar:createCourseFromAi', {
+                    term: getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase(),
+                }),
                 subItemLink: '/study-library/ai-copilot',
                 subItemId: 'create-course-ai',
             },
@@ -960,7 +980,9 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'LMS',
         subItems: [
             {
-                subItem: sidebarT('sidebar:scheduledLiveSessions', { term: getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
+                subItem: sidebarT('sidebar:scheduledLiveSessions', {
+                    term: getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession),
+                }),
                 subItemLink: '/study-library/live-session',
                 subItemId: 'scheduled-sessions',
             },
@@ -975,12 +997,16 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'bulk-schedule-live-session',
             },
             {
-                subItem: sidebarT('sidebar:liveSessionAttendance', { term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
+                subItem: sidebarT('sidebar:liveSessionAttendance', {
+                    term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
+                }),
                 subItemLink: '/study-library/attendance-tracker',
                 subItemId: 'session-attendance',
             },
             {
-                subItem: sidebarT('sidebar:liveSessionFeedback', { term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
+                subItem: sidebarT('sidebar:liveSessionFeedback', {
+                    term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
+                }),
                 subItemLink: '/study-library/live-session/feedback',
                 subItemId: 'live-session-feedback',
             },
@@ -988,7 +1014,9 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: CalendarCheck,
-        title: sidebarT('sidebar:coursePlanningAndLogbook', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+        title: sidebarT('sidebar:coursePlanningAndLogbook', {
+            term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+        }),
         id: 'course-planning-logging',
         category: 'LMS',
         subItems: [
@@ -1003,7 +1031,9 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'ai-lecture-planning',
             },
             {
-                subItem: sidebarT('sidebar:logCourseProgress', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+                subItem: sidebarT('sidebar:logCourseProgress', {
+                    term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                }),
                 subItemLink: '/planning/activity-logs',
                 subItemId: 'log-course-progress',
             },
@@ -1038,6 +1068,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: sidebarT('sidebar:createEngagingContent'),
                 subItemLink: '/video-api-studio',
                 subItemId: 'create-engaging-content',
+            },
+            {
+                subItem: sidebarT('sidebar:dailyEngagement'),
+                subItemLink: '/engagement',
+                subItemId: 'daily-engagement',
             },
         ],
     },
@@ -1125,7 +1160,9 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: Robot,
-        title: sidebarT('sidebar:aiCourseCreator', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+        title: sidebarT('sidebar:aiCourseCreator', {
+            term: getTerminology(ContentTerms.Course, SystemTerms.Course),
+        }),
         id: 'ai-copilot-tab',
         category: 'AI',
         to: '/study-library/ai-copilot',

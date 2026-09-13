@@ -7,6 +7,7 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { MyButton } from '@/components/design-system/button';
 import { listEngagementPlans } from './-services/engagement-service';
 import { PlanComposerDialog } from './-components/PlanComposerDialog';
+import { PlanCard } from './-components/PlanCard';
 
 const routeApi = getRouteApi('/engagement/');
 
@@ -67,33 +68,7 @@ function EngagementPlans() {
 
                 <div className="space-y-3">
                     {(plans ?? []).map((plan) => (
-                        <div
-                            key={plan.id}
-                            className="rounded-lg border border-neutral-200 p-4 transition hover:border-neutral-300"
-                        >
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium text-neutral-900">
-                                        {plan.title}
-                                    </p>
-                                    <p className="mt-0.5 text-xs text-neutral-500">
-                                        {plan.timezone} · {plan.defaultMissPolicy}
-                                    </p>
-                                </div>
-                                <span
-                                    className={
-                                        plan.status === 'PUBLISHED'
-                                            ? 'rounded-md bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700'
-                                            : 'rounded-md bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600'
-                                    }
-                                >
-                                    {plan.status}
-                                </span>
-                            </div>
-                            {plan.description && (
-                                <p className="mt-2 text-sm text-neutral-600">{plan.description}</p>
-                            )}
-                        </div>
+                        <PlanCard key={plan.id} plan={plan} />
                     ))}
                 </div>
             </div>

@@ -521,21 +521,43 @@ learners is one bad generation away from an incident.
   plain `tsc`, admin baseline 1)
 - ESLint clean on all new files; design gate clean (one permitted, commented inline style)
 
-### NOT verified — do this first
-- **No service has been booted against a database.** Spring Data validates `@Query` at startup, so
-  a malformed JPQL fails the whole service, not a test. The riskiest constructs were removed
-  deliberately (nullable-parameter comparisons split into separate queries, `NULLS LAST` dropped),
-  but the queries remain unproven. Boot admin_core locally before deploying.
-- The migrations have never been run. Do not renumber them; V512-V514 were checked against all branches.
-- No end-to-end pass: no plan has been authored, no learner has seen a card, no points row exists.
+### Deployed and verified on PROD, 2026-09-13 19:17 UTC
+
+Pushed as `1914a35f47`; backend deployed and confirmed via `~/.kube/vacademy-prod-direct.yaml`:
+
+- Flyway applied V512 → V513 → V514 in 174ms; schema at v514.
+- `Started AdminCoreServiceApplication in 42.649 seconds`; 4/4 replicas `1/1 Running`, 0 restarts.
+- 54 engagement/points classes present in the running `/app/admin_core_service.jar`.
+- No errors attributable to this feature (the one `ERROR` in logs is a pre-existing
+  `Catalogue not found for tag`).
+
+**A clean boot is the proof the JPA queries are valid** — Spring Data validates every `@Query` at
+startup, so the risk flagged before deploy is retired.
+
+### STILL not verified
+- **No end-to-end pass.** No plan authored, no learner has seen a card, no `points_ledger` row
+  exists. Everything above proves the code loads and the schema applied, not that the flow works.
+- Frontends deploy separately (Cloudflare Pages, not k8s) — confirm the admin and learner bundles
+  carry this work before expecting anything on screen.
+- The stored QA test accounts return `Bad credentials` as of 2026-09-13; fresh ones are needed for
+  a live round trip.
 
 ### Known gaps (deliberate, Phase 2+)
 - No streak job — `ENGAGEMENT_STREAK` is defined in the ledger but nothing awards it yet.
-- No admin tracking UI — `EngagementTrackingService` and its endpoint exist and are unused.
+- ~~No admin tracking UI~~ — **BUILT 2026-09-14.** `/engagement` plans expand to their slots and
+  tasks; each task opens a tracking table (per-learner status, correct/wrong, points, time, late
+  flag) with completed/correct/accuracy stats. Slots load only on expand.
 - Editing an existing plan's slots/items from the UI: the composer creates only. The backend
   supports update and item versioning.
 - No `ENGAGEMENT_SETTING` settings screen; defaults apply (cap 5, 80% scroll, 15s dwell,
   unverified score bonus off).
-- The learner leaderboard UI still requests the default ACTIVITY metric. Switching it to
-  `metric=POINTS` is a one-parameter change once the ledger has data.
+- **Sidebar entry added 2026-09-14**: LMS → Learning Engagement → "Daily Engagement" (`/engagement`),
+  with en/hi/fr/ar strings. Before this the route was unreachable except by typing the URL.
+- The learner leaderboard UI still requests the default ACTIVITY metric. **Deliberately not
+  flipped yet.** `points_ledger` is currently written by daily engagement ONLY — nothing writes
+  `ACTIVITY`, `ASSESSMENT` or `ENGAGEMENT_STREAK` rows. Flipping today would rank every learner at
+  0 and be a regression on the current minutes ranking, which at least separates active learners.
+  Flip only after either (a) engagement is genuinely in use, or (b) activity/assessment points are
+  written into the ledger. (b) is the better order: it makes POINTS a superset of today's signal
+  rather than a replacement for it.
 - Strings in the new UI are not run through i18n.

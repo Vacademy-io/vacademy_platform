@@ -52,6 +52,7 @@ vi.mock("@phosphor-icons/react", () => {
   return {
     ArrowsOut: icon("ArrowsOut"), FastForward: icon("FastForward"), Pause: icon("Pause"),
     Play: icon("Play"), Rewind: icon("Rewind"), X: icon("X"), Gauge: icon("Gauge"),
+    CheckCircle: icon("CheckCircle"), Clock: icon("Clock"),
   };
 });
 

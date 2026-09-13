@@ -35,6 +35,8 @@ import {
   Rewind,
   X,
   Gauge,
+  CheckCircle,
+  Clock,
 } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
@@ -2401,20 +2403,36 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   // While a live class is held there is nothing a Play button could honestly
-  // do, so the controls say why instead of offering a tap that does nothing.
-  const liveHoldLabel =
+  // do. The player says so across its whole surface rather than in a badge
+  // tucked into the control bar: on a phone the bar only appears on a tap, so
+  // a frozen last frame — or the thumbnail, for a learner arriving after the
+  // end — read as a hung video. The overlay is informative only
+  // (pointer-events-none): taps still reach the surface below, and the control
+  // bar (fullscreen, exit) sits above it.
+  const liveHold =
     livePhase === "ended"
-      ? t("youtubePlayer.live.ended")
+      ? {
+          Icon: CheckCircle,
+          title: t("youtubePlayer.live.ended"),
+          hint: t("youtubePlayer.live.endedHint"),
+        }
       : livePhase === "not-started"
-        ? t("youtubePlayer.live.notStarted")
+        ? {
+            Icon: Clock,
+            title: t("youtubePlayer.live.notStarted"),
+            hint: t("youtubePlayer.live.notStartedHint"),
+          }
         : null;
-  const liveHoldBadge = liveHoldLabel ? (
-    <span
+  const liveHoldOverlay = liveHold ? (
+    <div
       role="status"
-      className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm"
+      aria-live="polite"
+      className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-stack bg-black/90 p-6 text-center text-white"
     >
-      {liveHoldLabel}
-    </span>
+      <liveHold.Icon size={48} weight="fill" className="text-white/80" />
+      <span className="text-lg font-semibold">{liveHold.title}</span>
+      <span className="text-sm text-white/70">{liveHold.hint}</span>
+    </div>
   ) : null;
 
   return (
@@ -2617,9 +2635,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                         <Pause size={20} weight="fill" />
                       </button>
                     ) : null
-                  ) : liveHoldBadge ? (
-                    liveHoldBadge
-                  ) : (
+                  ) : liveHold ? null : (
                     <button
                       onClick={togglePlay}
                       className="p-2 rounded-full text-white transition-all backdrop-blur-sm bg-white/20 hover:bg-white/30"
@@ -2843,9 +2859,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           </div>
         )}
 
+        {/* A held live class: before its scheduled start, or once its video has
+            run out. Covers the frame so nothing looks frozen. */}
+        {liveHoldOverlay}
+
         {/* Manual Play Button for iOS/browsers that block autoplay. Not while a
             live class is deliberately held — that is not a blocked autoplay. */}
-        {showManualPlayButton && !allowPlayPause && !liveHoldLabel && (
+        {showManualPlayButton && !allowPlayPause && !liveHold && (
           <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm animate-in fade-in duration-500">
             <button
               onClick={handleManualPlay}
@@ -2886,9 +2906,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                         <Pause size={20} weight="fill" />
                       </button>
                     ) : null
-                  ) : liveHoldBadge ? (
-                    liveHoldBadge
-                  ) : (
+                  ) : liveHold ? null : (
                     <button
                       onClick={togglePlay}
                       className="p-2 rounded-full text-white transition-all backdrop-blur-sm bg-white/20 hover:bg-white/30"

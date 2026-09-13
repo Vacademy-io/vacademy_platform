@@ -274,7 +274,9 @@
     },
     "live": {
       "ended": "This session has ended",
-      "notStarted": "Starts at the scheduled time"
+      "notStarted": "Starts at the scheduled time",
+      "endedHint": "There is nothing more to play. You can leave this page.",
+      "notStartedHint": "It will begin on its own when the class starts."
     }
   }
 }

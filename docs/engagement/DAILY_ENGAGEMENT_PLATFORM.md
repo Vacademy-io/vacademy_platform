@@ -574,6 +574,12 @@ becomes a SUPERSET of the legacy minutes ranking instead of a replacement for it
 - Skips any institute that has not enabled badges/leaderboard — writing points for an institute
   that never opted into a points economy would surface numbers nobody asked for.
 
+`POST /admin-core-service/points/v1/accrual/run?instituteId=…&days=30` (institute admin) runs the
+same accrual on demand, bounded to 365 days. It works **even while the nightly job is disabled** —
+deliberately, so accrual can be tried on one institute and inspected before being switched on for
+everyone. It is also the backfill tool: awards are idempotent per day, so widening `days` simply
+fills in the earlier days it has not written yet.
+
 **OFF BY DEFAULT: `vacademy.points.accrual.enabled=false`.** The first run writes points for every
 active learner in every enabled institute, which changes what learners see. That should be a
 deliberate switch, not a side effect of a deploy. Set it to `true` when you want accrual to begin.

@@ -550,6 +550,20 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("instituteId") String instituteId,
       @Param("statuses") List<String> statuses);
 
+  /**
+   * Learners enrolled in one batch — the recipient list for a daily-engagement push.
+   * Distinct so a re-enrolled learner is not notified twice.
+   */
+  @Query(value = """
+      SELECT DISTINCT user_id FROM student_session_institute_group_mapping
+      WHERE package_session_id = :packageSessionId
+        AND status IN (:statuses)
+        AND user_id IS NOT NULL
+      """, nativeQuery = true)
+  List<String> findDistinctUserIdsByPackageSessionAndStatus(
+      @Param("packageSessionId") String packageSessionId,
+      @Param("statuses") List<String> statuses);
+
   @Query(value = """
       SELECT DISTINCT institute_id FROM student_session_institute_group_mapping
       WHERE user_id = :userId

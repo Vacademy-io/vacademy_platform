@@ -118,6 +118,8 @@ import { StreakCounterWidget } from "./-components/play/StreakCounterWidget";
 import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
 import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
 import { DashboardGamificationPanel } from "./-components/DashboardGamificationPanel";
+import { EngagementTodayCard } from "./-components/engagement/EngagementTodayCard";
+import { fetchPointsSummary } from "@/services/points";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
 import {
@@ -598,6 +600,26 @@ export function DashboardComponent() {
           liveSessionCount: liveStats.count,
           liveSessionStreak: liveStats.streak,
         });
+
+        // The figures above are computed in THIS browser and cached in
+        // localStorage, so they can never agree with a leaderboard or be
+        // compared between learners. points_ledger is the authoritative source;
+        // overlay it when the server answers and keep the computed values as a
+        // fallback when it does not (offline, or an institute mid-rollout).
+        const serverPoints = await fetchPointsSummary();
+        if (serverPoints) {
+          gamificationData.totalXp = serverPoints.totalPoints;
+          gamificationData.todayXp = serverPoints.todayPoints;
+          gamificationData.level = serverPoints.level;
+          gamificationData.xpToNextLevel = serverPoints.pointsToNextLevel;
+          if (serverPoints.breakdown?.length) {
+            gamificationData.xpBreakdown = serverPoints.breakdown.map((b) => ({
+              key: b.key,
+              label: b.label,
+              points: b.points,
+            }));
+          }
+        }
 
         setGamificationData(gamificationData);
 
@@ -1207,6 +1229,10 @@ export function DashboardComponent() {
               >
                 {/* Without a rail, announcements lead the main column */}
                 {!hasRail && <DashboardPinsPanel maxPins={3} />}
+                {/* Today's teacher-scheduled tasks. Renders null when the
+                    institute has no engagement plan running, so a dashboard
+                    without the feature keeps exactly the layout it has now. */}
+                <EngagementTodayCard />
                 {mainColumnWidgets.map((w) => (
                   <div key={w.id} className="empty:hidden">
                     {w.render}

@@ -1,0 +1,39 @@
+package vacademy.io.admin_core_service.features.engagement.entity;
+
+/** Shared vocabulary for the daily-engagement feature. Stored as strings. */
+public final class EngagementEnums {
+
+    private EngagementEnums() {}
+
+    public enum PlanStatus { DRAFT, PUBLISHED, ARCHIVED, DELETED }
+
+    public enum SlotStatus { ACTIVE, DELETED }
+
+    public enum ItemStatus {
+        ACTIVE,
+        /** Superseded by a newer version after an edit to an already-open item. */
+        RETIRED,
+        DELETED
+    }
+
+    public enum ItemType {
+        READING_HTML,
+        VISUAL_NOTE,
+        QUESTION_OF_DAY,
+        QUIZ,
+        GAME,
+        POLL
+    }
+
+    /** What happens to an item a learner never opened while it was live. */
+    public enum MissPolicy {
+        /** Gone at end_time. The strongest hook. */
+        EXPIRES,
+        /** Attemptable for catch_up_days at full points. */
+        CATCH_UP_FULL,
+        /** Attemptable for catch_up_days at catch_up_percent of points. */
+        CATCH_UP_REDUCED
+    }
+
+    public enum AttemptStatus { STARTED, COMPLETED, SKIPPED }
+}

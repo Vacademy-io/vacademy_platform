@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 from app import bot as b
-from app.turntake import normalize_spoken, question_topic
+from app.turntake import is_echo_of_answer, normalize_spoken, question_topic
 
 _SEND_RE = re.compile(re.escape(b.SEND_MARKER_OPEN) + r"([^<>]+)" + re.escape(b.SEND_MARKER_CLOSE))
 
@@ -63,6 +63,15 @@ class TextGates:
                     self.gate._asked[topic] = norm
             else:
                 dropped.append(sent.strip())
+        # Mirror NoRepeatGate._echo_held: an opening sentence that only says
+        # the caller's answer back is dropped when anything real follows it,
+        # spoken when it is the whole reply. (The wrapper never ran the gate's
+        # process_frame, so until 2026-09-13 the text sim could not see this.)
+        if len(kept) >= 2 and self.gate._no_echo():
+            last_q = next((x for x in reversed(self.gate._spoken[:-len(kept)]) if "?" in x), "")
+            if is_echo_of_answer(kept[0], self._last_user, last_q):
+                dropped.append(kept[0])
+                kept = kept[1:]
         return Spoken(text=" ".join(kept), dropped=dropped, ended=ended, transfer=transfer,
                       sends=sends, raw=raw, had_markup=had_markup or ("<" in emit and ">" in emit))
 

@@ -95,7 +95,8 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
                        caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
-                       presence_cue, last_question_in, is_fragment_continuation)
+                       presence_cue, last_question_in, is_fragment_continuation,
+                       is_echo_of_answer)
 
 logger = logging.getLogger(__name__)
 
@@ -1017,6 +1018,7 @@ class NoRepeatGate(FrameProcessor):
         # A content-free opener we are holding rather than speaking, and the last
         # sentence the gate dropped (kept ACROSS turns, unlike _held_tail).
         self._cf_held = ""
+        self._echo_held = ""           # an opening restatement, held until we know if more follows
         self._last_suppressed = ""
 
     def _trim_echo(self, sentence: str) -> str:
@@ -1223,6 +1225,12 @@ class NoRepeatGate(FrameProcessor):
         return k in cls._CONTENT_FREE or k in cls._FILLER
 
     async def _emit(self, text: str, direction):
+        if self._echo_held and text is not self._echo_held:
+            logger.info("no-echo: dropping restated answer %r — real content followed",
+                        self._echo_held.strip()[:48])
+            if self._diag is not None:
+                self._diag.bump("echoes_trimmed")
+            self._echo_held = ""
         # The End-branch strips its tail, so without this the assistant
         # aggregator glues sentences into "…for you.How does that sound?" in
         # the model's own context — and the model then IMITATES the glued
@@ -1308,6 +1316,7 @@ class NoRepeatGate(FrameProcessor):
                     logger.exception("no-repeat: unplayed-revert failed — keeping all")
             self._pending = []
             self._buf, self._held_tail, self._cf_held = "", "", ""
+            self._echo_held = ""
             self._cf_this_reply = set()
             self._real_this_reply = False
             self._norms_this_reply = set()
@@ -1348,6 +1357,20 @@ class NoRepeatGate(FrameProcessor):
                     self._cf_held = sentence
                     logger.info("no-repeat: holding a second content-free opener %r",
                                 sentence.strip()[:32])
+                    continue
+                # An opening sentence that only says the caller's answer back
+                # ("Okay, so it's all offline right now.") is held: if anything
+                # real follows, it is dropped; if it is the whole reply, it is
+                # spoken rather than leaving silence. Founder, 2026-09-13:
+                # "whatever is being answered the bot is again reconfirming
+                # every time, that's not normal." The prompt forbids it and the
+                # model does it anyway (4/4 sim runs), so the gate enforces it.
+                if (self._emitted == 0 and not self._echo_held and self._no_echo()
+                        and is_echo_of_answer(
+                            sentence, self._last_caller_text(),
+                            next((x for x in reversed(self._spoken) if "?" in x), ""))):
+                    self._echo_held = sentence
+                    logger.info("no-echo: holding restated answer %r", sentence.strip()[:48])
                     continue
                 # The SAME content-free sentence twice in ONE reply says nothing
                 # twice. Call 08df7128: "Right." … "Right." was all that survived
@@ -1430,6 +1453,12 @@ class NoRepeatGate(FrameProcessor):
                     logger.info("no-repeat: whole reply was a repeat — handing back with %r", line)
                     self._emitted += 1
                     await self.push_frame(LLMTextFrame(line), direction)
+            if self._emitted == 0 and self._echo_held:
+                # Nothing but the restatement came: better a weak line than silence.
+                held, self._echo_held = self._echo_held, ""
+                logger.info("no-echo: restatement was the whole reply — speaking it")
+                await self._emit(held, direction)
+            self._echo_held = ""
             if self._emitted == 0 and self._cf_held:
                 # The model answered "you talk" for the second turn running. Say
                 # the thing it has been unable to get out instead; only if there
@@ -2855,6 +2884,21 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "scripted opening stays exactly as written."
         if get_settings().prosody_hints_enabled else ""
     )
+    # Placed among the LAST rules on purpose (recency wins in a long prompt) and
+    # written with the exact lines callers heard, because the generic version
+    # above did not hold: after every answer the model opened by saying the
+    # answer back, four rounds in call 15aadcdb. The gate now drops such an
+    # opener when more follows (NoRepeatGate._echo_held); this is the first line
+    # of defence.
+    reply_shape_rule = (
+        "- AFTER THE CALLER ANSWERS, YOUR FIRST SENTENCE IS NEVER THEIR ANSWER IN OTHER "
+        "WORDS. This overrides any example in the script above. Wrong, all heard on real "
+        "calls: \u2018Okay, so it\u2019s all offline right now.\u2019 / \u2018So you\u2019re not running any "
+        "online classes.\u2019 / \u2018You\u2019re maintaining an Excel sheet.\u2019 / \u2018Okay, so they do "
+        "UPI.\u2019 / \u2018No online classes at all then?\u2019 Right: go straight to the next "
+        "question or the next useful fact, or close if their answer means this is not for "
+        "them. If you need a beat, one word at most (\u2018Great.\u2019), never their words."
+    )
     fields_line = _lead_fields_line(context)
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
                 f"append {END_MARKER}. If the caller asks you to end the call, says they are "
@@ -3009,6 +3053,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             plain_speech_rule,
             fast_open_rule,
             no_echo_rule,
+            reply_shape_rule,
             warm_question_rule,
             check_in_rule,
             delivery_rule,
@@ -3055,6 +3100,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         dialled_number_line,
         ("- Mostly SKIP acknowledgment openers entirely and answer directly; when you do "
          "acknowledge, never use the same word twice in a row."),
+        reply_shape_rule,
         # Scoped to a QUESTION or a CONCERN on purpose. Reflecting one back shows you
         # listened; reflecting an ANSWER back is the parroting no_echo_rule forbids,
         # and the unscoped version of this line was licence for exactly that.

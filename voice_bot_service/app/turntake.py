@@ -358,6 +358,55 @@ def is_fragment_continuation(prev: str, text: str, dt: float, window: float = 1.
     return not t.endswith(_TERMINAL) and len(t.split()) <= 4
 
 
+# Words that carry no content of their own in a restatement: function words,
+# acknowledgments, and the generic verbs/time words a confirmation is built from.
+_ECHO_STOP = frozenset({
+    "so", "okay", "ok", "alright", "right", "now", "then", "all", "just", "currently",
+    "at", "the", "moment", "it", "its", "it's", "is", "are", "was", "were", "be", "being",
+    "you", "you're", "your", "youre", "we", "they", "they're", "not", "no", "any", "do",
+    "does", "doing", "done", "did", "run", "runs", "running", "take", "takes", "taking",
+    "have", "has", "having", "only", "and", "or", "of", "a", "an", "in", "on", "for", "to",
+    "that", "this", "these", "those", "there", "mostly", "basically", "means", "mean",
+    "means", "yes", "yeah", "great", "got", "understood", "i", "see", "as", "with", "by",
+    "ji", "haan", "toh", "achha", "theek", "hai", "hain", "aap", "aapka", "aapki", "ka",
+    "ki", "ke", "mein", "me", "abhi", "bilkul", "matlab", "sir", "ma'am", "maam", "madam",
+})
+
+
+def _stem(w: str) -> str:
+    return w[:5]
+
+
+def is_echo_of_answer(sentence: str, caller_text: str, bot_question: str = "") -> bool:
+    """Is this whole sentence just the caller's answer said back — every content
+    word already in what they said or in the question we asked? Calls 15aadcdb
+    ("It is offline." → "Okay, so it's all offline right now." / "So no online
+    classes at all then?"), 859c20ee ("we maintain Excel sheet" → "You're
+    maintaining an Excel sheet."), 08df7128 ("Okay, so they do UPI."). Not when
+    the caller asked something (then the sentence is an answer), and never for
+    a sentence that brings a new content word."""
+    if not sentence or not (caller_text or "").strip():
+        return False
+    # A question by the caller makes the sentence an answer, not an echo. The
+    # loose cue-anywhere test would call "they can do UPI" a question; a '?' or
+    # a leading question word is the honest signal on a punctuating engine.
+    ct = caller_text.strip()
+    cw = _words(ct)
+    if "?" in ct or "？" in ct or (cw and cw[0] in _QUESTION_CUES):
+        return False
+    def _toks(t: str) -> list:
+        # _words keeps '?' on the last token ("then?"); strip sentence marks.
+        return [w.strip("?？.!,") for w in _words(t) if w.strip("?？.!,")]
+    ws = _toks(sentence)
+    if not ws or len(ws) > 12:
+        return False
+    content = [w for w in ws if w not in _ECHO_STOP and w not in _BACKCHANNEL_WORDS]
+    if not content:
+        return False                      # content-free, handled elsewhere
+    ref = {_stem(w) for w in _toks(caller_text)} | {_stem(w) for w in _toks(bot_question)}
+    return all(_stem(w) in ref for w in content)
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))

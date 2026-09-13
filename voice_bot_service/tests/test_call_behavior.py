@@ -4208,3 +4208,42 @@ async def test_a_yes_after_an_echo_only_reply_demands_the_next_step():
     ])
     await _feed(tc2, "Yes")
     assert not any("NEXT step" in c for c in rec2.cues()), rec2.cues()
+
+
+# ── founder 2026-09-13: "whatever is being answered the bot is again reconfirming" ──
+
+def test_is_echo_of_answer_shapes():
+    from app.turntake import is_echo_of_answer as f
+    Q = "You'd be taking classes online these days I'm guessing — or is it all offline right now?"
+    assert f("Okay, so it's all offline right now.", "It is offline.", Q)
+    assert f("So no online classes at all then?", "It is offline.", Q)
+    assert f("You're maintaining an Excel sheet.", "Uh, we maintain Excel sheet, ma'am.",
+             "And are you tracking who's paid in a diary, or how does that work?")
+    assert f("Okay, so they do UPI.", "Yeah, they can do UPI. We share the QR code with them",
+             "Is it mostly GPay or PhonePe?")
+    # new content is not an echo
+    assert not f("Who handles the fees for your offline batches?", "It is offline.", Q)
+    assert not f("Then the daily part must be on you.", "Online.", "Are your classes online?")
+    # an answer to the caller's question is not an echo
+    assert not f("Yes, it is offline only.", "Is it offline?", "")
+    assert not f("Okay.", "It is offline.", Q)          # content-free, someone else's job
+
+
+@pytest.mark.asyncio
+async def test_a_restated_answer_is_dropped_when_something_follows_and_kept_alone():
+    rec = _NRRec()
+    caller = {"t": "It is offline."}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "You'd be taking classes online these days I'm guessing — or is it all offline right now?")
+    rec.text.clear()
+    await _reply(g, "Okay, so it's all offline right now. ",
+                 "Who handles the fees and reminders for your offline batches?")
+    assert [t.strip() for t in rec.text] == [
+        "Who handles the fees and reminders for your offline batches?"], rec.text
+    rec.text.clear()
+    caller["t"] = "Yes."
+    await _reply(g, "So you're only doing offline classes.")
+    assert [t.strip() for t in rec.text] == ["So you're only doing offline classes."], \
+        "a restatement that is the whole reply must still be spoken"

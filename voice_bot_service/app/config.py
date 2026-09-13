@@ -84,6 +84,22 @@ class Settings:
     # are beyond any sane hold and Smart Turn's own cap covers them.
     smallest_ttfs_p99: float = field(
         default_factory=lambda: float(_env("SMALLEST_TTFS_P99", "0.5")))
+    # Pulse decodes what it has when our VAD stop sends `finalize`. On a SHORT
+    # answer that is ~0.3 s of audio, and it either answers ~2.5 s late or not
+    # at all — bench: "haan" 2.50 s every run; live call a59696ed (2026-09-13):
+    # the caller's "Yes" produced NO transcript, 5.6 s of silence, they said
+    # "hello" and only that was heard. 2 of 13 closed turns in the day's logs
+    # had no transcript within 2.5 s.
+    # Asking AGAIN when nothing has come back fixes it at no cost to healthy
+    # turns — measured on the same clips:
+    #   finalize once (pipecat)  haan 2.50 s   yes 0.11 s
+    #   hold finalize 0.5 s      haan 0.73 s   yes 0.72 s   <- taxes every turn
+    #   ask again after 0.7 s    haan 0.81 s   yes 0.11 s   <- this
+    # SMALLEST_FINALIZE_RETRY_SECS=0 restores pipecat's behaviour exactly.
+    smallest_finalize_retry_secs: float = field(
+        default_factory=lambda: float(_env("SMALLEST_FINALIZE_RETRY_SECS", "0.7")))
+    smallest_finalize_retries: int = field(
+        default_factory=lambda: int(_env("SMALLEST_FINALIZE_RETRIES", "3")))
     # "telephony", NOT "latest_long": measured on the caller channel of real call
     # 31a1acf1 (8 kHz Hindi phone audio), latest_long dropped most of every
     # utterance ("क्या बात कर रहा है?" for a 15-word sentence) while telephony

@@ -4247,3 +4247,119 @@ async def test_a_restated_answer_is_dropped_when_something_follows_and_kept_alon
     await _reply(g, "So you're only doing offline classes.")
     assert [t.strip() for t in rec.text] == ["So you're only doing offline classes."], \
         "a restatement that is the whole reply must still be spoken"
+
+
+# ── call a59696ed (2026-09-13): "Okay.Yes, go ahead." ended the call ─────────
+
+@pytest.mark.asyncio
+async def test_an_all_repeat_reply_after_an_answer_asks_for_the_next_step():
+    """The caller answered "Yes" and the model's whole reply was that same
+    question again. Handing the turn back to someone who has just spoken
+    ("Yes, go ahead.") is nonsense — they hung up. Ask the model for its next
+    line instead, at most twice per call."""
+    rec = _NRRec()
+    asked = []
+
+    async def _next_step(held):
+        asked.append(held)
+    caller = {"t": "Yes"}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    Q = "Are you sending it on WhatsApp yourself every morning?"
+    await _reply(g, Q)
+    rec.text.clear()
+    await _reply(g, "Okay. ", "So " + Q[0].lower() + Q[1:])
+    assert asked, "no next-step request"
+    assert not any("go ahead" in t for t in rec.text), rec.text
+
+
+@pytest.mark.asyncio
+async def test_a_handback_is_spaced_off_the_sentence_before_it():
+    """"Okay." + "Yes, go ahead." reached the line as "Okay.Yes, go ahead." —
+    the raw push bypassed the spacing _emit does."""
+    rec = _NRRec()
+    caller = {"t": ""}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    Q = "Are you sending it on WhatsApp yourself every morning?"
+    await _reply(g, Q)
+    rec.text.clear()
+    await _reply(g, "Okay. ", "So " + Q[0].lower() + Q[1:])
+    joined = "".join(rec.text)
+    assert "." + "Yes" not in joined.replace(". Yes", ""), joined
+    assert len(rec.text) < 2 or rec.text[-1].startswith(" "), rec.text
+
+
+# ── call a59696ed (2026-09-13): the caller's "Yes" was never transcribed ─────
+
+@pytest.mark.asyncio
+async def test_smallest_asks_pulse_again_when_a_turn_produced_no_transcript():
+    """Pulse decodes whatever it has when our VAD stop sends `finalize`; on a
+    one-word answer that is ~0.3 s of audio and it answers ~2.5 s late or drops
+    the utterance entirely. Measured: "haan" 2.50 s → 0.82 s with the retry,
+    and a healthy "yes" stays at 0.11 s because the retry never goes out."""
+    import asyncio
+    import json as _json
+    from pipecat.frames.frames import (VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+    from app import providers as pv
+
+    class _FakeWS:
+        def __init__(self):
+            self.sent = []
+            self.state = type("S", (), {"name": "OPEN"})()
+
+        async def send(self, msg):
+            self.sent.append(_json.loads(msg))
+
+    class _Base:
+        def __init__(self, **kw):
+            self._websocket = _FakeWS()
+            self._tasks = []
+
+        async def process_frame(self, frame, direction):
+            if isinstance(frame, VADUserStoppedSpeakingFrame):
+                await self._websocket.send(_json.dumps({"type": "finalize"}))
+
+        async def _process_response(self, data):
+            return None
+
+        def create_task(self, coro):
+            t = asyncio.get_event_loop().create_task(coro)
+            self._tasks.append(t)
+            return t
+
+    cls = pv._smallest_with_finalize_retry(_Base, 0.05, 2)
+    assert pv._smallest_with_finalize_retry(_Base, 0, 2) is _Base, "kill switch"
+
+    # nothing comes back → Pulse is asked again
+    stt = cls()
+    await stt.process_frame(VADUserStartedSpeakingFrame(), None)
+    await stt.process_frame(VADUserStoppedSpeakingFrame(), None)
+    await asyncio.sleep(0.18)
+    assert len(stt._websocket.sent) == 3, stt._websocket.sent
+    assert all(m["type"] == "finalize" for m in stt._websocket.sent)
+
+    # a real final arrives → no retry at all (the healthy turn pays nothing)
+    stt2 = cls()
+    await stt2.process_frame(VADUserStoppedSpeakingFrame(), None)
+    await stt2._process_response({"is_final": True, "transcript": "Yes"})
+    await asyncio.sleep(0.18)
+    assert len(stt2._websocket.sent) == 1, stt2._websocket.sent
+
+    # an EMPTY final is exactly the case we retry for, not an answer
+    stt3 = cls()
+    await stt3.process_frame(VADUserStoppedSpeakingFrame(), None)
+    await stt3._process_response({"is_final": True, "transcript": "   "})
+    await asyncio.sleep(0.18)
+    assert len(stt3._websocket.sent) == 3, stt3._websocket.sent
+
+    # the caller speaking again cancels anything pending
+    stt4 = cls()
+    await stt4.process_frame(VADUserStoppedSpeakingFrame(), None)
+    await stt4.process_frame(VADUserStartedSpeakingFrame(), None)
+    await asyncio.sleep(0.18)
+    assert len(stt4._websocket.sent) == 1, stt4._websocket.sent

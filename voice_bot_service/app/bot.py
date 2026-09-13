@@ -503,7 +503,8 @@ class TranscriptCollector(FrameProcessor):
                             messages=[{"role": "user", "content":
                                        "[That was their ANSWER to the question you had "
                                        "just asked — respond to that answer only. Do not "
-                                       "finish, repeat or rephrase the question.]"}],
+                                       "finish, repeat or rephrase the question, and do "
+                                       "not say their answer back to them.]"}],
                             run_llm=True), direction)
                         return
                     logger.info("turn-gate: absorbed backchannel %r "
@@ -538,7 +539,10 @@ class TranscriptCollector(FrameProcessor):
                                 messages=[{"role": "user", "content":
                                            "[That was their ANSWER to the question you "
                                            "had just finished asking — respond to that "
-                                           "answer only. Do not carry on with your "
+                                           "answer only. Do NOT ask that question again, "
+                                           "do not rephrase it as a check, and do not say "
+                                           "their answer back to them: go straight to your "
+                                           "next line. Do not carry on with your "
                                            "script. If they agreed to a callback or "
                                            "asked to end, close politely.]"}],
                                 run_llm=True), direction)
@@ -966,7 +970,8 @@ class NoRepeatGate(FrameProcessor):
     _SENT_END = re.compile(r"[.!?।]+[\s\"'\)\]]*")
 
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
-                 no_echo=None, handbacks=None, played_text=None, end_forced=None):
+                 no_echo=None, handbacks=None, played_text=None, end_forced=None,
+                 request_next_step=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         self._last_caller_text = last_caller_text or (lambda: "")
@@ -1019,6 +1024,11 @@ class NoRepeatGate(FrameProcessor):
         # sentence the gate dropped (kept ACROSS turns, unlike _held_tail).
         self._cf_held = ""
         self._echo_held = ""           # an opening restatement, held until we know if more follows
+        # Ask the model for its NEXT step when a whole reply was a repeat of
+        # something the caller has just answered (see the End branch). Capped
+        # per call: a second one would be a regeneration loop.
+        self._request_next_step = request_next_step
+        self._next_steps = 0
         self._last_suppressed = ""
 
     def _trim_echo(self, sentence: str) -> str:
@@ -1440,6 +1450,29 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("repeat_escalations")
                     await self._emit(self._held_tail, direction)
+                elif (self._request_next_step is not None and self._next_steps < 2
+                      and (self._last_caller_text() or "").strip()
+                      and not (self._last_caller_text() or "").startswith("[")):
+                    # The caller ANSWERED and the model's whole reply was that
+                    # question again. Call a59696ed (2026-09-13): "Yes" →
+                    # "Okay." + the same WhatsApp question → dropped → the bot
+                    # said "Okay. Yes, go ahead." and the caller hung up.
+                    # Handing the turn back to someone who has just answered is
+                    # nonsense; ask the model for its NEXT step instead. Capped
+                    # at two per call, and the escalation above takes over once
+                    # a content-free turn has been counted, so it cannot loop.
+                    self._next_steps += 1
+                    logger.info("no-repeat: whole reply repeated what they just answered "
+                                "— asking for the next step instead of handing back")
+                    if self._diag is not None:
+                        self._diag.bump("handbacks")
+                    try:
+                        await self._request_next_step(self._held_tail)
+                    except Exception:
+                        logger.exception("no-repeat: next-step request failed — handing back")
+                        line = self._handbacks[self._handback % len(self._handbacks)]
+                        self._handback += 1
+                        await self._emit(line, direction)
                 else:
                     # Everything was a repeat. Do NOT say it again — hand the turn
                     # back in a few words so the line is not dead either.
@@ -1451,8 +1484,10 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("handbacks")
                     logger.info("no-repeat: whole reply was a repeat — handing back with %r", line)
-                    self._emitted += 1
-                    await self.push_frame(LLMTextFrame(line), direction)
+                    # THROUGH _emit, not a raw push: _emit is what puts a space
+                    # between sentences. Without it the caller heard
+                    # "Okay.Yes, go ahead." as one glued word (call a59696ed).
+                    await self._emit(line, direction)
             if self._emitted == 0 and self._echo_held:
                 # Nothing but the restatement came: better a weak line than silence.
                 held, self._echo_held = self._echo_held, ""
@@ -3572,6 +3607,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      resay_opening=_resay_opening)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
+    async def _ask_for_next_step(held: str):
+        """NoRepeatGate found that the whole reply repeated a question the caller
+        had just answered. Rather than hand the turn back to someone who has just
+        spoken, ask the model for its next line. `task` is bound later in this
+        function — the closure resolves it at call time, like on_continuation."""
+        logger.info("next-step: requesting a fresh line after an all-repeat reply corr=%s", corr)
+        await task.queue_frames([LLMMessagesAppendFrame(
+            messages=[{"role": "user", "content":
+                       "[Your last reply only repeated a question they have ALREADY "
+                       "answered. Do not ask it again, and do not restate their answer. "
+                       "Say your NEXT line in one short sentence — the next question or "
+                       "the next useful fact — or close politely if what they said means "
+                       "this is not for them.]"}],
+            run_llm=True)])
+
     no_repeat = NoRepeatGate(
         enabled=lambda: settings.no_repeat_enabled,
         end_forced=lambda: outcome.end_forced,
@@ -3582,6 +3632,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # An English agent handing back in romanized Hindi ("Ji, boliye.") is a
         # language break the caller hears immediately — and these lines bypass
         # the prompt's SCRIPT rule entirely because they never touch the LLM.
+        request_next_step=_ask_for_next_step,
         handbacks=(NoRepeatGate._HANDBACK_EN
                    if _agent_language(agent)[0] == "en-IN" else None),
         # PlayedTranscriptRecorder's record of what the caller actually heard —

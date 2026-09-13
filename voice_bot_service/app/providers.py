@@ -71,6 +71,80 @@ def _register_saaras_v4() -> bool:
         return False
 
 
+def _smallest_with_finalize_retry(base, retry_secs: float, retries: int):
+    """Subclass that asks Pulse AGAIN when a caller turn produced no transcript.
+
+    pipecat sends `{"type":"finalize"}` the moment our VAD says the caller
+    stopped. Pulse decodes whatever it has; on a one-word answer that is ~0.3 s
+    of audio and it answers ~2.5 s late, or silently drops the utterance (see
+    Settings.smallest_finalize_retry_secs for the measurements and the two
+    alternatives). Re-sending finalize costs nothing on a healthy turn — the
+    flag is already set by then and no message goes out — and recovers the
+    stuck one in ~0.8 s.
+
+    A new VAD onset cancels anything pending: that turn will send its own.
+    """
+    if retry_secs <= 0 or retries <= 0:
+        return base                       # kill switch: plain pipecat
+    import asyncio as _asyncio
+    import json as _json
+    from pipecat.frames.frames import (VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+
+    class _FinalizeRetrySTT(base):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._got_final = True
+            self._retry_task = None
+
+        async def _process_response(self, data):
+            # ONLY a real final counts as "it answered". Keepalives and empty
+            # finals are exactly the case we are retrying for.
+            try:
+                if data.get("is_final") and (data.get("transcript") or "").strip():
+                    self._got_final = True
+            except Exception:
+                pass
+            return await super()._process_response(data)
+
+        def _cancel_retry(self):
+            t, self._retry_task = self._retry_task, None
+            if t is not None and not t.done():
+                t.cancel()
+
+        async def _retry_finalize(self):
+            try:
+                for n in range(retries):
+                    await _asyncio.sleep(retry_secs)
+                    if self._got_final:
+                        return
+                    ws = getattr(self, "_websocket", None)
+                    state = getattr(ws, "state", None)
+                    if ws is None or state is None or state.name != "OPEN":
+                        return
+                    await ws.send(_json.dumps({"type": "finalize"}))
+                    logger.info("stt: no transcript %.1fs after the turn closed — "
+                                "asking Pulse again (%d/%d)",
+                                retry_secs * (n + 1), n + 1, retries)
+            except _asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning("stt: finalize retry failed", exc_info=True)
+
+        async def process_frame(self, frame, direction):
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._cancel_retry()
+            await super().process_frame(frame, direction)
+            if isinstance(frame, VADUserStoppedSpeakingFrame):
+                # super() has just sent the first finalize.
+                self._got_final = False
+                self._cancel_retry()
+                self._retry_task = self.create_task(self._retry_finalize())
+
+    _FinalizeRetrySTT.__name__ = base.__name__
+    return _FinalizeRetrySTT
+
+
 def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None,
               mode: str | None = None):
     """STT factory with a provider switch (STT_PROVIDER=sarvam|google|smallest).
@@ -119,6 +193,9 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
         )
     if s.stt_provider == "smallest":
         from pipecat.services.smallest.stt import SmallestSTTService
+        stt_cls = _smallest_with_finalize_retry(
+            SmallestSTTService, s.smallest_finalize_retry_secs,
+            s.smallest_finalize_retries)
         # Per-agent pins arrive as BCP-47 ("hi-IN"); Pulse wants bare codes and
         # has no Hinglish code, "hi" IS the code-switching mode. Unknown → default.
         tag = (language or "").strip().lower()
@@ -128,7 +205,7 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
                 "multi": "multi"}.get(tag) or s.smallest_stt_language
         if not s.smallest_api_key:
             raise RuntimeError("STT_PROVIDER=smallest but SMALLEST_API_KEY is empty")
-        return SmallestSTTService(
+        return stt_cls(
             api_key=s.smallest_api_key,
             sample_rate=sample_rate,
             settings=SmallestSTTService.Settings(language=lang),

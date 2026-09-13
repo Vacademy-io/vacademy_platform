@@ -4363,3 +4363,42 @@ async def test_smallest_asks_pulse_again_when_a_turn_produced_no_transcript():
     await stt4.process_frame(VADUserStartedSpeakingFrame(), None)
     await asyncio.sleep(0.18)
     assert len(stt4._websocket.sent) == 1, stt4._websocket.sent
+
+
+# ── call 612f5e37 (2026-09-13): "haan, bol sakte hain sir" → "जी सर।" → silence ──
+
+@pytest.mark.asyncio
+async def test_a_filler_only_reply_after_the_caller_spoke_asks_for_the_next_step():
+    """The model acknowledged and stopped. Nothing was held, so the all-repeat
+    path could not fire; the caller waited 6 s and said "Hello". A reply that
+    is only a filler, after a real caller turn, asks for the next line."""
+    rec = _NRRec()
+    asked = []
+
+    async def _next_step(held):
+        asked.append(held)
+    caller = {"t": ". अ, हाँ, बोल सकते हैं sir"}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "जी सर।")
+    assert [t.strip() for t in rec.text] == ["जी सर।"], "the filler itself still plays"
+    assert asked == [""], asked
+    # with real content behind it, nothing is requested
+    asked.clear(); rec.text.clear()
+    caller["t"] = "Yes"
+    await _reply(g, "जी सर। ", "Vijit के previous class में कितने marks आए थे?")
+    assert asked == [], asked
+    # and never when the caller said nothing (an idle nudge's reply, say)
+    asked.clear()
+    caller["t"] = ""
+    await _reply(g, "Okay.")
+    assert asked == [], asked
+
+
+def test_hindi_acknowledgments_are_fillers():
+    for t in ("जी सर।", "जी सर", "Ji sir.", "हाँ जी।", "ok sir", "Yes ma'am.", "जी।"):
+        assert b.NoRepeatGate._is_filler(t), t
+    for t in ("जी सर, Vijit अभी Class 7 में है।", "Sir, marks kitne aaye the?"):
+        assert not b.NoRepeatGate._is_filler(t), t

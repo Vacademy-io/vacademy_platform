@@ -1209,6 +1209,18 @@ class NoRepeatGate(FrameProcessor):
         "right", "okay", "ok", "okay okay", "hmm", "hmm hmm", "achha", "acha",
         "theek hai", "thik hai", "theek", "sure", "alright", "i see", "got it",
         "understood", "great", "okay great", "ok great", "fair enough", "correct",
+        # Hindi/Hinglish acknowledgments. Call 612f5e37 (2026-09-13): the caller
+        # said "haan, bol sakte hain sir" and the model's WHOLE reply was
+        # "जी सर।" — counted as real content, so nothing recovered and the caller
+        # waited 6 s and said "Hello". The same words with a title are still
+        # nothing.
+        "जी", "जी सर", "जी मैम", "जी मैडम", "जी हाँ", "जी हां", "हाँ जी", "हां जी",
+        "अच्छा जी", "ठीक है जी", "ठीक है सर", "अच्छा सर", "हाँ सर", "हां सर",
+        "ji", "ji sir", "ji maam", "ji ma'am", "ji madam", "ji haan", "haan ji",
+        "achha ji", "theek hai ji", "theek hai sir", "achha sir", "haan sir",
+        "ok sir", "okay sir", "yes sir", "sure sir", "alright sir", "right sir",
+        "ok ma'am", "okay ma'am", "yes ma'am", "ok maam", "okay maam", "yes maam",
+        "okay madam", "yes madam", "great sir", "got it sir",
     })
 
     # Strip punctuation only. NOT isalnum() — Devanagari vowel signs are not
@@ -1435,6 +1447,24 @@ class NoRepeatGate(FrameProcessor):
             # 08df7128: "Right." survived, the three real sentences behind it were
             # already-said drops, and the caller got "Right." then 12 s of
             # nothing. Never on a forced close: a goodbye must stay a goodbye.
+            # A reply that was ONLY a filler ("जी सर।") with nothing held: the
+            # model acknowledged and stopped. Same remedy as the all-repeat
+            # case — ask for the next line — but only when the caller actually
+            # said something to move on from (call 612f5e37, 2026-09-13).
+            if (not self._real_this_reply and self._emitted and not self._held_tail
+                    and not self._end_forced()
+                    and self._request_next_step is not None and self._next_steps < 2
+                    and (self._last_caller_text() or "").strip()
+                    and not (self._last_caller_text() or "").startswith("[")):
+                self._next_steps += 1
+                logger.info("no-repeat: reply was only a filler after the caller spoke "
+                            "— asking for the next step")
+                if self._diag is not None:
+                    self._diag.bump("handbacks")
+                try:
+                    await self._request_next_step("")
+                except Exception:
+                    logger.exception("no-repeat: next-step request failed")
             if (not self._real_this_reply and self._held_tail
                     and not self._end_forced()):
                 if self._consecutive_handbacks >= 1:
@@ -3612,14 +3642,19 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         had just answered. Rather than hand the turn back to someone who has just
         spoken, ask the model for its next line. `task` is bound later in this
         function — the closure resolves it at call time, like on_continuation."""
-        logger.info("next-step: requesting a fresh line after an all-repeat reply corr=%s", corr)
+        if held:
+            why = ("[Your last reply only repeated a question they have ALREADY "
+                   "answered. Do not ask it again, and do not restate their answer. ")
+        else:
+            why = ("[Your last reply was only an acknowledgment and the caller is "
+                   "waiting. Do not acknowledge again. ")
+        logger.info("next-step: requesting a fresh line (%s) corr=%s",
+                    "all-repeat" if held else "filler-only", corr)
         await task.queue_frames([LLMMessagesAppendFrame(
-            messages=[{"role": "user", "content":
-                       "[Your last reply only repeated a question they have ALREADY "
-                       "answered. Do not ask it again, and do not restate their answer. "
-                       "Say your NEXT line in one short sentence — the next question or "
-                       "the next useful fact — or close politely if what they said means "
-                       "this is not for them.]"}],
+            messages=[{"role": "user", "content": why +
+                       "Say your NEXT line now — the next question or the next useful "
+                       "fact, in one or two short sentences — or close politely if what "
+                       "they said means this is not for them.]"}],
             run_llm=True)])
 
     no_repeat = NoRepeatGate(

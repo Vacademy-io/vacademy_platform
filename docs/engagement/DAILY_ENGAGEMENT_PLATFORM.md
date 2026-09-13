@@ -536,9 +536,33 @@ Pushed as `1914a35f47`; backend deployed and confirmed via `~/.kube/vacademy-pro
 **A clean boot is the proof the JPA queries are valid** — Spring Data validates every `@Query` at
 startup, so the risk flagged before deploy is retired.
 
-### STILL not verified
-- **No end-to-end pass.** No plan authored, no learner has seen a card, no `points_ledger` row
-  exists. Everything above proves the code loads and the schema applied, not that the flow works.
+### END-TO-END VERIFIED ON PROD, 2026-09-14
+
+A real plan was authored, answered by a real learner, and scored — against production.
+
+| Step | Result |
+|---|---|
+| `POST /engagement/admin/v1/plan` | 200; plan stored with `timezone: Asia/Kolkata` snapshotted |
+| `GET /engagement/learner/v1/feed` | task served, `state: OPEN`, correct IST→UTC window |
+| Answer-key redaction | options served; `correctOptionId` and `explanation` **stripped** pre-reveal |
+| `POST .../item/{id}/submit` | 200, graded server-side, `isCorrect: true`, `isVerified: true`, **30 pts** (10 completion + 20 correct) |
+| Points summary | `totalPoints: 30`, breakdown `ENGAGEMENT_ITEM → "Daily engagement"` — the first ledger rows in the platform |
+| **Double submit, wrong answer** | returned the ORIGINAL attempt unchanged, still 30 pts — no double-award, no overwrite |
+| Feed after completion | `items: 0`, `completedToday: 1` |
+| `GET .../item/{id}/tracking` | `completedCount 1`, `correctCount 1`, full per-learner row |
+| Leaderboard `metric=POINTS` | rank 1 Shreyash Jain **30 pts**, rank 2 Deepankar Dey 0 — roster-scoped, both members present |
+
+**Two defects this exposed, both fixed in `b2a6f2f9c1`:**
+
+1. The engagement admin endpoints performed **no authorization at all** — `instituteId` was just a
+   string the caller supplied, so any authenticated user could publish onto another institute's
+   learner home pages, or read and delete their plans. Every handler now requires staff membership.
+2. The learner feed queried plans **by batch alone**, with no institute predicate, so a
+   cross-institute plan appeared in the feed with its payload. `getItem`/`submit` already checked —
+   that asymmetry is exactly what made it readable but un-openable, and what made it visible at all.
+
+Neither would have been found by reading the code or by the unit tests. They surfaced because a
+plan was created while naming the wrong institute and the learner was still served it.
 - Frontends deploy separately (Cloudflare Pages, not k8s) — confirm the admin and learner bundles
   carry this work before expecting anything on screen.
 - The stored QA test accounts return `Bad credentials` as of 2026-09-13; fresh ones are needed for

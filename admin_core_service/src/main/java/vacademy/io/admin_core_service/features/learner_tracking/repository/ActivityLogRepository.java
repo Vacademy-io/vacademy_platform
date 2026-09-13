@@ -37,11 +37,16 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
      * a whole institute every night. Membership alone is enough here, and the
      * GROUP BY is on (user, local date) so a learner in several batches still earns
      * one day's points, not one per batch.
+     *
+     * <p>The cast is CAST(... AS bigint), never '::bigint'. Hibernate reads a leading
+     * ':' as a named parameter and rewrites '::bigint' to ':bigint', which reaches
+     * Postgres as a syntax error at EXECUTION time — long after the query compiled
+     * and the service booted cleanly.
      */
     @Query(value = """
             SELECT al.user_id AS userId,
                    DATE(al.created_at AT TIME ZONE 'UTC' AT TIME ZONE :zone) AS activityDate,
-                   SUM(
+                   CAST(SUM(
                        COALESCE(
                            al.engaged_ms,
                            CASE
@@ -50,7 +55,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                ELSE 0
                            END
                        )
-                   )::bigint AS millis
+                   ) AS bigint) AS millis
             FROM activity_log al
             WHERE al.created_at >= :from
               AND al.created_at < :to

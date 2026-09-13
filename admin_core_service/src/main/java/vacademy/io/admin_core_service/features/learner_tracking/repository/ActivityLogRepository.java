@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.learner_reports.dto.ChapterSlideP
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerActivityDataProjection;
 import vacademy.io.admin_core_service.features.learner_reports.dto.SubjectProgressProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.DailyTimeSpentProjection;
+import vacademy.io.admin_core_service.features.points_ledger.dto.DailyActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogProcessingProjection;
@@ -26,6 +27,58 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, String> {
+
+    /**
+     * Learner-days with real activity for one institute, in the institute's own
+     * timezone — the input to ACTIVITY points accrual.
+     *
+     * Deliberately lean: the per-learner daily query above joins slide, module,
+     * subject and session to scope by content, which is far too heavy to run across
+     * a whole institute every night. Membership alone is enough here, and the
+     * GROUP BY is on (user, local date) so a learner in several batches still earns
+     * one day's points, not one per batch.
+     */
+    @Query(value = """
+            SELECT al.user_id AS userId,
+                   DATE(al.created_at AT TIME ZONE 'UTC' AT TIME ZONE :zone) AS activityDate,
+                   SUM(
+                       COALESCE(
+                           al.engaged_ms,
+                           CASE
+                               WHEN al.end_time IS NOT NULL AND al.start_time IS NOT NULL
+                                   THEN EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000
+                               ELSE 0
+                           END
+                       )
+                   )::bigint AS millis
+            FROM activity_log al
+            WHERE al.created_at >= :from
+              AND al.created_at < :to
+              AND al.user_id IN (
+                  SELECT DISTINCT ssigm.user_id
+                  FROM student_session_institute_group_mapping ssigm
+                  WHERE ssigm.institute_id = :instituteId
+                    AND ssigm.status IN (:learnerStatuses)
+              )
+            GROUP BY al.user_id, DATE(al.created_at AT TIME ZONE 'UTC' AT TIME ZONE :zone)
+            HAVING SUM(
+                       COALESCE(
+                           al.engaged_ms,
+                           CASE
+                               WHEN al.end_time IS NOT NULL AND al.start_time IS NOT NULL
+                                   THEN EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000
+                               ELSE 0
+                           END
+                       )
+                   ) > 0
+            """, nativeQuery = true)
+    List<DailyActivityProjection> findDailyActivityForInstitute(
+            @Param("instituteId") String instituteId,
+            @Param("zone") String zone,
+            @Param("from") Timestamp from,
+            @Param("to") Timestamp to,
+            @Param("learnerStatuses") List<String> learnerStatuses);
+
     // Merged-union coverage, matching the live write path
     // (LearnerTrackingAsyncService.getUniqueWatchedDurationMillis). The old
     // MAX(end)-MIN(start) span silently inflated the batch/trigger recompute:

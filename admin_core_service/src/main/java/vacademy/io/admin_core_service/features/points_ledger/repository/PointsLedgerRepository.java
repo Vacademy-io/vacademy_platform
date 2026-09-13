@@ -63,6 +63,27 @@ public interface PointsLedgerRepository extends JpaRepository<PointsLedger, Stri
     List<Object[]> leaderboardForInstituteSince(@Param("instituteId") String instituteId,
                                                 @Param("since") Timestamp since);
 
+    /**
+     * Rows: [userId, totalPoints] for a specific set of learners, institute-scoped.
+     *
+     * This is what a BATCH leaderboard uses, rather than filtering on
+     * package_session_id: engagement points are batch-attributed, but learner-level
+     * awards (ACTIVITY, streaks) carry no batch and would be invisible to a
+     * package-session filter. Scoping by the batch roster counts both.
+     */
+    @Query("SELECT p.userId, COALESCE(SUM(p.points), 0) AS total FROM PointsLedger p " +
+            "WHERE p.instituteId = :instituteId AND p.userId IN :userIds " +
+            "GROUP BY p.userId ORDER BY total DESC")
+    List<Object[]> sumByUsers(@Param("instituteId") String instituteId,
+                              @Param("userIds") List<String> userIds);
+
+    @Query("SELECT p.userId, COALESCE(SUM(p.points), 0) AS total FROM PointsLedger p " +
+            "WHERE p.instituteId = :instituteId AND p.userId IN :userIds AND p.awardedAt >= :since " +
+            "GROUP BY p.userId ORDER BY total DESC")
+    List<Object[]> sumByUsersSince(@Param("instituteId") String instituteId,
+                                   @Param("userIds") List<String> userIds,
+                                   @Param("since") Timestamp since);
+
     /** Every award tied to one source row — used when reversing an item's points. */
     List<PointsLedger> findBySourceTypeAndSourceId(String sourceType, String sourceId);
 }

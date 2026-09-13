@@ -50,6 +50,7 @@ public class LeaderboardService {
 
     private static final int MAX_BADGES_PER_ENTRY = 6;
     private static final int MAX_BATCHES_FOR_RANK = 5;
+    private static final List<String> ACTIVE_LEARNER_STATUSES = List.of("ACTIVE");
 
     private final BatchReportService batchReportService;
     private final LearnerBadgeRepository learnerBadgeRepository;
@@ -150,7 +151,8 @@ public class LeaderboardService {
                                                          CustomUserDetails userDetails,
                                                          Metric metric, Window window) {
         if (metric == Metric.POINTS) {
-            Map<String, Long> ledger = ledgerPointsForPackageSession(packageSessionId, since(instituteId, window));
+            Map<String, Long> ledger =
+                    ledgerPointsForPackageSession(packageSessionId, instituteId, since(instituteId, window));
             return buildCourseLeaderboardWithPoints(packageSessionId, instituteId, currentUserId,
                     anonymize, limit, userDetails, ledger);
         }
@@ -319,10 +321,22 @@ public class LeaderboardService {
         return Timestamp.from(monday.atStartOfDay(zone).toInstant());
     }
 
-    private Map<String, Long> ledgerPointsForPackageSession(String packageSessionId, Timestamp since) {
+    /**
+     * Ledger totals for a batch, scoped by its ROSTER rather than by
+     * package_session_id on the ledger rows.
+     *
+     * Engagement points carry the batch they were earned in, but learner-level awards
+     * (ACTIVITY, streak bonuses) carry no batch at all — a package-session filter
+     * would silently drop them and the leaderboard would show only engagement points.
+     */
+    private Map<String, Long> ledgerPointsForPackageSession(String packageSessionId, String instituteId,
+                                                            Timestamp since) {
+        List<String> memberIds =
+                ssigmRepository.findDistinctUserIdsByPackageSessionAndStatus(packageSessionId, ACTIVE_LEARNER_STATUSES);
+        if (memberIds == null || memberIds.isEmpty()) return new HashMap<>();
         return ledgerPoints(since == null
-                ? pointsLedgerRepository.leaderboardForPackageSession(packageSessionId)
-                : pointsLedgerRepository.leaderboardForPackageSessionSince(packageSessionId, since));
+                ? pointsLedgerRepository.sumByUsers(instituteId, memberIds)
+                : pointsLedgerRepository.sumByUsersSince(instituteId, memberIds, since));
     }
 
     private Map<String, Long> ledgerPointsForInstitute(String instituteId, Timestamp since) {

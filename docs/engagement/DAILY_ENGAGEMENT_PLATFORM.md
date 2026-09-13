@@ -515,8 +515,10 @@ learners is one bad generation away from an incident.
 
 ### Verified
 - `mvn compile` clean (backend)
-- **22 unit tests pass** — `EngagementScheduleResolverTest` covers day-of-week masks, window
-  boundaries, catch-up expiry, reveal timing, percentage clamping and cross-timezone resolution
+- **28 unit tests pass** — `EngagementScheduleResolverTest` covers day-of-week masks, window
+  boundaries, catch-up expiry, reveal timing, percentage clamping and cross-timezone resolution;
+  `PointsAccrualJobTest` covers streak length, including gaps, inactive days and measuring to the
+  day asked about rather than the latest day
 - Both frontends add **zero** TypeScript errors over their baselines (learner baseline 761 under
   plain `tsc`, admin baseline 1)
 - ESLint clean on all new files; design gate clean (one permitted, commented inline style)
@@ -543,7 +545,7 @@ startup, so the risk flagged before deploy is retired.
   a live round trip.
 
 ### Known gaps (deliberate, Phase 2+)
-- No streak job — `ENGAGEMENT_STREAK` is defined in the ledger but nothing awards it yet.
+- ~~No streak job~~ — **BUILT 2026-09-14** as part of `PointsAccrualJob` (see below).
 - ~~No admin tracking UI~~ — **BUILT 2026-09-14.** `/engagement` plans expand to their slots and
   tasks; each task opens a tracking table (per-learner status, correct/wrong, points, time, late
   flag) with completed/correct/accuracy stats. Slots load only on expand.
@@ -553,11 +555,41 @@ startup, so the risk flagged before deploy is retired.
   unverified score bonus off).
 - **Sidebar entry added 2026-09-14**: LMS → Learning Engagement → "Daily Engagement" (`/engagement`),
   with en/hi/fr/ar strings. Before this the route was unreachable except by typing the URL.
+### Points accrual — ACTIVITY and streak points enter the ledger (2026-09-14)
+
+`PointsAccrualJob` (nightly 00:30, ShedLock) turns learning activity into ledger rows, so POINTS
+becomes a SUPERSET of the legacy minutes ranking instead of a replacement for it.
+
+- Reads a purpose-built lean query (`ActivityLogRepository.findDailyActivityForInstitute`) that
+  groups by `(user, institute-local date)`. The existing per-day query joins slide/module/subject/
+  session and is far too heavy to run institute-wide nightly. Grouping by user+date also means a
+  learner in several batches earns one day's points, not one per batch.
+- Award sizes come from `BADGES_REWARDS_SETTING.scoring` — the values already on the Badges &
+  Rewards screen, which until now only the browser read. Defaults mirror the learner app's
+  `DEFAULT_SCORING`; **keep them in lock-step** or an institute that never opened that screen would
+  see its points shift the day accrual starts.
+- Idempotency key is `{SOURCE}:{local date}:{userId}`, so re-running is free. Each run reconsiders
+  the last 3 days (activity can arrive late) and never settles *today*, which is still in progress.
+  Backfilling history is just `accrueForInstitute(instituteId, moreDays)`.
+- Skips any institute that has not enabled badges/leaderboard — writing points for an institute
+  that never opted into a points economy would surface numbers nobody asked for.
+
+**OFF BY DEFAULT: `vacademy.points.accrual.enabled=false`.** The first run writes points for every
+active learner in every enabled institute, which changes what learners see. That should be a
+deliberate switch, not a side effect of a deploy. Set it to `true` when you want accrual to begin.
+
+Batch leaderboards in POINTS mode now scope by the batch **roster** rather than by
+`package_session_id` on the ledger rows: engagement points carry a batch, but learner-level awards
+(ACTIVITY, streaks) carry none and a package-session filter would silently drop them.
+
+Still NOT in the ledger: **assessment points**. Best-score data lives in assessment_service, so it
+needs a cross-service read; until then the `ASSESSMENT` source type is defined but unused.
+
 - The learner leaderboard UI still requests the default ACTIVITY metric. **Deliberately not
   flipped yet.** `points_ledger` is currently written by daily engagement ONLY — nothing writes
   `ACTIVITY`, `ASSESSMENT` or `ENGAGEMENT_STREAK` rows. Flipping today would rank every learner at
   0 and be a regression on the current minutes ranking, which at least separates active learners.
-  Flip only after either (a) engagement is genuinely in use, or (b) activity/assessment points are
-  written into the ledger. (b) is the better order: it makes POINTS a superset of today's signal
-  rather than a replacement for it.
+  (b) is now half-built: activity and streak points accrue once `PointsAccrualJob` is switched on.
+  Flip the UI to `metric=POINTS` once accrual has run and the numbers look right — verify against a
+  real batch before flipping, since that is the moment every learner's visible rank changes.
 - Strings in the new UI are not run through i18n.

@@ -10,6 +10,7 @@ preview and the learner both render inside a sandboxed iframe.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -28,6 +29,12 @@ from ..core.security import get_current_user
 from ..db import db_dependency
 from ..models.ai_token_usage import RequestType
 from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+from ..services.document_postprocess import (
+    DOC_IMAGE_MODEL as _IMAGE_MODEL,
+    MAX_DOC_IMAGES as _MAX_AI_IMAGES,
+    count_image_placeholders,
+    illustrate_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +42,18 @@ router = APIRouter(prefix="/html-doc", tags=["html-document"])
 
 # Creative HTML/CSS/JS is best on a strong frontend-capable model. Dedicated to
 # this endpoint (NOT the shared llm_default_model); override via HTML_DOCUMENT_MODEL.
-_DEFAULT_MODEL = "anthropic/claude-sonnet-5"
+_DEFAULT_MODEL = "z-ai/glm-5.3-flash"
 # HTML documents can be long (inline CSS + markup + a little JS).
 _MAX_TOKENS = 32000
 # Usage is charged as max(flat, actual_token_cost × markup). The markup deters
 # misuse (very large PDFs / huge pages) — heavy generations pay above raw cost.
 _USAGE_MARKUP = Decimal("2")
+
+# Textbook-style illustrations the page may request are capped at
+# _MAX_AI_IMAGES — institutes asked for real visual learning, not walls of
+# text. They use the platform-wide `data-img-prompt` placeholder contract
+# (services/document_postprocess.py, shared with the course copilot's DOCUMENT
+# slides): generated after the text is written, then patched into the document.
 
 _FENCE_RE = re.compile(r"^\s*```(?:html)?\s*\n([\s\S]*?)\n?```\s*$")
 _DOC_START_RE = re.compile(r"<!doctype html|<html", re.IGNORECASE)
@@ -147,7 +160,35 @@ _SYSTEM_DIRECTIVE = (
     "`{type:'vacademy:complete', score:<number>, maxScore:<number>, wrong:<number of wrong answers>, "
     "timesSec:[<seconds taken per question>]}`\n"
     "   Omit fields you don't have. It's a harmless no-op in preview — never wait for a response.\n"
-    "9. Return ONLY the raw HTML. No markdown, no ``` fences, no commentary."
+    "9. TEACH VISUALLY — this is not optional decoration, it is how students learn. "
+    "A wall of text is a FAILED page. Every major idea on the page must be carried by "
+    "something a learner can SEE, the way a good textbook does it. Use BOTH of these:\n"
+    "   a) INLINE SVG, which you draw yourself, for anything schematic — labelled "
+    "diagrams, cross-sections, cycles and flows, timelines, comparison tables, graphs/"
+    "plots, tree and hierarchy charts, number lines, annotated formulas, before/after "
+    "panels. Label the parts with real `<text>` (readable size, high contrast, never "
+    "overlapping the artwork), and keep them responsive with a `viewBox` and "
+    "`width:100%;height:auto` — never a fixed pixel width.\n"
+    "   b) GENERATED TEXTBOOK ILLUSTRATIONS for pictures you cannot draw with shapes — a "
+    "realistic scene, an object, an organism, an apparatus, a historical setting, a "
+    "worked real-world context. Request one by emitting EXACTLY this placeholder tag:\n"
+    "      `<img src=\"placeholder.png\" data-img-prompt=\"<a precise description of the "
+    "picture to draw>\" data-img-aspect=\"16:9\" alt=\"<real alt text>\">`\n"
+    "   (`data-img-aspect` is optional: 16:9 | 4:3 | 1:1 | 3:4 | 9:16, default 16:9.) The "
+    "platform generates the picture and replaces this tag after you finish — so NEVER invent, "
+    "guess or copy an image URL for these, and never use a placeholder service. Describe the "
+    "subject concretely (\"a labelled cutaway of a human heart showing the four chambers "
+    "and the direction of blood flow\"), not vaguely (\"a nice picture about biology\"). "
+    f"Use AT MOST {_MAX_AI_IMAGES} of these, on the ideas that most need a picture; anything "
+    "schematic should be SVG instead (it is sharper, instant, and free). Wrap each one in a "
+    "`<figure>` with a short `<figcaption>` that explains what to notice — so the page still "
+    "teaches if an image fails to render.\n"
+    "   c) VISUAL NOTES throughout: icon-led key-point cards, colour-coded callouts "
+    "(definition / example / common mistake / remember), side-by-side comparisons, "
+    "step-numbered process strips, mnemonic boxes and a visual summary/recap at the end. "
+    "Aim for a picture, diagram or visual-note block roughly every screenful — never two "
+    "long prose sections in a row.\n"
+    "10. Return ONLY the raw HTML. No markdown, no ``` fences, no commentary."
 )
 
 
@@ -255,7 +296,12 @@ def _build_prompt(req: GenerateHtmlRequest, grounding_text: str = "", figures=No
         return (
             f"{_SYSTEM_DIRECTIVE}\n\n"
             "TASK: EDIT the existing document below according to the instruction. "
-            "Preserve everything that isn't part of the change; return the FULL updated document.\n\n"
+            "Preserve everything that isn't part of the change; return the FULL updated document.\n"
+            "IMAGES ON AN EDIT: every `<img src=\"https://...\">` already in the document is a "
+            "REAL, already-generated picture — keep those tags and their URLs EXACTLY as they are "
+            "unless the instruction is to remove or replace that picture. Only emit a NEW "
+            "`placeholder.png` + `data-img-prompt` tag when the edit genuinely calls for a new "
+            "illustration.\n\n"
             f"INSTRUCTION:\n{instruction}"
             f"{materials}\n\n"
             "CURRENT DOCUMENT:\n"
@@ -440,6 +486,26 @@ def _bill(ctx: dict, body: GenerateHtmlRequest, usage: Optional[dict] = None) ->
             logger.warning("[html-doc] pdf page billing skipped: %s", e)
 
 
+def _bill_images(ctx: dict, body: GenerateHtmlRequest, count: int) -> None:
+    """Separate, transparent per-illustration charge — only for pictures that
+    actually came back. Best-effort, like the rest of the billing here."""
+    if count <= 0:
+        return
+    try:
+        record_tool_billing(
+            tool_key="html_document_image",
+            tool_params={"num_images": count},
+            request_type=RequestType.IMAGE,
+            model=_IMAGE_MODEL,
+            institute_id=ctx["institute_id"],
+            user_id=ctx["actor_user_id"],
+            user_role=ctx["actor_role"] if ctx["actor_user_id"] else None,
+            idempotency_key=(f"{body.idempotency_key}:img" if body.idempotency_key else None),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[html-doc] image billing skipped: %s", e)
+
+
 @router.post("/v1/generate", response_model=GenerateHtmlResponse)
 async def generate_html_document(
     body: GenerateHtmlRequest,
@@ -458,7 +524,9 @@ async def generate_html_document(
     html_out = _strip_fence(raw)
     if not html_out:
         raise HTTPException(status_code=502, detail="Model returned empty HTML.")
+    html_out, images = await illustrate_document(html_out, slide_path="html-doc")
     _bill(ctx, body, usage)
+    _bill_images(ctx, body, images)
     return GenerateHtmlResponse(html=html_out, model=ctx["model"])
 
 
@@ -526,7 +594,43 @@ async def generate_html_document_stream(
             if not html_out:
                 yield _sse({"error": "Model returned empty HTML."})
                 return
+
+            # Illustration pass. The text is finished and on screen; the
+            # pictures the page asked for are drawn now and patched in, so the
+            # final `done` document is the one with real image URLs. Progress
+            # is surfaced because this adds real seconds to the wait.
+            images = 0
+            if count_image_placeholders(html_out):
+                queue: asyncio.Queue = asyncio.Queue()
+
+                async def on_progress(done_n: int, total_n: int) -> None:
+                    await queue.put((done_n, total_n))
+
+                task = asyncio.create_task(
+                    illustrate_document(
+                        html_out, slide_path="html-doc", on_progress=on_progress
+                    )
+                )
+                while True:
+                    get = asyncio.create_task(queue.get())
+                    done_set, _ = await asyncio.wait(
+                        {get, task}, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if get in done_set:
+                        done_n, total_n = get.result()
+                        # NB: never key this "done" — the client treats a
+                        # truthy `done` as the final document event.
+                        yield _sse({"status": "images", "completed": done_n, "total": total_n})
+                        continue
+                    get.cancel()
+                    break
+                try:
+                    html_out, images = await task
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[html-doc] illustration pass failed: %s", e)
+
             _bill(ctx, body, usage)
+            _bill_images(ctx, body, images)
             yield _sse({"done": True, "html": html_out, "model": ctx["model"]})
         except Exception as e:  # noqa: BLE001
             logger.warning("[html-doc] stream failed: %s", e)

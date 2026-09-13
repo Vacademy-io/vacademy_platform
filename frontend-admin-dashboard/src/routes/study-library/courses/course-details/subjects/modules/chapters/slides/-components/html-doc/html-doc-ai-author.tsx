@@ -67,6 +67,10 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
     const [testResult, setTestResult] = useState<string | null>(null);
     // Live-stream buffer while generating (null = not streaming).
     const [streamingHtml, setStreamingHtml] = useState<string | null>(null);
+    // Progress of the illustration pass that runs after the text is written.
+    const [imageProgress, setImageProgress] = useState<{ completed: number; total: number } | null>(
+        null
+    );
     const abortRef = useRef<AbortController | null>(null);
     const streamTsRef = useRef(0);
 
@@ -178,6 +182,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
         }
         setIsGenerating(true);
         setStreamingHtml('');
+        setImageProgress(null);
         streamTsRef.current = 0;
         const controller = new AbortController();
         abortRef.current = controller;
@@ -197,6 +202,8 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                 },
                 {
                     signal: controller.signal,
+                    onImageProgress: (completed, total) =>
+                        setImageProgress(total > 0 ? { completed, total } : null),
                     onDelta: (acc) => {
                         // Throttle preview refreshes — re-rendering the iframe on
                         // every token would thrash. ~3/sec is enough to feel live.
@@ -220,6 +227,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
         } finally {
             abortRef.current = null;
             setStreamingHtml(null);
+            setImageProgress(null);
             setIsGenerating(false);
         }
     };
@@ -480,7 +488,13 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                 <div className="overflow-hidden rounded-lg border border-primary-200">
                     <div className="flex items-center justify-between border-b border-primary-100 bg-primary-50 px-3 py-2">
                         <span className="flex items-center gap-2 text-caption font-medium text-primary-500">
-                            <Spinner className="size-4 animate-spin" /> {t('buildingYourPage')}
+                            <Spinner className="size-4 animate-spin" />{' '}
+                            {imageProgress
+                                ? t('drawingIllustrations', {
+                                      completed: imageProgress.completed,
+                                      total: imageProgress.total,
+                                  })
+                                : t('buildingYourPage')}
                         </span>
                         <MyButton buttonType="secondary" scale="small" onClick={cancelGenerate}>
                             <X className="size-4" /> {t('cancel')}

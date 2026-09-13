@@ -571,6 +571,25 @@ class TranscriptCollector(FrameProcessor):
                                    "sentence asking whether they can hear you, "
                                    "then stop. Do NOT repeat your question, do "
                                    "NOT restart your pitch, do NOT re-greet.]")
+                        elif (not self._is_bot_speaking()
+                              and not (self._duck is not None
+                                       and self._duck.has_pending_audio())
+                              and not self._last_reply_had_question()):
+                            # The reply had FINISHED (nothing playing, nothing
+                            # held) — a "yes" over a statement still in
+                            # progress carries on as before.
+                            # Call 15aadcdb (2026-09-13): "It is offline." →
+                            # "It's all offline right now." (an echo, no
+                            # question) → "yes" → carry-on cue → another echo,
+                            # four rounds. A reply that asked nothing has
+                            # nothing to carry on from: demand the next step.
+                            cue = ("[They acknowledged. Your last line only "
+                                   "restated what they told you and asked "
+                                   "nothing. Now take the NEXT step in one "
+                                   "sentence: ask your next question, or if "
+                                   "what they said means this is not for "
+                                   "them, close politely. Do not restate "
+                                   "their answer again.]")
                         else:
                             cue = ("[They just acknowledged you — carry on "
                                    "from where you were interrupted, in one "
@@ -675,6 +694,14 @@ class TranscriptCollector(FrameProcessor):
         machine. Only carrier PHRASES arm this (is_carrier_announcement), never
         a scrap or silence, so a quiet human is not mistaken for a recording."""
         return self._carrier_seen and self._human_turns == 0
+
+    def _last_reply_had_question(self) -> bool:
+        """Did the bot's most recent played reply ask anything?"""
+        t = self._outcome.transcript
+        for entry in reversed(t[:-1] if t and t[-1].get("role") == "user" else t):
+            if entry.get("role") == "assistant":
+                return "?" in (entry.get("text") or "") or "？" in (entry.get("text") or "")
+        return True
 
     def _last_played_question(self) -> str:
         """The last question the caller HEARD (played transcript), or ''."""
@@ -2652,7 +2679,10 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "\u2018No charge at all.\u2019 Bad: \u2018Hmm.\u2019 / \u2018Achha.\u2019 / \u2018Okay.\u2019 / \u2018Theek hai.\u2019 / "
         "\u2018Right.\u2019 — callers heard constant Hmm-ing as robotic, so such noises are "
         "allowed at most one reply in five. The detail, and the one question if any, "
-        "come in the sentences after it."
+        "come in the sentences after it. When the caller has just ANSWERED you, that "
+        "first sentence is your NEXT step — never their answer in other words "
+        "(\u2018It\u2019s all offline right now.\u2019, \u2018So you\u2019re only doing offline classes.\u2019 "
+        "are both wrong) and never a yes/no check of it."
         if get_settings().fast_opener_enabled else
         "- Keep the FIRST sentence of every reply short (a few words) so it reaches the "
         "caller fast — but make it SUBSTANCE, not a filler sound. Do NOT open replies with "
@@ -2685,7 +2715,10 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
            "‘लास्ट exam में कितने "
            "marks आए थे?’")
         + " TWO EXCEPTIONS, and only these: read a phone number back once digit by digit, "
-        "and read a booked day and time back once. Everything else, never."
+        "and read a booked day and time back once. Everything else, never. Do not turn "
+        "their answer into a confirmation question either (\u2018No online classes at all "
+        "then?\u2019 after they said it is offline): one answer, one acknowledgment at most, "
+        "then move on — if the answer means this is not for them, say so and close."
     )
     # Founder, 2026-09-08, after live-testing the yoga agent: "it's asking questions
     # as if she is my mother. 'Hey, do you take live classes?' is not the right way —

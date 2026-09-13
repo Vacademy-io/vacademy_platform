@@ -98,6 +98,12 @@ PERSONAS: List[Persona] = [
             "then say 'Okay, send me details' and hang up. If they only say they are here without a "
             "question, say 'Hello?' once more and hang up.",
             checks=["reasks_after_hello"], max_turns=6),
+    Persona("offline_echo_loop", "Shreyash Jain",                       # call 15aadcdb, 2026-09-13
+            _STYLE + " Reply 'Yes' to the opening. When asked about online or offline, say exactly "
+            "'It is offline.' From then on answer ONLY 'Yes' or 'Yes, I'm not running' to anything "
+            "that restates or double-checks that, and 'Okay, bye' [HANGUP] if they close the call. "
+            "Never volunteer anything else.",
+            checks=["no_confirmation_loop"], max_turns=6),
     Persona("objector", "Deepak Menon",
             _STYLE + " You run online yoga on Zoom with 40 students. After the pitch say: 'We manage fine "
             "on WhatsApp groups. Why would I pay for this?' Push back once more if the answer is generic, "

@@ -4170,3 +4170,41 @@ async def test_voicemail_is_recognised_only_from_carrier_phrases():
     tc2._bot_spoke_once = lambda: True
     await _feed(tc2, "haan ji bol raha hoon")           # a human after all
     assert tc2.looks_like_voicemail() is False
+
+
+@pytest.mark.asyncio
+async def test_a_yes_after_an_echo_only_reply_demands_the_next_step():
+    """Call 15aadcdb (2026-09-13): "It is offline." → "It's all offline right
+    now." → "Yes" → carry-on cue → another echo, four rounds. When the last
+    reply asked nothing, the acknowledgment must cue the NEXT step."""
+    rec = _Rec()
+    # the reply has finished (bot silent) but the VAD onset just cut the tail
+    # bookkeeping — exactly the live shape (recently cut, nothing pending)
+    tc = _replay_collector(rec, bot_speaking=False, bot_stopped_t=lambda: time.time())
+    tc._recently_cut = lambda: True          # the VAD onset stamped a cut
+    tc._outcome.transcript.extend([
+        {"role": "user", "text": "It is offline."},
+        {"role": "assistant", "text": "It's all offline right now."},
+    ])
+    await _feed(tc, "Yes")
+    cues = rec.cues()
+    assert any("NEXT step" in c for c in cues), cues
+    assert not any("carry on" in c for c in cues), cues
+    # the same "yes" while that statement is still PLAYING carries on
+    rec3 = _Rec()
+    tc3 = _replay_collector(rec3, bot_speaking=True, bot_stopped_t=lambda: time.time())
+    tc3._outcome.transcript.extend([
+        {"role": "user", "text": "It is offline."},
+        {"role": "assistant", "text": "It's all offline right now."},
+    ])
+    await _feed(tc3, "Yes")
+    assert any("carry on" in c for c in rec3.cues()), rec3.cues()
+    # with a question on the line, "yes" answers it as before
+    rec2 = _Rec()
+    tc2 = _replay_collector(rec2, bot_stopped_t=lambda: time.time())
+    tc2._outcome.transcript.extend([
+        {"role": "user", "text": "Online."},
+        {"role": "assistant", "text": "And who sends the daily link — you, or someone else?"},
+    ])
+    await _feed(tc2, "Yes")
+    assert not any("NEXT step" in c for c in rec2.cues()), rec2.cues()

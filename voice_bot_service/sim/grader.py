@@ -146,6 +146,28 @@ def grade(persona, convo: List[Dict], lead_name: str, now: Optional[datetime] = 
         hyp = [t for t in after(r"not looking|not interested|no need") if re.search(r"if you (were|ever|do)|in the future|scale up", t["text"], re.I)]
         if len(hyp) >= 2:
             fails.append("kept pushing hypotheticals after the caller said no")
+    if "no_confirmation_loop" in checks:               # call 15aadcdb
+        # After "It is offline." the bot restated or double-checked that answer
+        # FOUR times ("It's all offline right now." / "No online classes at all
+        # then?" / "So you're not running any online classes…" / "So you're only
+        # doing offline classes."), each answered "Yes". One echo is tolerated
+        # (the gate trims most); two is the loop.
+        after = False; echoes = []
+        for t in convo:
+            if t["role"] == "user" and "offline" in t["text"].lower():
+                after = True
+                continue
+            if after and t["role"] == "assistant":
+                for sent in re.split(r"(?<=[.?!])\s+", t["text"]):
+                    w = sent.lower()
+                    if re.search(r"\b(offline|online)\b", w) and len(w.split()) <= 12 and (
+                            w.rstrip().endswith("?") or re.match(r"^(so|okay|ok|alright|right|it'?s)\b", w)):
+                        echoes.append(sent.strip())
+        if len(echoes) >= 2:
+            # A warning while the model still does this on 4/4 runs (the text sim
+            # cannot see the turn-gate cue that breaks the loop in production);
+            # promote to a fail once the prompt alone holds it under 2.
+            warns.append(f"restated/double-checked the caller's answer {len(echoes)}x: {echoes[:3]}")
     if "reasks_after_hello" in checks:                 # call f08f5712
         # After a caller "Hello?" the bot must put its question back on the line,
         # not just confirm it is there.

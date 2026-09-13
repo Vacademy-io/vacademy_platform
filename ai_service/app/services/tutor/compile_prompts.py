@@ -99,8 +99,13 @@ def rules_text(images_enabled: bool = True) -> str:
    Do not add facts the material does not contain; do not skip facts it does.
 4. Every concept except the first of a topic has a check. Checks test the concept just taught, in the
    learner's own words where possible; give a rubric and 1-3 realistic misconceptions with hints.
-5. VISUALS ARE THE POINT OF A WHITEBOARD. Every topic (board) gets at least one visual, and most concepts add
-   or extend one. Use an SVG diagram for anything structural (parts of a cell, a circuit, a force diagram, a
+5. VISUALS ARE THE POINT OF A WHITEBOARD — a board of prose is a FAILED board. Institutes tell us students
+   learn from pictures, so every topic (board) carries something to LOOK at, most concepts add or extend one,
+   and two text-only concepts never follow each other. Besides diagrams and pictures, teach with VISUAL NOTES
+   the way a textbook margin does: `callout` with its right kind ("definition" for a term, "example" for a
+   worked or real case, "warning" for the common mistake, "tip" for the thing to remember), a `table` for any
+   comparison, `columns` for side-by-side, a numbered `bullet` strip for a process, and `annotate` to label a
+   part of a diagram the narration points at. Use an SVG diagram for anything structural (parts of a cell, a circuit, a force diagram, a
    flow, a timeline, a comparison). SVG craft rules (the board renders them at ~700px wide in a sans-serif font):
    - viewBox='0 0 640 360' and FILL it: shapes spread across the whole canvas, nothing crammed into one corner
      or floating in empty white space; keep a 24px margin from every edge (text baselines >= 32 from the top).
@@ -195,17 +200,24 @@ def system_prompt(teacher_name: str, lang: str, images_enabled: bool = True, sty
 # scene-setting image, gave two well-placed images plus the diagrams.
 IMAGES_ON_RULE = """IMAGES ARE ON FOR THIS COURSE. A whiteboard mixes two kinds of visual and you must use both kinds where each fits:
    - "svg" diagrams for STRUCTURE: parts of a thing, a flow or pathway, a comparison, a timeline, a formula.
-   - "image" ops for anything that exists in the physical world: a person doing something, a body part,
-     equipment, a setting (clinic, lab, home, workplace), a real object, a procedure or technique being
-     performed, a real-life scene the learner should picture. A learner remembers a realistic picture of a
-     physiotherapist assessing a patient far better than a box labelled "assessment".
-   Image rules (checked): (a) the plan contains at least one image op, placed where the slide first meets
-   the real world (usually the opening topic sets the scene); (b) every topic that involves people,
-   patients, environments, tools, practical techniques or worked examples gets an image op in one of its
-   concepts, alongside (not instead of) any diagram that topic needs; (c) a purely abstract topic
-   (definitions, categories, a formula) keeps its diagram and needs no image; (d) an image `generate`
-   prompt is a concrete photographic brief of 25-45 words: subject, action, setting, lighting, camera
-   angle, then "realistic, educational, no text, no logos"."""
+   - "image" ops for everything a learner should SEE rather than infer from shapes — in two flavours:
+     * a TEXTBOOK ILLUSTRATION, where a book would print one: a labelled cutaway or cross-section, an
+       organism or specimen, an apparatus, an anatomical structure, a map, a historical scene. Brief it as
+       "a clean educational textbook illustration, flat vector style, generous white background, soft muted
+       palette, of <subject>, with <the parts that matter> clearly separated".
+     * a PHOTOGRAPHIC scene, for the real world: a person doing something, a workplace, a clinic, a lab, a
+       technique being performed. Brief it as subject, action, setting, lighting, camera angle, then
+       "realistic, educational".
+     A learner remembers a labelled illustration of the heart, or a photo of a physiotherapist assessing a
+     patient, far better than a box labelled "assessment".
+   Image rules (checked): (a) a slide carries roughly one illustration per two boards — one on a short slide,
+   two or three on a long one — placed where a picture teaches more than shapes, never as decoration;
+   (b) every topic that involves people, places, organisms, equipment, practical technique or a worked
+   real-world example gets an image op in one of its concepts, alongside (not instead of) any diagram that
+   topic needs; (c) a purely abstract topic (definitions, categories, a derivation) keeps its diagram and
+   needs no photo, though a labelled illustration often still helps; (d) an image `generate` prompt is a
+   concrete brief of 25-45 words naming the subject and the parts that must be visible, and always ends with
+   "no text, no watermark, no logos" — the board writes the labels, not the picture."""
 
 IMAGES_OFF_RULE = """AI IMAGES ARE OFF for this course: do not use image ops; draw every visual as an svg diagram."""
 

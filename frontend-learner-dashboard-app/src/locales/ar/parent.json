@@ -243,7 +243,9 @@
         "summary_one": "حصل {{name}} على شارة واحدة ({{count}}).",
         "summary_two": "حصل {{name}} على شارتين ({{count}}).",
         "summary_few": "حصل {{name}} على {{count}} شارات.",
-        "summary_many": "حصل {{name}} على {{count}} شارة."
+        "summary_many": "حصل {{name}} على {{count}} شارة.",
+        "awardedByInstitute": "ممنوحة من المؤسسة",
+        "awardReason": "«{{reason}}»"
     },
     "childView": {
         "exiting": "جارٍ الخروج من عرض الطالب…",

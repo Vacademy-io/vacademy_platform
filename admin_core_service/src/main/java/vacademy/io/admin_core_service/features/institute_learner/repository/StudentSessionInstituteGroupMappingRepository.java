@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -251,6 +252,20 @@ public interface StudentSessionInstituteGroupMappingRepository
   Optional<String> findLatestPackageSessionIdByUserIdAndInstituteId(
       @Param("userId") String userId,
       @Param("instituteId") String instituteId);
+
+  /**
+   * Of the given user ids, those that have ANY mapping row in the institute (enrolled in a
+   * batch or an audience-only contact, any status). Used to keep staff badge awards inside
+   * the tenant: an id with no row here is skipped, never written or notified.
+   */
+  @Query(value = """
+      SELECT DISTINCT user_id FROM student_session_institute_group_mapping
+      WHERE institute_id = :instituteId
+      AND user_id IN (:userIds)
+      """, nativeQuery = true)
+  List<String> findUserIdsInInstitute(
+      @Param("instituteId") String instituteId,
+      @Param("userIds") Collection<String> userIds);
 
   /**
    * All package_session_ids a learner is enrolled in within one institute, filtered

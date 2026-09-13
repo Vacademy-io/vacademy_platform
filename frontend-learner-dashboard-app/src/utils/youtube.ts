@@ -27,3 +27,35 @@ export const extractYouTubeVideoId = (
  */
 export const isYouTubeUrl = (url: string | null | undefined): boolean =>
   extractYouTubeVideoId(url) !== null;
+
+/**
+ * True when a scheduled session should play its YouTube link as a LIVE class —
+ * position pinned to the wall clock, held before the start and after the end —
+ * rather than as a recording the learner may watch freely.
+ *
+ * The declared type alone is not enough: the same admin habit that leaves the
+ * platform dropdown on "other" with a youtu.be link pasted in (a dozen prod
+ * sessions in two months) produced classes the player embedded by URL but
+ * never synced, so they resumed from a pause, played from 0:00 on a late join
+ * and could be started over once the video ran out. The rule therefore
+ * follows the URL, like the player choice does, and only an explicit
+ * "youtube_recorded" opts a session out. Declared types are compared
+ * case-insensitively — the schedule row stores "YOUTUBE".
+ *
+ * `hasSchedule` is false for the default-class flow (a plain videoUrl with no
+ * scheduled slot), which has no start time to sync to.
+ */
+export const isLiveYouTubeSession = ({
+  linkType,
+  link,
+  hasSchedule,
+}: {
+  linkType: string | null | undefined;
+  link: string | null | undefined;
+  hasSchedule: boolean;
+}): boolean => {
+  if (!hasSchedule) return false;
+  const declared = (linkType ?? "").toString().toLowerCase();
+  if (declared === "youtube_recorded") return false;
+  return declared === "youtube" || isYouTubeUrl(link);
+};

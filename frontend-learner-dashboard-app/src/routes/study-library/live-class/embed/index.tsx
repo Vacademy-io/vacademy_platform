@@ -13,7 +13,7 @@ import ZoomMeetingSdkPlayer from "./-components/ZoomMeetingSdkPlayer";
 import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
 import GoogleMeetLauncher from "./-components/GoogleMeetLauncher";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
-import { extractYouTubeVideoId, isYouTubeUrl } from "@/utils/youtube";
+import { extractYouTubeVideoId, isLiveYouTubeSession, isYouTubeUrl } from "@/utils/youtube";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -409,8 +409,17 @@ function EmbedComponent() {
           : sessionDetails.allowPlayPause ?? true;
       const allowRewind = sessionDetails.allowRewind === "true";
 
-      // Check if this is a live session (not recorded)
-      const isLive = linkType === LinkType.YOUTUBE && !!sessionId; // Only consider it live if it's a real session
+      // Live (clock-synced) unless explicitly a recording. Decided by the URL
+      // as well as the declared type, like the player choice above: a session
+      // saved with the platform on "other" and a youtu.be link (this is how
+      // 377107b8 was stored) otherwise ran as a free recording — no late-join
+      // seek, resume-from-pause, restart at the end. No sessionId = the
+      // default-class flow, which has no slot to sync to.
+      const isLive = isLiveYouTubeSession({
+        linkType,
+        link: youTubeCandidateLink,
+        hasSchedule: !!sessionId,
+      });
 
       let sessionStartTime;
       if (isLive && sessionDetails.meetingDate && sessionDetails.scheduleStartTime && sessionDetails.timezone) {

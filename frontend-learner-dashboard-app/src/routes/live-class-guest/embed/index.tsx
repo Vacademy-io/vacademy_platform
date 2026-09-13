@@ -7,7 +7,7 @@ import {
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
-import { extractYouTubeVideoId, isYouTubeUrl } from "@/utils/youtube";
+import { extractYouTubeVideoId, isLiveYouTubeSession, isYouTubeUrl } from "@/utils/youtube";
 import { useGuestAccessRecovery } from "../-hooks/useGuestAccessRecovery";
 import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
 import ZohoEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZohoEmbedPlayer";
@@ -161,8 +161,13 @@ function GuestEmbedComponent() {
           : sessionDetails.allowPlayPause ?? true;
       const allowRewind = sessionDetails.allowRewind === "true";
 
-      // Check if this is a live session (not recorded)
-      const isLive = linkType === LinkType.YOUTUBE;
+      // Live (clock-synced) unless explicitly a recording — by URL as well as
+      // declared type, matching the player choice above (see isLiveYouTubeSession).
+      const isLive = isLiveYouTubeSession({
+        linkType,
+        link: meetingLink,
+        hasSchedule: true,
+      });
       const sessionStartTime = convertSessionTimeToUserTimezone(
         sessionDetails.meetingDate,
         sessionDetails.scheduleStartTime,

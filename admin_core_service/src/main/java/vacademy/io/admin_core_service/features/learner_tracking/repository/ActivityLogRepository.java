@@ -38,15 +38,26 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
      * GROUP BY is on (user, local date) so a learner in several batches still earns
      * one day's points, not one per batch.
      *
-     * <p>The cast is CAST(... AS bigint), never '::bigint'. Hibernate reads a leading
-     * ':' as a named parameter and rewrites '::bigint' to ':bigint', which reaches
-     * Postgres as a syntax error at EXECUTION time — long after the query compiled
-     * and the service booted cleanly.
+     * <p>Two Postgres/Hibernate traps are designed around here, both of which only
+     * surface when the query actually RUNS — it compiles and the service boots clean
+     * either way:
+     * <ul>
+     *   <li>The cast is CAST(... AS bigint), never '::bigint'. Hibernate reads a
+     *       leading ':' as a named parameter and rewrites '::bigint' to ':bigint',
+     *       which reaches Postgres as a syntax error.</li>
+     *   <li>The local-date expression is computed ONCE in a subquery rather than
+     *       repeated in SELECT and GROUP BY. A named parameter used twice is rendered
+     *       as two separate placeholders, so Postgres cannot see the two expressions
+     *       as identical and rejects the GROUP BY.</li>
+     * </ul>
      */
     @Query(value = """
-            SELECT al.user_id AS userId,
-                   DATE(al.created_at AT TIME ZONE 'UTC' AT TIME ZONE :zone) AS activityDate,
-                   CAST(SUM(
+            SELECT t.user_id AS userId,
+                   t.activity_date AS activityDate,
+                   CAST(SUM(t.ms) AS bigint) AS millis
+            FROM (
+                SELECT al.user_id,
+                       DATE(al.created_at AT TIME ZONE 'UTC' AT TIME ZONE :zone) AS activity_date,
                        COALESCE(
                            al.engaged_ms,
                            CASE
@@ -54,28 +65,19 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                    THEN EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000
                                ELSE 0
                            END
-                       )
-                   ) AS bigint) AS millis
-            FROM activity_log al
-            WHERE al.created_at >= :from
-              AND al.created_at < :to
-              AND al.user_id IN (
-                  SELECT DISTINCT ssigm.user_id
-                  FROM student_session_institute_group_mapping ssigm
-                  WHERE ssigm.institute_id = :instituteId
-                    AND ssigm.status IN (:learnerStatuses)
-              )
-            GROUP BY al.user_id, DATE(al.created_at AT TIME ZONE 'UTC' AT TIME ZONE :zone)
-            HAVING SUM(
-                       COALESCE(
-                           al.engaged_ms,
-                           CASE
-                               WHEN al.end_time IS NOT NULL AND al.start_time IS NOT NULL
-                                   THEN EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000
-                               ELSE 0
-                           END
-                       )
-                   ) > 0
+                       ) AS ms
+                FROM activity_log al
+                WHERE al.created_at >= :from
+                  AND al.created_at < :to
+                  AND al.user_id IN (
+                      SELECT DISTINCT ssigm.user_id
+                      FROM student_session_institute_group_mapping ssigm
+                      WHERE ssigm.institute_id = :instituteId
+                        AND ssigm.status IN (:learnerStatuses)
+                  )
+            ) t
+            GROUP BY t.user_id, t.activity_date
+            HAVING SUM(t.ms) > 0
             """, nativeQuery = true)
     List<DailyActivityProjection> findDailyActivityForInstitute(
             @Param("instituteId") String instituteId,

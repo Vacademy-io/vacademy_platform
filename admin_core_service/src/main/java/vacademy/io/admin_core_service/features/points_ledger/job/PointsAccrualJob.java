@@ -143,6 +143,10 @@ public class PointsAccrualJob {
             Set<LocalDate> activeDays = entry.getValue();
 
             for (LocalDate day : sorted(activeDays)) {
+                // Stamp the award with the END of the day it was earned, in the
+                // institute's zone — not with "now". A 30-day backfill otherwise lands
+                // every point inside today and inside this week's leaderboard.
+                Timestamp earnedAt = Timestamp.from(day.plusDays(1).atStartOfDay(zone).minusSeconds(1).toInstant());
                 // Today is still in progress; awarding it now would settle a day that
                 // can still gain activity. It is picked up by tomorrow's run.
                 if (!day.isBefore(today) || day.isBefore(awardFrom)) continue;
@@ -152,7 +156,7 @@ public class PointsAccrualJob {
                             userId, instituteId, null,
                             PointsSourceType.ACTIVITY, null,
                             activityPoints, "Active on " + day,
-                            "ACTIVITY:" + day + ":" + userId).isPresent() ? 1 : 0;
+                            "ACTIVITY:" + day + ":" + userId, earnedAt).isPresent() ? 1 : 0;
                 }
 
                 if (streakPoints > 0) {
@@ -165,7 +169,7 @@ public class PointsAccrualJob {
                                 userId, instituteId, null,
                                 PointsSourceType.ENGAGEMENT_STREAK, null,
                                 bonus, streak + "-day streak",
-                                "ENGAGEMENT_STREAK:" + day + ":" + userId).isPresent() ? 1 : 0;
+                                "ENGAGEMENT_STREAK:" + day + ":" + userId, earnedAt).isPresent() ? 1 : 0;
                     }
                 }
             }

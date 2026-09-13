@@ -60,6 +60,23 @@ public class PointsLedgerService {
     public Optional<PointsLedger> award(String userId, String instituteId, String packageSessionId,
                                         PointsSourceType sourceType, String sourceId,
                                         int points, String reason, String idempotencyKey) {
+        return award(userId, instituteId, packageSessionId, sourceType, sourceId, points, reason,
+                idempotencyKey, null);
+    }
+
+    /**
+     * Same, with an explicit {@code awardedAt}.
+     *
+     * Backfilled points MUST carry the instant they were earned, not the instant the
+     * backfill ran. Otherwise a learner's whole history lands inside "today", and one
+     * backfill hands every learner a full history inside the current weekly
+     * leaderboard window. Null means now.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Optional<PointsLedger> award(String userId, String instituteId, String packageSessionId,
+                                        PointsSourceType sourceType, String sourceId,
+                                        int points, String reason, String idempotencyKey,
+                                        Timestamp awardedAt) {
         if (userId == null || userId.isBlank() || instituteId == null || instituteId.isBlank()) {
             log.warn("[points] refusing award with missing user/institute (source={}, id={})", sourceType, sourceId);
             return Optional.empty();
@@ -83,7 +100,7 @@ public class PointsLedgerService {
         row.setSourceId(sourceId);
         row.setPoints(points);
         row.setReason(reason);
-        row.setAwardedAt(new Timestamp(System.currentTimeMillis()));
+        row.setAwardedAt(awardedAt != null ? awardedAt : new Timestamp(System.currentTimeMillis()));
         row.setIdempotencyKey(idempotencyKey);
 
         try {

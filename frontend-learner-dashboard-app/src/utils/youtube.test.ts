@@ -23,6 +23,17 @@ describe("isLiveYouTubeSession", () => {
     expect(isLiveYouTubeSession({ linkType: "YOUTUBE_RECORDED", link: share, hasSchedule: true })).toBe(false);
   });
 
+  it("a declared non-YouTube platform keeps its old (non-live) behaviour even with a YouTube link", () => {
+    for (const declared of ["zoom", "google meet", "GOOGLE_MEET", "zoho", "ZOHO_MEETING", "bbb"]) {
+      expect(isLiveYouTubeSession({ linkType: declared, link: share, hasSchedule: true })).toBe(false);
+    }
+  });
+
+  it("'unknown' and whitespace-padded types count as unspecified", () => {
+    expect(isLiveYouTubeSession({ linkType: "unknown", link: share, hasSchedule: true })).toBe(true);
+    expect(isLiveYouTubeSession({ linkType: " Other ", link: share, hasSchedule: true })).toBe(true);
+  });
+
   it("the default-class flow (no scheduled slot) is not live", () => {
     expect(isLiveYouTubeSession({ linkType: "youtube", link: share, hasSchedule: false })).toBe(false);
   });

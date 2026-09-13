@@ -37,14 +37,18 @@ export const isYouTubeUrl = (url: string | null | undefined): boolean =>
  * platform dropdown on "other" with a youtu.be link pasted in (a dozen prod
  * sessions in two months) produced classes the player embedded by URL but
  * never synced, so they resumed from a pause, played from 0:00 on a late join
- * and could be started over once the video ran out. The rule therefore
- * follows the URL, like the player choice does, and only an explicit
- * "youtube_recorded" opts a session out. Declared types are compared
- * case-insensitively — the schedule row stores "YOUTUBE".
+ * and could be started over once the video ran out. So an UNSPECIFIED type
+ * ("other", "unknown", empty) follows the URL, like the player choice does.
+ * A declared platform that is not YouTube (zoom, google meet, zoho, bbb) is
+ * left as it was — not live — even with a YouTube link, and an explicit
+ * "youtube_recorded" always opts out. Declared types compare
+ * case-insensitively: the schedule row stores "YOUTUBE".
  *
  * `hasSchedule` is false for the default-class flow (a plain videoUrl with no
  * scheduled slot), which has no start time to sync to.
  */
+const UNSPECIFIED_LINK_TYPES = new Set(["", "other", "unknown"]);
+
 export const isLiveYouTubeSession = ({
   linkType,
   link,
@@ -55,7 +59,8 @@ export const isLiveYouTubeSession = ({
   hasSchedule: boolean;
 }): boolean => {
   if (!hasSchedule) return false;
-  const declared = (linkType ?? "").toString().toLowerCase();
-  if (declared === "youtube_recorded") return false;
-  return declared === "youtube" || isYouTubeUrl(link);
+  const declared = (linkType ?? "").toString().trim().toLowerCase();
+  if (declared === "youtube") return true;
+  if (!UNSPECIFIED_LINK_TYPES.has(declared)) return false;
+  return isYouTubeUrl(link);
 };

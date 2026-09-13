@@ -552,7 +552,27 @@ A real plan was authored, answered by a real learner, and scored — against pro
 | `GET .../item/{id}/tracking` | `completedCount 1`, `correctCount 1`, full per-learner row |
 | Leaderboard `metric=POINTS` | rank 1 Shreyash Jain **30 pts**, rank 2 Deepankar Dey 0 — roster-scoped, both members present |
 
-**Two defects this exposed, both fixed in `b2a6f2f9c1`:**
+**Accrual verified on prod too.** Predicted from the raw activity rows before running it —
+12 learner-days, two consecutive pairs for the test learner — then confirmed: `rowsWritten: 14`,
+learner total **80** (ACTIVITY 40 / ENGAGEMENT_ITEM 30 / ENGAGEMENT_STREAK 10). Re-running the same
+window wrote **0**; widening to 60 days wrote only the 7 genuinely new days. Leaderboard `WEEK` now
+reads 30 against `ALL` 90 — a real window, not a copy of all-time.
+
+**Five defects this exposed, every one of which compiled, booted and passed unit tests:**
+
+1-2. Authorization + feed scoping (`b2a6f2f9c1`), below.
+3. `::bigint` rewritten by Hibernate to `:bigint` → Postgres syntax error at execution (`4aaf7be365`).
+   The repo already used `CAST(... AS bigint)` everywhere for exactly this reason.
+4. A named parameter used twice renders as two placeholders, so the `GROUP BY` expression no longer
+   matched the `SELECT` expression (`53d13557a6`). The local date is now computed once in a subquery.
+   **A psql check with the zone inlined as a literal passes and hides this** — verify native queries
+   with `PREPARE`/`EXECUTE` and real placeholders.
+5. Backfilled awards were stamped "now", so a 30-day backfill put the learner's whole history inside
+   today and inside the current weekly leaderboard window (`463c97c6d0`). Awards now carry the end of
+   the local day they were earned. Totals were correct throughout — only their distribution over time
+   was wrong, so any check that only compared totals would have passed.
+
+**The original two, fixed in `b2a6f2f9c1`:**
 
 1. The engagement admin endpoints performed **no authorization at all** — `instituteId` was just a
    string the caller supplied, so any authenticated user could publish onto another institute's

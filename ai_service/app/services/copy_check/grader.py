@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from ..chat_llm_client import ChatLLMClient
 from .prompt_builder import GRADING_SYSTEM, build_grading_prompt
+from .validator import coerce_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -168,14 +169,17 @@ class CopyCheckGrader:
     ) -> dict[str, Any]:
         model = preferred_model or DEFAULT_MODEL
         verdict = await self._call(question, rubric, layout_map, model)
+        # The model writes "low" or "85%" here often enough; read it the way
+        # the validator will, instead of letting float() fail the question.
         if (
-            float(verdict.get("confidence", 0)) < ESCALATION_CONF_THRESHOLD
+            coerce_confidence(verdict.get("confidence")) < ESCALATION_CONF_THRESHOLD
             and self._escalations_used < MAX_ESCALATIONS_PER_COPY
         ):
             self._escalations_used += 1
             logger.info(
                 "Escalating Q%s to %s (conf=%.2f)",
-                question["question_id"], ESCALATION_MODEL, verdict.get("confidence", 0),
+                question["question_id"], ESCALATION_MODEL,
+                coerce_confidence(verdict.get("confidence")),
             )
             try:
                 verdict = await self._call(question, rubric, layout_map, ESCALATION_MODEL)

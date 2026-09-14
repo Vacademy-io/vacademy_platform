@@ -33,6 +33,70 @@ NOTE_STYLES = {"margin_note", "region_note", "feedback", "deduction_reason"}
 # Styles that carry a mark figure of their own. A brace shows what a block of
 # the answer earned; a summary carries the question total at the foot of it.
 MARK_BEARING_STYLES = {"brace", "summary", "score"}
+
+# What a model means when it writes a word where a number was asked for.
+# "confidence": "low" reached float() and failed the whole question - the
+# student got 0 and a "needs your review" card for a field that only decides
+# whether the copy is escalated to a stronger model.
+WORD_CONFIDENCE = {
+    "none": 0.0, "very low": 0.2, "low": 0.3, "lowish": 0.4, "medium": 0.6,
+    "moderate": 0.6, "med": 0.6, "mid": 0.6, "fair": 0.6, "high": 0.9,
+    "very high": 0.95, "certain": 1.0, "sure": 0.9, "unsure": 0.3,
+}
+_NUMBER_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
+
+
+def coerce_number(
+    value: Any,
+    default: float = 0.0,
+    *,
+    words: dict[str, float] | None = None,
+    percent_of: float | None = None,
+) -> float:
+    """A float out of whatever the model put in a numeric field.
+
+    Handles the shapes seen in real output: "2", "2.5", "1,5", "2/3" (the
+    figure awarded, not the fraction), "2 marks", "0.5 mark", "85%" (with
+    `percent_of`), words such as "low"/"high" (with `words`), a one-item
+    list, or a dict carrying a `value`/`marks`/`score`. Anything else - None,
+    booleans, "N/A", prose without a digit - is `default`. Never raises: a
+    cosmetic field must not zero a question.
+    """
+    if value is None or isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        f = float(value)
+        return f if f == f and f not in (float("inf"), float("-inf")) else default
+    if isinstance(value, dict):
+        for key in ("value", "marks", "score", "marks_awarded", "confidence"):
+            if key in value:
+                return coerce_number(value[key], default, words=words, percent_of=percent_of)
+        return default
+    if isinstance(value, (list, tuple)):
+        return coerce_number(value[0], default, words=words, percent_of=percent_of) if value else default
+    text = str(value).strip().lower()
+    if not text:
+        return default
+    if words and text in words:
+        return words[text]
+    m = _NUMBER_RE.search(text)
+    if not m:
+        return default
+    try:
+        f = float(m.group(0).replace(",", "."))
+    except ValueError:
+        return default
+    if percent_of is not None and "%" in text:
+        f = f / 100.0 * percent_of
+    return f
+
+
+def coerce_confidence(value: Any) -> float:
+    """Confidence in [0, 1]; "high", "85%" and "85" all read as intended."""
+    c = coerce_number(value, 0.0, words=WORD_CONFIDENCE, percent_of=1.0)
+    if 1.0 < c <= 100.0:
+        c = c / 100.0          # "85" written as a percentage without the sign
+    return max(0.0, min(1.0, c))
 # Where a mark sits relative to the row it is anchored to. The model states
 # this instead of the renderer inferring it, so a score lands in the margin
 # beside the last line of an answer rather than wherever there happened to be
@@ -260,14 +324,21 @@ def validate_and_cap(
             f"({question.get('max_marks')!r})"
         )
 
-    marks_awarded = float(raw.get("marks_awarded") or 0)
+    marks_awarded = coerce_number(raw.get("marks_awarded"), 0.0)
     breakdown_raw = raw.get("criteria_breakdown") or []
+    if isinstance(breakdown_raw, dict):
+        # {"Criterion A": 2, "Criterion B": 0.5} - the model flattened the list
+        breakdown_raw = [{"criteria_name": k, "marks": v} for k, v in breakdown_raw.items()]
     breakdown: list[dict[str, Any]] = []
-    for item in breakdown_raw:
+    for item in (breakdown_raw if isinstance(breakdown_raw, list) else []):
+        if not isinstance(item, dict):
+            # A bare string is a reason with no figure; keep it readable.
+            breakdown.append({"criteria_name": str(item), "marks": 0.0, "reason": ""})
+            continue
         breakdown.append({
-            "criteria_name": str(item.get("criteria_name") or "Criterion"),
-            "marks": float(item.get("marks") or 0),
-            "reason": str(item.get("reason") or ""),
+            "criteria_name": str(item.get("criteria_name") or item.get("name") or "Criterion"),
+            "marks": coerce_number(item.get("marks", item.get("score")), 0.0),
+            "reason": str(item.get("reason") or item.get("comment") or ""),
         })
 
     # Clamp to [0, max]. LLMs occasionally emit negative marks; floor them.
@@ -314,9 +385,13 @@ def validate_and_cap(
     valid_annotations: list[dict[str, Any]] = []
     dropped = 0
     rescued = 0
-    for ann in raw.get("annotations") or []:
+    annotations_raw = raw.get("annotations") or []
+    for ann in (annotations_raw if isinstance(annotations_raw, list) else []):
+        if not isinstance(ann, dict):
+            dropped += 1
+            continue
         target = ann.get("target")
-        style = ann.get("style")
+        style = (ann.get("style") or "").strip().lower() if isinstance(ann.get("style"), str) else None
         if style not in VALID_STYLES:
             dropped += 1
             continue
@@ -354,11 +429,9 @@ def validate_and_cap(
                 continue
             entry["target_end"] = end_resolved[0]
         if style in MARK_BEARING_STYLES:
-            try:
-                entry["marks"] = round(float(ann.get("marks")), 2)
-            except (TypeError, ValueError):
-                # A brace or summary with no readable figure is just a note.
-                entry["marks"] = None
+            figure = coerce_number(ann.get("marks"), float("nan"))
+            # A brace or summary with no readable figure is just a note.
+            entry["marks"] = None if figure != figure else round(figure, 2)
         valid_annotations.append(entry)
     if rescued:
         logger.info("Q%s: rescued %d annotations via anchor_text (bad line_id)",
@@ -421,7 +494,7 @@ def validate_and_cap(
         "max_marks": max_marks,
         "extracted_answer": str(raw.get("extracted_answer") or ""),
         "feedback": str(raw.get("feedback") or ""),
-        "confidence": float(raw.get("confidence") or 0),
+        "confidence": coerce_confidence(raw.get("confidence")),
         "criteria_breakdown": breakdown,
         "annotations": valid_annotations,
         # What the grader decided about WHERE the answer is and WHAT KIND of

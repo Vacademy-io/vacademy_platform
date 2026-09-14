@@ -263,6 +263,15 @@ public class EmailService {
      *
      * Public so AnnouncementDeliveryService and other write paths apply the same normalization.
      */
+    /** The display name in a "Name <addr>" from-string, or null when there is none. */
+    static String displayNameOf(String raw) {
+        if (raw == null) return null;
+        int lt = raw.indexOf('<');
+        if (lt <= 0) return null;
+        String name = raw.substring(0, lt).trim().replaceAll("^\"|\"$", "");
+        return name.isEmpty() ? null : name;
+    }
+
     public static String normalizeFromAddress(String raw) {
         if (raw == null) return null;
         String s = raw.trim();
@@ -921,9 +930,12 @@ public class EmailService {
             }
 
             String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
+            // Footer names the sender the way the inbox shows it: explicit display name, else the
+            // name stored in the config's "Name <addr>" from-string, else the bare address.
+            final String footerSender = finalFromName != null ? finalFromName
+                    : (displayNameOf(fromEmail) != null ? displayNameOf(fromEmail) : normalizeFromAddress(finalFromEmail));
             final String emailBody = unsubApplies
-                    ? unsubscribeMailer.withFooter(body, instituteId, to, policy,
-                            finalFromName != null ? finalFromName : normalizeFromAddress(finalFromEmail))
+                    ? unsubscribeMailer.withFooter(body, instituteId, to, policy, footerSender)
                     : body;
 
             final boolean includeSesHeader = shouldIncludeSesConfigurationHeader(instituteId);

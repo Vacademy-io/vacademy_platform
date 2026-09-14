@@ -443,7 +443,7 @@ def build_llm(provider: str | None = None):
     # keeps them in extra_body): the ONLY value that disables hybrid thinking.
     # 0.14s median TTFT from Mumbai with null; 6-14s (or content=None) without.
     return OpenAILLMService(
-        api_key=s.sarvam_api_key,
+        api_key=s.sarvam_llm_api_key,
         base_url=s.sarvam_llm_base_url,
         model=s.sarvam_llm_model,
         params=OpenAILLMService.InputParams(

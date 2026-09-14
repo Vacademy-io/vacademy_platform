@@ -19,7 +19,8 @@ from typing import Dict, List, Tuple
 import httpx
 
 
-def _openai_compatible(base_url: str, api_key: str, model: str, extra: dict | None):
+def _openai_compatible(base_url: str, api_key: str, model: str, extra: dict | None,
+                       headers: dict | None = None):
     async def call(system: str, messages: List[Dict[str, str]], max_tokens: int, temperature: float):
         body = {"model": model, "stream": True, "max_tokens": max_tokens, "temperature": temperature,
                 "messages": [{"role": "system", "content": system}] + messages}
@@ -28,7 +29,8 @@ def _openai_compatible(base_url: str, api_key: str, model: str, extra: dict | No
         t0 = time.perf_counter(); first = None; text = ""
         async with httpx.AsyncClient(timeout=90) as c:
             async with c.stream("POST", f"{base_url.rstrip('/')}/chat/completions",
-                                headers={"Authorization": f"Bearer {api_key}"}, json=body) as r:
+                                headers=headers or {"Authorization": f"Bearer {api_key}"},
+                                json=body) as r:
                 if r.status_code != 200:
                     raise RuntimeError(f"{model}: HTTP {r.status_code} {(await r.aread())[:200]!r}")
                 async for line in r.aiter_lines():
@@ -121,7 +123,7 @@ def make_chat(spec: str):
         model, _, loc = rest.partition("@")
         return _vertex(model or s.vertex_model, loc or s.vertex_location)
     if kind == "sarvam":
-        return _openai_compatible(s.sarvam_llm_base_url, s.sarvam_api_key, rest or s.sarvam_llm_model,
+        return _openai_compatible(s.sarvam_llm_base_url, s.sarvam_llm_api_key, rest or s.sarvam_llm_model,
                                   {"reasoning_effort": None})
     if kind == "openrouter":
         return _openai_compatible("https://openrouter.ai/api/v1", os.environ["OPENROUTER_API_KEY"], rest, None)
@@ -130,6 +132,17 @@ def make_chat(spec: str):
                                   {"thinking": {"type": "enabled"}})
     if kind == "bedrock":
         return _bedrock(rest)
+    if kind == "sarvamos":
+        # Sarvam's OPEN-SOURCE models (docs.sarvam.ai/api/getting-started/models/
+        # open-source): OpenAI-compatible on /v2, but the header is
+        # `api-subscription-key`, not a bearer token, and the key is a separate
+        # sk_… subscription from SARVAM_API_KEY. Benched 2026-09-14 from Mumbai.
+        import os as _os
+        key = _os.environ.get("SARVAM_OS_KEY") or _os.environ.get("SARVAM_API_KEY") or ""
+        if not key:
+            raise RuntimeError("sarvamos: set SARVAM_OS_KEY")
+        return _openai_compatible("https://api.sarvam.ai/v2", key, rest or "gemma4", None,
+                                  headers={"api-subscription-key": key})
     raise ValueError(f"unknown model spec {spec!r}")
 
 

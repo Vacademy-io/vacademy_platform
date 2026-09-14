@@ -187,6 +187,18 @@ class Settings:
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")
     )
+    # Sarvam's OPEN-SOURCE models (gemma4, deepseekv4-flash, glm5.x) live on
+    # /v2 under a SEPARATE sk_… subscription from the account's SARVAM_API_KEY
+    # — and that key also backs the Sarvam TTS fallback, so the LLM gets its
+    # own. Falls back to SARVAM_API_KEY when unset (the /v1 sarvam-m path).
+    # Benched 2026-09-14 from Mumbai on the real 18K-char agent prompt, 45 sim
+    # runs each vs gemini-2.5-flash: gemma4 judge 7.2 vs 6.1, hard-fail runs
+    # 1 vs 4, TTFT median 521 vs 528 ms, p90 639 vs 711 ms. glm5.x always
+    # reason (no parameter turns it off; TTFT 1.7-6.7 s) — unusable for voice.
+    #   LLM_PROVIDER=sarvam SARVAM_LLM_BASE_URL=https://api.sarvam.ai/v2
+    #   SARVAM_LLM_MODEL=gemma4 SARVAM_LLM_API_KEY=sk_…
+    sarvam_llm_api_key: str = field(
+        default_factory=lambda: _env("SARVAM_LLM_API_KEY") or _env("SARVAM_API_KEY"))
     # Sarvam-side fast endpointing: server endpointing (~0.65-0.76s from end of speech)
     # is the measured binding constraint on reply latency — high VAD sensitivity asks
     # Sarvam to finalize sooner. Env-off if it starts clipping slow speakers.

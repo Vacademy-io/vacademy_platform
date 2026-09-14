@@ -2253,14 +2253,16 @@ function EmailConfigurationRow({
                         </div>
                     )}
                     {vDns && vDns.length > 0 && <DnsRecordsTable records={vDns} />}
-                    {vStatus !== 'VERIFIED' && (!vDns || vDns.length === 0) && (
+                    {(!vDns || vDns.length === 0) && (
                         <button
                             type="button"
                             className="text-xs text-info-600 underline underline-offset-2 disabled:opacity-50"
                             onClick={() => runVerify('DOMAIN')}
                             disabled={verifying}
                         >
-                            {t('emailRow.verifyDomainInstead')}
+                            {vStatus === 'VERIFIED'
+                                ? t('emailRow.verifyDomainUpgrade')
+                                : t('emailRow.verifyDomainInstead')}
                         </button>
                     )}
                 </div>

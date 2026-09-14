@@ -303,6 +303,7 @@
             "postalAddressPlaceholder": "Required by CAN-SPAM for commercial email",
             "listUnsubscribe": "Add unsubscribe link and headers to every email from this sender",
             "listUnsubscribeHint": "Promotional emails always get them; turn this on to add them to other purposes too."
-        }
+        },
+        "verifyDomainUpgrade": "Verify the whole domain for better deliverability (DKIM) — sending keeps working while DNS propagates"
     }
 }

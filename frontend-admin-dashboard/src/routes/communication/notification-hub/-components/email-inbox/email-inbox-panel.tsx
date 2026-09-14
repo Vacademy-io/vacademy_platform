@@ -214,6 +214,8 @@ export function EmailInboxPanel() {
     }, [instituteId, searchQuery, filters]);
 
     const selectedConvo = conversations.find((c) => c.email === selectedEmail);
+    // A bounce daemon / postmaster thread: nothing a human will ever read a reply to.
+    const selectedIsSystem = !!selectedConvo?.system;
 
     const handleRefresh = () => {
         loadFirstPage();
@@ -266,8 +268,11 @@ export function EmailInboxPanel() {
                         loading={loadingMessages}
                         hasMore={hasMoreMessages}
                         onLoadOlder={handleLoadOlder}
-                        onReply={selectedEmail ? () => setReplyOpen(true) : undefined}
+                        onReply={
+                            selectedEmail && !selectedIsSystem ? () => setReplyOpen(true) : undefined
+                        }
                         onBack={() => setSelectedEmail(null)}
+                        system={selectedIsSystem}
                     />
                 </div>
             </div>

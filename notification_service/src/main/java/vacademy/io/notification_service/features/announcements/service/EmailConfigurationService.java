@@ -162,6 +162,13 @@ public class EmailConfigurationService {
                             .sendAfterHour(configNode.has(NotificationConstants.SEND_AFTER_HOUR) ? configNode.path(NotificationConstants.SEND_AFTER_HOUR).asInt(0) : null)
                             .postalAddress(configNode.hasNonNull(NotificationConstants.POSTAL_ADDRESS) ? configNode.path(NotificationConstants.POSTAL_ADDRESS).asText() : null)
                             .listUnsubscribe(configNode.has(NotificationConstants.LIST_UNSUBSCRIBE) ? configNode.path(NotificationConstants.LIST_UNSUBSCRIBE).asBoolean(false) : null)
+                            .skipWeekends(configNode.has(NotificationConstants.SKIP_WEEKENDS) ? configNode.path(NotificationConstants.SKIP_WEEKENDS).asBoolean(false) : null)
+                            .rampEnabled(configNode.has(NotificationConstants.RAMP_ENABLED) ? configNode.path(NotificationConstants.RAMP_ENABLED).asBoolean(false) : null)
+                            .rampStartPerDay(configNode.has(NotificationConstants.RAMP_START_PER_DAY) ? configNode.path(NotificationConstants.RAMP_START_PER_DAY).asInt(0) : null)
+                            .rampStep(configNode.has(NotificationConstants.RAMP_STEP) ? configNode.path(NotificationConstants.RAMP_STEP).asInt(0) : null)
+                            .rampEveryDays(configNode.has(NotificationConstants.RAMP_EVERY_DAYS) ? configNode.path(NotificationConstants.RAMP_EVERY_DAYS).asInt(0) : null)
+                            .rampCeiling(configNode.has(NotificationConstants.RAMP_CEILING) ? configNode.path(NotificationConstants.RAMP_CEILING).asInt(0) : null)
+                            .rampStartedOn(configNode.hasNonNull(NotificationConstants.RAMP_STARTED_ON) ? configNode.path(NotificationConstants.RAMP_STARTED_ON).asText() : null)
                             .build();
                     
                     configs.add(dto);
@@ -321,6 +328,24 @@ public class EmailConfigurationService {
             if (a.isEmpty()) node.remove(NotificationConstants.POSTAL_ADDRESS); else node.put(NotificationConstants.POSTAL_ADDRESS, a);
         }
         if (dto.getListUnsubscribe() != null) node.put(NotificationConstants.LIST_UNSUBSCRIBE, dto.getListUnsubscribe());
+        if (dto.getSkipWeekends() != null) node.put(NotificationConstants.SKIP_WEEKENDS, dto.getSkipWeekends());
+        if (dto.getRampStartPerDay() != null) node.put(NotificationConstants.RAMP_START_PER_DAY, Math.max(0, dto.getRampStartPerDay()));
+        if (dto.getRampStep() != null) node.put(NotificationConstants.RAMP_STEP, Math.max(0, dto.getRampStep()));
+        if (dto.getRampEveryDays() != null) node.put(NotificationConstants.RAMP_EVERY_DAYS, Math.max(1, dto.getRampEveryDays()));
+        if (dto.getRampCeiling() != null) node.put(NotificationConstants.RAMP_CEILING, Math.max(0, dto.getRampCeiling()));
+        if (dto.getRampStartedOn() != null) {
+            String d = dto.getRampStartedOn().trim();
+            if (d.isEmpty()) node.remove(NotificationConstants.RAMP_STARTED_ON);
+            else { java.time.LocalDate.parse(d); node.put(NotificationConstants.RAMP_STARTED_ON, d); } // throws on a bad date -> 400
+        }
+        if (dto.getRampEnabled() != null) {
+            node.put(NotificationConstants.RAMP_ENABLED, dto.getRampEnabled());
+            // Day 0 is stamped once, when the ramp is switched on. Without it every edit would
+            // restart the schedule at the opening volume and the warm-up would never progress.
+            if (dto.getRampEnabled() && !node.hasNonNull(NotificationConstants.RAMP_STARTED_ON)) {
+                node.put(NotificationConstants.RAMP_STARTED_ON, java.time.LocalDate.now().toString());
+            }
+        }
     }
 
     /**

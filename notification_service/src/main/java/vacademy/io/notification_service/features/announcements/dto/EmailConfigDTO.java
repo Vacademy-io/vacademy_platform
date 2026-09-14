@@ -36,4 +36,13 @@ public class EmailConfigDTO {
     private Integer sendAfterHour;    // local hour the next day's window opens (0-23)
     private String postalAddress;     // CAN-SPAM footer address
     private Boolean listUnsubscribe;  // unsubscribe headers/footer even for non-promotional types
+
+    // Warm-up ramp: when enabled, maxPerDay is computed from the schedule instead of being read.
+    private Boolean rampEnabled;
+    private Integer rampStartPerDay;
+    private Integer rampStep;
+    private Integer rampEveryDays;
+    private Integer rampCeiling;
+    private String rampStartedOn;     // ISO date; set to today when the ramp is first enabled
+    private Boolean skipWeekends;
 }

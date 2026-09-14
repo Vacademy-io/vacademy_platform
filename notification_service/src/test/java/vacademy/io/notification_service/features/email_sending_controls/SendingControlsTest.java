@@ -10,6 +10,8 @@ import vacademy.io.notification_service.features.email_sending_controls.service.
 import vacademy.io.notification_service.features.email_sending_controls.service.SenderPolicy;
 import vacademy.io.notification_service.features.email_sending_controls.service.UnsubscribeMailer;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Properties;
 
@@ -44,6 +46,62 @@ class SendingControlsTest {
         assertTrue(p.nextWindow().isAfter(java.time.LocalDateTime.now()));
         assertEquals(ZoneId.of("UTC"), SenderPolicy.from(om.readTree("{\"timezone\":\"Mars/Olympus\"}")).zone());
         assertEquals("inst|promotional_email|a@b.com", SenderPolicy.senderKey("inst", "PROMOTIONAL_EMAIL", "A@B.com"));
+    }
+
+    @Test
+    void rampWidensTheCapOnScheduleAndStopsAtTheCeiling() {
+        LocalDate day0 = LocalDate.of(2026, 9, 14);
+        SenderPolicy.RampPlan ramp = new SenderPolicy.RampPlan(20, 20, 7, 150, day0);
+
+        assertEquals(20, ramp.capOn(day0), "opening volume");
+        assertEquals(20, ramp.capOn(day0.plusDays(6)), "no increase inside the first week");
+        assertEquals(40, ramp.capOn(day0.plusDays(7)), "first increase");
+        assertEquals(60, ramp.capOn(day0.plusDays(14)));
+        assertEquals(150, ramp.capOn(day0.plusDays(70)), "never exceeds the ceiling");
+        assertEquals(20, ramp.capOn(day0.minusDays(3)), "a date before day 0 is still the opening volume");
+
+        assertEquals(day0.plusDays(7), ramp.nextIncreaseAfter(day0));
+        assertEquals(day0.plusDays(14), ramp.nextIncreaseAfter(day0.plusDays(7)));
+        assertNull(ramp.nextIncreaseAfter(day0.plusDays(70)), "no further increase at the ceiling");
+    }
+
+    @Test
+    void rampIsDrivenByElapsedDaysNotBySendVolume() {
+        // Skipping days must not bank extra volume: a schedule resumed after a pause is at
+        // the stage its calendar says, which is what mailbox providers actually judge.
+        LocalDate day0 = LocalDate.of(2026, 9, 14);
+        SenderPolicy.RampPlan ramp = new SenderPolicy.RampPlan(10, 10, 3, 0, day0);
+        assertEquals(40, ramp.capOn(day0.plusDays(9)));
+        assertEquals(40, ramp.capOn(day0.plusDays(11)), "still stage 3 until the next boundary");
+    }
+
+    @Test
+    void rampOverridesTheFlatCapAndWeekendPauseIsNotUnlimited() throws Exception {
+        SenderPolicy flat = SenderPolicy.from(om.readTree("{\"max_per_day\":500}"));
+        assertEquals(500, flat.maxPerDay());
+        assertNull(flat.ramp());
+
+        SenderPolicy ramped = SenderPolicy.from(om.readTree(
+                "{\"max_per_day\":500,\"ramp_enabled\":true,\"ramp_start_per_day\":20,\"ramp_step\":20,"
+                        + "\"ramp_every_days\":7,\"ramp_ceiling\":150,\"ramp_started_on\":\"2026-09-14\"}"));
+        assertNotNull(ramped.ramp());
+        assertTrue(ramped.maxPerDay() >= 20 && ramped.maxPerDay() <= 150,
+                "the flat 500 is ignored while a ramp is running");
+
+        // pausedToday must never be expressed as maxPerDay=0 — that means "unlimited".
+        SenderPolicy weekend = SenderPolicy.from(om.readTree("{\"skip_weekends\":true}"));
+        assertTrue(weekend.skipWeekends());
+        if (weekend.pausedToday()) assertTrue(weekend.capped(), "a paused day is still a limit");
+    }
+
+    @Test
+    void nextWindowNeverLandsOnAWeekendWhenSkippingIsOn() throws Exception {
+        SenderPolicy p = SenderPolicy.from(om.readTree(
+                "{\"skip_weekends\":true,\"timezone\":\"America/New_York\",\"send_after_hour\":9}"));
+        java.time.DayOfWeek d = p.nextWindow().getDayOfWeek();
+        assertNotEquals(java.time.DayOfWeek.SATURDAY, d);
+        assertNotEquals(java.time.DayOfWeek.SUNDAY, d);
+        assertTrue(p.nextWindow().isAfter(LocalDateTime.now()));
     }
 
     @Test

@@ -2061,6 +2061,13 @@ function EmailConfigurationRow({
     const [sendAfterHour, setSendAfterHour] = useState(String(config.sendAfterHour ?? 0));
     const [postalAddress, setPostalAddress] = useState(config.postalAddress || '');
     const [listUnsubscribe, setListUnsubscribe] = useState(Boolean(config.listUnsubscribe));
+    // Warm-up ramp
+    const [rampEnabled, setRampEnabled] = useState(Boolean(config.rampEnabled));
+    const [rampStartPerDay, setRampStartPerDay] = useState(String(config.rampStartPerDay ?? 20));
+    const [rampStep, setRampStep] = useState(String(config.rampStep ?? 20));
+    const [rampEveryDays, setRampEveryDays] = useState(String(config.rampEveryDays ?? 7));
+    const [rampCeiling, setRampCeiling] = useState(String(config.rampCeiling ?? 150));
+    const [skipWeekends, setSkipWeekends] = useState(Boolean(config.skipWeekends));
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
@@ -2149,7 +2156,13 @@ function EmailConfigurationRow({
         timezone !== (config.timezone || '') ||
         Number(sendAfterHour || 0) !== (config.sendAfterHour ?? 0) ||
         postalAddress !== (config.postalAddress || '') ||
-        listUnsubscribe !== Boolean(config.listUnsubscribe);
+        listUnsubscribe !== Boolean(config.listUnsubscribe) ||
+        rampEnabled !== Boolean(config.rampEnabled) ||
+        Number(rampStartPerDay || 0) !== (config.rampStartPerDay ?? 20) ||
+        Number(rampStep || 0) !== (config.rampStep ?? 20) ||
+        Number(rampEveryDays || 0) !== (config.rampEveryDays ?? 7) ||
+        Number(rampCeiling || 0) !== (config.rampCeiling ?? 150) ||
+        skipWeekends !== Boolean(config.skipWeekends);
 
     const canSave =
         isDirty &&
@@ -2170,6 +2183,12 @@ function EmailConfigurationRow({
                 sendAfterHour: Math.min(23, Math.max(0, Number(sendAfterHour || 0))),
                 postalAddress: postalAddress.trim(),
                 listUnsubscribe,
+                rampEnabled,
+                rampStartPerDay: Math.max(0, Number(rampStartPerDay || 0)),
+                rampStep: Math.max(0, Number(rampStep || 0)),
+                rampEveryDays: Math.max(1, Number(rampEveryDays || 1)),
+                rampCeiling: Math.max(0, Number(rampCeiling || 0)),
+                skipWeekends,
             });
         } finally {
             setSaving(false);
@@ -2185,6 +2204,12 @@ function EmailConfigurationRow({
         setSendAfterHour(String(config.sendAfterHour ?? 0));
         setPostalAddress(config.postalAddress || '');
         setListUnsubscribe(Boolean(config.listUnsubscribe));
+        setRampEnabled(Boolean(config.rampEnabled));
+        setRampStartPerDay(String(config.rampStartPerDay ?? 20));
+        setRampStep(String(config.rampStep ?? 20));
+        setRampEveryDays(String(config.rampEveryDays ?? 7));
+        setRampCeiling(String(config.rampCeiling ?? 150));
+        setSkipWeekends(Boolean(config.skipWeekends));
     };
 
     const handleDelete = async () => {
@@ -2303,15 +2328,94 @@ function EmailConfigurationRow({
                 <div className="mt-1 text-xs text-muted-foreground">
                     {t('emailRow.controls.controlsHint')}
                 </div>
+                <label className="mt-3 flex items-start gap-2 text-xs">
+                    <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={rampEnabled}
+                        onChange={(e) => setRampEnabled(e.target.checked)}
+                    />
+                    <span>
+                        {t('emailRow.controls.rampEnabled')}
+                        <span className="block text-muted-foreground">
+                            {t('emailRow.controls.rampEnabledHint')}
+                        </span>
+                    </span>
+                </label>
+                {rampEnabled && (
+                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-4">
+                        <div>
+                            <Label className="text-xs">
+                                {t('emailRow.controls.rampStartPerDay')}
+                            </Label>
+                            <Input
+                                type="number"
+                                min={0}
+                                value={rampStartPerDay}
+                                onChange={(e) => setRampStartPerDay(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('emailRow.controls.rampStep')}</Label>
+                            <Input
+                                type="number"
+                                min={0}
+                                value={rampStep}
+                                onChange={(e) => setRampStep(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <Label className="text-xs">
+                                {t('emailRow.controls.rampEveryDays')}
+                            </Label>
+                            <Input
+                                type="number"
+                                min={1}
+                                value={rampEveryDays}
+                                onChange={(e) => setRampEveryDays(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('emailRow.controls.rampCeiling')}</Label>
+                            <Input
+                                type="number"
+                                min={0}
+                                value={rampCeiling}
+                                onChange={(e) => setRampCeiling(e.target.value)}
+                            />
+                        </div>
+                        {config.rampStartedOn && (
+                            <div className="text-xs text-muted-foreground md:col-span-4">
+                                {t('emailRow.controls.rampStartedOn', {
+                                    date: config.rampStartedOn,
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+                <label className="mt-3 flex items-start gap-2 text-xs">
+                    <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={skipWeekends}
+                        onChange={(e) => setSkipWeekends(e.target.checked)}
+                    />
+                    <span>{t('emailRow.controls.skipWeekends')}</span>
+                </label>
                 <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
                     <div>
-                        <Label className="text-xs">{t('emailRow.controls.maxPerDay')}</Label>
+                        <Label className="text-xs">
+                            {rampEnabled
+                                ? t('emailRow.controls.maxPerDayManaged')
+                                : t('emailRow.controls.maxPerDay')}
+                        </Label>
                         <Input
                             type="number"
                             min={0}
                             value={maxPerDay}
                             onChange={(e) => setMaxPerDay(e.target.value)}
                             placeholder={t('emailRow.controls.maxPerDayPlaceholder')}
+                            disabled={rampEnabled}
                         />
                     </div>
                     <div>

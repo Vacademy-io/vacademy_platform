@@ -22,4 +22,11 @@ public class EmailSendingStatusDTO {
     private String nextWindow;      // ISO local datetime, null when uncapped
     private boolean unsubscribeFooter;
     private long unsubscribedCount;
+    // Warm-up ramp
+    private boolean pausedToday;        // weekend skip in force
+    private boolean skipWeekends;
+    private boolean rampEnabled;
+    private int rampCeiling;            // 0 = no ceiling configured
+    private String rampStartedOn;       // ISO date, day 0
+    private String rampNextIncreaseOn;  // ISO date, null once the ceiling is reached
 }

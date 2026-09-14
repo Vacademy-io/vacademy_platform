@@ -33,6 +33,15 @@ public class NotificationConstants {
     public static final String POSTAL_ADDRESS = "postal_address";         // CAN-SPAM footer address
     public static final String LIST_UNSUBSCRIBE = "list_unsubscribe";     // boolean: add unsubscribe headers/footer for non-promotional types too
 
+    // Warm-up ramp: the daily cap grows on a cadence instead of being a flat number.
+    public static final String RAMP_ENABLED = "ramp_enabled";
+    public static final String RAMP_START_PER_DAY = "ramp_start_per_day";
+    public static final String RAMP_STEP = "ramp_step";                   // added at each increase
+    public static final String RAMP_EVERY_DAYS = "ramp_every_days";       // days between increases
+    public static final String RAMP_CEILING = "ramp_ceiling";             // cap never exceeds this
+    public static final String RAMP_STARTED_ON = "ramp_started_on";       // ISO date = day 0
+    public static final String SKIP_WEEKENDS = "skip_weekends";           // no sending Sat/Sun
+
     // WhatsApp constants
     public static final String WHATSAPP_SETTING = "WHATSAPP_SETTING";
     public static final String UTILITY_WHATSAPP = "UTILITY_WHATSAPP";

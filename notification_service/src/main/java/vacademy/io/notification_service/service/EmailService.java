@@ -823,6 +823,13 @@ public class EmailService {
                 .timezone(p.zone().getId())
                 .sendAfterHour(p.sendAfterHour())
                 .nextWindow(p.capped() ? p.nextWindow().toString() : null)
+                .pausedToday(p.pausedToday())
+                .skipWeekends(p.skipWeekends())
+                .rampEnabled(p.ramp() != null)
+                .rampCeiling(p.ramp() != null ? p.ramp().ceiling() : 0)
+                .rampStartedOn(p.ramp() != null && p.ramp().startedOn() != null ? p.ramp().startedOn().toString() : null)
+                .rampNextIncreaseOn(p.ramp() != null && p.ramp().nextIncreaseAfter(p.today()) != null
+                        ? p.ramp().nextIncreaseAfter(p.today()).toString() : null)
                 .unsubscribeFooter(p.unsubscribeApplies(emailType))
                 .unsubscribedCount(emailUnsubscribeService.countActive(instituteId))
                 .build();
@@ -865,10 +872,14 @@ public class EmailService {
             final String finalFromName = (customFromName != null && !customFromName.trim().isEmpty()) ? customFromName
                     : null;
 
-            // Daily cap: reserve a slot or hand the email to the deferred queue.
+            // Daily cap: reserve a slot or hand the email to the deferred queue. A weekend
+            // pause is checked first — it is not "cap 0" (that means unlimited), and no slot
+            // should be consumed on a day nothing may go out.
             if (policy.capped()) {
                 String senderKey = SenderPolicy.senderKey(instituteId, emailType, normalizeFromAddress(finalFromEmail));
-                if (!emailDailyQuotaService.tryReserve(senderKey, policy.today(), policy.maxPerDay())) {
+                boolean allowed = !policy.pausedToday()
+                        && emailDailyQuotaService.tryReserve(senderKey, policy.today(), policy.maxPerDay());
+                if (!allowed) {
                     if (!fromQueue) {
                         deferredEmailService.defer(senderKey, policy.nextWindow(), instituteId, emailType, to, subject,
                                 body, service, customFromEmail, customFromName, correlationId, userId, cc, ccMode);

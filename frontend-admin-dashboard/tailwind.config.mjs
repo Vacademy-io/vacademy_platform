@@ -40,15 +40,15 @@ module.exports = {
                 // dialog one is the "show me properly" view.
                 'preview-inline': '22rem',
                 'preview-dialog': 'min(72vh, 44rem)',
+                // Full-height document dialogs (the answer-sheet viewer): a
+                // fixed height, not just a cap, so the PDF viewer inside has
+                // something to fill. Mirrors maxHeight.dialog-tall.
+                'dialog-tall': 'min(88vh, 56rem)',
             },
             maxHeight: {
                 // Tall dialogs that scroll their own body (section-variant
                 // previews). Named for the same reason as dialog-chat above.
                 'dialog-tall': 'min(88vh, 56rem)',
-                // In-page lists that scroll within the page rather than growing
-                // it (sub-org learners, ledger rows). Viewport-relative so short
-                // screens still show the content that follows the list.
-                'list-scroll': '60vh',
             },
             width: {
                 // DialogContent's base class is `w-[400px] max-w-[90vw]` — a

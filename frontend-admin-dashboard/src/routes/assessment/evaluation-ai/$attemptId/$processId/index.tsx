@@ -1,21 +1,33 @@
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router';
 import {
-    ArrowLeft,
-    Check,
     Circle,
     CheckCircle,
     WarningCircle,
     PencilSimple,
     CaretLeft,
+    CircleNotch,
+    Clock,
+    FileText,
+    ListChecks,
+    Percent,
+    Trophy,
+    X,
 } from '@phosphor-icons/react';
-import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import type { Icon } from '@phosphor-icons/react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { ChipToggleGroup } from '@/components/design-system/chips';
+import { cn } from '@/lib/utils';
+import {
+    AssessmentTag,
+    type Tone,
+} from '@/routes/assessment/assessment-list/-components/assessment-presentation';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18next from 'i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-    EvaluationData,
     getEvaluationProgress,
     overrideQuestionEvaluation,
     useStopEvaluation,
@@ -27,13 +39,9 @@ import { formatDistanceToNow } from 'date-fns';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { getAssessmentDetails } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import {
-    getQuestionDataForSection,
-    getQuestionsDataForStep2,
-} from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
+import { getQuestionsDataForStep2 } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { getEvaluationDataFromStorage } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/ai-evaluation-services';
 import TipTapEditor from '@/components/tiptap/TipTapEditor';
-import { MainViewQuillEditor } from '@/components/quill/MainViewQuillEditor';
 import LatexRenderer from '../../-components/latex-renderer';
 import {
     getAssessmentTotalMarks,
@@ -41,7 +49,6 @@ import {
 } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
 
 import { getPublicUrl } from '@/services/upload_file';
-import { FileText } from '@phosphor-icons/react';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
 import {
     PdfAnnotationOverlay,
@@ -82,6 +89,67 @@ const showStatusMessage = (status: string) => {
             return i18next.t('assessmentEvaluationAi:status.unknown');
     }
 };
+
+// Status → chip tone. Anything still running reads as "info".
+const statusTone = (status: string): Tone =>
+    status === 'COMPLETED'
+        ? 'success'
+        : status === 'FAILED'
+          ? 'danger'
+          : status === 'CANCELLED'
+            ? 'neutral'
+            : 'info';
+
+const isRunning = (status: string) =>
+    status !== 'COMPLETED' && status !== 'FAILED' && status !== 'CANCELLED';
+
+function StatCard({
+    icon: StatIcon,
+    label,
+    value,
+    tone = 'primary',
+}: {
+    icon: Icon;
+    label: string;
+    value: string;
+    tone?: 'primary' | 'success' | 'warning';
+}) {
+    const iconClass = {
+        primary: 'bg-primary-50 text-primary-600',
+        success: 'bg-success-50 text-success-700',
+        warning: 'bg-warning-50 text-warning-700',
+    }[tone];
+    const valueClass = {
+        primary: 'text-neutral-900',
+        success: 'text-success-700',
+        warning: 'text-warning-700',
+    }[tone];
+    return (
+        <Card className="border-neutral-200 shadow-sm">
+            <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                    <p className="text-caption font-medium text-neutral-500">{label}</p>
+                    <span
+                        className={cn(
+                            'flex size-8 shrink-0 items-center justify-center rounded-lg',
+                            iconClass
+                        )}
+                    >
+                        <StatIcon size={16} />
+                    </span>
+                </div>
+                <p
+                    className={cn(
+                        'mt-1 text-h2 font-semibold tabular-nums tracking-tight',
+                        valueClass
+                    )}
+                >
+                    {value}
+                </p>
+            </CardContent>
+        </Card>
+    );
+}
 
 function RouteComponent() {
     const { t } = useTranslation('assessmentEvaluationAi');
@@ -281,8 +349,10 @@ function RouteComponent() {
             </div>
         );
         setNavHeading(heading);
+        // `t` in deps: the namespace loads lazily and the first render's `t`
+        // would otherwise pin the raw key "nav.heading" into the top bar.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [t]);
 
     const allSectionQuestions = questionsData ? Object.values(questionsData).flat() : [];
 
@@ -373,9 +443,7 @@ function RouteComponent() {
                 <div className="text-center">
                     <h2 className="mb-2 text-xl font-bold text-red-600">{t('error.title')}</h2>
                     <p className="text-neutral-600">
-                        {error instanceof Error
-                            ? error.message
-                            : t('error.loadFailed')}
+                        {error instanceof Error ? error.message : t('error.loadFailed')}
                     </p>
                     <MyButton onClick={() => navigate({ to: -1 as any })} className="mt-4">
                         {t('error.goBack')}
@@ -388,268 +456,254 @@ function RouteComponent() {
     const userFullName = progress?.participant_details?.name || t('common.loading');
     const assessmentName = assessmentData?.[0]?.saved_data?.name || t('common.loading');
 
+    const running = isRunning(progress.overall_status);
+    const percentage = maxScore > 0 ? ((totalScore / maxScore) * 100).toFixed(1) : '0';
+
     return (
         <LayoutContainer>
-            <div className="flex gap-6 transition-all duration-300 ease-in-out">
-                {/* Left Panel - Evaluation Content */}
-                <div
-                    className={`${isPdfPanelOpen ? 'w-1/2' : 'w-full'} transition-all duration-300`}
-                >
-                    {/* Header */}
-                    <Card className="mb-2 flex items-center justify-between">
-                        <CardContent className="p-4">
-                            <p className="mb-1 text-sm text-neutral-600">{t('header.participant')}</p>
-                            <p className="text-sm font-medium">{userFullName}</p>
-                        </CardContent>
-                        <CardContent className="p-4">
-                            <p className="mb-1 text-sm text-neutral-600">{t('header.assessment')}</p>
-                            <p className="text-sm font-medium">{assessmentName}</p>
-                        </CardContent>
-                        <CardContent className="p-4">
-                            <p className="mb-1 text-sm text-neutral-600">{t('header.status')}</p>
-                            <div className="flex items-center gap-2">
-                                <p className="text-sm font-semibold">{progress.overall_status}</p>
-                            </div>
-                        </CardContent>
-                        <CardContent className="p-4">
-                            <p className="mb-1 text-sm text-neutral-600">{t('header.duration')}</p>
-                            <p className="text-sm font-medium">{duration}</p>
-                        </CardContent>
-                        <CardContent className="w-1/2 p-4">
-                            <p className="mb-1 text-sm text-neutral-600">{t('header.progress')}</p>
-                            <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-neutral-200">
-                                <div
-                                    className="h-full bg-primary-500 transition-all"
-                                    style={{ width: `${progress.progress.percentage}%` }}
-                                />
-                            </div>
-                            <p className="text-sm font-medium">
-                                {progress.progress.completed}/{progress.progress.total}
-                            </p>
-                        </CardContent>
-                        {progress.overall_status !== 'COMPLETED' &&
-                            progress.overall_status !== 'FAILED' &&
-                            progress.overall_status !== 'CANCELLED' && (
-                                <CardContent className="p-4">
-                                    <MyButton
-                                        onClick={() => stopEvaluationMutation.mutate(processId)}
-                                        disabled={stopEvaluationMutation.isPending}
-                                        className="bg-red-600 hover:bg-red-700"
-                                        scale={'small'}
-                                    >
-                                        {stopEvaluationMutation.isPending
-                                            ? t('header.stopping')
-                                            : t('header.stop')}
-                                    </MyButton>
-                                </CardContent>
-                            )}
-                    </Card>
-
-                    {/* Summary Stats */}
-                    <Card className="my-2 flex items-center justify-between">
-                        <CardContent className="flex gap-8 p-4">
-                            <div>
-                                <p className="text-sm text-neutral-600">{t('summary.totalScore')}</p>
-                                <p className="text-2xl font-bold">
-                                    {totalScore.toFixed(1)}/{maxScore}
+            <div className="flex flex-col gap-4">
+                {/* Masthead: who, what, where the run is */}
+                <Card className="border-neutral-200 shadow-sm">
+                    <CardContent className="flex flex-col gap-4 p-5">
+                        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+                            <div className="min-w-0">
+                                <p className="text-caption font-medium uppercase tracking-wide text-neutral-500">
+                                    {t('header.participant')}
                                 </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-600">{t('summary.percentage')}</p>
-                                <p className="text-2xl font-bold">
-                                    {maxScore > 0 ? ((totalScore / maxScore) * 100).toFixed(1) : 0}%
+                                <h1 className="truncate text-h3 font-semibold text-neutral-900">
+                                    {userFullName}
+                                </h1>
+                                <p className="mt-0.5 truncate text-body text-neutral-500">
+                                    {assessmentName}
                                 </p>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <AssessmentTag tone={statusTone(progress.overall_status)} dot>
+                                        {showStatusMessage(progress.overall_status)}
+                                    </AssessmentTag>
+                                    <span className="inline-flex items-center gap-1 text-caption text-neutral-500">
+                                        <Clock size={14} />
+                                        {duration}
+                                    </span>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-sm text-neutral-600">{t('summary.completed')}</p>
-                                <p className="text-2xl font-bold text-green-600">
-                                    {progress.progress.completed}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-600">{t('summary.pending')}</p>
-                                <p className="text-2xl font-bold text-orange-600">
-                                    {progress.progress.total - progress.progress.completed}
-                                </p>
-                            </div>
-                        </CardContent>
-
-                        {/* Filter Tabs */}
-                        <CardContent className="flex items-center gap-2 p-4">
-                            <MyButton
-                                buttonType={filterTab === 'all' ? 'primary' : 'secondary'}
-                                onClick={() => setFilterTab('all')}
-                                scale={'small'}
-                            >
-                                {t('filters.all')}
-                            </MyButton>
-                            <MyButton
-                                buttonType={filterTab === 'completed' ? 'primary' : 'secondary'}
-                                onClick={() => setFilterTab('completed')}
-                                scale={'small'}
-                            >
-                                {t('filters.completed')}
-                            </MyButton>
-                            <MyButton
-                                buttonType={filterTab === 'pending' ? 'primary' : 'secondary'}
-                                onClick={() => setFilterTab('pending')}
-                                scale={'small'}
-                            >
-                                {t('filters.pending')}
-                            </MyButton>
-
-                            {/* View Answer Sheet Button */}
-                            {answerSheetFileId && !isPdfPanelOpen && (
+                            {running && (
                                 <MyButton
-                                    onClick={handleViewAnswerSheet}
-                                    disabled={isLoadingPdf}
-                                    buttonType={isPdfPanelOpen ? 'primary' : 'secondary'}
-                                    scale={'small'}
-                                    className="flex items-center gap-2"
+                                    onClick={() => stopEvaluationMutation.mutate(processId)}
+                                    disabled={stopEvaluationMutation.isPending}
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    className="shrink-0 border-danger-300 !text-danger-600 hover:bg-danger-50 sm:min-w-0"
                                 >
-                                    <FileText size={16} />
-                                    {isLoadingPdf ? t('answerSheet.loading') : t('answerSheet.button')}
+                                    {stopEvaluationMutation.isPending
+                                        ? t('header.stopping')
+                                        : t('header.stop')}
                                 </MyButton>
                             )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Question List */}
-                    <div className="space-y-4">
-                        {progress.overall_status === 'COMPLETED' && (
-                            <div className="mb-2 rounded-lg border border-primary-200 bg-primary-50 p-4">
-                                <p className="text-sm font-medium text-primary-700">
-                                    {t('banners.aiDrafted')}
-                                </p>
-                            </div>
-                        )}
-                        {needsReviewCount > 0 && (
-                            <div className="mb-2 flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 p-4">
-                                <WarningCircle
-                                    size={18}
-                                    weight="fill"
-                                    className="mt-0.5 shrink-0 text-danger-600"
-                                />
-                                <p className="text-sm font-medium text-danger-700">
-                                    {t('banners.needsReview', { count: needsReviewCount })}
-                                </p>
-                            </div>
-                        )}
-                        <div className="mb-6 rounded-lg bg-blue-50 p-4 text-center">
-                            <p className="text-sm font-medium text-blue-700">
-                                {showStatusMessage(progress.overall_status)}
-                            </p>
                         </div>
-
-                        {filteredQuestions.length === 0 && !showShimmer(progress.overall_status) ? (
-                            <div className="rounded-lg bg-white p-8 text-center shadow">
-                                <p className="text-neutral-600">
-                                    {t(
-                                        filterTab === 'all'
-                                            ? 'emptyState.all'
-                                            : filterTab === 'completed'
-                                              ? 'emptyState.completed'
-                                              : 'emptyState.pending'
-                                    )}
-                                </p>
+                        <div>
+                            <div className="mb-1.5 flex items-center justify-between text-caption">
+                                <span className="font-medium text-neutral-600">
+                                    {t('header.progress')}
+                                </span>
+                                <span className="tabular-nums text-neutral-600">
+                                    {progress.progress.completed}/{progress.progress.total}
+                                </span>
                             </div>
-                        ) : (
-                            filteredQuestions.map((question) => {
-                                // Find matching question details from API
-                                const questionDetails = allSectionQuestions.find(
-                                    (q: any) => q.question_id === question.question_id
-                                );
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+                                <div
+                                    className={cn(
+                                        'h-full rounded-full transition-all',
+                                        progress.overall_status === 'FAILED'
+                                            ? 'bg-danger-500'
+                                            : 'bg-primary-500'
+                                    )}
+                                    style={{ width: `${progress.progress.percentage}%` }} // dynamic value
+                                />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
 
-                                return (
-                                    <QuestionCard
-                                        key={question.question_id}
-                                        question={question}
-                                        processId={processId}
-                                        isExpanded={expandedQuestion === question.question_id}
-                                        onToggle={() => toggleQuestion(question.question_id)}
-                                        questionDetails={questionDetails}
-                                        currentRubricVersion={progress?.rubric_version}
-                                    />
-                                );
-                            })
-                        )}
-                        {showShimmer(progress.overall_status) && (
-                            <>
-                                <div className="space-y-4">
-                                    {[1, 2, 3].map((index) => (
-                                        <Card
-                                            key={index}
-                                            className="animate-pulse overflow-hidden border-2 border-neutral-200"
-                                        >
-                                            <div className="p-4">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="size-10 rounded-lg bg-neutral-300" />
-                                                        <div className="space-y-2">
-                                                            <div className="h-4 w-32 rounded bg-neutral-300" />
-                                                            <div className="h-3 w-24 rounded bg-neutral-200" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="space-y-2 text-right">
-                                                            <div className="h-8 w-12 rounded bg-neutral-300" />
-                                                            <div className="h-3 w-12 rounded bg-neutral-200" />
-                                                        </div>
-                                                        <div className="size-6 rounded-full bg-neutral-300" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
+                {/* Key numbers */}
+                <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
+                    <StatCard
+                        icon={Trophy}
+                        label={t('summary.totalScore')}
+                        value={`${totalScore.toFixed(1)}/${maxScore}`}
+                    />
+                    <StatCard
+                        icon={Percent}
+                        label={t('summary.percentage')}
+                        value={`${percentage}%`}
+                    />
+                    <StatCard
+                        icon={ListChecks}
+                        label={t('summary.completed')}
+                        value={String(progress.progress.completed)}
+                        tone="success"
+                    />
+                    <StatCard
+                        icon={Clock}
+                        label={t('summary.pending')}
+                        value={String(progress.progress.total - progress.progress.completed)}
+                        tone="warning"
+                    />
                 </div>
 
-                {/* Right Panel - PDF Viewer */}
-                {isPdfPanelOpen && (
-                    <div className="w-1/2 transition-all duration-300">
-                        <div
-                            className="sticky top-6 h-[calc(100vh-100px)] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg" // design-lint-ignore: sticky panel filling viewport below fixed header offset; no matching height token
+                {/* Filter + answer sheet */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <ChipToggleGroup
+                        size="md"
+                        variant="outline"
+                        ariaLabel={t('filters.ariaLabel')}
+                        value={filterTab}
+                        onChange={(next) => setFilterTab(next)}
+                        options={[
+                            { value: 'all', label: t('filters.all') },
+                            { value: 'completed', label: t('filters.completed') },
+                            { value: 'pending', label: t('filters.pending') },
+                        ]}
+                    />
+                    {answerSheetFileId && (
+                        <MyButton
+                            onClick={handleViewAnswerSheet}
+                            disabled={isLoadingPdf}
+                            buttonType="secondary"
+                            scale="medium"
+                            className="gap-2 sm:min-w-0"
                         >
-                            <div className="flex items-center justify-between border-b bg-neutral-50 px-4 py-3">
-                                <h3 className="font-semibold text-neutral-700">
-                                    {t('answerSheet.panelTitle')}
-                                </h3>
-                                <button
-                                    onClick={() => setIsPdfPanelOpen(false)}
-                                    className="text-neutral-500 hover:text-neutral-700"
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                            <div className="h-full w-full bg-neutral-100 p-4">
-                                {pdfUrl ? (
-                                    <div
-                                        ref={setPdfContainerEl}
-                                        className="relative h-full w-full"
-                                    >
-                                        <SimplePDFViewer pdfUrl={pdfUrl} />
-                                        {showOverlay && (
-                                            <PdfAnnotationOverlay
-                                                pdfContainerEl={pdfContainerEl}
-                                                layoutMap={layoutMap}
-                                                annotations={annotations}
-                                                scores={questionScores}
-                                            />
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="flex h-full items-center justify-center">
-                                        <DashboardLoader />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                            <FileText size={16} />
+                            {isLoadingPdf ? t('answerSheet.loading') : t('answerSheet.button')}
+                        </MyButton>
+                    )}
+                </div>
+
+                {/* Banners */}
+                {progress.overall_status === 'COMPLETED' && (
+                    <div className="rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
+                        <p className="text-body font-medium text-primary-700">
+                            {t('banners.aiDrafted')}
+                        </p>
                     </div>
                 )}
+                {needsReviewCount > 0 && (
+                    <div className="flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 px-4 py-3">
+                        <WarningCircle
+                            size={18}
+                            weight="fill"
+                            className="mt-0.5 shrink-0 text-danger-600"
+                        />
+                        <p className="text-body font-medium text-danger-700">
+                            {t('banners.needsReview', { count: needsReviewCount })}
+                        </p>
+                    </div>
+                )}
+                {running && (
+                    <div className="flex items-center gap-2 rounded-lg border border-info-200 bg-info-50 px-4 py-3">
+                        <CircleNotch size={18} className="shrink-0 animate-spin text-info-600" />
+                        <p className="text-body font-medium text-info-700">
+                            {showStatusMessage(progress.overall_status)}
+                        </p>
+                    </div>
+                )}
+
+                {/* Question list */}
+                <div className="flex flex-col gap-3">
+                    {filteredQuestions.length === 0 && !showShimmer(progress.overall_status) ? (
+                        <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+                            <p className="text-body text-neutral-600">
+                                {t(
+                                    filterTab === 'all'
+                                        ? 'emptyState.all'
+                                        : filterTab === 'completed'
+                                          ? 'emptyState.completed'
+                                          : 'emptyState.pending'
+                                )}
+                            </p>
+                        </div>
+                    ) : (
+                        filteredQuestions.map((question) => {
+                            // Find matching question details from API
+                            const questionDetails = allSectionQuestions.find(
+                                (q: any) => q.question_id === question.question_id
+                            );
+
+                            return (
+                                <QuestionCard
+                                    key={question.question_id}
+                                    question={question}
+                                    processId={processId}
+                                    isExpanded={expandedQuestion === question.question_id}
+                                    onToggle={() => toggleQuestion(question.question_id)}
+                                    questionDetails={questionDetails}
+                                    currentRubricVersion={progress?.rubric_version}
+                                />
+                            );
+                        })
+                    )}
+                    {showShimmer(progress.overall_status) &&
+                        [1, 2, 3].map((index) => (
+                            <Card
+                                key={index}
+                                className="animate-pulse overflow-hidden border-neutral-200"
+                            >
+                                <div className="flex items-center justify-between p-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="size-10 rounded-lg bg-neutral-200" />
+                                        <div className="space-y-2">
+                                            <div className="h-4 w-32 rounded bg-neutral-200" />
+                                            <div className="h-3 w-24 rounded bg-neutral-100" />
+                                        </div>
+                                    </div>
+                                    <div className="size-6 rounded-full bg-neutral-200" />
+                                </div>
+                            </Card>
+                        ))}
+                </div>
             </div>
+
+            {/* Answer sheet: a full-size dialog, not a side panel that halves the page */}
+            <Dialog open={isPdfPanelOpen} onOpenChange={setIsPdfPanelOpen}>
+                <DialogContent className="flex h-dialog-tall max-h-dialog-tall !w-dialog-xl !max-w-full flex-col !gap-0 overflow-hidden rounded-xl !p-0 [&>button]:hidden">
+                    <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 bg-neutral-50 px-4 py-3">
+                        <DialogTitle asChild>
+                            <h2 className="text-subtitle font-semibold text-neutral-800">
+                                {t('answerSheet.panelTitle')}
+                            </h2>
+                        </DialogTitle>
+                        <MyButton
+                            type="button"
+                            layoutVariant="icon"
+                            scale="small"
+                            buttonType="text"
+                            aria-label={t('answerSheet.close')}
+                            className="size-8 text-neutral-500 hover:bg-neutral-100"
+                            onClick={() => setIsPdfPanelOpen(false)}
+                        >
+                            <X size={18} />
+                        </MyButton>
+                    </div>
+                    <div className="min-h-0 flex-1 bg-neutral-100 p-2 sm:p-4">
+                        {pdfUrl ? (
+                            <div ref={setPdfContainerEl} className="relative size-full">
+                                <SimplePDFViewer pdfUrl={pdfUrl} />
+                                {showOverlay && (
+                                    <PdfAnnotationOverlay
+                                        pdfContainerEl={pdfContainerEl}
+                                        layoutMap={layoutMap}
+                                        annotations={annotations}
+                                        scores={questionScores}
+                                    />
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex h-full items-center justify-center">
+                                <DashboardLoader />
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </LayoutContainer>
     );
 }
@@ -717,80 +771,95 @@ function QuestionCard({
 
     return (
         <Card
-            className={`overflow-hidden border-2 transition-all ${
+            className={cn(
+                'overflow-hidden border shadow-sm transition-colors',
                 isCompleted
-                    ? 'border-green-300 bg-green-50'
+                    ? 'border-success-200'
                     : isFailed
-                      ? 'border-red-300 bg-red-50'
-                      : 'border-orange-300 bg-orange-50'
-            }`}
+                      ? 'border-danger-200'
+                      : 'border-warning-200'
+            )}
         >
-            {/* Header */}
+            {/* Header: identity on the left, verdict on the right; wraps on a phone */}
             <button
+                type="button"
                 onClick={onToggle}
-                className="w-full p-4 text-left transition-colors hover:bg-black/5"
+                aria-expanded={isExpanded}
+                className="w-full p-4 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400"
             >
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="flex size-10 items-center justify-center rounded-lg bg-white font-bold">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <div
+                            className={cn(
+                                'flex size-10 shrink-0 items-center justify-center rounded-lg text-body font-semibold',
+                                isCompleted
+                                    ? 'bg-success-50 text-success-700'
+                                    : isFailed
+                                      ? 'bg-danger-50 text-danger-700'
+                                      : 'bg-warning-50 text-warning-700'
+                            )}
+                        >
                             {t('question.qLabel', { number: question.question_number })}
                         </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h3 className="font-semibold">
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-body font-semibold text-neutral-900">
                                     {t('question.title', { number: question.question_number })}
                                 </h3>
                                 <RubricChangedBadge
                                     evaluationVersion={question.rubric_version}
                                     currentVersion={currentRubricVersion}
                                 />
+                                {isCompleted && question.is_edited && (
+                                    <span className="rounded-full bg-primary-50 px-2 py-0.5 text-2xs font-semibold text-primary-600">
+                                        {t('question.editedBadge')}
+                                    </span>
+                                )}
                             </div>
                             {isCompleted && (
-                                <p className="text-sm text-neutral-600">
+                                <p className="text-caption text-neutral-500">
                                     {question.is_edited ? t('question.reviewedPrefix') : ''}
                                     {t('question.completedAt', { time: completedTime })}
                                 </p>
                             )}
                             {isFailed && (
                                 <>
-                                    <p className="text-sm font-medium text-red-600">
+                                    <p className="text-caption font-medium text-danger-600">
                                         {t('question.failedGradeMessage')}
                                     </p>
                                     {question.error_detail && (
-                                        <p className="mt-0.5 font-mono text-xs text-neutral-500">
+                                        <p className="mt-0.5 break-words font-mono text-2xs text-neutral-500">
                                             {question.error_detail}
                                         </p>
                                     )}
                                 </>
                             )}
                             {!isCompleted && !isFailed && (
-                                <p className="text-sm text-neutral-600">{t('question.pendingStatus')}</p>
+                                <p className="text-caption text-neutral-500">
+                                    {t('question.pendingStatus')}
+                                </p>
                             )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex shrink-0 items-center gap-3">
                         {isCompleted ? (
                             <>
-                                {question.is_edited && (
-                                    <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
-                                        {t('question.editedBadge')}
+                                <p className="text-title font-semibold tabular-nums text-neutral-900">
+                                    {question.marks_awarded?.toFixed(1) || 0}
+                                    <span className="text-caption font-normal text-neutral-500">
+                                        {' '}
+                                        / {maxMarks}
                                     </span>
-                                )}
-                                <div className="text-right">
-                                    <p className="text-2xl font-bold">
-                                        {question.marks_awarded?.toFixed(1) || 0}
-                                    </p>
-                                    <p className="text-sm text-neutral-600">/ {maxMarks}</p>
-                                </div>
-                                <CheckCircle size={24} className="text-green-600" weight="fill" />
+                                </p>
+                                <CheckCircle size={22} className="text-success-600" weight="fill" />
                             </>
                         ) : isFailed ? (
-                            <span className="flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-                                <WarningCircle size={16} weight="fill" />
+                            <span className="flex items-center gap-1 rounded-full bg-danger-50 px-2.5 py-1 text-2xs font-semibold text-danger-700">
+                                <WarningCircle size={14} weight="fill" />
                                 {t('question.needsReviewBadge')}
                             </span>
                         ) : (
-                            <Circle size={24} className="animate-spin text-orange-500" />
+                            <Circle size={22} className="animate-spin text-warning-500" />
                         )}
                     </div>
                 </div>
@@ -798,19 +867,20 @@ function QuestionCard({
 
             {/* Expanded Content - Show for ALL questions (pending and completed) */}
             {isExpanded && (
-                <div className="space-y-6 border-t-2 border-green-300 bg-white p-6">
+                <div className="space-y-6 border-t border-neutral-200 bg-white p-4 sm:p-6">
                     {/* Teacher review: adjust marks/feedback before the result is released */}
                     {(isCompleted || isFailed) && (
                         <div
-                            className={`rounded-md border p-4 ${
+                            className={cn(
+                                'rounded-md border p-4',
                                 isFailed
-                                    ? 'border-red-200 bg-red-50'
+                                    ? 'border-danger-200 bg-danger-50'
                                     : 'border-neutral-200 bg-neutral-50'
-                            }`}
+                            )}
                         >
                             {!isEditing ? (
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="min-w-0">
                                         <p className="text-sm font-medium text-neutral-800">
                                             {isFailed
                                                 ? t('teacherReview.failedTitle')
@@ -923,7 +993,7 @@ function QuestionCard({
                                 <h4 className="mb-2 text-xs font-semibold uppercase text-neutral-500">
                                     {t('details.correctAnswerHeading')}
                                 </h4>
-                                <div className="rounded-md bg-green-50 p-3">
+                                <div className="rounded-md bg-success-50 p-3">
                                     {questionDetails.options_with_explanation
                                         .filter((opt: any) => correctOptionIds.includes(opt.id))
                                         .map((opt: any, idx: number) => (
@@ -972,8 +1042,8 @@ function QuestionCard({
                             <h4 className="mb-3 text-xs font-semibold uppercase text-neutral-500">
                                 {t('details.gradingBreakdownHeading')}
                             </h4>
-                            <div className="overflow-hidden rounded-md border border-neutral-200">
-                                <table className="w-full">
+                            <div className="overflow-x-auto rounded-md border border-neutral-200">
+                                <table className="w-full min-w-96">
                                     <thead className="bg-neutral-100">
                                         <tr>
                                             <th className="p-3 text-left text-xs font-semibold uppercase text-neutral-600">

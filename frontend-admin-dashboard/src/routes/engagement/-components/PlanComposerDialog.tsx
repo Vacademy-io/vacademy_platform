@@ -576,6 +576,30 @@ export function PlanComposerDialog({
                                         />
                                     </div>
 
+                                    {item.itemType === 'COURSE_SLIDE' && (
+                                        <div className="space-y-1.5">
+                                            <Label>Course content</Label>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className="h-10 w-full justify-start font-normal"
+                                                disabled={batches.length === 0}
+                                                onClick={() => setSlidePickerFor(item.key)}
+                                            >
+                                                {item.slide
+                                                    ? `🎓 ${item.slide.slideTitle}`
+                                                    : batches.length === 0
+                                                      ? 'Pick a batch first'
+                                                      : 'Choose a lesson from this course'}
+                                            </Button>
+                                            <p className="text-xs text-neutral-500">
+                                                The learner opens it in the course library. It
+                                                counts as done once they finish it there, so nothing
+                                                is tracked twice.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     {(item.itemType === 'READING_HTML' ||
                                         item.itemType === 'VISUAL_NOTE' ||
                                         item.itemType === 'GAME') && (

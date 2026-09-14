@@ -5,6 +5,8 @@ import {
   type EngagementFeed,
 } from "@/services/engagement";
 import { EngagementItemDialog } from "./EngagementItemDialog";
+import { InlineQuestion } from "./InlineQuestion";
+import { glimpseFor } from "./engagement-preview";
 import { ProgressRing } from "./ProgressRing";
 import {
   isUrgent,
@@ -106,18 +108,31 @@ export function EngagementTodayCard() {
             const timeLeft = timeLeftLabel(item.closesAt, now);
             const urgent = isUrgent(item.closesAt, now);
             const maxPoints = item.completionPoints + item.correctPoints;
+            const glimpse = glimpseFor(item);
+            // Poll and question of the day are answered right here; everything else
+            // still opens, because it is a document, a game or a lesson elsewhere.
+            const isAnswerable =
+              item.itemType === "QUESTION_OF_DAY" || item.itemType === "POLL";
             return (
               <li
                 key={item.id}
                 className={`animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-backwards ${staggerDelay(index)}`}
               >
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     setActiveItem(item);
                     setDialogOpen(true);
                   }}
-                  className={`group flex w-full items-center gap-4 px-5 py-4 text-start transition-colors duration-200 ${visual.wash}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setActiveItem(item);
+                      setDialogOpen(true);
+                    }
+                  }}
+                  className={`group flex w-full cursor-pointer items-start gap-4 px-5 py-4 text-start transition-colors duration-200 ${visual.wash}`}
                 >
                   <span
                     className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-xl transition-transform duration-200 group-hover:scale-110 ${visual.chip}`}
@@ -147,7 +162,21 @@ export function EngagementTodayCard() {
                       {item.title}
                     </span>
 
-                    <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    {/* A glimpse of the actual content, so the card reads as
+                        something to do rather than a link to somewhere else. */}
+                    {glimpse && (
+                      <span className="mt-1 block text-sm text-neutral-600 dark:text-neutral-400">
+                        {glimpse}
+                      </span>
+                    )}
+
+                    {isAnswerable && (
+                      <span className="mt-2 block">
+                        <InlineQuestion item={item} onCompleted={handleCompleted} />
+                      </span>
+                    )}
+
+                    <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                       {timeLeft && (
                         <span
                           className={
@@ -175,10 +204,10 @@ export function EngagementTodayCard() {
                     </span>
                   </span>
 
-                  <span className="shrink-0 text-neutral-300 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-neutral-500 dark:text-neutral-700">
+                  <span className="shrink-0 pt-1 text-neutral-300 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-neutral-500 dark:text-neutral-700">
                     ›
                   </span>
-                </button>
+                </div>
               </li>
             );
           })}

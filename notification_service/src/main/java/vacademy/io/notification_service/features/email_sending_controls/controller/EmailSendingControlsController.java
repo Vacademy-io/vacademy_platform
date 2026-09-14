@@ -37,6 +37,18 @@ public class EmailSendingControlsController {
         return ResponseEntity.ok(emailService.sendingStatus(instituteId, emailType));
     }
 
+    /**
+     * Cancel everything still queued for a sender. Returns the number of emails called off;
+     * already-sent mail is unaffected.
+     */
+    @DeleteMapping("/queued/{instituteId}")
+    public ResponseEntity<Map<String, Object>> cancelQueued(@PathVariable String instituteId,
+                                                            @RequestParam(defaultValue = "PROMOTIONAL_EMAIL") String emailType,
+                                                            @RequestParam(required = false) String reason) {
+        int cancelled = emailService.cancelQueued(instituteId, emailType, reason);
+        return ResponseEntity.ok(Map.of("cancelled", cancelled, "emailType", emailType));
+    }
+
     @GetMapping("/unsubscribes/{instituteId}")
     public ResponseEntity<Page<EmailUnsubscribe>> list(@PathVariable String instituteId,
                                                        @RequestParam(defaultValue = "0") int page,

@@ -58,5 +58,13 @@ public class DeferredEmailService {
 
     public long pendingForSender(String senderKey) { return repository.countBySenderKeyAndStatus(senderKey, "PENDING"); }
 
+    /** @return how many queued emails were called off. */
+    @Transactional
+    public int cancelPending(String senderKey, String reason) {
+        int n = repository.cancelPending(senderKey, reason == null ? "Cancelled by an admin" : reason);
+        log.info("Cancelled {} queued email(s) for sender {}", n, senderKey);
+        return n;
+    }
+
     public long pendingForInstitute(String instituteId) { return repository.countByInstituteIdAndStatus(instituteId, "PENDING"); }
 }

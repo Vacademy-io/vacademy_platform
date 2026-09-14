@@ -27,6 +27,15 @@ public interface DeferredEmailRepository extends JpaRepository<DeferredEmail, St
 
     long countByInstituteIdAndStatus(String instituteId, String status);
 
+    /**
+     * Stop everything still queued for a sender. A capped campaign can hold weeks of mail,
+     * so there has to be a way to call it off without waiting for it to drain.
+     */
+    @Modifying
+    @Query("UPDATE DeferredEmail d SET d.status = 'CANCELLED', d.lastError = :reason "
+            + "WHERE d.senderKey = :senderKey AND d.status = 'PENDING'")
+    int cancelPending(@Param("senderKey") String senderKey, @Param("reason") String reason);
+
     /** Push every pending row of one sender to a later window in one statement (cap hit mid-drain). */
     @Modifying
     @Query("UPDATE DeferredEmail d SET d.sendAfter = :sendAfter WHERE d.senderKey = :senderKey AND d.status = 'PENDING' AND d.sendAfter <= :now")

@@ -835,6 +835,13 @@ public class EmailService {
                 .build();
     }
 
+    /** Call off every email still queued behind this sender's daily cap. */
+    public int cancelQueued(String instituteId, String emailType, String reason) {
+        ResolvedSender cfg = getMailSenderConfig(instituteId, emailType);
+        String key = SenderPolicy.senderKey(instituteId, emailType, normalizeFromAddress(cfg.getValue()));
+        return deferredEmailService.cancelPending(key, reason);
+    }
+
     private SendOutcome doSendHtml(String to, String subject, String service, String body, String instituteId,
             String customFromEmail, String customFromName, String emailType,
             String correlationId, String userId, List<String> cc, String ccMode, boolean fromQueue) {

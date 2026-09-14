@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -25,10 +25,28 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { EmailMessage } from '../../-services/email-inbox-api';
 import { groupMessagesByDay } from '../../../inbox/-utils/day-labels';
-import { isSystemMessage, resolveOrigin, splitQuotedReply } from '../../-utils/email-text';
+import {
+    extractBouncedRecipients,
+    isSystemMessage,
+    resolveOrigin,
+    splitQuotedReply,
+} from '../../-utils/email-text';
 
 /** Bounce bodies longer than this start collapsed behind "Show details". */
 const BOUNCE_DETAILS_COLLAPSE_AT = 300;
+
+/** Where the reader was when they asked for older messages, so the prepend does not move them. */
+interface ScrollRestore {
+    firstKey?: string;
+    scrollHeight: number;
+    scrollTop: number;
+}
+
+const VIEWPORT_SELECTOR = '[data-radix-scroll-area-viewport]';
+
+function messageKey(msg?: EmailMessage): string | undefined {
+    return msg ? msg.id || msg.timestamp : undefined;
+}
 
 interface Props {
     selectedEmail: string | null;
@@ -60,10 +78,36 @@ export function EmailThread({
     // singleton; binding it here makes the hook re-render once that catalog lands.
     const { t } = useTranslation(['communicationEmailThread', 'communicationDayLabels']);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const scrollRootRef = useRef<HTMLDivElement>(null);
+    const pendingRestore = useRef<ScrollRestore | null>(null);
+
+    const firstKey = messageKey(messages[0]);
+    const lastKey = messageKey(messages[messages.length - 1]);
+
+    const getViewport = () =>
+        scrollRootRef.current?.querySelector<HTMLElement>(VIEWPORT_SELECTOR) ?? null;
+
+    // A different thread, or a message appended at the bottom (poll, sent reply): jump to the
+    // newest message. Keyed on the LAST message rather than the count so that "Load older", which
+    // prepends, does not snap the reader back down.
+    useEffect(() => {
+        pendingRestore.current = null;
+    }, [selectedEmail]);
 
     useEffect(() => {
+        if (pendingRestore.current) return;
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages.length]);
+    }, [selectedEmail, lastKey]);
+
+    // Older messages were prepended: keep the message the reader was looking at where it was.
+    useLayoutEffect(() => {
+        const pending = pendingRestore.current;
+        if (!pending || pending.firstKey === firstKey) return;
+        pendingRestore.current = null;
+        const viewport = getViewport();
+        if (!viewport) return;
+        viewport.scrollTop = pending.scrollTop + (viewport.scrollHeight - pending.scrollHeight);
+    }, [firstKey]);
 
     if (!selectedEmail) {
         return <EmptyThread />;
@@ -73,6 +117,16 @@ export function EmailThread({
     // Not memoised on purpose: the day labels read the lazily loaded catalog at call time, and a
     // memo keyed only on `messages` would freeze raw keys from the first render.
     const dayGroups = groupMessagesByDay(messages);
+
+    const handleLoadOlder = () => {
+        const viewport = getViewport();
+        pendingRestore.current = {
+            firstKey,
+            scrollHeight: viewport?.scrollHeight ?? 0,
+            scrollTop: viewport?.scrollTop ?? 0,
+        };
+        onLoadOlder();
+    };
 
     return (
         <div className="flex-1 flex flex-col min-h-0 bg-muted/30">
@@ -86,14 +140,14 @@ export function EmailThread({
                 onBack={onBack}
             />
 
-            <ScrollArea className="flex-1">
+            <ScrollArea ref={scrollRootRef} className="flex-1">
                 <div className="px-4 py-4 space-y-3">
                     {hasMore && (
                         <div className="flex justify-center">
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={onLoadOlder}
+                                onClick={handleLoadOlder}
                                 className="h-7 text-xs gap-1"
                             >
                                 <ArrowUp size={12} /> {t('loadOlderMessages')}
@@ -116,7 +170,11 @@ export function EmailThread({
                             <div key={group.key || 'undated'} className="space-y-3">
                                 {group.label && <DaySeparator label={group.label} />}
                                 {group.messages.map((m) => (
-                                    <MessageBubble key={m.id || m.timestamp} msg={m} />
+                                    <MessageBubble
+                                        key={m.id || m.timestamp}
+                                        msg={m}
+                                        threadDisplayName={display}
+                                    />
                                 ))}
                             </div>
                         ))
@@ -206,12 +264,18 @@ function DaySeparator({ label }: { label: string }) {
     );
 }
 
-function MessageBubble({ msg }: { msg: EmailMessage }) {
+function MessageBubble({
+    msg,
+    threadDisplayName,
+}: {
+    msg: EmailMessage;
+    threadDisplayName: string;
+}) {
     if (isSystemMessage(msg)) return <BounceBubble msg={msg} />;
     return msg.direction === 'OUTGOING' ? (
         <OutgoingBubble msg={msg} />
     ) : (
-        <IncomingBubble msg={msg} />
+        <IncomingBubble msg={msg} threadDisplayName={threadDisplayName} />
     );
 }
 
@@ -231,14 +295,14 @@ function OutgoingBubble({ msg }: { msg: EmailMessage }) {
                 open={open}
                 onOpenChange={setOpen}
                 className={cn(
-                    'max-w-[78%] min-w-0 rounded-lg rounded-tr-sm border border-primary/20 bg-primary/10 shadow-sm',
+                    'min-w-0 max-w-[78%] rounded-lg rounded-tr-sm border border-primary-200 bg-primary-50 shadow-sm',
                     open && 'w-full'
                 )}
             >
-                <div className="px-3 py-2.5 space-y-1">
+                <div className="space-y-1 px-3 py-2.5">
                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-2xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1 font-semibold text-foreground">
-                            <PaperPlaneTilt size={11} weight="fill" className="text-primary" />
+                            <PaperPlaneTilt size={11} weight="fill" className="text-primary-500" />
                             {t('you')}
                         </span>
                         {msg.instituteAddress && (
@@ -250,7 +314,7 @@ function OutgoingBubble({ msg }: { msg: EmailMessage }) {
                     </div>
                     <SubjectLine subject={msg.subject} t={t} />
                     {!open && msg.bodyPreview && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 break-words">
+                        <p className="line-clamp-2 break-words text-xs text-muted-foreground">
                             {msg.bodyPreview}
                         </p>
                     )}
@@ -263,7 +327,7 @@ function OutgoingBubble({ msg }: { msg: EmailMessage }) {
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-6 px-1.5 text-2xs gap-1 text-primary hover:text-primary"
+                                    className="h-6 gap-1 px-1.5 text-2xs text-primary-600 hover:text-primary-600"
                                 >
                                     {open ? <CaretUp size={11} /> : <CaretDown size={11} />}
                                     {open ? t('collapseEmail') : t('openEmail')}
@@ -280,7 +344,7 @@ function OutgoingBubble({ msg }: { msg: EmailMessage }) {
                             <div className="px-3 py-2">
                                 <iframe
                                     title={`email-${msg.id || msg.timestamp}`}
-                                    className="w-full bg-background rounded border"
+                                    className="w-full rounded border bg-background"
                                     // Tall enough that most marketing/transactional emails render in full
                                     // without an internal scrollbar after the zoom-to-fit CSS is applied.
                                     style={{ height: 520 }}
@@ -299,31 +363,39 @@ function OutgoingBubble({ msg }: { msg: EmailMessage }) {
 /**
  * Something a person sent us. Left-aligned on a plain card with a green accent; the text they
  * typed is always visible and the quoted chain their mail client appended sits behind a toggle.
+ * Rows ingested before the backend stored sender names carry no name of their own, so the name the
+ * thread already knows (header) labels them too — one person, one label.
  */
-function IncomingBubble({ msg }: { msg: EmailMessage }) {
+function IncomingBubble({
+    msg,
+    threadDisplayName,
+}: {
+    msg: EmailMessage;
+    threadDisplayName: string;
+}) {
     const { t, i18n } = useTranslation('communicationEmailThread');
     const [showQuoted, setShowQuoted] = useState(false);
     const origin = resolveOrigin(msg);
-    const who = msg.counterpartyName || msg.counterpartyEmail;
+    const who = msg.counterpartyName || threadDisplayName || msg.counterpartyEmail;
     const { main, quoted, quotedLineCount } = splitQuotedReply(msg.body || msg.bodyPreview || '');
 
     return (
         <div className="flex justify-start">
-            <div className="max-w-[78%] min-w-0 rounded-lg rounded-tl-sm border border-l-2 border-l-emerald-400 bg-card shadow-sm px-3 py-2.5 space-y-1">
+            <div className="min-w-0 max-w-[78%] space-y-1 rounded-lg rounded-tl-sm border border-l-2 border-l-emerald-400 bg-card px-3 py-2.5 shadow-sm">
                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-2xs text-muted-foreground">
-                    <Avatar className="h-5 w-5 shrink-0">
-                        <AvatarFallback className="text-2xs font-medium bg-emerald-100 text-emerald-700">
+                    <Avatar className="size-5 shrink-0">
+                        <AvatarFallback className="bg-emerald-100 text-2xs font-medium text-emerald-700">
                             {getInitials(who)}
                         </AvatarFallback>
                     </Avatar>
-                    <span className="font-semibold text-foreground truncate">{who}</span>
+                    <span className="truncate font-semibold text-foreground">{who}</span>
                     <OriginChip
                         label={t(origin === 'REPLY' ? 'origin.REPLY' : 'origin.INCOMING')}
                         tone="emerald"
                     />
                 </div>
                 <SubjectLine subject={msg.subject} t={t} />
-                <p className="text-sm text-foreground whitespace-pre-wrap break-words leading-relaxed">
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
                     {main || '—'}
                 </p>
                 {quoted && (
@@ -332,7 +404,7 @@ function IncomingBubble({ msg }: { msg: EmailMessage }) {
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowQuoted((v) => !v)}
-                            className="h-6 px-1.5 text-2xs gap-1 text-muted-foreground"
+                            className="h-6 gap-1 px-1.5 text-2xs text-muted-foreground"
                         >
                             {showQuoted ? <CaretUp size={11} /> : <CaretDown size={11} />}
                             {showQuoted
@@ -340,13 +412,13 @@ function IncomingBubble({ msg }: { msg: EmailMessage }) {
                                 : t('showQuotedText', { count: quotedLineCount })}
                         </Button>
                         {showQuoted && (
-                            <pre className="mt-1 border-l-2 border-muted-foreground/30 pl-2 text-xs text-muted-foreground whitespace-pre-wrap break-words font-sans leading-relaxed">
+                            <pre className="mt-1 whitespace-pre-wrap break-words border-l-2 border-muted-foreground/30 pl-2 font-sans text-xs leading-relaxed text-muted-foreground">
                                 {quoted}
                             </pre>
                         )}
                     </div>
                 )}
-                <p className="text-2xs text-muted-foreground pt-0.5">
+                <p className="pt-0.5 text-2xs text-muted-foreground">
                     {formatFullTime(msg.timestamp, i18n.language)}
                 </p>
             </div>
@@ -363,17 +435,24 @@ function BounceBubble({ msg }: { msg: EmailMessage }) {
     const [showDetails, setShowDetails] = useState(false);
     const details = (msg.body || msg.bodyPreview || '').trim();
     const long = details.length > BOUNCE_DETAILS_COLLAPSE_AT;
+    // The one thing a bounce is about — WHOSE address failed — as the headline, so 900 near
+    // identical daemon cards are tellable apart without opening each one.
+    const bounced = extractBouncedRecipients(details);
 
     return (
         <div className="flex justify-start">
-            <div className="max-w-[78%] min-w-0 rounded-lg rounded-tl-sm border border-amber-200 bg-amber-50 shadow-sm px-3 py-2.5 space-y-1">
-                <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-800">
-                    <Warning size={16} weight="fill" className="text-amber-600 shrink-0" />
-                    {t('deliveryFailed')}
+            <div className="min-w-0 max-w-[78%] space-y-1 rounded-lg rounded-tl-sm border border-amber-200 bg-amber-50 px-3 py-2.5 shadow-sm">
+                <p className="flex items-start gap-1.5 text-sm font-semibold text-amber-800">
+                    <Warning size={16} weight="fill" className="mt-0.5 shrink-0 text-amber-600" />
+                    <span className="break-words">
+                        {bounced.length > 0
+                            ? t('deliveryFailedTo', { address: bounced.join(', ') })
+                            : t('deliveryFailed')}
+                    </span>
                 </p>
                 <p className="text-xs text-amber-700">{t('deliveryFailedHint')}</p>
                 {msg.subject && (
-                    <p className="text-xs text-muted-foreground truncate">{msg.subject}</p>
+                    <p className="truncate text-xs text-muted-foreground">{msg.subject}</p>
                 )}
                 {details && (
                     <div className="pt-0.5">
@@ -382,20 +461,20 @@ function BounceBubble({ msg }: { msg: EmailMessage }) {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setShowDetails((v) => !v)}
-                                className="h-6 px-1.5 text-2xs gap-1 text-amber-700 hover:text-amber-800"
+                                className="h-6 gap-1 px-1.5 text-2xs text-amber-700 hover:text-amber-800"
                             >
                                 {showDetails ? <CaretUp size={11} /> : <CaretDown size={11} />}
                                 {showDetails ? t('hideDetails') : t('showDetails')}
                             </Button>
                         )}
                         {(!long || showDetails) && (
-                            <pre className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap break-words font-sans leading-relaxed">
+                            <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-muted-foreground">
                                 {details}
                             </pre>
                         )}
                     </div>
                 )}
-                <p className="text-2xs text-muted-foreground pt-0.5">
+                <p className="pt-0.5 text-2xs text-muted-foreground">
                     {formatFullTime(msg.timestamp, i18n.language)}
                 </p>
             </div>
@@ -405,9 +484,9 @@ function BounceBubble({ msg }: { msg: EmailMessage }) {
 
 function SubjectLine({ subject, t }: { subject?: string; t: TFunction }) {
     return subject ? (
-        <p className="text-sm font-medium text-foreground break-words">{subject}</p>
+        <p className="break-words text-sm font-medium text-foreground">{subject}</p>
     ) : (
-        <p className="text-sm text-muted-foreground italic">{t('noSubject')}</p>
+        <p className="text-sm italic text-muted-foreground">{t('noSubject')}</p>
     );
 }
 
@@ -417,7 +496,7 @@ function OriginChip({ label, tone }: { label: string; tone: 'primary' | 'emerald
             className={cn(
                 'inline-flex items-center gap-1 rounded-full px-1.5 py-px text-2xs font-medium',
                 tone === 'primary'
-                    ? 'bg-primary/10 text-primary'
+                    ? 'bg-primary-100 text-primary-600'
                     : 'bg-emerald-100 text-emerald-700'
             )}
         >

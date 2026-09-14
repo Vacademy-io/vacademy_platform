@@ -44,4 +44,13 @@ public class EmailMessageDTO {
     private boolean system;
     /** INCOMING only: the outbound notification_log id this message replies to, when linked. */
     private String inReplyToId;
+    /**
+     * OUTGOING only, optional. The row's recorded delivery state: FAILED for an announcement
+     * that was never sent (unsubscribed / missing address / thrown send) or a provider failure,
+     * BOUNCED etc. from SES events, DEFERRED for a reply queued behind the sender's daily cap,
+     * SENT for a reply just accepted for dispatch. Null when nothing is recorded — treat as sent.
+     */
+    private String deliveryStatus;
+    /** Human-readable reason when {@link #deliveryStatus} is a failure; null otherwise. */
+    private String deliveryErrorMessage;
 }

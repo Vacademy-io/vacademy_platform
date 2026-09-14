@@ -22,9 +22,11 @@
         "REPLY": "Replied to your email",
         "INCOMING": "New email"
     },
-    "showQuotedText": "Show quoted text ({{count}} lines)",
+    "showQuotedText_one": "Show quoted text ({{count}} line)",
+    "showQuotedText_other": "Show quoted text ({{count}} lines)",
     "hideQuotedText": "Hide quoted text",
     "deliveryFailed": "Delivery failed",
+    "deliveryFailedTo": "Could not deliver to {{address}}",
     "deliveryFailedHint": "Automatic notice from the mail system — the address could not be reached.",
     "showDetails": "Show details",
     "hideDetails": "Hide details",

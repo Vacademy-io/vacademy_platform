@@ -32,7 +32,8 @@
     },
     "dialogs": {
         "confirmBulkGenerate_one": "Generate AI criteria for all {{count}} question in this section?",
-        "confirmBulkGenerate_other": "Generate AI criteria for all {{count}} questions in this section?"
+        "confirmBulkGenerate_other": "Generate AI criteria for all {{count}} questions in this section?",
+        "cancel": "Cancel"
     },
     "toasts": {
         "noQuestionsInSection": "No questions in this section",
@@ -43,7 +44,10 @@
         "generatedCriteriaSuccess_one": "Generated criteria for {{count}} question!",
         "generatedCriteriaSuccess_other": "Generated criteria for {{count}} questions!",
         "failedGenerateCriteriaCount_one": "Failed to generate criteria for {{count}} question",
-        "failedGenerateCriteriaCount_other": "Failed to generate criteria for {{count}} questions"
+        "failedGenerateCriteriaCount_other": "Failed to generate criteria for {{count}} questions",
+        "questionUpdated": "Question updated",
+        "questionUpdateFailed": "Could not update the question",
+        "questionInvalid": "Fill in the question and its options before saving."
     },
     "sectionDescription": {
         "title": "Section Description",
@@ -80,7 +84,12 @@
             "penalty": "Penalty",
             "time": "Time",
             "criteria": "Criteria"
-        }
+        },
+        "editQuestion": "Edit question",
+        "editQuestionMissing": "This question could not be loaded.",
+        "saveQuestion": "Save question",
+        "savingQuestion": "Saving…",
+        "correctOption": "Correct option"
     },
     "totalMarks": {
         "label": "Total Marks"

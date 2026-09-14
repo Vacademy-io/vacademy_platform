@@ -76,6 +76,7 @@ const RESOURCE_LABELS: Record<string, string> = {
     GUARDIAN_LINK: 'Guardian link',
     INSTITUTE_SETTING: 'Settings',
     LEARNER_BADGE: 'Learner badge',
+    ASSESSMENT: 'Assessment',
 };
 
 const resourceLabel = (entityType: string): string =>
@@ -119,6 +120,10 @@ const formatRelativeTime = (iso: string | null | undefined) => {
 // settings").
 const NAMED_DESCRIPTION_PATTERNS: RegExp[] = [
     /^((?:created|updated|deleted) course )(.+)$/i,
+    // Assessments (reported by assessment_service).
+    /^((?:created|deleted|published) assessment )(.+)$/i,
+    /^(updated (?:basic details|sections and questions|participants|access control) of assessment )(.+)$/i,
+    /^(edited \d+ questions? of assessment )(.+)$/i,
     /^(created booking )(.+)$/i,
     /^(scheduled live session )(.+)$/i,
 

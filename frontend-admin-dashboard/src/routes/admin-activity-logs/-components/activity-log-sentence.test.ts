@@ -22,6 +22,23 @@ describe('splitDescriptionParts', () => {
         return (parts as string[]).filter((_, index) => index % 2 === 1);
     };
 
+    it('bolds the assessment name on assessment actions reported by assessment_service', () => {
+        expect(nameParts('created assessment Class X Science - Part Test 2')).toEqual([
+            'Class X Science - Part Test 2',
+        ]);
+        expect(nameParts('published assessment Weekly Quiz 4')).toEqual(['Weekly Quiz 4']);
+        expect(nameParts('deleted assessment Weekly Quiz 4')).toEqual(['Weekly Quiz 4']);
+        expect(nameParts('updated sections and questions of assessment Weekly Quiz 4')).toEqual([
+            'Weekly Quiz 4',
+        ]);
+        expect(nameParts('edited 1 question of assessment Weekly Quiz 4')).toEqual([
+            'Weekly Quiz 4',
+        ]);
+        expect(nameParts('edited 3 questions of assessment Weekly Quiz 4')).toEqual([
+            'Weekly Quiz 4',
+        ]);
+    });
+
     it('bolds the plan name on payment and fee plan actions', () => {
         expect(nameParts('created payment plan Annual Membership')).toEqual(['Annual Membership']);
         expect(nameParts('updated payment plan Annual Membership')).toEqual(['Annual Membership']);

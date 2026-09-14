@@ -232,7 +232,7 @@ public class InboundEmailService {
     }
 
     /** From: display name ("Personal" part), trimmed and capped to the column; null when absent. */
-    private String extractFromName(MimeMessage msg) {
+    static String extractFromName(MimeMessage msg) {
         try {
             Address[] froms = msg.getFrom();
             if (froms != null && froms.length > 0 && froms[0] instanceof InternetAddress ia) {

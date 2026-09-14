@@ -97,6 +97,17 @@ public class UnifiedSendService implements SendChannelRouter {
     public static final String ENGAGEMENT_ENGINE_SOURCE = "ENGAGEMENT_ENGINE";
     /** SendOptions.source set by EmailInboxService.sendReply; logged as-is so replies are distinguishable from campaigns. */
     public static final String INBOX_REPLY_SOURCE = "EMAIL_INBOX";
+    /**
+     * notification_log.source of the SMTP row for every other plain (non-engine, non-inbox) send —
+     * including an announcement's real HTML send. EmailThreadMerger pairs announcement rows only
+     * with rows carrying this source.
+     */
+    public static final String PLAIN_LOG_SOURCE = "unified-send";
+
+    /** Source written on the SMTP notification_log row for a plain send — see {@link #PLAIN_LOG_SOURCE}. */
+    static String plainLogSource(String optsSource) {
+        return INBOX_REPLY_SOURCE.equals(optsSource) ? INBOX_REPLY_SOURCE : PLAIN_LOG_SOURCE;
+    }
 
     private boolean isEngagementEngineSend(UnifiedSendRequest request) {
         return request.getOptions() != null
@@ -434,7 +445,7 @@ public class UnifiedSendService implements SendChannelRouter {
         // opts.source: EmailTrackingService lets users filter EMAIL rows by source, and announcement
         // sends already log their own 'announcement-service' row - passing every caller's source
         // through would double-count campaigns there. Only inbox replies need to be told apart.
-        final String plainLogSource = INBOX_REPLY_SOURCE.equals(opts.getSource()) ? INBOX_REPLY_SOURCE : "unified-send";
+        final String plainLogSource = plainLogSource(opts.getSource());
 
         // Optional rate limiting for bulk sends (e.g., announcements)
         com.google.common.util.concurrent.RateLimiter rateLimiter = null;

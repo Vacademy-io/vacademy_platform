@@ -66,7 +66,19 @@ public final class EmailTextUtils {
         String s = NON_TEXT_BLOCKS.matcher(html).replaceAll(" ");
         s = removeHiddenElements(s);
         s = ANY_TAG.matcher(s).replaceAll(" ");
-        s = decodeEntities(s);
+        return cleanText(s);
+    }
+
+    /**
+     * Text that is ALREADY plain (a subject line, an inbound text/plain body) → readable preview
+     * text: entities decoded, invisible characters dropped, whitespace collapsed — but nothing
+     * in angle brackets is stripped, so {@code <https://...>} URLs, {@code a <b and c> d} and a
+     * title like {@code Reminder: <Batch A>} keep their words. Inbound html-only bodies were
+     * tag-stripped at ingest but kept their entities, which is why decoding stays on. Null-safe.
+     */
+    public static String cleanText(String text) {
+        if (text == null) return null;
+        String s = decodeEntities(text);
         s = INVISIBLE.matcher(s).replaceAll("");
         s = EXOTIC_SPACE.matcher(s).replaceAll(" ");
         s = WHITESPACE.matcher(s).replaceAll(" ");

@@ -224,12 +224,9 @@ public class EmailService {
             // Body holds the HTML, so the subject line would otherwise be lost. The inbox and
             // timeline read it back from message_payload ({"subject": ...}); INBOUND_EMAIL rows use
             // the same key in their richer payload, so one reader covers both.
-            if (subject != null && !subject.isBlank()) {
-                try {
-                    notificationLog.setMessagePayload(objectMapper.writeValueAsString(Map.of("subject", subject)));
-                } catch (Exception e) {
-                    logger.debug("Could not serialise subject payload for: {} - {}", to, e.getMessage());
-                }
+            String subjectPayload = subjectPayload(objectMapper, subject);
+            if (subjectPayload != null) {
+                notificationLog.setMessagePayload(subjectPayload);
             }
             notificationLog.setNotificationDate(Instant.now());
 
@@ -238,6 +235,24 @@ public class EmailService {
         } catch (Exception e) {
             // Log error but don't fail email sending if log save fails
             logger.error("Failed to save email notification log for: {} - Error: {}", to, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Key under which the subject is stored in {@code message_payload} for outbound EMAIL rows —
+     * and the key INBOUND_EMAIL rows use in their richer payload. The inbox reader
+     * (EmailInboxService / EmailThreadMerger) looks the subject up by this constant.
+     */
+    public static final String SUBJECT_PAYLOAD_KEY = "subject";
+
+    /** {@code {"subject": ...}} JSON for a non-blank subject; null when there is nothing to store. */
+    static String subjectPayload(ObjectMapper objectMapper, String subject) {
+        if (subject == null || subject.isBlank()) return null;
+        try {
+            return objectMapper.writeValueAsString(Map.of(SUBJECT_PAYLOAD_KEY, subject));
+        } catch (Exception e) {
+            logger.debug("Could not serialise subject payload: {}", e.getMessage());
+            return null;
         }
     }
 

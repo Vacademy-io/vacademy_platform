@@ -96,6 +96,33 @@ class EmailTextUtilsTest {
 
     // ---- truncate ---------------------------------------------------------------------------
 
+    // ---- cleanText (already-plain input: subjects, inbound text bodies) ----------------------
+
+    @Test
+    @DisplayName("an inbound plain-text reply keeps its angle-bracketed words and URLs")
+    void cleanTextKeepsAngleBrackets() {
+        assertThat(EmailTextUtils.cleanText("Price is <500 but > 300, see <https://example.com/x>"))
+                .isEqualTo("Price is <500 but > 300, see <https://example.com/x>");
+        // toPlainText on the same input is what used to run — it eats the bracketed spans.
+        assertThat(EmailTextUtils.toPlainText("Price is <500 but > 300, see <https://example.com/x>"))
+                .isEqualTo("Price is 300, see");
+    }
+
+    @Test
+    void cleanTextStillDecodesEntitiesAndDropsInvisibles() {
+        // An inbound html-only body is tag-stripped at ingest but keeps its entities.
+        assertThat(EmailTextUtils.cleanText("Hello&nbsp;there&#847; &#8199; &amp; friends\n\n  bye"))
+                .isEqualTo("Hello there & friends bye");
+        assertThat(EmailTextUtils.cleanText(null)).isNull();
+        assertThat(EmailTextUtils.cleanText("   ")).isEmpty();
+    }
+
+    @Test
+    void cleanTextKeepsSubjectWithBracketedToken() {
+        assertThat(EmailTextUtils.cleanText("Reminder: <Batch A> starts Monday"))
+                .isEqualTo("Reminder: <Batch A> starts Monday");
+    }
+
     @Test
     void truncateAddsEllipsisOnlyWhenNeeded() {
         assertThat(EmailTextUtils.truncate("abc", 3)).isEqualTo("abc");

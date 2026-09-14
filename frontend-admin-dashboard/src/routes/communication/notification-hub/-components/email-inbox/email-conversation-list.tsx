@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { EmailConversation } from '../../-services/email-inbox-api';
+import { isSystemSender } from '../../-utils/email-text';
 
 interface Props {
     conversations: EmailConversation[];
@@ -99,7 +100,7 @@ export function EmailConversationList({
                     <EmptyState />
                 ) : (
                     <>
-                        <ul className="divide-y divide-border">
+                        <ul className="divide-y divide-border contain-inline-size">
                             {conversations.map((c) => (
                                 <ConversationRow
                                     key={c.email}
@@ -159,7 +160,8 @@ function ConversationRow({
     const initials = getInitials(display);
     const unread = c.unreadCount ?? 0;
     const isOutgoing = c.lastMessageDirection === 'OUTGOING';
-    const system = !!c.system;
+    // The backend's verdict when it sent one; the same sender rule locally when it predates the field.
+    const system = c.system ?? isSystemSender(c.email, c.lastMessageSubject);
     // Subject first (what a mail client shows), then the clean snippet; "You:" marks our own last
     // message the way WhatsApp does, so direction is readable without the icon.
     const previewText = c.lastMessageSubject || c.lastMessagePreview || t('noSubject');
@@ -172,7 +174,7 @@ function ConversationRow({
                 className={cn(
                     'w-full text-left px-3 py-3 flex items-start gap-3 transition-colors',
                     selected
-                        ? 'bg-primary/5 border-l-2 border-l-primary'
+                        ? 'border-l-2 border-l-primary-500 bg-primary-50'
                         : 'border-l-2 border-l-transparent hover:bg-muted/60'
                 )}
             >
@@ -198,7 +200,7 @@ function ConversationRow({
                     </div>
 
                     {system && (
-                        <p className="text-xs font-medium text-amber-700 truncate flex items-center gap-1">
+                        <p className="flex items-center gap-1 truncate text-xs font-medium text-amber-700">
                             <Warning size={12} weight="fill" className="shrink-0" />
                             {t('deliveryFailed')}
                         </p>
@@ -216,7 +218,11 @@ function ConversationRow({
                             )}
                         >
                             {system ? (
-                                <Warning size={12} className="text-amber-600 shrink-0" weight="fill" />
+                                <Warning
+                                    size={12}
+                                    className="shrink-0 text-amber-600"
+                                    weight="fill"
+                                />
                             ) : (
                                 <DirectionIcon outgoing={isOutgoing} />
                             )}
@@ -239,7 +245,7 @@ function ConversationRow({
 
 function DirectionIcon({ outgoing }: { outgoing: boolean }) {
     return outgoing ? (
-        <PaperPlaneTilt size={12} className="text-primary shrink-0" weight="fill" />
+        <PaperPlaneTilt size={12} className="shrink-0 text-primary-500" weight="fill" />
     ) : (
         <ArrowFatDown size={12} className="text-emerald-600 shrink-0" weight="fill" />
     );

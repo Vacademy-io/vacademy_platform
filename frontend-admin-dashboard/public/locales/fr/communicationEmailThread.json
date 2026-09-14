@@ -22,9 +22,12 @@
         "REPLY": "A répondu à votre e-mail",
         "INCOMING": "Nouvel e-mail"
     },
-    "showQuotedText": "Afficher le texte cité ({{count}} lignes)",
+    "showQuotedText_one": "Afficher le texte cité ({{count}} ligne)",
+    "showQuotedText_many": "Afficher le texte cité ({{count}} lignes)",
+    "showQuotedText_other": "Afficher le texte cité ({{count}} lignes)",
     "hideQuotedText": "Masquer le texte cité",
     "deliveryFailed": "Échec de la distribution",
+    "deliveryFailedTo": "Impossible de distribuer à {{address}}",
     "deliveryFailedHint": "Notification automatique du système de messagerie — l'adresse est injoignable.",
     "showDetails": "Afficher les détails",
     "hideDetails": "Masquer les détails",

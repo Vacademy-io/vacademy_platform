@@ -83,18 +83,30 @@ class EmailThreadMergerTest {
     }
 
     @Test
-    void elevenSecondsApartIsNotMerged() {
+    void beyondTheWindowIsNotMerged() {
         List<MergedRow> out = EmailThreadMerger.merge(List.of(
-                unified("u1", T0.plusSeconds(11)),
+                unified("u1", T0.plusSeconds(61)),
                 announcement("a1", T0)));
 
         assertThat(out).hasSize(2);
     }
 
     @Test
-    void tenSecondsApartStillMerges() {
+    @DisplayName("a retried SMTP send (timeout + backoff, ~40 s late) still pairs with its announcement row")
+    void retriedSendFortySecondsLaterStillMerges() {
         List<MergedRow> out = EmailThreadMerger.merge(List.of(
-                unified("u1", T0.plusSeconds(10)),
+                unified("u1", T0.plusSeconds(40)),
+                announcement("a1", T0)));
+
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).row().getId()).isEqualTo("u1");
+        assertThat(out.get(0).derivedSubject()).isEqualTo(TITLE);
+    }
+
+    @Test
+    void sixtySecondsApartStillMerges() {
+        List<MergedRow> out = EmailThreadMerger.merge(List.of(
+                unified("u1", T0.plusSeconds(60)),
                 announcement("a1", T0)));
 
         assertThat(out).hasSize(1);
@@ -149,6 +161,71 @@ class EmailThreadMergerTest {
 
         assertThat(out).extracting(m -> m.row().getId()).containsExactly("u2", "u1");
         assertThat(out).allMatch(MergedRow::campaign);
+    }
+
+    @Test
+    @DisplayName("one HTML row absorbs at most one announcement: the second stays as its own campaign card")
+    void secondAnnouncementDoesNotFoldIntoAnAlreadyTakenRow() {
+        // Campaign B's SMTP send never produced a row (failed inside the async dispatcher), so only
+        // Campaign A's HTML row is within reach of both announcement rows.
+        NotificationLog aB = row("aB", "EMAIL", "announcement-service", "Campaign B", T0.plusSeconds(4), FROM);
+        NotificationLog uA = unified("uA", T0.plusSeconds(3));
+        NotificationLog aA = row("aA", "EMAIL", "announcement-service", "Campaign A", T0, FROM);
+
+        List<MergedRow> out = EmailThreadMerger.merge(List.of(aB, uA, aA));
+
+        assertThat(out).extracting(m -> m.row().getId()).containsExactly("uA", "aA");
+        assertThat(out).allMatch(MergedRow::campaign);
+        // uA was taken by the nearest announcement (aB, 1 s) and carries its title; aA stays lone.
+        assertThat(out.get(0).derivedSubject()).isEqualTo("Campaign B");
+        assertThat(out.get(1).derivedSubject()).isNull();
+    }
+
+    @Test
+    @DisplayName("two campaigns back-to-back: each announcement gets its own HTML row, both titles survive")
+    void twoCampaignsPairOneToOne() {
+        // newest-first: a2(T+5 'Campaign B'), u2(T+3), a1(T+2 'Campaign A'), u1(T0)
+        List<MergedRow> out = EmailThreadMerger.merge(List.of(
+                row("a2", "EMAIL", "announcement-service", "Campaign B", T0.plusSeconds(5), FROM),
+                unified("u2", T0.plusSeconds(3)),
+                row("a1", "EMAIL", "announcement-service", "Campaign A", T0.plusSeconds(2), FROM),
+                unified("u1", T0)));
+
+        assertThat(out).extracting(m -> m.row().getId()).containsExactly("u2", "u1");
+        assertThat(out).extracting(MergedRow::derivedSubject).containsExactly("Campaign B", "Campaign A");
+        assertThat(out).allMatch(MergedRow::campaign);
+    }
+
+    @Test
+    @DisplayName("only a 'unified-send' row can be a twin: an inbox reply / OTP / automation row in the window is never captured")
+    void otherSourcesAreNeverTwins() {
+        NotificationLog inboxReply = row("x1", "EMAIL", "EMAIL_INBOX", "<p>Sure, see you Monday</p>", T0, FROM);
+        NotificationLog otp = row("o1", "EMAIL", "OTP_SERVICE", "<p>Your OTP is 123456</p>", T0.plusSeconds(1), FROM);
+        NotificationLog engine = row("e1", "EMAIL", "ENGAGEMENT_ENGINE", "<p>Auto</p>", T0.plusSeconds(2), FROM);
+        NotificationLog event = row("v1", "EMAIL", "event:LEARNER_BATCH_ENROLLMENT", "<p>Welcome</p>", T0.plusSeconds(4), FROM);
+        NotificationLog ann = announcement("a1", T0.plusSeconds(3));
+
+        List<MergedRow> out = EmailThreadMerger.merge(List.of(event, ann, engine, otp, inboxReply));
+
+        assertThat(out).extracting(m -> m.row().getId()).containsExactly("v1", "a1", "e1", "o1", "x1");
+        assertThat(out).filteredOn(m -> !m.row().getId().equals("a1")).allMatch(m -> !m.campaign());
+        assertThat(out.get(1).campaign()).isTrue();
+    }
+
+    @Test
+    @DisplayName("a FAILED announcement row (unsubscribed / missing address) never pairs — it had no SMTP send")
+    void failedAnnouncementRowStaysLone() {
+        NotificationLog failed = announcement("a1", T0.plusSeconds(3));
+        failed.setDeliveryStatus("FAILED");
+        failed.setDeliveryErrorMessage("User unsubscribed");
+        NotificationLog someoneElsesSend = unified("u1", T0);
+
+        List<MergedRow> out = EmailThreadMerger.merge(List.of(failed, someoneElsesSend));
+
+        assertThat(out).extracting(m -> m.row().getId()).containsExactly("a1", "u1");
+        assertThat(out.get(0).campaign()).isTrue();
+        assertThat(out.get(1).campaign()).isFalse();
+        assertThat(out.get(1).derivedSubject()).isNull();
     }
 
     @Test

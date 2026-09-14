@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    extractBouncedRecipients,
     isSystemMessage,
     isSystemSender,
     looksLikeUuid,
@@ -39,6 +40,40 @@ describe('splitQuotedReply', () => {
         expect(result.quoted).toBe('> earlier\n> lines');
     });
 
+    it('folds a ">" block that follows a blank line even when unprefixed lines trail it', () => {
+        const result = splitQuotedReply('ok\n\n> earlier\n> lines\nsignature');
+        expect(result.main).toBe('ok');
+        expect(result.quoted).toBe('> earlier\n> lines\nsignature');
+    });
+
+    it('keeps a ">" the person typed mid-message in main', () => {
+        const result = splitQuotedReply(
+            'Numbers:\n> 100 students enrolled\nthanks, please call me'
+        );
+        expect(result.quoted).toBeNull();
+        expect(result.main).toBe('Numbers:\n> 100 students enrolled\nthanks, please call me');
+    });
+
+    it('recognises the French / German / Spanish Gmail attribution lines', () => {
+        const fr = splitQuotedReply(
+            'Merci !\n\nLe lun. 14 sept. 2026 à 14:14, Shreyash Jain <s@x.com> a écrit :\n> bonjour'
+        );
+        expect(fr.main).toBe('Merci !');
+        expect(fr.quoted?.startsWith('Le lun.')).toBe(true);
+
+        const de = splitQuotedReply(
+            'Danke\n\nAm Mo., 14. Sept. 2026 um 14:14 Uhr schrieb A <a@x.com>:\n> hallo'
+        );
+        expect(de.main).toBe('Danke');
+        expect(de.quoted?.startsWith('Am Mo.')).toBe(true);
+
+        const es = splitQuotedReply(
+            'Gracias\n\nEl lun, 14 sept 2026 a las 14:14, A (<a@x.com>)\nescribió:\n\n> hola'
+        );
+        expect(es.main).toBe('Gracias');
+        expect(es.quoted?.startsWith('El lun')).toBe(true);
+    });
+
     it('recognises the Outlook "-----Original Message-----" divider', () => {
         const result = splitQuotedReply('Noted.\n\n-----Original Message-----\nFrom: x\nSent: y');
         expect(result.main).toBe('Noted.');
@@ -47,7 +82,9 @@ describe('splitQuotedReply', () => {
 
     it('recognises the underscore rule and the "From:/Sent:" Outlook header pair', () => {
         expect(splitQuotedReply('a\n______________________________\nold').main).toBe('a');
-        const outlook = splitQuotedReply('a\n\nFrom: Bob <b@x.com>\nSent: Monday\nTo: me\nSubject: hi');
+        const outlook = splitQuotedReply(
+            'a\n\nFrom: Bob <b@x.com>\nSent: Monday\nTo: me\nSubject: hi'
+        );
         expect(outlook.main).toBe('a');
         expect(outlook.quoted?.startsWith('From: Bob')).toBe(true);
     });
@@ -85,7 +122,9 @@ describe('isSystemSender', () => {
     });
 
     it('flags delivery-failure subjects from any address', () => {
-        expect(isSystemSender('someone@x.com', 'Delivery Status Notification (Failure)')).toBe(true);
+        expect(isSystemSender('someone@x.com', 'Delivery Status Notification (Failure)')).toBe(
+            true
+        );
         expect(isSystemSender(undefined, 'Undeliverable: hello')).toBe(true);
         expect(isSystemSender(undefined, 'Mail delivery failed: returning message')).toBe(true);
     });
@@ -112,7 +151,24 @@ describe('looksLikeUuid', () => {
 describe('resolveOrigin', () => {
     it('trusts the backend origin when present', () => {
         expect(resolveOrigin({ direction: 'OUTGOING', origin: 'CAMPAIGN' })).toBe('CAMPAIGN');
-        expect(resolveOrigin({ direction: 'INCOMING', origin: 'REPLY', source: 'x' })).toBe('REPLY');
+        expect(resolveOrigin({ direction: 'INCOMING', origin: 'REPLY', source: 'x' })).toBe(
+            'REPLY'
+        );
+    });
+
+    it('maps the producer tag of an outgoing row the way the backend does', () => {
+        expect(resolveOrigin({ direction: 'OUTGOING', source: 'announcement-service' })).toBe(
+            'CAMPAIGN'
+        );
+        expect(resolveOrigin({ direction: 'OUTGOING', source: 'EMAIL_INBOX' })).toBe('INBOX_REPLY');
+        expect(resolveOrigin({ direction: 'OUTGOING', source: 'OTP_SERVICE' })).toBe('OTP');
+        expect(resolveOrigin({ direction: 'OUTGOING', source: 'ENGAGEMENT_ENGINE' })).toBe(
+            'AUTOMATION'
+        );
+        expect(resolveOrigin({ direction: 'OUTGOING', source: 'event:LEARNER_ENROLLED' })).toBe(
+            'AUTOMATION'
+        );
+        expect(resolveOrigin({ direction: 'OUTGOING' })).toBe('EMAIL');
     });
 
     it('derives from the raw fields on an older backend', () => {
@@ -142,6 +198,45 @@ describe('resolveOrigin', () => {
         expect(
             isSystemMessage({ direction: 'INCOMING', counterpartyEmail: 'postmaster@x.com' })
         ).toBe(true);
-        expect(isSystemMessage({ direction: 'INCOMING', counterpartyEmail: 'a@x.com' })).toBe(false);
+        expect(isSystemMessage({ direction: 'INCOMING', counterpartyEmail: 'a@x.com' })).toBe(
+            false
+        );
+    });
+});
+
+describe('extractBouncedRecipients', () => {
+    it('reads the SES "following recipients" block', () => {
+        expect(
+            extractBouncedRecipients(
+                "An error occurred while trying to deliver the mail to the following recipients:\nsupport@tutezy.ai\n\n** Address not found **\n\nYour message wasn't delivered to shre+harp@vidyayatan.com because the address couldn't be found."
+            )
+        ).toEqual(['support@tutezy.ai']);
+    });
+
+    it('reads the Gmail and Outlook prose when SES gave no list', () => {
+        expect(
+            extractBouncedRecipients(
+                "** Address not found **\n\nYour message wasn't delivered to sh2@vidyayatan.com because the address couldn't be found, or is unable to receive mail."
+            )
+        ).toEqual(['sh2@vidyayatan.com']);
+        expect(
+            extractBouncedRecipients(
+                "[https://products.office.com/logo.png]\nYour message to proposals@nsdcindia.org couldn't be delivered.\nThe group proposals only accepts messages from people in its organization."
+            )
+        ).toEqual(['proposals@nsdcindia.org']);
+    });
+
+    it('prefers the DSN fields and de-duplicates', () => {
+        expect(
+            extractBouncedRecipients(
+                'Original-Recipient: rfc822;Someone@Example.com\nFinal-Recipient: rfc822; someone@example.com\nAction: failed'
+            )
+        ).toEqual(['someone@example.com']);
+    });
+
+    it('returns nothing for bodies without a recognisable address', () => {
+        expect(extractBouncedRecipients('')).toEqual([]);
+        expect(extractBouncedRecipients(undefined)).toEqual([]);
+        expect(extractBouncedRecipients('Delivery has failed.')).toEqual([]);
     });
 });

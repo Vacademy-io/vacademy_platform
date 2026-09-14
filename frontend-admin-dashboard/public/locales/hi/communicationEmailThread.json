@@ -22,9 +22,11 @@
         "REPLY": "आपके ईमेल का जवाब",
         "INCOMING": "नया ईमेल"
     },
-    "showQuotedText": "उद्धृत पाठ दिखाएं ({{count}} पंक्तियां)",
+    "showQuotedText_one": "उद्धृत पाठ दिखाएं ({{count}} पंक्ति)",
+    "showQuotedText_other": "उद्धृत पाठ दिखाएं ({{count}} पंक्तियां)",
     "hideQuotedText": "उद्धृत पाठ छिपाएं",
     "deliveryFailed": "डिलीवरी विफल",
+    "deliveryFailedTo": "{{address}} को डिलीवर नहीं किया जा सका",
     "deliveryFailedHint": "मेल सिस्टम की स्वचालित सूचना — यह पता उपलब्ध नहीं हो सका।",
     "showDetails": "विवरण दिखाएं",
     "hideDetails": "विवरण छिपाएं",

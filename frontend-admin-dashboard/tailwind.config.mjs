@@ -45,6 +45,10 @@ module.exports = {
                 // Tall dialogs that scroll their own body (section-variant
                 // previews). Named for the same reason as dialog-chat above.
                 'dialog-tall': 'min(88vh, 56rem)',
+                // In-page lists that scroll within the page rather than growing
+                // it (sub-org learners, ledger rows). Viewport-relative so short
+                // screens still show the content that follows the list.
+                'list-scroll': '60vh',
             },
             width: {
                 // DialogContent's base class is `w-[400px] max-w-[90vw]` — a

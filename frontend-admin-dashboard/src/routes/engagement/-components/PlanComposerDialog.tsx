@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -14,7 +15,12 @@ import { Switch } from '@/components/ui/switch';
 import { MyButton } from '@/components/design-system/button';
 import { Button } from '@/components/ui/button';
 import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
-import { createEngagementPlan } from '../-services/engagement-service';
+import {
+    createEngagementPlan,
+    getEngagementPlan,
+    updateEngagementPlan,
+} from '../-services/engagement-service';
+import { PlanPreview } from './PlanPreview';
 import { BatchPickerDialog, type BatchOption } from './BatchPickerDialog';
 import type {
     EngagementItemRequest,
@@ -64,6 +70,8 @@ const GAME_SCORE_SNIPPET = "postMessage({ type: 'vacademy:complete', score, maxS
 interface DraftItem extends EngagementItemRequest {
     /** Local-only key so rows stay stable before the server assigns ids. */
     key: string;
+    /** Set when the row came from a saved plan; drives update instead of insert. */
+    id?: string;
     /** QUESTION_OF_DAY authoring, serialised into payloadJson on save. */
     prompt?: string;
     options?: { id: string; text: string }[];
@@ -92,12 +100,16 @@ export function PlanComposerDialog({
     onOpenChange,
     onCreated,
     defaultPackageSessionId,
+    planId,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onCreated: () => void;
     defaultPackageSessionId?: string;
+    /** Present = edit an existing plan instead of creating one. */
+    planId?: string | null;
 }) {
+    const isEdit = Boolean(planId);
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [batches, setBatches] = useState<BatchOption[]>([]);
@@ -113,6 +125,73 @@ export function PlanComposerDialog({
     const [items, setItems] = useState<DraftItem[]>([newItem()]);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [slotId, setSlotId] = useState<string | null>(null);
+    const [activeKey, setActiveKey] = useState<string | null>(null);
+
+    // Load the plan being edited and fill the form from it.
+    const { data: existing } = useQuery({
+        queryKey: ['engagement-plan-edit', planId],
+        queryFn: () => getEngagementPlan(planId!),
+        enabled: open && Boolean(planId),
+    });
+
+    useEffect(() => {
+        if (!open || !existing) return;
+        setTitle(existing.title ?? '');
+        setDescription(existing.description ?? '');
+        setMissPolicy(existing.defaultMissPolicy ?? 'EXPIRES');
+        setPublish(existing.status === 'PUBLISHED');
+        setBatches([{ id: existing.packageSessionId, label: 'This batch' }]);
+
+        const slot = existing.slots?.[0];
+        if (!slot) return;
+        setSlotId(slot.id);
+        setStartDate(slot.startDate);
+        setEndDate(slot.endDate ?? '');
+        setStartTime((slot.startTime ?? '06:00').slice(0, 5));
+        setEndTime((slot.endTime ?? '20:00').slice(0, 5));
+        setRevealTime((slot.revealTime ?? '').slice(0, 5));
+        setNotifyTime((slot.notifyTime ?? '').slice(0, 5));
+
+        setItems(
+            (slot.items ?? []).map((item) => {
+                // Question options and the answer key travel inside payloadJson; unpack
+                // them back into the fields the form edits.
+                let parsed: {
+                    prompt?: string;
+                    options?: { id: string; text: string }[];
+                    correctOptionId?: string;
+                    explanation?: string;
+                } = {};
+                try {
+                    parsed = item.payloadJson ? JSON.parse(item.payloadJson) : {};
+                } catch {
+                    parsed = {};
+                }
+                return {
+                    key: item.id,
+                    id: item.id,
+                    itemType: item.itemType,
+                    title: item.title,
+                    isRequired: item.isRequired,
+                    contentHtml: item.contentHtml ?? undefined,
+                    completionPoints: item.completionPoints,
+                    correctPoints: item.correctPoints,
+                    maxScore: item.maxScore ?? undefined,
+                    prompt: parsed.prompt ?? '',
+                    options:
+                        parsed.options && parsed.options.length > 0
+                            ? parsed.options
+                            : [
+                                  { id: 'a', text: '' },
+                                  { id: 'b', text: '' },
+                              ],
+                    correctOptionId: parsed.correctOptionId ?? 'a',
+                    explanation: parsed.explanation ?? '',
+                };
+            })
+        );
+    }, [open, existing]);
 
     // A batch passed in by the course page seeds the selection.
     useEffect(() => {
@@ -121,6 +200,25 @@ export function PlanComposerDialog({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, defaultPackageSessionId]);
+
+    // Feeds the preview straight from the form state, so it moves as the teacher types.
+    const previewTasks = useMemo(
+        () =>
+            items.map((item) => ({
+                key: item.key,
+                itemType: item.itemType,
+                title: item.title,
+                isRequired: item.isRequired,
+                contentHtml: item.contentHtml,
+                prompt: item.prompt,
+                options: item.options,
+                correctOptionId: item.correctOptionId,
+                explanation: item.explanation,
+                completionPoints: item.completionPoints,
+                correctPoints: item.correctPoints,
+            })),
+        [items]
+    );
 
     function patchItem(key: string, patch: Partial<DraftItem>) {
         setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
@@ -174,13 +272,15 @@ export function PlanComposerDialog({
             const request: EngagementPlanRequest = {
                 title: title.trim(),
                 description: description.trim() || undefined,
-                packageSessionIds: batches.map((b) => b.id),
                 status: publish ? 'PUBLISHED' : 'DRAFT',
                 defaultMissPolicy: missPolicy,
                 defaultCatchUpDays: missPolicy === 'EXPIRES' ? undefined : 2,
                 defaultCatchUpPercent: missPolicy === 'CATCH_UP_REDUCED' ? 50 : undefined,
                 slots: [
                     {
+                        // Carry the slot id when editing, or the save would add a second
+                        // slot beside the one being edited instead of updating it.
+                        ...(slotId ? { id: slotId } : {}),
                         title: title.trim(),
                         startDate,
                         endDate: endDate || undefined,
@@ -189,6 +289,7 @@ export function PlanComposerDialog({
                         revealTime: revealTime || undefined,
                         notifyTime: notifyTime || undefined,
                         items: items.map((item, index) => ({
+                            ...(item.id ? { id: item.id } : {}),
                             itemType: item.itemType,
                             title: item.title.trim(),
                             sortOrder: index,
@@ -202,7 +303,15 @@ export function PlanComposerDialog({
                     },
                 ],
             };
-            await createEngagementPlan(request);
+
+            if (isEdit && planId) {
+                await updateEngagementPlan(planId, request);
+            } else {
+                await createEngagementPlan({
+                    ...request,
+                    packageSessionIds: batches.map((b) => b.id),
+                });
+            }
             onCreated();
             onOpenChange(false);
         } catch (e: unknown) {
@@ -217,403 +326,450 @@ export function PlanComposerDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-3xl">
+            <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-5xl">
                 <DialogHeader>
-                    <DialogTitle>New engagement plan</DialogTitle>
+                    <DialogTitle className="text-start">
+                        {isEdit ? 'Edit engagement plan' : 'New engagement plan'}
+                    </DialogTitle>
                 </DialogHeader>
 
-                <div className="space-y-6">
-                    <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+                    <div className="space-y-6">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="plan-title">Title</Label>
+                                <Input
+                                    id="plan-title"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    placeholder="Daily question — Physics"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Batches</Label>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    // A saved plan belongs to one batch, so editing cannot
+                                    // move it; create a new plan for another batch instead.
+                                    disabled={isEdit}
+                                    className="h-10 w-full justify-start font-normal"
+                                    onClick={() => setBatchPickerOpen(true)}
+                                >
+                                    {batches.length === 0
+                                        ? 'Select batches'
+                                        : batches.length === 1
+                                          ? batches[0]!.label
+                                          : `${batches.length} batches selected`}
+                                </Button>
+                                {isEdit ? (
+                                    <p className="text-xs text-neutral-500">
+                                        A plan belongs to one batch. To run this on another batch,
+                                        create a new plan there.
+                                    </p>
+                                ) : (
+                                    batches.length > 1 && (
+                                        <p className="text-xs text-neutral-500">
+                                            One plan is created per batch, so each batch keeps its
+                                            own tracking and leaderboard.
+                                        </p>
+                                    )
+                                )}
+                            </div>
+                        </div>
+
                         <div className="space-y-1.5">
-                            <Label htmlFor="plan-title">Title</Label>
-                            <Input
-                                id="plan-title"
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Daily question — Physics"
+                            <Label htmlFor="plan-description">Description</Label>
+                            <Textarea
+                                id="plan-description"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="What this plan is for (learners never see this)"
                             />
                         </div>
-                        <div className="space-y-1.5">
-                            <Label>Batches</Label>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="h-10 w-full justify-start font-normal"
-                                onClick={() => setBatchPickerOpen(true)}
-                            >
-                                {batches.length === 0
-                                    ? 'Select batches'
-                                    : batches.length === 1
-                                      ? batches[0]!.label
-                                      : `${batches.length} batches selected`}
-                            </Button>
-                            {batches.length > 1 && (
-                                <p className="text-xs text-neutral-500">
-                                    One plan is created per batch, so each batch keeps its own
-                                    tracking and leaderboard.
-                                </p>
-                            )}
-                        </div>
-                    </div>
 
-                    <div className="space-y-1.5">
-                        <Label htmlFor="plan-description">Description</Label>
-                        <Textarea
-                            id="plan-description"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="What this plan is for (learners never see this)"
-                        />
-                    </div>
-
-                    <div className="rounded-lg border border-neutral-200 p-4">
-                        <p className="text-sm font-medium text-neutral-900">When learners see it</p>
-                        <p className="mt-0.5 text-xs text-neutral-500">
-                            Times are in your institute&apos;s timezone.
-                        </p>
-                        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            <div className="space-y-1.5">
-                                <Label htmlFor="plan-start-date">First day</Label>
-                                <Input
-                                    id="plan-start-date"
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="plan-end-date">Last day (optional)</Label>
-                                <Input
-                                    id="plan-end-date"
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="plan-notify">Notify at</Label>
-                                <Input
-                                    id="plan-notify"
-                                    type="time"
-                                    value={notifyTime}
-                                    onChange={(e) => setNotifyTime(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="plan-start-time">Opens at</Label>
-                                <Input
-                                    id="plan-start-time"
-                                    type="time"
-                                    value={startTime}
-                                    onChange={(e) => setStartTime(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="plan-end-time">Closes at</Label>
-                                <Input
-                                    id="plan-end-time"
-                                    type="time"
-                                    value={endTime}
-                                    onChange={(e) => setEndTime(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="plan-reveal">Reveal answers at</Label>
-                                <Input
-                                    id="plan-reveal"
-                                    type="time"
-                                    value={revealTime}
-                                    onChange={(e) => setRevealTime(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="mt-4 space-y-1.5">
-                            <Label>If a learner misses it</Label>
-                            <div className="flex flex-wrap gap-2">
-                                {MISS_POLICIES.map((policy) => (
-                                    <button
-                                        key={policy.value}
-                                        type="button"
-                                        onClick={() => setMissPolicy(policy.value)}
-                                        className={
-                                            missPolicy === policy.value
-                                                ? 'rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-start text-xs'
-                                                : 'rounded-lg border border-neutral-200 px-3 py-2 text-start text-xs hover:border-neutral-300'
-                                        }
-                                    >
-                                        <span className="block font-medium text-neutral-900">
-                                            {policy.label}
-                                        </span>
-                                        <span className="block text-neutral-500">
-                                            {policy.hint}
-                                        </span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium text-neutral-900">Tasks</p>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setItems((prev) => [...prev, newItem()])}
-                            >
-                                <Plus size={16} /> Add task
-                            </Button>
-                        </div>
-
-                        {items.map((item, index) => (
-                            <div
-                                key={item.key}
-                                className="space-y-3 rounded-lg border border-neutral-200 p-4"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {ITEM_TYPES.map((type) => (
-                                            <button
-                                                key={type.value}
-                                                type="button"
-                                                onClick={() =>
-                                                    patchItem(item.key, { itemType: type.value })
-                                                }
-                                                className={
-                                                    item.itemType === type.value
-                                                        ? 'rounded-md bg-primary-500 px-2.5 py-1 text-xs font-medium text-white'
-                                                        : 'rounded-md bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-200'
-                                                }
-                                            >
-                                                {type.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    {items.length > 1 && (
-                                        <button
-                                            type="button"
-                                            aria-label="Remove task"
-                                            onClick={() =>
-                                                setItems((prev) =>
-                                                    prev.filter((it) => it.key !== item.key)
-                                                )
-                                            }
-                                            className="text-neutral-400 hover:text-danger-600"
-                                        >
-                                            <Trash size={16} />
-                                        </button>
-                                    )}
-                                </div>
-
+                        <div className="rounded-lg border border-neutral-200 p-4">
+                            <p className="text-sm font-medium text-neutral-900">
+                                When learners see it
+                            </p>
+                            <p className="mt-0.5 text-xs text-neutral-500">
+                                Times are in your institute&apos;s timezone.
+                            </p>
+                            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 <div className="space-y-1.5">
-                                    <Label htmlFor={`item-title-${index}`}>Task title</Label>
+                                    <Label htmlFor="plan-start-date">First day</Label>
                                     <Input
-                                        id={`item-title-${index}`}
-                                        value={item.title}
-                                        onChange={(e) =>
-                                            patchItem(item.key, { title: e.target.value })
-                                        }
-                                        placeholder="Today's question"
+                                        id="plan-start-date"
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
                                     />
                                 </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="plan-end-date">Last day (optional)</Label>
+                                    <Input
+                                        id="plan-end-date"
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="plan-notify">Notify at</Label>
+                                    <Input
+                                        id="plan-notify"
+                                        type="time"
+                                        value={notifyTime}
+                                        onChange={(e) => setNotifyTime(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="plan-start-time">Opens at</Label>
+                                    <Input
+                                        id="plan-start-time"
+                                        type="time"
+                                        value={startTime}
+                                        onChange={(e) => setStartTime(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="plan-end-time">Closes at</Label>
+                                    <Input
+                                        id="plan-end-time"
+                                        type="time"
+                                        value={endTime}
+                                        onChange={(e) => setEndTime(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="plan-reveal">Reveal answers at</Label>
+                                    <Input
+                                        id="plan-reveal"
+                                        type="time"
+                                        value={revealTime}
+                                        onChange={(e) => setRevealTime(e.target.value)}
+                                    />
+                                </div>
+                            </div>
 
-                                {(item.itemType === 'READING_HTML' ||
-                                    item.itemType === 'VISUAL_NOTE' ||
-                                    item.itemType === 'GAME') && (
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor={`item-html-${index}`}>
-                                            {item.itemType === 'GAME' ? 'Game HTML' : 'Content'}
-                                        </Label>
-                                        {item.itemType === 'GAME' ? (
-                                            // A game is a self-contained document with its own
-                                            // scripts and styles — a rich-text editor would rewrite
-                                            // it. Authored as raw HTML on purpose.
-                                            <Textarea
-                                                id={`item-html-${index}`}
-                                                value={item.contentHtml ?? ''}
-                                                onChange={(e) =>
-                                                    patchItem(item.key, {
-                                                        contentHtml: e.target.value,
-                                                    })
+                            <div className="mt-4 space-y-1.5">
+                                <Label>If a learner misses it</Label>
+                                <div className="flex flex-wrap gap-2">
+                                    {MISS_POLICIES.map((policy) => (
+                                        <button
+                                            key={policy.value}
+                                            type="button"
+                                            onClick={() => setMissPolicy(policy.value)}
+                                            className={
+                                                missPolicy === policy.value
+                                                    ? 'rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-start text-xs'
+                                                    : 'rounded-lg border border-neutral-200 px-3 py-2 text-start text-xs hover:border-neutral-300'
+                                            }
+                                        >
+                                            <span className="block font-medium text-neutral-900">
+                                                {policy.label}
+                                            </span>
+                                            <span className="block text-neutral-500">
+                                                {policy.hint}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-neutral-900">Tasks</p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setItems((prev) => [...prev, newItem()])}
+                                >
+                                    <Plus size={16} /> Add task
+                                </Button>
+                            </div>
+
+                            {items.map((item, index) => (
+                                <div
+                                    key={item.key}
+                                    onFocusCapture={() => setActiveKey(item.key)}
+                                    className={
+                                        activeKey === item.key
+                                            ? 'space-y-3 rounded-lg border border-primary-300 p-4'
+                                            : 'space-y-3 rounded-lg border border-neutral-200 p-4'
+                                    }
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {ITEM_TYPES.map((type) => (
+                                                <button
+                                                    key={type.value}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        patchItem(item.key, {
+                                                            itemType: type.value,
+                                                        })
+                                                    }
+                                                    className={
+                                                        item.itemType === type.value
+                                                            ? 'rounded-md bg-primary-500 px-2.5 py-1 text-xs font-medium text-white'
+                                                            : 'rounded-md bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-200'
+                                                    }
+                                                >
+                                                    {type.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {items.length > 1 && (
+                                            <button
+                                                type="button"
+                                                aria-label="Remove task"
+                                                onClick={() =>
+                                                    setItems((prev) =>
+                                                        prev.filter((it) => it.key !== item.key)
+                                                    )
                                                 }
-                                                rows={5}
-                                                placeholder="<!DOCTYPE html> …"
-                                                className="font-mono text-xs"
-                                            />
-                                        ) : (
-                                            <TipTapEditor
-                                                value={item.contentHtml ?? ''}
-                                                onChange={(html) =>
-                                                    patchItem(item.key, { contentHtml: html })
-                                                }
-                                                placeholder="What should the learner read?"
-                                                minHeight={160}
-                                            />
-                                        )}
-                                        {item.itemType === 'GAME' && (
-                                            <p className="text-xs text-neutral-500">
-                                                Runs sandboxed, with no access to the learner app. A
-                                                game reports its score by posting{' '}
-                                                <code className="rounded bg-neutral-100 px-1">
-                                                    {GAME_SCORE_SNIPPET}
-                                                </code>{' '}
-                                                to its parent. The server clamps that score to the
-                                                task&apos;s maximum and, because the page reports
-                                                its own number, caps what it can contribute to the
-                                                leaderboard.
-                                            </p>
+                                                className="text-neutral-400 hover:text-danger-600"
+                                            >
+                                                <Trash size={16} />
+                                            </button>
                                         )}
                                     </div>
-                                )}
 
-                                {(item.itemType === 'QUESTION_OF_DAY' ||
-                                    item.itemType === 'POLL') && (
-                                    <div className="space-y-3">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor={`item-title-${index}`}>Task title</Label>
+                                        <Input
+                                            id={`item-title-${index}`}
+                                            value={item.title}
+                                            onChange={(e) =>
+                                                patchItem(item.key, { title: e.target.value })
+                                            }
+                                            placeholder="Today's question"
+                                        />
+                                    </div>
+
+                                    {(item.itemType === 'READING_HTML' ||
+                                        item.itemType === 'VISUAL_NOTE' ||
+                                        item.itemType === 'GAME') && (
                                         <div className="space-y-1.5">
-                                            <Label>Question</Label>
-                                            <TipTapEditor
-                                                value={item.prompt ?? ''}
-                                                onChange={(html) =>
-                                                    patchItem(item.key, { prompt: html })
-                                                }
-                                                placeholder="Ask the question"
-                                                minHeight={90}
-                                                minimalToolbar
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Options</Label>
-                                            {(item.options ?? []).map((option, optionIndex) => (
-                                                <div
-                                                    key={option.id}
-                                                    className="flex items-center gap-2"
-                                                >
-                                                    {item.itemType === 'QUESTION_OF_DAY' && (
-                                                        <input
-                                                            type="radio"
-                                                            name={`correct-${item.key}`}
-                                                            checked={
-                                                                item.correctOptionId === option.id
-                                                            }
-                                                            onChange={() =>
-                                                                patchItem(item.key, {
-                                                                    correctOptionId: option.id,
-                                                                })
-                                                            }
-                                                            aria-label={`Option ${option.id} is correct`}
-                                                        />
-                                                    )}
-                                                    <Input
-                                                        value={option.text}
-                                                        onChange={(e) => {
-                                                            const next = [...(item.options ?? [])];
-                                                            next[optionIndex] = {
-                                                                ...option,
-                                                                text: e.target.value,
-                                                            };
-                                                            patchItem(item.key, { options: next });
-                                                        }}
-                                                        placeholder={`Option ${option.id.toUpperCase()}`}
-                                                    />
-                                                </div>
-                                            ))}
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => {
-                                                    const next = [...(item.options ?? [])];
-                                                    const id = String.fromCharCode(
-                                                        97 + next.length
-                                                    );
-                                                    next.push({ id, text: '' });
-                                                    patchItem(item.key, { options: next });
-                                                }}
-                                            >
-                                                <Plus size={14} /> Option
-                                            </Button>
-                                        </div>
-                                        {item.itemType === 'QUESTION_OF_DAY' && (
-                                            <div className="space-y-1.5">
-                                                <Label>Explanation (shown at reveal)</Label>
-                                                <TipTapEditor
-                                                    value={item.explanation ?? ''}
-                                                    onChange={(html) =>
-                                                        patchItem(item.key, { explanation: html })
+                                            <Label htmlFor={`item-html-${index}`}>
+                                                {item.itemType === 'GAME' ? 'Game HTML' : 'Content'}
+                                            </Label>
+                                            {item.itemType === 'GAME' ? (
+                                                // A game is a self-contained document with its own
+                                                // scripts and styles — a rich-text editor would rewrite
+                                                // it. Authored as raw HTML on purpose.
+                                                <Textarea
+                                                    id={`item-html-${index}`}
+                                                    value={item.contentHtml ?? ''}
+                                                    onChange={(e) =>
+                                                        patchItem(item.key, {
+                                                            contentHtml: e.target.value,
+                                                        })
                                                     }
-                                                    placeholder="Why is that the answer?"
+                                                    rows={5}
+                                                    placeholder="<!DOCTYPE html> …"
+                                                    className="font-mono text-xs"
+                                                />
+                                            ) : (
+                                                <TipTapEditor
+                                                    value={item.contentHtml ?? ''}
+                                                    onChange={(html) =>
+                                                        patchItem(item.key, { contentHtml: html })
+                                                    }
+                                                    placeholder="What should the learner read?"
+                                                    minHeight={160}
+                                                />
+                                            )}
+                                            {item.itemType === 'GAME' && (
+                                                <p className="text-xs text-neutral-500">
+                                                    Runs sandboxed, with no access to the learner
+                                                    app. A game reports its score by posting{' '}
+                                                    <code className="rounded bg-neutral-100 px-1">
+                                                        {GAME_SCORE_SNIPPET}
+                                                    </code>{' '}
+                                                    to its parent. The server clamps that score to
+                                                    the task&apos;s maximum and, because the page
+                                                    reports its own number, caps what it can
+                                                    contribute to the leaderboard.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {(item.itemType === 'QUESTION_OF_DAY' ||
+                                        item.itemType === 'POLL') && (
+                                        <div className="space-y-3">
+                                            <div className="space-y-1.5">
+                                                <Label>Question</Label>
+                                                <TipTapEditor
+                                                    value={item.prompt ?? ''}
+                                                    onChange={(html) =>
+                                                        patchItem(item.key, { prompt: html })
+                                                    }
+                                                    placeholder="Ask the question"
                                                     minHeight={90}
                                                     minimalToolbar
                                                 />
                                             </div>
-                                        )}
-                                    </div>
-                                )}
+                                            <div className="space-y-2">
+                                                <Label>Options</Label>
+                                                {(item.options ?? []).map((option, optionIndex) => (
+                                                    <div
+                                                        key={option.id}
+                                                        className="flex items-center gap-2"
+                                                    >
+                                                        {item.itemType === 'QUESTION_OF_DAY' && (
+                                                            <input
+                                                                type="radio"
+                                                                name={`correct-${item.key}`}
+                                                                checked={
+                                                                    item.correctOptionId ===
+                                                                    option.id
+                                                                }
+                                                                onChange={() =>
+                                                                    patchItem(item.key, {
+                                                                        correctOptionId: option.id,
+                                                                    })
+                                                                }
+                                                                aria-label={`Option ${option.id} is correct`}
+                                                            />
+                                                        )}
+                                                        <Input
+                                                            value={option.text}
+                                                            onChange={(e) => {
+                                                                const next = [
+                                                                    ...(item.options ?? []),
+                                                                ];
+                                                                next[optionIndex] = {
+                                                                    ...option,
+                                                                    text: e.target.value,
+                                                                };
+                                                                patchItem(item.key, {
+                                                                    options: next,
+                                                                });
+                                                            }}
+                                                            placeholder={`Option ${option.id.toUpperCase()}`}
+                                                        />
+                                                    </div>
+                                                ))}
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        const next = [...(item.options ?? [])];
+                                                        const id = String.fromCharCode(
+                                                            97 + next.length
+                                                        );
+                                                        next.push({ id, text: '' });
+                                                        patchItem(item.key, { options: next });
+                                                    }}
+                                                >
+                                                    <Plus size={14} /> Option
+                                                </Button>
+                                            </div>
+                                            {item.itemType === 'QUESTION_OF_DAY' && (
+                                                <div className="space-y-1.5">
+                                                    <Label>Explanation (shown at reveal)</Label>
+                                                    <TipTapEditor
+                                                        value={item.explanation ?? ''}
+                                                        onChange={(html) =>
+                                                            patchItem(item.key, {
+                                                                explanation: html,
+                                                            })
+                                                        }
+                                                        placeholder="Why is that the answer?"
+                                                        minHeight={90}
+                                                        minimalToolbar
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
-                                <div className="grid gap-3 sm:grid-cols-3">
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor={`item-completion-${index}`}>
-                                            Points for completing
-                                        </Label>
-                                        <Input
-                                            id={`item-completion-${index}`}
-                                            type="number"
-                                            value={item.completionPoints ?? 0}
-                                            onChange={(e) =>
-                                                patchItem(item.key, {
-                                                    completionPoints: Number(e.target.value),
-                                                })
-                                            }
-                                        />
-                                    </div>
-                                    {item.itemType === 'QUESTION_OF_DAY' && (
+                                    <div className="grid gap-3 sm:grid-cols-3">
                                         <div className="space-y-1.5">
-                                            <Label htmlFor={`item-correct-${index}`}>
-                                                Bonus if correct
+                                            <Label htmlFor={`item-completion-${index}`}>
+                                                Points for completing
                                             </Label>
                                             <Input
-                                                id={`item-correct-${index}`}
+                                                id={`item-completion-${index}`}
                                                 type="number"
-                                                value={item.correctPoints ?? 0}
+                                                value={item.completionPoints ?? 0}
                                                 onChange={(e) =>
                                                     patchItem(item.key, {
-                                                        correctPoints: Number(e.target.value),
+                                                        completionPoints: Number(e.target.value),
                                                     })
                                                 }
                                             />
                                         </div>
-                                    )}
-                                    <div className="flex items-end gap-2">
-                                        <Switch
-                                            id={`item-required-${index}`}
-                                            checked={Boolean(item.isRequired)}
-                                            onCheckedChange={(checked) =>
-                                                patchItem(item.key, { isRequired: checked })
-                                            }
-                                        />
-                                        <Label htmlFor={`item-required-${index}`}>Required</Label>
+                                        {item.itemType === 'QUESTION_OF_DAY' && (
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor={`item-correct-${index}`}>
+                                                    Bonus if correct
+                                                </Label>
+                                                <Input
+                                                    id={`item-correct-${index}`}
+                                                    type="number"
+                                                    value={item.correctPoints ?? 0}
+                                                    onChange={(e) =>
+                                                        patchItem(item.key, {
+                                                            correctPoints: Number(e.target.value),
+                                                        })
+                                                    }
+                                                />
+                                            </div>
+                                        )}
+                                        <div className="flex items-end gap-2">
+                                            <Switch
+                                                id={`item-required-${index}`}
+                                                checked={Boolean(item.isRequired)}
+                                                onCheckedChange={(checked) =>
+                                                    patchItem(item.key, { isRequired: checked })
+                                                }
+                                            />
+                                            <Label htmlFor={`item-required-${index}`}>
+                                                Required
+                                            </Label>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
+
+                        {error && (
+                            <p className="rounded-md bg-danger-50 px-3 py-2 text-sm text-danger-700">
+                                {error}
+                            </p>
+                        )}
                     </div>
 
-                    {error && (
-                        <p className="rounded-md bg-danger-50 px-3 py-2 text-sm text-danger-700">
-                            {error}
-                        </p>
-                    )}
+                    {/* Sticky so the preview stays in view while a long form scrolls. */}
+                    <aside className="lg:sticky lg:top-0 lg:self-start">
+                        <PlanPreview
+                            tasks={previewTasks}
+                            startTime={startTime}
+                            endTime={endTime}
+                            revealTime={revealTime}
+                            missPolicy={missPolicy}
+                            catchUpPercent={50}
+                            activeKey={activeKey}
+                        />
+                    </aside>
                 </div>
 
                 <DialogFooter className="items-center gap-3 sm:justify-between">
                     <div className="flex items-center gap-2">
                         <Switch id="plan-publish" checked={publish} onCheckedChange={setPublish} />
-                        <Label htmlFor="plan-publish">Publish to learners now</Label>
+                        <Label htmlFor="plan-publish">
+                            {isEdit ? 'Published to learners' : 'Publish to learners now'}
+                        </Label>
                     </div>
                     <MyButton type="button" onClick={handleSave} disable={saving}>
-                        {saving ? 'Saving…' : 'Save plan'}
+                        {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save plan'}
                     </MyButton>
                 </DialogFooter>
             </DialogContent>

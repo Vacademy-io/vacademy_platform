@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CaretDown, CaretRight } from '@phosphor-icons/react';
+import { CaretDown, CaretRight, PencilSimple } from '@phosphor-icons/react';
 import { getEngagementPlan } from '../-services/engagement-service';
 import type { EngagementItemDTO, EngagementPlanDTO } from '../-types/types';
 import { ItemTrackingDialog } from './ItemTrackingDialog';
+import { PlanComposerDialog } from './PlanComposerDialog';
 
 /**
  * One plan in the list. Collapsed it shows status; expanded it loads the plan's
@@ -12,11 +13,16 @@ import { ItemTrackingDialog } from './ItemTrackingDialog';
  * Slots and tasks are fetched only on expand — a list of plans should not pull
  * every task in every plan just to render headers.
  */
-export function PlanCard({ plan }: { plan: EngagementPlanDTO }) {
+export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChanged?: () => void }) {
     const [expanded, setExpanded] = useState(false);
     const [trackingItem, setTrackingItem] = useState<EngagementItemDTO | null>(null);
+    const [editOpen, setEditOpen] = useState(false);
 
-    const { data: detail, isLoading } = useQuery({
+    const {
+        data: detail,
+        isLoading,
+        refetch,
+    } = useQuery({
         queryKey: ['engagement-plan', plan.id],
         queryFn: () => getEngagementPlan(plan.id),
         enabled: expanded,
@@ -48,6 +54,27 @@ export function PlanCard({ plan }: { plan: EngagementPlanDTO }) {
                     }
                 >
                     {plan.status}
+                </span>
+                {/* A span, not a button: this sits inside the expand button, and a
+                    nested button is invalid HTML. */}
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Edit plan"
+                    className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setEditOpen(true);
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setEditOpen(true);
+                        }
+                    }}
+                >
+                    <PencilSimple size={16} />
                 </span>
             </button>
 
@@ -100,6 +127,16 @@ export function PlanCard({ plan }: { plan: EngagementPlanDTO }) {
                     </div>
                 </div>
             )}
+
+            <PlanComposerDialog
+                open={editOpen}
+                onOpenChange={setEditOpen}
+                planId={plan.id}
+                onCreated={() => {
+                    void refetch();
+                    onChanged?.();
+                }}
+            />
 
             <ItemTrackingDialog
                 item={trackingItem}

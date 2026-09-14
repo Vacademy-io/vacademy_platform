@@ -68,7 +68,7 @@ function EngagementPlans() {
 
                 <div className="space-y-3">
                     {(plans ?? []).map((plan) => (
-                        <PlanCard key={plan.id} plan={plan} />
+                        <PlanCard key={plan.id} plan={plan} onChanged={() => void refetch()} />
                     ))}
                 </div>
             </div>

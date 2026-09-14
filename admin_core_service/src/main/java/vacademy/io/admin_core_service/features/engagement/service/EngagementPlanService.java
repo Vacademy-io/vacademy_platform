@@ -26,8 +26,10 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /** Teacher/admin authoring: plans, slots, items. */
 @Service
@@ -210,28 +212,33 @@ public class EngagementPlanService {
         slot = slotRepository.save(slot);
 
         if (request.getItems() != null) {
+            // Track what this call actually wrote, so anything else still active in the
+            // slot can be retired below without guessing from timestamps.
+            Set<String> touched = new HashSet<>();
             for (EngagementItemRequest itemRequest : request.getItems()) {
-                upsertItem(plan, slot, itemRequest);
+                touched.add(upsertItem(plan, slot, itemRequest));
             }
+            retireItemsNotIn(slot, touched);
         }
         return slot;
     }
 
     /**
-     * Windows crossing midnight are rejected rather than supported: a 10 PM - 2 AM
-     * window is not a real use case and would complicate every date resolution.
-     * The DB carries the same CHECK constraint.
+     * Soft-delete the slot's items this save did not write.
+     *
+     * An edit that removes a task has to remove it for learners too — otherwise the
+     * composer shows three tasks, the teacher deletes one, saves, and learners keep
+     * seeing all three. Attempts are left untouched: points already earned stay
+     * earned and the tracking row stays readable.
      */
-    private void validateSlot(EngagementSlot slot) {
-        if (!slot.getEndTime().isAfter(slot.getStartTime())) {
-            throw new VacademyException("endTime must be after startTime (windows cannot cross midnight)");
-        }
-        if (slot.getEndDate() != null && slot.getEndDate().isBefore(slot.getStartDate())) {
-            throw new VacademyException("endDate cannot be before startDate");
-        }
-        LocalTime reveal = slot.getRevealTime();
-        if (reveal != null && reveal.isBefore(slot.getStartTime())) {
-            throw new VacademyException("revealTime cannot be before startTime");
+    private void retireItemsNotIn(EngagementSlot slot, Set<String> touchedItemIds) {
+        for (EngagementItem existing : itemRepository.findActiveBySlot(slot.getId())) {
+            if (touchedItemIds.contains(existing.getId())) continue;
+            existing.setStatus(EngagementEnums.ItemStatus.DELETED.name());
+            existing.setUpdatedAt(now());
+            itemRepository.save(existing);
+            log.info("[engagement] item {} removed from slot {} by an edit",
+                    existing.getId(), slot.getId());
         }
     }
 
@@ -243,7 +250,7 @@ public class EngagementPlanService {
      * version they were made against, so a teacher fixing a typo at noon cannot
      * retroactively invalidate the morning's scores.
      */
-    private void upsertItem(EngagementPlan plan, EngagementSlot slot, EngagementItemRequest request) {
+    private String upsertItem(EngagementPlan plan, EngagementSlot slot, EngagementItemRequest request) {
         boolean isNew = request.getId() == null || request.getId().isBlank();
         EngagementItem existing = isNew ? null : itemRepository.findById(request.getId())
                 .orElseThrow(() -> new VacademyException("Item not found"));
@@ -259,13 +266,13 @@ public class EngagementPlanService {
             itemRepository.save(replacement);
             log.info("[engagement] item {} edited after open — retired, new version {} created",
                     existing.getId(), replacement.getVersion());
-            return;
+            return replacement.getId();
         }
 
         EngagementItem item = existing == null ? new EngagementItem() : existing;
         applyItemRequest(item, request, slot);
         if (existing != null) item.setVersion(existing.getVersion());
-        itemRepository.save(item);
+        return itemRepository.save(item).getId();
     }
 
     private void applyItemRequest(EngagementItem item, EngagementItemRequest request, EngagementSlot slot) {

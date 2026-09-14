@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.engagement.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -19,9 +21,13 @@ public interface EngagementAttemptRepository extends JpaRepository<EngagementAtt
     List<EngagementAttempt> findByUserAndItems(@Param("userId") String userId,
                                                @Param("itemIds") List<String> itemIds);
 
-    /** All attempts on one item — the teacher's tracking table. */
+    /** All attempts on one item — used by the CSV export, which is not paged. */
     @Query("SELECT a FROM EngagementAttempt a WHERE a.itemId = :itemId ORDER BY a.createdAt DESC")
     List<EngagementAttempt> findByItem(@Param("itemId") String itemId);
+
+    /** One page of attempts for the tracking table. */
+    @Query("SELECT a FROM EngagementAttempt a WHERE a.itemId = :itemId ORDER BY a.createdAt DESC")
+    Page<EngagementAttempt> findPageByItem(@Param("itemId") String itemId, Pageable pageable);
 
     /** Backs the "N people have attempted this" social-proof counter. */
     @Query("SELECT COUNT(a) FROM EngagementAttempt a WHERE a.itemId = :itemId AND a.status = 'COMPLETED'")

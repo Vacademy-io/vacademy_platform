@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.engagement.controller;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
@@ -13,6 +14,7 @@ import vacademy.io.admin_core_service.features.engagement.service.EngagementPlan
 import vacademy.io.admin_core_service.features.engagement.service.EngagementTrackingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -110,8 +112,31 @@ public class EngagementAdminController {
     public ResponseEntity<?> itemTracking(
             @PathVariable String itemId,
             @RequestParam String instituteId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.requireStaffAccess(user, instituteId);
-        return ResponseEntity.ok(trackingService.getItemTracking(itemId, instituteId));
+        return ResponseEntity.ok(trackingService.getItemTracking(itemId, instituteId, page, size));
+    }
+
+    /**
+     * The same table as CSV — every attempt, not just the page on screen.
+     *
+     * Returned as a download so a teacher gets a file rather than a wall of text, and
+     * built server-side so the export is the full result set.
+     */
+    @GetMapping("/item/{itemId}/tracking/export")
+    public ResponseEntity<byte[]> exportItemTracking(
+            @PathVariable String itemId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
+        byte[] csv = trackingService.exportItemCsv(itemId, instituteId)
+                .getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8")
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"engagement-" + itemId + ".csv\"")
+                .body(csv);
     }
 }

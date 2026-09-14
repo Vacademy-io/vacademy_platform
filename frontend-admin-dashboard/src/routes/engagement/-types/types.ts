@@ -129,6 +129,10 @@ export interface EngagementPlanDTO {
 
 export interface EngagementTrackingRow {
     userId: string;
+    /** Hydrated from auth_service; null if that lookup failed. */
+    fullName?: string | null;
+    username?: string | null;
+    email?: string | null;
     status: string;
     isCorrect?: boolean | null;
     score?: number | null;
@@ -145,4 +149,8 @@ export interface EngagementTrackingDTO {
     completedCount: number;
     correctCount: number;
     rows: EngagementTrackingRow[];
+    page: number;
+    pageSize: number;
+    totalRows: number;
+    totalPages: number;
 }

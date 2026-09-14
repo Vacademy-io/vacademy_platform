@@ -17,12 +17,21 @@ public class EngagementTrackingDTO {
     private long completedCount;
     private long correctCount;
     private List<Row> rows;
+    /** Paging over `rows`; the counts above are always for the whole item. */
+    private int page;
+    private int pageSize;
+    private long totalRows;
+    private int totalPages;
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Row {
         private String userId;
+        /** Hydrated from auth_service — admin_core has no users table to join. */
+        private String fullName;
+        private String username;
+        private String email;
         private String status;
         private Boolean isCorrect;
         private Double score;

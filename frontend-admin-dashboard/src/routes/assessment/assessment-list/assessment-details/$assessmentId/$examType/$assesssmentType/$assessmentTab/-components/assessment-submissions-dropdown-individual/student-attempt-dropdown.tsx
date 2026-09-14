@@ -27,6 +27,7 @@ import {
     viewStudentReport,
 } from '../../-services/assessment-details-services';
 import { getPublicUrl } from '@/services/upload_file';
+import { countPdfPages } from '@/services/pdf-page-count';
 import { downloadFileFromUrl } from '@/lib/file-download';
 import { Route } from '../..';
 import { getInstituteId } from '@/constants/helper';
@@ -278,12 +279,31 @@ const StudentEvaluateWithAIComponent = ({
     const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_EVALUATION_MODEL);
     const modelDisplayNames = buildModelDisplayNames(t);
 
-    // Credit cost preview for this evaluation (per graded question).
+    // Credit cost preview for this evaluation. The copy-check is priced per
+    // PAGE of the submitted sheet, so count the pages of the file the student
+    // uploaded before quoting - "5 pages x 2 credits = 10 credits" is what a
+    // teacher can check against the copy in their hand. The question count
+    // still rides along for the estimator's breakdown.
     const numQuestions: number = (assessmentData?.[1]?.saved_data?.sections ?? []).reduce(
         (sum: number, section: any) => sum + (section?.questions?.length || 0),
         0
     );
-    const cost = useToolCostPreview('copy_check_evaluation', { num_questions: numQuestions });
+    const { data: numPages, isLoading: isCountingPages } = useQuery({
+        queryKey: ['ATTEMPT_PAGE_COUNT', student.attempt_id],
+        queryFn: async () => {
+            const fileId = await getAttemptData(student.attempt_id);
+            const url = await getPublicUrl(typeof fileId === 'string' ? fileId : '');
+            return countPdfPages(url);
+        },
+        staleTime: 10 * 60 * 1000,
+        retry: false,
+    });
+    const cost = useToolCostPreview(
+        'copy_check_evaluation',
+        { num_pages: numPages ?? 0, num_questions: numQuestions },
+        numPages != null
+    );
+    const perPageCredits = cost.perUnitCredits;
 
     // Trigger AI evaluation mutation
     const triggerEvaluationMutation = useMutation({
@@ -381,10 +401,12 @@ const StudentEvaluateWithAIComponent = ({
                     <p>{t('dialogs.evaluateWithAI.rubricInfo')}</p>
                 </div>
 
-                {numQuestions > 0 && cost.credits != null && (
-                    <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 p-3">
-                        <div className="flex items-center gap-2 text-sm text-neutral-700">
-                            <Coins size={16} className="text-primary-500" />
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                    <div className="flex items-center gap-2 text-sm text-neutral-700">
+                        <Coins size={16} className="text-primary-500" />
+                        {isCountingPages || numPages == null || cost.credits == null ? (
+                            <span>{t('dialogs.evaluateWithAI.countingPages')}</span>
+                        ) : (
                             <span>
                                 {t('dialogs.evaluateWithAI.estimatedCostLabel')}{' '}
                                 <span className="font-semibold text-neutral-900">
@@ -392,17 +414,26 @@ const StudentEvaluateWithAIComponent = ({
                                         count: cost.credits,
                                     })}
                                 </span>
-                            </span>
-                        </div>
-                        {cost.currentBalance != null && (
-                            <span className="text-xs text-neutral-500">
-                                {t('dialogs.evaluateWithAI.balance', {
-                                    count: cost.currentBalance,
-                                })}
+                                {perPageCredits != null && (
+                                    <span className="text-neutral-500">
+                                        {' '}
+                                        {t('dialogs.evaluateWithAI.pagesBreakdown', {
+                                            pages: numPages,
+                                            perPage: perPageCredits,
+                                        })}
+                                    </span>
+                                )}
                             </span>
                         )}
                     </div>
-                )}
+                    {cost.currentBalance != null && (
+                        <span className="text-xs text-neutral-500">
+                            {t('dialogs.evaluateWithAI.balance', {
+                                count: cost.currentBalance,
+                            })}
+                        </span>
+                    )}
+                </div>
 
                 {cost.sufficient === false && (
                     <div className="flex items-start gap-2 rounded-md bg-danger-50 p-3 text-xs text-danger-600">

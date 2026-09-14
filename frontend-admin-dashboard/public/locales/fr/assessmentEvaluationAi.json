@@ -58,7 +58,8 @@
         "loading": "Chargement...",
         "button": "Copie",
         "panelTitle": "Copie de l'élève",
-        "close": "Fermer"
+        "close": "Fermer",
+        "editCopy": "Modifier la copie et les notes"
     },
     "banners": {
         "aiDrafted": "L'IA a rédigé cette évaluation. Vérifiez chaque question, ajustez les notes ou les commentaires si nécessaire, puis publiez le résultat.",

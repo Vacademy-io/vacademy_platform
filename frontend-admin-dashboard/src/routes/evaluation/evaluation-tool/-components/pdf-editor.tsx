@@ -70,7 +70,7 @@ import { useFileUpload } from "@/hooks/use-file-upload";
 import { cn } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
 import { MyDialog } from "@/components/design-system/dialog";
-import { useMarksStore, feedbackKey } from "@/stores/evaluation/marks-store";
+import { useMarksStore, feedbackKey, type MarkEntry } from "@/stores/evaluation/marks-store";
 import { LoadingOverlay, UploadingOverlay } from "./Overlay";
 import { readEvalReturnUrl, clearEvalReturnUrl } from "../-utils/eval-return";
 import { runEvaluationSubmit } from "../-utils/submit-evaluation";
@@ -166,6 +166,11 @@ interface PDFEvaluatorProps {
     instituteId?: string;
     examType?: string;
     assessmentVisibility?: string;
+    /** Marks/feedback to start from (the AI's verdicts when editing an
+     *  AI-checked copy). Applied once, after any saved draft, so the teacher
+     *  sees what the AI awarded and changes only what they disagree with. */
+    seedMarks?: MarkEntry[];
+    seedFeedback?: Record<string, string>;
 }
 
 const PDFEvaluator = ({
@@ -180,6 +185,8 @@ const PDFEvaluator = ({
     instituteId,
     examType,
     assessmentVisibility,
+    seedMarks,
+    seedFeedback,
 }: PDFEvaluatorProps) => {
     const { t, i18n: i18nInstance } = useTranslation("evaluationPdfEditor");
     const TOOL_HELP = buildToolHelp(t);
@@ -749,10 +756,25 @@ const PDFEvaluator = ({
         resetMarks();
         setElapsedTime(0);
 
+        // The AI's verdicts, when this copy was opened from a finished AI
+        // run. Applied after the draft below so what the teacher sees is the
+        // checking they came to edit, not a stale draft from an earlier
+        // manual attempt on the same student.
+        const applySeed = () => {
+            (seedMarks || []).forEach((m) => addOrUpdateMark(m));
+            Object.entries(seedFeedback || {}).forEach(([key, value]) => {
+                const sep = key.indexOf("__");
+                if (sep > 0) setQuestionFeedback(key.slice(0, sep), key.slice(sep + 2), value);
+            });
+        };
+
         (async () => {
             try {
                 const draft = await getEvaluationDraft(attemptId);
-                if (!draft) return;
+                if (!draft) {
+                    applySeed();
+                    return;
+                }
 
                 const restoredAnnotations = draft.annotations || {};
                 setAnnotations(restoredAnnotations);
@@ -815,8 +837,10 @@ const PDFEvaluator = ({
                     description: t("toasts.draftRestoredDesc"),
                     duration: 4000,
                 });
+                applySeed();
             } catch (error) {
                 console.error("Failed to restore evaluation draft:", error);
+                applySeed();
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -36,7 +36,9 @@
             "balance_other": "शेष: {{count}}",
             "insufficientCredits": "इस मूल्यांकन के लिए पर्याप्त क्रेडिट नहीं हैं। जारी रखने के लिए अपने संस्थान में क्रेडिट जोड़ें।",
             "starting": "शुरू हो रहा है...",
-            "start": "शुरू करें"
+            "start": "शुरू करें",
+            "countingPages": "पेज गिने जा रहे हैं…",
+            "pagesBreakdown": "({{pages}} पेज × {{perPage}} क्रेडिट प्रति पेज)"
         },
         "revaluateEntireAssessment": {
             "title": "संपूर्ण आकलन का पुनर्मूल्यांकन करें",

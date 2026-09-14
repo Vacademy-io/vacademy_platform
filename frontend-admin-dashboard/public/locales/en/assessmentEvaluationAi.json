@@ -58,7 +58,8 @@
         "loading": "Loading...",
         "button": "Answer Sheet",
         "panelTitle": "Student Answer Sheet",
-        "close": "Close"
+        "close": "Close",
+        "editCopy": "Edit copy & marks"
     },
     "banners": {
         "aiDrafted": "AI has drafted this evaluation. Review each question, adjust any marks or feedback, then release the result.",

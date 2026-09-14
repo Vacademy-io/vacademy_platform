@@ -44,7 +44,9 @@
             "balance_other": "الرصيد: {{count}}",
             "insufficientCredits": "لا يوجد رصيد كافٍ لهذا التقييم. أضف رصيدًا إلى مؤسستك للمتابعة.",
             "starting": "جارٍ البدء...",
-            "start": "ابدأ"
+            "start": "ابدأ",
+            "countingPages": "جارٍ عدّ الصفحات…",
+            "pagesBreakdown": "({{pages}} صفحات × {{perPage}} رصيد لكل صفحة)"
         },
         "revaluateEntireAssessment": {
             "title": "إعادة تقييم الاختبار بالكامل",

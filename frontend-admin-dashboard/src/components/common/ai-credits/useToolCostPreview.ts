@@ -15,6 +15,9 @@ export interface ToolCostPreview {
     sufficient: boolean | null;
     /** true when running this would drop the balance below the low-balance threshold. */
     isLowBalanceAfter: boolean;
+    /** The tool's per-unit rate (credits per page / question / minute), so a
+     *  dialog can show the arithmetic behind the number. null until pricing loads. */
+    perUnitCredits: number | null;
 }
 
 /**
@@ -47,5 +50,6 @@ export function useToolCostPreview(
         balanceAfter,
         sufficient,
         isLowBalanceAfter,
+        perUnitCredits: row ? Number(row.per_unit_credits) || 0 : null,
     };
 }

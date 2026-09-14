@@ -10,8 +10,10 @@ import PDFEvaluator from '@/routes/evaluation/evaluation-tool/-components/pdf-ed
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { getPublicUrl } from '@/services/upload_file';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import { useSuspenseQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { getCompletedQuestions } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/ai-evaluation-services';
+import { feedbackKey, type MarkEntry } from '@/stores/evaluation/marks-store';
 import { Helmet } from 'react-helmet';
 import { CaretLeft } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -47,6 +49,10 @@ const goBack = () => {
 const EvaluateAttemptComponent = () => {
     const { t } = useTranslation('evaluationAttemptIndex');
     const { attemptId, assessmentId, examType } = Route.useParams();
+    // Launched from the AI evaluation page: open the AI-checked copy (not the
+    // raw upload) and pre-fill the AI's marks, so the teacher edits the
+    // checking rather than redoing it.
+    const { fileId: fileIdOverride, processId: aiProcessId } = Route.useSearch();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const [file, setFile] = useState<File | null>(null);
     const [fetchError, setFetchError] = useState(false);
@@ -58,7 +64,7 @@ const EvaluateAttemptComponent = () => {
     );
     // The student's answer file id. Initialised from the attempt, but can be set
     // by an admin uploading the answer sheet on the student's behalf.
-    const [fileId, setFileId] = useState<string | undefined>(attemptDetails);
+    const [fileId, setFileId] = useState<string | undefined>(fileIdOverride ?? attemptDetails);
     const { data: assessmentDetails, isLoading } = useSuspenseQuery(
         getAssessmentDetails({
             assessmentId: assessmentId,
@@ -78,6 +84,41 @@ const EvaluateAttemptComponent = () => {
     const assessmentVisibility =
         assessmentDetails?.[1]?.saved_data?.assessment_visibility ??
         assessmentDetails?.[0]?.saved_data?.assessment_visibility;
+
+    // The AI's per-question verdicts, when we were sent here from a finished
+    // AI run. They seed the marks panel; a question the AI could not grade
+    // simply stays empty for the teacher to fill.
+    const { data: aiQuestions, isLoading: isAiLoading } = useQuery({
+        queryKey: ['AI_COMPLETED_QUESTIONS', aiProcessId],
+        queryFn: () => getCompletedQuestions(aiProcessId ?? ''),
+        enabled: !!aiProcessId,
+        staleTime: 60_000,
+        retry: false,
+    });
+    const aiSeed = useMemo(() => {
+        if (!aiProcessId || !aiQuestions) return undefined;
+        const sectionOf = new Map<string, string>();
+        Object.entries(questionData ?? {}).forEach(([sectionId, questions]) => {
+            (questions as Array<{ question_id: string }>).forEach((q) =>
+                sectionOf.set(q.question_id, sectionId)
+            );
+        });
+        const marks: MarkEntry[] = [];
+        const feedback: Record<string, string> = {};
+        aiQuestions.forEach((q) => {
+            const sectionId = sectionOf.get(q.question_id);
+            if (!sectionId || q.status !== 'COMPLETED') return;
+            marks.push({
+                section_id: sectionId,
+                question_id: q.question_id,
+                status: 'evaluated',
+                marks: Number(q.marks_awarded) || 0,
+            });
+            const text = q.feedback ?? q.evaluation_details_json?.feedback;
+            if (text) feedback[feedbackKey(sectionId, q.question_id)] = text;
+        });
+        return { marks, feedback };
+    }, [aiProcessId, aiQuestions, questionData]);
 
     const { setNavHeading } = useNavHeadingStore();
 
@@ -156,7 +197,7 @@ const EvaluateAttemptComponent = () => {
         );
     }
 
-    if (isLoading || isQuestionsLoading || isAttemptLoading || !file)
+    if (isLoading || isQuestionsLoading || isAttemptLoading || !file || (aiProcessId && isAiLoading))
         return (
             <div className="flex min-h-screen flex-col items-center justify-center gap-y-2">
                 <h1>{t('gettingResponseFile')}</h1>
@@ -181,6 +222,8 @@ const EvaluateAttemptComponent = () => {
                     instituteId={instituteDetails?.id}
                     examType={examType}
                     assessmentVisibility={assessmentVisibility}
+                    seedMarks={aiSeed?.marks}
+                    seedFeedback={aiSeed?.feedback}
                 />
             )}
         </>

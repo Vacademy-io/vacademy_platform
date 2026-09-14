@@ -49,6 +49,7 @@ import {
 } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
 
 import { getPublicUrl } from '@/services/upload_file';
+import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
 import {
     PdfAnnotationOverlay,
@@ -421,6 +422,21 @@ function RouteComponent() {
         await loadAnswerSheet(answerSheetFileId);
     };
 
+    // Hand the AI-checked copy to the marking tool: the red-pen PDF is the
+    // base the teacher draws on, and the AI's marks/feedback pre-fill the
+    // panel, so they change only what they disagree with. Submitting there
+    // uploads the edited copy as the attempt's evaluated file and records
+    // the teacher's marks - the same path as a manual check. Comes back here.
+    const handleEditCheckedCopy = () => {
+        if (!checkedFileId || !assessmentId) return;
+        stashEvalReturnUrl(window.location.href);
+        navigate({
+            to: '/evaluation/evaluate/$assessmentId/$attemptId/$examType',
+            params: { assessmentId, attemptId, examType: 'EXAM' },
+            search: { fileId: checkedFileId, processId },
+        });
+    };
+
     // Panel open on the raw sheet when the run finishes → swap to the checked
     // copy. One automatic attempt per file id: a failed load already toasts, and
     // retrying it from here would loop; the button reloads on the next click.
@@ -564,18 +580,31 @@ function RouteComponent() {
                             { value: 'pending', label: t('filters.pending') },
                         ]}
                     />
-                    {answerSheetFileId && (
-                        <MyButton
-                            onClick={handleViewAnswerSheet}
-                            disabled={isLoadingPdf}
-                            buttonType="secondary"
-                            scale="medium"
-                            className="gap-2 sm:min-w-0"
-                        >
-                            <FileText size={16} />
-                            {isLoadingPdf ? t('answerSheet.loading') : t('answerSheet.button')}
-                        </MyButton>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {answerSheetFileId && (
+                            <MyButton
+                                onClick={handleViewAnswerSheet}
+                                disabled={isLoadingPdf}
+                                buttonType="secondary"
+                                scale="medium"
+                                className="gap-2 sm:min-w-0"
+                            >
+                                <FileText size={16} />
+                                {isLoadingPdf ? t('answerSheet.loading') : t('answerSheet.button')}
+                            </MyButton>
+                        )}
+                        {checkedFileId && assessmentId && (
+                            <MyButton
+                                onClick={handleEditCheckedCopy}
+                                buttonType="primary"
+                                scale="medium"
+                                className="gap-2 sm:min-w-0"
+                            >
+                                <PencilSimple size={16} />
+                                {t('answerSheet.editCopy')}
+                            </MyButton>
+                        )}
+                    </div>
                 </div>
 
                 {/* Banners */}

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-interface MarkEntry {
+export interface MarkEntry {
     section_id: string;
     question_id: string;
     status: string;

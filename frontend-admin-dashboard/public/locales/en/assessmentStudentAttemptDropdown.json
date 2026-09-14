@@ -36,7 +36,9 @@
             "balance_other": "Balance: {{count}}",
             "insufficientCredits": "Not enough credits for this evaluation. Add credits to your institute to continue.",
             "starting": "Starting...",
-            "start": "Start"
+            "start": "Start",
+            "countingPages": "Counting pages…",
+            "pagesBreakdown": "({{pages}} pages × {{perPage}} credits per page)"
         },
         "revaluateEntireAssessment": {
             "title": "Revaluate Entire Assessment",

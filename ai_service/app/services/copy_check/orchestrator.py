@@ -329,14 +329,17 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         )
 
         # Meter the copy: charge the institute's credits once per completed
-        # evaluation. Priced per graded question with real-token overage
-        # (see tool_cost_estimator "copy_check_evaluation"). Idempotent on
-        # process_id so a retried complete callback never double-charges, and
-        # best-effort so a billing error never fails a delivered evaluation.
-        # Cancelled/failed copies are intentionally not charged.
+        # evaluation. Priced per PAGE of the copy (the count the OCR actually
+        # processed - the same figure the FE quoted from the uploaded PDF)
+        # with real-token overage (see tool_cost_estimator
+        # "copy_check_evaluation"). Idempotent on process_id so a retried
+        # complete callback never double-charges, and best-effort so a billing
+        # error never fails a delivered evaluation. Cancelled/failed copies
+        # are intentionally not charged.
+        num_pages = len(layout_map.get("pages") or []) or 1
         record_tool_billing(
             tool_key="copy_check_evaluation",
-            tool_params={"num_questions": evaluated},
+            tool_params={"num_pages": num_pages, "num_questions": evaluated},
             request_type=RequestType.EVALUATION,
             model=(preferred_model or DEFAULT_MODEL),
             prompt_tokens=grader.prompt_tokens,

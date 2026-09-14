@@ -38,7 +38,9 @@
             "balance_other": "Solde : {{count}}",
             "insufficientCredits": "Crédits insuffisants pour cette évaluation. Ajoutez des crédits à votre établissement pour continuer.",
             "starting": "Démarrage...",
-            "start": "Démarrer"
+            "start": "Démarrer",
+            "countingPages": "Comptage des pages…",
+            "pagesBreakdown": "({{pages}} pages × {{perPage}} crédits par page)"
         },
         "revaluateEntireAssessment": {
             "title": "Réévaluer l’ensemble de l’évaluation",

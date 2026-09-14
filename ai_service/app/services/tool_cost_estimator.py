@@ -54,16 +54,20 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "questions",
         "params": {"image_unit_credits": "0.5"},
     },
-    # AI evaluation of one uploaded answer copy (copy-check): OCR + per-question
-    # rubric-grounded grading. Priced per graded question for a predictable
-    # preview ("8 questions = 8 credits"); the actual charge is
-    # max(this, real token cost), so premium models (Opus/GPT) add overage on
-    # long answers while flash-lite copies stay at the flat per-question rate.
+    # AI evaluation of one uploaded answer copy (copy-check): OCR + vision
+    # read of every page + per-question rubric-grounded grading. Priced PER
+    # PAGE of the submitted copy ("5 pages = 10 credits"): that is what the
+    # teacher can see before starting, and it is what drives the real cost
+    # (every grading call carries the whole transcript, and each page is read
+    # by the vision model once). Real cost on GLM-5.3-flash is ~0.3-0.6 credit
+    # a page; the actual charge is max(this, real token cost), so premium
+    # models add overage while flash copies stay at the flat per-page rate.
+    # A 21-question, 5-page paper used to be 21 credits; it is now 10.
     "copy_check_evaluation": {
         "request_type": "evaluation",
         "flat_base_credits": Decimal("0"),
-        "per_unit_credits": Decimal("1"),
-        "unit_field": "questions",
+        "per_unit_credits": Decimal("2"),
+        "unit_field": "pages",
         "params": {},
     },
     "coding_question": {

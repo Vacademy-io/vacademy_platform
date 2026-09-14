@@ -144,21 +144,39 @@ public class CallAiNodeHandler implements NodeHandler {
         // Cancel→resume bridge: the outcome processor resumed this paused state with a
         // terminal disposition injected (callOutcome). Short-circuit OUT of the node —
         // route to the next node via normal traversal — without re-dialing or pausing.
-        // CONSUME the one-shot bridge keys immediately (remove from the live context) so
-        // they can NEVER persist into a later pause/resume: otherwise a re-entry (a
-        // downstream DELAY pause, or a graph that loops back to CALL_AI) would re-read the
-        // stale callOutcome and short-circuit again with no new call — silently killing
-        // the retry loop. remove() not null-put: a "null" round-trips to the String "null".
+        // The bridge keys (callOutcome / callDisposition / callConnected / callAnswers)
+        // are LEFT in the live context: the nodes after this one are exactly what reads
+        // them (the template's CONDITION "#ctx['callOutcome'] == 'ASSIGN'"), and the
+        // engine runs them on this same map. Removing them here made that branch
+        // unreachable — every lead landed on the "false" leg.
+        //
+        // The one-shot guarantee is enforced by aiCallDone instead: it is set true by
+        // this short-circuit and reset to false the moment the node dials again, so a
+        // graph that loops back to CALL_AI after a terminal outcome sees the stale
+        // callOutcome but is NOT short-circuited by it — the stale keys are dropped and
+        // a fresh dial is planned. remove() not null-put: a "null" round-trips to the
+        // String "null".
         String callOutcome = str(context.get("callOutcome"));
-        context.remove("callOutcome");
-        context.remove("callDisposition");
-        context.remove("callConnected");
-        if ("ASSIGN".equals(callOutcome) || "STOP".equals(callOutcome)) {
+        boolean outcomeAlreadyConsumed = "true".equalsIgnoreCase(str(context.get("aiCallDone")));
+        if (("ASSIGN".equals(callOutcome) || "STOP".equals(callOutcome)) && !outcomeAlreadyConsumed) {
             out.put("aiCallDone", true);
             out.put("aiCallStopReason", "disposition_terminal");
             log.info("CALL_AI node: terminal disposition ({}) for lead {} — routing out without re-dial", callOutcome, userId);
             return out;   // routes to next node via normal traversal; does NOT pause/dial; does NOT call giveUpAfterRetries
         }
+        // Not a terminal resume: anything still under the bridge keys is left over from
+        // an earlier call (loop-back / a second CALL_AI node) — drop it so no downstream
+        // node reads the previous call's outcome as this call's. Reset aiCallDone on the
+        // LIVE context too (not only on `out`): the DIAL/DEFER paths below snapshot
+        // `context` into the paused state, and that snapshot is what the webhook bridge
+        // resumes — a stale true there would make the next terminal outcome look
+        // already-consumed and re-dial an interested lead.
+        context.remove("callOutcome");
+        context.remove("callDisposition");
+        context.remove("callConnected");
+        context.remove("callAnswers");
+        context.put("aiCallDone", false);
+        out.put("aiCallDone", false);
 
         Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay, provider, ignoreAssignedGuard);
 

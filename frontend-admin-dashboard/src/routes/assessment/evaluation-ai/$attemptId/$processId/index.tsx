@@ -165,14 +165,18 @@ function RouteComponent() {
     // shows a newer run's marks). When it exists the viewer shows it as-is and
     // the JSON overlay stays off — drawing the same annotations again on top
     // produced a second set of green ticks, boxes and notes over the pen marks.
-    // The overlay is keyed to the file actually on screen (pdfFileId), not the
-    // one wanted: while the checked copy is still loading, or if that load
-    // failed, the raw sheet keeps its overlay instead of going bare.
+    // The overlay is only a fallback for a FINISHED run that produced no checked
+    // copy at all. It never draws mid-run: the green ticks, red boxes and typed
+    // notes it painted over the raw sheet while grading was still going looked
+    // like the actual result ("what kind of checking is this"), and the pen
+    // copy that replaced them a minute later was the one the teacher wanted.
+    // While the run is on, the raw sheet is shown plain and the progress card
+    // says what is happening.
     const checkedFileId: string | null =
         progress?.overall_status === 'COMPLETED' && progress?.file_id ? progress.file_id : null;
     const answerSheetFileId: string | null =
         checkedFileId ?? (attemptDetails as string | null) ?? null;
-    const showOverlay = !checkedFileId || pdfFileId !== checkedFileId;
+    const showOverlay = progress?.overall_status === 'COMPLETED' && !checkedFileId;
 
     const annotations: Annotation[] = useMemo(() => {
         const out: Annotation[] = [];

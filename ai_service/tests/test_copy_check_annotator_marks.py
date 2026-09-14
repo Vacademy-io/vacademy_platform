@@ -355,6 +355,40 @@ def test_whole_paper_shape_is_unwrapped() -> None:
           f"got {len(out['annotations'])}")
 
 
+def test_words_where_numbers_were_asked_for() -> None:
+    print("\nvalidator — a word in a numeric field must not fail the question")
+    from ai_service.app.services.copy_check.validator import (
+        coerce_confidence, coerce_number, validate_and_cap,
+    )
+
+    # "confidence": "low" reached float() in production and the student got a
+    # zero plus a "needs your review" card - for a field that only decides
+    # whether the copy is escalated to a stronger model.
+    check("'low' reads as a low confidence", coerce_confidence("low") == 0.3)
+    check("'85%' reads as 0.85", abs(coerce_confidence("85%") - 0.85) < 1e-9)
+    check("'2/3' is the figure awarded, not a fraction", coerce_number("2/3") == 2.0)
+    check("'2.5 marks' keeps its number", coerce_number("2.5 marks") == 2.5)
+    check("prose without a digit is the default", coerce_number("not applicable", 0.0) == 0.0)
+
+    layout = {"pages": [{"page_id": "P1", "lines": [
+        {"line_id": "L1_01", "box": [40, 60, 300, 18], "text": "hello world"}
+    ], "regions": []}]}
+    raw = {
+        "marks_awarded": "2/3", "confidence": "low",
+        "criteria_breakdown": {"Data": "1 mark", "Nature": "0"},
+        "annotations": ["garbage", {"style": "Tick", "target": "L1_01", "page_id": "P1"},
+                        {"style": "score", "target": "L1_01", "page_id": "P1", "marks": "2 marks"}],
+        "feedback": "f", "extracted_answer": "x",
+    }
+    out = validate_and_cap(raw, {"question_id": "Q3", "max_marks": 3}, layout)
+    check("the verdict is produced, not raised", out["marks_awarded"] == 2.0,
+          f"got {out['marks_awarded']}")
+    check("a dict breakdown becomes criteria", len(out["criteria_breakdown"]) == 2)
+    check("junk annotations are dropped, real ones kept",
+          [a["style"] for a in out["annotations"]] == ["tick", "score"],
+          f"got {[a['style'] for a in out['annotations']]}")
+
+
 def test_bbox_anchors_and_placement_names() -> None:
     print("\nvalidator — the reported geometry places a mark the text cannot")
     from ai_service.app.services.copy_check.validator import validate_and_cap
@@ -590,6 +624,7 @@ if __name__ == "__main__":
     test_margin_marks_reconcile_with_the_total()
     test_comment_ink_stays_legible()
     test_whole_paper_shape_is_unwrapped()
+    test_words_where_numbers_were_asked_for()
 
     print()
     if failures:

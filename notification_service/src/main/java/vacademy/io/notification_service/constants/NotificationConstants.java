@@ -26,6 +26,7 @@ public class NotificationConstants {
 
     // Sending controls (stored inside each EMAIL_SETTING.data.<type> node; all optional)
     public static final String PROMOTIONAL_EMAIL = "PROMOTIONAL_EMAIL";
+    public static final String MARKETING_EMAIL = "MARKETING_EMAIL";   // what Settings saves a marketing sender as
     public static final String MAX_PER_DAY = "max_per_day";               // int, 0/absent = unlimited
     public static final String TIMEZONE = "timezone";                     // IANA zone the day boundary is measured in
     public static final String SEND_AFTER_HOUR = "send_after_hour";       // local hour (0-23) the next day's window opens

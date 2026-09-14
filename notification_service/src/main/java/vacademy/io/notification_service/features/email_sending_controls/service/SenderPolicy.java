@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * The sending rules an institute has put on one sender (EMAIL_SETTING.data.<type>).
@@ -49,10 +50,19 @@ public record SenderPolicy(int maxPerDay, ZoneId zone, int sendAfterHour, String
         return next.withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
     }
 
+    /**
+     * Commercial mail must carry an unsubscribe path. Two codes mean "commercial" in this
+     * codebase and they come from different screens: the campaign dialog sends
+     * PROMOTIONAL_EMAIL, while Settings saves a marketing sender as MARKETING_EMAIL.
+     * Both are covered, and any other type can opt in with list_unsubscribe.
+     */
+    private static final Set<String> COMMERCIAL_TYPES =
+            Set.of(NotificationConstants.PROMOTIONAL_EMAIL, NotificationConstants.MARKETING_EMAIL);
+
     /** Whether unsubscribe headers + footer apply to a send of this type. */
     public boolean unsubscribeApplies(String emailType) {
         return listUnsubscribe
-                || (emailType != null && NotificationConstants.PROMOTIONAL_EMAIL.equalsIgnoreCase(emailType.trim()));
+                || (emailType != null && COMMERCIAL_TYPES.contains(emailType.trim().toUpperCase(Locale.ROOT)));
     }
 
     /** Stable counter key for one sender identity. */

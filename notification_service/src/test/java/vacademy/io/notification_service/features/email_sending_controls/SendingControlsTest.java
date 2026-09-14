@@ -27,6 +27,9 @@ class SendingControlsTest {
         assertFalse(p.capped());
         assertFalse(p.unsubscribeApplies("UTILITY_EMAIL"));
         assertTrue(p.unsubscribeApplies("PROMOTIONAL_EMAIL"), "promotional mail always carries unsubscribe");
+        assertTrue(p.unsubscribeApplies("MARKETING_EMAIL"), "Settings saves a marketing sender under this code");
+        assertTrue(p.unsubscribeApplies("marketing_email"), "code comparison is case-insensitive");
+        assertFalse(p.unsubscribeApplies("TRANSACTIONAL_EMAIL"));
         assertNull(SenderPolicy.from(null).postalAddress());
     }
 

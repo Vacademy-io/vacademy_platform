@@ -31,6 +31,32 @@ from .enforce_bridge import apply_enforcement
 logger = logging.getLogger(__name__)
 
 
+def describe_failure(exc: BaseException) -> str:
+    """What to tell the admin about a question that could not be graded.
+
+    Read on the evaluation page under "AI could not grade this". A raw
+    `ValueError: could not convert string to float: 'low'` told the teacher
+    nothing they could act on; say what happened in plain words and keep the
+    class + message after it for whoever reads the logs.
+    """
+    name = type(exc).__name__
+    msg = str(exc) or name
+    low = msg.lower()
+    if "token budget" in low:
+        why = "The AI budget for this copy ran out before this question."
+    elif "no valid max_marks" in low:
+        why = "This question has no maximum marks set on the assessment."
+    elif name in ("TimeoutError", "ReadTimeout", "ConnectTimeout", "ConnectError") or "timed out" in low:
+        why = "The AI service did not answer in time."
+    elif name in ("JSONDecodeError", "ValueError", "TypeError", "KeyError", "AttributeError"):
+        why = "The AI's reply could not be read as a verdict, twice."
+    elif "rate limit" in low or "429" in low:
+        why = "The AI provider rate-limited the request."
+    else:
+        why = "The AI service returned an error, twice."
+    return f"{why} ({name}: {msg})"[:500]
+
+
 def _new_job_id() -> str:
     return str(uuid.uuid4())
 
@@ -245,7 +271,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                         # so no provider error or stack trace reaches a student —
                         # this rides along to ai_question_evaluation instead, where
                         # only admins read it. Class name + message, not a trace.
-                        "error_detail": f"{type(retry_err).__name__}: {retry_err}"[:500],
+                        "error_detail": describe_failure(retry_err),
                     }
             total_awarded += verdict["marks_awarded"]
             total_max += verdict["max_marks"]

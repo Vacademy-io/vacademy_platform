@@ -1,7 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { MagnifyingGlass, ArrowFatDown, PaperPlaneTilt, EnvelopeSimple } from '@phosphor-icons/react';
+import {
+    MagnifyingGlass,
+    ArrowFatDown,
+    PaperPlaneTilt,
+    EnvelopeSimple,
+    Warning,
+} from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -153,6 +159,11 @@ function ConversationRow({
     const initials = getInitials(display);
     const unread = c.unreadCount ?? 0;
     const isOutgoing = c.lastMessageDirection === 'OUTGOING';
+    const system = !!c.system;
+    // Subject first (what a mail client shows), then the clean snippet; "You:" marks our own last
+    // message the way WhatsApp does, so direction is readable without the icon.
+    const previewText = c.lastMessageSubject || c.lastMessagePreview || t('noSubject');
+    const preview = isOutgoing ? `${t('you')}: ${previewText}` : previewText;
 
     return (
         <li>
@@ -186,6 +197,13 @@ function ConversationRow({
                         </span>
                     </div>
 
+                    {system && (
+                        <p className="text-xs font-medium text-amber-700 truncate flex items-center gap-1">
+                            <Warning size={12} weight="fill" className="shrink-0" />
+                            {t('deliveryFailed')}
+                        </p>
+                    )}
+
                     {c.name && (
                         <p className="text-xs text-muted-foreground truncate">{c.email}</p>
                     )}
@@ -197,8 +215,12 @@ function ConversationRow({
                                 unread > 0 ? 'text-foreground' : 'text-muted-foreground'
                             )}
                         >
-                            <DirectionIcon outgoing={isOutgoing} />
-                            <span className="truncate">{c.lastMessagePreview || '—'}</span>
+                            {system ? (
+                                <Warning size={12} className="text-amber-600 shrink-0" weight="fill" />
+                            ) : (
+                                <DirectionIcon outgoing={isOutgoing} />
+                            )}
+                            <span className="truncate">{preview}</span>
                         </p>
                         {unread > 0 && (
                             <Badge

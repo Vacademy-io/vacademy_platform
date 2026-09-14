@@ -7,5 +7,26 @@
     "sent": "أُرسلت",
     "received": "استُلمت",
     "selectConversation": "اختر محادثة بريد إلكتروني",
-    "selectConversationHint": "انقر على أي صف على اليسار لعرض محادثته"
+    "selectConversationHint": "انقر على أي صف على اليسار لعرض محادثته",
+    "you": "أنت",
+    "viaAddress": "عبر {{address}}",
+    "noSubject": "(بدون موضوع)",
+    "openEmail": "فتح البريد",
+    "collapseEmail": "طيّ",
+    "origin": {
+        "CAMPAIGN": "حملة",
+        "INBOX_REPLY": "رد من صندوق الوارد",
+        "OTP": "بريد رمز التحقق",
+        "AUTOMATION": "أتمتة",
+        "EMAIL": "بريد إلكتروني",
+        "REPLY": "رد على بريدك",
+        "INCOMING": "بريد جديد"
+    },
+    "showQuotedText": "إظهار النص المقتبس ({{count}} سطر)",
+    "hideQuotedText": "إخفاء النص المقتبس",
+    "deliveryFailed": "فشل التسليم",
+    "deliveryFailedHint": "إشعار تلقائي من نظام البريد — تعذر الوصول إلى العنوان.",
+    "showDetails": "إظهار التفاصيل",
+    "hideDetails": "إخفاء التفاصيل",
+    "automatedSender": "مرسل تلقائي — لا يمكن الرد"
 }

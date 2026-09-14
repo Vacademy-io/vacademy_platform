@@ -7,5 +7,26 @@
     "sent": "भेजा गया",
     "received": "प्राप्त हुआ",
     "selectConversation": "एक ईमेल बातचीत चुनें",
-    "selectConversationHint": "इसकी बातचीत देखने के लिए बाईं ओर की किसी भी पंक्ति पर क्लिक करें"
+    "selectConversationHint": "इसकी बातचीत देखने के लिए बाईं ओर की किसी भी पंक्ति पर क्लिक करें",
+    "you": "आप",
+    "viaAddress": "{{address}} के माध्यम से",
+    "noSubject": "(कोई विषय नहीं)",
+    "openEmail": "ईमेल खोलें",
+    "collapseEmail": "समेटें",
+    "origin": {
+        "CAMPAIGN": "अभियान",
+        "INBOX_REPLY": "इनबॉक्स से जवाब",
+        "OTP": "OTP ईमेल",
+        "AUTOMATION": "ऑटोमेशन",
+        "EMAIL": "ईमेल",
+        "REPLY": "आपके ईमेल का जवाब",
+        "INCOMING": "नया ईमेल"
+    },
+    "showQuotedText": "उद्धृत पाठ दिखाएं ({{count}} पंक्तियां)",
+    "hideQuotedText": "उद्धृत पाठ छिपाएं",
+    "deliveryFailed": "डिलीवरी विफल",
+    "deliveryFailedHint": "मेल सिस्टम की स्वचालित सूचना — यह पता उपलब्ध नहीं हो सका।",
+    "showDetails": "विवरण दिखाएं",
+    "hideDetails": "विवरण छिपाएं",
+    "automatedSender": "स्वचालित प्रेषक — जवाब नहीं दिया जा सकता"
 }

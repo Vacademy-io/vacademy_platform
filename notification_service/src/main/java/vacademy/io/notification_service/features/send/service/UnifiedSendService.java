@@ -95,6 +95,8 @@ public class UnifiedSendService implements SendChannelRouter {
      * options through would change those rows' values and double-attribute per-user views.
      */
     public static final String ENGAGEMENT_ENGINE_SOURCE = "ENGAGEMENT_ENGINE";
+    /** SendOptions.source set by EmailInboxService.sendReply; logged as-is so replies are distinguishable from campaigns. */
+    public static final String INBOX_REPLY_SOURCE = "EMAIL_INBOX";
 
     private boolean isEngagementEngineSend(UnifiedSendRequest request) {
         return request.getOptions() != null
@@ -428,6 +430,12 @@ public class UnifiedSendService implements SendChannelRouter {
         final List<String> finalCopyRecipients = copyRecipients;
         final String finalCopyMode = copyMode;
 
+        // Logged source for plain (non-engine) sends. An ALLOWLIST, not a pass-through of
+        // opts.source: EmailTrackingService lets users filter EMAIL rows by source, and announcement
+        // sends already log their own 'announcement-service' row - passing every caller's source
+        // through would double-count campaigns there. Only inbox replies need to be told apart.
+        final String plainLogSource = INBOX_REPLY_SOURCE.equals(opts.getSource()) ? INBOX_REPLY_SOURCE : "unified-send";
+
         // Optional rate limiting for bulk sends (e.g., announcements)
         com.google.common.util.concurrent.RateLimiter rateLimiter = null;
         if (opts.getRateLimitPerSecond() != null && opts.getRateLimitPerSecond() > 0) {
@@ -498,7 +506,7 @@ public class UnifiedSendService implements SendChannelRouter {
                                     java.util.Base64.getDecoder().decode(att.getContentBase64()));
                         }
                     }
-                    emailService.sendAttachmentEmail(email, subject, "unified-send", body,
+                    emailService.sendAttachmentEmail(email, subject, plainLogSource, body,
                             attachmentMap, request.getInstituteId(), emailType,
                             finalCopyRecipients, finalCopyMode);
                 } else if (isEngagementEngineSend(request)) {
@@ -512,7 +520,7 @@ public class UnifiedSendService implements SendChannelRouter {
                             userId != null && !userId.contains("@") ? userId : null,
                             finalCopyRecipients, finalCopyMode);
                 } else {
-                    outcome = emailService.sendHtmlEmail(email, subject, "unified-send", body,
+                    outcome = emailService.sendHtmlEmail(email, subject, plainLogSource, body,
                             request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType,
                             null, null, finalCopyRecipients, finalCopyMode);
                 }

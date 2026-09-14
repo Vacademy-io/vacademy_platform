@@ -221,6 +221,16 @@ public class EmailService {
             // Caller correlation key (e.g. Engagement Engine action id). sourceId stays the
             // JavaMail Message-ID — inbound reply linking joins on it and must not be displaced.
             notificationLog.setCorrelationId(correlationId);
+            // Body holds the HTML, so the subject line would otherwise be lost. The inbox and
+            // timeline read it back from message_payload ({"subject": ...}); INBOUND_EMAIL rows use
+            // the same key in their richer payload, so one reader covers both.
+            if (subject != null && !subject.isBlank()) {
+                try {
+                    notificationLog.setMessagePayload(objectMapper.writeValueAsString(Map.of("subject", subject)));
+                } catch (Exception e) {
+                    logger.debug("Could not serialise subject payload for: {} - {}", to, e.getMessage());
+                }
+            }
             notificationLog.setNotificationDate(Instant.now());
 
             notificationLogRepository.save(notificationLog);

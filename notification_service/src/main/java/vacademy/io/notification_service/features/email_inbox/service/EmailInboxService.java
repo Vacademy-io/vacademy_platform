@@ -20,6 +20,8 @@ import vacademy.io.notification_service.features.send.service.UnifiedSendService
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -28,6 +30,10 @@ import java.util.stream.Collectors;
 public class EmailInboxService {
 
     private static final int PREVIEW_MAX = 120;
+    private static final int LIST_PREVIEW_MAX = 60;
+    private static final String INBOUND_TYPE = "INBOUND_EMAIL";
+    private static final Pattern UUID_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     private final NotificationLogRepository notificationLogRepository;
     private final EmailAddressMappingRepository emailAddressMappingRepository;
@@ -98,15 +104,27 @@ public class EmailInboxService {
     }
 
     private EmailConversationDTO toConversation(NotificationLog nl, Map<String, Long> unread) {
-        boolean inbound = "INBOUND_EMAIL".equals(nl.getNotificationType());
+        boolean inbound = INBOUND_TYPE.equals(nl.getNotificationType());
+        Optional<JsonNode> payload = parsePayload(nl);
+        String subject = payload.map(p -> textOrNull(p, "subject")).orElse(null);
+        // The announcement-service twin logs the campaign TITLE as its body — that is the subject.
+        if (subject == null && EmailThreadMerger.isAnnouncementEmail(nl)) subject = blankToNull(nl.getBody());
+
+        // Prefer the subject for list previews — that's what real mail clients show.
+        String preview = subject != null
+                ? EmailTextUtils.truncate(EmailTextUtils.toPlainText(subject), LIST_PREVIEW_MAX)
+                : EmailTextUtils.truncate(EmailTextUtils.toPlainText(nl.getBody()), LIST_PREVIEW_MAX);
+
         return EmailConversationDTO.builder()
                 .email(nl.getChannelId())
                 .name(nl.getSenderName())
                 .userId(nl.getUserId())
                 .lastMessageDirection(inbound ? "INCOMING" : "OUTGOING")
-                .lastMessagePreview(buildPreview(nl))
+                .lastMessageSubject(subject)
+                .lastMessagePreview(preview)
                 .lastMessageTime(nl.getNotificationDate())
                 .unreadCount(unread.getOrDefault(nl.getChannelId(), 0L))
+                .system(EmailTextUtils.isSystemSender(nl.getChannelId(), inbound ? subject : null))
                 .build();
     }
 
@@ -124,37 +142,72 @@ public class EmailInboxService {
         List<NotificationLog> rows = notificationLogRepository
                 .findEmailMessagesForConversation(counterpartyEmail, instituteId, senderFilter, types, cursor, limit);
 
-        return rows.stream().map(this::toMessage).collect(Collectors.toList());
+        // A campaign send logs two EMAIL rows (announcement title + the real HTML send) — fold
+        // them into one thread entry so the admin sees one card with a subject, not two.
+        return EmailThreadMerger.merge(rows).stream().map(this::toMessage).collect(Collectors.toList());
     }
 
-    private EmailMessageDTO toMessage(NotificationLog nl) {
-        boolean inbound = "INBOUND_EMAIL".equals(nl.getNotificationType());
-        String subject = null;
+    private EmailMessageDTO toMessage(EmailThreadMerger.MergedRow merged) {
+        NotificationLog nl = merged.row();
+        boolean inbound = INBOUND_TYPE.equals(nl.getNotificationType());
+        Optional<JsonNode> payload = parsePayload(nl);
+        String subject = payload.map(p -> textOrNull(p, "subject")).orElse(null);
         String body = nl.getBody();
 
-        if (inbound && nl.getMessagePayload() != null) {
+        if (inbound) {
             // INBOUND_EMAIL stores subject/body separately in messagePayload JSON; body column is the subject (truncated).
-            try {
-                JsonNode payload = objectMapper.readTree(nl.getMessagePayload());
-                subject = textOrNull(payload, "subject");
-                String fullBody = textOrNull(payload, "body");
-                if (fullBody != null) body = fullBody;
-            } catch (Exception e) {
-                log.debug("[EMAIL-INBOX] Failed to parse INBOUND_EMAIL payload for {}: {}", nl.getId(), e.getMessage());
+            String fullBody = payload.map(p -> textOrNull(p, "body")).orElse(null);
+            if (fullBody != null) body = fullBody;
+        } else {
+            if (subject == null) subject = merged.derivedSubject();
+            if (subject == null && EmailThreadMerger.isAnnouncementEmail(nl)) {
+                // Un-twinned announcement row: its body IS the campaign title, there is no HTML.
+                subject = blankToNull(body);
+                body = null;
             }
         }
+
+        String previewSource = body != null ? body : subject;
+        boolean system = inbound && EmailTextUtils.isSystemSender(nl.getChannelId(), subject);
+        // For inbound rows the source column carries the parent outbound log id (InboundEmailService),
+        // which is a link, not a label — expose it as inReplyToId and never as 'source'.
+        String inReplyToId = inbound && nl.getSource() != null && UUID_PATTERN.matcher(nl.getSource()).matches()
+                ? nl.getSource() : null;
 
         return EmailMessageDTO.builder()
                 .id(nl.getId())
                 .direction(inbound ? "INCOMING" : "OUTGOING")
                 .subject(subject)
-                .bodyPreview(truncate(stripHtml(body), PREVIEW_MAX))
+                .bodyPreview(EmailTextUtils.truncate(EmailTextUtils.toPlainText(previewSource), PREVIEW_MAX))
                 .body(body)
                 .counterpartyEmail(nl.getChannelId())
+                .counterpartyName(blankToNull(nl.getSenderName()))
                 .instituteAddress(nl.getSenderBusinessChannelId())
                 .timestamp(nl.getNotificationDate())
-                .source(nl.getSource())
+                .source(inbound ? null : nl.getSource())
+                .origin(inbound ? inboundOrigin(system, inReplyToId) : outboundOrigin(nl.getSource(), merged.campaign()))
+                .system(system)
+                .inReplyToId(inReplyToId)
                 .build();
+    }
+
+    /** OUTGOING origin per the inbox contract. */
+    static String outboundOrigin(String source, boolean campaign) {
+        if (campaign) return "CAMPAIGN";
+        if (source == null) return "EMAIL";
+        String s = source.trim();
+        if (EmailThreadMerger.ANNOUNCEMENT_SOURCE.equalsIgnoreCase(s)) return "CAMPAIGN";
+        if (UnifiedSendService.INBOX_REPLY_SOURCE.equalsIgnoreCase(s)) return "INBOX_REPLY";
+        if ("OTP_SERVICE".equalsIgnoreCase(s)) return "OTP";
+        if (UnifiedSendService.ENGAGEMENT_ENGINE_SOURCE.equalsIgnoreCase(s)
+                || s.toLowerCase().startsWith("event:")) return "AUTOMATION";
+        return "EMAIL";
+    }
+
+    /** INCOMING origin per the inbox contract. */
+    static String inboundOrigin(boolean system, String inReplyToId) {
+        if (system) return "BOUNCE";
+        return inReplyToId != null ? "REPLY" : "INCOMING";
     }
 
     // ==================== Reply ====================
@@ -216,12 +269,14 @@ public class EmailInboxService {
         return EmailMessageDTO.builder()
                 .direction("OUTGOING")
                 .subject(subject)
-                .bodyPreview(truncate(stripHtml(req.getBody()), PREVIEW_MAX))
+                .bodyPreview(EmailTextUtils.truncate(EmailTextUtils.toPlainText(req.getBody()), PREVIEW_MAX))
                 .body(req.getBody())
                 .counterpartyEmail(req.getToEmail())
                 .instituteAddress(fromEmail)
                 .timestamp(java.time.Instant.now())
                 .source("EMAIL_INBOX")
+                .origin("INBOX_REPLY")
+                .system(false)
                 .build();
     }
 
@@ -275,18 +330,25 @@ public class EmailInboxService {
         return emailConfigurationService.getInstituteConfiguredFromAddresses(instituteId);
     }
 
-    private String buildPreview(NotificationLog nl) {
-        boolean inbound = "INBOUND_EMAIL".equals(nl.getNotificationType());
-        String text = nl.getBody();
-        if (inbound && nl.getMessagePayload() != null) {
-            try {
-                JsonNode payload = objectMapper.readTree(nl.getMessagePayload());
-                // Prefer subject for inbound list previews — that's what real mail clients show.
-                String subject = textOrNull(payload, "subject");
-                if (subject != null && !subject.isBlank()) text = subject;
-            } catch (Exception ignored) {}
+    /**
+     * message_payload as JSON, parsed once per row. Empty when absent or not JSON — both the
+     * inbound {@code {"subject","from","to","body",...}} and the outbound {@code {"subject"}}
+     * shapes go through here.
+     */
+    private Optional<JsonNode> parsePayload(NotificationLog nl) {
+        String raw = nl.getMessagePayload();
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        try {
+            JsonNode node = objectMapper.readTree(raw);
+            return node != null && node.isObject() ? Optional.of(node) : Optional.empty();
+        } catch (Exception e) {
+            log.debug("[EMAIL-INBOX] Failed to parse payload for {}: {}", nl.getId(), e.getMessage());
+            return Optional.empty();
         }
-        return truncate(stripHtml(text), 60);
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 
     private String textOrNull(JsonNode node, String field) {
@@ -295,21 +357,5 @@ public class EmailInboxService {
         if (v == null || v.isNull()) return null;
         String s = v.asText();
         return (s == null || s.isBlank()) ? null : s;
-    }
-
-    private String stripHtml(String s) {
-        if (s == null) return null;
-        // Cheap, good-enough strip for preview rendering. Inline tags removed, whitespace collapsed.
-        return s.replaceAll("(?is)<style[^>]*>.*?</style>", " ")
-                .replaceAll("(?is)<script[^>]*>.*?</script>", " ")
-                .replaceAll("<[^>]+>", " ")
-                .replaceAll("&nbsp;", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
-    }
-
-    private String truncate(String s, int max) {
-        if (s == null) return null;
-        return s.length() <= max ? s : s.substring(0, max) + "...";
     }
 }

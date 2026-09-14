@@ -42,6 +42,41 @@ public class EngagementPlanService {
     private final InstituteTimezoneService instituteTimezoneService;
     private final EngagementScheduleResolver scheduleResolver;
 
+    /**
+     * Create the plan for every batch named in the request.
+     *
+     * A plan stays scoped to one batch — this writes one plan per id rather than
+     * widening the schema — so the feed, tracking and leaderboards keep working
+     * exactly as before. Returns one DTO per batch.
+     */
+    @Transactional
+    public List<EngagementPlanDTO> createPlans(EngagementPlanRequest request, String instituteId,
+                                               String userId) {
+        List<String> targets = new ArrayList<>();
+        if (request.getPackageSessionIds() != null) {
+            for (String id : request.getPackageSessionIds()) {
+                if (id != null && !id.isBlank() && !targets.contains(id)) targets.add(id);
+            }
+        }
+        if (targets.isEmpty() && request.getPackageSessionId() != null
+                && !request.getPackageSessionId().isBlank()) {
+            targets.add(request.getPackageSessionId());
+        }
+        if (targets.isEmpty()) {
+            throw new VacademyException("At least one batch is required");
+        }
+
+        List<EngagementPlanDTO> created = new ArrayList<>();
+        for (String packageSessionId : targets) {
+            // createPlan reads the batch off the request, so point it at each target in
+            // turn. Slot/item ids in the payload are null on create, so every batch gets
+            // its own rows rather than sharing them.
+            request.setPackageSessionId(packageSessionId);
+            created.add(createPlan(request, instituteId, userId));
+        }
+        return created;
+    }
+
     @Transactional
     public EngagementPlanDTO createPlan(EngagementPlanRequest request, String instituteId, String userId) {
         if (request.getPackageSessionId() == null || request.getPackageSessionId().isBlank()) {

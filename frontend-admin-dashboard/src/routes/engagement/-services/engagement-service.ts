@@ -33,15 +33,16 @@ export async function getEngagementPlan(planId: string): Promise<EngagementPlanD
     return data;
 }
 
+/** Creates one plan per selected batch; the server always answers with a list. */
 export async function createEngagementPlan(
     request: EngagementPlanRequest
-): Promise<EngagementPlanDTO> {
-    const { data } = await authenticatedAxiosInstance.post<EngagementPlanDTO>(
+): Promise<EngagementPlanDTO[]> {
+    const { data } = await authenticatedAxiosInstance.post<EngagementPlanDTO[] | EngagementPlanDTO>(
         `${ROOT}/plan`,
         request,
         { params: instituteParams() }
     );
-    return data;
+    return Array.isArray(data) ? data : [data];
 }
 
 export async function updateEngagementPlan(

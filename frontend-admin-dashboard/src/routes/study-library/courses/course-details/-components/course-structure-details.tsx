@@ -15,6 +15,7 @@ import { useGetPackageSessionIdFromCourseInit } from '@/utils/helpers/study-libr
 // import { StudyLibraryIntroKey } from '@/constants/storage/introKey';
 // import { studyLibrarySteps } from '@/constants/intro/steps';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { EngagementTab } from './engagement/EngagementTab';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
@@ -5142,6 +5143,11 @@ export const CourseStructureDetails = ({
         [TabType.ACTIVITY]: (
             <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
                 <Activity packageSessionId={batchPackageSessionId ?? ''} />
+            </div>
+        ),
+        [TabType.ENGAGEMENT]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <EngagementTab packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
         [TabType.PULSE]: (

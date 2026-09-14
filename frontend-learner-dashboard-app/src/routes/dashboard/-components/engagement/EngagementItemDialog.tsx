@@ -9,6 +9,7 @@ import {
   submitEngagementItem,
   type EngagementSubmitResponse,
 } from "@/services/engagement";
+import DOMPurify from "dompurify";
 import { visualFor } from "./engagement-visuals";
 
 /**
@@ -17,6 +18,30 @@ import { visualFor } from "./engagement-visuals";
  * time and scroll depth and refuses anything that falls short.
  */
 const MIN_READ_MS = 15_000;
+
+/**
+ * Question prompts and explanations are teacher-authored rich text, so they are
+ * sanitized before being injected into the learner app's own DOM.
+ *
+ * Reading bodies and games take a different route entirely — they render inside the
+ * opaque-origin sandboxed iframe, which cannot touch this document at all. Prompts
+ * are a line or two of formatted text, so a whole iframe per question would be
+ * disproportionate; stripping scripts and event handlers is the right guard here.
+ */
+function safeHtml(html: string): string {
+  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+}
+
+/** Render sanitized teacher rich text. */
+function RichText({ html, className }: { html: string; className?: string }) {
+  return (
+    <div
+      className={className}
+      // Sanitized directly above; never pass raw teacher HTML here.
+      dangerouslySetInnerHTML={{ __html: safeHtml(html) }}
+    />
+  );
+}
 
 /**
  * Opens one daily-engagement task and submits it.
@@ -228,9 +253,10 @@ export function EngagementItemDialog({
             {isQuestion && (
               <div className="space-y-3">
                 {payload?.prompt && (
-                  <p className="text-base font-medium text-neutral-900 dark:text-neutral-100">
-                    {payload.prompt}
-                  </p>
+                  <RichText
+                    html={payload.prompt}
+                    className="prose prose-sm max-w-none text-base font-medium text-neutral-900 dark:prose-invert dark:text-neutral-100"
+                  />
                 )}
                 <div className="grid gap-2">
                   {(payload?.options ?? []).map((option) => {
@@ -287,9 +313,10 @@ export function EngagementItemDialog({
                   </p>
                 )}
                 {result.explanation && (
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    {result.explanation}
-                  </p>
+                  <RichText
+                    html={result.explanation}
+                    className="prose prose-sm max-w-none text-sm text-neutral-600 dark:prose-invert dark:text-neutral-400"
+                  />
                 )}
               </div>
             )}

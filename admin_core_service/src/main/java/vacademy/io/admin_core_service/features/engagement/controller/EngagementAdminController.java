@@ -34,13 +34,17 @@ public class EngagementAdminController {
     private final EngagementTrackingService trackingService;
     private final InstituteAccessValidator instituteAccessValidator;
 
+    /**
+     * Create the plan for one batch, or for several at once via packageSessionIds.
+     * Returns the list either way, so a caller never has to branch on which field it sent.
+     */
     @PostMapping("/plan")
-    public ResponseEntity<EngagementPlanDTO> createPlan(
+    public ResponseEntity<List<EngagementPlanDTO>> createPlan(
             @RequestParam String instituteId,
             @RequestBody EngagementPlanRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.requireStaffAccess(user, instituteId);
-        return ResponseEntity.ok(planService.createPlan(request, instituteId, user.getUserId()));
+        return ResponseEntity.ok(planService.createPlans(request, instituteId, user.getUserId()));
     }
 
     @PutMapping("/plan/{planId}")

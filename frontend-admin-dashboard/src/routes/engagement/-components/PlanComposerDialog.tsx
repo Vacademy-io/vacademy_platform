@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Plus, Trash } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -14,8 +13,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { MyButton } from '@/components/design-system/button';
 import { Button } from '@/components/ui/button';
-import { fetchPaginatedBatches } from '@/routes/admin-package-management/-services/package-service';
+import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
 import { createEngagementPlan } from '../-services/engagement-service';
+import { BatchPickerDialog, type BatchOption } from './BatchPickerDialog';
 import type {
     EngagementItemRequest,
     EngagementItemType,
@@ -100,7 +100,8 @@ export function PlanComposerDialog({
 }) {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [packageSessionId, setPackageSessionId] = useState(defaultPackageSessionId ?? '');
+    const [batches, setBatches] = useState<BatchOption[]>([]);
+    const [batchPickerOpen, setBatchPickerOpen] = useState(false);
     const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
     const [endDate, setEndDate] = useState('');
     const [startTime, setStartTime] = useState('06:00');
@@ -113,20 +114,13 @@ export function PlanComposerDialog({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const { data: batches } = useQuery({
-        queryKey: ['engagement-batches'],
-        queryFn: () => fetchPaginatedBatches({ page: 0, size: 100, statuses: ['ACTIVE'] }),
-        enabled: open,
-    });
-
-    const batchOptions = useMemo(() => {
-        return (batches?.content ?? []).map((b) => ({
-            id: b.id,
-            label:
-                b.name ??
-                `${b.package_dto?.package_name ?? 'Course'} · ${b.level?.level_name ?? ''}`.trim(),
-        }));
-    }, [batches]);
+    // A batch passed in by the course page seeds the selection.
+    useEffect(() => {
+        if (open && defaultPackageSessionId && batches.length === 0) {
+            setBatches([{ id: defaultPackageSessionId, label: 'This batch' }]);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, defaultPackageSessionId]);
 
     function patchItem(key: string, patch: Partial<DraftItem>) {
         setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
@@ -152,7 +146,7 @@ export function PlanComposerDialog({
 
     function validate(): string | null {
         if (!title.trim()) return 'Give the plan a title.';
-        if (!packageSessionId) return 'Pick a batch.';
+        if (batches.length === 0) return 'Pick at least one batch.';
         if (endTime <= startTime) return 'The end time must be after the start time.';
         if (items.length === 0) return 'Add at least one task.';
         for (const item of items) {
@@ -180,7 +174,7 @@ export function PlanComposerDialog({
             const request: EngagementPlanRequest = {
                 title: title.trim(),
                 description: description.trim() || undefined,
-                packageSessionId,
+                packageSessionIds: batches.map((b) => b.id),
                 status: publish ? 'PUBLISHED' : 'DRAFT',
                 defaultMissPolicy: missPolicy,
                 defaultCatchUpDays: missPolicy === 'EXPIRES' ? undefined : 2,
@@ -240,20 +234,25 @@ export function PlanComposerDialog({
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="plan-batch">Batch</Label>
-                            <select
-                                id="plan-batch"
-                                value={packageSessionId}
-                                onChange={(e) => setPackageSessionId(e.target.value)}
-                                className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm"
+                            <Label>Batches</Label>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 w-full justify-start font-normal"
+                                onClick={() => setBatchPickerOpen(true)}
                             >
-                                <option value="">Select a batch</option>
-                                {batchOptions.map((b) => (
-                                    <option key={b.id} value={b.id}>
-                                        {b.label}
-                                    </option>
-                                ))}
-                            </select>
+                                {batches.length === 0
+                                    ? 'Select batches'
+                                    : batches.length === 1
+                                      ? batches[0]!.label
+                                      : `${batches.length} batches selected`}
+                            </Button>
+                            {batches.length > 1 && (
+                                <p className="text-xs text-neutral-500">
+                                    One plan is created per batch, so each batch keeps its own
+                                    tracking and leaderboard.
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -424,16 +423,35 @@ export function PlanComposerDialog({
                                     item.itemType === 'VISUAL_NOTE' ||
                                     item.itemType === 'GAME') && (
                                     <div className="space-y-1.5">
-                                        <Label htmlFor={`item-html-${index}`}>HTML</Label>
-                                        <Textarea
-                                            id={`item-html-${index}`}
-                                            value={item.contentHtml ?? ''}
-                                            onChange={(e) =>
-                                                patchItem(item.key, { contentHtml: e.target.value })
-                                            }
-                                            rows={5}
-                                            placeholder="<h1>…</h1>"
-                                        />
+                                        <Label htmlFor={`item-html-${index}`}>
+                                            {item.itemType === 'GAME' ? 'Game HTML' : 'Content'}
+                                        </Label>
+                                        {item.itemType === 'GAME' ? (
+                                            // A game is a self-contained document with its own
+                                            // scripts and styles — a rich-text editor would rewrite
+                                            // it. Authored as raw HTML on purpose.
+                                            <Textarea
+                                                id={`item-html-${index}`}
+                                                value={item.contentHtml ?? ''}
+                                                onChange={(e) =>
+                                                    patchItem(item.key, {
+                                                        contentHtml: e.target.value,
+                                                    })
+                                                }
+                                                rows={5}
+                                                placeholder="<!DOCTYPE html> …"
+                                                className="font-mono text-xs"
+                                            />
+                                        ) : (
+                                            <TipTapEditor
+                                                value={item.contentHtml ?? ''}
+                                                onChange={(html) =>
+                                                    patchItem(item.key, { contentHtml: html })
+                                                }
+                                                placeholder="What should the learner read?"
+                                                minHeight={160}
+                                            />
+                                        )}
                                         {item.itemType === 'GAME' && (
                                             <p className="text-xs text-neutral-500">
                                                 Runs sandboxed, with no access to the learner app. A
@@ -454,14 +472,15 @@ export function PlanComposerDialog({
                                     item.itemType === 'POLL') && (
                                     <div className="space-y-3">
                                         <div className="space-y-1.5">
-                                            <Label htmlFor={`item-prompt-${index}`}>Question</Label>
-                                            <Textarea
-                                                id={`item-prompt-${index}`}
+                                            <Label>Question</Label>
+                                            <TipTapEditor
                                                 value={item.prompt ?? ''}
-                                                onChange={(e) =>
-                                                    patchItem(item.key, { prompt: e.target.value })
+                                                onChange={(html) =>
+                                                    patchItem(item.key, { prompt: html })
                                                 }
-                                                rows={2}
+                                                placeholder="Ask the question"
+                                                minHeight={90}
+                                                minimalToolbar
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -518,18 +537,15 @@ export function PlanComposerDialog({
                                         </div>
                                         {item.itemType === 'QUESTION_OF_DAY' && (
                                             <div className="space-y-1.5">
-                                                <Label htmlFor={`item-explanation-${index}`}>
-                                                    Explanation (shown at reveal)
-                                                </Label>
-                                                <Textarea
-                                                    id={`item-explanation-${index}`}
+                                                <Label>Explanation (shown at reveal)</Label>
+                                                <TipTapEditor
                                                     value={item.explanation ?? ''}
-                                                    onChange={(e) =>
-                                                        patchItem(item.key, {
-                                                            explanation: e.target.value,
-                                                        })
+                                                    onChange={(html) =>
+                                                        patchItem(item.key, { explanation: html })
                                                     }
-                                                    rows={2}
+                                                    placeholder="Why is that the answer?"
+                                                    minHeight={90}
+                                                    minimalToolbar
                                                 />
                                             </div>
                                         )}
@@ -601,6 +617,13 @@ export function PlanComposerDialog({
                     </MyButton>
                 </DialogFooter>
             </DialogContent>
+
+            <BatchPickerDialog
+                open={batchPickerOpen}
+                onOpenChange={setBatchPickerOpen}
+                selected={batches}
+                onConfirm={setBatches}
+            />
         </Dialog>
     );
 }

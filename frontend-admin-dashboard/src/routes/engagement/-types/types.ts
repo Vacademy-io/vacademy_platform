@@ -61,7 +61,9 @@ export interface EngagementSlotRequest {
 export interface EngagementPlanRequest {
     title: string;
     description?: string;
-    packageSessionId: string;
+    packageSessionId?: string;
+    /** Create the same plan for several batches; the server writes one plan per id. */
+    packageSessionIds?: string[];
     subjectId?: string;
     status?: PlanStatus;
     defaultMissPolicy?: MissPolicy;

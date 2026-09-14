@@ -15,7 +15,9 @@ export type EngagementItemType =
   | "QUESTION_OF_DAY"
   | "QUIZ"
   | "GAME"
-  | "POLL";
+  | "POLL"
+  /** An existing slide from the course library. */
+  | "COURSE_SLIDE";
 
 export type EngagementState = "UPCOMING" | "OPEN" | "CATCH_UP" | "CLOSED";
 
@@ -65,6 +67,34 @@ export interface EngagementFeed {
   totalToday: number;
   completedToday: number;
   capApplied: boolean;
+}
+
+/**
+ * Where a COURSE_SLIDE task points. Carried in payloadJson because the learner app
+ * needs the whole path — course, session, subject, module, chapter — to open a slide,
+ * not just its id.
+ */
+export interface EngagementSlideTarget {
+  slideId: string;
+  slideTitle?: string;
+  slideType?: string;
+  courseId?: string;
+  sessionId?: string;
+  levelId?: string;
+  subjectId?: string;
+  moduleId?: string;
+  chapterId?: string;
+}
+
+/** Parse a COURSE_SLIDE item's target; null when the payload is absent or broken. */
+export function parseSlideTarget(item: EngagementItem): EngagementSlideTarget | null {
+  if (!item.payloadJson) return null;
+  try {
+    const parsed = JSON.parse(item.payloadJson) as EngagementSlideTarget;
+    return parsed?.slideId ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Options as authored by the teacher. `correctOptionId` only arrives after reveal. */

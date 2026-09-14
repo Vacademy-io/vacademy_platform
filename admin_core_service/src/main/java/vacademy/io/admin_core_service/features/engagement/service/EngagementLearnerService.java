@@ -23,6 +23,9 @@ import vacademy.io.admin_core_service.features.engagement.repository.EngagementP
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementSlotRepository;
 import vacademy.io.admin_core_service.features.engagement.service.EngagementScheduleResolver.SlotState;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationSourceEnum;
+import vacademy.io.admin_core_service.features.learner_operation.entity.LearnerOperation;
+import vacademy.io.admin_core_service.features.learner_operation.repository.LearnerOperationRepository;
 import vacademy.io.admin_core_service.features.points_ledger.entity.PointsSourceType;
 import vacademy.io.admin_core_service.features.points_ledger.service.PointsLedgerService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -49,6 +52,27 @@ public class EngagementLearnerService {
     /** How many days ahead the locked "coming up" strip looks. */
     private static final int UPCOMING_DAYS = 7;
 
+    /**
+     * The progress rows a finished slide can leave behind — one per slide type.
+     *
+     * A COURSE_SLIDE task is complete when ANY of these reads at or above the
+     * threshold, because the teacher picks a slide without caring whether it happens
+     * to be a video, a document or a quiz.
+     */
+    private static final List<String> SLIDE_COMPLETION_OPERATIONS = List.of(
+            "PERCENTAGE_DOCUMENT_COMPLETED",
+            "PERCENTAGE_VIDEO_WATCHED",
+            "PERCENTAGE_QUESTION_COMPLETED",
+            "PERCENTAGE_ASSIGNMENT_COMPLETED",
+            "PERCENTAGE_QUIZ_COMPLETED",
+            "PERCENTAGE_AUDIO_LISTENED",
+            "PERCENTAGE_SCORM_COMPLETED",
+            "PERCENTAGE_ASSESSMENT_DONE",
+            "MARKED_AS_WATCHED");
+
+    /** Percent of a slide that counts as done. */
+    private static final double SLIDE_COMPLETE_THRESHOLD = 80.0;
+
     private final EngagementPlanRepository planRepository;
     private final EngagementSlotRepository slotRepository;
     private final EngagementItemRepository itemRepository;
@@ -57,6 +81,7 @@ public class EngagementLearnerService {
     private final EngagementSettingsService settingsService;
     private final PointsLedgerService pointsLedgerService;
     private final StudentSessionInstituteGroupMappingRepository enrollmentRepository;
+    private final LearnerOperationRepository learnerOperationRepository;
     private final ObjectMapper objectMapper;
 
     // ── Feed ─────────────────────────────────────────────────────────────────
@@ -237,7 +262,7 @@ public class EngagementLearnerService {
         EngagementEnums.ItemType type = itemType(ctx.item);
         boolean isLate = ctx.state == SlotState.CATCH_UP;
 
-        Grade grade = grade(ctx.item, type, request, instituteId);
+        Grade grade = grade(ctx.item, type, request, instituteId, userId);
         if (!grade.accepted) {
             throw new VacademyException(grade.rejectionReason);
         }
@@ -305,7 +330,7 @@ public class EngagementLearnerService {
     }
 
     private Grade grade(EngagementItem item, EngagementEnums.ItemType type,
-                        EngagementSubmitRequest request, String instituteId) {
+                        EngagementSubmitRequest request, String instituteId, String userId) {
         int completion = item.getCompletionPoints() == null ? 0 : item.getCompletionPoints();
 
         switch (type) {
@@ -349,6 +374,19 @@ public class EngagementLearnerService {
                 }
                 return Grade.of(null, BigDecimal.valueOf(clamped), points);
             }
+            case COURSE_SLIDE -> {
+                // Read the learner's real progress on the slide rather than trusting a
+                // "done" tap. A lesson finished the ordinary way in the study library
+                // therefore also finishes this task, and nothing is tracked twice.
+                if (item.getSlideId() == null || item.getSlideId().isBlank()) {
+                    log.warn("[engagement] COURSE_SLIDE item {} has no slideId", item.getId());
+                    return Grade.of(null, null, completion);
+                }
+                if (!hasCompletedSlide(userId, item.getSlideId())) {
+                    return Grade.reject("Open the lesson and finish it to complete this task");
+                }
+                return Grade.of(null, null, completion);
+            }
             case POLL -> {
                 if (request.getSelectedOptionId() == null || request.getSelectedOptionId().isBlank()) {
                     return Grade.reject("Pick an option");
@@ -359,6 +397,25 @@ public class EngagementLearnerService {
                 return Grade.of(null, null, completion);
             }
         }
+    }
+
+    /** True when any slide-progress row for this learner reads as finished. */
+    private boolean hasCompletedSlide(String userId, String slideId) {
+        for (String operation : SLIDE_COMPLETION_OPERATIONS) {
+            Optional<LearnerOperation> row = learnerOperationRepository
+                    .findByUserIdAndSourceAndSourceIdAndOperation(
+                            userId, LearnerOperationSourceEnum.SLIDE.name(), slideId, operation);
+            if (row.isEmpty() || row.get().getValue() == null) continue;
+            String value = row.get().getValue().trim();
+            // MARKED_AS_WATCHED carries a flag; the PERCENTAGE_* rows carry a number.
+            if (value.equalsIgnoreCase("true")) return true;
+            try {
+                if (Double.parseDouble(value) >= SLIDE_COMPLETE_THRESHOLD) return true;
+            } catch (NumberFormatException ignored) {
+                // A non-numeric percentage is not evidence of completion.
+            }
+        }
+        return false;
     }
 
     // ── DTO assembly + redaction ─────────────────────────────────────────────

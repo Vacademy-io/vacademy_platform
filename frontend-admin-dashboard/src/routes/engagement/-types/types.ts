@@ -10,7 +10,9 @@ export type EngagementItemType =
     | 'QUESTION_OF_DAY'
     | 'QUIZ'
     | 'GAME'
-    | 'POLL';
+    | 'POLL'
+    /** An existing slide from the course library. */
+    | 'COURSE_SLIDE';
 
 export type PlanStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED' | 'DELETED';
 

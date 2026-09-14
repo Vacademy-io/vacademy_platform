@@ -292,8 +292,12 @@ public class EngagementPlanService {
         item.setMaxScore(request.getMaxScore());
         // Only types the SERVER can grade are verifiable. A teacher-uploaded game
         // reports its own score and anyone with devtools can report any number.
+        // Verifiable = the SERVER can decide the outcome itself. A course slide
+        // qualifies: its completion is read from the learner's own progress, not
+        // reported by the page.
         item.setIsVerifiable(type == EngagementEnums.ItemType.QUESTION_OF_DAY
-                || type == EngagementEnums.ItemType.QUIZ);
+                || type == EngagementEnums.ItemType.QUIZ
+                || type == EngagementEnums.ItemType.COURSE_SLIDE);
         item.setMissPolicy(request.getMissPolicy() == null ? null : safeMissPolicy(request.getMissPolicy()));
         item.setCatchUpDays(request.getCatchUpDays());
         item.setCatchUpPercent(request.getCatchUpPercent());

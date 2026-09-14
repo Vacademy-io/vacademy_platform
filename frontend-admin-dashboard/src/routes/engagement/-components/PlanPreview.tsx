@@ -32,6 +32,7 @@ const TYPE_LABEL: Record<EngagementItemType, string> = {
     QUIZ: 'Quiz',
     GAME: 'Game',
     POLL: 'Poll',
+    COURSE_SLIDE: 'Course content',
 };
 
 const TYPE_ACCENT: Record<EngagementItemType, string> = {
@@ -41,6 +42,7 @@ const TYPE_ACCENT: Record<EngagementItemType, string> = {
     QUIZ: 'bg-emerald-500',
     GAME: 'bg-rose-500',
     POLL: 'bg-indigo-500',
+    COURSE_SLIDE: 'bg-teal-500',
 };
 
 function clean(html: string): string {
@@ -145,6 +147,13 @@ export function PlanPreview({
                             // Composer-authored HTML, sanitized before preview.
                             dangerouslySetInnerHTML={{ __html: clean(active.contentHtml) }}
                         />
+                    )}
+
+                    {active.itemType === 'COURSE_SLIDE' && (
+                        <p className="rounded bg-teal-50 px-2 py-1.5 text-xs text-teal-800">
+                            Opens the lesson in the course library. It completes once the learner
+                            finishes it there.
+                        </p>
                     )}
 
                     {active.itemType === 'GAME' && (

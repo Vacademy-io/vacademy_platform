@@ -22,7 +22,17 @@ public final class EngagementEnums {
         QUESTION_OF_DAY,
         QUIZ,
         GAME,
-        POLL
+        POLL,
+        /**
+         * An existing slide from the course library, assigned as a task.
+         *
+         * The slide is NOT re-rendered inside engagement — the learner is sent to it
+         * in the study library, where every slide type already works. Completion is
+         * then read back from the learner's own slide progress rather than tracked a
+         * second time here, so a lesson finished the ordinary way also finishes the
+         * task.
+         */
+        COURSE_SLIDE
     }
 
     /** What happens to an item a learner never opened while it was live. */

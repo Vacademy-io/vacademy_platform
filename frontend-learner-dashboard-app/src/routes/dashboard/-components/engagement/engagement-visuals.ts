@@ -59,6 +59,14 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
     wash: "group-hover:bg-rose-50/60 dark:group-hover:bg-rose-950/20",
     gradient: "from-rose-500 to-pink-400",
   },
+  COURSE_SLIDE: {
+    label: "Lesson",
+    glyph: "🎓",
+    chip: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-200",
+    accent: "bg-teal-500",
+    wash: "group-hover:bg-teal-50/60 dark:group-hover:bg-teal-950/20",
+    gradient: "from-teal-500 to-emerald-400",
+  },
   POLL: {
     label: "Poll",
     glyph: "📊",

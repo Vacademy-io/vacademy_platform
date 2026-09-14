@@ -22,6 +22,7 @@ import {
 } from '../-services/engagement-service';
 import { PlanPreview } from './PlanPreview';
 import { BatchPickerDialog, type BatchOption } from './BatchPickerDialog';
+import { CourseSlidePicker, type PickedSlide } from './CourseSlidePicker';
 import type {
     EngagementItemRequest,
     EngagementItemType,
@@ -47,6 +48,11 @@ const ITEM_TYPES: { value: EngagementItemType; label: string; hint: string }[] =
     },
     { value: 'GAME', label: 'Game', hint: 'Your HTML, sandboxed' },
     { value: 'POLL', label: 'Poll', hint: 'No right answer' },
+    {
+        value: 'COURSE_SLIDE',
+        label: 'Course content',
+        hint: 'A lesson from this course',
+    },
 ];
 
 const MISS_POLICIES: { value: MissPolicy; label: string; hint: string }[] = [
@@ -72,6 +78,8 @@ interface DraftItem extends EngagementItemRequest {
     key: string;
     /** Set when the row came from a saved plan; drives update instead of insert. */
     id?: string;
+    /** Chosen course slide, serialised into slideId + payloadJson on save. */
+    slide?: PickedSlide;
     /** QUESTION_OF_DAY authoring, serialised into payloadJson on save. */
     prompt?: string;
     options?: { id: string; text: string }[];
@@ -114,6 +122,8 @@ export function PlanComposerDialog({
     const [description, setDescription] = useState('');
     const [batches, setBatches] = useState<BatchOption[]>([]);
     const [batchPickerOpen, setBatchPickerOpen] = useState(false);
+    /** Which task row is choosing a slide, by its local key. */
+    const [slidePickerFor, setSlidePickerFor] = useState<string | null>(null);
     const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
     const [endDate, setEndDate] = useState('');
     const [startTime, setStartTime] = useState('06:00');
@@ -178,6 +188,13 @@ export function PlanComposerDialog({
                     completionPoints: item.completionPoints,
                     correctPoints: item.correctPoints,
                     maxScore: item.maxScore ?? undefined,
+                    slide:
+                        item.itemType === 'COURSE_SLIDE' && item.slideId
+                            ? ({
+                                  ...(parsed as unknown as PickedSlide),
+                                  slideId: item.slideId,
+                              } as PickedSlide)
+                            : undefined,
                     prompt: parsed.prompt ?? '',
                     options:
                         parsed.options && parsed.options.length > 0
@@ -225,6 +242,11 @@ export function PlanComposerDialog({
     }
 
     function buildPayload(item: DraftItem): string | undefined {
+        if (item.itemType === 'COURSE_SLIDE') {
+            // The learner app needs the whole path to deep-link into the slide, not
+            // just its id.
+            return item.slide ? JSON.stringify(item.slide) : undefined;
+        }
         if (item.itemType === 'QUESTION_OF_DAY' || item.itemType === 'POLL') {
             return JSON.stringify({
                 prompt: item.prompt ?? '',
@@ -249,6 +271,9 @@ export function PlanComposerDialog({
         if (items.length === 0) return 'Add at least one task.';
         for (const item of items) {
             if (!item.title.trim()) return 'Every task needs a title.';
+            if (item.itemType === 'COURSE_SLIDE' && !item.slide) {
+                return 'Pick the course content for every course-content task.';
+            }
             if (item.itemType === 'QUESTION_OF_DAY') {
                 const filled = (item.options ?? []).filter((o) => o.text.trim().length > 0);
                 if (filled.length < 2) return 'A question needs at least two options.';
@@ -295,6 +320,7 @@ export function PlanComposerDialog({
                             sortOrder: index,
                             isRequired: item.isRequired,
                             contentHtml: item.contentHtml,
+                            slideId: item.slide?.slideId,
                             payloadJson: buildPayload(item),
                             completionPoints: item.completionPoints ?? 0,
                             correctPoints: item.correctPoints ?? 0,
@@ -773,6 +799,27 @@ export function PlanComposerDialog({
                     </MyButton>
                 </DialogFooter>
             </DialogContent>
+
+            {slidePickerFor && batches[0] && (
+                <CourseSlidePicker
+                    open={Boolean(slidePickerFor)}
+                    onOpenChange={(next) => {
+                        if (!next) setSlidePickerFor(null);
+                    }}
+                    packageSessionId={batches[0].id}
+                    onPick={(slide) => {
+                        const target = slidePickerFor;
+                        patchItem(target, {
+                            slide,
+                            // Seed an empty title with the lesson's own name.
+                            ...(items.find((i) => i.key === target)?.title
+                                ? {}
+                                : { title: slide.slideTitle }),
+                        });
+                        setSlidePickerFor(null);
+                    }}
+                />
+            )}
 
             <BatchPickerDialog
                 open={batchPickerOpen}

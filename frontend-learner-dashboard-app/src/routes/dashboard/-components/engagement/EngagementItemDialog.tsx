@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import DOMPurify from "dompurify";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import {
   EngagementItem,
   fetchEngagementItem,
   parseQuestionPayload,
+  parseSlideTarget,
   submitEngagementItem,
   type EngagementSubmitResponse,
 } from "@/services/engagement";
@@ -60,6 +62,7 @@ export function EngagementItemDialog({
   const [reachedEnd, setReachedEnd] = useState(false);
   const [dwellMet, setDwellMet] = useState(false);
   const [dwellProgress, setDwellProgress] = useState(0);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!open || !item) return;
@@ -134,6 +137,11 @@ export function EngagementItemDialog({
   const visual = active ? visualFor(active.itemType) : null;
 
   const isQuestion = active?.itemType === "QUESTION_OF_DAY" || active?.itemType === "POLL";
+  const isCourseSlide = active?.itemType === "COURSE_SLIDE";
+  const slideTarget = useMemo(
+    () => (active && isCourseSlide ? parseSlideTarget(active) : null),
+    [active, isCourseSlide]
+  );
   const isReading = active?.itemType === "READING_HTML" || active?.itemType === "VISUAL_NOTE";
   const isHtml = isReading || active?.itemType === "GAME";
   const readingGateMet = reachedEnd && dwellMet;
@@ -175,6 +183,7 @@ export function EngagementItemDialog({
     if (isQuestion) return "Submit answer";
     if (isReading && !reachedEnd) return "Scroll to the end to finish";
     if (isReading && !dwellMet) return "Almost there…";
+    if (isCourseSlide) return "I've finished the lesson";
     return "Mark complete";
   })();
 
@@ -239,6 +248,47 @@ export function EngagementItemDialog({
                       setReachedEnd(true);
                     }}
                   />
+                </div>
+              )}
+
+              {isCourseSlide && (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4 text-center dark:border-teal-900 dark:bg-teal-950/30">
+                    <p className="text-3xl">🎓</p>
+                    <p className="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                      {slideTarget?.slideTitle ?? active.title}
+                    </p>
+                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                      Open the lesson, finish it, then come back to claim your points.
+                    </p>
+                    <Button
+                      className="mt-3"
+                      disabled={!slideTarget}
+                      onClick={() => {
+                        if (!slideTarget) return;
+                        onOpenChange(false);
+                        void navigate({
+                          to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                          search: {
+                            courseId: slideTarget.courseId ?? "",
+                            levelId: slideTarget.levelId,
+                            subjectId: slideTarget.subjectId ?? "",
+                            moduleId: slideTarget.moduleId ?? "",
+                            chapterId: slideTarget.chapterId ?? "",
+                            slideId: slideTarget.slideId,
+                            sessionId: slideTarget.sessionId ?? "",
+                          },
+                        });
+                      }}
+                    >
+                      Open the lesson
+                    </Button>
+                  </div>
+                  {!slideTarget && (
+                    <p className="text-sm text-rose-600 dark:text-rose-400">
+                      This lesson link is incomplete — ask your teacher to re-pick the content.
+                    </p>
+                  )}
                 </div>
               )}
 

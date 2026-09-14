@@ -526,6 +526,16 @@ public class EmailConfigurationService {
             // GET would parse: the fallback when no real name is stored, the
             // user's chosen name otherwise.
             String returnedName = treatAsNoName ? autoFallbackName : newName;
+            // Echo the stored node (controls included): the settings page replaces its row
+            // state with this response, so a bare DTO would visibly reset the ramp/cap fields.
+            EmailConfigDTO echoed = parseInstituteEmailSettings(updatedSettings).stream()
+                    .filter(c -> emailType.equals(c.getType()))
+                    .findFirst()
+                    .orElse(null);
+            if (echoed != null) {
+                echoed.setDescription(emailConfig.getDescription() != null ? emailConfig.getDescription() : echoed.getDescription());
+                return echoed;
+            }
             return EmailConfigDTO.builder()
                     .id(emailType)
                     .email(newEmail)

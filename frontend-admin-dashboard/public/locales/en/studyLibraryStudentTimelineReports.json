@@ -1,28 +1,30 @@
 {
     "form": {
-        "courseRequired": "Course is required",
-        "sessionRequired": "Session is required",
-        "levelRequired": "Level is required",
         "studentRequired": "Student is required",
         "startDateRequired": "Start Date is required",
         "endDateRequired": "End Date is required",
         "dateRangeTooLong": "The difference between Start Date and End Date should be less than one month.",
-        "selectPlaceholder": "Select a {{term}}",
-        "searchPlaceholder": "Search {{term}}...",
-        "nameLabel": "Name",
         "selectStudent": "Select Student",
         "searchStudent": "Search Student...",
         "noStudentsFound": "No students found",
-        "errorsHeading": "Please fix the following errors:"
+        "errorsHeading": "Please fix the following errors:",
+        "batchRequired": "Select at least one batch",
+        "loadingStudents": "Loading…",
+        "learnerHint": "{{count}} available",
+        "pickBatchFirst": "Pick a {{batch}} first."
     },
     "actions": {
         "generateReport": "Generate Report",
         "exporting": "Exporting…",
-        "exportPdf": "Export PDF"
+        "exportPdf": "Export PDF",
+        "exportCsv": "Export CSV"
     },
     "toast": {
         "exportSuccess": "Learner report exported",
-        "exportFailed": "Failed to export PDF"
+        "exportFailed": "Failed to export PDF",
+        "csvExportSuccess": "CSV exported",
+        "csvExportFailed": "Failed to export CSV",
+        "learnerNotInBatches": "This learner is not enrolled in any of the selected batches."
     },
     "report": {
         "duration": "Duration:",
@@ -33,6 +35,29 @@
         "trackDailyProgress": "Track daily progress and activity patterns",
         "activitySummary": "Activity Summary",
         "learningTimeline": "Learning Timeline",
-        "dateLabel": "Date:"
+        "dateLabel": "Date:",
+        "batchCount": "{{term}} · {{count}} selected",
+        "batchLoadFailed": "Could not load the report for {{name}}.",
+        "loadFailed": "Something went wrong loading the report. Please try again."
+    },
+    "csv": {
+        "fileStem": "learner-timeline",
+        "summaryTitle": "Summary",
+        "startDate": "Start date",
+        "endDate": "End date",
+        "learnerCourseCompleted": "{{term}} completed (%)",
+        "batchCourseCompleted": "{{batch}} {{term}} completed (%)",
+        "learnerDailyTimeMin": "Daily time spent avg (min)",
+        "batchDailyTimeMin": "{{batch}} daily time spent avg (min)",
+        "learnerConcentration": "Concentration score (%)",
+        "batchConcentration": "{{batch}} concentration score (%)",
+        "dailyTitle": "Daily time spent",
+        "date": "Date",
+        "learnerTimeMin": "Time spent (min)",
+        "batchAvgTimeMin": "{{batch}} avg time spent (min)",
+        "slidesTitle": "Learning timeline",
+        "slide": "Study {{term}}",
+        "concentration": "Concentration score (%)",
+        "timeSpentMin": "Time spent (min)"
     }
 }

@@ -1,10 +1,9 @@
 package vacademy.io.assessment_service.features.assessment.copy_intake.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 import vacademy.io.assessment_service.features.assessment.copy_intake.entity.AiCopyIntakeBatch;
 import vacademy.io.assessment_service.features.assessment.copy_intake.entity.AiCopyIntakeItem;
@@ -13,8 +12,8 @@ import vacademy.io.assessment_service.features.assessment.copy_intake.service.St
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
 /**
@@ -23,27 +22,59 @@ import java.util.concurrent.Future;
  * poller under its in-flight cap.
  *
  * <p>Also a safety net: every couple of minutes any batch still RUNNING is
- * picked up again - unread copies (a pod restarted mid-batch) get read, and a
- * batch whose last callback was missed gets settled. Running twice is safe:
- * each copy is claimed with an atomic status change, so overlapping runs
- * (two pods, or a sweep landing during the first pass) share the work instead
- * of repeating it.
+ * offered to the batch pool again - unread copies (a pod restarted mid-batch)
+ * get read, and a batch whose last callback was missed gets settled. Running
+ * twice is safe: each copy is claimed with an atomic status change, so
+ * overlapping passes (two pods, or a sweep landing during the first pass)
+ * share the work instead of repeating it. A batch already on this pod's pool
+ * is not queued a second time.
+ *
+ * <p>Nothing here runs on the scheduler thread or the default async pool; see
+ * {@link CopyIntakeExecutorConfig} for why.
  */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class CopyIntakeRunner {
 
     private final CopyIntakeService service;
     private final AiCopyIntakeBatchRepository batchRepository;
+    private final ThreadPoolTaskExecutor batchExecutor;
+    private final ThreadPoolTaskExecutor identifyExecutor;
 
-    /** Header reads in parallel per batch. Each is a ~5 s vision call. */
-    @Value("${assessment.copy-intake.identify-parallelism:2}")
-    private int identifyParallelism;
+    /** Batches this pod is working on or has queued; keeps the sweep from stacking duplicates. */
+    private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
 
-    @Async
+    public CopyIntakeRunner(CopyIntakeService service,
+                            AiCopyIntakeBatchRepository batchRepository,
+                            @Qualifier("copyIntakeBatchExecutor") ThreadPoolTaskExecutor batchExecutor,
+                            @Qualifier("copyIntakeIdentifyExecutor") ThreadPoolTaskExecutor identifyExecutor) {
+        this.service = service;
+        this.batchRepository = batchRepository;
+        this.batchExecutor = batchExecutor;
+        this.identifyExecutor = identifyExecutor;
+    }
+
+    /** Queue a pass over the batch; returns at once. */
     public void run(String batchId) {
-        process(batchId);
+        if (!inFlight.add(batchId)) {
+            return;      // already queued or running here
+        }
+        try {
+            batchExecutor.execute(() -> {
+                try {
+                    process(batchId);
+                } catch (Exception e) {
+                    log.error("[copy-intake] batch {} pass failed: {}", batchId, e.getMessage(), e);
+                } finally {
+                    inFlight.remove(batchId);
+                }
+            });
+        } catch (RuntimeException e) {
+            // TaskRejectedException from a full queue: forget the batch so the
+            // sweep can offer it again.
+            inFlight.remove(batchId);
+            log.warn("[copy-intake] batch pool full; batch {} will be offered again by the sweep", batchId);
+        }
     }
 
     void process(String batchId) {
@@ -75,47 +106,46 @@ public class CopyIntakeRunner {
     }
 
     /**
-     * Small parallelism: the reader is one vision call per copy, and a
-     * 200-copy batch read serially would take 15+ minutes before the first
-     * copy even queued. Each copy is claimed inside identifyAndPlace, so a
-     * copy another pass already took is skipped here at no cost.
+     * Hand every copy to the shared reader pool and wait for this batch's
+     * share. Each copy is claimed inside identifyAndPlace, so a copy another
+     * pass already took is skipped there at no cost; one the pool cannot take
+     * right now simply stays PENDING for the next pass.
      */
     private void readAll(List<AiCopyIntakeItem> pending, List<Candidate> candidates) {
-        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, identifyParallelism));
-        try {
-            List<Future<?>> futures = new ArrayList<>();
-            for (AiCopyIntakeItem item : pending) {
-                futures.add(pool.submit(() -> {
+        List<Future<?>> futures = new ArrayList<>();
+        for (AiCopyIntakeItem item : pending) {
+            try {
+                futures.add(identifyExecutor.submit(() -> {
                     try {
                         service.identifyAndPlace(item.getId(), candidates);
                     } catch (Exception e) {
                         log.error("[copy-intake] item {} failed: {}", item.getId(), e.getMessage(), e);
                     }
                 }));
+            } catch (RuntimeException e) {
+                log.warn("[copy-intake] reader pool full; copy {} waits for the next pass", item.getId());
             }
-            for (Future<?> f : futures) {
-                try {
-                    f.get();
-                } catch (Exception ignored) {
-                    // logged inside the task
-                }
+        }
+        for (Future<?> f : futures) {
+            try {
+                f.get();
+            } catch (Exception ignored) {
+                // logged inside the task
             }
-        } finally {
-            pool.shutdown();
         }
     }
 
-    /** Resume interrupted batches and settle finished ones nothing reported. */
+    /**
+     * Resume interrupted batches and settle finished ones nothing reported.
+     * Only offers work to the batch pool - this runs on the single scheduler
+     * thread the evaluation poller shares, and must return in milliseconds.
+     */
     @Scheduled(fixedDelayString = "${assessment.copy-intake.sweep-interval-ms:120000}",
             initialDelayString = "${assessment.copy-intake.sweep-initial-delay-ms:60000}")
     public void sweep() {
         try {
             for (AiCopyIntakeBatch batch : batchRepository.findByStatus(AiCopyIntakeBatch.RUNNING)) {
-                try {
-                    process(batch.getId());
-                } catch (Exception e) {
-                    log.warn("[copy-intake] sweep of batch {} failed: {}", batch.getId(), e.getMessage());
-                }
+                run(batch.getId());
             }
         } catch (Exception e) {
             log.warn("[copy-intake] sweep failed: {}", e.getMessage());

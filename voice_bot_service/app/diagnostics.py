@@ -289,6 +289,10 @@ class CallDiagnostics:
 
     # ── infrastructure ──
     stt_reconnects: int = 0
+    # The STT waterfall took over mid-call (STT_FALLBACK_PROVIDER): primary
+    # failed audibly (no transcript for a heard utterance) or on its socket.
+    stt_failovers: int = 0
+    stt_vendor_final: str = ""
     hearing_failures: int = 0     # times we gave up and closed out honestly
     # Caller utterances DETECTED by VAD that produced no transcript at all. This
     # is the only signal that separates "nobody answered" from "we went deaf".
@@ -944,6 +948,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             },
             "infra": {
                 "sttReconnects": d.stt_reconnects,
+                "sttFailovers": d.stt_failovers,
+                "sttVendorFinal": d.stt_vendor_final or None,
                 "hearingFailures": d.hearing_failures,
                 "unheardUtterances": d.unheard_utterances,
                 "promptUnfilled": d.prompt_unfilled or None,

@@ -18,6 +18,7 @@ import argparse
 import logging
 import asyncio
 import json
+import os
 import sys
 import time
 import wave
@@ -316,17 +317,40 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
         # at line rate. Its finals are tapped here so the report and the checks
         # see exactly what the pipeline saw.
         from pipecat.frames.frames import InterimTranscriptionFrame
-        from app.providers import build_stt
-        stt = build_stt(SR_LINE)
-        _orig_push = stt.push_frame
+        from app.providers import build_stt_waterfall
+        stt, _stt_primary, _stt_fallback = build_stt_waterfall(SR_LINE)
+        if os.environ.get("SIM_DEAF_PRIMARY") and _stt_fallback is not None:
+            # A primary that hears nothing — the shape of Smallest's last 70 s
+            # on call 28570ec0 — in front of the real fallback, so the orphan
+            # re-ask → manual failover path runs for real.
+            from pipecat.pipeline.service_switcher import (ServiceSwitcher,
+                                                           ServiceSwitcherStrategyFailover)
+            from pipecat.services.stt_service import STTService
 
-        async def _tap(frame, direction=FrameDirection.DOWNSTREAM):
-            if (isinstance(frame, TranscriptionFrame)
-                    and not isinstance(frame, InterimTranscriptionFrame) and frame.text.strip()):
-                line.finals.append((line.now(), frame.text.strip()))
-                log("STT final:", repr(frame.text.strip()))
-            await _orig_push(frame, direction)
-        stt.push_frame = _tap
+            class DeafSTT(STTService):
+                async def run_stt(self, audio: bytes):
+                    if False:
+                        yield None
+            _stt_primary = DeafSTT(sample_rate=SR_LINE)
+            stt = ServiceSwitcher([_stt_primary, _stt_fallback],
+                                  strategy_type=ServiceSwitcherStrategyFailover)
+        # Tap the finals where they leave the service(s), not the switcher
+        # (a ParallelPipeline's push_frame is not the services' push_frame).
+        _tap_targets = [t for t in (_stt_primary, _stt_fallback) if t is not None]
+        _orig_push = None
+
+        for _svc in _tap_targets:
+            def _mk(svc):
+                orig = svc.push_frame
+
+                async def _tap(frame, direction=FrameDirection.DOWNSTREAM):
+                    if (isinstance(frame, TranscriptionFrame)
+                            and not isinstance(frame, InterimTranscriptionFrame) and frame.text.strip()):
+                        line.finals.append((line.now(), frame.text.strip()))
+                        log(f"STT final ({type(svc).__name__}):", repr(frame.text.strip()))
+                    await orig(frame, direction)
+                return _tap
+            _svc.push_frame = _mk(_svc)
     else:
         stt = SimSTT()
     llm = SimLLM()
@@ -402,7 +426,10 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             await asyncio.sleep(max(0.0, next_t - time.perf_counter()))
 
     transport = SimTransport(feeder)
-    return transport, {"stt": stt, "llm": llm, "tts": tts}
+    out = {"stt": stt, "llm": llm, "tts": tts}
+    if real_stt:
+        out["stt_primary"], out["stt_fallback"] = _stt_primary, _stt_fallback
+    return transport, out
 
 
 def _warm_cache(tts, agent: Dict[str, Any], lines: List[str]) -> None:
@@ -469,6 +496,8 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "llm_runs": providers["llm"].runs,
         "llm_prompts": providers["llm"].prompts,
         "nudges": getattr(d, "nudges", 0) or 0,
+        "stt_failovers": getattr(d, "stt_failovers", 0) or 0,
+        "orphan_reasks": getattr(d, "orphan_reasks", 0) or 0,
         "opening_resaid": getattr(d, "opening_resaid", 0) or 0,
         "end_forced": getattr(outcome, "end_forced", False),
     }
@@ -621,6 +650,26 @@ LONG_ANSWER = ("Yes, I take classes in the evening, mostly at the studio near my
 _LONG_KEYS = ("classes", "evening", "studio", "students", "weekends")
 
 
+def chk_stt_waterfall(res):
+    """Primary STT deaf, fallback real: the first turn produces nothing → one
+    "say it again" → the STT fails over → the caller's next turn is heard by
+    the fallback and answered. Founder 2026-09-15: "have waterfall if sarvam
+    fails to smallest"."""
+    f = []
+    if res.get("stt_failovers", 0) != 1:
+        f.append(f"stt_failovers = {res.get('stt_failovers')} (want 1)")
+    if res.get("orphan_reasks", 0) < 1:
+        f.append("never asked the caller to repeat the unheard turn")
+    texts = " ".join(_assistant_texts(res)).lower()
+    heard = " ".join(x for _, x in res.get("finals", [])).lower()
+    if not any(k in heard for k in _LONG_KEYS):
+        f.append(f"the fallback never transcribed the second turn: finals {res.get('finals')!r}")
+    prompts = [p for p in res.get("llm_prompts", []) if any(k in p.lower() for k in _LONG_KEYS)]
+    if not prompts:
+        f.append("the model never received the answer heard by the fallback")
+    return f
+
+
 def chk_breath_then_long(res):
     """A short answer, a breath, then the real answer — all one caller turn.
     Founder's 2026-09-15 calls: the VAD stopped inside the breath, Smallest
@@ -759,6 +808,12 @@ _BREATH_REPLIES = [PITCH_Q, "Got it — evenings at the studio, weekends at home
 _BREATH_NOTE = "2026-09-15: VAD stop inside a 0.45 s breath; Smallest finalized the short part, the rest was dropped"
 
 SCENARIOS: List[Scenario] = [
+    Scenario("stt_waterfall_after_deaf_primary",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("Yes. " + LONG_ANSWER, after_bot_stop=2, offset=0.8, clip="pause_then_long")],
+             replies=[PITCH_Q, "Got it — evenings at the studio, weekends at home. Who sends the daily link right now?"],
+             checks=chk_stt_waterfall, max_secs=50, real_stt=True,
+             note="run with SIM_DEAF_PRIMARY=1 STT_FALLBACK_PROVIDER=<vendor>: orphan re-ask → failover"),
     Scenario("breath_then_long_answer_yes",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
                      Say("Yes. " + LONG_ANSWER, after_bot_stop=2, offset=0.8, clip="pause_then_long")],

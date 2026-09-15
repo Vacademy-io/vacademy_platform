@@ -43,6 +43,7 @@ from pipecat.frames.frames import (VADUserStartedSpeakingFrame, VADUserStoppedSp
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMMessagesAppendFrame,
+    ManuallySwitchServiceFrame,
     LLMRunFrame,
     LLMTextFrame,
     TranscriptionFrame,
@@ -89,7 +90,7 @@ from .ambience import AmbienceDucker
 from .voice_eq import build_voice_eq, make_voice_eq_processor
 from .prosody import build_prosody_shaper, make_prosody_processor
 from . import diagnostics as diag_mod
-from .providers import (build_llm, build_stt, build_tts, engine_of,
+from .providers import (build_stt_waterfall, build_llm, build_stt, build_tts, engine_of,
                         normalize_for_rumik, rumik_term_map_version)
 from . import ttscache
 from .turntake import (mid_reply_action, is_carrier_announcement,
@@ -3777,8 +3778,40 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # STT/LLM/TTS services instead of vendors, so turn-taking bugs reproduce
     # offline. Production never passes it.
     providers = providers or {}
-    stt = providers.get("stt") or build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias,
-                                            mode=_agent_stt_mode(agent))
+    stt_primary = stt_fallback = None
+    if providers.get("stt") is not None:
+        stt = providers["stt"]
+        stt_primary = providers.get("stt_primary") or stt
+        stt_fallback = providers.get("stt_fallback")       # the real-STT sim's waterfall
+    else:
+        stt, stt_primary, stt_fallback = build_stt_waterfall(
+            settings.sample_rate, language=stt_lang, bias=stt_bias, mode=_agent_stt_mode(agent))
+    flags["stt_failed_over"] = False
+
+    async def _stt_failover(why: str) -> bool:
+        """Hand the rest of the call to the fallback STT. Once per call."""
+        if stt_fallback is None or flags["stt_failed_over"]:
+            return False
+        flags["stt_failed_over"] = True
+        diag.bump("stt_failovers")
+        diag.stt_vendor_final = type(stt_fallback).__name__
+        logger.warning("stt failover: %s — switching %s → %s for the rest of the call corr=%s",
+                       why, type(stt_primary).__name__, type(stt_fallback).__name__, corr)
+        await task.queue_frames([ManuallySwitchServiceFrame(service=stt_fallback)])
+        return True
+
+    def _note_vendor_failover():
+        """pipecat's own failover (a non-fatal ErrorFrame from the active
+        vendor) switches without telling us — the strategy's
+        on_service_switched event did not fire in the real-STT sim — so the
+        watchdog polls the active service once a second and counts it."""
+        if (stt_fallback is not None and not flags["stt_failed_over"]
+                and getattr(getattr(stt, "strategy", None), "active_service", None) is stt_fallback):
+            flags["stt_failed_over"] = True
+            diag.bump("stt_failovers")
+            diag.stt_vendor_final = type(stt_fallback).__name__
+            logger.warning("stt failover: vendor error — pipecat switched %s → %s corr=%s",
+                           type(stt_primary).__name__, type(stt_fallback).__name__, corr)
     # to_thread: Vertex constructors do a SYNCHRONOUS service-account OAuth
     # round-trip; keep it off the loop so concurrent calls' audio never glitches.
     # Per-agent LLM routing for the Sarvam POC (config.sarvam_llm_agents): only
@@ -4530,6 +4563,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 logger.warning("reply never reached the caller corr=%s "
                                "(no audio %.1fs after it was cut)",
                                corr, cfg.unplayed_confirm_secs)
+            _note_vendor_failover()
             d = watchdog_decide(flags, now, cfg)
             apply_decision(flags, d, now)
 
@@ -4611,6 +4645,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 # The caller audibly spoke (VAD), the STT returned nothing even
                 # after the finalize retries, and the bot has been quiet since.
                 # Admit it rather than sit in silence until they say "Hello?".
+                # And if there is a second vendor, their repeat goes to it —
+                # a vendor that returned nothing for an audible utterance has
+                # failed this call (28570ec0: deaf for its last 70 s).
+                await _stt_failover("no transcript for an audible utterance")
                 diag.bump("orphan_reasks")
                 logger.info("orphan: %.1fs since the caller stopped and no transcript — "
                             "asking them to say it again corr=%s", d.detail, corr)

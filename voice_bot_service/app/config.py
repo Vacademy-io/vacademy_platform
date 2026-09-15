@@ -66,6 +66,13 @@ class Settings:
     # never does), which Smart Turn and the turn-gate both benefit from. Flip
     # per test call via env; nothing else changes.
     stt_provider: str = field(default_factory=lambda: _env("STT_PROVIDER", "sarvam"))
+    # Waterfall: a second STT vendor that takes over for the rest of the call
+    # when the primary fails — its socket errors (pipecat's failover strategy)
+    # or an audible caller utterance producing no transcript (the orphan
+    # re-ask, our own signal). Empty = no failover. Founder 2026-09-15 after
+    # call 28570ec0 (Smallest deaf for the last 70 s): "sarvam stt and have
+    # waterfall if sarvam fails to smallest".
+    stt_fallback_provider: str = field(default_factory=lambda: _env("STT_FALLBACK_PROVIDER", ""))
     google_stt_language: str = field(
         default_factory=lambda: _env("GOOGLE_STT_LANGUAGE", "hi-IN"))
     # Smallest Pulse STT (STT_PROVIDER=smallest). Chosen 2026-09-12 from a

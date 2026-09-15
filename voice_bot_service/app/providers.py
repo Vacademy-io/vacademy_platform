@@ -187,7 +187,7 @@ def _smallest_with_finalize_retry(base, retry_secs: float, retries: int,
 
 
 def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None,
-              mode: str | None = None):
+              mode: str | None = None, provider: str | None = None):
     """STT factory with a provider switch (STT_PROVIDER=sarvam|google|smallest).
 
     Why the switch exists: across the founder's four 2026-08-05 test calls the
@@ -205,7 +205,8 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     the POC ships 0.5.
     """
     s = get_settings()
-    if s.stt_provider == "google":
+    provider = (provider or s.stt_provider or "sarvam").strip().lower()
+    if provider == "google":
         from pipecat.services.google.stt import GoogleSTTService
         langs = []
         for t in ((language or s.google_stt_language) or "hi-IN").split(","):
@@ -232,7 +233,7 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
                 enable_interim_results=True,
             ),
         )
-    if s.stt_provider == "smallest":
+    if provider == "smallest":
         from pipecat.services.smallest.stt import SmallestSTTService
         stt_cls = _smallest_with_finalize_retry(
             SmallestSTTService, s.smallest_finalize_retry_secs,
@@ -493,6 +494,32 @@ def build_llm(provider: str | None = None):
             extra={"extra_body": {"reasoning_effort": None}},
         ),
     )
+
+
+def build_stt_waterfall(sample_rate: int, language: str | None = None, bias: str | None = None,
+                        mode: str | None = None):
+    """(processor, primary, fallback): the STT to put in the pipeline. With
+    STT_FALLBACK_PROVIDER set this is pipecat's ServiceSwitcher over the two
+    vendors — only the active one receives audio (one vendor's cost at a
+    time), a non-fatal ErrorFrame from the active one fails over on its own,
+    and run_bot switches manually when the caller was audibly heard and no
+    transcript came (the orphan re-ask). One way per call: nothing switches
+    back. Without a fallback: the plain service, as before."""
+    s = get_settings()
+    primary = build_stt(sample_rate, language=language, bias=bias, mode=mode)
+    fb = (s.stt_fallback_provider or "").strip().lower()
+    if not fb or fb == (s.stt_provider or "sarvam").strip().lower():
+        return primary, primary, None
+    try:
+        fallback = build_stt(sample_rate, language=language, bias=bias, mode=mode, provider=fb)
+    except Exception:
+        logger.exception("stt: fallback provider %r unavailable — no waterfall this call", fb)
+        return primary, primary, None
+    from pipecat.pipeline.service_switcher import (ServiceSwitcher,
+                                                   ServiceSwitcherStrategyFailover)
+    switcher = ServiceSwitcher([primary, fallback], strategy_type=ServiceSwitcherStrategyFailover)
+    logger.info("stt: waterfall %s → %s", type(primary).__name__, type(fallback).__name__)
+    return switcher, primary, fallback
 
 
 def _tag_engine(svc, slug: str, model: str):

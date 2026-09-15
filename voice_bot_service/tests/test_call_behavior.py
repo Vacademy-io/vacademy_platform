@@ -4857,6 +4857,31 @@ async def test_stale_bridge_is_skipped_at_synthesis_time():
     assert _Base.sent == ["एक सेकंड।", "Class 10."], _Base.sent
 
 
+def test_stt_waterfall_builds_a_switcher_only_with_a_fallback(monkeypatch):
+    """Founder 2026-09-15: Sarvam primary, Smallest as the waterfall. The
+    pipeline gets pipecat's ServiceSwitcher (failover strategy); without
+    STT_FALLBACK_PROVIDER it gets the plain service, byte-identical to before."""
+    from app import providers as pv, config as cfg
+    monkeypatch.setenv("STT_PROVIDER", "sarvam")
+    monkeypatch.setenv("STT_FALLBACK_PROVIDER", "")
+    monkeypatch.setenv("SARVAM_API_KEY", "k"); monkeypatch.setenv("SMALLEST_API_KEY", "k")
+    cfg.get_settings.cache_clear() if hasattr(cfg.get_settings, "cache_clear") else None
+    proc, prim, fb = pv.build_stt_waterfall(8000, language="hi-IN")
+    assert proc is prim and fb is None and type(prim).__name__.startswith("Sarvam")
+    monkeypatch.setenv("STT_FALLBACK_PROVIDER", "smallest")
+    cfg.get_settings.cache_clear() if hasattr(cfg.get_settings, "cache_clear") else None
+    proc, prim, fb = pv.build_stt_waterfall(8000, language="hi-IN")
+    from pipecat.pipeline.service_switcher import ServiceSwitcher, ServiceSwitcherStrategyFailover
+    assert isinstance(proc, ServiceSwitcher) and isinstance(proc.strategy, ServiceSwitcherStrategyFailover)
+    assert proc.strategy.active_service is prim and type(fb).__name__ == "SmallestSTTService"
+    assert prim is not fb
+    # same vendor twice is not a waterfall
+    monkeypatch.setenv("STT_FALLBACK_PROVIDER", "sarvam")
+    cfg.get_settings.cache_clear() if hasattr(cfg.get_settings, "cache_clear") else None
+    proc, prim, fb = pv.build_stt_waterfall(8000, language="hi-IN")
+    assert proc is prim and fb is None
+
+
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
     from app import callstate as cs
     cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,

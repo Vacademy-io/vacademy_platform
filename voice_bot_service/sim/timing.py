@@ -57,7 +57,11 @@ def clip_for(text: str, secs: float, clip: str | None = None) -> np.ndarray:
     key = clip or _CLIP_FOR.get(text.strip().lower())
     if key:
         return CLIPS[key]
-    return CLIPS["long"][: int(secs * SR_LINE)]
+    n = int(secs * SR_LINE)
+    base = CLIPS["long"]
+    if n > len(base):                       # a replayed 30 s answer: loop the voice
+        base = np.tile(base, n // len(base) + 1)
+    return base[:n]
 
 
 @dataclass
@@ -73,6 +77,7 @@ class Say:
     stt_latency: float = 0.55           # Sarvam final after the voice stops
     finals: List[str] | None = None     # split into several finals (fragments)
     clip: str | None = None             # CLIPS key, when the text has no clip of its own
+    final_times: List[float] | None = None  # absolute seconds per final (replay); else after the voice
 
 
 @dataclass
@@ -94,6 +99,9 @@ class Scenario:
     # what the vendor transcribes from the fixture audio, not the pipeline.
     # Skipped by "all" without the flag.
     real_stt: bool = False
+    # Replay: pick the recorded reply for THIS run by its trigger text instead
+    # of consuming replies in order (the fixed pipeline may run fewer times).
+    reply_for: Callable[[str], str | None] | None = None
 
 
 # ── the simulated line ──────────────────────────────────────────────────────
@@ -107,6 +115,7 @@ class Line:
         self.bot: List[List[float]] = []       # [start, end] per utterance
         self.caller: List[List[float]] = []
         self.finals: List[tuple] = []          # (t, text)
+        self.tts_texts: List[str] = []         # every sentence handed to the TTS
         self._last_bot_write = -10.0
 
     def now(self) -> float:
@@ -179,8 +188,12 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             self.prompts.append(last_user)
             # A steering cue ("[…]") from the gates counts as a turn too: the
             # scripted replies are consumed in order, whatever prompted them.
-            text = scenario.replies[self._i] if self._i < len(scenario.replies) else "Okay."
-            self._i += 1
+            text = None
+            if scenario.reply_for is not None:
+                text = scenario.reply_for(last_user)
+            if text is None:
+                text = scenario.replies[self._i] if self._i < len(scenario.replies) else "Okay."
+                self._i += 1
             log(f"LLM run {self.runs} for {last_user[:40]!r} → {text[:60]!r}")
             await self.push_frame(LLMFullResponseStartFrame())
             await asyncio.sleep(scenario.ttft)
@@ -213,6 +226,7 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             self.model_name = "sim-tts"
 
         async def run_tts(self, text: str, context_id: str):
+            line.tts_texts.append(text)
             words = max(1, len(text.split()))
             secs = max(0.5, words / 2.8)
             await asyncio.sleep(scenario.tts_ttfb)
@@ -353,10 +367,25 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                     chunk = np.pad(chunk, (0, frame_n - len(chunk)))
                 pos += frame_n; spoken_frames += 1
                 await inp.push_audio_frame(InputAudioRawFrame(chunk.tobytes(), SR_LINE, 1))
+                if (speaking is not None and spoken_frames == 1 and speaking.final_times
+                        and not real_stt):
+                    # Replay: finals land at their RECORDED times, mid-speech or
+                    # after it, independent of the voice clip.
+                    s = speaking
+
+                    async def _emit_at(s=s):
+                        t_prev = line.now()
+                        for k, f in enumerate(s.finals or []):
+                            at = s.final_times[k] if k < len(s.final_times) else t_prev + 0.5
+                            await asyncio.sleep(max(0.0, at - line.now()))
+                            t_prev = line.now()
+                            if f:
+                                await stt.emit(f)
+                    inp.create_task(_emit_at())
                 if spoken_frames >= total_frames:
                     s = speaking; speaking = None
-                    if real_stt:
-                        continue                    # the vendor decides what was said
+                    if real_stt or s.final_times:
+                        continue                    # the vendor / the record decides what was said
                     finals = s.finals or [s.text]
 
                     async def _emit(finals=finals, lat=s.stt_latency):
@@ -433,6 +462,7 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "bot": [[round(a, 2), round(b_, 2)] for a, b_ in line.bot],
         "caller": [[round(a, 2), round(b_, 2)] for a, b_ in line.caller],
         "finals": [(round(t, 2), x) for t, x in line.finals],
+        "tts_texts": list(line.tts_texts),
         "transcript": outcome.transcript,
         "ended_at": None if ended_at is None else round(ended_at, 2),
         "interruptions_at_output": transport.output().interruptions,

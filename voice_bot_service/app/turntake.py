@@ -505,6 +505,10 @@ def caller_asked_to_repeat(text: str) -> bool:
     # the model for a "next step" twice (call 180504b7, 2026-09-15).
     if caller_asks_who(t):
         return True
+    if "again" in ws and ws & {"say", "come", "tell", "sorry"}:
+        return True                       # "say that again", "come again?", "sorry, again?"
+    if "sorry" in ws and len(ws) <= 2:
+        return True                       # "Sorry?" — they missed it
     return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
         len(ws) <= 5 and bool(ws & {"phir", "फिर", "samajh", "समझ", "sunai", "सुनाई"}))
 

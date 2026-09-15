@@ -21,6 +21,7 @@ bump pipecat, re-verify each import — paths have moved between minor versions.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -160,6 +161,12 @@ class CallOutcome:
     connected_at: float = field(default_factory=time.time)
     ended_at: Optional[float] = None
     transcript: List[Dict[str, str]] = field(default_factory=list)  # {role, text}
+    # Everything sim.replay needs to re-run this call through the real
+    # pipeline as a timing-sim scenario: STT finals, VAD on/off, bot audio
+    # on/off (seconds since connect) and the raw LLM replies in order. Logged
+    # as ONE json line ("replay corr=…") at the end of the call.
+    replay: Dict[str, list] = field(default_factory=lambda: {
+        "finals": [], "vad": [], "bot": [], "runs": [], "replies": []})
     transfer_requested: bool = False
     transfer_registered: bool = False
     end_requested: bool = False
@@ -327,6 +334,10 @@ class TranscriptCollector(FrameProcessor):
             # unheard_turn, 2026-09-15: asked 9.4 s late).
             self._on_voice_tick()
             self._on_activity(user=True)
+            _rp = getattr(self._outcome, "replay", None)
+            if _rp is not None:
+                _rp["vad"].append([round(time.time() - self._outcome.connected_at, 2),
+                                   int(isinstance(frame, VADUserStartedSpeakingFrame))])
             if isinstance(frame, VADUserStartedSpeakingFrame):
                 self._set_user_speaking(True)
         elif isinstance(frame, UserStoppedSpeakingFrame):
@@ -341,6 +352,9 @@ class TranscriptCollector(FrameProcessor):
                 and frame.text and frame.text.strip()):
             text = frame.text.strip()
             now = time.time()
+            _rp = getattr(self._outcome, "replay", None)
+            if _rp is not None:
+                _rp["finals"].append([round(now - self._outcome.connected_at, 2), text])
             # The previous final, carrier or not: the operator's sentence lands
             # in pieces ("The person you are calling is not" + "available.",
             # "at the t" + "one, please record…" — 2026-09-15) and a piece may
@@ -1762,7 +1776,7 @@ class RunGuard(FrameProcessor):
 
     def __init__(self, context, enabled=None, diag=None,
                  short_answer_grace_secs: float = 0.0, short_answer_max_words: int = 3,
-                 quiet_for=None):
+                 quiet_for=None, on_run=None):
         super().__init__()
         self._context = context
         self._enabled = enabled or (lambda: True)
@@ -1786,6 +1800,8 @@ class RunGuard(FrameProcessor):
         # words (first real-STT run: a 6 s hold on "Yes, go ahead").
         self._quiet_for = quiet_for or (lambda: float("inf"))
         self._held: Optional[asyncio.Task] = None
+        # Replay record: the last user text of every run that goes through.
+        self._on_run = on_run or (lambda text: None)
 
     @staticmethod
     def _caller_words(msgs) -> int:
@@ -1852,7 +1868,20 @@ class RunGuard(FrameProcessor):
         self._held = None
         logger.info("run-guard: short answer's run released after %.2fs (quiet %.2fs at hold)",
                     time.time() - t0, q0 if q0 != float("inf") else -1.0)
+        self._note_run()
         await self.push_frame(frame, direction)
+
+    def _note_run(self):
+        try:
+            msgs = self._context.get_messages()
+            last = next((m for m in reversed(msgs)
+                         if (m.get("role") if isinstance(m, dict) else getattr(m, "role", None)) == "user"), None)
+            content = (last.get("content") if isinstance(last, dict) else getattr(last, "content", "")) if last else ""
+            if isinstance(content, list):
+                content = " ".join(str(p.get("text", "")) if isinstance(p, dict) else str(p) for p in content)
+            self._on_run(str(content or "")[:240])
+        except Exception:
+            pass
 
     def _context_len(self) -> int:
         try:
@@ -1902,6 +1931,7 @@ class RunGuard(FrameProcessor):
                     self._held = self.create_task(self._release(frame, direction))
                     return
                 logger.info("run-guard: run passed (%d caller words)", words)
+                self._note_run()
         await self.push_frame(frame, direction)
 
 
@@ -1945,6 +1975,7 @@ class SentinelGate(FrameProcessor):
         self._arm_stop = None
         self._buffer = ""          # marker hold-back across token chunks
         self._utterance = ""       # current assistant utterance (one transcript entry)
+        self._raw_reply = ""       # the model's text for this response, unfiltered (replay)
         self._spoke_this_response = False
         self._response_active = False  # LLM tokens still streaming for this response
         # A2 shield: a barge-in DURING streaming cancels the LLM task, but its
@@ -2032,6 +2063,7 @@ class SentinelGate(FrameProcessor):
 
         if isinstance(frame, LLMFullResponseStartFrame):
             self._on_reply_start()
+            self._raw_reply = ""
             # A bot generating a fresh reply is NOT closing. Live call ee8e2168:
             # the bot said goodbye, the caller re-engaged with "Yes, I can", the
             # bot asked "May I know a convenient date and time?" — and the stale
@@ -2053,6 +2085,7 @@ class SentinelGate(FrameProcessor):
             self._on_activity(user=False)
             self._response_active = True
             self._buffer += frame.text or ""
+            self._raw_reply += frame.text or ""
             if "<" in self._buffer:
                 self._buffer = _canonical_markers(self._buffer)
                 if "<tool_call>" in self._buffer and "</tool_call>" in self._buffer:
@@ -2078,6 +2111,10 @@ class SentinelGate(FrameProcessor):
             return
 
         if isinstance(frame, LLMFullResponseEndFrame):
+            _rp = getattr(self._outcome, "replay", None)
+            if _rp is not None and self._raw_reply.strip():
+                _rp["replies"].append([round(time.time() - self._outcome.connected_at, 2),
+                                       self._raw_reply.strip()[:600]])
             # A leftover hold-back can only be a partial marker prefix (e.g. a
             # max_tokens cutoff mid-"<<END_CA") — never speak it; treat a partial
             # END prefix as intent to end so the call can't stall.
@@ -3577,6 +3614,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             diag.bump("bot_turns")
         flags["bot_speaking"] = speaking
         flags["tts_gen_t"] = 0.0
+        outcome.replay["bot"].append([round(time.time() - outcome.connected_at, 2), int(speaking)])
         if speaking:
             flags["bot_started_t"] = time.time()
         # Set when the FIRST frame reaches the line, not when the opening ends:
@@ -4058,7 +4096,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          short_answer_grace_secs=settings.short_answer_grace_secs,
                          short_answer_max_words=settings.short_answer_max_words,
                          quiet_for=lambda: (time.time() - flags["voice_tick_t"]
-                                            if flags["voice_tick_t"] else float("inf")))
+                                            if flags["voice_tick_t"] else float("inf")),
+                         on_run=lambda text: outcome.replay["runs"].append(
+                             [round(time.time() - outcome.connected_at, 2), text]))
 
     # One EQ per call: it carries IIR state across frames, so it must not be
     # shared between concurrent calls. None when disabled or scipy is missing,
@@ -4558,6 +4598,23 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 logger.info("diagnostics: %d sub-word caller scrap(s) lost (no answer in "
                             "them, no fault) corr=%s %s", _lost.fragments, corr,
                             _lost.fragment_samples)
+            try:
+                # One line per call for sim.replay. journald cuts a line at
+                # 48 KB — Devanagari is 3 bytes a character, so shrink the
+                # replies until the JSON fits rather than ship a broken tail.
+                _rec = dict(outcome.replay, agent=str(agent.get("id") or ""),
+                            ended=round(time.time() - outcome.connected_at, 2))
+                _cap = 600
+                while True:
+                    _rec["replies"] = [[t, x[:_cap]] for t, x in _rec["replies"]]
+                    _rec["runs"] = [[t, x[:max(60, _cap // 3)]] for t, x in _rec["runs"]]
+                    _js = json.dumps(_rec, ensure_ascii=False, separators=(",", ":"))
+                    if len(_js.encode("utf-8")) <= 40000 or _cap <= 40:
+                        break
+                    _cap //= 2
+                logger.info("replay corr=%s %s", corr, _js)
+            except Exception:
+                logger.exception("replay record failed corr=%s", corr)
             # Did the caller hear the same sentence over and over? (REPLY_LOOP)
             diag.max_reply_restarts = diag_mod.max_reply_restarts(outcome.transcript)
             if diag.max_reply_restarts >= 2:

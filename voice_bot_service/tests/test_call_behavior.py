@@ -4728,6 +4728,56 @@ async def test_smallest_never_receives_a_letterless_sentence():
     assert G.__name__ == "_Base", "engine_of / _tag_engine key on the class name"
 
 
+# ── sim.replay: every live call becomes a regression test ────────────────────
+def test_replay_record_becomes_a_scenario_with_finals_at_their_times():
+    from sim import replay as R
+    rec = {"finals": [[3.2, "Hi. If you record your name"], [20.5, "मैं पिता बोलता हूँ"],
+                      [21.1, "बोलिए।"], [143.0, "Hello"]],
+           "vad": [[2.0, 1], [7.5, 0], [18.5, 1], [21.0, 0], [60.0, 1], [60.2, 0], [141.9, 1], [147.0, 0]],
+           "bot": [[4.0, 1], [17.0, 0]],
+           "runs": [[21.9, "मैं पिता बोलता हूँ बोलिए।"], [143.5, "Hello"]],
+           "replies": [[22.9, "जी सर। बच्चे का नाम?"], [144.0, "जी, मैं सुन रही हूँ।"]], "ended": 170.0}
+    sc = R.scenario_from_record(rec, "t", R.invariants)
+    turns = [(s.at, s.finals, s.final_times) for s in sc.caller]
+    assert turns[0] == (2.0, ["Hi. If you record your name"], [3.2])
+    assert turns[1] == (18.5, ["मैं पिता बोलता हूँ", "बोलिए।"], [20.5, 21.1]), turns[1]
+    assert turns[2] == (141.9, ["Hello"], [143.0])
+    assert len(turns) == 3, "the 0.2 s VAD blip with no words is not a turn"
+    assert sc.reply_for("[cue] बोलिए।") == "जी सर। बच्चे का नाम?"      # by trigger, not order
+    assert sc.reply_for("Hello") == "जी, मैं सुन रही हूँ।"
+    assert sc.reply_for("anything") is None, "every recorded reply used once"
+    assert 170 < sc.max_secs <= 180
+
+
+def test_replay_invariants_catch_todays_call_shapes():
+    """The shapes found by hand on 2026-09-15 — each must trip an invariant."""
+    from sim import replay as R
+    op = "नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से।"
+    res = {"transcript": [{"role": "assistant", "text": op},
+                          {"role": "user", "text": "मैं बच्ची का पिता बोलता हूँ"},
+                          {"role": "assistant", "text": "जी सर। Rishabh के previous class में कितने marks आए थे?"},
+                          {"role": "user", "text": "ninety four"},
+                          {"role": "assistant", "text": "जी सर। Rishabh के previous class में कितने marks आए थे?"},  # re-ask
+                          {"role": "user", "text": "Hello"},
+                          {"role": "assistant", "text": op}],                     # 196838de: opening replayed
+           "tts_texts": ["नमस्ते जी", "."],                                  # af7e93bd: lone dot → hum
+           "turn_latency": [1.2, 6.2],                                       # 92743351: 6 s to a yes
+           "caller": [[2.2, 6.3]], "bot": [[3.0, 4.0]],                       # 71e8f39b: opening over the caller
+           "finals": [(5.0, "hello")], "ended_at": 30.0}
+    f = R.invariants(res)
+    assert any("opening replayed" in x for x in f), f
+    assert any("said twice" in x and "previous class" in x for x in f), f
+    assert any("letterless" in x for x in f), f
+    assert any("latency over 4 s" in x for x in f), f
+    assert any("over the caller" in x for x in f), f
+    # a repeat the caller ASKED for is not a fault
+    ok = {"transcript": [{"role": "assistant", "text": "Which number should I send the invite to?"},
+                         {"role": "user", "text": "Hello? Sorry, say that again"},
+                         {"role": "assistant", "text": "Which number should I send the invite to?"}],
+          "tts_texts": [], "turn_latency": [1.0], "caller": [], "bot": [], "finals": [], "ended_at": 9.0}
+    assert R.invariants(ok) == [], R.invariants(ok)
+
+
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
     from app import callstate as cs
     cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,

@@ -233,6 +233,8 @@ class TranscriptCollector(FrameProcessor):
         # FIRST one and it is never the recognisable one.
         self._carrier_seen = False
         self._human_turns = 0          # finals that reached the model as the callee's
+        self._prev_final = ""          # every final, carrier or not (split-phrase matching)
+        self._prev_final_t = 0.0
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -323,6 +325,18 @@ class TranscriptCollector(FrameProcessor):
                 and frame.text and frame.text.strip()):
             text = frame.text.strip()
             now = time.time()
+            # The previous final, carrier or not: the operator's sentence lands
+            # in pieces ("The person you are calling is not" + "available.",
+            # "at the t" + "one, please record…" — 2026-09-15) and a piece may
+            # match only when joined to the one before it.
+            prev_final, self._prev_final = self._prev_final, text
+            # Only a phrase that SPANS the boundary counts: a previous final that
+            # matched on its own would otherwise make everything after it a
+            # carrier line ("…forwarded to voicemail." + "haan ji bol raha hoon").
+            joined_carrier = (bool(prev_final) and now - self._prev_final_t < 4.0
+                              and not is_carrier_announcement(prev_final)
+                              and is_carrier_announcement(prev_final + " " + text))
+            self._prev_final_t = now
             # The OPERATOR's recorded message is not the callee. Record it (the
             # answering-machine detector reads these markers) then stop: it must
             # not stamp transcript_t (which would make _greet_when_ready skip our
@@ -333,7 +347,7 @@ class TranscriptCollector(FrameProcessor):
             #
             # Only before the callee has actually said something: after that, a
             # match is far more likely to be the caller quoting us than the network.
-            if self._in_machine_window() and is_carrier_announcement(text):
+            if self._in_machine_window() and (is_carrier_announcement(text) or joined_carrier):
                 self._outcome.transcript.append({"role": "user", "text": text})
                 if self._diag is not None:
                     self._diag.bump("carrier_announcements")
@@ -370,6 +384,25 @@ class TranscriptCollector(FrameProcessor):
             # greet still fires). If it was the operator we have dodged a
             # duplicate introduction; if it was the callee they get greeted
             # properly a moment later. Neither branch needs a generation.
+            # Once the line has identified itself as a recording, a short
+            # unmatched piece inside the machine window is that recording, not
+            # a person: "at the t" (call 0938aaa0, 2026-09-15) counted as a
+            # human turn, disarmed the voicemail hang-up, and the bot nudged a
+            # voicemail twice more — 46 s of telephony.
+            _toks = text.split()
+            if (self._in_machine_window() and self._carrier_seen and len(_toks) <= 4
+                    and (len(_toks[-1].strip(".,?!")) == 1        # cut mid-word: "at the t"
+                         or text[0].islower())):                  # a tail: "is available."
+                # NOT a capitalised word on its own — "Raman", "No.", "Yeah." after
+                # a voicemail fragment are the human (call ab194522).
+                self._outcome.transcript.append({"role": "user", "text": text})
+                if self._diag is not None:
+                    self._diag.bump("carrier_announcements")
+                logger.info("turn-gate: recording scrap %r after a carrier phrase — dropping",
+                            text[:32])
+                if self._duck is not None and self._duck.is_ducked():
+                    await self._on_absorb(None)
+                return
             if (self._in_machine_window()
                     and not self._bot_spoke_once()
                     and len(text.split()) <= 2):
@@ -2302,6 +2335,20 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None, *, full_na
     # whitespace cleanup below closes the hole ("Is this ?" -> "Is this?").
     _is_en = str(agent_cfg.get("language") or "").strip().lower().startswith("en")
     _name_fallback = "" if _is_en else "aap"
+    if not lead_name and _is_en:
+        # No name on the lead (campaign rows with a blank "Who", 2026-09-15):
+        # "Hi, is this {{name}}? Aarushi from Vacademy" rendered as
+        # "Hi, is this? Aarushi from Vacademy" on every call. Drop the
+        # identity-check clause rather than ask it of nobody.
+        text = re.sub(r"\b(?:is this|is that|is it|am i (?:speaking|talking) (?:with|to))\s*"
+                      r"\{\{\s*(?:name|lead_name)\s*\}\}\s*[?？]?\s*",
+                      "", text, flags=re.I)
+        text = re.sub(r",\s*,", ",", text)
+        text = re.sub(r"(^|[.!?]\s*)\s*,\s*", r"\1", text)
+        text = re.sub(r"\s{2,}", " ", text).strip()
+        # The clause was the whole line ("Hello, am I speaking with {{name}}?"):
+        # close the greeting instead of leaving "Hello,".
+        text = re.sub(r"[,\s]+$", ".", text) if text and text[-1] in ", " else text
     values = {
         "lead_name": lead_name or _name_fallback,
         "name": lead_name or _name_fallback,

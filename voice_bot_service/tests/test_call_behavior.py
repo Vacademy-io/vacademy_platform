@@ -2697,7 +2697,10 @@ def test_unknown_name_renders_empty_for_english_and_aap_for_hindi():
     line = "Hello, am I speaking with {{name}}?"
     en = b._fill_placeholders(line, {"leadName": None,
                                      "agent": {"language": "english"}})
-    assert en == "Hello, am I speaking with?"
+    # 2026-09-15: "Hi, is this? Aarushi from Vacademy" played on every unnamed
+    # row of a campaign. An English opening drops the identity-check clause
+    # for an unknown name instead of asking it of nobody.
+    assert en == "Hello.", en
     hi = b._fill_placeholders(line, {"leadName": None,
                                      "agent": {"language": "hinglish"}})
     assert hi == "Hello, am I speaking with aap?"
@@ -4402,3 +4405,98 @@ def test_hindi_acknowledgments_are_fillers():
         assert b.NoRepeatGate._is_filler(t), t
     for t in ("जी सर, Vijit अभी Class 7 में है।", "Sir, marks kitne aaye the?"):
         assert not b.NoRepeatGate._is_filler(t), t
+
+
+# ── campaign 2026-09-15 (JustDial bridge, unnamed leads, hello loops) ─────────
+
+def test_call_connect_bridge_announcements_are_the_operator():
+    from app.turntake import is_carrier_announcement as f
+    for t in ("You are getting connected by Josh Dial", "You are getting connected by Job Dial",
+              "you are being connected by Jove Diels", "Connecting your call"):
+        assert f(t), t
+    assert not f("Yes, I take classes online and connect with students on Zoom.")
+
+
+@pytest.mark.asyncio
+async def test_the_bridge_announcement_does_not_skip_our_opening():
+    """Three calls at 04:07:43: the bridge line counted as the callee speaking
+    first, the opening was skipped, and the person picked up to silence."""
+    from app.turntake import suppresses_opening
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: False
+    await _feed(tc, "You are getting connected by Josh Dial")
+    assert rec.frames == [], "the bridge line reached the model"
+    assert tc._carrier_seen
+
+
+def test_an_unnamed_english_lead_is_not_asked_is_this():
+    """Every row with a blank name played "Hi, is this? Aarushi from Vacademy"."""
+    out = b._fill_placeholders("Hi, is this {{name}}? Aarushi from Vacademy",
+                               {"agent": {"language": "en-IN"}, "leadName": ""}, full_name=True)
+    assert out == "Hi, Aarushi from Vacademy", out
+    out2 = b._fill_placeholders("Hi, is this {{name}}? Aarushi from Vacademy",
+                                {"agent": {"language": "en-IN"}, "leadName": "Rina"}, full_name=True)
+    assert out2 == "Hi, is this Rina? Aarushi from Vacademy", out2
+    # Hindi keeps its "aap" fallback and its clause
+    out3 = b._fill_placeholders("Namaste, kya main {{name}} se baat kar rahi hoon?",
+                                {"agent": {"language": "hinglish"}, "leadName": ""}, full_name=True)
+    assert "aap" in out3, out3
+
+
+def test_hello_mid_reply_is_absorbed_not_interrupted():
+    """Each "Hello?" used to kill the re-ask that answered the previous one."""
+    from app.turntake import mid_reply_action, ABSORB, INTERRUPT
+    assert mid_reply_action("Hello?") == ABSORB
+    assert mid_reply_action("Hello? Hello?") == ABSORB
+    assert mid_reply_action("Are you there?") == ABSORB
+    assert mid_reply_action("What is the fee?") == INTERRUPT
+    assert mid_reply_action("Hello, I wanted to ask about the fees?") == INTERRUPT
+
+
+@pytest.mark.asyncio
+async def test_a_second_hello_over_the_re_ask_escalates_to_can_you_hear_me():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_stopped_t=lambda: time.time())
+    await _feed(tc, "haan ji bol raha hoon")
+    rec.frames.clear(); rec.interruptions = 0
+    await _feed(tc, "Hello?")
+    assert rec.interruptions == 0, "the first hello must not cut the reply"
+    rec.frames.clear()
+    await _feed(tc, "Hello?")
+    assert rec.interruptions == 0
+    assert any("hear you" in c for c in rec.cues()), rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_a_carrier_phrase_split_across_two_finals_still_matches():
+    """"at the t" + "one, please record your message." (call 0938aaa0)."""
+    rec = _Rec()
+    tc = _replay_collector(rec)
+    tc._bot_spoke_once = lambda: True
+    await _feed(tc, "Your call has been forwarded to voicemail")
+    assert tc._carrier_seen
+    rec.frames.clear()
+    await _feed(tc, "at the t")                    # a scrap after the recording began
+    assert rec.frames == [], "a recording scrap reached the model"
+    assert tc.looks_like_voicemail(), "the scrap disarmed the voicemail hang-up"
+    await _feed(tc, "one, please record your message.")
+    assert rec.frames == []
+
+
+@pytest.mark.asyncio
+async def test_who_is_this_licenses_the_intro_again():
+    from app.turntake import caller_asked_to_repeat as f
+    for t in ("Who is this?", "who's calling", "Aap kaun bol rahe hain?", "kaun hai"):
+        assert f(t), t
+    assert not f("Yes, go ahead.")
+    rec = _NRRec()
+    caller = {"t": "Yes"}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "I'm Aarushi, from Vacademy.")
+    caller["t"] = "Who is this?"
+    rec.text.clear()
+    await _reply(g, "I'm Aarushi, from Vacademy.")
+    assert [t.strip() for t in rec.text] == ["I'm Aarushi, from Vacademy."], rec.text

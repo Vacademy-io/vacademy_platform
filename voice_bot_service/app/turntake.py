@@ -82,7 +82,10 @@ _NEGATION_WORDS = frozenset({
 
 # Punctuation stripped before matching — includes the Devanagari danda, which
 # Sarvam appends to almost every final ("हाँ।").
-_STRIP = "।॥.,!…\"'`~()[]{}:;-–—"
+# '?' included since 2026-09-15: without it "hello?" tokenised as "hello?" and
+# matched NOTHING — is_audio_check never counted a hello, so the two-hello
+# escalation ("Can you hear me?", then stop) could never fire in production.
+_STRIP = "।॥.,!?？…\"'`~()[]{}:;-–—"
 
 
 def _words(text: str) -> list:
@@ -106,6 +109,14 @@ def mid_reply_action(text: str, extra_backchannels: frozenset = frozenset(),
     t = (text or "").strip()
     if not t:
         return ABSORB          # nothing was said; nothing to interrupt for
+    # "Hello?" mid-reply is a line check, not a question about the content.
+    # Smallest puts the '?' on it, which used to route it to INTERRUPT: each
+    # hello killed the re-ask that answered the previous hello, so the caller
+    # only ever heard "Yes, I'm here." (campaign 2026-09-15, calls b1c4fe4f
+    # and 2cfc4732: five hellos each). Absorbing lets the held reply finish —
+    # and the second absorbed hello triggers "Can you hear me?" and stops.
+    if caller_checking_presence(t):
+        return ABSORB
     if "?" in t or "？" in t:
         return INTERRUPT       # a question mid-reply means they didn't follow
     ws = _words(t)
@@ -164,6 +175,13 @@ _CARRIER_PHRASES = (
     # "name and reason." on call 2fc70065 — the tail is three words, so the 1-2
     # word scrap filter cannot reach it, and no human answering a phone says it.
     "name and reason", "your name and", "and reason",
+    # Call-connect bridges. JustDial plays "You are getting connected by Just
+    # Dial" to the callee (transcribed as Josh/Job/Jove Dial on 2026-09-15);
+    # it counted as the callee speaking first, our opening was SKIPPED on every
+    # call of the campaign, and it became the caller's first message in the
+    # model's context. The person picked up to silence and said "Hello?" x5.
+    "getting connected", "being connected", "connected by", "connecting you",
+    "connecting your call", "call is being connected", "just dial", "justdial",
     "the tone", "the beep", "voicemail", "voice mail", "record your message",
     "record your messages", "recording", "hang up", "leave a message",
     "leave your message", "not available", "unavailable", "please try again",
@@ -412,6 +430,16 @@ def caller_asked_to_repeat(text: str) -> bool:
     ws = set(_words(text))
     if not ws:
         return False
+    t = (text or "").casefold()
+    # "Who is this?" after the opening IS a request to hear the intro again —
+    # the gate dropped "I'm Aarushi, from Vacademy." as already-said and asked
+    # the model for a "next step" twice (call 180504b7, 2026-09-15).
+    if any(p in t for p in ("who is this", "who's this", "who are you", "who is calling",
+                            "who's calling", "who is speaking", "who am i speaking",
+                            "kaun bol", "kon bol", "aap kaun", "aap kon", "kaun hai",
+                            "kon hai", "kahan se bol", "where are you calling from",
+                            "which company", "कौन बोल", "आप कौन")):
+        return True
     return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
         len(ws) <= 5 and bool(ws & {"phir", "फिर", "samajh", "समझ", "sunai", "सुनाई"}))
 
@@ -582,6 +610,8 @@ def strip_echo_opener(sentence: str, caller_text: str, bot_question: str = "",
     dropped = 0
     while dropped < max_clauses and len(clauses) - dropped >= 2:
         clause = clauses[dropped]
+        if "?" in clause or "？" in clause:
+            break                       # a question is never a parroted answer
         ws = _words(clause)
         if not ws:
             dropped += 1

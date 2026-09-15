@@ -25,12 +25,17 @@ import { Button } from "@/components/ui/button";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getAuthoredChapterDescription } from "@/constants/chapter-description";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { SubjectTileGrid, ContentDrillCrumb } from "./SubjectTileGrid";
 
 interface SubjectType {
   id: string;
   subject_name: string;
   subject_order: number;
   description: string;
+  /** Media id for the subject artwork. The open init-details endpoint has
+   *  always returned this; only the tile variant renders it. */
+  thumbnail_id?: string | null;
 }
 
 interface Chapter {
@@ -48,6 +53,9 @@ interface Module {
   module_order: number;
   description: string;
   chapters: Chapter[];
+  /** Media id for the module artwork, same as subjects. The raw API object is
+   *  passed straight through, so this is present at runtime. */
+  thumbnail_id?: string | null;
 }
 
 interface ModuleWithChapters {
@@ -85,6 +93,22 @@ interface CourseStructureDetailsProps {
   instituteId: string;
   packageSessionId: string;
   levelId?: string; // Add levelId parameter
+  /**
+   * How the top level reads.
+   *
+   * "tiles" draws the subjects as artwork cards — the same shape
+   * the admin dashboard and the enrolled learner's Content Structure use — and
+   * drills into one subject at a time beneath the grid. "outline" is the
+   * folder-row tree, and the default here so that callers which do not read
+   * the institute's learner settings keep what they always showed. The public
+   * course page passes the variant those settings imply.
+   *
+   * Tiles apply only where there is a top level to tile: a depth-5 course with
+   * at least one non-"default" subject. Everything shallower, and every course
+   * whose subject layer is a single "default" row, renders the outline no
+   * matter what is asked for.
+   */
+  variant?: "outline" | "tiles";
 }
 
 export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
@@ -93,6 +117,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   instituteId,
   packageSessionId,
   levelId,
+  variant = "outline",
 }) => {
   const { t } = useTranslation("coursePlayerA");
   const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -102,6 +127,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   const modulesTerm = getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules);
   const slidesTerm = getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides);
   const subjectTerm = getTerminology(ContentTerms.Subjects, SystemTerms.Subjects);
+  const subjectsTerm = getTerminologyPlural(ContentTerms.Subjects, SystemTerms.Subjects);
   const [isLoading, setIsLoading] = useState(true);
   const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
   const [subjectModulesMap, setSubjectModulesMap] = useState<SubjectModulesMap>(
@@ -111,6 +137,17 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
   const [openModules, setOpenModules] = useState<Set<string>>(new Set());
   const [openChapters, setOpenChapters] = useState<Set<string>>(new Set());
+  // Subject artwork for the tile variant, resolved from thumbnail_id. Kept out
+  // of the outline path entirely: that variant shows no images, so it should
+  // not pay for a request per subject.
+  const [subjectThumbs, setSubjectThumbs] = useState<Record<string, string>>({});
+  // Which subject's contents the tile grid has drilled into. One at a time —
+  // the panel sits under the grid, so two open subjects would push the second
+  // one's content far from the card that opened it.
+  const [openTileSubject, setOpenTileSubject] = useState<string | null>(null);
+  // The module drilled into within the open subject, if any. Together these
+  // two say which level the grid is showing: none, a subject, or a module.
+  const [openTileModule, setOpenTileModule] = useState<string | null>(null);
 
   // Helper function to check if a name is "default"
   const isDefaultName = (name: string | undefined | null): boolean => {
@@ -312,6 +349,10 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   t("courseStructureDetails.unnamedSubject", { subject: subjectTerm, index: index + 1 }),
                 subject_order: subject.subject_order || index,
                 description: subject.description || "",
+                // The API has always sent this; the transform used to drop it,
+                // which left every tile on the artwork fallback even though
+                // each subject has a real image.
+                thumbnail_id: subject.thumbnail_id ?? null,
               };
               subjects.push(transformedSubject);
             }
@@ -436,6 +477,45 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       return newSet;
     });
   };
+
+  // Resolve subject artwork once the subjects land. Each id costs one request,
+  // so this only runs for the tile variant, and a failure is silent: a card
+  // without artwork still reads fine, and a broken image would read worse.
+  useEffect(() => {
+    if (variant !== "tiles" || studyLibraryData.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const resolved: Record<string, string> = {};
+      // Subjects and the modules under them share one map keyed by id, so the
+      // nested grid needs no second lookup and no second round of requests.
+      const targets: Array<{ id: string; fileId?: string | null }> =
+        studyLibraryData.map((s) => ({ id: s.id, fileId: s.thumbnail_id }));
+      for (const m of Object.values(subjectModulesMap).flat()) {
+        const id = m.module?.id;
+        if (id) targets.push({ id, fileId: m.module?.thumbnail_id });
+      }
+      await Promise.all(
+        targets.map(async ({ id, fileId }) => {
+          if (!fileId || subjectThumbs[id]) return;
+          try {
+            const url = await getPublicUrlWithoutLogin(fileId);
+            if (url) resolved[id] = url;
+          } catch {
+            /* no artwork — the card falls back to a glyph */
+          }
+        }),
+      );
+      if (!cancelled && Object.keys(resolved).length > 0) {
+        setSubjectThumbs((prev) => ({ ...prev, ...resolved }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // subjectThumbs is deliberately not a dep: it is what this effect writes,
+    // and including it would re-run the whole prefetch on every resolved image.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variant, studyLibraryData, subjectModulesMap]);
 
   // Toggle functions with lazy loading (like /courses route)
   const toggleSubject = (subjectId: string) => {
@@ -637,6 +717,33 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     );
 
     if (filteredModules.length === 0) return null;
+
+    // Tiles carry down to modules. Chapters below stay as rows: they carry
+    // slide counts and run long, so a third grid would cost more scrolling
+    // than the pictures are worth.
+    if (variant === "tiles") {
+      const openModule = filteredModules.find(
+        (m) => m.module?.id === openTileModule,
+      );
+      if (openModule) return renderChapters(openModule);
+      return (
+        <SubjectTileGrid
+          dense
+          items={filteredModules.map((m) => ({
+            id: m.module.id,
+            name:
+              m.module?.module_name ||
+              t("courseStructureDetails.unnamedModule", { module: moduleTerm }),
+            description: m.module?.description,
+          }))}
+          thumbs={subjectThumbs}
+          onOpen={(moduleId) => {
+            setOpenTileModule(moduleId);
+            toggleOpenState(moduleId, setOpenModules);
+          }}
+        />
+      );
+    }
 
     return (
       <div className="space-y-2">
@@ -1040,6 +1147,85 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     return <div className="space-y-2">{result}</div>;
   };
 
+  /**
+   * Subjects as artwork cards, matched to the admin dashboard and the enrolled
+   * learner's Content Structure so an author sees the same shape everywhere.
+   *
+   * Only the top level is tiled. Opening a card drills into that subject's
+   * modules below the grid, reusing the outline renderer — a tile grid all the
+   * way down would bury a three-slide chapter behind three clicks.
+   *
+   * Returns null when there is nothing to tile (every subject named "default",
+   * which is how a course with no real subject layer arrives), so the caller
+   * can fall back to the outline rather than render an empty grid.
+   */
+  const renderSubjectsAsTiles = () => {
+    const subjects = studyLibraryData.filter(
+      (subject) => !isDefaultName(subject.subject_name),
+    );
+    if (subjects.length === 0) return null;
+
+    const subject = subjects.find((s) => s.id === openTileSubject) ?? null;
+
+    // Top level: just the subject cards, nothing expanded.
+    if (!subject) {
+      return (
+        <SubjectTileGrid
+          items={subjects.map((s) => ({
+            id: s.id,
+            name: s.subject_name,
+            description: s.description,
+          }))}
+          thumbs={subjectThumbs}
+          onOpen={(subjectId) => {
+            setOpenTileSubject(subjectId);
+            setOpenTileModule(null);
+            // The outline renderer reads openSubjects to decide what to draw.
+            toggleOpenState(subjectId, setOpenSubjects);
+          }}
+        />
+      );
+    }
+
+    // Drilled in: the grid is replaced by the level below, headed by a trail
+    // back up. One level on screen at a time, so there is never a panel whose
+    // owner has to be guessed at.
+    const openModule = (subjectModulesMap[subject.id] || []).find(
+      (m) => m.module?.id === openTileModule,
+    );
+    const trail = [
+      { id: subject.id, name: subject.subject_name },
+      ...(openModule?.module
+        ? [
+            {
+              id: openModule.module.id,
+              name:
+                openModule.module.module_name ||
+                t("courseStructureDetails.unnamedModule", { module: moduleTerm }),
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <div>
+        <ContentDrillCrumb
+          trail={trail}
+          rootLabel={subjectsTerm}
+          onNavigate={(id) => {
+            if (id === null) {
+              setOpenTileSubject(null);
+              setOpenTileModule(null);
+            } else if (id === subject.id) {
+              setOpenTileModule(null);
+            }
+          }}
+        />
+        {renderModules(subject.id)}
+      </div>
+    );
+  };
+
   // Render all subjects for depth 5 (skip "default" labels, show content directly)
   const renderSubjectsForDepth5 = () => {
     const result: JSX.Element[] = [];
@@ -1310,7 +1496,11 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
                 {t("courseStructureDetails.contentHeading.fullStructure", { course: courseTerm })}
               </h3>
-              {renderSubjectsForDepth5()}
+              {/* Tiles are a top-level treatment; a course whose subjects are
+                  all "default" has no top level to tile, so it keeps the
+                  outline rather than showing an empty grid. */}
+              {(variant === "tiles" && renderSubjectsAsTiles()) ||
+                renderSubjectsForDepth5()}
             </div>
           )}
         </div>

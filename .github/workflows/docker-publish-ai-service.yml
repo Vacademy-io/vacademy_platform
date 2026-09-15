@@ -118,6 +118,13 @@ jobs:
                 SMALLEST_API_KEY=${{ secrets.SMALLEST_API_KEY }}
             fi
 
+            # Spatius (premium teacher avatar). Same rule: only when the secret is
+            # present; the feature stays dark without SPATIUS_API_KEY + SPATIUS_APP_ID.
+            if [ -n "${{ secrets.SPATIUS_API_KEY }}" ] && [ -n "${{ secrets.SPATIUS_APP_ID }}" ]; then
+              kubectl set env deployment/"$DEPLOYMENT_NAME" --namespace "$NAMESPACE" \
+                SPATIUS_API_KEY=${{ secrets.SPATIUS_API_KEY }} SPATIUS_APP_ID=${{ secrets.SPATIUS_APP_ID }}
+            fi
+
             # Apply resource limits from deployment YAML (helm upgrade not used in CI,
             # so patch directly to keep requests/limits in sync with the checked-in values).
             kubectl patch deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" --type=strategic \

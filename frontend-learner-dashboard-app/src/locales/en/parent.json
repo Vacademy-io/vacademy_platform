@@ -218,7 +218,9 @@
     "certificatesTitle": "Certificates",
     "certificate": "Certificate",
     "earnedOn": "Earned {{date}}",
-    "completed": "{{percent}}% completed"
+    "completed": "{{percent}}% completed",
+    "awardedByInstitute": "Awarded by the institute",
+    "awardReason": "“{{reason}}”"
   },
   "childView": {
     "exiting": "Exiting student view…",

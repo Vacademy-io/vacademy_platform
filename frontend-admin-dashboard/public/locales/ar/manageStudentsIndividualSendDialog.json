@@ -74,7 +74,9 @@
         "selectPlaceholder": "اختر قالبًا معتمدًا",
         "emptyText": "لا يوجد قالب معتمد يطابق بحثك.",
         "languageCodeLabel": "رمز اللغة",
-        "templatePreviewLabel": "معاينة القالب"
+        "templatePreviewLabel": "معاينة القالب",
+        "previewHint": "الأجزاء المميّزة هي متغيّرات — ستُملأ ببيانات هذا المتعلّم في الخطوة التالية.",
+        "headerBadge": "ترويسة {{kind}}"
     },
     "mediaKind": {
         "image": "صورة",
@@ -95,7 +97,8 @@
         "sourcePlaceholder": "اختر المصدر...",
         "literalOption": "قيمة ثابتة...",
         "literalPlaceholder": "اكتب قيمة",
-        "unresolved": "(غير محدد)"
+        "unresolved": "(غير محدد)",
+        "livePreviewLabel": "معاينة الرسالة"
     },
     "reviewStep": {
         "messageSent": "تم إرسال الرسالة",
@@ -124,10 +127,21 @@
             "DELIVERED": "تم التسليم",
             "READ": "تمت القراءة",
             "FAILED": "فشل"
-        }
+        },
+        "messagePreviewLabel": "الرسالة التي سيتم إرسالها"
     },
     "footer": {
         "back": "رجوع",
         "next": "التالي"
+    },
+    "templatePicker": {
+        "showFullMessage": "عرض الرسالة كاملة",
+        "showLess": "عرض أقل"
+    },
+    "waPreview": {
+        "image": "صورة",
+        "video": "فيديو",
+        "document": "مستند",
+        "emptyBody": "لا يحتوي هذا القالب على نص رسالة."
     }
 }

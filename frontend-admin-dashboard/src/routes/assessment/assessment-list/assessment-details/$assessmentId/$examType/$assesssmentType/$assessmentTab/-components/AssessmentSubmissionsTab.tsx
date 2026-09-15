@@ -25,7 +25,7 @@ import {
     ASSESSMENT_STATUS_STUDENT_PENDING_CONTACT_COLUMNS_WIDTH,
 } from '@/components/design-system/utils/constants/table-layout';
 import { Route } from '..';
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getInstituteId } from '@/constants/helper';
@@ -62,7 +62,10 @@ import { BulkActions } from './bulk-actions/bulk-actions';
 import { AssessmentSubmissionsStudentTable } from './AssessmentSubmissionsStudentTable';
 import { SubmissionsSummaryStrip } from './SubmissionsSummaryStrip';
 import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDialog';
+import { AiAssessmentReportDialog } from './AiAssessmentReportDialog';
 import { AssessmentExportCsvDialog } from './AssessmentExportCsvDialog';
+import { BulkAiCheckDialog } from './copy-intake/BulkAiCheckDialog';
+import { CopyIntakeBatchPanel } from './copy-intake/CopyIntakeBatchPanel';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
 import { AssessmentGlobalLevelRevaluateQuestionWise } from './assessment-global-level-revaluate/assessment-global-level-revaluate-question-wise';
@@ -71,7 +74,11 @@ import { useRef } from 'react';
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
 import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/open-student-side-view';
 import { useNavigate } from '@tanstack/react-router';
-import { getAssessmentSettingsFromCache } from '@/services/assessment-settings';
+import {
+    getAssessmentSettings,
+    getAssessmentSettingsFromCache,
+} from '@/services/assessment-settings';
+import { DEFAULT_ASSESSMENT_SETTINGS } from '@/types/assessment-settings';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -180,7 +187,18 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const { BatchesFilterData } = useFilterDataForAssesment(initData);
     const instituteId = getInstituteId();
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
-    const assessmentSettings = getAssessmentSettingsFromCache();
+    // Offline Entry is gated on an institute-level setting. Fetch it rather than
+    // reading the localStorage cache directly: that cache is only ever written by
+    // Settings -> Assessment, so an admin who has never opened that page — or is on a
+    // second browser, or whose 24h cache lapsed — would silently fall back to the
+    // `enabled: false` default and lose the button while a colleague still sees it.
+    // The cached value is the placeholder so the button still paints instantly.
+    const { data: assessmentSettings = DEFAULT_ASSESSMENT_SETTINGS } = useQuery({
+        queryKey: ['ASSESSMENT_SETTINGS', instituteId],
+        queryFn: () => getAssessmentSettings(),
+        placeholderData: getAssessmentSettingsFromCache,
+        staleTime: 5 * 60 * 1000,
+    });
     const isOfflineEntryEnabled = assessmentSettings.offlineEntry.enabled;
     const queryClient = useQueryClient();
     // MANUAL evaluation assessments get an extra "Submission" column showing
@@ -189,8 +207,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const { data: assessmentDetailsData } = useSuspenseQuery(
         getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' })
     );
-    const isManualEvaluation =
-        assessmentDetailsData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
+    const isManualEvaluation = assessmentDetailsData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
 
     // How this assessment was actually handed out. An assessment created against batches
     // has no individually pre-registered learners, so "Individual Selection" could only
@@ -251,6 +268,28 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     // Bulk-actions entry point for the report ZIP export (dialog opens without
     // its own trigger, scoped to the checked rows).
     const [bulkReportZipOpen, setBulkReportZipOpen] = useState(false);
+    const [aiReportOpen, setAiReportOpen] = useState(false);
+    // Bulk AI check of uploaded copies. The email a finished batch sends links
+    // here with ?intake=<batchId>, which opens the panel on that batch.
+    const initialIntakeId = useMemo(() => {
+        try {
+            return new URLSearchParams(window.location.search).get('intake');
+        } catch {
+            return null;
+        }
+    }, []);
+    const [bulkCheckOpen, setBulkCheckOpen] = useState(false);
+    const [intakePanelOpen, setIntakePanelOpen] = useState(Boolean(initialIntakeId));
+    const [intakeBatchId, setIntakeBatchId] = useState<string | null>(initialIntakeId);
+    // Linked batches live on step 3 (index 2) of the details payload, same as
+    // the Participants tab and offline entry read them.
+    const assessmentBatchIds: string[] = useMemo(
+        () =>
+            (assessmentDetailsData?.[2]?.saved_data?.pre_batch_registrations ?? [])
+                .map((b) => b.batchId)
+                .filter(Boolean),
+        [assessmentDetailsData]
+    );
     const currentPageSelection = rowSelections[page] || {};
     const totalSelectedCount = Object.values(rowSelections).reduce(
         (count, pageSelection) => count + Object.keys(pageSelection).length,
@@ -260,6 +299,19 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const [attemptedCount, setAttemptedCount] = useState(0);
     const [ongoingCount, setOngoingCount] = useState(0);
     const [pendingCount, setPendingCount] = useState(0);
+
+    // Which registration source the visible list is built from. `selectedFilter` is NOT a
+    // reliable answer: the tab/sub-tab handlers override `registration_source` inline on
+    // the request only, so simply switching to External leaves the state on its
+    // internal/batch default. The tab badges used to read it from there, which is why a
+    // PUBLIC assessment whose participants all registered through the open link (i.e. the
+    // External tab) counted BATCH_PREVIEW_REGISTRATION rows and every badge showed (0).
+    const registrationSource =
+        selectedParticipantsTab === 'external'
+            ? 'OPEN_REGISTRATION'
+            : batchSelectionTab === 'individual'
+              ? 'ADMIN_PRE_REGISTRATION'
+              : 'BATCH_PREVIEW_REGISTRATION';
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     // Bumped to force the summary strip to refetch its aggregate stats.
     const [summaryRefreshKey, setSummaryRefreshKey] = useState(0);
@@ -893,12 +945,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     // Resolve the registration_source / attempt_type for the currently-active
     // sub-tab so a sort refetch keeps the same slice of participants in view.
-    const getCurrentRegistrationSource = () => {
-        if (selectedParticipantsTab === 'external') return 'OPEN_REGISTRATION';
-        return batchSelectionTab === 'batch'
-            ? 'BATCH_PREVIEW_REGISTRATION'
-            : 'ADMIN_PRE_REGISTRATION';
-    };
+    const getCurrentRegistrationSource = () => registrationSource;
 
     const getCurrentAttemptType = () =>
         selectedTab === 'Attempted' ? 'ENDED' : selectedTab === 'Pending' ? 'PENDING' : 'LIVE';
@@ -1064,51 +1111,67 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            const fetchAllParticipants = async () => {
+            const fetchInitialParticipants = async () => {
                 setIsParticipantsLoading(true);
-
                 try {
-                    // Only the Attempted slice is rendered on first paint; the other two
-                    // exist purely to fill their tab badges. So they ask for ONE row and
-                    // read total_elements — the badge was reading content.length, which
-                    // capped every count at the page size (a batch with 27 learners who
-                    // never attempted showed "10"), and fetching 10 unread rows twice per
-                    // mount was wasted work on both services.
-                    const COUNT_ONLY_PAGE_SIZE = 1;
-                    // A badge is not worth the page. These two share a Promise.all with
-                    // the Attempted fetch, so an unhandled rejection in either used to
-                    // take down the whole submissions table — and the Pending count now
-                    // depends on a cross-service call to admin_core, which is exactly the
-                    // kind of thing that can fail on its own. Swallow per call and let the
-                    // badge read 0.
-                    const countOnly = (attemptType: string) =>
-                        getAdminParticipants(assessmentId, instituteId, 0, COUNT_ONLY_PAGE_SIZE, {
-                            ...selectedFilter,
-                            attempt_type: [attemptType],
-                        }).catch(() => null);
-
-                    const [attemptedData, ongoingData, pendingData] = await Promise.all([
-                        getAdminParticipants(assessmentId, instituteId, page, 10, selectedFilter),
-                        countOnly('LIVE'),
-                        // 'PENDING' — the backend compares against the enum name, so the
-                        // old 'Pending' never matched and this call always came back empty.
-                        countOnly('PENDING'),
-                    ]);
+                    const attemptedData = await getAdminParticipants(
+                        assessmentId,
+                        instituteId,
+                        page,
+                        pageSize,
+                        selectedFilter
+                    );
                     setParticipantsData(attemptedData);
-                    setAttemptedCount(attemptedData.total_elements ?? attemptedData.content.length);
-                    setOngoingCount(ongoingData?.total_elements ?? 0);
-                    setPendingCount(pendingData?.total_elements ?? 0);
                 } catch (error) {
                     console.log(error);
                 } finally {
                     setIsParticipantsLoading(false);
                 }
             };
-            fetchAllParticipants();
+            fetchInitialParticipants();
         }, 300); // Adjust the debounce time as needed
 
         return () => clearTimeout(timer); // Cleanup the timeout on component unmount
     }, []);
+
+    // The three tab badges. Deliberately separate from the table fetch above and keyed on
+    // the registration source, because switching participant tabs re-fetches the table
+    // through the mutation but never touched these — so the badges kept showing whatever
+    // the internal/batch list had on mount (zeroes, for an open-registration assessment).
+    useEffect(() => {
+        let cancelled = false;
+        const timer = setTimeout(() => {
+            // One row each: only total_elements is read. (Reading content.length instead
+            // used to cap every count at the page size.)
+            const COUNT_ONLY_PAGE_SIZE = 1;
+            // A badge is not worth the page: swallow per call and let it read 0 rather
+            // than letting one failing count take the whole tab down.
+            const countOnly = (attemptType: string) =>
+                getAdminParticipants(assessmentId, instituteId, 0, COUNT_ONLY_PAGE_SIZE, {
+                    ...selectedFilter,
+                    registration_source: registrationSource,
+                    attempt_type: [attemptType],
+                }).catch(() => null);
+
+            Promise.all([
+                countOnly('ENDED'),
+                countOnly('LIVE'),
+                // 'PENDING' — the backend compares against the enum name, so the old
+                // 'Pending' never matched and this call always came back empty.
+                countOnly('PENDING'),
+            ]).then(([attemptedData, ongoingData, pendingData]) => {
+                if (cancelled) return;
+                setAttemptedCount(attemptedData?.total_elements ?? 0);
+                setOngoingCount(ongoingData?.total_elements ?? 0);
+                setPendingCount(pendingData?.total_elements ?? 0);
+            });
+        }, 300);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [assessmentId, instituteId, registrationSource, selectedFilter]);
 
     useEffect(() => {
         if (participantsData?.content) {
@@ -1198,6 +1261,28 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                 onValueChange={handleAttemptedTab}
                 className="flex w-full flex-col gap-3"
             >
+                <BulkAiCheckDialog
+                    open={bulkCheckOpen}
+                    onOpenChange={setBulkCheckOpen}
+                    assessmentId={assessmentId}
+                    instituteId={instituteId}
+                    onStarted={(batch) => {
+                        setIntakeBatchId(batch.id);
+                        setIntakePanelOpen(true);
+                    }}
+                />
+                {intakePanelOpen && (
+                    <div className="px-4">
+                        <CopyIntakeBatchPanel
+                            assessmentId={assessmentId}
+                            instituteId={instituteId}
+                            examType={examType}
+                            packageSessionIds={assessmentBatchIds}
+                            initialBatchId={intakeBatchId}
+                            onClose={() => setIntakePanelOpen(false)}
+                        />
+                    </div>
+                )}
                 {/* Sub-tab row: which slice of participants on the left, the actions that
                     operate on that slice on the right. */}
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4">
@@ -1305,6 +1390,32 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                         {t('buttons.aiEvaluationsTooltip')}
                                     </TooltipContent>
                                 </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <MyButton
+                                            type="button"
+                                            scale="small"
+                                            buttonType="primary"
+                                            className="gap-1.5 font-medium"
+                                            onClick={() => setBulkCheckOpen(true)}
+                                        >
+                                            <Sparkle size={16} weight="fill" />
+                                            {t('buttons.bulkAiCheck')}
+                                        </MyButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                        {t('buttons.bulkAiCheckTooltip')}
+                                    </TooltipContent>
+                                </Tooltip>
+                                <MyButton
+                                    type="button"
+                                    scale="small"
+                                    buttonType="secondary"
+                                    className="font-medium"
+                                    onClick={() => setIntakePanelOpen((v) => !v)}
+                                >
+                                    {t('buttons.bulkAiBatches')}
+                                </MyButton>
                             </>
                         )}
                         <Tooltip>
@@ -1475,6 +1586,26 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             instituteId={instituteId}
                             selectedFilter={selectedFilter}
                         />
+                        <MyButton
+                            type="button"
+                            scale="small"
+                            buttonType="secondary"
+                            className="font-medium"
+                            onClick={() => setAiReportOpen(true)}
+                        >
+                            <Sparkle size={15} weight="fill" />
+                            {t('aiReport.download')}
+                        </MyButton>
+                        <Dialog open={aiReportOpen} onOpenChange={setAiReportOpen}>
+                            {aiReportOpen && (
+                                <AiAssessmentReportDialog
+                                    assessmentId={assessmentId}
+                                    instituteId={instituteId}
+                                    assessmentName={assessmentDetailsData?.[0]?.saved_data?.name}
+                                    onClose={() => setAiReportOpen(false)}
+                                />
+                            )}
+                        </Dialog>
                         {isOfflineEntryEnabled && (
                             <MyButton
                                 type="button"
@@ -1512,7 +1643,11 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     )}
                     <TabsContent value={selectedTab} ref={tableRef}>
                         <SidebarProvider
-                            style={{ ['--sidebar-width' as string]: '565px' } /* dynamic CSS custom property, cannot use Tailwind token */}
+                            style={
+                                {
+                                    ['--sidebar-width' as string]: '565px',
+                                } /* dynamic CSS custom property, cannot use Tailwind token */
+                            }
                             defaultOpen={false}
                             open={isSidebarOpen}
                             onOpenChange={setIsSidebarOpen}

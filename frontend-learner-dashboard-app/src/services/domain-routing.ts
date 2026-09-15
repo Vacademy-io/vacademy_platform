@@ -56,6 +56,10 @@ export interface DomainRoutingResponse {
   // Minimal naming overrides surfaced pre-login so screens like the login page
   // can honor institute-specific terminology before the full settings payload
   // is fetched post-login.
+  // Tag of the catalogue mounted at this host's ROOT: when set, the site
+  // answers on "/" and "/<page>" instead of "/<tag>" and "/<tag>/<page>".
+  // Absent/null = classic tagged routing. See RouteMatcher.basePath().
+  rootCatalogueTag?: string | null;
   namingOverrides?: {
     course?: string | null;
     coursePlural?: string | null;
@@ -101,12 +105,109 @@ export interface CachedInstituteBranding {
 const BRANDING_CACHE_KEY = "InstituteBranding";
 const PREFERRED_COUNTRIES_CACHE_KEY = "InstitutePreferredCountries";
 const PHONE_COUNTRY_GEO_MODE_CACHE_KEY = "InstitutePhoneCountryGeoMode";
+const ROOT_CATALOGUE_TAG_CACHE_KEY = "InstituteRootCatalogueTag";
+
+let cachedRootCatalogueTagMemory: string | null | undefined;
+
+/**
+ * Catalogue tag mounted at this host's root, or null. Synchronous on purpose:
+ * link builders (RouteMatcher, CatalogueLink, the header) run during render
+ * and cannot await the resolve. Written on EVERY resolve — including a null
+ * — so un-mounting a catalogue server-side takes effect on the next load
+ * rather than lingering in localStorage.
+ */
+export const getCachedRootCatalogueTag = (): string | null => {
+  if (cachedRootCatalogueTagMemory !== undefined) {
+    return cachedRootCatalogueTagMemory;
+  }
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const stored = window.localStorage.getItem(ROOT_CATALOGUE_TAG_CACHE_KEY);
+      cachedRootCatalogueTagMemory = stored && stored.trim() ? stored.trim() : null;
+      return cachedRootCatalogueTagMemory;
+    }
+  } catch {
+    // storage blocked — fall through to "not mounted"
+  }
+  cachedRootCatalogueTagMemory = null;
+  return null;
+};
+
+export const setCachedRootCatalogueTag = (tag: string | null | undefined) => {
+  const clean = (tag ?? "").trim().replace(/^\/+/, "");
+  cachedRootCatalogueTagMemory = clean || null;
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    if (clean) {
+      window.localStorage.setItem(ROOT_CATALOGUE_TAG_CACHE_KEY, clean);
+    } else {
+      window.localStorage.removeItem(ROOT_CATALOGUE_TAG_CACHE_KEY);
+    }
+  } catch (error) {
+    console.warn("[Domain Routing] Failed to persist root catalogue tag:", error);
+  }
+};
 let cachedBrandingMemory: CachedInstituteBranding | null = null;
 let cachedPreferredCountriesMemory: string[] | null = null;
 let cachedPhoneCountryGeoModeMemory: PhoneCountryGeoMode | null = null;
 
 const canUseLocalStorage = (): boolean => {
   return typeof window !== "undefined" && !!window?.localStorage;
+};
+
+/**
+ * Listeners notified whenever the institute's phone-country preferences change.
+ *
+ * {@link getPreferredPhoneCountries} is a SYNCHRONOUS read of a cache that only
+ * {@link resolveDomainRouting} fills, and on public routes — the enroll-invite
+ * form, the catalogue checkout, the audience/enquiry forms — nothing waits for
+ * that call. The root `beforeLoad` returns early for everything in
+ * `PUBLIC_ROUTES`, so the resolve is a plain async request racing the form.
+ *
+ * Measured on `student.elevateeducation.in/learner-invitation-response`: the
+ * phone field mounts at ~1.95s and domain routing answers at ~1.93s. It wins by
+ * about 30ms. Add ~2s of latency and the order flips,
+ * {@link hasResolvedPhonePreferences} reads false, geo-detection is withheld
+ * (correctly — an unread preference must not be overridden), and the field
+ * hard-falls back to `DEFAULT_PREFERRED_COUNTRIES[0]`, showing +91 to a visitor
+ * in any country. Without a subscription it never recovers, because every
+ * caller reads the cache once and memoizes.
+ *
+ * Subscribing lets a phone field pick the answer up when it finally lands. See
+ * `hooks/use-preferred-phone-countries`, which is the only intended consumer and
+ * which decides what to do with each answer (the institute's reply always wins;
+ * never applied under a visitor who is typing).
+ */
+type PhoneCountriesListener = () => void;
+
+const phoneCountriesListeners = new Set<PhoneCountriesListener>();
+
+const notifyPhoneCountriesChanged = (): void => {
+  // Copied before iterating: a listener is free to unsubscribe during the call
+  // (a React cleanup can run mid-notification), and that must not mutate the set
+  // we are walking.
+  for (const listener of [...phoneCountriesListeners]) {
+    try {
+      listener();
+    } catch (error) {
+      // One broken subscriber must not stop the others, and must never take
+      // down the domain-routing resolve it is riding on.
+      console.warn("[Domain Routing] Phone-country listener failed:", error);
+    }
+  }
+};
+
+/**
+ * Subscribes to institute phone-preference changes. Returns an unsubscribe
+ * function.
+ */
+export const subscribePhoneCountries = (
+  listener: PhoneCountriesListener,
+): (() => void) => {
+  phoneCountriesListeners.add(listener);
+  return () => {
+    phoneCountriesListeners.delete(listener);
+  };
 };
 
 /**
@@ -129,25 +230,27 @@ export const setCachedPreferredCountries = (
   const parsed = parsePreferredCountries(raw);
   cachedPreferredCountriesMemory = parsed;
 
-  if (!canUseLocalStorage()) {
-    return;
-  }
-
-  try {
-    if (parsed.length === 0) {
-      window.localStorage.removeItem(PREFERRED_COUNTRIES_CACHE_KEY);
-    } else {
-      window.localStorage.setItem(
-        PREFERRED_COUNTRIES_CACHE_KEY,
-        JSON.stringify(parsed)
+  if (canUseLocalStorage()) {
+    try {
+      if (parsed.length === 0) {
+        window.localStorage.removeItem(PREFERRED_COUNTRIES_CACHE_KEY);
+      } else {
+        window.localStorage.setItem(
+          PREFERRED_COUNTRIES_CACHE_KEY,
+          JSON.stringify(parsed)
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "[Domain Routing] Failed to persist preferred countries cache:",
+        error
       );
     }
-  } catch (error) {
-    console.warn(
-      "[Domain Routing] Failed to persist preferred countries cache:",
-      error
-    );
   }
+
+  // Notified even when the write failed: the in-memory cache above IS the value
+  // subscribers read, so it is now current whatever localStorage did.
+  notifyPhoneCountriesChanged();
 };
 
 export const getCachedPreferredCountries = (): string[] => {
@@ -228,18 +331,20 @@ export const setCachedPhoneCountryGeoMode = (
   const mode = normalizeGeoMode(raw);
   cachedPhoneCountryGeoModeMemory = mode;
 
-  if (!canUseLocalStorage()) {
-    return;
+  if (canUseLocalStorage()) {
+    try {
+      window.localStorage.setItem(PHONE_COUNTRY_GEO_MODE_CACHE_KEY, mode);
+    } catch (error) {
+      console.warn(
+        "[Domain Routing] Failed to persist phone country geo mode:",
+        error,
+      );
+    }
   }
 
-  try {
-    window.localStorage.setItem(PHONE_COUNTRY_GEO_MODE_CACHE_KEY, mode);
-  } catch (error) {
-    console.warn(
-      "[Domain Routing] Failed to persist phone country geo mode:",
-      error,
-    );
-  }
+  // This is the call that flips `hasResolvedPhonePreferences()` to true, so it
+  // is the notification that actually unblocks a waiting phone field.
+  notifyPhoneCountriesChanged();
 };
 
 /**
@@ -428,6 +533,28 @@ export const getPreferredPhoneCountries = (): ResolvedPhoneCountries =>
     hasResolvedPhonePreferences() ? detectVisitorCountry() : null,
   );
 
+/**
+ * Read a portal's routing record WITHOUT touching the per-host caches that
+ * `resolveDomainRouting` maintains. For pages that need to describe a brand
+ * other than the one the browser is on (the privacy policy with `?app=`), where
+ * caching the other brand's root-catalogue tag or phone preferences would
+ * corrupt the current host's session.
+ */
+export const peekDomainRouting = async (
+  domain: string,
+  subdomain: string
+): Promise<DomainRoutingResponse | null> => {
+  try {
+    const response = await authenticatedAxiosInstance.get<DomainRoutingResponse>(
+      `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`,
+      { params: { domain, subdomain }, timeout: 10000 }
+    );
+    return response.data;
+  } catch {
+    return null;
+  }
+};
+
 export const resolveDomainRouting = async (
   domain: string,
   subdomain: string
@@ -456,6 +583,9 @@ export const resolveDomainRouting = async (
     // which institute this page belongs to.
     setCachedPreferredCountries(data.commaSeparatedPreferredCountry ?? null);
     setCachedPhoneCountryGeoMode(data.phoneCountryGeoMode ?? null);
+    // Same reasoning: the root-mount flag must follow the resolve, whichever
+    // caller made it, or a cold load of "/" cannot know to render the site.
+    setCachedRootCatalogueTag(data.rootCatalogueTag ?? null);
 
     // Successfully resolved domain routing
     return data;

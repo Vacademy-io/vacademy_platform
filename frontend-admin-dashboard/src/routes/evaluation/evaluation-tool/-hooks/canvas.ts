@@ -11,12 +11,14 @@ import {
 } from 'fabric';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 export type EvaluationTool = 'select' | 'pen' | 'tick' | 'cross' | 'text' | 'box' | 'circle';
 
 const DEFAULT_STROKE_WIDTH = 3;
 
 const useFabric = (fabricCanvas: Canvas | null) => {
+    const { t } = useTranslation('evaluationCanvas');
     const [isDrawingMode, setIsDrawingMode] = useState(false);
     // Default pen colour is green (the common "tick / correct" annotation colour).
     const [penColor, setPenColorState] = useState('green');
@@ -289,7 +291,7 @@ const useFabric = (fabricCanvas: Canvas | null) => {
             fabricCanvas.discardActiveObject();
             fabricCanvas.requestRenderAll();
         } else {
-            toast.error('Please select an item to delete');
+            toast.error(t('deleteNoSelection'));
         }
     }
 

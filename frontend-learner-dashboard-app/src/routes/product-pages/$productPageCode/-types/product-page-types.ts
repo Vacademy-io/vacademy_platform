@@ -103,6 +103,30 @@ export interface ProductPageCourseFinder {
     skipLabel?: string;
     /** Wording for the undo affordance above the catalogue ("Change class"). */
     changeLabel?: string;
+    /**
+     * What picking a class does.
+     *
+     * SHOW_COURSES (default) reveals the restricted catalogue, leaving the
+     * visitor to add the course themselves. GO_TO_FORM selects it and jumps
+     * straight to the details step — for pages where a class resolves to
+     * exactly ONE course and the cart would only ask the visitor to confirm
+     * the single thing they just asked for. Safe because the details step
+     * shows the order summary too (it leads, on mobile), so nothing about
+     * what they are enrolling in is hidden by skipping the cart.
+     *
+     * A group covering several courses always falls back to SHOW_COURSES:
+     * choosing among them is the visitor's decision, not the page's.
+     */
+    onPick?: 'SHOW_COURSES' | 'GO_TO_FORM';
+    /**
+     * Wording for the dialog's confirm button.
+     *
+     * `{{class}}` is replaced with the label the visitor picked, so a page can
+     * say "Register for Class 9" rather than a fixed phrase. Left empty the
+     * default follows `onPick`: a button that opens a registration form must
+     * not promise to show courses.
+     */
+    ctaLabel?: string;
     groups: ProductPageFinderGroup[];
 }
 
@@ -162,6 +186,8 @@ export interface ProductPageSettings {
         showNudge?: boolean;
     };
     afterPaymentRedirectUrl?: string;
+    /** Seconds the success screen stays up before the redirect fires. */
+    afterPaymentRedirectDelaySeconds?: number;
     showLoginButton?: boolean;
     successPageContent?: string;
     courseFinder?: ProductPageCourseFinder;

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import { ArrowClockwise, Info, WarningCircle } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +10,8 @@ interface SectionCardProps {
     title: string;
     description?: string;
     Icon?: Icon;
+    /** Rendered in place of the icon — e.g. a step number. */
+    badge?: ReactNode;
     action?: ReactNode;
     children: ReactNode;
     className?: string;
@@ -20,6 +23,7 @@ export function SectionCard({
     title,
     description,
     Icon: SectionIcon,
+    badge,
     action,
     children,
     className,
@@ -35,7 +39,8 @@ export function SectionCard({
         >
             <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
                 <div className="flex min-w-0 items-start gap-3">
-                    {SectionIcon && (
+                    {badge}
+                    {!badge && SectionIcon && (
                         <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
                             <SectionIcon className="size-5" weight="duotone" />
                         </span>
@@ -78,6 +83,7 @@ interface IssueSummaryProps {
 }
 
 export function IssueSummary({ blockers, warnings, showBlockers }: IssueSummaryProps) {
+    const { t } = useTranslation('announcementCreatePrimitives');
     const visibleBlockers = showBlockers ? blockers : [];
     if (visibleBlockers.length === 0 && warnings.length === 0) return null;
 
@@ -90,9 +96,7 @@ export function IssueSummary({ blockers, warnings, showBlockers }: IssueSummaryP
                 >
                     <p className="flex items-center gap-2 font-semibold">
                         <WarningCircle className="size-4 shrink-0" weight="fill" />
-                        {visibleBlockers.length === 1
-                            ? 'One thing needs fixing'
-                            : `${visibleBlockers.length} things need fixing`}
+                        {t('issueSummary.title', { count: visibleBlockers.length })}
                     </p>
                     <ul className="mt-2 list-disc space-y-1 pl-6">
                         {visibleBlockers.map((issue) => (
@@ -105,7 +109,7 @@ export function IssueSummary({ blockers, warnings, showBlockers }: IssueSummaryP
                 <div className="rounded-md border border-warning-400 bg-warning-50 p-3 text-caption text-warning-600">
                     <p className="flex items-center gap-2 font-semibold">
                         <Info className="size-4 shrink-0" weight="fill" />
-                        Worth checking
+                        {t('issueSummary.worthChecking')}
                     </p>
                     <ul className="mt-2 list-disc space-y-1 pl-6">
                         {warnings.map((issue) => (
@@ -126,6 +130,7 @@ interface LoadFailureProps {
 
 /** Shown instead of an empty list when a lookup fails, so the user can recover without a reload. */
 export function LoadFailure({ message, onRetry, className }: LoadFailureProps) {
+    const { t } = useTranslation('announcementCreatePrimitives');
     return (
         <div
             className={cn(
@@ -140,7 +145,7 @@ export function LoadFailure({ message, onRetry, className }: LoadFailureProps) {
             {onRetry && (
                 <MyButton buttonType="secondary" scale="small" onClick={onRetry}>
                     <ArrowClockwise className="mr-1 size-4" />
-                    Retry
+                    {t('retry')}
                 </MyButton>
             )}
         </div>

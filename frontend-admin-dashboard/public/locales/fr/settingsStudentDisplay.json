@@ -21,6 +21,8 @@
         "selectDefaultTab": "Sélectionner l'onglet par défaut"
     },
     "sidebar": {
+        "appLinksLabel": "Afficher les liens de téléchargement dans la barre latérale",
+        "appLinksHelp": "Désactivez pour déplacer les téléchargements vers le widget « Obtenir l’application » du tableau de bord. Les liens proviennent des paramètres de routage de domaine.",
         "cardTitle": "Barre latérale",
         "cardDescription": "Activez ou désactivez toute la barre latérale et configurez les onglets, l'ordre et la visibilité",
         "visibleLabel": "Barre latérale visible",

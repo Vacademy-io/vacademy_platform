@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import {
     Plus,
     Trash2,
     Star,
+    Copy,
 } from 'lucide-react';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -34,6 +35,7 @@ import {
     Phone
 } from 'lucide-react';
 import PreferredCountriesSelector from './PreferredCountriesSelector';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { getSubOrgs } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import {
     parsePreferredCountriesString,
@@ -49,6 +51,7 @@ import {
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { WHITE_LABEL_SETUP, WHITE_LABEL_STATUS } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
@@ -291,6 +294,100 @@ const fqdn = (entry: RoutingEntry): string => {
     return `${entry.subdomain}.${entry.domain}`;
 };
 
+// ─── Short-link domain ────────────────────────────────────────────────────────
+
+/**
+ * The zone we own. A portal on `*.vacademy.io` needs no short-link record from
+ * anyone — those links already run on the platform default `u.vacademy.io`.
+ */
+const PLATFORM_ZONE = 'vacademy.io';
+
+/**
+ * The label a white-label short link is served from, and the nginx ingress that
+ * label has to resolve to.
+ *
+ * Every short domain in production (u.aanandham.uk, u.readonrent.com,
+ * u.elevateeducation.in, u.suchbliss.com) is a plain A record to this address —
+ * not a CNAME — and unproxied, because cert-manager answers an HTTP-01 challenge
+ * that has to reach the origin directly.
+ *
+ * Overridable so a change of ingress address is a deploy, not a code change.
+ */
+const SHORT_LINK_LABEL = 'u';
+const SHORT_LINK_INGRESS_IP = import.meta.env.VITE_SHORT_LINK_INGRESS_IP || '5.223.55.238';
+
+/**
+ * Public suffixes made of two labels. Without them an apex host like
+ * `myschool.co.in` would be trimmed to `co.in`, and the record would name a
+ * domain the customer does not own.
+ */
+const MULTI_LABEL_PUBLIC_SUFFIXES = new Set([
+    'co.in',
+    'org.in',
+    'net.in',
+    'ac.in',
+    'edu.in',
+    'gen.in',
+    'firm.in',
+    'ind.in',
+    'co.uk',
+    'org.uk',
+    'ac.uk',
+    'me.uk',
+    'net.uk',
+    'sch.uk',
+    'com.au',
+    'edu.au',
+    'net.au',
+    'org.au',
+    'co.nz',
+    'ac.nz',
+    'org.nz',
+    'co.za',
+    'org.za',
+    'com.sg',
+    'edu.sg',
+    'com.my',
+    'edu.my',
+    'com.np',
+    'com.bd',
+    'edu.bd',
+    'com.pk',
+    'edu.pk',
+    'com.br',
+    'com.mx',
+    'co.jp',
+    'or.jp',
+    'ac.jp',
+]);
+
+/**
+ * The registrable domain a short link would hang off — the public suffix plus
+ * one label — derived from a full host.
+ *
+ * Deliberately NOT read off `RoutingEntry.domain`: the backend splits on the
+ * first dot, so an apex host entered as `aanandham.uk` is stored as
+ * domain `uk` / subdomain `aanandham`, and `u.uk` is not a domain anyone owns.
+ * Running the reassembled host through this instead gets `aanandham.uk` back.
+ *
+ * Returns '' for anything that is not a host, so callers can filter on it.
+ */
+const shortLinkRootDomain = (fullDomain: string): string => {
+    const host = (fullDomain || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .replace(/\/.*$/, '')
+        .replace(/\.+$/, '');
+    if (!host || !host.includes('.')) return '';
+
+    const labels = host.split('.');
+    if (labels.some((l) => l === '' || l === '*')) return '';
+
+    const keep = MULTI_LABEL_PUBLIC_SUFFIXES.has(labels.slice(-2).join('.')) ? 3 : 2;
+    return labels.length <= keep ? host : labels.slice(labels.length - keep).join('.');
+};
+
 let nextFormId = 1;
 const makeFormId = () => `form-${nextFormId++}`;
 
@@ -318,6 +415,86 @@ const emptyConfig = (): RoutingConfig => ({
     allow_username_password_auth: true,
     convert_username_password_to_lowercase: false,
 });
+
+// ─── Unsaved draft ────────────────────────────────────────────────────────────
+
+/**
+ * The settings screen mounts exactly ONE tab component at a time, so opening any
+ * other setting unmounts this one and takes every typed-but-unsaved domain with
+ * it. Domains here are long, hand-copied out of a customer's email, and a setup
+ * often needs a dozen rows — losing them to a stray click costs real work.
+ *
+ * Parking the in-progress form in sessionStorage makes that round trip
+ * survivable. It is per-institute, dropped the moment a setup actually saves,
+ * and best-effort: a browser that refuses storage just behaves as before.
+ */
+const DRAFT_STORAGE_PREFIX = 'vacademy:white-label-draft:';
+
+const draftKey = (instituteId: string) => `${DRAFT_STORAGE_PREFIX}${instituteId}`;
+
+const defaultFormEntries = (): DomainFormEntry[] => [
+    { id: makeFormId(), role: 'LEARNER', domain: '', isPrimary: true, expanded: false, config: emptyConfig() },
+    { id: makeFormId(), role: 'ADMIN',   domain: '', isPrimary: true, expanded: false, config: emptyConfig() },
+];
+
+const readDraft = (instituteId: string | null | undefined): DomainFormEntry[] | null => {
+    if (!instituteId || typeof sessionStorage === 'undefined') return null;
+    try {
+        const raw = sessionStorage.getItem(draftKey(instituteId));
+        if (!raw) return null;
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed) || parsed.length === 0) return null;
+        const entries: DomainFormEntry[] = parsed
+            .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
+            .map((e) => ({
+                id: makeFormId(),
+                role: (ROLES as readonly string[]).includes(String(e.role))
+                    ? (e.role as DomainFormEntry['role'])
+                    : 'LEARNER',
+                domain: typeof e.domain === 'string' ? e.domain : '',
+                isPrimary: e.isPrimary === true,
+                expanded: false,
+                config:
+                    e.config && typeof e.config === 'object'
+                        ? (e.config as RoutingConfig)
+                        : emptyConfig(),
+            }));
+        return entries.length > 0 ? entries : null;
+    } catch {
+        return null;
+    }
+};
+
+const writeDraft = (instituteId: string | null | undefined, entries: DomainFormEntry[]) => {
+    if (!instituteId || typeof sessionStorage === 'undefined') return;
+    try {
+        sessionStorage.setItem(
+            draftKey(instituteId),
+            // `expanded` is view state, not input: restoring it would reopen
+            // panels the admin had deliberately collapsed.
+            JSON.stringify(
+                entries.map((e) => ({
+                    role: e.role,
+                    domain: e.domain,
+                    isPrimary: e.isPrimary,
+                    config: e.config,
+                }))
+            )
+        );
+    } catch {
+        // Private mode or quota. The form still works; it just won't survive
+        // a tab switch, which is exactly the old behaviour.
+    }
+};
+
+const clearDraft = (instituteId: string | null | undefined) => {
+    if (!instituteId || typeof sessionStorage === 'undefined') return;
+    try {
+        sessionStorage.removeItem(draftKey(instituteId));
+    } catch {
+        // Nothing to do — a draft we cannot remove is also one we cannot read.
+    }
+};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -503,6 +680,98 @@ const PagesDomainRow = ({ record }: { record: PagesDomainResult }) => {
                 </p>
             )}
         </div>
+    );
+};
+
+/**
+ * The one DNS record a customer has to add for short links to run on their own
+ * domain, laid out the way a registrar's form asks for it (Type / Name / Value)
+ * so it can be pasted straight into the same email as the portal CNAMEs.
+ */
+const ShortLinkDnsRow = ({ rootDomain }: { rootDomain: string }) => {
+    const { t } = useTranslation('settingsWhiteLabel');
+    const host = `${SHORT_LINK_LABEL}.${rootDomain}`;
+
+    const fields = [
+        { label: t('shortLinkDns.dnsType'), value: 'A' },
+        { label: t('shortLinkDns.dnsName'), value: SHORT_LINK_LABEL },
+        { label: t('shortLinkDns.dnsValue'), value: SHORT_LINK_INGRESS_IP },
+        { label: t('shortLinkDns.dnsTtl'), value: t('shortLinkDns.ttlAuto') },
+        { label: t('shortLinkDns.dnsProxy'), value: t('shortLinkDns.proxyOff') },
+    ];
+
+    const handleCopy = async () => {
+        const text = [
+            ...fields.map((f) => `${f.label}: ${f.value}`),
+            '',
+            `${t('shortLinkDns.hostLabel')}: https://${host}`,
+        ].join('\n');
+        // copyTextToClipboard reports failure rather than pretending; a silent
+        // no-op here would have the admin send an email with nothing in it.
+        if (await copyTextToClipboard(text)) toast.success(t('shortLinkDns.copied'));
+        else toast.error(t('shortLinkDns.copyFailed'));
+    };
+
+    return (
+        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-4 py-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="truncate font-mono text-sm text-slate-700">{host}</span>
+                <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                >
+                    <Copy className="size-3" />
+                    {t('shortLinkDns.copy')}
+                </button>
+            </div>
+            <div className="space-y-1 text-xs">
+                {fields.map((f) => (
+                    <div key={f.label} className="flex gap-3">
+                        <span className="w-16 shrink-0 text-slate-500">{f.label}</span>
+                        <span className="break-all font-mono text-slate-800">{f.value}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+/**
+ * Shown beside the portal DNS instructions so the short-link record goes out in
+ * the same message, instead of being discovered weeks later.
+ *
+ * Display only. The record is inert until the host is ALSO added to the ingress
+ * (TLS host + a `/s` rule) and registered against the institute in
+ * media_service — which is why the footnote spells out the ordering. Two live
+ * institutes have a short domain registered with neither, and every link they
+ * mint is dead.
+ */
+const ShortLinkDnsCard = ({ domains }: { domains: string[] }) => {
+    const { t } = useTranslation('settingsWhiteLabel');
+    if (domains.length === 0) return null;
+
+    return (
+        <Card className="border-slate-200">
+            <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                    <Link2 className="size-4 text-slate-500" />
+                    {t('shortLinkDns.title')}
+                </CardTitle>
+                <CardDescription>{t('shortLinkDns.description')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                {domains.map((d) => (
+                    <ShortLinkDnsRow key={d} rootDomain={d} />
+                ))}
+                <Alert className="border-amber-100 bg-amber-50">
+                    <AlertCircle className="size-4 text-amber-600" />
+                    <AlertDescription className="text-sm text-amber-700">
+                        {t('shortLinkDns.platformNote')}
+                    </AlertDescription>
+                </Alert>
+            </CardContent>
+        </Card>
     );
 };
 
@@ -822,10 +1091,40 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
     const { t } = useTranslation('settingsWhiteLabel');
     const instituteId = getInstituteId();
 
-    const [formEntries, setFormEntries] = useState<DomainFormEntry[]>([
-        { id: makeFormId(), role: 'LEARNER', domain: '', isPrimary: true, expanded: false, config: emptyConfig() },
-        { id: makeFormId(), role: 'ADMIN',   domain: '', isPrimary: true, expanded: false, config: emptyConfig() },
-    ]);
+    // A draft parked by an earlier visit to this tab beats the blank form, and
+    // counts as unsaved input from the very first render — so the status prefill
+    // below leaves it alone instead of overwriting it on arrival.
+    const [initialForm] = useState(() => {
+        const draft = readDraft(instituteId);
+        return { entries: draft ?? defaultFormEntries(), fromDraft: draft !== null };
+    });
+
+    const [formEntries, setFormEntries] = useState<DomainFormEntry[]>(initialForm.entries);
+    const [draftRestored, setDraftRestored] = useState(initialForm.fromDraft);
+    const [hasUnsavedEdits, setHasUnsavedEdits] = useState(initialForm.fromDraft);
+
+    /**
+     * The same flag as `hasUnsavedEdits`, readable synchronously from callbacks
+     * that must not wait for a re-render — chiefly the activation poll below.
+     *
+     * Every status read used to call prefillFromStatus, which replaces
+     * formEntries wholesale. With the poll running every 30s while any domain is
+     * still activating, a domain typed but not yet applied was silently wiped
+     * mid-edit; switching tabs and back did the same thing on mount.
+     */
+    const hasUnsavedEditsRef = useRef(initialForm.fromDraft);
+
+    const markEdited = () => {
+        hasUnsavedEditsRef.current = true;
+        setHasUnsavedEdits(true);
+    };
+
+    // Persist while dirty, so unmounting this screen (any settings-tab switch)
+    // no longer costs the admin what they had typed.
+    useEffect(() => {
+        if (!hasUnsavedEditsRef.current) return;
+        writeDraft(instituteId, formEntries);
+    }, [formEntries, instituteId]);
 
     const [status, setStatus] = useState<WhiteLabelStatusResponse | null>(null);
     const [statusLoading, setStatusLoading] = useState(false);
@@ -862,8 +1161,31 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
         };
     }, [instituteId]);
 
+    const subOrgSearchPlaceholder = t('subOrg.searchPlaceholder');
+    const subOrgSearchEmpty = t('subOrg.searchEmpty');
+
+    /**
+     * Options for the per-domain sub-org picker: "parent institute" pinned first,
+     * then every sub-org sorted by name. An institute running white-label for its
+     * franchisees has dozens of these, and the old plain <Select> offered no
+     * search — finding one meant scrolling an unordered list.
+     */
+    const subOrgOptions = useMemo(
+        () => [
+            { value: NO_SUB_ORG, label: t('subOrg.none') },
+            ...subOrgs
+                .map((o) => ({ value: o.id, label: o.name || t('subOrg.untitled') }))
+                .sort((a, b) => a.label.localeCompare(b.label)),
+        ],
+        [subOrgs, t]
+    );
+
     // ── Pre-fill from existing routing entries ────────────────────────────────
-    const prefillFromStatus = (data: WhiteLabelStatusResponse) => {
+    const prefillFromStatus = (data: WhiteLabelStatusResponse, force = false) => {
+        // Anything the admin has typed outranks the server copy. Without this the
+        // 30-second activation poll — or simply re-opening the tab — replaced the
+        // whole form with the saved rows, so an unapplied domain just vanished.
+        if (hasUnsavedEditsRef.current && !force) return;
         if (!data.routing_entries || data.routing_entries.length === 0) return;
 
         const newEntries: DomainFormEntry[] = data.routing_entries.map((r) => {
@@ -964,6 +1286,27 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
         (e) => !!e.pages_status && e.pages_status.toLowerCase() !== 'active'
     );
 
+    /**
+     * Customer root domains that would need a short-link record, taken from the
+     * saved routing rows AND from whatever is currently typed into the form —
+     * so the record is on screen while the admin is still drafting the email
+     * that asks for the portal CNAMEs, not only after setup has run.
+     *
+     * Deduped: learner/admin/teacher on one domain is one record, not three.
+     */
+    const shortLinkDomains = useMemo(() => {
+        const roots = new Set<string>();
+        for (const e of status?.routing_entries ?? []) {
+            const root = shortLinkRootDomain(fqdn(e));
+            if (root && root !== PLATFORM_ZONE) roots.add(root);
+        }
+        for (const e of formEntries) {
+            const root = shortLinkRootDomain(e.domain);
+            if (root && root !== PLATFORM_ZONE) roots.add(root);
+        }
+        return [...roots].sort();
+    }, [status?.routing_entries, formEntries]);
+
     // Held in a ref so the poll effect doesn't re-run on every render just
     // because fetchStatus is a new closure each time.
     const fetchStatusRef = useRef(fetchStatus);
@@ -1003,6 +1346,12 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
             setLastSetupResult(res.data);
             toast.success(t('toast.setupCompleted'));
             setPollsLeft(MAX_ACTIVATION_POLLS);
+            // Saved: drop the draft and let the form re-read what the server
+            // actually stored (normalised domains, generated rows, and so on).
+            clearDraft(instituteId);
+            hasUnsavedEditsRef.current = false;
+            setHasUnsavedEdits(false);
+            setDraftRestored(false);
             await fetchStatus();
         } catch (err: any) {
             const errMsg = err?.response?.data?.message || err?.response?.data || t('toast.setupFailed');
@@ -1014,6 +1363,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
 
     // ── Form entry CRUD ───────────────────────────────────────────────────────
     const addEntry = () => {
+        markEdited();
         setFormEntries(prev => [
             ...prev,
             { id: makeFormId(), role: 'LEARNER', domain: '', isPrimary: false, expanded: false, config: emptyConfig() },
@@ -1021,14 +1371,17 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
     };
 
     const removeEntry = (id: string) => {
+        markEdited();
         setFormEntries(prev => prev.filter(e => e.id !== id));
     };
 
     const updateEntry = (id: string, field: keyof DomainFormEntry, value: any) => {
+        markEdited();
         setFormEntries(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
     };
 
     const updateEntryConfig = (id: string, field: keyof RoutingConfig, value: any) => {
+        markEdited();
         setFormEntries(prev =>
             prev.map(e =>
                 e.id === id ? { ...e, config: { ...e.config, [field]: value } } : e
@@ -1037,7 +1390,18 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
     };
 
     const toggleExpand = (id: string) => {
+        // Deliberately not an edit: opening a panel to read it must not start
+        // pinning a draft, nor block the form from picking up server changes.
         setFormEntries(prev => prev.map(e => e.id === id ? { ...e, expanded: !e.expanded } : e));
+    };
+
+    const discardDraft = () => {
+        clearDraft(instituteId);
+        hasUnsavedEditsRef.current = false;
+        setHasUnsavedEdits(false);
+        setDraftRestored(false);
+        if (status?.routing_entries?.length) prefillFromStatus(status, true);
+        else setFormEntries(defaultFormEntries());
     };
 
     // ── Render ────────────────────────────────────────────────────────────────
@@ -1066,7 +1430,10 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
     }
 
     return (
-        <div className="space-y-6 max-w-3xl">
+        // Wider than the other settings screens on purpose: a domain row carries
+        // a role, a full FQDN, a sub-org and three actions side by side, and at
+        // max-w-3xl the domain input was squeezed to about 60px.
+        <div className="max-w-5xl space-y-6">
             {/* ── Header ── */}
             <Card>
                 <CardHeader>
@@ -1151,6 +1518,9 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                 </Card>
             )}
 
+            {/* ── Short link DNS record (to forward to the customer) ── */}
+            <ShortLinkDnsCard domains={shortLinkDomains} />
+
             {/* ── Setup / Update Form ── */}
             <Card>
                 <CardHeader>
@@ -1171,22 +1541,42 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                         </AlertDescription>
                     </Alert>
 
+                    {draftRestored && (
+                        <Alert className="border-amber-200 bg-amber-50">
+                            <Info className="size-4 text-amber-600" />
+                            <AlertDescription className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-amber-800">
+                                <span>{t('setupCard.draftRestored')}</span>
+                                <button
+                                    type="button"
+                                    onClick={discardDraft}
+                                    className="font-medium underline underline-offset-2 hover:text-amber-900"
+                                >
+                                    {t('setupCard.discardDraft')}
+                                </button>
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
                     {/* Dynamic entries */}
                     <div className="space-y-3">
                         {formEntries.map((entry, idx) => (
                             <div key={entry.id}
                                  className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                                {/* Top row: entry number, role, domain, primary, expand, delete */}
-                                <div className="flex items-start gap-3 p-4">
+                                {/* Top row: entry number, role, domain, primary, expand, delete.
+                                    Wrapping, and every track sized with minmax(0, …): the fixed
+                                    140px/200px columns plus three buttons used to eat the whole
+                                    row, leaving the domain input — the one field holding a long
+                                    FQDN — narrower than the word "learn.". */}
+                                <div className="flex flex-wrap items-start gap-x-3 gap-y-2 p-4">
                                     <span className="mt-2 flex size-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500">
                                         {idx + 1}
                                     </span>
 
                                     <div
-                                        className={`grid flex-1 grid-cols-1 gap-3 ${
+                                        className={`grid flex-1 basis-[460px] grid-cols-1 gap-3 ${
                                             subOrgs.length > 0
-                                                ? 'sm:grid-cols-[140px_1fr_200px]'
-                                                : 'sm:grid-cols-[140px_1fr]'
+                                                ? 'sm:grid-cols-[150px_minmax(0,1fr)] lg:grid-cols-[150px_minmax(0,1.5fr)_minmax(0,1fr)]'
+                                                : 'sm:grid-cols-[150px_minmax(0,1fr)]'
                                         }`}
                                     >
                                         <div className="space-y-1">
@@ -1216,69 +1606,63 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                             that sub-org's logo/name/theme AND restricts login
                                             to its members. */}
                                         {subOrgs.length > 0 && (
-                                            <div className="space-y-1">
+                                            <div className="space-y-1 sm:col-span-2 lg:col-span-1">
                                                 <Label className="text-xs text-slate-500">
                                                     {t('subOrg.label')}
                                                 </Label>
-                                                <Select
+                                                <SearchableSelect
+                                                    options={subOrgOptions}
                                                     value={entry.config.sub_org_id || NO_SUB_ORG}
-                                                    onValueChange={(v) =>
+                                                    onChange={(v) =>
                                                         updateEntryConfig(
                                                             entry.id,
                                                             'sub_org_id',
                                                             v === NO_SUB_ORG ? '' : v
                                                         )
                                                     }
-                                                >
-                                                    <SelectTrigger className="h-9">
-                                                        <SelectValue
-                                                            placeholder={t('subOrg.none')}
-                                                        />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value={NO_SUB_ORG}>
-                                                            {t('subOrg.none')}
-                                                        </SelectItem>
-                                                        {subOrgs.map((o) => (
-                                                            <SelectItem key={o.id} value={o.id}>
-                                                                {o.name || t('subOrg.untitled')}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                    placeholder={t('subOrg.none')}
+                                                    searchPlaceholder={subOrgSearchPlaceholder}
+                                                    emptyText={subOrgSearchEmpty}
+                                                    triggerClassName="h-9 px-3 text-sm"
+                                                />
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Primary */}
-                                    <button type="button"
-                                            onClick={() => updateEntry(entry.id, 'isPrimary', !entry.isPrimary)}
-                                            className={`mt-6 flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-                                                entry.isPrimary
-                                                    ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                                                    : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100 hover:text-slate-600'
-                                            }`}
-                                            title={entry.isPrimary ? t('setupCard.primaryTooltip') : t('setupCard.setPrimaryTooltip')}>
-                                        <Star className={`size-3 ${entry.isPrimary ? 'fill-amber-500' : ''}`} />
-                                        {entry.isPrimary ? t('setupCard.primary') : t('setupCard.setPrimary')}
-                                    </button>
-
-                                    {/* Expand config */}
-                                    <button type="button" onClick={() => toggleExpand(entry.id)}
-                                            className="mt-6 flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-                                            title={t('setupCard.toggleSettingsTooltip')}>
-                                        {entry.expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-                                        {t('setupCard.settingsToggle')}
-                                    </button>
-
-                                    {/* Remove */}
-                                    {formEntries.length > 1 && (
-                                        <button type="button" onClick={() => removeEntry(entry.id)}
-                                                className="mt-6 rounded p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                                title={t('setupCard.removeTooltip')}>
-                                            <Trash2 className="size-4" />
+                                    {/* Actions travel together: on a narrow row they wrap
+                                        onto their own line and hand the whole width back
+                                        to the fields, rather than each squeezing them. */}
+                                    <div className="ml-auto mt-6 flex shrink-0 items-center gap-2">
+                                        {/* Primary */}
+                                        <button type="button"
+                                                onClick={() => updateEntry(entry.id, 'isPrimary', !entry.isPrimary)}
+                                                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                                                    entry.isPrimary
+                                                        ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                                                        : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100 hover:text-slate-600'
+                                                }`}
+                                                title={entry.isPrimary ? t('setupCard.primaryTooltip') : t('setupCard.setPrimaryTooltip')}>
+                                            <Star className={`size-3 ${entry.isPrimary ? 'fill-amber-500' : ''}`} />
+                                            {entry.isPrimary ? t('setupCard.primary') : t('setupCard.setPrimary')}
                                         </button>
-                                    )}
+
+                                        {/* Expand config */}
+                                        <button type="button" onClick={() => toggleExpand(entry.id)}
+                                                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                                title={t('setupCard.toggleSettingsTooltip')}>
+                                            {entry.expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                                            {t('setupCard.settingsToggle')}
+                                        </button>
+
+                                        {/* Remove */}
+                                        {formEntries.length > 1 && (
+                                            <button type="button" onClick={() => removeEntry(entry.id)}
+                                                    className="rounded p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                    title={t('setupCard.removeTooltip')}>
+                                                <Trash2 className="size-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Expanded config section */}
@@ -1311,11 +1695,15 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                 <><Loader2 className="size-4 animate-spin mr-2" /> {t('setupCard.configuring')}</>
                             ) : status?.is_configured ? t('setupCard.updateButton') : t('setupCard.applyButton')}
                         </MyButton>
-                        {status?.is_configured && (
+                        {hasUnsavedEdits ? (
+                            <p className="text-xs font-medium text-amber-600">
+                                {t('setupCard.unsavedChanges')}
+                            </p>
+                        ) : status?.is_configured ? (
                             <p className="text-xs text-slate-500">
                                 {t('setupCard.preservedHint')}
                             </p>
-                        )}
+                        ) : null}
                     </div>
                 </CardContent>
             </Card>

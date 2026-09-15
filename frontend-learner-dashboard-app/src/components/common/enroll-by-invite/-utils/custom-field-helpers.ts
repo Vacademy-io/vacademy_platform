@@ -139,6 +139,11 @@ export interface CustomFieldFullConfig {
   // Short hint rendered under the input, set by the admin in the custom-field
   // dialog. Distinct from `description`, which is the checkbox consent body.
   helpText?: string;
+  // Overrides the auto-generated "Enter <field name>" prompt inside the input.
+  // Authored per field so one institute can reword the hint (e.g. spelling out
+  // "Enter First Name and Last Name" on a Full Name field) without renaming the
+  // field — the label above the input keeps coming from `field_name`.
+  placeholder?: string;
   // Proof-of-ownership gate: the visitor must receive a one-time code on the
   // value they typed and enter it back before the form can be submitted.
   // Authored per field in the admin, so any field can be made verifiable —

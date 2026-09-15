@@ -170,6 +170,23 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         },
     },
 
+    courseShowcase: {
+        type: 'courseShowcase',
+        enabled: true,
+        props: {
+            title: 'New courses',
+            subtitle: '',
+            // 'newest' | 'onSale' | 'tag' | 'picked' — what fills the strip.
+            source: 'newest',
+            tag: '',
+            courseIds: [],
+            limit: 3,
+            layout: 'row',
+            badgeText: '',
+            badgeTone: 'hot',
+        },
+    },
+
     statsHighlights: {
         type: 'statsHighlights',
         enabled: true,
@@ -300,6 +317,25 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             aspectRatio: '16:9',
             autoplay: false,
             backgroundColor: '#000000', // design-lint-ignore: page-builder template default color
+        },
+    },
+
+    documentViewer: {
+        type: 'documentViewer',
+        enabled: true,
+        props: {
+            heading: t('documentViewer.heading'),
+            subheading: t('documentViewer.subheading'),
+            // Public CDN URL of the PDF — set by DocumentUploadField.
+            documentUrl: '',
+            fileName: '',
+            // 'button' opens a full-screen reader from one CTA; 'inline'
+            // embeds the reader in the page.
+            display: 'button',
+            buttonText: t('documentViewer.buttonText'),
+            coverImage: '',
+            height: '70vh',
+            showDownload: true,
         },
     },
 

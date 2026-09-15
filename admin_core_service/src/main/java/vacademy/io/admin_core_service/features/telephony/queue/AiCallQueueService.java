@@ -68,6 +68,25 @@ public class AiCallQueueService {
     /** Rows per insert transaction for a bulk enqueue. */
     private static final int CHUNK = 100;
 
+    /** Ordinary work: bulk campaigns and automation. */
+    public static final int PRIORITY_DEFAULT = 100;
+
+    /**
+     * A person clicked Call and is waiting.
+     *
+     * <p>Everything used to enqueue at the same priority, which meant a counsellor's
+     * click during a 100-lead campaign landed at position 101 and waited out the whole
+     * run — roughly an hour and a half. It could not even be rescued by reserving a
+     * slot: the drain query takes each lane's OLDEST rows, so the click was never in
+     * the candidate set to begin with.
+     *
+     * <p>Ranking it above bulk fixes both ends at once. The drainer orders by priority
+     * first, so it surfaces immediately; and {@code countAheadInLane} counts only rows
+     * that outrank it, so the inline fast path sees an empty lane ahead and dials on the
+     * request thread exactly as it does on an idle fleet.
+     */
+    public static final int PRIORITY_INTERACTIVE = 200;
+
     /**
      * Pseudo-status for "on a line right now". Not a real {@link AiCallQueueStatus} —
      * the queue row stops at DIALED, so liveness is a join against the call log.
@@ -188,7 +207,7 @@ public class AiCallQueueService {
         return AiCallQueueItem.builder()
                 .instituteId(req.getInstituteId())
                 .provider(provider)
-                .priority(100)
+                .priority(trigger == CallTrigger.MANUAL ? PRIORITY_INTERACTIVE : PRIORITY_DEFAULT)
                 .source(source)
                 .sourceRef(sourceRef)
                 .callTrigger((trigger == null ? CallTrigger.AUTOMATION : trigger).name())
@@ -304,7 +323,18 @@ public class AiCallQueueService {
         if (ahead <= 0) return 0;
         int laneSlots = Math.max(1, snap.laneCapacityFor(instituteId, provider));
         double batches = Math.ceil((double) ahead / laneSlots);
-        return Math.max(1, Math.round(batches * capacityService.avgCallSeconds() / 60.0));
+        long dialing = Math.max(1, Math.round(batches * capacityService.avgCallSeconds() / 60.0));
+
+        // Nothing dials while the lane is held, so the wait is the hold PLUS the work.
+        // Reporting only the work told an admin at 20:55, with the window closing at
+        // 21:00, that a hundred-lead run had "about 1 h 40 min left" when in truth
+        // nothing would happen until 09:00 the next morning.
+        Instant earliest = repository.findEarliestNotBefore(instituteId);
+        if (earliest != null && earliest.isAfter(Instant.now())) {
+            long held = Duration.between(Instant.now(), earliest).toMinutes();
+            return Math.max(1, held + dialing);
+        }
+        return dialing;
     }
 
     public QueueSummary summary(String instituteId) {
@@ -334,19 +364,38 @@ public class AiCallQueueService {
     private static final int POSITION_LOOKUP_DEPTH = 5000;
 
     public Page<QueueItemView> list(String instituteId, String status, int page, int size) {
+        return list(instituteId, status, null, page, size);
+    }
+
+    /**
+     * @param sourceRef optional bulk-run (audience) id. Narrowing to one run is what
+     *        makes a hundred-lead campaign findable here after its progress dialog has
+     *        been closed, and what lets "cancel the rest" mean one campaign rather than
+     *        everything this institute has waiting.
+     */
+    public Page<QueueItemView> list(String instituteId, String status, String sourceRef,
+                                    int page, int size) {
         PageRequest pageable = PageRequest.of(Math.max(0, page), Math.min(200, Math.max(1, size)));
+        String run = blankToNull(sourceRef);
         Page<AiCallQueueItem> rows;
         if (LIVE_FILTER.equalsIgnoreCase(status)) {
-            rows = repository.findLive(instituteId, pageable);
+            rows = repository.findLive(instituteId, run, pageable);
         } else if (isBlank(status) || ACTIVE_FILTER.equalsIgnoreCase(status)) {
             // Blank means ACTIVE, not "everything": the queue page's job is what has
             // not finished, and defaulting to the full history buries it.
-            rows = repository.findActive(instituteId, pageable);
+            rows = repository.findActive(instituteId, run, pageable);
         } else if (ALL_FILTER.equalsIgnoreCase(status)) {
-            rows = repository.findByInstituteIdOrderByCreatedAtDesc(instituteId, pageable);
+            rows = run == null
+                    ? repository.findByInstituteIdOrderByCreatedAtDesc(instituteId, pageable)
+                    : repository.findByInstituteIdAndSourceRefOrderByCreatedAtDesc(
+                            instituteId, run, pageable);
         } else {
-            rows = repository.findByInstituteIdAndStatusOrderByCreatedAtDesc(
-                    instituteId, status.toUpperCase(), pageable);
+            String s = status.toUpperCase();
+            rows = run == null
+                    ? repository.findByInstituteIdAndStatusOrderByCreatedAtDesc(
+                            instituteId, s, pageable)
+                    : repository.findByInstituteIdAndStatusAndSourceRefOrderByCreatedAtDesc(
+                            instituteId, s, run, pageable);
         }
 
         // One snapshot and one ordered id list for the whole page — see
@@ -399,7 +448,7 @@ public class AiCallQueueService {
 
         Page<AiCallQueueItem> rows;
         if (LIVE_FILTER.equalsIgnoreCase(status)) {
-            rows = repository.findLive(blankToNull(instituteId), pageable);
+            rows = repository.findLive(blankToNull(instituteId), null, pageable);
         } else if (waitingOnly) {
             rows = repository.searchInLineOrder(blankToNull(instituteId), statusFilter,
                     blankToNull(provider), blankToNull(source), pageable);
@@ -451,15 +500,19 @@ public class AiCallQueueService {
                 .callTrigger(item.getCallTrigger())
                 .priority(item.getPriority())
                 .sourceRef(item.getSourceRef())
+                .sourceName(names.runName(item.getSourceRef()))
                 .status(item.getStatus())
                 .statusReason(item.getStatusReason())
                 .responseId(item.getResponseId())
                 .userId(item.getUserId())
+                .leadName(names.leadName(item.getResponseId()))
                 // A queued row often has no phone of its own — the number is resolved
-                // downstream at dial time — so fall back to what was actually dialled
-                // rather than leaving the column showing a raw id.
-                .phoneNumber(item.getPhoneNumber() != null ? item.getPhoneNumber()
-                        : (call == null ? null : call.toNumber()))
+                // downstream at dial time — so fall back to what was actually dialled,
+                // then to the number on the lead's CRM record, rather than leaving the
+                // column showing a raw id.
+                .phoneNumber(firstNonBlank(item.getPhoneNumber(),
+                        call == null ? null : call.toNumber(),
+                        names.leadMobile(item.getResponseId())))
                 .campaignId(item.getCampaignId())
                 .campaignName(item.getCampaignName())
                 .attempts(item.getAttempts())
@@ -482,6 +535,99 @@ public class AiCallQueueService {
         for (Object[] row : repository.countBySourceRefGroupedByStatus(
                 instituteId, SOURCE_BULK, audienceId)) {
             out.put((String) row[0], ((Number) row[1]).longValue());
+        }
+        return out;
+    }
+
+    /**
+     * Progress of one bulk run, counted from the QUEUE.
+     *
+     * <p>Deliberately not from the call log. That only knows about calls already
+     * dialled, so a 100-lead run against a 3-line fleet reported a total of 3 — and a
+     * lead the queue cancelled (a counsellor claimed it mid-run) or expired never
+     * produces a call-log row at all, so a progress bar counting them could never reach
+     * its own denominator and the dialog sat at "96 of 100" for ever.
+     */
+    public BulkRunSummary bulkRunSummary(String instituteId, String audienceId) {
+        Map<String, Long> byStatus = bulkRunCounts(instituteId, audienceId);
+        long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
+        long waiting = byStatus.getOrDefault(AiCallQueueStatus.QUEUED.name(), 0L)
+                + byStatus.getOrDefault(AiCallQueueStatus.DISPATCHING.name(), 0L);
+        long dialed = byStatus.getOrDefault(AiCallQueueStatus.DIALED.name(), 0L);
+        long dropped = byStatus.getOrDefault(AiCallQueueStatus.CANCELLED.name(), 0L)
+                + byStatus.getOrDefault(AiCallQueueStatus.EXPIRED.name(), 0L)
+                + byStatus.getOrDefault(AiCallQueueStatus.FAILED.name(), 0L);
+
+        // A DIALED row is still in progress until its CALL reaches a terminal status —
+        // the queue row stops moving the moment the provider accepts.
+        AiCallingSettingsPojo settings = settingsService.get(instituteId);
+        String provider = isBlank(settings.getProvider()) ? ProviderType.AAVTAAR : settings.getProvider();
+        long live = repository.countLiveForRun(instituteId, SOURCE_BULK, audienceId);
+        long completed = Math.max(0, dialed - live);
+
+        AiCallCapacityService.Snapshot snap = capacityService.snapshot();
+        return BulkRunSummary.builder()
+                .audienceId(audienceId)
+                .total(total)
+                .waiting(waiting)
+                .dialing(live)
+                .completed(completed)
+                .dropped(dropped)
+                .finished(completed + dropped)
+                // Finished means nothing can change again: nothing waiting AND nothing
+                // still on a call. Counting only terminal call logs never got there.
+                .runFinished(total > 0 && waiting == 0 && live == 0)
+                .etaMinutes(etaMinutes(snap, instituteId, provider, waiting))
+                .byStatus(byStatus)
+                .build();
+    }
+
+    /**
+     * Every lead a bulk run enqueued, in dial order — including the ones still waiting,
+     * which is the whole point. Same row shape as the queue tab, so both surfaces show a
+     * lead's position, wait and live state identically.
+     */
+    public Page<QueueItemView> bulkRunItems(String instituteId, String audienceId,
+                                            int page, int size) {
+        PageRequest pageable = PageRequest.of(Math.max(0, page), Math.min(500, Math.max(1, size)));
+        Page<AiCallQueueItem> rows = repository.findRunItems(
+                instituteId, SOURCE_BULK, audienceId, pageable);
+
+        AiCallCapacityService.Snapshot snap = capacityService.snapshot();
+        AiCallQueueDirectory.Names names = directory.forItems(rows.getContent());
+        Map<String, AiCallQueueDirectory.CallState> callStates = callStatesFor(rows.getContent());
+
+        Map<String, Integer> positions = new HashMap<>();
+        List<String> ordered = repository.findQueuedIdsInDispatchOrder(
+                instituteId, PageRequest.of(0, POSITION_LOOKUP_DEPTH));
+        for (int i = 0; i < ordered.size(); i++) positions.put(ordered.get(i), i);
+
+        return rows.map(item -> toView(item, snap, positions, names, callStates));
+    }
+
+    /**
+     * Bulk runs this institute has queued, newest first — the campaign filter's options.
+     *
+     * <p>Without this the queue tab is a flat list in which two concurrent campaigns are
+     * indistinguishable, and the run whose progress dialog you just closed is one of a
+     * hundred identical-looking rows.
+     */
+    public List<Map<String, Object>> recentRuns(String instituteId, int limit) {
+        List<Object[]> rows = repository.findRecentRuns(
+                instituteId, SOURCE_BULK, PageRequest.of(0, Math.min(50, Math.max(1, limit))));
+        Set<String> ids = new java.util.LinkedHashSet<>();
+        for (Object[] r : rows) if (r[0] != null) ids.add((String) r[0]);
+        Map<String, String> names = directory.campaignNamesFor(ids);
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            String id = (String) r[0];
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("audienceId", id);
+            m.put("name", names.getOrDefault(id, id));
+            m.put("startedAt", r[1] == null ? null : r[1].toString());
+            m.put("total", ((Number) r[2]).longValue());
+            out.add(m);
         }
         return out;
     }

@@ -2,7 +2,7 @@
  * Live AI Tutor — learner-side REST (ai_service /tutor/v1). The socket lives in
  * hooks/useTutorSocket.ts.
  */
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import authenticatedAxiosInstance, { guestAxiosInstance } from "@/lib/auth/axiosInstance";
 import { AI_SERVICE_URL } from "@/constants/urls";
 
 const BASE = `${AI_SERVICE_URL}/tutor/v1`;
@@ -11,6 +11,7 @@ export interface TutorAvailability {
   enabled: boolean;
   default_on: boolean;
   teacher_name: string;
+  teacher_avatar_file_id?: string | null;
   course_language: "en" | "hi";
   languages: string[];
   session_language: "course" | "learner";
@@ -45,13 +46,31 @@ export interface TutorStartResponse {
   slide_id: string;
   slide_title?: string;
   language: "en" | "hi";
+  /** Languages the learner may switch to during the lesson. */
+  languages?: Array<"en" | "hi">;
   resumed: boolean;
   teacher_name: string;
+  teacher_avatar_file_id?: string | null;
   learner_name: string | null;
   topics: Array<{ id: string; title: string; concepts: number }>;
   progress: { done: number; total: number; percent: number };
   socket_path: string;
+  /** Premium teacher avatar for this course (voice lessons only). */
+  avatar?: { provider: "spatius"; avatar_id: string; app_id: string } | null;
 }
+
+export interface TutorAvatarToken {
+  provider: "spatius";
+  session_token: string;
+  expires_at: number;
+  app_id: string;
+  avatar_id: string;
+}
+
+export const getTutorAvatarToken = async (tutorSessionId: string): Promise<TutorAvatarToken> => {
+  const res = await authenticatedAxiosInstance.post<TutorAvatarToken>(`${BASE}/sessions/${tutorSessionId}/avatar-token`, {});
+  return res.data;
+};
 
 export const getTutorAvailability = async (
   packageId: string,
@@ -171,4 +190,43 @@ export const submitTutorQuizActivity = async (params: {
     `${SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG}?slideId=${slideId}&chapterId=${chapterId}&moduleId=${moduleId}&subjectId=${subjectId}&packageSessionId=${packageSessionId}&userId=${userId}`,
     payload,
   );
+};
+
+// ── public 3-minute demo (no auth) ───────────────────────────────────────────
+
+export interface TutorDemoTopic {
+  key: string;
+  title: string;
+  emoji?: string;
+  language?: "en" | "hi";
+}
+
+export const getTutorDemoTopics = async (): Promise<{ enabled: boolean; minutes: number; topics: TutorDemoTopic[] }> => {
+  const res = await guestAxiosInstance.get(`${BASE}/demo/topics`);
+  return res.data;
+};
+
+export const startTutorDemo = async (params: {
+  name: string;
+  topicKey: string;
+  language?: "en" | "hi";
+  mode: "VOICE" | "TEXT";
+}): Promise<{ token: string; minutes: number; boot: TutorStartResponse }> => {
+  const res = await guestAxiosInstance.post(`${BASE}/demo/start`, {
+    name: params.name,
+    topic_key: params.topicKey,
+    language: params.language,
+    mode: params.mode,
+  });
+  return res.data;
+};
+
+/** Guest lessons: the Spatius token for the demo avatar, authenticated with the guest JWT. */
+export const getTutorDemoAvatarToken = async (tutorSessionId: string, guestToken: string): Promise<TutorAvatarToken> => {
+  const res = await guestAxiosInstance.post<TutorAvatarToken>(
+    `${BASE}/demo/avatar-token`,
+    { tutor_session_id: tutorSessionId },
+    { headers: { Authorization: `Bearer ${guestToken}` } }
+  );
+  return res.data;
 };

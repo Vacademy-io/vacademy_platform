@@ -41,6 +41,7 @@ import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-
 import { Route as InstitutePulseIndexRouteImport } from "./routes/institute-pulse/index"
 import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
 import { Route as EvaluationIndexRouteImport } from "./routes/evaluation/index"
+import { Route as EngagementIndexRouteImport } from "./routes/engagement/index"
 import { Route as EngagementEnginesIndexRouteImport } from "./routes/engagement-engines/index"
 import { Route as DashboardIndexRouteImport } from "./routes/dashboard/index"
 import { Route as CounsellorsIndexRouteImport } from "./routes/counsellors/index"
@@ -461,6 +462,13 @@ const EvaluationIndexRoute = EvaluationIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/evaluation/index.lazy").then((d) => d.Route),
+)
+const EngagementIndexRoute = EngagementIndexRouteImport.update({
+  id: "/engagement/",
+  path: "/engagement/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/engagement/index.lazy").then((d) => d.Route),
 )
 const EngagementEnginesIndexRoute = EngagementEnginesIndexRouteImport.update({
   id: "/engagement-engines/",
@@ -2096,6 +2104,7 @@ export interface FileRoutesByFullPath {
   "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
   "/engagement-engines/": typeof EngagementEnginesIndexRoute
+  "/engagement/": typeof EngagementIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/institute-pulse/": typeof InstitutePulseIndexRoute
@@ -2332,6 +2341,7 @@ export interface FileRoutesByTo {
   "/counsellors": typeof CounsellorsIndexRoute
   "/dashboard": typeof DashboardIndexRoute
   "/engagement-engines": typeof EngagementEnginesIndexRoute
+  "/engagement": typeof EngagementIndexRoute
   "/evaluation": typeof EvaluationIndexRoute
   "/evaluator-ai": typeof EvaluatorAiIndexRoute
   "/institute-pulse": typeof InstitutePulseIndexRoute
@@ -2570,6 +2580,7 @@ export interface FileRoutesById {
   "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
   "/engagement-engines/": typeof EngagementEnginesIndexRoute
+  "/engagement/": typeof EngagementIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/institute-pulse/": typeof InstitutePulseIndexRoute
@@ -2809,6 +2820,7 @@ export interface FileRouteTypes {
     | "/counsellors/"
     | "/dashboard/"
     | "/engagement-engines/"
+    | "/engagement/"
     | "/evaluation/"
     | "/evaluator-ai/"
     | "/institute-pulse/"
@@ -3045,6 +3057,7 @@ export interface FileRouteTypes {
     | "/counsellors"
     | "/dashboard"
     | "/engagement-engines"
+    | "/engagement"
     | "/evaluation"
     | "/evaluator-ai"
     | "/institute-pulse"
@@ -3282,6 +3295,7 @@ export interface FileRouteTypes {
     | "/counsellors/"
     | "/dashboard/"
     | "/engagement-engines/"
+    | "/engagement/"
     | "/evaluation/"
     | "/evaluator-ai/"
     | "/institute-pulse/"
@@ -3520,6 +3534,7 @@ export interface RootRouteChildren {
   CounsellorsIndexRoute: typeof CounsellorsIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   EngagementEnginesIndexRoute: typeof EngagementEnginesIndexRoute
+  EngagementIndexRoute: typeof EngagementIndexRoute
   EvaluationIndexRoute: typeof EvaluationIndexRoute
   EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
   InstitutePulseIndexRoute: typeof InstitutePulseIndexRoute
@@ -3965,6 +3980,13 @@ declare module "@tanstack/react-router" {
       path: "/evaluation"
       fullPath: "/evaluation/"
       preLoaderRoute: typeof EvaluationIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/engagement/": {
+      id: "/engagement/"
+      path: "/engagement"
+      fullPath: "/engagement/"
+      preLoaderRoute: typeof EngagementIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/engagement-engines/": {
@@ -5418,6 +5440,7 @@ const rootRouteChildren: RootRouteChildren = {
   CounsellorsIndexRoute: CounsellorsIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   EngagementEnginesIndexRoute: EngagementEnginesIndexRoute,
+  EngagementIndexRoute: EngagementIndexRoute,
   EvaluationIndexRoute: EvaluationIndexRoute,
   EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
   InstitutePulseIndexRoute: InstitutePulseIndexRoute,

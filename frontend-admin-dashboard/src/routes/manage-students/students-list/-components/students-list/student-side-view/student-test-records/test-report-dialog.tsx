@@ -1,7 +1,11 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DotOutline } from '@phosphor-icons/react';
 import { Separator } from '@radix-ui/react-separator';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    resolveSubjectName,
+    unresolvedSubjectIds,
+    useSubjectNamesByIds,
+} from '@/services/subject-names';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { convertToLocalDateTime, extractDateTime } from '@/constants/helper';
@@ -110,6 +114,14 @@ export const TestReportDialog = ({
             attemptId: studentReport.assessment_id,
         });
     };
+    // The institute list keeps one subject per distinct name and drops subjects whose
+    // course was deleted, so most stored ids need the direct lookup.
+    const subjectNamesById = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [
+            testReport.question_overall_detail_dto.subjectId,
+        ])
+    );
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="no-scrollbar !m-0 flex max-h-dialog-tall w-dialog-xl flex-col !gap-0 overflow-y-auto !p-0">
@@ -143,10 +155,11 @@ export const TestReportDialog = ({
                     <div className="grid grid-cols-1 text-body sm:grid-cols-3">
                         <div>
                             {t('info.subject')}{' '}
-                            {getSubjectNameById(
-                                instituteDetails?.subjects || [],
+                            {resolveSubjectName(
+                                instituteDetails?.subjects,
+                                subjectNamesById,
                                 testReport.question_overall_detail_dto.subjectId
-                            ) || ''}
+                            )}
                         </div>
                         <div>
                             {t('info.attemptDate')}{' '}

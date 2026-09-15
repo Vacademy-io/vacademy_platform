@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
 import { IdentificationCard, Plus, UsersThree } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
@@ -12,8 +13,8 @@ import { formatDate } from '@/lib/formatters';
 import type { EmployeeProfileDTO } from '@/routes/erp/-shared/hr-types';
 import { useDepartments, useDesignations, useEmployees } from './-hooks/use-hr-people';
 import {
-    EMPLOYMENT_STATUS_OPTIONS,
-    EMPLOYMENT_TYPE_OPTIONS,
+    buildEmploymentStatusOptions,
+    buildEmploymentTypeOptions,
     EmploymentStatusChip,
     humanizeToken,
 } from './-components/EmployeeFields';
@@ -36,10 +37,13 @@ function EmployeesRoute() {
 }
 
 function EmployeesPage() {
+    const { t } = useTranslation(['erpPeopleIndex', 'erpEmployeeFields']);
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">People</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
+    const employmentStatusOptions = useMemo(() => buildEmploymentStatusOptions(t), [t]);
+    const employmentTypeOptions = useMemo(() => buildEmploymentTypeOptions(t), [t]);
 
     const navigate = useNavigate();
     const { isHrAdmin, isHrStaff } = useHrRole();
@@ -83,7 +87,7 @@ function EmployeesPage() {
         () => [
             {
                 id: 'employee_code',
-                header: 'Code',
+                header: t('table.code'),
                 size: 120,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -93,17 +97,17 @@ function EmployeesPage() {
             },
             {
                 id: 'full_name',
-                header: 'Name',
+                header: t('table.name'),
                 size: 200,
                 cell: ({ row }) => (
                     <span className="truncate text-body font-semibold text-foreground">
-                        {row.original.full_name || row.original.employee_code || 'Employee'}
+                        {row.original.full_name || row.original.employee_code || t('employee')}
                     </span>
                 ),
             },
             {
                 id: 'department',
-                header: 'Department',
+                header: t('table.department'),
                 size: 160,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-foreground">
@@ -113,7 +117,7 @@ function EmployeesPage() {
             },
             {
                 id: 'designation',
-                header: 'Designation',
+                header: t('table.designation'),
                 size: 160,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-foreground">
@@ -123,13 +127,13 @@ function EmployeesPage() {
             },
             {
                 id: 'employment_status',
-                header: 'Status',
+                header: t('table.status'),
                 size: 140,
                 cell: ({ row }) => <EmploymentStatusChip status={row.original.employment_status} />,
             },
             {
                 id: 'employment_type',
-                header: 'Type',
+                header: t('table.type'),
                 size: 120,
                 cell: ({ row }) => (
                     <span className="text-body text-foreground">
@@ -139,7 +143,7 @@ function EmployeesPage() {
             },
             {
                 id: 'join_date',
-                header: 'Joined',
+                header: t('table.joined'),
                 size: 120,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -148,7 +152,7 @@ function EmployeesPage() {
                 ),
             },
         ],
-        []
+        [t]
     );
 
     if (!isHrStaff) {
@@ -167,11 +171,8 @@ function EmployeesPage() {
         <div className="flex flex-col gap-6 p-4 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
-                    <h2 className="text-h2-semibold text-foreground">Employees</h2>
-                    <p className="text-body text-muted-foreground">
-                        HR profiles for everyone on your payroll — departments, designations and
-                        employment status.
-                    </p>
+                    <h2 className="text-h2-semibold text-foreground">{t('heading')}</h2>
+                    <p className="text-body text-muted-foreground">{t('subheading')}</p>
                 </div>
                 {isHrAdmin && (
                     <div className="flex flex-wrap items-center gap-3">
@@ -181,7 +182,7 @@ function EmployeesPage() {
                             scale="medium"
                             onClick={() => navigate({ to: '/erp/people/staff-bridge' })}
                         >
-                            <UsersThree size={18} /> Add from staff
+                            <UsersThree size={18} /> {t('addFromStaff')}
                         </MyButton>
                         <MyButton
                             type="button"
@@ -189,7 +190,7 @@ function EmployeesPage() {
                             scale="medium"
                             onClick={() => setAddOpen(true)}
                         >
-                            <Plus size={18} /> Add employee
+                            <Plus size={18} /> {t('addEmployee')}
                         </MyButton>
                     </div>
                 )}
@@ -198,8 +199,8 @@ function EmployeesPage() {
             <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-3">
                     <SingleFilterChip
-                        label="Status"
-                        options={EMPLOYMENT_STATUS_OPTIONS.map((option) => ({
+                        label={t('filters.status')}
+                        options={employmentStatusOptions.map((option) => ({
                             id: option.value,
                             label: option.label,
                         }))}
@@ -207,7 +208,7 @@ function EmployeesPage() {
                         onChange={applyFilter(setStatus)}
                     />
                     <SingleFilterChip
-                        label="Department"
+                        label={t('filters.department')}
                         options={(departments.data ?? [])
                             .filter((row) => !!row.id)
                             .map((row) => ({
@@ -219,7 +220,7 @@ function EmployeesPage() {
                         disabled={(departments.data ?? []).length === 0}
                     />
                     <SingleFilterChip
-                        label="Designation"
+                        label={t('filters.designation')}
                         options={(designations.data ?? [])
                             .filter((row) => !!row.id)
                             .map((row) => ({
@@ -231,8 +232,8 @@ function EmployeesPage() {
                         disabled={(designations.data ?? []).length === 0}
                     />
                     <SingleFilterChip
-                        label="Employment type"
-                        options={EMPLOYMENT_TYPE_OPTIONS.map((option) => ({
+                        label={t('filters.employmentType')}
+                        options={employmentTypeOptions.map((option) => ({
                             id: option.value,
                             label: option.label,
                         }))}
@@ -242,14 +243,14 @@ function EmployeesPage() {
                 </div>
                 {anyFilter && (
                     <span className="text-caption text-muted-foreground">
-                        {totalElements} {totalElements === 1 ? 'employee' : 'employees'} match
+                        {t('matchCount', { count: totalElements })}
                         {' · '}
                         <button
                             type="button"
                             className="font-semibold text-primary-500 hover:text-primary-600"
                             onClick={clearFilters}
                         >
-                            Clear filters
+                            {t('clearFilters')}
                         </button>
                     </span>
                 )}
@@ -258,15 +259,12 @@ function EmployeesPage() {
             {employees.isLoading ? (
                 <HrLoadingRows />
             ) : employees.isError ? (
-                <HrErrorState
-                    message="Couldn't load employees."
-                    onRetry={() => employees.refetch()}
-                />
+                <HrErrorState message={t('errors.load')} onRetry={() => employees.refetch()} />
             ) : rows.length === 0 ? (
                 anyFilter ? (
                     <HrEmptyState
-                        title="No employees match these filters"
-                        description="Try clearing one of them."
+                        title={t('empty.noMatchTitle')}
+                        description={t('empty.noMatchDescription')}
                     >
                         <MyButton
                             type="button"
@@ -274,14 +272,14 @@ function EmployeesPage() {
                             scale="medium"
                             onClick={clearFilters}
                         >
-                            Clear filters
+                            {t('clearFilters')}
                         </MyButton>
                     </HrEmptyState>
                 ) : (
                     <HrEmptyState
                         icon={<IdentificationCard size={40} className="text-muted-foreground" />}
-                        title="No employee profiles yet"
-                        description="There are two ways to add people: create an HR profile for someone already on your team from Staff Coverage (fastest — it reuses their account), or add an employee manually if you have their platform user id."
+                        title={t('empty.noneTitle')}
+                        description={t('empty.noneDescription')}
                     >
                         {isHrAdmin && (
                             <>
@@ -291,7 +289,7 @@ function EmployeesPage() {
                                     scale="medium"
                                     onClick={() => navigate({ to: '/erp/people/staff-bridge' })}
                                 >
-                                    <UsersThree size={18} /> Open Staff Coverage
+                                    <UsersThree size={18} /> {t('openStaffCoverage')}
                                 </MyButton>
                                 <MyButton
                                     type="button"
@@ -299,7 +297,7 @@ function EmployeesPage() {
                                     scale="medium"
                                     onClick={() => setAddOpen(true)}
                                 >
-                                    <Plus size={18} /> Add employee manually
+                                    <Plus size={18} /> {t('addEmployeeManually')}
                                 </MyButton>
                             </>
                         )}

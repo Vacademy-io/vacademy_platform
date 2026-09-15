@@ -3,20 +3,27 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { useSpatiusAvatar } from "@/hooks/useSpatiusAvatar";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
-import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorStateEvent } from "@/hooks/useTutorSocket";
+import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorPace, type TutorStateEvent } from "@/hooks/useTutorSocket";
 import { Whiteboard } from "@/components/tutor/Whiteboard";
 import { TutorSidebar, type TutorTopicItem } from "@/components/tutor/TutorSidebar";
-import { TeacherPanel, type TranscriptLine, type TutorPhase } from "@/components/tutor/TeacherPanel";
+import { TeacherAvatar } from "@/components/tutor/TeacherAvatar";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ListBullets } from "@phosphor-icons/react";
+import { TeacherPanel, type LessonStats, type TranscriptLine, type TutorPhase } from "@/components/tutor/TeacherPanel";
 import {
   endTutorSession,
+  getTutorAvatarToken,
   getTutorChapterSlides,
+  getTutorDemoAvatarToken,
   startTutorSession,
   type TutorChapterSlide,
   type TutorStartResponse,
 } from "@/services/tutor-api";
 import { markSlideCompletion } from "@/services/study-library/tracking-api/mark-slide-completion";
 import { submitTutorQuizActivity } from "@/services/tutor-api";
+import { readTutorGuest, writeTutorGuest } from "@/lib/tutorGuest";
 
 interface TutorSearch {
   courseId: string;
@@ -26,6 +33,8 @@ interface TutorSearch {
   subjectId?: string;
   moduleId?: string;
   mode?: "text" | "voice";
+  /** "1": the public guest lesson — session and token come from sessionStorage, nothing is written back. */
+  demo?: string;
 }
 
 export const Route = createFileRoute("/study-library/courses/course-details/tutor/")({
@@ -38,6 +47,7 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
     subjectId: search.subjectId ? String(search.subjectId) : undefined,
     moduleId: search.moduleId ? String(search.moduleId) : undefined,
     mode: search.mode === "voice" ? "voice" : "text",
+    demo: search.demo === "1" ? "1" : undefined,
   }),
 });
 
@@ -88,6 +98,53 @@ function TutorPage() {
   const [chapterSlides, setChapterSlides] = useState<TutorChapterSlide[]>([]);
   const [speakOn, setSpeakOn] = useState(true);
   const [micOn, setMicOn] = useState(false);
+  const [pace, setPace] = useState<TutorPace>("normal");
+  const [language, setLanguage] = useState<"en" | "hi">("en");
+  // Premium teacher avatar (Spatius): mounted when the course has one and the learner keeps it on.
+  const avatar = useSpatiusAvatar();
+  const [avatarOn, setAvatarOn] = useState(true);
+  const avatarContainerRef = useRef<HTMLDivElement | null>(null);
+  const avatarBootedRef = useRef(false);
+  // Shown: the face is on screen. Active: it is also unlocked (a tap initialised its audio), so
+  // narration goes through it; until then the speaker plays and the card asks for a tap.
+  const avatarShown = voiceMode && avatarOn && avatar.ready && !avatar.failed;
+  const avatarActive = avatarShown && avatar.activated;
+  const avatarActiveRef = useRef(false);
+  avatarActiveRef.current = avatarActive;
+  // Narration sync: the sentence being spoken and the elements written for it.
+  const [sentence, setSentence] = useState<number | null>(null);
+  const [focusIds, setFocusIds] = useState<string[]>([]);
+  const [stats, setStats] = useState<LessonStats>({ asked: 0, correct: 0, streak: 0, best: 0 });
+  // Phones: the outline lives in a bottom sheet instead of a left rail.
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  // Phones: one pane at a time — the board, or the teacher's conversation.
+  // A question or a nudge flips to the teacher so nothing is missed.
+  const [phoneView, setPhoneView] = useState<"board" | "teacher">("board");
+  // The open question (spoken + shown in the card); appended to the transcript with the answer.
+  const pendingAskRef = useRef<TranscriptLine | null>(null);
+  const flushAsk = (answer: string) => {
+    const ask = pendingAskRef.current;
+    pendingAskRef.current = null;
+    setTranscript((prev) => [...prev, ...(ask ? [ask] : []), { role: "learner" as const, text: answer }]);
+  };
+  // Desktop: the outline folds to a thin strip so the board and the teacher get the width.
+  const [outlineCollapsed, setOutlineCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("tutor.outlineCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleOutline = () => {
+    setOutlineCollapsed((v) => {
+      try {
+        localStorage.setItem("tutor.outlineCollapsed", v ? "0" : "1");
+      } catch {
+        /* private mode */
+      }
+      return !v;
+    });
+  };
   const currentSlideRef = useRef<string | null>(null);
   const sessionRef = useRef<string | null>(null);
   const boardCounter = useRef(0);
@@ -116,13 +173,43 @@ function TutorPage() {
   }, []);
   const flushReveal = useCallback(() => {
     stopReveal();
-    const rest = revealQueueRef.current;
+    const rest = [...revealQueueRef.current, ...syncQueueRef.current];
     revealQueueRef.current = [];
+    syncQueueRef.current = [];
     if (rest.length) setBoardOps((prev) => [...prev, ...rest]);
+    setFocusIds([]);
   }, [stopReveal]);
+  // Narration-synced reveal: elements carry the sentence (`say_index`) they
+  // belong to and appear as that sentence starts playing.
+  const syncQueueRef = useRef<TutorBoardOp[]>([]);
+  const syncedRef = useRef(false);
+  // The server's audio_end arrives when the last chunk is SENT, not played:
+  // the board's tail is flushed when playback really ends.
+  const flushPendingRef = useRef(false);
+  // Questions asked in this slide (a Repeat or a reconnect re-sends the check).
+  const askedRef = useRef<Set<string>>(new Set());
+  const revealSynced = useCallback((upTo: number) => {
+    const now: TutorBoardOp[] = [];
+    const rest: TutorBoardOp[] = [];
+    for (const op of syncQueueRef.current) {
+      if ((typeof op.say_index === "number" ? op.say_index : 0) <= upTo) now.push(op);
+      else rest.push(op);
+    }
+    syncQueueRef.current = rest;
+    if (now.length) setBoardOps((prev) => [...prev, ...now]);
+    setFocusIds(now.map((o) => String(o.id ?? "")).filter(Boolean));
+    setSentence(upTo);
+  }, []);
   const queueReveal = useCallback(
     (ops: TutorBoardOp[]) => {
       if (!ops.length) return;
+      const synced = voiceMode && speakOn && ops.some((o) => typeof o.say_index === "number");
+      syncedRef.current = synced;
+      if (synced) {
+        syncQueueRef.current.push(...ops);
+        revealSynced(0);
+        return;
+      }
       // The first element lands with the narration; the rest write in one by one.
       const [first, ...rest] = ops;
       setBoardOps((prev) => [...prev, first as TutorBoardOp]);
@@ -135,7 +222,7 @@ function TutorPage() {
         }, REVEAL_MS);
       }
     },
-    [stopReveal],
+    [stopReveal, voiceMode, speakOn, revealSynced],
   );
   useEffect(() => () => stopReveal(), [stopReveal]);
 
@@ -148,9 +235,15 @@ function TutorPage() {
   // ── audio out ──
   const audioPlayer = useAudioPlayer();
   const chunksRef = useRef<Uint8Array[]>([]);
-  // Each queued segment carries the sentence(s) it speaks, shown as it starts.
-  const queueRef = useRef<Array<{ buf: ArrayBuffer; text: string }>>([]);
+  // Each queued segment carries the sentence(s) it speaks, shown as it starts;
+  // a `gap` entry is a beat of silence (before a question).
+  const queueRef = useRef<Array<{ buf: ArrayBuffer | null; text: string; sentence?: number; gap?: number; turn?: number; endTurn?: number }>>([]);
   const segmentTextRef = useRef("");
+  const segmentSentenceRef = useRef(0);
+  // Teacher turns overlap (the next ai_text arrives while the last audio is
+  // still playing): every bubble, segment and completion carries its turn.
+  const turnSeqRef = useRef(0);
+  const turnTextRef = useRef<Map<number, string>>(new Map());
   const teacherTextRef = useRef("");
   const drainingRef = useRef(false);
   // The server's phase for AFTER the current narration; applied when the
@@ -181,23 +274,31 @@ function TutorPage() {
     },
     [voiceMode, speakOn],
   );
-  /** Append spoken text to the teacher's current bubble (voice mode). */
-  const revealTeacherText = useCallback((text: string) => {
+  /** Append spoken text to the bubble of its turn (voice mode). */
+  const revealTeacherText = useCallback((text: string, turn?: number) => {
     if (!text) return;
     setTranscript((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== "teacher") return [...prev, { role: "teacher", text }];
-      const merged = last.text ? `${last.text} ${text}` : text;
-      return [...prev.slice(0, -1), { ...last, text: merged }];
+      let i = prev.length - 1;
+      if (typeof turn === "number") {
+        while (i >= 0 && !(prev[i]!.role === "teacher" && prev[i]!.turn === turn)) i -= 1;
+      }
+      const at = i >= 0 && prev[i]!.role === "teacher" ? i : -1;
+      if (at < 0) return [...prev, { role: "teacher", text, turn }];
+      const line = prev[at]!;
+      const merged = line.text ? `${line.text} ${text}` : text;
+      return [...prev.slice(0, at), { ...line, text: merged }, ...prev.slice(at + 1)];
     });
   }, []);
-  const completeTeacherText = useCallback(() => {
-    const full = teacherTextRef.current;
+  /** The turn's audio is over: its bubble shows the whole line (drops any segment that failed to play). */
+  const completeTeacherText = useCallback((turn?: number) => {
+    const id = typeof turn === "number" ? turn : turnSeqRef.current;
+    const full = turnTextRef.current.get(id) ?? teacherTextRef.current;
     if (!full) return;
     setTranscript((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== "teacher" || last.text === full) return prev;
-      return [...prev.slice(0, -1), { ...last, text: full }];
+      let i = prev.length - 1;
+      while (i >= 0 && !(prev[i]!.role === "teacher" && (prev[i]!.turn === id || prev[i]!.turn === undefined))) i -= 1;
+      if (i < 0 || prev[i]!.text === full) return prev;
+      return [...prev.slice(0, i), { ...prev[i]!, text: full }, ...prev.slice(i + 1)];
     });
   }, []);
   const drain = useCallback(async () => {
@@ -207,10 +308,23 @@ function TutorPage() {
       while (queueRef.current.length) {
         const seg = queueRef.current.shift();
         if (!seg) continue;
+        if (seg.gap) {
+          await new Promise((r) => setTimeout(r, seg.gap));
+          continue;
+        }
+        if (typeof seg.endTurn === "number") {
+          completeTeacherText(seg.endTurn);
+          continue;
+        }
         setPhase("speaking");
-        revealTeacherText(seg.text);
+        revealTeacherText(seg.text, seg.turn);
+        // The board writes the elements of this sentence as it is spoken.
+        if (syncedRef.current && typeof seg.sentence === "number") revealSynced(seg.sentence);
+        if (!seg.buf) continue;
         try {
-          await audioPlayer.playAudio(seg.buf);
+          // The avatar plays the audio itself, lips in sync; otherwise the speaker does.
+          if (avatarActiveRef.current) await avatar.speak(seg.buf);
+          else await audioPlayer.playAudio(seg.buf);
         } catch {
           /* autoplay blocked or decode error: keep going */
         }
@@ -222,23 +336,49 @@ function TutorPage() {
         pendingPhaseRef.current = null;
         setPhase((p) => (p === "speaking" ? (next ?? "idle") : next ?? p));
         completeTeacherText();
+        if (flushPendingRef.current) {
+          flushPendingRef.current = false;
+          flushReveal();
+          setRevealKey((k) => k + 1);
+        }
       }
     }
-  }, [audioPlayer, revealTeacherText, completeTeacherText]);
+  }, [audioPlayer, revealTeacherText, completeTeacherText, revealSynced, flushReveal, avatar]);
+  /** Everything the teacher has not "written" yet lands now (voice mode: once the audio has played). */
+  const settleBoard = useCallback(() => {
+    if (voiceMode && speakOn) {
+      if (drainingRef.current || queueRef.current.length) {
+        flushPendingRef.current = true;
+        return;
+      }
+      flushReveal();
+      setRevealKey((k) => k + 1);
+    }
+    // Text mode: the 900 ms cadence and the diagram's own step timers finish by themselves.
+  }, [voiceMode, speakOn, flushReveal]);
   const stopAudio = useCallback(() => {
     turnEndedRef.current = false;
     pendingPhaseRef.current = null;
+    flushPendingRef.current = false;
     queueRef.current = [];
     chunksRef.current = [];
     audioPlayer.stop();
+    avatar.interrupt();
     completeTeacherText();
-  }, [audioPlayer, completeTeacherText]);
+    // A barge-in: whatever the narration had not written yet lands now.
+    flushReveal();
+    setRevealKey((k) => k + 1);
+  }, [audioPlayer, completeTeacherText, flushReveal, avatar]);
 
   // ── socket ──
   const socket = useTutorSocket({
+    getToken: () => guestRef.current?.token,
     onReady: (ev) => {
+      if (guestRef.current) setDemoLeft((v) => (v === null ? (guestRef.current?.minutes ?? 3) * 60 : v));
       setDisconnected(null);
       setPhase("idle");
+      if (typeof ev.pace === "string") setPace(ev.pace as TutorPace);
+      if (ev.language === "en" || ev.language === "hi") setLanguage(ev.language);
       if (Array.isArray(ev.topics)) setTopics(ev.topics as TutorTopicItem[]);
       if (typeof ev.slide_title === "string") setSlideTitle(ev.slide_title);
     },
@@ -249,7 +389,8 @@ function TutorPage() {
     },
     onState: (ev) => {
       setState(ev);
-      if (ev.phase === "await_answer" || ev.phase === "remediate") applyPhase("question");
+      if (ev.language === "en" || ev.language === "hi") setLanguage(ev.language);
+      if (ev.phase === "await_answer" || ev.phase === "remediate" || ev.phase === "revisit" || ev.phase === "predict") applyPhase("question");
       else if (ev.phase === "media_task") applyPhase("media");
       else if (ev.phase === "slide_done") applyPhase("done");
     },
@@ -263,6 +404,10 @@ function TutorPage() {
       if (clear) {
         stopReveal();
         revealQueueRef.current = [];
+        syncQueueRef.current = [];
+        syncedRef.current = false;
+        setSentence(null);
+        setFocusIds([]);
         boardCounter.current += 1;
         setBoardKey(`b${boardCounter.current}`);
         setBoardOps([]);
@@ -271,20 +416,40 @@ function TutorPage() {
       if (replay) setBoardOps((prev) => [...prev, ...ops]);
       else queueReveal(ops);
     },
-    onAiText: (text) => {
+    onAiText: (text, meta) => {
       turnEndedRef.current = false;
       teacherTextRef.current = text;
-      if (voiceMode && speakOn) {
-        // The bubble fills sentence by sentence as the audio plays.
-        setTranscript((prev) => [...prev, { role: "teacher", text: "" }]);
-      } else {
-        setTranscript((prev) => [...prev, { role: "teacher", text }]);
-        setPhase("idle");
+      const turn = ++turnSeqRef.current;
+      turnTextRef.current.set(turn, text);
+      if (turnTextRef.current.size > 20) turnTextRef.current.delete(turnTextRef.current.keys().next().value as number);
+      const line: TranscriptLine = { role: "teacher", text: voiceMode && speakOn ? "" : text, kind: meta.kind, score: meta.score ?? null, cleared: meta.cleared, turn };
+      // The question is shown ONCE: while it is open it lives in the check
+      // card (with its options); it joins the transcript when the learner
+      // answers, so the history still reads as a conversation.
+      if (meta.kind === "ask" || meta.kind === "revisit_ask" || meta.kind === "predict") {
+        pendingAskRef.current = { ...line, text };
+        return;
+      }
+      // The bubble fills sentence by sentence as the audio plays (voice mode).
+      setTranscript((prev) => [...prev, line]);
+      if (!(voiceMode && speakOn)) setPhase("idle");
+      // Scoreboard: a verdict on a check, a cleared revisit, a miss.
+      const k = meta.kind;
+      const score = typeof meta.score === "number" ? meta.score : null;
+      if (k === "evaluate" || (k === "revisit_verdict" && meta.cleared)) {
+        setStats((s) => ({ ...s, correct: s.correct + 1, streak: s.streak + 1, best: Math.max(s.best, s.streak + 1) }));
+      } else if ((k === "remediate" || k === "revisit_verdict") && (score ?? 0) < 0.7) {
+        setStats((s) => ({ ...s, streak: 0 }));
       }
     },
-    onSegmentText: (text) => {
+    onSegmentText: (text, index, count) => {
       segmentTextRef.current = text;
+      segmentSentenceRef.current = index + Math.max(1, count) - 1;
     },
+    onBeat: (ms) => {
+      if (voiceMode && speakOn) queueRef.current.push({ buf: null, text: "", gap: ms });
+    },
+    onPace: (p) => setPace(p),
     onAudioChunk: (b64) => {
       if (!speakOn) return;
       const bin = atob(b64);
@@ -296,22 +461,25 @@ function TutorPage() {
       const seg = takeSegment();
       const text = segmentTextRef.current;
       segmentTextRef.current = "";
+      const sentenceIdx = segmentSentenceRef.current;
       if (seg) {
-        queueRef.current.push({ buf: seg, text });
+        queueRef.current.push({ buf: seg, text, sentence: sentenceIdx, turn: turnSeqRef.current });
         void drain();
       } else {
         // No audio for this sentence (engine hiccup): still show the words.
-        revealTeacherText(text);
+        revealTeacherText(text, turnSeqRef.current);
+        if (syncedRef.current) revealSynced(sentenceIdx);
       }
     },
     onAudioEnd: () => {
-      // Whatever the teacher has not "written" yet lands before the next step.
-      flushReveal();
-      setRevealKey((k) => k + 1);
+      // Whatever the teacher has not "written" yet lands once the audio has played.
+      settleBoard();
       turnEndedRef.current = true;
       const seg = takeSegment();
-      if (seg) queueRef.current.push({ buf: seg, text: segmentTextRef.current });
+      if (seg) queueRef.current.push({ buf: seg, text: segmentTextRef.current, sentence: segmentSentenceRef.current, turn: turnSeqRef.current });
       segmentTextRef.current = "";
+      // The bubble completes when ITS audio is over, in queue order.
+      if (voiceMode && speakOn) queueRef.current.push({ buf: null, text: "", endTurn: turnSeqRef.current });
       if (drainingRef.current || queueRef.current.length) {
         void drain();
       } else {
@@ -322,10 +490,18 @@ function TutorPage() {
       }
     },
     onCheck: (ev) => {
-      flushReveal();
+      setPhoneView("teacher");
+      settleBoard();
       setCheck(ev);
       setAwaiting("answer");
       applyPhase("question");
+      // Revisits re-ask a concept; predictions are guesses; a Repeat or a
+      // reconnect re-sends the same check: none counts as a new question.
+      const key = ev.concept_id || "";
+      if (!ev.predict && !ev.revisit && !ev.remediation && key && !askedRef.current.has(key)) {
+        askedRef.current.add(key);
+        setStats((s) => ({ ...s, asked: s.asked + 1 }));
+      }
     },
     onAwait: (what) => {
       setAwaiting(what);
@@ -334,7 +510,7 @@ function TutorPage() {
       else applyPhase("idle");
     },
     onTranscriptFinal: (text) => {
-      if (text) setTranscript((prev) => [...prev, { role: "learner", text }]);
+      if (text) flushAsk(text);
       setPhase("thinking");
     },
     onSlideDone: async (ev) => {
@@ -352,12 +528,13 @@ function TutorPage() {
         if (slideType === "QUIZ" || (ev.quiz_results?.length ?? 0) > 0) {
           // A quiz is completed through its activity log (the tracking
           // service rejects a manual mark); the server graded each answer.
+          if (isDemo) return;
           await submitTutorQuizActivity({
             slideId: ev.slide_id, packageSessionId: search.packageSessionId, ...ids,
             results: ev.quiz_results ?? [],
           });
         } else {
-          await markSlideCompletion({
+          if (!isDemo) await markSlideCompletion({
             slideId: ev.slide_id,
             slideType,
             ...ids,
@@ -446,6 +623,24 @@ function TutorPage() {
     }
   };
 
+  // The server meters the avatar only while the learner's device shows it.
+  useEffect(() => {
+    if (!boot?.avatar) return;
+    socket.sendConfig({ avatar: avatarActive });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatarActive]);
+  // Audio contexts unlock on a tap: the first gesture also connects the avatar.
+  useEffect(() => {
+    if (!boot?.avatar || !avatar.ready) return;
+    const unlock = () => {
+      void avatar.activate();
+      window.removeEventListener("pointerdown", unlock, true);
+    };
+    window.addEventListener("pointerdown", unlock, true);
+    return () => window.removeEventListener("pointerdown", unlock, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boot?.avatar, avatar.ready]);
+
   // Voice mode: after the audio of a no-question concept (or a topic summary)
   // has finished, continue by itself. Any tap — the mic, Doubt, typing — changes
   // `awaiting`/`micOn`/`phase` and cancels the timer.
@@ -460,6 +655,17 @@ function TutorPage() {
   }, [voiceMode, awaiting, phase, micOn, disconnected]);
 
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
+  const isDemo = search.demo === "1";
+  const guestRef = useRef(isDemo ? readTutorGuest() : null);
+  // Public demo: a visible clock, counted from the moment the lesson opens.
+  const [demoLeft, setDemoLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (demoLeft === null || demoLeft <= 0) return;
+    const t = setInterval(() => setDemoLeft((v) => (v === null ? v : Math.max(0, v - 1))), 1000);
+    return () => clearInterval(t);
+  }, [demoLeft !== null && demoLeft > 0]);
+  const demoClock = demoLeft === null ? undefined : `${Math.floor(demoLeft / 60)}:${String(demoLeft % 60).padStart(2, "0")}`;
+
   const bootSession = useCallback(async () => {
     const seq = ++bootSeq.current;
     setFatal(null);
@@ -467,8 +673,10 @@ function TutorPage() {
     setPhase("connecting");
     try {
       const [b, slides] = await Promise.all([
-        startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
-        search.chapterId ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
+        isDemo
+          ? (guestRef.current ? Promise.resolve(guestRef.current.boot) : Promise.reject(new Error("Your free lesson has expired. Start again from tutezy.ai.")))
+          : startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
+        search.chapterId && !isDemo ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
       ]);
       if (seq !== bootSeq.current) {
         // The page moved on while the request was in flight: close what we opened.
@@ -482,6 +690,23 @@ function TutorPage() {
       currentSlideRef.current = b.slide_id;
       sessionRef.current = b.tutor_session_id;
       socket.connect(b.socket_path);
+      // Premium avatar: fetch a session token and mount the face; the lesson
+      // carries on with plain audio if any step fails.
+      if (b.avatar && voiceMode && !avatarBootedRef.current) {
+        avatarBootedRef.current = true;
+        void (async () => {
+          try {
+            const tok = guestRef.current
+              ? await getTutorDemoAvatarToken(b.tutor_session_id, guestRef.current.token)
+              : await getTutorAvatarToken(b.tutor_session_id);
+            const container = avatarContainerRef.current;
+            if (!container) return;
+            await avatar.mount({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token }, container);
+          } catch {
+            /* no avatar this lesson */
+          }
+        })();
+      }
     } catch (e: unknown) {
       if (seq !== bootSeq.current) return;
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -503,6 +728,8 @@ function TutorPage() {
 
   const reconnect = () => {
     stopAudio();
+    syncedRef.current = false;
+    setSentence(null);
     setTranscript([]);
     setCheck(null);
     setAwaiting(null);
@@ -523,6 +750,11 @@ function TutorPage() {
     stopAudio();
     stopReveal();
     revealQueueRef.current = [];
+    syncQueueRef.current = [];
+    syncedRef.current = false;
+    setSentence(null);
+    askedRef.current = new Set();
+    setStats({ asked: 0, correct: 0, streak: 0, best: 0 });
     currentSlideRef.current = slideId;
     setTranscript([]);
     setCheck(null);
@@ -535,6 +767,11 @@ function TutorPage() {
     stopAudio();
     socket.sendEndSession();
     setTimeout(() => {
+      if (isDemo) {
+        writeTutorGuest(null);
+        navigate({ to: "/try", search: { done: "1" } as never });
+        return;
+      }
       navigate({ to: "/study-library/courses/course-details", search: { courseId: search.courseId, packageSessionId: search.packageSessionId } as never });
     }, 400);
   };
@@ -561,23 +798,116 @@ function TutorPage() {
   const progress = state?.progress ?? boot?.progress ?? { done: 0, total: 1, percent: 0 };
   const lessonOver = phase === "done" && !audioBusy();
 
+  const outline = (
+    <TutorSidebar
+      slideTitle={title}
+      topics={topics}
+      activeTopicId={state?.topic_id ?? null}
+      progressPercent={progress.percent}
+      done={progress.done}
+      total={progress.total}
+      nextSlides={nextSlides}
+      onPickSlide={(id) => {
+        setOutlineOpen(false);
+        goToSlide(id);
+      }}
+      onBack={endAndLeave}
+    />
+  );
+
   return (
-    <LayoutContainer fillViewport enableChatbotPanel={false}>
-      <div className="grid grid-cols-1 gap-3 lg:h-full lg:min-h-0 lg:grid-cols-12">
-        <div className="hidden min-h-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
-          <TutorSidebar
-            slideTitle={title}
-            topics={topics}
-            activeTopicId={state?.topic_id ?? null}
-            progressPercent={progress.percent}
-            done={progress.done}
-            total={progress.total}
-            nextSlides={nextSlides}
-            onPickSlide={goToSlide}
-          />
+    <LayoutContainer immersive enableChatbotPanel={false}>
+      {/* Phones: a slim strip (teacher, status, outline) and a Board / Teacher switch. */}
+      <div className="mb-2 flex items-center gap-2 lg:hidden">
+        <TeacherAvatar fileId={boot?.teacher_avatar_file_id} name={boot?.teacher_name} speaking={phase === "speaking"} className="size-8" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-semibold text-neutral-900">{boot?.teacher_name || "Teacher"}<span className="ms-1 font-normal text-neutral-500">· {progress.done}/{progress.total}</span></p>
         </div>
-        <div className="flex min-h-96 flex-col lg:col-span-6 lg:min-h-0">
-          {disconnected && (
+        {demoClock && <span className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{demoClock}</span>}
+        <div className="flex rounded-full bg-neutral-100 p-0.5" role="tablist" aria-label="View">
+          {(["board", "teacher"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={phoneView === v}
+              onClick={() => setPhoneView(v)}
+              className={`relative rounded-full px-3 py-1 text-xs font-semibold ${phoneView === v ? "bg-white text-primary-500 shadow-sm" : "text-neutral-600"}`}
+            >
+              {v === "board" ? "Board" : "Teacher"}
+              {v === "teacher" && phoneView === "board" && awaiting === "answer" && (
+                <span className="absolute -end-0.5 -top-0.5 size-2 rounded-full bg-danger-500" aria-label="Your turn" />
+              )}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setOutlineOpen(true)}
+          className="rounded-full border border-neutral-200 p-1.5 text-neutral-700"
+          aria-label="Outline"
+        >
+          <ListBullets className="size-4" />
+        </button>
+      </div>
+      <Sheet open={outlineOpen} onOpenChange={setOutlineOpen}>
+        <SheetContent side="bottom" className="max-h-svh overflow-y-auto rounded-t-2xl">
+          <SheetHeader>
+            <SheetTitle className="text-start">This lesson</SheetTitle>
+          </SheetHeader>
+          <div className="mt-3">{outline}</div>
+        </SheetContent>
+      </Sheet>
+
+      {isDemo && (
+        <div className="mb-2 flex items-center gap-x-3 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm sm:px-4 sm:py-2">
+          <span className="font-semibold text-neutral-900">Tutezy demo</span>
+          <span className="hidden text-neutral-600 md:inline">A 3-minute taste. Your students would get the whole chapter, in your teacher&apos;s voice.</span>
+          {demoClock && <span className="hidden rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700 lg:inline">{demoClock} left</span>}
+          <a href="https://tutezy.ai/#demo" className="ms-auto shrink-0 rounded-full bg-primary-500 px-3 py-1 text-xs font-semibold text-white">Book a demo</a>
+        </div>
+      )}
+      <div className="flex h-full min-h-0 flex-col gap-2 lg:flex-row lg:gap-3">
+        <div className={`hidden min-h-0 shrink-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white transition-[width] lg:block ${outlineCollapsed ? "w-12 p-1" : "w-60 p-3"}`}>
+          {outlineCollapsed ? (
+            <TutorSidebar
+              slideTitle={title}
+              topics={topics}
+              activeTopicId={state?.topic_id ?? null}
+              progressPercent={progress.percent}
+              done={progress.done}
+              total={progress.total}
+              nextSlides={nextSlides}
+              onPickSlide={goToSlide}
+              onBack={endAndLeave}
+              collapsed
+              onToggleCollapse={toggleOutline}
+            />
+          ) : (
+            <TutorSidebar
+              slideTitle={title}
+              topics={topics}
+              activeTopicId={state?.topic_id ?? null}
+              progressPercent={progress.percent}
+              done={progress.done}
+              total={progress.total}
+              nextSlides={nextSlides}
+              onPickSlide={goToSlide}
+              onBack={endAndLeave}
+              onToggleCollapse={toggleOutline}
+            />
+          )}
+        </div>
+        <div className={`min-h-0 min-w-0 flex-1 flex-col lg:flex lg:min-h-0 ${phoneView === "board" ? "flex" : "hidden"}`}>
+          {disconnected && isDemo && (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-neutral-800">
+              <span className="font-semibold">{disconnected.reason === "limit" ? "That was your free lesson." : "The lesson ended."}</span>
+              <span>Every student of yours could learn like this, on your own content.</span>
+              <a href="https://tutezy.ai/#demo" className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">Book a demo</a>
+              <button type="button" onClick={endAndLeave} className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-700">Done</button>
+            </div>
+          )}
+          {disconnected && !isDemo && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
               <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
               {disconnected.reason !== "credits" && (
@@ -590,12 +920,25 @@ function TutorPage() {
               </button>
             </div>
           )}
-          <div className="min-h-96 flex-1 lg:min-h-0">
-            <Whiteboard ops={boardOps} liveOps={liveOps} boardKey={boardKey} teacherName={boot?.teacher_name} revealKey={revealKey} />
+          <div className="min-h-0 flex-1">
+            <Whiteboard
+              ops={boardOps}
+              liveOps={liveOps}
+              boardKey={boardKey}
+              teacherName={boot?.teacher_name}
+              revealKey={revealKey}
+              sentence={syncedRef.current ? sentence : null}
+              focusIds={focusIds}
+            />
           </div>
           {lessonOver && !disconnected && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
-              <span>Slide complete.</span>
+              <span>
+                Slide complete.
+                {stats.asked > 0 ? ` You got ${stats.correct} of ${stats.asked} right` : ""}
+                {stats.best >= 3 ? ` · best streak ${stats.best}` : ""}
+                {stats.asked > 0 ? "." : ""}
+              </span>
               {nextTeachable ? (
                 <button type="button" onClick={() => goToSlide(nextTeachable.slide_id)} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
                   Next: {nextTeachable.title || "next slide"}
@@ -608,12 +951,48 @@ function TutorPage() {
             </div>
           )}
         </div>
-        <div className="min-h-96 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:min-h-0">
+        <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:flex lg:w-80 lg:flex-none xl:w-96 ${phoneView === "teacher" ? "flex" : "hidden"}`}>
           <TeacherPanel
+            compact
             teacherName={boot?.teacher_name || "Teacher"}
+            teacherAvatarFileId={boot?.teacher_avatar_file_id}
             phase={phase}
             transcript={transcript}
-            check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type } : null}
+            check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type, revisit: !!check.revisit, predict: !!check.predict } : null}
+            locked={isDemo}
+            countdown={demoClock}
+            pace={pace}
+            onPace={(p) => {
+              setPace(p);
+              socket.sendConfig({ pace: p });
+            }}
+            avatarContainerRef={boot?.avatar && voiceMode ? avatarContainerRef : undefined}
+            avatarState={boot?.avatar && voiceMode ? (avatar.failed ? "failed" : avatarShown ? "on" : avatar.ready ? "off" : "loading") : undefined}
+            avatarNeedsTap={avatarShown && !avatar.activated}
+            onActivateAvatar={() => void avatar.activate()}
+            avatarError={avatar.failed ?? avatar.warning ?? undefined}
+            onToggleAvatar={() => setAvatarOn((v) => !v)}
+            onRetryAvatar={async () => {
+              if (!sessionRef.current) return;
+              try {
+                const tok = guestRef.current
+                  ? await getTutorDemoAvatarToken(sessionRef.current, guestRef.current.token)
+                  : await getTutorAvatarToken(sessionRef.current);
+                await avatar.retry({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token });
+                setAvatarOn(true);
+              } catch {
+                /* stays off */
+              }
+            }}
+            language={language}
+            languages={boot?.languages ?? ["en"]}
+            onLanguage={(l) => {
+              if (l === language) return;
+              setLanguage(l);
+              socket.sendConfig({ language: l });
+              showNotice(l === "hi" ? "The teacher will continue in Hindi from the next line." : "The teacher will continue in English from the next line.");
+            }}
+            stats={stats}
             awaiting={awaiting}
             voiceMode={voiceMode}
             micOn={micOn}
@@ -621,7 +1000,7 @@ function TutorPage() {
             notice={notice}
             disabled={!!disconnected || phase === "connecting"}
             onSendText={(t) => {
-              setTranscript((prev) => [...prev, { role: "learner", text: t }]);
+              flushAsk(t);
               setPhase("thinking");
               setAwaiting(null);
               socket.sendAnswer(t);

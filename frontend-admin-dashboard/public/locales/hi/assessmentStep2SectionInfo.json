@@ -32,7 +32,8 @@
     },
     "dialogs": {
         "confirmBulkGenerate_one": "इस सेक्शन के सभी {{count}} प्रश्न के लिए AI मानदंड जनरेट करें?",
-        "confirmBulkGenerate_other": "इस सेक्शन के सभी {{count}} प्रश्नों के लिए AI मानदंड जनरेट करें?"
+        "confirmBulkGenerate_other": "इस सेक्शन के सभी {{count}} प्रश्नों के लिए AI मानदंड जनरेट करें?",
+        "cancel": "रद्द करें"
     },
     "toasts": {
         "noQuestionsInSection": "इस सेक्शन में कोई प्रश्न नहीं है",
@@ -43,7 +44,10 @@
         "generatedCriteriaSuccess_one": "{{count}} प्रश्न के लिए मानदंड जनरेट किए गए!",
         "generatedCriteriaSuccess_other": "{{count}} प्रश्नों के लिए मानदंड जनरेट किए गए!",
         "failedGenerateCriteriaCount_one": "{{count}} प्रश्न के लिए मानदंड जनरेट करने में विफल",
-        "failedGenerateCriteriaCount_other": "{{count}} प्रश्नों के लिए मानदंड जनरेट करने में विफल"
+        "failedGenerateCriteriaCount_other": "{{count}} प्रश्नों के लिए मानदंड जनरेट करने में विफल",
+        "questionUpdated": "प्रश्न अपडेट हो गया",
+        "questionUpdateFailed": "प्रश्न अपडेट नहीं हो सका",
+        "questionInvalid": "सहेजने से पहले प्रश्न और उसके विकल्प भरें।"
     },
     "sectionDescription": {
         "title": "सेक्शन विवरण",
@@ -80,7 +84,12 @@
             "penalty": "दंड",
             "time": "समय",
             "criteria": "मानदंड"
-        }
+        },
+        "editQuestion": "प्रश्न संपादित करें",
+        "editQuestionMissing": "यह प्रश्न लोड नहीं हो सका।",
+        "saveQuestion": "प्रश्न सहेजें",
+        "savingQuestion": "सहेजा जा रहा है…",
+        "correctOption": "सही विकल्प"
     },
     "totalMarks": {
         "label": "कुल अंक"

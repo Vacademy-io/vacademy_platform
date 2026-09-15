@@ -50,11 +50,15 @@ export interface QueueItem {
     callTrigger?: string | null;
     priority?: number;
     sourceRef?: string | null;
+    /** Campaign name behind a BULK row — what makes a specific run findable here. */
+    sourceName?: string | null;
     status: QueueStatus;
     /** Why it ended where it did — the only explanation an admin gets for a skip. */
     statusReason?: string | null;
     responseId?: string | null;
     userId?: string | null;
+    /** The lead's name from their CRM record. */
+    leadName?: string | null;
     phoneNumber?: string | null;
     campaignId?: string | null;
     campaignName?: string | null;
@@ -110,6 +114,8 @@ export async function fetchQueueSummary(instituteId: string): Promise<QueueSumma
 export async function fetchQueueItems(args: {
     instituteId: string;
     status?: QueueFilter;
+    /** Bulk-run (audience) id — narrows the list to one campaign. */
+    sourceRef?: string;
     page?: number;
     size?: number;
 }): Promise<QueuePage> {
@@ -119,6 +125,7 @@ export async function fetchQueueItems(args: {
             // Omitted rather than sent blank: the backend treats an absent status as
             // "no filter", and an empty string would be compared against the column.
             ...(args.status ? { status: args.status } : {}),
+            ...(args.sourceRef ? { sourceRef: args.sourceRef } : {}),
             page: args.page ?? 0,
             size: args.size ?? 25,
         },
@@ -126,17 +133,40 @@ export async function fetchQueueItems(args: {
     return data;
 }
 
-/** Cancel every call this institute still has waiting. Only QUEUED rows are affected. */
+/**
+ * Cancel waiting calls. Only QUEUED rows are affected.
+ *
+ * <b>Pass `sourceRef` to stop ONE campaign.</b> Without it this cancels everything the
+ * institute has waiting — other campaigns, workflow-driven calls and counsellors'
+ * manual clicks included. An admin stopping a single bulk run must not silently take
+ * the rest down with it.
+ */
 export async function cancelAllQueued(
     instituteId: string,
-    reason?: string
+    reason?: string,
+    sourceRef?: string
 ): Promise<{ cancelled: number }> {
     const { data } = await authenticatedAxiosInstance.post(
         `${QUEUE_BASE}/cancel`,
-        { reason },
+        { reason, ...(sourceRef ? { sourceRef } : {}) },
         { params: { instituteId } }
     );
     return data;
+}
+
+export interface QueueRun {
+    audienceId: string;
+    name: string;
+    startedAt?: string | null;
+    total: number;
+}
+
+/** Bulk runs this institute has queued, newest first — the campaign filter's options. */
+export async function fetchQueueRuns(instituteId: string): Promise<QueueRun[]> {
+    const { data } = await authenticatedAxiosInstance.get<QueueRun[]>(`${QUEUE_BASE}/runs`, {
+        params: { instituteId, limit: 20 },
+    });
+    return data ?? [];
 }
 
 /** Cancel one waiting call. A call already dialling cannot be taken back. */

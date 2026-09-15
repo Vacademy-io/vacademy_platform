@@ -99,6 +99,14 @@ export const LEARNER_SUBSCRIPTION_LIST = `${BASE_URL}/admin-core-service/learner
 export const LEARNER_SUBSCRIPTION_CANCEL = (userPlanId: string) =>
   `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/cancel`;
 
+// Plan change (upgrade / downgrade). The options endpoint prices every switchable plan
+// for this learner at this moment; the change endpoint books it. Same path is used with
+// DELETE to call off a downgrade that has not landed yet.
+export const LEARNER_PLAN_CHANGE_OPTIONS = (userPlanId: string) =>
+  `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/change-options`;
+export const LEARNER_PLAN_CHANGE = (userPlanId: string) =>
+  `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/change-plan`;
+
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
 export const EXPORT_AI_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/ai-pdf`;
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;

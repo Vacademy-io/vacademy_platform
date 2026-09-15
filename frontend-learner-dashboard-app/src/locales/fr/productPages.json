@@ -41,6 +41,7 @@
         "selectPrompt": "Sélectionnez les {{courses}} auxquels vous souhaitez vous inscrire"
     },
     "courseFinder": {
+        "continueToRegister": "Continuer vers l'inscription",
         "dialogHeading": "Sélectionnez votre classe",
         "showCourses": "Afficher mes {{courses}}",
         "defaultSubheading": "Choisissez le vôtre pour voir les {{courses}} disponibles pour vous",
@@ -242,6 +243,8 @@
             "months_many": "Accès {{count}} mois",
             "days_many": "Accès {{count}} jours"
         },
-        "goToMyCourses": "Accéder à mes {{courses}}"
+        "goToMyCourses": "Accéder à mes {{courses}}",
+        "redirecting": "Redirection vers la page suivante…",
+        "redirectNow": "Continuer maintenant"
     }
 }

@@ -113,8 +113,13 @@ export type ToolKey =
     // Live AI tutor: per-slide teaching-plan compile and per-image media (V494)
     | 'tutor_compile_slide'
     | 'tutor_media_image'
+    | 'tutor_voice_prepare'
+    | 'tutor_avatar_minute'
     // Voice lessons: one charge per started minute (V496)
-    | 'tutor_live_minute';
+    | 'tutor_live_minute'
+    // One AI-written analysis per ASSESSMENT, charged once then free to
+    // re-download (admin_core V500 + ai_service DEFAULT_TOOL_PRICING).
+    | 'assessment_class_ai_report';
 export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat' | 'pages';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 import {
     Select,
     SelectContent,
@@ -21,14 +22,19 @@ import { DAYS_IN_MONTH } from '@/routes/settings/-constants/terms';
 import { UpfrontPlanConfiguration } from './PaymentPlanCreator/UpfrontPlanConfiguration';
 import { FreePlanConfiguration } from './PaymentPlanCreator/FreePlanConfiguration';
 import { ApprovalToggle } from './PaymentPlanCreator/ApprovalToggle';
+import { PlanChangeToggle } from './PaymentPlanCreator/PlanChangeToggle';
 
 interface CustomInterval {
+    /** payment_plan.id — carried so an edit updates this plan instead of replacing it. */
+    id?: string;
     value: number | string;
     unit: 'days' | 'months';
     price: number | string;
     features?: string[];
     newFeature?: string;
     title?: string;
+    /** Members on another plan may switch to this interval. */
+    planChangeAllowed?: boolean;
 }
 
 interface PaymentPlanEditorProps {
@@ -40,6 +46,9 @@ interface PaymentPlanEditorProps {
     isSaving: boolean;
     requireApproval: boolean;
     setRequireApproval: (value: boolean) => void;
+    /** Option-level master switch for plan change; see PlanChangeToggle. */
+    planChangeAllowed: boolean;
+    setPlanChangeAllowed: (value: boolean) => void;
 }
 
 export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
@@ -51,6 +60,8 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
     isSaving,
     requireApproval,
     setRequireApproval,
+    planChangeAllowed,
+    setPlanChangeAllowed,
 }) => {
     const { t } = useTranslation('settingsPaymentPlan');
     const [planData, setPlanData] = useState<PaymentPlan>(editingPlan);
@@ -97,6 +108,11 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                         ) || [],
                 },
                 upfront: {
+                    // Spread first: this block rebuilds config.upfront field-by-field, so
+                    // anything not named here is dropped. planId was — and losing it makes
+                    // the save look like a NEW plan, so editing a one-time option retired
+                    // its plan and minted a duplicate, orphaning every user_plan on it.
+                    ...(editingPlan.config?.upfront || {}),
                     fullPrice: editingPlan.config?.upfront?.fullPrice || '',
                     // transformApiPlanToLocalFormat derives these from validity_in_days,
                     // so an existing plan re-opens on the option it was saved with.
@@ -368,6 +384,12 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                         existingFreePlans={[]}
                         onApprovalChange={handleApprovalChange}
                         isEditing
+                    />
+
+                    <PlanChangeToggle
+                        planType={planData.type as PaymentPlanType}
+                        planChangeAllowed={planChangeAllowed}
+                        onPlanChangeAllowedChange={setPlanChangeAllowed}
                     />
                 </div>
             )}
@@ -666,6 +688,50 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                         ))}
                                                     </div>
                                                 </div>
+
+                                                {/* Switchable target opt-in for this interval.
+                                                    Inert until the option-level master
+                                                    switch is on, matching what the backend
+                                                    actually honours. */}
+                                                <label
+                                                    className={cn(
+                                                        'mt-3 flex items-start gap-2 border-t pt-3 text-xs',
+                                                        planChangeAllowed
+                                                            ? 'cursor-pointer text-neutral-700'
+                                                            : 'cursor-not-allowed text-neutral-400'
+                                                    )}
+                                                >
+                                                    <Checkbox
+                                                        className="mt-0.5"
+                                                        checked={interval.planChangeAllowed || false}
+                                                        disabled={!planChangeAllowed}
+                                                        onCheckedChange={(checked) => {
+                                                            const customIntervals = [
+                                                                ...(planData.config?.subscription
+                                                                    ?.customIntervals || []),
+                                                            ];
+                                                            customIntervals[idx] = {
+                                                                ...customIntervals[idx],
+                                                                planChangeAllowed: !!checked,
+                                                            };
+                                                            updateConfig({
+                                                                subscription: {
+                                                                    ...planData.config
+                                                                        ?.subscription,
+                                                                    customIntervals,
+                                                                },
+                                                            });
+                                                        }}
+                                                    />
+                                                    <span>
+                                                        {t('subscription.planChangeLabel')}
+                                                        {!planChangeAllowed && (
+                                                            <span className="ms-1 text-neutral-400">
+                                                                {t('subscription.planChangeHint')}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </label>
 
                                                 <Button
                                                     variant="outline"

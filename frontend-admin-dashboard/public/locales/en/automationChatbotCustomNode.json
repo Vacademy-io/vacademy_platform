@@ -1,0 +1,11 @@
+{
+    "fallback": {
+        "textMessage": "Text message",
+        "anyMessage": "Any message",
+        "ai": "AI"
+    },
+    "branch": {
+        "default": "Default",
+        "numbered": "Branch {{number}}"
+    }
+}

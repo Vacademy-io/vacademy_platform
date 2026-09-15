@@ -58,6 +58,7 @@ import { resolveUiSkin } from "@/utils/institute-theme-roles";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
+  "/try", // Public 3-minute tutor lesson (tutezy.ai)
   "/login",
   "/signup",
   "/register",
@@ -924,8 +925,14 @@ export const Route = createRootRouteWithContext<{
       throw redirect({ to: authed ? "/dashboard" : "/login" });
     }
 
+    // The public tutor lesson reuses the tutor route with a guest token.
+    const isGuestTutor =
+      location.pathname.startsWith("/study-library/courses/course-details/tutor") &&
+      new URLSearchParams(
+        (typeof window !== "undefined" && window.location.search) || location.search || "",
+      ).get("demo") === "1";
     // Skip all logic for public routes - they should work without any redirects
-    if (isPublicRoute(location.pathname)) {
+    if (isPublicRoute(location.pathname) || isGuestTutor) {
       console.log("[__root] Route is public, skipping authentication check");
       return;
     }
@@ -966,6 +973,13 @@ export const Route = createRootRouteWithContext<{
         );
 
         if (domainRoutingResult) {
+          // A host with a root-mounted catalogue serves it right here at "/"
+          // (routes/index.tsx) — bouncing to "/<tag>" is exactly what that
+          // flag exists to stop. resolveDomainRouting has already cached the
+          // tag for the route component and every link builder.
+          if ((domainRoutingResult.rootCatalogueTag || "").trim()) {
+            return;
+          }
           // API returned valid institute data, use the redirect field from API response
           const redirectPath = domainRoutingResult.redirect || "/courses";
           throw redirect({ to: redirectPath as never });

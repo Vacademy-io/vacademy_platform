@@ -36,7 +36,9 @@
       "metaDescription": "Méta-description",
       "metaDescriptionPlaceholder": "Brève description de la page pour les moteurs de recherche...",
       "ogImage": "Image OG",
-      "ogImagePlaceholder": "URL de l'image de partage social"
+      "ogImagePlaceholder": "URL de l'image de partage social",
+      "previewHeading": "Aperçu du résultat de recherche",
+      "previewNoDescription": "Ajoutez une description — sinon les moteurs choisiront eux-mêmes un extrait de la page."
     }
   },
   "selectItemToEdit": "Sélectionnez un élément à modifier",
@@ -117,9 +119,62 @@
       "stepsOrderHint": "Demandé dans cet ordre fixe — toute étape non cochée est ignorée, tout comme toute étape pour laquelle les cours de cette page n'ont pas d'options.",
       "requireCompletion": "Exiger la fin du parcours (pas d'étape ignorée)"
     },
+    "coursePages": {
+      "heading": "Pages de cours",
+      "hint": "Choisissez ce que chaque cours ouvre lorsqu'un visiteur clique sur Voir le cours. Les cours non renseignés conservent la page de détails standard.",
+      "enable": "Définir ce qu'ouvrent les cours",
+      "add": "Ajouter un cours",
+      "remove": "Retirer ce cours",
+      "empty": "Aucun cours défini — chaque cours ouvre la page de détails standard.",
+      "courseLabel": "Cours",
+      "courseSearch": "Rechercher des cours…",
+      "modeLabel": "Ouvre",
+      "pageLabel": "Page à ouvrir",
+      "pagePlaceholder": "Choisir une page…",
+      "pageSearch": "Rechercher des pages…",
+      "unsetRowHint": "Choisissez une page, sinon ce cours revient à la page de détails standard.",
+      "noPages": "Ce catalogue n'a pas encore d'autre page publiée. Ajoutez-en une dans Pages, puis revenez.",
+      "noCourses": "Aucun cours trouvé pour cet établissement.",
+      "allMapped": "Tous les cours sont définis.",
+      "mode": {
+        "DETAILS": "Page de détails standard",
+        "PAGE": "Une page que vous avez créée",
+        "OUTLINE": "Plan et structure du cours",
+        "TILES": "Contenu du cours — vignettes"
+      },
+      "modeHint": {
+        "DETAILS": "La page de cours habituelle : points forts, programme en cartes illustrées, prix et inscription.",
+        "PAGE": "Ouvre plutôt une page de ce site. Créez-la d'abord dans Pages.",
+        "OUTLINE": "Programme en premier, en liste de dossiers simple au lieu des cartes illustrées par défaut.",
+        "TILES": "Comme le plan, mais les matières s'affichent en cartes illustrées avec l'image de chaque matière, comme dans le tableau de bord admin."
+      }
+    },
     "enquiry": {
       "heading": "Demande de renseignements",
       "enable": "Activer les demandes de renseignements"
+    },
+    "seo": {
+      "heading": "Référencement (SEO)",
+      "hint": "Comment les moteurs de recherche et réseaux sociaux lisent ce site. Chaque page a aussi son titre, sa description et son image de partage dans les paramètres de page.",
+      "keywordsLabel": "Mots-clés",
+      "keywordsPlaceholder": "cours IA, apprendre l'IA, IA pour enseignants",
+      "keywordsHint": "Séparés par des virgules. Les termes que l'on taperait pour vous trouver — commencez par le nom de votre marque.",
+      "verificationLabel": "Vérification Google Search Console",
+      "verificationHint": "Collez la valeur « content » de la méthode balise HTML de Search Console. Puis soumettez-y votre sitemap.",
+      "organizationHeading": "Informations sur l'organisation",
+      "organizationHint": "Transmises aux moteurs de recherche en données structurées — c'est ce qui relie votre nom, logo et profils en un seul résultat de marque.",
+      "orgName": "Nom",
+      "orgDescription": "Description courte",
+      "orgFounder": "Fondateur",
+      "orgFoundingDate": "Fondée en (année)",
+      "orgEmail": "E-mail",
+      "orgTelephone": "Téléphone",
+      "orgAddress": "Adresse / lieu",
+      "orgLogo": "Logo pour les résultats de recherche",
+      "orgLogoHint": "Un logo net sur fond uni, au moins 112×112 px. Laissez vide pour utiliser le logo de l'établissement.",
+      "sameAsLabel": "Liens sociaux et profils",
+      "sameAsHint": "Une URL par ligne. Les liens déjà présents dans le pied de page sont inclus automatiquement.",
+      "sitemapHint": "Un sitemap est généré automatiquement sur /<catalogue>/sitemap.xml (et /sitemap.xml lorsque le site est servi depuis votre propre domaine)."
     }
   },
   "options": {
@@ -853,5 +908,31 @@
     "metaPlaceholder": "Méta (ex. Semaines 1-4)",
     "chipsPlaceholder": "Puces (séparées par des virgules)",
     "highlightThisStep": "Mettre en valeur cette étape"
+  },
+  "documentViewer": {
+    "heading": "Paramètres de la visionneuse de document",
+    "file": "Fichier PDF",
+    "fileName": "Nom du fichier téléchargé",
+    "fileNamePlaceholder": "ex. Catalogue The7Cs",
+    "fileNameHelp": "Utilisé lorsqu'un visiteur télécharge le PDF. Laissez vide pour garder le nom du fichier importé.",
+    "display": "Affichage",
+    "displayButton": "Bouton ouvrant une lecture plein écran",
+    "displayInline": "Visionneuse intégrée à la page",
+    "displayButtonHelp": "Un seul appel à l'action ; le PDF s'ouvre par-dessus la page, comme une présentation.",
+    "displayInlineHelp": "La première page s'affiche directement dans la page, avec un bouton Plein écran.",
+    "buttonText": "Texte du bouton",
+    "coverImage": "Image de couverture (facultatif)",
+    "frameHeight": "Hauteur de la visionneuse",
+    "heightShort": "Courte (480px)",
+    "heightMedium": "Moyenne (70 % de l'écran)",
+    "heightTall": "Grande (85 % de l'écran)",
+    "showDownload": "Afficher le bouton Télécharger",
+    "onlyPdf": "Seuls les fichiers PDF peuvent être importés ici.",
+    "tooLarge": "Ce PDF dépasse {{max}} Mo. Compressez-le d'abord — les gros fichiers se chargent lentement sur mobile.",
+    "uploadFailed": "Échec de l'import. Réessayez.",
+    "uploading": "Import en cours...",
+    "uploadPdf": "Importer un PDF",
+    "clear": "Effacer",
+    "openFile": "Ouvrir"
   }
 }

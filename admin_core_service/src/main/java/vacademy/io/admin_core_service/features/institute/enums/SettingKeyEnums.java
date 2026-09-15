@@ -27,6 +27,12 @@ public enum SettingKeyEnums {
     // Institute entity remains the legacy single-hue fallback.
     THEME_SETTING,
     ONBOARDING_SETTING,
+    // Daily-engagement knobs: dailyItemCap (how many tasks a learner sees per day
+    // across ALL their batches), minScrollPercent / minReadSeconds (what counts as
+    // having read something), allowUnverifiedScoreBonus (whether a self-reported
+    // game score may earn score-proportional points). Read via
+    // EngagementSettingsService; every value has a working default.
+    ENGAGEMENT_SETTING,
     // Institute-level language/i18n preferences (default locale, enabled
     // locales) — tags must come from vacademy.io.common.core.i18n.LocaleRegistry.
     // Read/write handled by GenericSettingStrategy like any other key.

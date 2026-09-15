@@ -207,6 +207,14 @@ export interface CourseFinderSettings {
     skipLabel?: string;
     /** Wording for the undo affordance above the catalogue. */
     changeLabel?: string;
+    /**
+     * SHOW_COURSES (default) reveals the restricted catalogue. GO_TO_FORM
+     * selects the class's course and skips the cart, but only where the class
+     * resolves to exactly one course.
+     */
+    onPick?: 'SHOW_COURSES' | 'GO_TO_FORM';
+    /** Confirm-button wording. `{{class}}` becomes the label the learner picked. */
+    ctaLabel?: string;
     groups: CourseFinderGroup[];
 }
 
@@ -236,6 +244,8 @@ export interface ProductPageSettings {
     courseFinder?: CourseFinderSettings;
     offers?: OffersSettings;
     afterPaymentRedirectUrl?: string;
+    /** Seconds the success screen stays up before the redirect fires. */
+    afterPaymentRedirectDelaySeconds?: number;
     showLoginButton?: boolean;
     successPageContent?: string;
 }
@@ -249,6 +259,7 @@ export const DEFAULT_PRODUCT_PAGE_SETTINGS: ProductPageSettings = {
     disableBackNavigation: false,
     coupon: { enabled: false },
     afterPaymentRedirectUrl: '',
+    afterPaymentRedirectDelaySeconds: 3,
     showLoginButton: true,
     successPageContent: '',
 };

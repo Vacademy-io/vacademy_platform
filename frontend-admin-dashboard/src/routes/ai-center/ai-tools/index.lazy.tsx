@@ -29,9 +29,10 @@ import {
     buildSourceLabel,
     classifyFile,
     headingForQuestionTask,
+    isHistoryTask,
     isQuestionTask,
     relativeTime,
-    routeForFamily,
+    routeForTask,
     statusLabel,
     statusStyles,
     taskDisplayName,
@@ -173,8 +174,7 @@ function RouteComponent() {
             setPreviewOpen(true);
             return;
         }
-        const family = classifyFile(task.file_detail?.file_type);
-        navigate({ to: routeForFamily[family] });
+        navigate({ to: routeForTask(task) });
     };
 
     useEffect(() => {
@@ -187,14 +187,17 @@ function RouteComponent() {
         staleTime: 60 * 1000,
     });
 
-    const continueItems = useMemo(() => {
+    const historyTasks = useMemo(() => {
         const list: AITaskIndividualListInterface[] = Array.isArray(recentTasksData)
             ? recentTasksData
             : [];
-        return [...list]
-            .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
-            .slice(0, 3);
+        return list.filter(isHistoryTask);
     }, [recentTasksData]);
+
+    const continueItems = useMemo(
+        () => [...historyTasks].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)).slice(0, 3),
+        [historyTasks]
+    );
 
     const sourceLabel = useMemo(() => buildSourceLabel(tFormat), [tFormat]);
 
@@ -394,11 +397,7 @@ function RouteComponent() {
             <RecentWorkDialog
                 open={openAllWork}
                 onOpenChange={setOpenAllWork}
-                tasks={
-                    Array.isArray(recentTasksData)
-                        ? (recentTasksData as AITaskIndividualListInterface[])
-                        : []
-                }
+                tasks={historyTasks}
                 onPreviewTask={(task) => {
                     setOpenAllWork(false);
                     setPreviewTask(task);

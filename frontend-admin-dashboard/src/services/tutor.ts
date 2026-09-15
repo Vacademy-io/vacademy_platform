@@ -40,6 +40,12 @@ export interface TutorPlanStatusItem {
     topics: number;
     concepts: number;
     updated_at: string | null;
+    /** document | pdf | quiz | ai_video | youtube | video_upload | video_link | other */
+    source_kind?: string | null;
+    /** What the newest plan was compiled from: script | captions | transcript | pdf | null */
+    text_kind?: string | null;
+    /** Board-quality advice the compiler let go; the plan is READY and teachable. */
+    quality_notes?: string[];
 }
 
 export interface TutorPackagePlans {
@@ -81,6 +87,7 @@ export interface TutorPlanView {
     key_terms: Array<{ term: string; meaning: string }>;
     source_description: string | null;
     error: string | null;
+    quality_notes?: string[];
     topics: TutorTopicView[];
     media: Array<Record<string, unknown>>;
 }
@@ -90,8 +97,82 @@ export interface TutorCompileOptions {
     teacher_name?: string;
     generate_images?: boolean;
     kb_grounding?: { knowledge_base_id: string; mode?: 'STRICT' | 'BLENDED' } | null;
+    /** Uploaded videos without a transcript: run speech-to-text (per-minute credits). */
+    transcribe_videos?: boolean;
+    /** Scanned PDFs: read with OCR (per-page credits). */
+    ocr_pdfs?: boolean;
     compile_run_id?: string;
 }
+
+export type TutorEstimateAction =
+    | 'compile'
+    | 'up_to_date'
+    | 'needs_details'
+    | 'free'
+    | 'skip'
+    | 'unsupported'
+    | 'unpublished';
+
+export interface TutorCompileEstimate {
+    package_id: string;
+    slides: Array<{
+        slide_id: string;
+        title: string | null;
+        kind: string;
+        action: TutorEstimateAction;
+        compile: number;
+        transcription: number;
+        minutes: number;
+        ocr: number;
+        pages: number;
+        /** One-time voice preparation (per language) for this slide. */
+        voice: number;
+        images_max: number;
+        total: number;
+        note: string | null;
+        text: string | null;
+    }>;
+    totals: {
+        to_compile: number;
+        up_to_date: number;
+        needs_details: number;
+        free: number;
+        compile_credits: number;
+        transcription_credits: number;
+        transcription_minutes: number;
+        ocr_credits: number;
+        ocr_pages: number;
+        voice_credits: number;
+        voice_languages: number;
+        images_max: number;
+        images_max_credits: number;
+        required: number;
+        worst_case: number;
+    };
+    prices: {
+        compile_slide: number;
+        image: number;
+        transcription_per_minute: number;
+        transcription_minimum: number;
+        ocr_per_page: number;
+        voice_prepare_per_slide_language: number;
+    };
+    balance: number | null;
+    sufficient: boolean | null;
+    transcription_available: boolean;
+    ocr_available: boolean;
+}
+
+export const estimateTutorCompile = async (
+    packageId: string,
+    options: TutorCompileOptions & { slide_ids?: string[]; force?: boolean }
+): Promise<TutorCompileEstimate> => {
+    const res = await authenticatedAxiosInstance.post<TutorCompileEstimate>(
+        `${BASE}/compile/estimate`,
+        { package_id: packageId, ...options }
+    );
+    return res.data;
+};
 
 export interface TutorCompileEvent {
     type:
@@ -134,7 +215,84 @@ export interface TutorModeSetting {
     generateImages?: boolean;
     /** Knowledge base the course was grounded on at creation; recompiles stay grounded. */
     kbGrounding?: { knowledge_base_id: string; mode?: 'STRICT' | 'BLENDED' } | null;
+    /** Teacher voice speed, 0.7–1.3 (1 = the engine's natural pace). Learners can still ask for slower/faster. */
+    voicePace?: number;
+    /** Media file id of the teacher's face; blank = the built-in illustrated face. */
+    teacherAvatarFileId?: string;
+    /** Premium: an animated teacher avatar (Spatius) built from the face photo. */
+    avatarProvider?: 'none' | 'spatius';
+    avatarId?: string;
 }
+
+/** A registered teacher asset: platform stock (stock=true) or this institute's own. */
+export interface TutorAsset {
+    id: string;
+    kind: 'voice' | 'avatar';
+    provider: string;
+    external_id: string | null;
+    display_name: string;
+    status: 'requested' | 'processing' | 'ready' | 'failed' | 'disabled';
+    stock: boolean;
+    gender?: string | null;
+    languages?: string[];
+    preview_url?: string | null;
+    credits_charged?: number;
+    error?: string | null;
+    created_at?: string;
+}
+
+export interface TutorAvatarRequestStatus {
+    asset_id: string;
+    status: TutorAsset['status'];
+    avatar_id: string | null;
+    error: string | null;
+    display_name: string;
+    credits_charged: number;
+}
+
+/** Ask for a custom avatar built from the teacher's photo (consent confirmed in the UI). */
+export const requestTutorAvatar = async (
+    fileId: string,
+    name?: string
+): Promise<TutorAvatarRequestStatus> => {
+    const res = await authenticatedAxiosInstance.post<TutorAvatarRequestStatus>(
+        `${BASE}/avatar/create`,
+        { file_id: fileId, name, consent: true }
+    );
+    optionsCache = null;
+    return res.data;
+};
+
+export const getTutorAvatarRequest = async (assetId: string): Promise<TutorAvatarRequestStatus> => {
+    const res = await authenticatedAxiosInstance.get<TutorAvatarRequestStatus>(
+        `${BASE}/avatar/assets/${assetId}`
+    );
+    if (res.data.status === 'ready') optionsCache = null;
+    return res.data;
+};
+
+/** Voices and avatars this institute may use (platform stock + its own). */
+export const listTutorAssets = async (kind?: 'voice' | 'avatar'): Promise<TutorAsset[]> => {
+    const res = await authenticatedAxiosInstance.get<{ assets: TutorAsset[] }>(`${BASE}/assets`, {
+        params: kind ? { kind } : undefined,
+    });
+    return res.data.assets;
+};
+
+/** Stop using one of this institute's own voices or avatars. */
+export const disableTutorAsset = async (assetId: string): Promise<void> => {
+    await authenticatedAxiosInstance.delete(`${BASE}/assets/${assetId}`);
+    optionsCache = null;
+};
+
+/** Voice speed choices offered in both Tutor Mode cards. */
+export const TUTOR_VOICE_PACES: Array<{ value: number; label: string }> = [
+    { value: 0.8, label: 'Slower (0.8×)' },
+    { value: 0.9, label: 'A little slower (0.9×)' },
+    { value: 1.0, label: 'Normal (1×)' },
+    { value: 1.1, label: 'A little faster (1.1×)' },
+    { value: 1.25, label: 'Faster (1.25×)' },
+];
 
 export const TUTOR_MODE_SETTING_KEY = 'TUTOR_MODE_SETTING';
 
@@ -152,17 +310,19 @@ export const TUTOR_TTS_PROVIDERS: Array<{
 export const cloneTutorVoice = async (
     file: File,
     displayName: string
-): Promise<{ voice_id: string }> => {
+): Promise<{ voice_id: string; asset_id?: string; credits_charged?: number }> => {
     const form = new FormData();
     form.append('file', file);
     form.append('display_name', displayName);
-    const res = await authenticatedAxiosInstance.post<{ voice_id: string }>(
+    form.append('consent', 'true');
+    const res = await authenticatedAxiosInstance.post<{ voice_id: string; asset_id?: string; credits_charged?: number }>(
         `${BASE}/voice/clone`,
         form,
         {
             headers: { 'Content-Type': 'multipart/form-data' },
         }
     );
+    optionsCache = null;
     return res.data;
 };
 
@@ -296,3 +456,147 @@ export const newCompileRunId = (): string =>
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
         : `run-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+// ── option catalogues (voices per provider, models) ──────────────────────────
+
+export interface TutorVoiceOption {
+    id: string;
+    name: string;
+    gender?: 'male' | 'female' | null;
+    languages?: string[];
+    age?: string | null;
+    accent?: string | null;
+    /** This institute's own cloned voice (never another institute's). */
+    cloned?: boolean;
+    stock?: boolean;
+    asset_id?: string;
+}
+
+export interface TutorModelOption {
+    model_id: string;
+    name: string;
+    provider: string;
+    tier?: string | null;
+    is_free?: boolean;
+}
+
+export interface TutorOptions {
+    voices: Record<string, TutorVoiceOption[]>;
+    models: TutorModelOption[];
+    smallest_available: boolean;
+    /** The premium teacher avatar (Spatius) is configured on the server. */
+    avatar_available?: boolean;
+    /** Avatars this institute may use: platform stock + its own (any status). */
+    avatars?: TutorAsset[];
+    /** Credit rates that matter on the settings cards. */
+    fees?: { voice: number; avatar: number; avatar_minute: number; live_minute: number };
+}
+
+let optionsCache: { at: number; value: TutorOptions } | null = null;
+
+/** Voices per provider and chat-capable models for the settings dropdowns (cached for the session). */
+export const getTutorOptions = async (): Promise<TutorOptions> => {
+    if (optionsCache && Date.now() - optionsCache.at < 10 * 60 * 1000) return optionsCache.value;
+    const res = await authenticatedAxiosInstance.get<TutorOptions>(`${BASE}/options`);
+    optionsCache = { at: Date.now(), value: res.data };
+    return res.data;
+};
+
+// ── teacher insights ─────────────────────────────────────────────────────────
+
+export interface TutorInsights {
+    package_id: string | null;
+    package_session_id: string | null;
+    days: number;
+    batches: Array<{ package_session_id: string; name: string; course: string; sessions: number }>;
+    totals: {
+        sessions: number;
+        learners: number;
+        minutes: number;
+        voice_sessions: number;
+        abandoned: number;
+        courses: number;
+    };
+    courses: Array<{
+        package_id: string;
+        name: string;
+        sessions: number;
+        learners: number;
+        minutes: number;
+        attempts: number;
+        avg_score: number | null;
+        weak_attempts: number;
+        last_active: string | null;
+    }>;
+    learners: Array<{
+        user_id: string;
+        name: string | null;
+        sessions: number;
+        minutes: number;
+        attempts: number;
+        avg_score: number | null;
+        weak_attempts: number;
+        last_active: string | null;
+        courses: number;
+        /** The teacher's latest note about this learner (model-written rolling summary). */
+        note: string | null;
+    }>;
+    concepts: Array<{
+        concept_id: string;
+        concept: string;
+        topic: string;
+        slide: string;
+        slide_id: string;
+        course: string;
+        attempts: number;
+        learners: number;
+        avg_score: number | null;
+        weak_attempts: number;
+        weak_learners: number;
+        cleared_learners: number;
+        misconceptions: string[];
+    }>;
+}
+
+export interface TutorInsightsParams {
+    /** One course; omit for the whole institute. */
+    packageId?: string;
+    packageSessionId?: string;
+    days?: number;
+}
+
+const insightsQuery = (params: TutorInsightsParams) => ({
+    package_id: params.packageId || undefined,
+    package_session_id: params.packageSessionId || undefined,
+    days: params.days ?? 90,
+});
+
+export const getTutorInsights = async (
+    params: TutorInsightsParams = {}
+): Promise<TutorInsights> => {
+    const res = await authenticatedAxiosInstance.get<TutorInsights>(`${BASE}/insights`, {
+        params: insightsQuery(params),
+    });
+    return res.data;
+};
+
+export type TutorInsightsSheet = 'learners' | 'concepts' | 'courses';
+
+/** Downloads one insights sheet as CSV (row caps 5000 / 2000 / 500). */
+export const downloadTutorInsightsCsv = async (
+    sheet: TutorInsightsSheet,
+    params: TutorInsightsParams = {}
+): Promise<void> => {
+    const res = await authenticatedAxiosInstance.get<Blob>(`${BASE}/insights/export.csv`, {
+        params: { ...insightsQuery(params), sheet },
+        responseType: 'blob',
+    });
+    const url = URL.createObjectURL(res.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `tutor-insights-${sheet}-${params.days ?? 90}d.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+};

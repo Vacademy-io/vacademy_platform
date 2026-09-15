@@ -39,6 +39,7 @@ import {
     useSubscriptionManager,
     type Subscription,
 } from "@/hooks/use-subscription-manager";
+import { ChangePlanDialog } from "@/components/common/subscription/ChangePlanDialog";
 
 interface MyMembershipWidgetProps {
     className?: string;
@@ -69,6 +70,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
     const [instituteResolved, setInstituteResolved] = useState(false);
     const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
     const [toCancel, setToCancel] = useState<Subscription | null>(null);
+    const [toChange, setToChange] = useState<Subscription | null>(null);
     // Per-plan "also re-enable auto-pay" choice. Default off: auto-pay being
     // off usually means the learner turned it off deliberately.
     const [autopayChoice, setAutopayChoice] = useState<Record<string, boolean>>({});
@@ -99,6 +101,10 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
         isCancelling,
         startRenewal,
         renewingPlanId,
+        startPlanChange,
+        changingPlanId,
+        cancelPlanChange,
+        isCancellingPlanChange,
         refetchSoon,
     } = useSubscriptionManager({
         instituteId,
@@ -261,6 +267,64 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                 </div>
                             )}
 
+                            {/* A downgrade already booked. Without this the card would keep
+                                claiming the old plan right up until the renewal swaps it. */}
+                            {sub.scheduled_plan_change && (
+                                <div className="flex items-start gap-2 rounded-lg bg-info-50 p-3 text-caption text-info-600">
+                                    <ArrowsClockwise
+                                        className="mt-0.5 size-4 shrink-0"
+                                        weight="duotone"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                        <span>
+                                            {formatDate(
+                                                sub.scheduled_plan_change.effective_from
+                                            )
+                                                ? t("membership.planChangeScheduled", {
+                                                      plan: sub.scheduled_plan_change
+                                                          .to_plan_name,
+                                                      date: formatDate(
+                                                          sub.scheduled_plan_change
+                                                              .effective_from
+                                                      ),
+                                                  })
+                                                : t("membership.planChangeScheduledNoDate", {
+                                                      plan: sub.scheduled_plan_change
+                                                          .to_plan_name,
+                                                  })}
+                                        </span>
+                                        <Button
+                                            variant="link"
+                                            size="sm"
+                                            className="h-auto p-0 text-caption"
+                                            disabled={isCancellingPlanChange}
+                                            onClick={() =>
+                                                cancelPlanChange(sub.user_plan_id)
+                                            }
+                                        >
+                                            {t("membership.planChangeCancelScheduled")}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Switch plan. Hidden unless the institute has flagged at least
+                                one other plan as switchable for this membership. */}
+                            {sub.can_change_plan && !sub.scheduled_plan_change && (
+                                <div className="flex justify-end">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setToChange(sub)}
+                                        disabled={changingPlanId === sub.user_plan_id}
+                                        className="gap-1.5"
+                                    >
+                                        <ArrowsClockwise size={14} weight="duotone" />
+                                        {t("membership.changePlan")}
+                                    </Button>
+                                </div>
+                            )}
+
                             {/* Pay-to-continue: offered whenever autopay won't charge this plan */}
                             {canRenew && (
                                 <div className="space-y-2.5 rounded-lg border border-primary-100 bg-primary-50 p-3">
@@ -334,6 +398,19 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                     }
                 />
             </div>
+
+            <ChangePlanDialog
+                open={Boolean(toChange)}
+                onOpenChange={(open) => {
+                    if (!open) setToChange(null);
+                }}
+                subscription={toChange}
+                instituteId={instituteId}
+                isSubmitting={Boolean(changingPlanId)}
+                onConfirm={(target, withAutopay) =>
+                    startPlanChange(toChange as Subscription, target, withAutopay)
+                }
+            />
 
             <Dialog
                 open={Boolean(toCancel)}

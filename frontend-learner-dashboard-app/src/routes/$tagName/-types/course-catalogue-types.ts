@@ -93,6 +93,24 @@ export interface GlobalSettings {
     enabled: boolean;
     requirePayment: boolean;
   };
+  /**
+   * What each course opens when a visitor clicks "View course": the standard
+   * details page (DETAILS, the default), a page authored in the catalogue
+   * editor (PAGE + route), or the details page with the syllabus leading and
+   * the marketing accordion dropped — as folder rows (OUTLINE) or artwork
+   * cards (TILES). Keyed by course id or package
+   * session id; a course with no entry keeps the details page, so this is
+   * purely additive. See -utils/course-page-routing.ts.
+   */
+  coursePages?: {
+    enabled: boolean;
+    courses?: Record<
+      string,
+      { mode?: "DETAILS" | "PAGE" | "OUTLINE" | "TILES"; route?: string }
+    >;
+    /** Pre-modes shape: course id → page route, always meaning PAGE. */
+    map?: Record<string, string>;
+  };
   payment: {
     enabled: boolean;
     provider: "razorpay" | "stripe" | "paypal" | "PHONEPE";

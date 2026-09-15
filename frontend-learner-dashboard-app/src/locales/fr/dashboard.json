@@ -107,7 +107,30 @@
         "tryAgain": "Veuillez réessayer dans un instant.",
         "paymentReceivedToast": "Paiement reçu !",
         "paymentReceivedToastBody": "Votre abonnement est en cours de réactivation — cela prend quelques secondes.",
-        "paymentNotCompletedToast": "Paiement non finalisé"
+        "paymentNotCompletedToast": "Paiement non finalisé",
+        "changePlan": "Change plan",
+        "changePlanTitle": "Change your plan",
+        "changePlanSubtitle": "You're on {{plan}}. Pick what you'd like to move to.",
+        "changePlanSubtitleNoPlan": "Pick the plan you'd like to move to.",
+        "changePlanLoadFailed": "We couldn't load the available plans. Please try again in a moment.",
+        "changePlanNoOptions": "There aren't any other plans you can switch to right now.",
+        "planChangeUpgrade": "Upgrade",
+        "planChangeDowngrade": "Downgrade",
+        "planChangeCadence": "{{price}} every {{days}} days",
+        "planChangePayNow": "Pay {{amount}} now — starts immediately",
+        "planChangeFreeOn": "Free — starts {{date}}",
+        "planChangeFreeAtCycleEnd": "Free — starts at the end of your current period",
+        "planChangeCredit": "Includes {{amount}} credit for the time left on your current plan",
+        "planChangeMandateReauth": "You'll be asked to re-approve auto-pay for the new amount.",
+        "planChangeAutopayRequired": "Re-approve auto-pay so future renewals keep working",
+        "planChangeCancel": "Cancel",
+        "planChangeConfirmPay": "Pay {{amount}}",
+        "planChangeConfirmSchedule": "Schedule this change",
+        "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+        "planChangeScheduledNoDate": "Moving to {{plan}} at the end of your current period.",
+        "planChangeCancelScheduled": "Cancel this change",
+        "planChangeScheduledToast": "Plan change scheduled",
+        "planChangeScheduledToastBody": "You'll move to {{plan}} on {{date}}. Nothing changes until then."
     },
     "books": {
         "title": "LIVRES",
@@ -228,7 +251,11 @@
         "awardedTooltip": "{{name}} — Décerné par votre établissement",
         "awardedTooltipWithReason": "{{name}} — Décerné par votre établissement : {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} débloqués",
-        "emptyPrompt": "Terminez votre première {{slide}} pour débloquer un badge"
+        "emptyPrompt": "Terminez votre première {{slide}} pour débloquer un badge",
+        "manualLockedHint": "Décerné par votre établissement — ne se débloque pas automatiquement",
+        "manualLockedTooltip": "{{name}} — Décerné par votre établissement, ne se débloque pas automatiquement",
+        "celebrateTitle": "Nouveau badge débloqué !",
+        "celebrateAwardedTitle": "Votre établissement vous a décerné un badge"
     },
     "tnc": {
         "title": "Accepter les conditions générales",
@@ -409,5 +436,14 @@
             "viewAllClassesButton": "Voir tous les cours",
             "dateAtTime": "{{date}} à {{time}}"
         }
+    },
+    "getApp": {
+        "title": "Obtenir l’application",
+        "subtitle": "Pour une expérience fluide, téléchargez nos applications.",
+        "android": "Application Android",
+        "ios": "Application iPhone et iPad",
+        "windows": "Application Windows",
+        "mac": "Application Mac",
+        "webPortal": "Portail web"
     }
 }

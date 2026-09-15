@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate, useLocation } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ShoppingBag, BookOpen, ArrowRight, X } from "@phosphor-icons/react";
@@ -38,7 +39,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
         detail: { levelFilter: levelFilterValue } 
       }));
     }
-    navigate({ to: `/${currentTagName}` as any });
+    navigate({ to: RouteMatcher.pagePath(currentTagName) as any });
   };
 
   const handleRentClick = () => setShowRentConfirmation(true);

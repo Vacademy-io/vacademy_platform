@@ -15,10 +15,9 @@ import {
   getFieldRenderType,
 } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
-  getCountryCode,
+  lookupCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
-import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { getDynamicSchema } from "@/routes/register/-utils/helper";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { capitalise } from "@/utils/custom-field";
@@ -140,20 +139,22 @@ const CustomFieldsStep = ({
   const watchedFormValues = useWatch({ control: form.control });
 
   // A country field in this form, when there is one, is the strongest signal
-  // — the visitor just told us where they are. Everything else defers to the
-  // portal's own resolution chain (institute preference / detected region).
-  const getPhoneCountryCode = () => {
-    // Whatever the portal decided a phone field should start on: the
-    // institute's configured preferred country, or — when that is unset, or
-    // the portal is on GEO_FIRST — the country this form is being opened in.
-    const { defaultCountry: fallback } = getPreferredPhoneCountries();
+  // — the visitor just told us where they are.
+  //
+  // Undefined means "no such signal", and PhoneInputField then resolves the
+  // country itself through the portal's chain (institute preference, else the
+  // region the form is opened in). It has to be undefined rather than that
+  // chain's answer read here: a `country` prop overrides the field's own
+  // resolution, so passing a value read before domain routing replied would
+  // pin the field to the platform fallback (+91) even after the real
+  // preference arrived.
+  const getPhoneCountryCode = (): string | undefined => {
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {
-      const countryValue = formValues[countryFieldKey]?.value || "";
-      return getCountryCode(countryValue, fallback);
+      return lookupCountryCode(formValues[countryFieldKey]?.value);
     }
-    return fallback;
+    return undefined;
   };
 
   /** Collects values keyed by custom_field_id in the template's field order. */

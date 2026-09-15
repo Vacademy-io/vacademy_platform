@@ -332,7 +332,7 @@ export function extractUserInfoFromRow(
             !phone &&
             (key.includes('phone') || key.includes('mobile') || name.includes('phone') || name.includes('mobile'))
         ) {
-            phone = value;
+            phone = normalizeMobile(value);
         }
         const isEmailField = key.includes('email') || name.includes('email');
         const isPhoneField =
@@ -389,6 +389,14 @@ export function validateRow(
                 errors.push(t('errors.invalidEmail', { ns: NAMESPACE, email: value }));
             }
         }
+        if (
+            value &&
+            (key.includes('phone') || key.includes('mobile') || name.includes('phone') || name.includes('mobile'))
+        ) {
+            if (!isValidMobile(normalizeMobile(value))) {
+                errors.push(t('errors.invalidMobile', { ns: NAMESPACE, mobile: value }));
+            }
+        }
     }
 
     return errors;
@@ -400,6 +408,24 @@ export function isValidEmail(v: string): boolean {
 
 export function isValidMobile(v: string): boolean {
     return /^\+?[0-9]{7,15}$/.test(v.replace(/[\s-]/g, ''));
+}
+
+/**
+ * Clean a phone cell before it is validated or stored.
+ *
+ * A phone column that has passed through Excel / pandas as a NUMBER exports as
+ * "9425677707.0". On 2026-09-11 a list uploaded that way put 43 such numbers into
+ * lead profiles; at dial time the backend stripped the "." and sent Plivo
+ * "+94256777070" — a Sri Lankan number — and every call failed. The trailing
+ * ".0" is dropped here (no real phone number ends in ".0"); a genuine decimal or
+ * scientific notation ("9.43E+09", digits already lost) is left alone so
+ * isValidMobile rejects it and the row shows up in the invalid-rows report.
+ */
+export function normalizeMobile(v: string): string {
+    return v
+        .trim()
+        .replace(/\.0+$/, '')
+        .replace(/[\s\-()]/g, '');
 }
 
 /**

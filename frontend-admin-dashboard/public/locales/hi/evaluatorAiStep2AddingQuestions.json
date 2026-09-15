@@ -1,0 +1,8 @@
+{
+    "sectionDefaultName": "खंड {{number}}",
+    "assessmentSavedSuccess": "आपका असेसमेंट सफलतापूर्वक सहेजा गया है!",
+    "errorSavingAssessment": "असेसमेंट सहेजने में त्रुटि",
+    "addQuestions": "प्रश्न जोड़ें",
+    "next": "अगला",
+    "addSection": "खंड जोड़ें"
+}

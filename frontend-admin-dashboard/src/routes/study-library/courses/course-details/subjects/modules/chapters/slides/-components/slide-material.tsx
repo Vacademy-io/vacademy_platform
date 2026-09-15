@@ -266,6 +266,7 @@ export const SlideMaterial = ({
     customSaveFunction?: (slide: Slide) => Promise<void>;
 }) => {
     const { t } = useTranslation('slideEditor');
+    const { t: tPublish } = useTranslation('studyLibraryHandlePublishSlide');
     // Role display settings for toggles like Manage Doubts visibility
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
@@ -4755,7 +4756,8 @@ export const SlideMaterial = ({
                                                     SaveDraft,
                                                     playerRef,
                                                     addUpdateAssessmentSlide,
-                                                    () => clearLocalDraft(activeItem?.id)
+                                                    () => clearLocalDraft(activeItem?.id),
+                                                    tPublish
                                                 );
                                             }
                                         }}

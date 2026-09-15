@@ -36,11 +36,16 @@ import {
 import { SessionLoginForm } from "@/routes/study-library/live-class/$username/components/SessionLoginForm";
 import {
   SUBSCRIPTION_LIST_QUERY_KEY,
+  cancelScheduledPlanChange,
   cancelSubscription,
   fetchSubscriptions,
   initiateRenewalPayment,
+  requestPlanChange,
+  type PlanChangeResult,
+  type PlanChangeTarget,
   type Subscription,
 } from "@/components/common/user-profile/payment-billing/subscription-services";
+import { ChangePlanDialog } from "@/components/common/subscription/ChangePlanDialog";
 
 const formatPrice = (amount?: number | null, currency?: string | null): string => {
   if (amount == null) return "";
@@ -204,6 +209,8 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   const liveClasses = getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession);
   const queryClient = useQueryClient();
   const [toCancel, setToCancel] = useState<Subscription | null>(null);
+  const [toChange, setToChange] = useState<Subscription | null>(null);
+  const [changingPlanId, setChangingPlanId] = useState<string | null>(null);
   const [renewingPlanId, setRenewingPlanId] = useState<string | null>(null);
   // Per-plan "also enable auto-pay" choice (offered only when the invite has
   // autopay configured). Default off: the learner cancelled it deliberately.
@@ -268,6 +275,80 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       setRenewingPlanId(null);
     }
   };
+
+  /**
+   * Book a plan change from this page. Mirrors startRenewal: an upgrade opens the same
+   * Razorpay checkout (for the prorated difference), a downgrade is booked for the end of
+   * the cycle and only needs a refetch. Mandate re-auth is forced when the backend says
+   * the current mandate cannot carry the new plan.
+   */
+  const startPlanChange = async (
+    sub: Subscription,
+    target: PlanChangeTarget,
+    withAutopay: boolean
+  ): Promise<PlanChangeResult | null> => {
+    try {
+      setChangingPlanId(sub.user_plan_id);
+      const result = await requestPlanChange(
+        instituteId,
+        sub.user_plan_id,
+        target.plan_id,
+        withAutopay || Boolean(target.requires_mandate_reauth)
+      );
+      if (result.status === "PENDING_PAYMENT" && result.payment_response) {
+        const orderDetails =
+          result.payment_response?.payment_response?.response_data ??
+          result.payment_response?.response_data;
+        if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
+          throw new Error(t("subscriptions.manage.toast.orderCreationFailed"));
+        }
+        let email = "";
+        let mobile = "";
+        try {
+          const stored = await Preferences.get({ key: "StudentDetails" });
+          if (stored.value) {
+            const details = JSON.parse(stored.value);
+            email = details?.email ?? "";
+            mobile = details?.mobile_number ?? details?.mobileNumber ?? "";
+          }
+        } catch {
+          // best effort — the backend resolves the customer from the JWT anyway
+        }
+        razorpayRef.current?.openPayment({
+          razorpayKeyId: orderDetails.razorpayKeyId,
+          razorpayOrderId: orderDetails.razorpayOrderId,
+          amount: orderDetails.amount,
+          currency: orderDetails.currency || target.currency || "INR",
+          contact: mobile,
+          email,
+          recurring: orderDetails.recurring,
+          customerId: orderDetails.customerId,
+        });
+      } else {
+        queryClient.invalidateQueries({
+          queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, "public-manage", instituteId],
+        });
+      }
+      return result;
+    } catch (e) {
+      toast.error(t("subscriptions.manage.toast.startFailedTitle"), {
+        description:
+          e instanceof Error ? e.message : t("subscriptions.manage.toast.genericRetry"),
+      });
+      return null;
+    } finally {
+      setChangingPlanId(null);
+    }
+  };
+
+  const cancelPlanChangeMutation = useMutation({
+    mutationFn: (userPlanId: string) =>
+      cancelScheduledPlanChange(instituteId, userPlanId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, "public-manage", instituteId],
+      }),
+  });
 
   const {
     data: subscriptions,
@@ -470,9 +551,66 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                 </div>
               </div>
             )}
+
+            {/* A downgrade already booked for the end of the cycle. */}
+            {sub.scheduled_plan_change && (
+              <div className="flex items-start gap-2 rounded-lg bg-info-50 p-3 text-sm text-info-600">
+                <ArrowsClockwise className="mt-0.5 size-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span>
+                    {t("subscriptions.manage.planChangeScheduled", {
+                      plan: sub.scheduled_plan_change.to_plan_name,
+                      date:
+                        formatDate(sub.scheduled_plan_change.effective_from) ??
+                        t("subscriptions.manage.currentPeriodFallback"),
+                    })}
+                  </span>
+                  <MyButton
+                    type="button"
+                    scale="small"
+                    buttonType="text"
+                    layoutVariant="default"
+                    disable={cancelPlanChangeMutation.isPending}
+                    onClick={() => cancelPlanChangeMutation.mutate(sub.user_plan_id)}
+                  >
+                    {t("subscriptions.manage.planChangeCancelScheduled")}
+                  </MyButton>
+                </div>
+              </div>
+            )}
+
+            {/* Switch plan — only when the institute flagged another plan switchable. */}
+            {sub.can_change_plan && !sub.scheduled_plan_change && (
+              <div className="flex justify-end">
+                <MyButton
+                  type="button"
+                  scale="small"
+                  buttonType="secondary"
+                  layoutVariant="default"
+                  onClick={() => setToChange(sub)}
+                  disable={changingPlanId === sub.user_plan_id}
+                >
+                  <ArrowsClockwise className="me-1.5 size-4" />
+                  {t("subscriptions.manage.changePlan")}
+                </MyButton>
+              </div>
+            )}
           </div>
         );
       })}
+
+      <ChangePlanDialog
+        open={Boolean(toChange)}
+        onOpenChange={(open) => {
+          if (!open) setToChange(null);
+        }}
+        subscription={toChange}
+        instituteId={instituteId}
+        isSubmitting={Boolean(changingPlanId)}
+        onConfirm={(target, withAutopay) =>
+          startPlanChange(toChange as Subscription, target, withAutopay)
+        }
+      />
 
       {/* Gateway checkout host — visually hidden (its built-in card UI shows a
           placeholder amount); the SDK's payment modal attaches to document.body,

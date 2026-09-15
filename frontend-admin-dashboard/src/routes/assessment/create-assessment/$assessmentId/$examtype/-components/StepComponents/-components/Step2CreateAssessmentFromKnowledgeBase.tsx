@@ -3,6 +3,7 @@ import { UseFormReturn, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { BookOpenText, CaretLeft, Spinner, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -11,6 +12,8 @@ import SelectField from '@/components/design-system/select-field';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useKnowledgeBases } from '@/routes/knowledge-base/-hooks';
+import { CurriculumPicker } from '@/routes/knowledge-base/-components/curriculum/CurriculumPicker';
+import { curriculumOnly, ownOnly } from '@/routes/knowledge-base/-components/curriculum/curriculum';
 import {
     buildBlueprint,
     getPaperJob,
@@ -97,6 +100,7 @@ const Step2CreateAssessmentFromKnowledgeBase = ({
     /** Called with the number of sections added, so Step 2 can refresh its accordion. */
     onSectionsCreated?: (sectionCount: number) => void;
 }) => {
+    const { t: tCurriculum } = useTranslation('knowledgeBaseCurriculum');
     const [open, setOpen] = useState(false);
     const [step, setStep] = useState<Step>('kb');
     const [kbId, setKbId] = useState<string | null>(null);
@@ -114,7 +118,11 @@ const Step2CreateAssessmentFromKnowledgeBase = ({
     const [regeneratingNumber, setRegeneratingNumber] = useState<number | null>(null);
     const [inserting, setInserting] = useState(false);
 
-    const { data: knowledgeBases, isLoading: kbsLoading } = useKnowledgeBases();
+    const { data: allKnowledgeBases, isLoading: kbsLoading } = useKnowledgeBases();
+    // Curriculum libraries (NCERT…) are picked Board → Class → Subject; the
+    // institute's own bases stay a plain list underneath.
+    const knowledgeBases = useMemo(() => ownOnly(allKnowledgeBases), [allKnowledgeBases]);
+    const curriculumBases = useMemo(() => curriculumOnly(allKnowledgeBases), [allKnowledgeBases]);
 
     const specForm = useForm<SpecValues>({
         resolver: zodResolver(specSchema),
@@ -547,7 +555,21 @@ const Step2CreateAssessmentFromKnowledgeBase = ({
                                 from.
                             </p>
                             {kbsLoading && <Skeleton className="h-24 w-full rounded-lg" />}
-                            {!kbsLoading && (knowledgeBases?.length ?? 0) === 0 && (
+                            {!kbsLoading && curriculumBases.length > 0 && (
+                                <div className="flex flex-col gap-3 rounded-lg border border-primary-100 bg-primary-50 p-4">
+                                    <p className="text-body font-medium text-neutral-700">
+                                        {tCurriculum('pickHeading')}
+                                    </p>
+                                    <CurriculumPicker
+                                        knowledgeBases={curriculumBases}
+                                        onPick={(kb) => chooseKb(kb.id, kb.name)}
+                                    />
+                                </div>
+                            )}
+                            {!kbsLoading && curriculumBases.length > 0 && knowledgeBases.length > 0 && (
+                                <p className="text-caption text-neutral-500">{tCurriculum('orOwn')}</p>
+                            )}
+                            {!kbsLoading && knowledgeBases.length === 0 && curriculumBases.length === 0 && (
                                 <div className="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 p-6 text-center">
                                     <BookOpenText className="size-6 text-neutral-300" />
                                     <p className="text-body text-neutral-600">

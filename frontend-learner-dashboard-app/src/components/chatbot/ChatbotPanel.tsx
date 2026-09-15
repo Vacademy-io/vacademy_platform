@@ -41,6 +41,10 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@/styles/katex-dark.css";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
+import {
+  shouldShowAiSettingsShortcut,
+  useAiSettingsShortcutEnabled,
+} from "@/services/ai-settings-shortcut";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
@@ -68,6 +72,10 @@ const DEFAULT_HEIGHT = 520;
 
 export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const avatarUrl = useChatbotAvatarUrl();
+  // Hidden from learners by default. The institute can reveal it for everyone
+  // (Admin -> Settings -> AI Settings -> Student AI), and this device can
+  // reveal it just for itself from /ai-settings.
+  const shortcutEnabledLocally = useAiSettingsShortcutEnabled();
   const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
@@ -106,6 +114,11 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     exitVoiceMode,
     voiceLanguage,
   } = useChatbotContext();
+
+  const showAiSettingsShortcut = shouldShowAiSettingsShortcut(
+    chatbotSettings.show_ai_settings_shortcut,
+    shortcutEnabledLocally
+  );
 
   // Check if the docked panel should be used - checking store AND route for immediate detection
   const { isDockedMode } = useChatbotPanelStore();
@@ -497,16 +510,18 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   >
                     <Trash className="h-4 w-4" />
                   </Button>
-                  <Link to="/ai-settings" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-                      title={t("common.aiGear")}
-                    >
-                      <Gear className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                  {showAiSettingsShortcut && (
+                    <Link to="/ai-settings" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                        title={t("common.aiGear")}
+                      >
+                        <Gear className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"

@@ -11,7 +11,11 @@ import { Route } from '..';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { convertToLocalDateTime, getInstituteId } from '@/constants/helper';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    resolveSubjectName,
+    unresolvedSubjectIds,
+    useSubjectNamesByIds,
+} from '@/services/subject-names';
 import { AssessmentOverviewDataInterface } from '@/types/assessment-overview';
 import AssessmentStudentLeaderboard from './AssessmentStudentLeaderboard';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -26,6 +30,7 @@ import {
     Users,
     Gauge,
     Trophy,
+    Warning,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -91,12 +96,39 @@ export function QuestionsPieChart() {
         handleGetOverviewData({ assessmentId, instituteId })
     );
 
+    // Before the early return. The institute list keeps one subject per distinct name and
+    // drops subjects whose course was deleted, so most stored ids need the direct lookup.
+    const overviewSubjectId = data.assessment_overview_dto?.subject_id;
+    const subjectNamesById = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [overviewSubjectId])
+    );
     if (isLoading) return <DashboardLoader />;
 
     const overview = data.assessment_overview_dto;
+    // The backend answers with a null overview when the institute it was asked
+    // for has no mapping to this assessment. That happens in practice: the
+    // selected institute lives in localStorage shared by every tab, so a
+    // switch in another tab sends this page's queries out under the wrong
+    // institute. Say so instead of crashing the whole app on
+    // `null.total_participants`.
+    if (!overview) {
+        return (
+            <Card className="mt-6 border-warning-200 bg-warning-50 shadow-sm">
+                <CardContent className="flex items-start gap-3 p-5">
+                    <Warning className="mt-0.5 size-5 shrink-0 text-warning-600" />
+                    <div className="flex flex-col gap-1">
+                        <p className="text-sm font-semibold text-neutral-700">
+                            {t('unavailable.title')}
+                        </p>
+                        <p className="text-sm text-neutral-600">{t('unavailable.body')}</p>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
     const subjectLabel = getTerminology(ContentTerms.Subjects, SystemTerms.Subjects);
     const subjectName =
-        getSubjectNameById(instituteDetails?.subjects || [], overview.subject_id || '') ||
+        resolveSubjectName(instituteDetails?.subjects, subjectNamesById, overviewSubjectId) ||
         t('info.subjectFallback');
     const pendingCount =
         overview.total_participants - (overview.total_ongoing + overview.total_attempted);

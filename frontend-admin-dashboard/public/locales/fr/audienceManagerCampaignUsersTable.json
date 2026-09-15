@@ -82,7 +82,8 @@
         "assignLeads": "Assigner les prospects",
         "unassignLeads": "Désassigner les prospects",
         "deleteLeads": "Supprimer les prospects",
-        "selectedCount_many": "{{count}} sélectionnés"
+        "selectedCount_many": "{{count}} sélectionnés",
+        "sendMessage": "Envoyer un message"
     },
     "emptyState": {
         "errorTitle": "Impossible de charger les répondants",

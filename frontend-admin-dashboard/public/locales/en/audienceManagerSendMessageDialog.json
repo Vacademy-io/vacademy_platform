@@ -71,7 +71,8 @@
         "previewEmptyState": "Pick a template or switch to Edit HTML to write content.",
         "bodyPlaceholder": "Enter email body HTML... use {{token}} for placeholders",
         "placeholderHintPrefix": "Placeholders like",
-        "placeholderHintSuffix": "are replaced per-recipient on send. Map them in the next step."
+        "placeholderHintSuffix": "are replaced per-recipient on send. Map them in the next step.",
+        "emailTypeHint": "Sent from this address. Manage senders and their daily limits in Settings → Notifications."
     },
     "pushStep": {
         "titleLabel": "Title",
@@ -123,10 +124,14 @@
         "statusValues": {
             "success": "Success",
             "failed": "Failed"
-        }
+        },
+        "recipientsSelected_one": "{{count}} selected lead",
+        "recipientsSelected_other": "{{count}} selected leads"
     },
     "footer": {
         "back": "Back",
         "next": "Next"
-    }
+    },
+    "dialogDescriptionSelected_one": "Send a message to the {{count}} selected lead",
+    "dialogDescriptionSelected_other": "Send a message to the {{count}} selected leads"
 }

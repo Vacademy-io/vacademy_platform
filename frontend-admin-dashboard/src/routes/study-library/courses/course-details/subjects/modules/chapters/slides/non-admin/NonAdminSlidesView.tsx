@@ -34,6 +34,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PreviewChangesButton } from '@/components/study-library/course-comparison/PreviewChangesButton';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { useTranslation } from 'react-i18next';
 
 const SlideMaterial = React.lazy(() =>
     import(
@@ -61,6 +62,7 @@ export function NonAdminSlidesView({
     moduleId,
     sessionId,
 }: NonAdminSlidesViewProps) {
+    const { t } = useTranslation('studyLibraryNonAdminSlidesView');
     const navigate = useNavigate();
     const { studyLibraryData } = useStudyLibraryStore();
     const { modulesWithChaptersData } = useModulesWithChaptersStore();
@@ -181,7 +183,11 @@ export function NonAdminSlidesView({
                         relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
                         ${isLearnerView ? 'bg-primary-500' : 'bg-neutral-300'}
                     `}
-                    title={isLearnerView ? 'Switch to Instructor View' : 'Switch to Learner View'}
+                    title={
+                        isLearnerView
+                            ? t('switchToInstructorView')
+                            : t('switchToLearnerView')
+                    }
                 >
                     <span
                         className={`
@@ -218,8 +224,9 @@ export function NonAdminSlidesView({
                         <Alert className="border-orange-200 bg-orange-50">
                             <Lock className="size-4 text-orange-600" />
                             <AlertDescription className="text-sm text-orange-800">
-                                This course is {courseStatus?.toLowerCase()}. You can only view
-                                content and answer doubts.
+                                {t('readOnlyCourseBanner', {
+                                    status: courseStatus?.toLowerCase(),
+                                })}
                             </AlertDescription>
                         </Alert>
                     </div>
@@ -331,9 +338,9 @@ export function NonAdminSlidesView({
                         {unsavedChanges.hasChanges && (
                             <Alert className="border-amber-200 bg-amber-50 py-2">
                                 <AlertDescription className="text-xs text-amber-800">
-                                    You have unsaved changes in &quot;
-                                    {unsavedChanges.slideTitle}&quot;. Don&apos;t forget to save
-                                    before switching slides.
+                                    {t('unsavedChangesBanner', {
+                                        slideTitle: unsavedChanges.slideTitle,
+                                    })}
                                 </AlertDescription>
                             </Alert>
                         )}

@@ -2,6 +2,7 @@ import { StatusChip, type StatusType } from '@/components/design-system/status-c
 import type { ChipToggleOption } from '@/components/design-system/chips';
 import type { Money } from '@/routes/erp/-shared/hr-types';
 import { cn } from '@/lib/utils';
+import i18n from '@/i18n';
 
 /**
  * Labels, option lists and cell renderers shared by the three Leave screens.
@@ -135,5 +136,5 @@ export const employeeLabel = (
     const cleanName = name?.trim();
     const cleanCode = code?.trim();
     if (cleanName && cleanCode) return `${cleanCode} · ${cleanName}`;
-    return cleanName || cleanCode || 'Employee';
+    return cleanName || cleanCode || i18n.t('erpLeaveMeta:employeeFallback');
 };

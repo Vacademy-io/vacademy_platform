@@ -150,12 +150,20 @@ class ClearOp(_OpBase):
     op: Literal["clear"]
 
 
+class ColumnsOp(_OpBase):
+    """Two or three columns side by side (compare-and-contrast). Each column
+    is a short list of element ops; nested ops carry their own ids."""
+    op: Literal["columns"]
+    id: str
+    columns: List[List[Dict[str, Any]]] = Field(min_length=2, max_length=3)
+
+
 # Discriminated on "op": a malformed op produces one targeted error instead of
 # one error per union member, which keeps the repair prompt readable.
 BoardOp = Annotated[
     Union[
         HeadingOp, TextOp, BulletOp, FormulaOp, SvgOp, ImageOp, VideoOp, MediaTaskOp,
-        TableOp, CalloutOp, AnnotateOp, ArrowOp, HighlightOp, UnhighlightOp, RevealOp, ClearOp,
+        TableOp, CalloutOp, AnnotateOp, ArrowOp, HighlightOp, UnhighlightOp, RevealOp, ClearOp, ColumnsOp,
     ],
     Field(discriminator="op"),
 ]
@@ -163,8 +171,10 @@ BoardOp = Annotated[
 # Ops that put a new element on the board (and therefore carry an id).
 ELEMENT_OPS = {
     "heading", "text", "bullet", "formula", "svg", "image", "video", "media_task",
-    "table", "callout", "annotate", "arrow",
+    "table", "callout", "annotate", "arrow", "columns",
 }
+# Ops allowed inside a column.
+COLUMN_CHILD_OPS = {"heading", "text", "bullet", "formula", "table", "callout"}
 # Ops that only make sense during a live session; the compiler must not emit them.
 LIVE_ONLY_OPS = {"highlight", "unhighlight", "reveal"}
 VISUAL_OPS = {"svg", "image", "video", "media_task"}
@@ -188,6 +198,12 @@ class Check(BaseModel):
     rubric: Optional[str] = None
     misconceptions: List[Misconception] = Field(default_factory=list)
     pass_threshold: float = 0.7
+    # Pre-written nudge the teacher gives when the learner stalls or asks
+    # for help (never the answer itself).
+    hint: Optional[str] = None
+    # Spoken lines in the other course language, like say_i18n.
+    prompt_i18n: Dict[str, str] = Field(default_factory=dict)
+    hint_i18n: Dict[str, str] = Field(default_factory=dict)
     # Quiz slides only: the source question and its option ids in the same
     # order as `options`, so a tutor answer can be written back as a quiz
     # activity log (learner_tracking) when the slide is done.
@@ -205,6 +221,10 @@ class ConceptDraft(BaseModel):
     say_i18n: Dict[str, str] = Field(default_factory=dict)
     teach_notes: Optional[str] = None
     check: Check = Field(default_factory=Check)
+    # Predict-then-reveal: a one-line guess question the teacher asks BEFORE
+    # this concept's board appears (first concept of a topic), graded lightly.
+    predict: Optional[str] = None
+    predict_i18n: Dict[str, str] = Field(default_factory=dict)
 
 
 class TopicDraft(BaseModel):
@@ -213,6 +233,9 @@ class TopicDraft(BaseModel):
     estimated_seconds: Optional[int] = None
     concepts: List[ConceptDraft]
     summary_ops: List[BoardOp] = Field(default_factory=list)
+    # The spoken recap that closes the topic (1-3 sentences).
+    summary_say: Optional[str] = None
+    summary_say_i18n: Dict[str, str] = Field(default_factory=dict)
 
 
 class KeyTerm(BaseModel):
@@ -245,6 +268,11 @@ class CompileOptions(BaseModel):
     # Let the compiler request AI-generated images (billed per image).
     generate_images: bool = False
     kb_grounding: Optional[CompileKbGrounding] = None
+    # Uploaded videos without a transcript: run speech-to-text (per-minute
+    # credits) so they compile like documents; off = park them for a description.
+    transcribe_videos: bool = True
+    # Scanned PDFs (no text layer): MathPix OCR, charged per page; off = park.
+    ocr_pdfs: bool = True
     # Stable across transport retries; keys idempotent charges.
     compile_run_id: Optional[str] = Field(default=None, pattern=_RUN_ID)
 
@@ -279,6 +307,13 @@ class PlanStatusItem(BaseModel):
     topics: int = 0
     concepts: int = 0
     updated_at: Optional[str] = None
+    # document | pdf | quiz | ai_video | youtube | video_upload | video_link | other
+    source_kind: Optional[str] = None
+    # What the newest plan was compiled from: script | captions | transcript | pdf | None
+    text_kind: Optional[str] = None
+    # Board-quality asks the compiler let go (a dense derivation, an abstract
+    # board with no diagram). The plan is READY and teachable; these are advice.
+    quality_notes: List[str] = Field(default_factory=list)
 
 
 class PackagePlansResponse(BaseModel):

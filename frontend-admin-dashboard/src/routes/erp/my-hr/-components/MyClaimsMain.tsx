@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bank, Info, Plus, Receipt } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MoneyCell } from '@/components/design-system/money-cell';
@@ -30,6 +31,7 @@ import { MyHrNoProfileState, MyHrStat, MyHrStatusChip } from './my-hr-shared';
  * "request a loan" button for a flow that does not exist would be a dead end.
  */
 export const MyClaimsMain = () => {
+    const { t } = useTranslation('erpMyClaimsMain');
     const { employeeId, isProfileLoading, hasNoProfile } = useMyHrIdentity();
     const [claimOpen, setClaimOpen] = useState(false);
 
@@ -52,20 +54,19 @@ export const MyClaimsMain = () => {
     return (
         <div className="flex flex-col gap-5">
             <p className="max-w-3xl text-body text-muted-foreground">
-                Expenses you have claimed back, and anything you are repaying through your salary.
+                {t('intro')}
             </p>
 
             <Tabs defaultValue="reimbursements" className="flex flex-col gap-2">
                 <TabsList className="h-auto w-full flex-wrap justify-start sm:w-fit">
-                    <TabsTrigger value="reimbursements">Reimbursements</TabsTrigger>
-                    <TabsTrigger value="loans">Loans &amp; advances</TabsTrigger>
+                    <TabsTrigger value="reimbursements">{t('tabs.reimbursements')}</TabsTrigger>
+                    <TabsTrigger value="loans">{t('tabs.loans')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="reimbursements" className="mt-4 flex flex-col gap-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <p className="max-w-2xl text-body text-muted-foreground">
-                            Money you spent on work that the institute pays back. Approved claims
-                            are paid out with a future month&apos;s salary.
+                            {t('reimbursementsIntro')}
                         </p>
                         <MyButton
                             buttonType="primary"
@@ -73,7 +74,7 @@ export const MyClaimsMain = () => {
                             type="button"
                             onClick={() => setClaimOpen(true)}
                         >
-                            <Plus size={16} /> New claim
+                            <Plus size={16} /> {t('newClaim')}
                         </MyButton>
                     </div>
 
@@ -81,14 +82,14 @@ export const MyClaimsMain = () => {
                         <HrLoadingRows rows={3} />
                     ) : reimbursementsQuery.isError ? (
                         <HrErrorState
-                            message="Couldn't load your claims."
+                            message={t('reimbursementsLoadError')}
                             onRetry={() => void reimbursementsQuery.refetch()}
                         />
                     ) : reimbursements.length === 0 ? (
                         <HrEmptyState
                             icon={<Receipt size={40} className="text-muted-foreground" />}
-                            title="You haven't claimed anything"
-                            description="Claim a work expense back and it appears here with its status, from Pending through to paid."
+                            title={t('emptyClaimsTitle')}
+                            description={t('emptyClaimsDescription')}
                         >
                             <MyButton
                                 buttonType="secondary"
@@ -96,7 +97,7 @@ export const MyClaimsMain = () => {
                                 type="button"
                                 onClick={() => setClaimOpen(true)}
                             >
-                                Make a claim
+                                {t('makeClaim')}
                             </MyButton>
                         </HrEmptyState>
                     ) : (
@@ -109,14 +110,14 @@ export const MyClaimsMain = () => {
                                     <div className="flex flex-col gap-1">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-subtitle font-medium text-foreground">
-                                                {humanizeToken(claim.type) || 'Expense'}
+                                                {humanizeToken(claim.type) || t('defaultExpenseType')}
                                             </span>
                                             <MyHrStatusChip status={claim.status} />
                                         </div>
                                         <span className="text-caption text-muted-foreground">
                                             {claim.expense_date
-                                                ? `Spent ${formatDate(claim.expense_date)}`
-                                                : 'No expense date recorded'}
+                                                ? t('spentOn', { date: formatDate(claim.expense_date) })
+                                                : t('noExpenseDate')}
                                         </span>
                                         {claim.description && (
                                             <span className="text-caption text-muted-foreground">
@@ -125,7 +126,7 @@ export const MyClaimsMain = () => {
                                         )}
                                         {claim.rejection_reason && (
                                             <span className="text-caption text-danger-600">
-                                                Turned down: {claim.rejection_reason}
+                                                {t('turnedDown', { reason: claim.rejection_reason })}
                                             </span>
                                         )}
                                     </div>
@@ -143,23 +144,21 @@ export const MyClaimsMain = () => {
                 <TabsContent value="loans" className="mt-4 flex flex-col gap-4">
                     <p className="flex max-w-2xl items-start gap-2 text-body text-muted-foreground">
                         <Info size={16} className="mt-1 shrink-0" />
-                        Loans and salary advances are set up by your HR team — there is nothing to
-                        apply for here. Each month&apos;s EMI is deducted from your salary
-                        automatically until the balance reaches zero.
+                        {t('loansInfo')}
                     </p>
 
                     {loansQuery.isLoading ? (
                         <HrLoadingRows rows={2} />
                     ) : loansQuery.isError ? (
                         <HrErrorState
-                            message="Couldn't load your loans."
+                            message={t('loansLoadError')}
                             onRetry={() => void loansQuery.refetch()}
                         />
                     ) : loans.length === 0 ? (
                         <HrEmptyState
                             icon={<Bank size={40} className="text-muted-foreground" />}
-                            title="You have no loans or advances"
-                            description="Nothing is being deducted from your salary for repayment. If your HR team sets up a loan, it appears here."
+                            title={t('emptyLoansTitle')}
+                            description={t('emptyLoansDescription')}
                         />
                     ) : (
                         <div className="flex flex-col gap-3">
@@ -167,13 +166,13 @@ export const MyClaimsMain = () => {
                                 <Card key={loan.id} className="flex flex-col gap-3 p-4">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="text-subtitle font-medium text-foreground">
-                                            {humanizeToken(loan.loan_type) || 'Loan'}
+                                            {humanizeToken(loan.loan_type) || t('defaultLoanType')}
                                         </span>
                                         <MyHrStatusChip status={loan.status} />
                                     </div>
                                     <div className="flex flex-wrap gap-3">
                                         <MyHrStat
-                                            label="Borrowed"
+                                            label={t('stats.borrowed')}
                                             value={
                                                 <MoneyCell
                                                     value={loan.principal_amount ?? null}
@@ -183,7 +182,7 @@ export const MyClaimsMain = () => {
                                             }
                                         />
                                         <MyHrStat
-                                            label="Monthly EMI"
+                                            label={t('stats.monthlyEmi')}
                                             value={
                                                 <MoneyCell
                                                     value={loan.emi_amount ?? null}
@@ -193,7 +192,7 @@ export const MyClaimsMain = () => {
                                             }
                                         />
                                         <MyHrStat
-                                            label="Still to repay"
+                                            label={t('stats.stillToRepay')}
                                             value={
                                                 <MoneyCell
                                                     value={loan.balance_amount ?? null}
@@ -208,15 +207,21 @@ export const MyClaimsMain = () => {
                                             }
                                         />
                                         <MyHrStat
-                                            label="Over"
+                                            label={t('stats.over')}
                                             value={
                                                 loan.tenure_months
-                                                    ? `${loan.tenure_months} months`
+                                                    ? t('tenureMonths', { count: loan.tenure_months })
                                                     : '—'
                                             }
                                             hint={
                                                 loan.start_month && loan.start_year
-                                                    ? `from ${String(loan.start_month).padStart(2, '0')}/${loan.start_year}`
+                                                    ? t('fromDate', {
+                                                          month: String(loan.start_month).padStart(
+                                                              2,
+                                                              '0'
+                                                          ),
+                                                          year: loan.start_year,
+                                                      })
                                                     : undefined
                                             }
                                         />

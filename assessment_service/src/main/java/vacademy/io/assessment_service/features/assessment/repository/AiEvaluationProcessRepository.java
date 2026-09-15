@@ -48,6 +48,29 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
                         @Param("cutoff") Date cutoff);
 
         /**
+         * Dispatched rows with no heartbeat since the cutoff. Uses updated_at, which
+         * every progress callback touches, so a copy that is genuinely being graded
+         * is never mistaken for one whose worker died with it.
+         */
+        @Query("SELECT p FROM AiEvaluationProcess p " +
+                        "WHERE p.status IN :statuses AND COALESCE(p.updatedAt, p.startedAt) < :cutoff")
+        List<AiEvaluationProcess> findSilentDispatched(@Param("statuses") List<String> statuses,
+                        @Param("cutoff") Date cutoff);
+
+        /**
+         * Heartbeat: move updated_at and nothing else, and only while the process
+         * is still running. A bulk UPDATE so it cannot overwrite a concurrent
+         * status change the way a full entity save would.
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Query("UPDATE AiEvaluationProcess p SET p.updatedAt = :now WHERE p.id = :id AND p.status NOT IN :terminal")
+        int touch(@Param("id") String id, @Param("now") Date now, @Param("terminal") List<String> terminal);
+
+        /** How many copies are with the AI service right now (dispatched, not finished). */
+        @Query("SELECT COUNT(p) FROM AiEvaluationProcess p WHERE p.status IN :statuses")
+        long countByStatusIn(@Param("statuses") List<String> statuses);
+
+        /**
          * All AI-evaluation processes for an assessment within one institute,
          * newest first, with the attempt + registration eagerly loaded for the
          * dashboard (participant name). The registration.instituteId filter scopes
@@ -113,7 +136,9 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
                         @Param("batchSize") int batchSize);
 
         /** The rows this instance just claimed, to hand to the async worker. */
-        @Query("SELECT p FROM AiEvaluationProcess p WHERE p.claimedBy = :claimedBy AND p.status = 'PENDING' "
+        @Query("SELECT p FROM AiEvaluationProcess p "
+                        + "JOIN FETCH p.studentAttempt LEFT JOIN FETCH p.assessment "
+                        + "WHERE p.claimedBy = :claimedBy AND p.status = 'PENDING' "
                         + "ORDER BY p.createdAt")
         List<AiEvaluationProcess> findClaimedPending(@Param("claimedBy") String claimedBy);
 }

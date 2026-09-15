@@ -37,9 +37,11 @@
         "text": "No badges configured. Add one to get started."
     },
     "addBadge": "Add Badge",
+    "addManualBadge": "Add staff-awarded badge",
     "badgeCard": {
         "untitled": "Untitled badge",
-        "hidden": "Hidden",
+        "disabledChip": "Disabled",
+        "hiddenChip": "Hidden until earned",
         "defaultDescription": "Add a short description below",
         "on": "On",
         "off": "Off",
@@ -57,7 +59,10 @@
         "descriptionLabel": "Description",
         "descriptionPlaceholder": "Shown on hover, e.g. Maintain a 7-day streak",
         "triggerLabel": "Unlocks based on",
-        "thresholdLabel": "Threshold ({{unit}})"
+        "thresholdLabel": "Threshold ({{unit}})",
+        "manualHint": "No automatic condition — staff award this badge from a learner's profile or the students list.",
+        "hiddenLabel": "Hidden until earned",
+        "hiddenHelp": "Learners don't see this badge until they earn it. Applies on updated learner apps."
     },
     "toasts": {
         "badgesSaved": "Badges saved",
@@ -65,6 +70,58 @@
         "imageUploaded": "Image uploaded",
         "uploadFailed": "Failed to upload image",
         "libraryArtApplied": "Switched badges to library artwork",
-        "nameRequired": "Every badge needs a name"
+        "nameRequired": "Every badge needs a name",
+        "resetRemovesManual_one": "{{count}} staff-awarded badge will be removed from the catalogue when you save. Awards already given stay on learner records.",
+        "resetRemovesManual_other": "{{count}} staff-awarded badges will be removed from the catalogue when you save. Awards already given stay on learner records.",
+        "mergedFromServer_one": "{{count}} badge created elsewhere was kept",
+        "mergedFromServer_other": "{{count}} badges created elsewhere were kept",
+        "saveGuardFailed": "Couldn't check the current badges on the server — nothing was saved. Try again."
+    },
+    "triggers": {
+        "manual": {
+            "label": "Awarded manually by staff",
+            "help": "Never unlocks on its own — a teacher or admin awards it to a learner (e.g. Helping Hand, Most Improved). Each learner can hold a badge once; for recurring recognition create dated or tiered variants.",
+            "unit": ""
+        },
+        "course_count": {
+            "label": "Courses enrolled",
+            "help": "Unlocks when the learner is enrolled in at least this many courses.",
+            "unit": "courses"
+        },
+        "slide_count": {
+            "label": "Slides available",
+            "help": "Unlocks when this many slides are available to the learner.",
+            "unit": "slides"
+        },
+        "streak": {
+            "label": "Daily streak",
+            "help": "Unlocks at this many consecutive active days.",
+            "unit": "days"
+        },
+        "xp_total": {
+            "label": "Total XP earned",
+            "help": "Unlocks when total XP reaches this value.",
+            "unit": "XP"
+        },
+        "course_completion": {
+            "label": "Course completion %",
+            "help": "Unlocks when any course reaches this completion percentage.",
+            "unit": "%"
+        },
+        "assessment_score": {
+            "label": "Assessment score %",
+            "help": "Unlocks when the best released assessment score reaches this percentage.",
+            "unit": "%"
+        },
+        "live_session_count": {
+            "label": "Live classes attended",
+            "help": "Unlocks after the learner attends this many live classes (in total).",
+            "unit": "classes"
+        },
+        "live_session_streak": {
+            "label": "Live class streak (in a row)",
+            "help": "Unlocks after the learner attends this many live classes in a row, without missing one.",
+            "unit": "classes"
+        }
     }
 }

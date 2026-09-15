@@ -692,6 +692,17 @@ async def generate_questions(
         numbering[row.id] = running
         running += row.count
 
+    # Pin each row's retrieval to the SOURCES its nodes belong to. On an
+    # authored (textbook) tree every node is one chapter, so "Chapter 5 rows"
+    # can only ever retrieve Chapter 5 — a similarity search over the whole
+    # book would happily answer "Introduction" from whichever chapter's intro
+    # embeds closest. LLM-derived trees have no source-bound nodes and keep
+    # the KB-wide search. Resolved once, on the request session, before the
+    # rows fan out onto their own sessions.
+    row_sources: Dict[str, List[str]] = {
+        row.id: repo.get_node_source_ids(kb_id, row.node_ids) for row in blueprint.rows
+    }
+
     async def do_row(row: BlueprintRow) -> List[Dict[str, Any]]:
         if row.count <= 0:
             return []
@@ -713,6 +724,7 @@ async def generate_questions(
                 hits = await KbRetrievalService(row_db).search(
                     kb_id=kb_id, institute_id=institute_id, query=query,
                     top_k=PASSAGES_PER_ROW, similarity_threshold=0.2,
+                    source_ids=row_sources.get(row.id) or None,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Retrieval failed for row %s: %s", row.id, exc)

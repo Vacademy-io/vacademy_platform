@@ -53,4 +53,11 @@ public class DomainRoutingUpsertRequest {
     @JsonProperty("isPrimary")
     @JsonAlias({ "is_primary", "primary" })
     private Boolean primary;
+
+    /**
+     * Catalogue tag to mount at this host's root (see
+     * InstituteDomainRouting#rootCatalogueTag). Absent/null on update means
+     * "leave it alone"; send an empty string to clear it.
+     */
+    private String rootCatalogueTag;
 }

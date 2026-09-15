@@ -1,4 +1,4 @@
-import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
+import { getSidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
 import type { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 import type {
     DisplaySettingsData,
@@ -7,12 +7,15 @@ import type {
 } from '@/types/display-settings';
 import { DEFAULT_ASSESSMENT_ACTION_SETTINGS } from '@/types/display-settings';
 
+// Built-in tabs are seeded WITHOUT a `label` — see the note on
+// mapSidebarToConfig in admin-defaults.ts. A seeded name would be read back as a
+// user customization and freeze the nav at whatever wording was current when the
+// config was saved.
 function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu
         .filter((item) => item.id !== 'settings') // settings tab must be hidden for teacher
         .map((item, index) => ({
             id: item.id,
-            label: item.title,
             route: item.to,
             order: index + 1,
             // By default, show everything except tabs which are inherently admin-only filtered elsewhere;
@@ -40,7 +43,6 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
                     const subId = sub.subItemId || sub.subItem || `${item.id}-${subIndex + 1}`;
                     return {
                         id: subId,
-                        label: sub.subItem,
                         route: sub.subItemLink || '#',
                         order: subIndex + 1,
                         // Sub-org teams + manage-institute-suborgs + notification hub
@@ -128,8 +130,9 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
     }));
 }
 
-export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
-    sidebar: mapSidebarToTeacherConfig(SidebarItemsData),
+// Everything except `sidebar`, which is built per call below — see the matching
+// note in admin-defaults.ts.
+const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
     dashboard: {
         widgets: defaultDashboardWidgetsTeacher(),
     },
@@ -326,3 +329,14 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
     leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',
 };
+
+/**
+ * Default teacher display settings. See getDefaultAdminDisplaySettings() for why
+ * this must not be cached at module scope.
+ */
+export function getDefaultTeacherDisplaySettings(): DisplaySettingsData {
+    return {
+        ...TEACHER_DEFAULTS_BASE,
+        sidebar: mapSidebarToTeacherConfig(getSidebarItemsData()),
+    };
+}

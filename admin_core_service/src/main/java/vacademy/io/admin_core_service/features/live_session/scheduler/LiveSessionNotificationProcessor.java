@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotif
 import vacademy.io.admin_core_service.features.live_session.enums.LiveClassAction;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationTypeEnum;
+import vacademy.io.admin_core_service.features.live_session.constants.AttendanceEmailBody;
 import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService;
 import vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService.ResolvedTemplate;
@@ -1031,8 +1032,15 @@ public class LiveSessionNotificationProcessor {
                 // Build a simple email notification for the student
                 Student student = studentRepository.findTopByUserId(userId).orElse(null);
                 if (student != null && student.getEmail() != null) {
+                    // An attendance record is not an invitation. LiveClassEmailBody is
+                    // the invitation body — it opens "We're excited to invite you to our
+                    // upcoming ...", renders a "Join the Live Class" button and closes
+                    // "We look forward to seeing you there!". Sent for attendance it
+                    // invited a learner to a class that had already finished, pointed the
+                    // button at "#", and left an empty orange card where
+                    // {{ALL_TIMEZONE_TIMES}} would have been.
                     NotificationDTO dto = new NotificationDTO();
-                    dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
+                    dto.setBody(AttendanceEmailBody.Attendance_Email_Body);
                     dto.setSubject(title + " - " + sessionTitle);
                     dto.setNotificationType("EMAIL");
                     dto.setSource("ADMIN_CORE");
@@ -1042,17 +1050,16 @@ public class LiveSessionNotificationProcessor {
                     Map<String, String> placeholders = new HashMap<>();
                     placeholders.put("NAME", student.getFullName() != null ? student.getFullName() : "Student");
                     placeholders.put("SESSION_TITLE", sessionTitle);
-                    // {{ACTION}} lands in the template's 24px <h1>, so it stays a
-                    // short label. The explanation reaches the learner through the
-                    // push/system body and the daily attendance report card.
-                    placeholders.put("ACTION", "Attendance: " + status);
+                    placeholders.put("STATUS", status);
+                    placeholders.put("STATUS_COLOR",
+                            "ABSENT".equalsIgnoreCase(status) ? "#dc2626" : "#16a34a");
+                    // A whole sentence belongs in the body, not interpolated into the
+                    // header. Empty note renders nothing at all.
+                    placeholders.put("STATUS_NOTE", AttendanceEmailBody.noteBlock(reasonDetail));
+                    placeholders.put("SESSION_DATE", sessionDateLabel(session));
                     placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
                     placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
                     placeholders.put("YEAR", getCurrentYear());
-                    placeholders.put("LINK", "#");
-                    placeholders.put("ALL_TIMEZONE_TIMES", "");
-                    placeholders.put("DATE", "");
-                    placeholders.put("TIME", "");
                     u.setPlaceholders(placeholders);
                     u.setUserId(userId);
                     u.setChannelId(student.getEmail());
@@ -1066,6 +1073,21 @@ public class LiveSessionNotificationProcessor {
         }
     }
 
+
+    /** "26 August 2026" for the attendance mail, or an empty label if unknown. */
+    private String sessionDateLabel(LiveSession session) {
+        try {
+            var schedules = scheduleRepository.findBySessionId(session.getId());
+            if (schedules != null && !schedules.isEmpty()) {
+                var d = schedules.get(0).getMeetingDate();
+                if (d != null) {
+                    return new SimpleDateFormat("d MMMM yyyy").format(d);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
+    }
 
     private String getThemeColor(String instituteId) {
         try {

@@ -352,6 +352,30 @@ def test_reconcile_short_keys_never_containment_match():
     assert n == 1
 
 
+def test_reconcile_short_answers_inside_a_joined_message_are_delivered():
+    """Live ee6f561c (2026-09-11): four saaras finals joined by the aggregator
+    into one message the model demonstrably answered ("fifth class") — and
+    'ठीक।' was reported DELETED because its 2-char key is below the substring
+    floor. Whole-word matching places it. Over 7 days 'Yes.' x8 / 'हाँ।' x3 /
+    'Yeah.' x3 were the top "deleted answers" for the same reason."""
+    heard = ["But.", "बच्चा भी।", "ठीक।", "fifth class में पढ़ रहा है।"]
+    delivered = ["But. बच्चा भी। ठीक। fifth class में पढ़ रहा है।"]
+    lost = dg.split_lost(heard, delivered)
+    assert (lost.answers, lost.fragments) == (0, 0), lost
+    assert dg.reconcile_answers(["Yes, speak.", "Yes."], ["Yes, speak. Yes."])[0] == 0
+    assert dg.reconcile_answers(["हाँ।", "जी।", "दीदी से।"], ["हाँ। जी। दीदी से।"])[0] == 0
+
+
+def test_reconcile_short_answers_are_whole_words_and_consumed_once():
+    # A word is spoken for once: a second 'Yes.' still needs its own copy...
+    n, samples = dg.reconcile_answers(["Yes.", "Yes."], ["Okay. Yes."])
+    assert (n, samples) == (1, ["Yes."])
+    # ...and a genuinely undelivered 'Yes.' is still a loss.
+    assert dg.reconcile_answers(["Yes."], ["I will call you back tomorrow."])[0] == 1
+    # Whole words only: 'yes' is not inside 'yesterday'.
+    assert dg.reconcile_answers(["Yes."], ["I said yesterday."])[0] == 1
+
+
 def test_reconcile_exact_matched_message_not_reused_as_span():
     # A delivered message consumed by exact matching is spoken for — it must
     # not ALSO absorb a fragment via containment.

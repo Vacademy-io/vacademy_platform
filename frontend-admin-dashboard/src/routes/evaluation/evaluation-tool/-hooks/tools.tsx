@@ -9,11 +9,13 @@ import {
     Rectangle,
     Cursor,
 } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 // Takes the SAME canvasUtils instance the caller already created (rather than
 // building its own via useFabric) so the toolbar's active-tool state and the
 // tool actions below always agree on what's currently armed.
 const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
+    const { t } = useTranslation('evaluationTools');
     const tools: {
         key: EvaluationTool;
         icon: typeof Cursor;
@@ -24,7 +26,7 @@ const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
         {
             key: 'select',
             icon: Cursor,
-            label: 'Select',
+            label: t('select'),
             color: 'text-neutral-600',
             action: () => {
                 canvasUtils.enableSelection();
@@ -33,7 +35,7 @@ const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
         {
             key: 'pen',
             icon: Pen,
-            label: 'Pen',
+            label: t('pen'),
             color: 'text-green-600',
             action: () => {
                 canvasUtils.addPenTool();
@@ -42,7 +44,7 @@ const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
         {
             key: 'tick',
             icon: Check,
-            label: 'Tick',
+            label: t('tick'),
             color: 'text-green-600',
             action: () => {
                 canvasUtils.addTick();
@@ -51,7 +53,7 @@ const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
         {
             key: 'cross',
             icon: X,
-            label: 'Cross',
+            label: t('cross'),
             color: 'text-red-600',
             action: () => {
                 canvasUtils.addCross();
@@ -60,7 +62,7 @@ const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
         {
             key: 'text',
             icon: Type,
-            label: 'Text',
+            label: t('text'),
             color: 'text-black',
             action: () => {
                 canvasUtils.addTextBox();
@@ -69,7 +71,7 @@ const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
         {
             key: 'box',
             icon: Rectangle,
-            label: 'Box',
+            label: t('box'),
             color: 'text-black',
             action: () => {
                 canvasUtils.addRectangle();
@@ -78,7 +80,7 @@ const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
         {
             key: 'circle',
             icon: Circle,
-            label: 'Circle',
+            label: t('circle'),
             color: 'text-black',
             action: () => {
                 canvasUtils.addCircle();
@@ -88,7 +90,7 @@ const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
 
     const deleteTool = {
         icon: Trash2,
-        label: 'Delete',
+        label: t('delete'),
         color: 'text-red-600',
         action: () => {
             canvasUtils.deleteSelectedShape();

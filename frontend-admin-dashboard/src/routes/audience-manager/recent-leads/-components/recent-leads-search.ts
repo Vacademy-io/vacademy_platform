@@ -65,6 +65,26 @@ export const RecentLeadsSearchSchema = z.object({
     /** Attempt count N for called=CALLED_N_TIMES / CALLED_N_PLUS_TIMES. Kept as a
      *  string like every other param here; the page clamps it to 1–99 on read. */
     calledCount: z.string().optional(),
+    /** Campaign (UTM) filters — comma-separated values per dimension. Only
+     *  honoured while the institute's UTM setting is on (the controls that
+     *  read them render nothing otherwise). The Reports Center's UTM tab
+     *  drills through with these. */
+    utmSource: z.string().optional(),
+    utmMedium: z.string().optional(),
+    utmCampaign: z.string().optional(),
+    utmContent: z.string().optional(),
+    utmTerm: z.string().optional(),
+    utmChannel: z.string().optional(),
 });
+
+/** URL param per UTM dimension — shared by the page and its drill-through links. */
+export const UTM_SEARCH_PARAM = {
+    source: 'utmSource',
+    medium: 'utmMedium',
+    campaign: 'utmCampaign',
+    content: 'utmContent',
+    term: 'utmTerm',
+    source_type: 'utmChannel',
+} as const;
 
 export type RecentLeadsSearch = z.infer<typeof RecentLeadsSearchSchema>;

@@ -199,12 +199,14 @@ def test_uploaded_video_url_becomes_file_id():
         def execute(self, *_a, **_k):
             class R:
                 def first(self):
-                    return ("5d4a0e0e-1111-2222-3333-444444444444", None)
+                    # url, published_url, published_video_length, video_length, description
+                    return ("5d4a0e0e-1111-2222-3333-444444444444", None, None, 4672000, " what it teaches ")
             return R()
 
     src = SlideSource(slide_id="s", title="v", source_type="VIDEO", source_id="x", kind="other")
     _video(_DB(), src, "x", html_video=False)
     assert src.media_file_id and src.media_url is None
+    assert src.video_length_ms == 4672000 and src.video_description == "what it teaches"
 
 
 # ── runtime: resume replay, final attempt, settings ─────────────────────────
@@ -261,8 +263,11 @@ def test_post_media_validation_tolerates_a_dropped_image():
         for c in t["concepts"]:
             c["board_ops"] = [op for op in c["board_ops"] if op["op"] not in ("svg", "image", "video", "media_task")]
     p = TeachingPlanDraft.model_validate(data)
-    assert validate_plan(p, "en", limits=DEFAULT_LIMITS)                                            # strict: rejected
-    assert validate_plan(p, "en", limits=replace(DEFAULT_LIMITS, require_visual_per_topic=False)) == []
+    from app.services.tutor.plan_validator import board_quality_errors
+    # Servable either way — a missing picture is advice, not a failed compile.
+    assert validate_plan(p, "en", limits=DEFAULT_LIMITS) == []
+    assert any("nothing to look at" in n for n in board_quality_errors(p, limits=DEFAULT_LIMITS))
+    assert not board_quality_errors(p, limits=replace(DEFAULT_LIMITS, require_visual_per_topic=False))
 
 
 def test_lesson_frame_shape_is_json_serialisable():
@@ -367,9 +372,11 @@ def test_resume_position_reads_per_slide_progress_and_phase():
     st.progress_json["s"] = {"concept_id": "c3", "phase": sm.SLIDE_DONE, "topic_id": "t1"}
     assert resume_position(None, L, st).phase == sm.SLIDE_DONE
     assert previous_slide(st, "s")["slide_title"] == "Older slide"
-    legacy = NS(progress_json={}, current_slide_id="s", current_concept_id="c3", current_phase=None, current_topic_id=None)
-    assert slide_progress(legacy, "s")["concept_id"] == "c3"
-    assert resume_position(None, L, legacy).concept == 2
+    # The legacy columns are not a fallback: start_session points current_slide_id at the slide
+    # being opened while phase/concept still belong to the previous one (a fresh slide must start fresh).
+    legacy = NS(progress_json={}, current_slide_id="s", current_concept_id="c3", current_phase=sm.SLIDE_DONE, current_topic_id=None)
+    assert slide_progress(legacy, "s") == {}
+    assert resume_position(None, L, legacy) is None
     assert resume_position(None, L, NS(progress_json={}, current_slide_id="x", current_concept_id=None, current_phase=None, current_topic_id=None)) is None
 
 
@@ -413,3 +420,265 @@ def test_platform_setting_specs_carry_catalogs():
     assert SETTING_SPECS["tutor.compile.model"].catalog == "llm"
     assert SETTING_SPECS["tutor.voice.provider"].type == "enum" and "smallest" in SETTING_SPECS["tutor.voice.provider"].options
     assert "tutor" in GROUP_LABELS and "images" in GROUP_LABELS
+
+
+def test_settings_voice_pace_and_avatar():
+    s = TutorSettings()
+    _apply(s, {"voicePace": "0.9", "teacherAvatarFileId": "file-1"})
+    assert s.voice_pace == 0.9 and s.teacher_avatar_file_id == "file-1"
+    _apply(s, {"voicePace": 5})
+    assert s.voice_pace == 1.3          # clamped
+    _apply(s, {"voicePace": "fast"})
+    assert s.voice_pace == 1.3          # unparsable: unchanged
+    _apply(s, {"teacherAvatarFileId": ""})
+    assert s.teacher_avatar_file_id == "file-1"
+
+
+def test_compile_prompt_states_the_image_rule_by_mode():
+    from app.services.tutor import compile_prompts as P
+    on = P.system_prompt("Asha", "en", images_enabled=True)
+    off = P.system_prompt("Asha", "en", images_enabled=False)
+    assert "IMAGES ARE ON" in on and "one illustration per two boards" in on and "AI IMAGES ARE OFF" not in on
+    assert "AI IMAGES ARE OFF" in off and "IMAGES ARE ON" not in off
+    assert "PREVIOUS JSON" in P.image_repair_prompt("{}")
+
+
+def test_no_image_plan_gets_one_image_repair_round_then_is_accepted(monkeypatch):
+    """Images on + valid plan without pictures → exactly one extra round; if
+    the model still returns none, the plan is delivered, not failed."""
+    from tests.test_tutor_compile import _plan
+    from app.services.tutor import plan_compiler as pc
+    from app.services.tutor.slide_source import SlideSource
+    data = _plan().model_dump(by_alias=True)
+    for t in data["topics"]:
+        for c in t["concepts"]:
+            c["board_ops"] = [op for op in c["board_ops"] if op["op"] != "image"]
+    body = json.dumps(data)
+    compiler = pc.PlanCompiler(institute_id="i", user_id="u", generate_images=True)
+    calls = []
+
+    async def fake_chat(messages, run):
+        calls.append(messages[-1]["content"][:40])
+        run.model_used = "m"
+        return body, "stop"
+
+    async def no_kb(source):
+        return None
+
+    async def no_media(draft, source, run):
+        return None
+
+    monkeypatch.setattr(compiler, "_chat", fake_chat)
+    monkeypatch.setattr(compiler, "_kb_block", no_kb)
+    monkeypatch.setattr(compiler, "_resolve_media", no_media)
+    src = SlideSource(slide_id="s", title="T", source_type="DOCUMENT", source_id="d", kind="document", text="body")
+    draft, _raw = asyncio.run(compiler._build_draft(src, None, pc._Run()))
+    # initial, the image round, then the one quality round (engagement rules)
+    assert draft is not None and len(calls) == 3 and calls[1].startswith("Your plan is valid but has NO image")
+    assert calls[2].startswith("Your plan is valid but misses")
+
+
+def test_smallest_speed_calibration_is_monotonic_and_hits_the_measured_points():
+    from app.services.voice_tts import smallest_speed_for_ratio as f
+    assert f(1.0) == 1.0
+    assert abs(f(0.86) - 0.8) < 0.01 and abs(f(1.45) - 1.5) < 0.01   # measured points map back
+    assert f(0.9) < 0.9                                                # 0.9× needs a lower engine speed than 0.9
+    xs = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0]
+    ys = [f(x) for x in xs]
+    assert ys == sorted(ys) and 0.5 <= min(ys) and max(ys) <= 2.0
+    assert f(0.1) == 0.5 and f(5) == 2.0                              # clamped
+
+
+def test_number_settings_are_bounded_and_listed():
+    from app.services.platform_settings_service import SETTING_SPECS, _coerce
+    spec = SETTING_SPECS["tutor.live.preflight_minutes"]
+    assert spec.type == "number" and _coerce(spec, "5") == 5 and _coerce(spec, 2.5) == 2.5
+    with pytest.raises(ValueError):
+        _coerce(spec, 500)
+    with pytest.raises(ValueError):
+        _coerce(spec, "many")
+    assert SETTING_SPECS["tutor.live.max_minutes"].max_value == 240
+
+
+def test_kb_source_block_is_skipped_for_ungrounded_plans():
+    from app.services.tutor.runtime.session_service import kb_source_block
+    L = _lesson()
+    assert asyncio.run(kb_source_block(L, "inst", "Force", "why?")) is None
+    view = {"plan_id": "p", "slide_id": "s", "version": 1, "language": "en", "objectives": [], "topics": [],
+            "kb": {"knowledge_base_id": "kb1", "mode": "STRICT"}}
+    assert sm.from_plan_view(view).kb == {"knowledge_base_id": "kb1", "mode": "STRICT"}
+    assert sm.from_plan_view({**view, "kb": {"mode": "STRICT"}}).kb is None
+
+
+# ── a structurally sound plan is never thrown away for board quality ────────
+
+def _draft(**over):
+    """Smallest valid draft: one topic, one concept, a real check on the second."""
+    from app.schemas.tutor import TeachingPlanDraft
+    base = {
+        "language": "en",
+        "objectives": ["understand it"],
+        "key_terms": [],
+        "topics": [{
+            "id": "t1", "title": "Lagrange identity", "order": 1,
+            "summary_ops": [{"op": "bullet", "id": "t1-s1", "items": ["one", "two", "three"]}],
+            "summary_say": "That is the identity.",
+            "summary_say_i18n": {"hi": "यही identity है।"},
+            "concepts": [{
+                "id": "t1c1", "title": "Collapse with Lagrange", "order": 1, "concept_tags": ["algebra.lagrange"],
+                "say": "Look at the board and follow the collapse.", "say_i18n": {"hi": "बोर्ड देखिए और collapse follow कीजिए।"},
+                "board_ops": over.pop("ops", [{"op": "heading", "id": "t1c1-h", "text": "Lagrange identity"},
+                                              {"op": "formula", "id": "t1c1-f", "latex": "(a^2+b^2)(c^2+d^2)"}]),
+                "check": {"type": "none"},
+            }],
+        }],
+    }
+    base.update(over)
+    return TeachingPlanDraft.model_validate(base)
+
+
+def test_a_wordy_board_with_no_diagram_is_a_note_not_a_failure():
+    from app.services.tutor.plan_validator import validate_plan, soft_errors, board_quality_errors
+    wordy = [{"op": "heading", "id": "t1c1-h", "text": "Lagrange identity"},
+             {"op": "text", "id": "t1c1-t", "text": " ".join(["word"] * 80)}]
+    plan = _draft(ops=wordy)
+    # Structurally fine → the compile ships it.
+    assert validate_plan(plan, "en", require_media_urls=False) == []
+    # And the pedagogy asks come back as advice, once.
+    notes = board_quality_errors(plan)
+    assert any("keep a concept under 60" in n for n in notes)
+    assert any("nothing to look at" in n for n in notes)
+    assert set(notes) <= set(soft_errors(plan))
+
+
+def test_a_formula_board_satisfies_the_visual_rule():
+    from app.services.tutor.plan_validator import board_quality_errors
+    assert not any("nothing to look at" in n for n in board_quality_errors(_draft()))
+    table = [{"op": "heading", "id": "t1c1-h", "text": "Compare"},
+             {"op": "table", "id": "t1c1-tb", "rows": [["a", "b"], ["1", "2"]]}]
+    assert not any("nothing to look at" in n for n in board_quality_errors(_draft(ops=table)))
+
+
+def test_structural_problems_stay_fatal():
+    from app.services.tutor.plan_validator import validate_plan
+    silent = _draft()
+    silent.topics[0].concepts[0].say = "  "
+    assert any("say is empty" in e for e in validate_plan(silent, "en", require_media_urls=False))
+    dup = _draft()
+    dup.topics[0].concepts[0].id = "t1"
+    assert any("duplicate id" in e for e in validate_plan(dup, "en", require_media_urls=False))
+
+
+def test_problem_slide_first_board_must_carry_the_ask_and_options():
+    from app.services.tutor.plan_validator import question_coverage_errors
+    source = "\n".join([
+        r"Let a, b, c have magnitudes 1, 2, 3 satisfying \[ |(a\times b)\cdot c| = 6 \]",
+        "If d is a unit vector coplanar with b and c, find the value of:",
+        r"\[ \left|(\vec{a}\times\vec{c})\cdot\vec{d}\right|^{2} + \left|(\vec{a}\times\vec{c})\times\vec{d}\right|^{2} \]",
+        "(A) 9", "", "(B) 3", "", "(C) −9/2", "", "(D) 9/2",
+    ])
+    givens_only = _draft(ops=[{"op": "heading", "id": "t1c1-h", "text": "The Question"},
+                              {"op": "formula", "id": "t1c1-f", "latex": r"|(\vec{a}\times\vec{b})\cdot\vec{c}| = 6"}])
+    notes = question_coverage_errors(givens_only, source)
+    assert any("ask is missing" in n for n in notes) and any("options are missing" in n for n in notes)
+    full = _draft(ops=[{"op": "heading", "id": "t1c1-h", "text": "The Question"},
+                       {"op": "formula", "id": "t1c1-f", "latex": r"|(\vec a\times\vec b)\cdot\vec c| = 6"},
+                       {"op": "formula", "id": "t1c1-g", "latex": r"\left|(\vec{a}\times\vec{c})\cdot\vec{d}\right|^{2}+\left|(\vec{a}\times\vec{c})\times\vec{d}\right|^{2}"},
+                       {"op": "bullet", "id": "t1c1-o", "items": ["(A) 9", "(B) 3", "(C) −9/2", "(D) 9/2"]}])
+    assert question_coverage_errors(full, source) == []
+    # Prose slides with no ask are untouched.
+    assert question_coverage_errors(givens_only, "Plants make sugar from light. Chlorophyll is green.") == []
+
+
+# ── visual density: institutes asked for textbook illustration, not walls of text ──
+
+def _img_draft(n_images=3, n_topics=2):
+    """A draft whose concepts each carry one image op needing generation."""
+    from app.schemas.tutor import TeachingPlanDraft
+    topics = []
+    made = 0
+    for t in range(n_topics):
+        concepts = []
+        for c in range(2):
+            ops = [{"op": "heading", "id": f"t{t}c{c}-h", "text": f"Board {t} step {c}"}]
+            if made < n_images:
+                ops.append({"op": "image", "id": f"t{t}c{c}-img", "description": "a labelled cutaway of a leaf",
+                            "generate": "textbook illustration of a leaf cross-section"})
+                ops.append({"op": "annotate", "id": f"t{t}c{c}-a", "target": f"t{t}c{c}-img", "text": "stomata"})
+                made += 1
+            concepts.append({
+                "id": f"t{t}c{c}", "title": f"Step {c}", "order": c + 1, "concept_tags": ["bio.leaf"],
+                "say": "Look at the illustration.", "say_i18n": {"hi": "चित्र देखिए।"},
+                "board_ops": ops,
+                "check": {"type": "none"} if c == 0 else {"type": "open", "prompt": "Why?", "rubric": "because", "hint": "look"},
+            })
+        topics.append({"id": f"t{t}", "title": f"Board {t}", "order": t + 1, "concepts": concepts,
+                       "summary_ops": [], "summary_say": "Done.", "summary_say_i18n": {"hi": "हो गया।"}})
+    return TeachingPlanDraft.model_validate({"language": "en", "objectives": ["see it"], "key_terms": [], "topics": topics})
+
+
+def _compiler(**kw):
+    from app.services.tutor.plan_compiler import PlanCompiler
+    return PlanCompiler(institute_id="i", user_id="u", model_override="m", generate_images=True, **kw)
+
+
+def test_board_illustrations_are_drawn_concurrently_and_capped(monkeypatch):
+    """A picture takes about a minute from the vendor; drawing a board's worth
+    of them sequentially is what kept boards text-heavy."""
+    import asyncio
+    from app.services.tutor import plan_compiler as pc
+
+    monkeypatch.setattr(pc, "MAX_GENERATED_IMAGES_PER_SLIDE", 3)
+    monkeypatch.setattr(pc, "IMAGE_CONCURRENCY", 3)
+    live, peak, drawn = 0, 0, []
+
+    async def fake(self, prompt, course_name, run):
+        nonlocal live, peak
+        live += 1
+        peak = max(peak, live)
+        await asyncio.sleep(0.05)
+        live -= 1
+        drawn.append(prompt)
+        return f"https://cdn/{len(drawn)}.png"
+
+    monkeypatch.setattr(pc.PlanCompiler, "_generate_image", fake)
+    draft = _img_draft(n_images=4)                       # one more than the cap
+    src = type("S", (), {"media_url": None, "media_file_id": None, "course_name": "Bio", "kind": "document"})()
+    asyncio.run(_compiler()._resolve_media(draft, src, pc._Run()))
+
+    assert len(drawn) == 3 and peak == 3                 # capped, and all at once
+    urls = [op.url for t in draft.topics for c in t.concepts for op in c.board_ops if getattr(op, "op", "") == "image"]
+    assert urls and all(urls)                            # every kept image has a real url
+    assert len(urls) == 3                                # the uncapped fourth was dropped
+
+
+def test_an_image_that_fails_takes_its_annotation_with_it(monkeypatch):
+    import asyncio
+    from app.services.tutor import plan_compiler as pc
+
+    async def fake(self, prompt, course_name, run):
+        return None                                       # the vendor failed
+
+    monkeypatch.setattr(pc.PlanCompiler, "_generate_image", fake)
+    draft = _img_draft(n_images=1, n_topics=1)
+    src = type("S", (), {"media_url": None, "media_file_id": None, "course_name": "Bio", "kind": "document"})()
+    asyncio.run(_compiler()._resolve_media(draft, src, pc._Run()))
+    ops = [op for c in draft.topics[0].concepts for op in c.board_ops]
+    assert not [o for o in ops if getattr(o, "op", "") == "image"]          # dropped
+    assert not [o for o in ops if getattr(o, "op", "") == "annotate"]       # and its label
+
+
+def test_thin_illustration_coverage_is_advice_and_scales_with_the_slide():
+    from app.services.tutor.plan_compiler import _image_target
+    from app.services.tutor.plan_validator import DEFAULT_LIMITS, board_quality_errors, validate_plan
+    from dataclasses import replace
+
+    with_images = replace(DEFAULT_LIMITS, expect_images=True)
+    bare = _img_draft(n_images=0, n_topics=5)
+    notes = board_quality_errors(bare, limits=with_images)
+    assert any("real illustration" in n for n in notes)
+    assert validate_plan(bare, "en", limits=with_images, require_media_urls=False) == []   # never fatal
+    # Images off for the course: no nagging.
+    assert not any("real illustration" in n for n in board_quality_errors(bare, limits=DEFAULT_LIMITS))
+    # A long slide is expected to carry more pictures than a short one.
+    assert _image_target(_img_draft(n_topics=1)) == 1 and _image_target(_img_draft(n_topics=5)) == 3

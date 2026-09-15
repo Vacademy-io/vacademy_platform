@@ -24,6 +24,7 @@ import {
 } from '../utils/utils';
 import { PlanTypeSelection } from './PlanTypeSelection';
 import { ApprovalToggle } from './ApprovalToggle';
+import { PlanChangeToggle } from './PlanChangeToggle';
 import { DonationPlanConfiguration } from './DonationPlanConfiguration';
 import { SubscriptionPlanConfiguration } from './SubscriptionPlanConfiguration';
 import { UpfrontPlanConfiguration } from './UpfrontPlanConfiguration';
@@ -55,6 +56,9 @@ interface PaymentPlanCreatorProps {
     existingFreePlans?: FreePlanInfo[];
     requireApproval: boolean;
     setRequireApproval: (value: boolean) => void;
+    /** Option-level master switch for plan change; see PlanChangeToggle. */
+    planChangeAllowed: boolean;
+    setPlanChangeAllowed: (value: boolean) => void;
 }
 
 export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
@@ -69,6 +73,8 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
     existingFreePlans = [],
     requireApproval = false,
     setRequireApproval,
+    planChangeAllowed = false,
+    setPlanChangeAllowed,
 }) => {
     const { t } = useTranslation('settingsPaymentPlanCreator');
     const [currentStep, setCurrentStep] = useState(1);
@@ -79,6 +85,12 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
     const onApprovalChange = (value: boolean) => {
         setRequireApproval(value);
         setPlanData((prev) => ({ ...prev, requireApproval: value }));
+    };
+    // Mirrored onto planData so the plan handed back to onSave carries the flag, the same
+    // way requireApproval does.
+    const onPlanChangeAllowedChange = (value: boolean) => {
+        setPlanChangeAllowed(value);
+        setPlanData((prev) => ({ ...prev, planChangeAllowed: value }));
     };
 
     // Initialize form data when creating new plan
@@ -455,6 +467,8 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                         isSaving={isSaving}
                         requireApproval={requireApproval}
                         setRequireApproval={onApprovalChange}
+                        planChangeAllowed={planChangeAllowed}
+                        setPlanChangeAllowed={onPlanChangeAllowedChange}
                     />
                 </DialogContent>
             </Dialog>
@@ -502,6 +516,12 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                     onApprovalChange={onApprovalChange}
                                 />
                             )}
+
+                            <PlanChangeToggle
+                                planType={planData.type as PaymentPlanType}
+                                planChangeAllowed={planChangeAllowed}
+                                onPlanChangeAllowedChange={onPlanChangeAllowedChange}
+                            />
 
                             {planData.type !== PaymentPlans.FREE &&
                                 planData.type !== PaymentPlans.CPO && (
@@ -633,6 +653,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                     setFeaturesGlobal={setFeaturesGlobal}
                                     selectedUnit={selectedUnit}
                                     onUnitChange={setSelectedUnit}
+                                    planChangeAllowed={planChangeAllowed}
                                     onCustomIntervalsChange={(intervals) =>
                                         updateConfig({
                                             subscription: {

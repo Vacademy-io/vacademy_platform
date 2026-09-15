@@ -207,7 +207,22 @@
     "button": "زر",
     "newsletterSuccessDefault": "شكرًا لاشتراكك!",
     "enterYourEmail": "أدخل بريدك الإلكتروني",
-    "subscribe": "اشترك"
+    "subscribe": "اشترك",
+    "documentViewer": {
+      "open": "فتح المستند",
+      "download": "تنزيل PDF",
+      "close": "إغلاق",
+      "fullScreen": "ملء الشاشة",
+      "previousPage": "الصفحة السابقة",
+      "nextPage": "الصفحة التالية",
+      "zoomIn": "تكبير",
+      "zoomOut": "تصغير",
+      "pageOf": "{{current}} / {{total}}",
+      "loading": "جارٍ تحميل المستند…",
+      "loadFailed": "تعذّر عرض المستند هنا.",
+      "openInNewTab": "فتح في علامة تبويب جديدة",
+      "noDocument": "لم يتم إعداد أي مستند بعد"
+    }
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "تحدث معنا عبر واتساب"

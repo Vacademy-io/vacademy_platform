@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
+import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { PnlMain } from '../-components/PnlMain';
@@ -14,20 +15,18 @@ export const Route = createLazyFileRoute('/erp/finance/pnl/')({
 });
 
 function PnlPage() {
+    const { t } = useTranslation('erpFinancePnlIndex');
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">P&amp;L Snapshot</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('title')}</h1>);
+    }, [setNavHeading, t]);
 
     return (
         <>
             <Helmet>
-                <title>P&amp;L Snapshot</title>
-                <meta
-                    name="description"
-                    content="Collected fee revenue against payroll cost for the month, broken down by department."
-                />
+                <title>{t('title')}</title>
+                <meta name="description" content={t('description')} />
             </Helmet>
             <PnlMain />
         </>

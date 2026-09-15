@@ -3,7 +3,8 @@
         "EMAIL": "البريد الإلكتروني",
         "WHATSAPP": "واتساب",
         "PUSH": "إشعار فوري",
-        "SMS": "رسالة نصية"
+        "SMS": "رسالة نصية",
+        "CALL": "مكالمة"
     },
     "statuses": {
         "PENDING": "قيد الانتظار",
@@ -47,7 +48,8 @@
         "noCommunicationsTitle": "لا توجد مراسلات",
         "noChannelMessages": "لا توجد رسائل {{channel}} حتى الآن. جرّب اختيار \"{{allLabel}}\" لعرض القنوات الأخرى.",
         "noMessagesYet": "لم يتم إرسال أو استلام أي رسائل من هذا الطالب أو إليه بعد.",
-        "sendFirstMessage": "إرسال أول رسالة"
+        "sendFirstMessage": "إرسال أول رسالة",
+        "noCalls": "لا توجد مكالمات مع هذا الطالب بعد. استخدم زر الاتصال في تبويب النظرة العامة لإجراء مكالمة."
     },
     "sendCard": {
         "heading": "إرسال إشعار",
@@ -63,5 +65,28 @@
     "totalCount_two": "{{count}} رسالتان إجمالاً",
     "totalCount_few": "{{count}} رسائل إجمالاً",
     "totalCount_many": "{{count}} رسالة إجمالاً",
-    "totalCount_other": "{{count}} رسالة إجمالاً"
+    "totalCount_other": "{{count}} رسالة إجمالاً",
+    "call": {
+        "outbound": "مكالمة صادرة",
+        "inbound": "مكالمة واردة",
+        "aiCall": "مكالمة ذكاء اصطناعي",
+        "status": {
+            "COMPLETED": "تم الرد",
+            "NO_ANSWER": "لا يوجد رد",
+            "BUSY": "مشغول",
+            "FAILED": "فشلت",
+            "CANCELLED": "ألغيت",
+            "IN_PROGRESS": "جارية",
+            "QUEUED": "تم الاتصال",
+            "INITIATED": "تم الاتصال",
+            "COUNSELLOR_RINGING": "يرن",
+            "COUNSELLOR_ANSWERED": "جارٍ التوصيل"
+        },
+        "duration": "{{minutes}} د {{seconds}} ث",
+        "outcome": "النتيجة",
+        "attempt": "المحاولة {{n}}",
+        "recordingHeading": "التسجيل",
+        "noRecording": "لا يوجد تسجيل لهذه المكالمة",
+        "byCounsellor": "بواسطة {{name}}"
+    }
 }

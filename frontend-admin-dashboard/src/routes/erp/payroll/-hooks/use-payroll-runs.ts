@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { formatMonthValue, type MonthValue } from '@/components/design-system/month-picker';
 import { getInstituteId } from '@/constants/helper';
@@ -11,7 +12,7 @@ import {
     hrKeys,
 } from '@/routes/erp/-shared/hr-service';
 import type { PayrollRunDTO } from '@/routes/erp/-shared/hr-types';
-import { RUN_TYPE_LABELS, type PayrollRunType } from '@/routes/erp/-shared/payroll-status';
+import { buildRunTypeLabels, type PayrollRunType } from '@/routes/erp/-shared/payroll-status';
 
 /** Anything that looks like a UUID — how we tell "created id" from "server message". */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,6 +45,7 @@ export interface CreateRunResult {
  * run you want is almost always the one you just made.
  */
 export function usePayrollRuns(year: number) {
+    const { t } = useTranslation(['erpUsePayrollRuns', 'erpPayrollStatus']);
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
 
@@ -101,9 +103,10 @@ export function usePayrollRuns(year: number) {
                 // normal thing to bump into, not a failure worth a raw stack sentence.
                 if (/already exist|duplicate/i.test(message)) {
                     toast.error(
-                        `A ${RUN_TYPE_LABELS[runType].toLowerCase()} run already exists for ${formatMonthValue(
-                            period
-                        )}. Open it from the list instead of creating a second one.`
+                        t('errors.duplicateRun', {
+                            runType: buildRunTypeLabels(t)[runType].toLowerCase(),
+                            period: formatMonthValue(period),
+                        })
                     );
                 } else {
                     toast.error(message);
@@ -111,7 +114,7 @@ export function usePayrollRuns(year: number) {
                 return { created: false };
             }
         },
-        [queryClient]
+        [queryClient, t]
     );
 
     return {

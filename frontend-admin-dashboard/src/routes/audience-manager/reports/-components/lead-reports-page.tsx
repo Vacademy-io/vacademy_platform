@@ -34,6 +34,7 @@ import {
     Phone,
     Stack,
     Table,
+    Tag,
     TrendUp,
     User,
     Users,
@@ -62,6 +63,7 @@ import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-servic
 import type { ReportTab } from '../index';
 import { OverviewTab } from './overview-tab';
 import { SourcesTab } from './sources-tab';
+import { UtmTab } from './utm-tab';
 import { FunnelTab } from './funnel-tab';
 import { DispositionsTab } from './dispositions-tab';
 import { ManagerTab } from './manager-tab';
@@ -331,6 +333,13 @@ export function LeadReportsPage() {
                         <Megaphone size={14} weight="bold" />
                         {t('tabs.sources')}
                     </TabsTrigger>
+                    {/* Always listed, even before Campaign Links (UTM) are switched on —
+                        the tab itself explains how to enable them. A hidden tab is not
+                        discoverable, and this is the one place the feature is explained. */}
+                    <TabsTrigger value="utm" className="gap-1.5">
+                        <Tag size={14} weight="bold" />
+                        {t('tabs.utm')}
+                    </TabsTrigger>
                     <TabsTrigger value="funnel" className="gap-1.5">
                         <Funnel size={14} weight="bold" />
                         {t('tabs.funnel')}
@@ -392,6 +401,9 @@ export function LeadReportsPage() {
                 </TabsContent>
                 <TabsContent value="sources">
                     <SourcesTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="utm">
+                    <UtmTab {...tabProps} />
                 </TabsContent>
                 <TabsContent value="calling">
                     <Suspense fallback={<ReportTabSkeleton />}>

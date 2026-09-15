@@ -11,6 +11,15 @@ import {
 } from "../-utils/style-utils";
 import { SectionDecorations, hasDecorations } from "../-utils/catalogue-decorations";
 import { CatalogueLink } from "./CatalogueLink";
+import PhoneInput from "react-phone-input-2";
+// Same stylesheet every other phone field in the app imports. Mixing this with
+// react-phone-input-2's other skins in one bundle stacks the flag on top of the
+// country name, so this must stay `bootstrap.css`.
+import "react-phone-input-2/lib/bootstrap.css";
+import {
+  phoneFieldHasInput,
+  usePreferredPhoneCountries,
+} from "@/hooks/use-preferred-phone-countries";
 import {
   GraduationCap,
   Rocket,
@@ -50,11 +59,13 @@ import { FooterComponent } from "./components/FooterComponent";
 import { HeroSectionComponent } from "./components/HeroSectionComponent";
 import { MediaShowcaseComponent } from "./components/MediaShowcaseComponent";
 import { StatsHighlightsComponent } from "./components/StatsHighlightsComponent";
+import { CourseShowcaseComponent } from "./components/CourseShowcaseComponent";
 import { TestimonialSectionComponent } from "./components/TestimonialSectionComponent";
 import { CartComponent } from "./components/CartComponent";
 import { BuyRentSectionComponent } from "./components/BuyRentSectionComponent";
 import { BookCatalogueComponent } from "./components/BookCatalogueComponent";
 import { BookDetailsComponent } from "./components/BookDetailsComponent";
+import { DocumentViewerComponent } from "./components/DocumentViewerComponent";
 import { Policy } from "./components/Policy";
 
 interface JsonRendererProps {
@@ -207,6 +218,17 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <MediaShowcaseComponent key={id} {...props} />;
       case "statsHighlights":
         return <StatsHighlightsComponent key={id} {...props} />;
+      case "courseShowcase":
+        // Curated strip (new / on sale / one tag / hand-picked). Unlike
+        // productCourseGrid this shows a LIMITED, chosen set — no filters.
+        return (
+          <CourseShowcaseComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            tagName={tagName}
+          />
+        );
       case "testimonialSection":
         return <TestimonialSectionComponent key={id} {...props} />;
       case "cartComponent":
@@ -220,6 +242,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <FaqSectionRenderer key={id} {...props} />;
       case "videoEmbed":
         return <VideoEmbedRenderer key={id} {...props} />;
+      case "documentViewer":
+        return <DocumentViewerComponent key={id} {...props} />;
       case "ctaBanner":
         return <CtaBannerRenderer key={id} {...props} />;
       case "pricingTable":
@@ -699,12 +723,36 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
   const [honeypot, setHoneypot] = React.useState('');
   const mountedAt = React.useRef(Date.now());
   const [formData, setFormData] = React.useState<Record<string, string>>({});
+  // Dial code currently selected per phone field, so submit can tell "+91 and
+  // nothing else" (the visitor never touched an OPTIONAL phone field) apart
+  // from a real number. Submitting the bare dial code makes every such lead
+  // collide on the same "+91" identity.
+  const [phoneDials, setPhoneDials] = React.useState<Record<string, string>>({});
+
+  // Detect the phone field the same way LeadCollectionModal does — some
+  // authored configs type it "text" and only the name/label says phone.
+  const isPhoneField = (f: any) =>
+    f?.type === 'tel' || /phone|mobile|contact|whatsapp/i.test(`${f?.name || ''} ${f?.label || ''}`);
+  // Start on the institute's configured country (or the visitor's, on
+  // GEO_FIRST), and stop moving once a number has been typed.
+  const hasTypedPhone = (fields as any[]).some(
+    (f) => isPhoneField(f) && phoneFieldHasInput(formData[f.name]),
+  );
+  const { defaultCountry, preferredCountries } = usePreferredPhoneCountries({ freeze: hasTypedPhone });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     // Spam verdicts show the success state — never tell a bot it was caught.
     if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
-    const { email, phone, fullName, rest } = extractLeadIdentity(fields, formData);
+    // Drop dial-code-only values before they become a lead's phone number.
+    const submitData = { ...formData };
+    for (const f of fields as any[]) {
+      if (!isPhoneField(f)) continue;
+      const digits = (submitData[f.name] || '').replace(/\D/g, '');
+      if (!digits || digits === (phoneDials[f.name] || '')) submitData[f.name] = '';
+    }
+    const { email, phone, fullName, rest } = extractLeadIdentity(fields, submitData);
     if (!email) { setError(t("jsonRenderer.includeEmailAddress")); return; }
     if (!instituteId) { setError(t("jsonRenderer.formNotConnected")); return; }
     setSubmitting(true);
@@ -743,6 +791,32 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
                 <label className="mb-1 block text-sm font-medium text-catalogue-text-secondary">{field.label}{field.required && <span className="ms-1 text-red-500">*</span>}</label>
                 {field.type === 'textarea' ? (
                   <textarea required={field.required} rows={4} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-catalogue-border bg-catalogue-bg text-catalogue-text-primary px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
+                ) : isPhoneField(field) ? (
+                  // Country picker + dial code. Stored as +<digits> so the lead
+                  // reaches the CRM in E.164 — a bare 10-digit number is what
+                  // makes outbound calling drop the connection.
+                  <PhoneInput
+                    country={defaultCountry}
+                    preferredCountries={preferredCountries}
+                    enableSearch
+                    countryCodeEditable={false}
+                    enableAreaCodes={false}
+                    value={formData[field.name] || ''}
+                    onChange={(value, data: any) => {
+                      const digits = (value || '').replace(/\D/g, '');
+                      setPhoneDials((prev) => ({ ...prev, [field.name]: data?.dialCode || '' }));
+                      setFormData((prev) => ({ ...prev, [field.name]: digits ? `+${digits}` : '' }));
+                    }}
+                    inputProps={{ required: field.required }}
+                    placeholder={t("leadCollectionModal.phonePlaceholder")}
+                    containerClass="!w-full"
+                    inputClass="!w-full !h-11 !rounded-lg !border-catalogue-border !bg-catalogue-bg !text-catalogue-text-primary !text-sm"
+                    // No buttonClass: the flag button is absolutely positioned OVER the
+                    // input's left edge, so giving it an opaque background paints out the
+                    // input's border and rounded corner — the control then reads as two
+                    // detached boxes. The app's own .react-tel-input theming already gives
+                    // it the divider and radius.
+                  />
                 ) : (
                   <input type={field.type} required={field.required} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-catalogue-border bg-catalogue-bg text-catalogue-text-primary px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
                 )}

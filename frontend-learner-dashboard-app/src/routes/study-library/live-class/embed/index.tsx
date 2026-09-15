@@ -13,7 +13,7 @@ import ZoomMeetingSdkPlayer from "./-components/ZoomMeetingSdkPlayer";
 import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
 import GoogleMeetLauncher from "./-components/GoogleMeetLauncher";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
-import { extractYouTubeVideoId, isYouTubeUrl } from "@/utils/youtube";
+import { extractYouTubeVideoId, isLiveYouTubeSession, isYouTubeUrl } from "@/utils/youtube";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -409,8 +409,17 @@ function EmbedComponent() {
           : sessionDetails.allowPlayPause ?? true;
       const allowRewind = sessionDetails.allowRewind === "true";
 
-      // Check if this is a live session (not recorded)
-      const isLive = linkType === LinkType.YOUTUBE && !!sessionId; // Only consider it live if it's a real session
+      // Live (clock-synced) unless explicitly a recording. Decided by the URL
+      // as well as the declared type, like the player choice above: a session
+      // saved with the platform on "other" and a youtu.be link (this is how
+      // 377107b8 was stored) otherwise ran as a free recording — no late-join
+      // seek, resume-from-pause, restart at the end. No sessionId = the
+      // default-class flow, which has no slot to sync to.
+      const isLive = isLiveYouTubeSession({
+        linkType,
+        link: youTubeCandidateLink,
+        hasSchedule: !!sessionId,
+      });
 
       let sessionStartTime;
       if (isLive && sessionDetails.meetingDate && sessionDetails.scheduleStartTime && sessionDetails.timezone) {
@@ -420,6 +429,13 @@ function EmbedComponent() {
           sessionDetails.timezone
         );
       }
+
+      // The player derives the live position from "now − scheduled start". Hand
+      // it the server's view of "now" so a phone whose clock runs a few minutes
+      // off does not put its owner a few minutes away from the rest of the class.
+      const liveClockOffsetMs = serverTimeData
+        ? serverTimeData.serverTimestamp - serverTimeData.fetchedAt
+        : 0;
 
       return (
         <div className="w-full h-full flex flex-col gap-4">
@@ -431,6 +447,7 @@ function EmbedComponent() {
             liveClassStartTime={
               isLive && sessionStartTime ? sessionStartTime.toISOString() : undefined
             }
+            liveClockOffsetMs={liveClockOffsetMs}
             enableConcentrationScore={false}
           />
           <LearnerActionButtons config={learnerButtonConfig} />
@@ -643,17 +660,19 @@ function EmbedComponent() {
           </h1>
           {/* A recording dot rather than the word "Live". These classes are a
               scheduled playback, not a broadcast, and "LIVE" alongside YouTube's
-              own chrome read as a claim the class could not keep. The dot is
-              shrink-0 so the title truncates against it instead of squashing it. */}
+              own chrome read as a claim the class could not keep. The dot carries
+              the meaning on its own — the "REC" label beside it was redundant next
+              to YouTube's own chrome. The accessible name is kept on the wrapper so
+              screen readers still announce it. The dot is shrink-0 so the title
+              truncates against it instead of squashing it. */}
           {sessionId ? (
             <span
-              className="flex shrink-0 items-center gap-2 rounded px-3 py-1 text-sm font-semibold uppercase text-neutral-600 shadow"
+              className="flex shrink-0 items-center rounded px-2 py-1"
               role="status"
               aria-label={t("liveClass.embed.recording")}
               title={t("liveClass.embed.recording")}
             >
               <span className="size-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
-              {t("liveClass.embed.rec")}
             </span>
           ) : (
             <span className="shrink-0 rounded bg-primary-300 px-3 py-1 text-sm font-semibold uppercase text-white shadow">

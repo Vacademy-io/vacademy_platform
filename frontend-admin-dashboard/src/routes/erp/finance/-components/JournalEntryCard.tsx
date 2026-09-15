@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { CaretDown, CaretRight, Scales } from '@phosphor-icons/react';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
@@ -20,8 +22,8 @@ const toAmount = (value: number | string | null | undefined): number => {
 const BALANCE_EPSILON = 0.005;
 
 /** "HR_PAYROLL" → "HR Payroll" — readable without losing which module posted it. */
-const humanizeModule = (value: string | undefined): string => {
-    if (!value) return 'Unknown source';
+const humanizeModule = (value: string | undefined, t: TFunction): string => {
+    if (!value) return t('unknownSource');
     return value
         .split(/[_\s]+/)
         .filter(Boolean)
@@ -33,22 +35,33 @@ const humanizeModule = (value: string | undefined): string => {
         .join(' ');
 };
 
-const statusMeta = (status: string | undefined): { label: string; type: StatusType } => {
+const statusMeta = (
+    status: string | undefined,
+    t: TFunction
+): { label: string; type: StatusType } => {
     switch ((status ?? '').toUpperCase()) {
         case 'POSTED':
-            return { label: 'Posted', type: 'SUCCESS' };
+            return { label: t('statusPosted'), type: 'SUCCESS' };
         case 'REVERSED':
-            return { label: 'Reversed', type: 'WARNING' };
+            return { label: t('statusReversed'), type: 'WARNING' };
         default:
-            return { label: status || 'Unknown', type: 'INFO' };
+            return { label: status || t('statusUnknown'), type: 'INFO' };
     }
 };
 
-const LineRow = ({ line, currency }: { line: JournalLineDTO; currency: string | undefined }) => (
+const LineRow = ({
+    line,
+    currency,
+    t,
+}: {
+    line: JournalLineDTO;
+    currency: string | undefined;
+    t: TFunction;
+}) => (
     <div className="flex items-start gap-4 px-3 py-2 odd:bg-muted/40">
         <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-body text-foreground">
-                {line.account_name || line.account_code || 'Account'}
+                {line.account_name || line.account_code || t('defaultAccount')}
             </span>
             <span className="font-mono text-caption text-muted-foreground">
                 {line.account_code || '—'}
@@ -80,6 +93,7 @@ const LineRow = ({ line, currency }: { line: JournalLineDTO; currency: string | 
  * and hiding it behind a tidy layout is how it reaches the accountant instead.
  */
 export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
+    const { t } = useTranslation('erpJournalEntryCard');
     const [open, setOpen] = useState(false);
     const lines = useMemo(
         () => [...(entry.lines ?? [])].sort((a, b) => (a.line_no ?? 0) - (b.line_no ?? 0)),
@@ -97,7 +111,7 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
         Math.abs(toAmount(headerDebit) - toAmount(headerCredit)) < BALANCE_EPSILON &&
         (lines.length === 0 || Math.abs(lineDebit - lineCredit) < BALANCE_EPSILON);
 
-    const status = statusMeta(entry.status);
+    const status = statusMeta(entry.status, t);
     const Caret = open ? CaretDown : CaretRight;
 
     return (
@@ -114,13 +128,13 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
                 <div className="flex flex-wrap items-center gap-2">
                     <Caret size={16} className="shrink-0 text-muted-foreground" />
                     <span className="text-body font-semibold text-foreground">
-                        {entry.entry_date ? formatDate(entry.entry_date) : 'Undated'}
+                        {entry.entry_date ? formatDate(entry.entry_date) : t('undated')}
                     </span>
                     <span className="font-mono text-caption text-muted-foreground">
                         {entry.reference || '—'}
                     </span>
                     <StatusChip
-                        text={humanizeModule(entry.source_module)}
+                        text={humanizeModule(entry.source_module, t)}
                         textSize="text-caption"
                         status="INFO"
                         showIcon={false}
@@ -133,7 +147,7 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
                     />
                     {!isBalanced && (
                         <StatusChip
-                            text="Does not balance"
+                            text={t('doesNotBalance')}
                             textSize="text-caption"
                             status="DANGER"
                             showIcon
@@ -143,11 +157,11 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
 
                 <div className="flex flex-wrap items-end justify-between gap-3">
                     <p className="max-w-2xl text-caption text-muted-foreground">
-                        {entry.memo || 'No memo recorded for this entry.'}
+                        {entry.memo || t('noMemo')}
                     </p>
                     <div className="flex items-center gap-4">
                         <span className="flex flex-col">
-                            <span className="text-caption text-muted-foreground">Debit</span>
+                            <span className="text-caption text-muted-foreground">{t('debit')}</span>
                             <MoneyCell
                                 value={headerDebit}
                                 currency={entry.currency}
@@ -155,7 +169,7 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
                             />
                         </span>
                         <span className="flex flex-col">
-                            <span className="text-caption text-muted-foreground">Credit</span>
+                            <span className="text-caption text-muted-foreground">{t('credit')}</span>
                             <MoneyCell
                                 value={headerCredit}
                                 currency={entry.currency}
@@ -170,21 +184,20 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
                 <CardContent className="flex flex-col gap-2 border-t border-border p-4">
                     {lines.length === 0 ? (
                         <p className="text-caption text-muted-foreground">
-                            This entry has no lines stored against it. Its totals came from the
-                            entry header alone, so there is nothing to reconcile here.
+                            {t('noLinesStored')}
                         </p>
                     ) : (
                         <div className="overflow-x-auto">
                             <div className="min-w-max">
                                 <div className="flex items-center gap-4 border-b border-border px-3 pb-2">
                                     <span className="min-w-0 flex-1 text-caption font-semibold text-muted-foreground">
-                                        Account
+                                        {t('accountColumn')}
                                     </span>
                                     <span className="w-28 shrink-0 text-end text-caption font-semibold text-muted-foreground sm:w-36">
-                                        Debit
+                                        {t('debit')}
                                     </span>
                                     <span className="w-28 shrink-0 text-end text-caption font-semibold text-muted-foreground sm:w-36">
-                                        Credit
+                                        {t('credit')}
                                     </span>
                                 </div>
                                 {lines.map((line, index) => (
@@ -192,6 +205,7 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
                                         key={`${line.line_no ?? index}-${line.account_code ?? index}`}
                                         line={line}
                                         currency={entry.currency}
+                                        t={t}
                                     />
                                 ))}
                                 <div
@@ -212,8 +226,8 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
                                         />
                                         <span className="text-caption font-semibold text-foreground">
                                             {isBalanced
-                                                ? 'Totals — debits equal credits'
-                                                : 'Totals — debits and credits differ'}
+                                                ? t('totalsBalanced')
+                                                : t('totalsUnbalanced')}
                                         </span>
                                     </span>
                                     <MoneyCell
@@ -232,9 +246,7 @@ export const JournalEntryCard = ({ entry }: { entry: JournalEntryDTO }) => {
                     )}
                     {!isBalanced && (
                         <p className="text-caption text-danger-600">
-                            This entry does not balance. A journal entry must always post equal
-                            debits and credits — report this to whoever owns the ledger before
-                            importing the month into your accounting system.
+                            {t('unbalancedWarning')}
                         </p>
                     )}
                 </CardContent>

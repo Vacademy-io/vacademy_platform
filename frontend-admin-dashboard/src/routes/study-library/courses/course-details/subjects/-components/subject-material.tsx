@@ -1,6 +1,7 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
+import { EngagementTab } from '../../-components/engagement/EngagementTab';
 // class-study-material.tsx
 import { useRouter } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
@@ -20,7 +21,7 @@ import { useUpdateSubjectOrder } from '@/routes/study-library/courses/course-det
 // import { StudyLibraryIntroKey } from '@/constants/storage/introKey';
 // import { studyLibrarySteps } from '@/constants/intro/steps';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { tabs, TabType, DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '../-constants/constant';
+import { buildTabs, TabType, DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '../-constants/constant';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { fetchModulesWithChapters } from '../../../-services/getModulesWithChapters';
 import {
@@ -907,6 +908,11 @@ export const SubjectMaterial = () => {
                 <Activity packageSessionId={packageSessionIds ?? ''} />
             </div>
         ),
+        [TabType.ENGAGEMENT]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <EngagementTab packageSessionId={packageSessionIds ?? ''} />
+            </div>
+        ),
         [TabType.PULSE]: (
             <div className="rounded-md bg-white p-3 shadow-sm">
                 <PulseTab packageSessionId={packageSessionIds ?? ''} />
@@ -968,7 +974,7 @@ export const SubjectMaterial = () => {
                         className="h-auto min-w-max flex-nowrap bg-transparent p-0"
                         style={{ display: 'flex', justifyContent: 'left' }}
                     >
-                        {tabs
+                        {buildTabs(t)
                             .filter(
                                 (tab) =>
                                     tab.value !== TabType.DISCUSSION &&

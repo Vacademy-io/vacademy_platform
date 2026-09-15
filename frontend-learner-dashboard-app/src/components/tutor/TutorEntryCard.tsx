@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ChalkboardTeacher, Microphone } from "@phosphor-icons/react";
+import { Microphone } from "@phosphor-icons/react";
 import { getTutorAvailability, type TutorAvailability } from "@/services/tutor-api";
+import { TeacherAvatar } from "./TeacherAvatar";
 
 interface TutorEntryCardProps {
   courseId: string;
@@ -52,9 +53,7 @@ export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packag
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-primary-200 bg-primary-50 p-4 sm:flex-row sm:items-center">
-      <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white text-primary-500 shadow-sm">
-        <ChalkboardTeacher className="size-6" weight="duotone" />
-      </div>
+      <TeacherAvatar fileId={avail.teacher_avatar_file_id} name={avail.teacher_name} className="size-14 shadow-sm" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-neutral-900">
           Learn with {avail.teacher_name}, your AI teacher

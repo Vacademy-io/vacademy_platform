@@ -87,9 +87,10 @@ public class SendTemplateNodeExecutor implements ChatbotNodeExecutor {
                 templatePayload.put("buttonConfig", resolveButtonConfig(buttonConfig, variables, context));
             }
 
-            // Send via provider
-            provider.sendTemplate(context.getPhoneNumber(), templatePayload,
-                    context.getInstituteId(), context.getBusinessChannelId());
+            // Send via provider, keeping the message id the status webhooks join on.
+            context.setLastProviderMessageId(
+                    provider.sendTemplate(context.getPhoneNumber(), templatePayload,
+                            context.getInstituteId(), context.getBusinessChannelId()));
 
             log.info("Template sent: template={}, phone={}", templateName, context.getPhoneNumber());
             return NodeExecutionResult.builder().success(true).build();

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -44,6 +45,7 @@ import {
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 import { resolveInviteAvailability } from "@/lib/invite-availability";
+import { resolveCoursePageRoute } from "../../-utils/course-page-routing";
 
 // The catalogue JSON is authored by hand and by the AI page builder, so treat
 // defaultSort as untrusted: anything outside the known sort modes would leave
@@ -1128,6 +1130,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const handleCourseClick = (course: Course) => {
     // All courses navigate to details page with enroll_invite_id
     // Pass enroll_invite_id, banner image, and level as search params so details page can use them
+    // ...unless this catalogue gives the course its own authored page, in which
+    // case that page replaces the details page entirely. The course params ride
+    // along so a checkout CTA placed on that page still knows what to sell.
+    const customPageRoute = resolveCoursePageRoute(globalSettings, {
+      courseId: course.id,
+      packageSessionId: course.packageSessionId,
+    });
+
     const searchParams = new URLSearchParams();
     if (course.enrollInviteId) {
       searchParams.set("enrollInviteId", course.enrollInviteId);
@@ -1143,7 +1153,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     }
 
     navigate({
-      to: `/${tagName}/${course.id}`,
+      to: `${RouteMatcher.basePath(tagName)}/${customPageRoute ?? course.id}`,
       search: searchParams.toString()
         ? {
             enrollInviteId: course.enrollInviteId,
@@ -1792,7 +1802,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       {/* Floating Cart Button - Fixed at bottom right */}
       {/* {cartButtonConfig?.enabled && <div className="fixed bottom-14 right-3 z-50">
         <Button
-          onClick={() => navigate({ to: `/${tagName}/cart` })}
+          onClick={() => navigate({ to: `${RouteMatcher.basePath(tagName)}/cart` })}
           className="h-12 w-12 rounded-full bg-primary hover:bg-primary-700 text-white shadow-lg flex items-center justify-center relative"
           size="sm"
         >

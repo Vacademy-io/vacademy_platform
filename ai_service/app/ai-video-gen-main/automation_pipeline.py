@@ -29340,8 +29340,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # the handler runs at inject time); the rest can only be reported, since
         # a CSS keyframe animation has no mechanical rewrite into GSAP.
         try:
-            from seekable_motion import apply_ready_kick, unseekable_techniques
+            from seekable_motion import (
+                apply_ready_kick,
+                dash_bomb_targets,
+                defuse_dash_bombs,
+                unseekable_techniques,
+            )
             _repaired = 0
+            _defused = {}
             _still_broken = {}
             for _e in timeline_entries:
                 _h = _e.get("html") or ""
@@ -29351,12 +29357,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if _fixed is not _h and _fixed != _h:
                     _e["html"] = _fixed
                     _repaired += 1
+                # A dash array animated toward zero hangs the rasteriser and times
+                # out the screenshot, which fails the whole render job rather than
+                # just this shot. Whether it bites depends on where the frame
+                # stepper samples, so it must be removed, not merely reported.
+                _bombs = dash_bomb_targets(_e["html"])
+                if _bombs:
+                    _e["html"] = defuse_dash_bombs(_e["html"])
+                    _defused[_e.get("id") or "?"] = _bombs
                 _bad = unseekable_techniques(_e["html"])
                 if _bad:
                     _still_broken[_e.get("id") or "?"] = _bad
             if _repaired:
                 print(f"   🔧 Motion repair: {_repaired} shot(s) had tweens in a load "
                       f"handler that would never have fired — re-dispatch injected.")
+            if _defused:
+                print(f"   🔧 Dash-array bombs defused in {len(_defused)} shot(s) "
+                      f"(would have hung the renderer): {_defused}")
             if _still_broken:
                 print(f"   ⚠️ Unseekable motion will be DROPPED from the render in "
                       f"{len(_still_broken)} shot(s): {_still_broken}")

@@ -126,3 +126,36 @@ export const isFinderUsable = (
   mappings: ProductPageMappingResponse[],
 ): finder is ProductPageCourseFinder =>
   !!finder && usableGroups(finder, mappings).length > 1;
+
+/**
+ * Two regexes, deliberately. A `/g` regex carries `lastIndex` between calls, so
+ * reusing one for `.test()` returns false on every second call — the button
+ * would render the raw `{{class}}` on alternating renders. Global for replacing,
+ * non-global for testing.
+ */
+const CLASS_PLACEHOLDER_ALL = /\{\{\s*class\s*\}\}/gi;
+const HAS_CLASS_PLACEHOLDER = /\{\{\s*class\s*\}\}/i;
+
+/**
+ * Wording for the finder dialog's confirm button.
+ *
+ * `{{class}}` lets a page name the pick — "Register for Class 9" — but there is
+ * nothing to name until something is chosen, and substituting an empty string
+ * leaves the button reading "Register for ". So a placeholder label falls back
+ * to the generic wording while the button is still disabled, and a label
+ * without one simply stands as written.
+ *
+ * @param authored  the admin's label, if any
+ * @param chosen    the picked group's label, or null before a pick
+ * @param fallback  wording that matches what the button actually does
+ */
+export const finderCtaLabel = (
+  authored: string | undefined,
+  chosen: string | null,
+  fallback: string,
+): string => {
+  const raw = authored?.trim();
+  if (!raw) return fallback;
+  if (chosen) return raw.replace(CLASS_PLACEHOLDER_ALL, chosen);
+  return HAS_CLASS_PLACEHOLDER.test(raw) ? fallback : raw;
+};

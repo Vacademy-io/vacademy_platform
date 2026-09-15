@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
@@ -11,6 +12,11 @@ import axios from "axios";
 import { JsonRenderer } from "../../-components/JsonRenderer";
 import { CourseCatalogueService } from "../../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
+import { resolveCourseView } from "../../-utils/course-page-routing";
+import {
+  resolveLearnerStructureVariant,
+  type LearnerCourseDetailsSettings,
+} from "../../-utils/learner-course-details-settings";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -416,11 +422,64 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // STUDENT_DISPLAY_SETTINGS. Fetched from the public (open) settings endpoint
   // because this catalogue page is unauthenticated.
   const [showInstructors, setShowInstructors] = useState(false);
+  /**
+   * How the institute has configured the course page for its LOGGED-IN
+   * learners (Settings -> Student Display Settings -> courseDetails). The
+   * logged-out page reads the same record so a visitor and an enrolled
+   * learner see the course laid out the same way.
+   *
+   * - `enrolledLayout: "contentOnly"` means the learner's page IS the content
+   *   card grid, so the public page shows cards too.
+   * - otherwise the opening tab decides: CONTENT_STRUCTURE is the card grid,
+   *   OUTLINE is the folder-row list.
+   * Null until the settings land, or when the request fails — the outline is
+   * the safe fallback either way.
+   */
+  const [learnerCourseDetails, setLearnerCourseDetails] =
+    useState<LearnerCourseDetailsSettings | null>(null);
 
   // Debug catalogue data changes
   useEffect(() => {
     console.log("[CourseDetailsPage] Catalogue data loaded:", !!catalogueData);
   }, [catalogueData]);
+
+  // A catalogue can give a course its own authored page instead of this shared
+  // details layout (globalSettings.coursePages). The catalogue's own cards
+  // already navigate straight there, so this only catches the ways a visitor
+  // can still land on the raw /<tag>/<courseId> URL — a bookmark, a link
+  // shared before the page existed, a back-navigation. `replace` keeps that
+  // dead URL out of history so Back does not bounce them right back here.
+  const courseView = resolveCourseView(catalogueData?.globalSettings, {
+    courseId,
+    packageSessionId,
+  });
+  const customCoursePageRoute =
+    courseView.mode === "PAGE" ? courseView.route : null;
+  // Syllabus-first: the marketing accordion (why learn / about / who should
+  // learn / instructors) is dropped and the course structure leads, for
+  // courses where the syllabus IS the pitch. Same URL, so pricing, enrolment
+  // and the site chrome are untouched. TILES is the same page with the
+  // subjects drawn as artwork cards rather than folder rows.
+  const isOutlineView =
+    courseView.mode === "OUTLINE" || courseView.mode === "TILES";
+  // The course structure follows whatever the institute set for its logged-in
+  // learners, so the page reads the same signed in or out. A per-course
+  // OUTLINE/TILES mode is an explicit override and wins over the inherited
+  // setting; DETAILS (and no configuration at all) inherits.
+  const structureVariant: "outline" | "tiles" =
+    courseView.mode === "OUTLINE"
+      ? "outline"
+      : courseView.mode === "TILES"
+        ? "tiles"
+        : resolveLearnerStructureVariant(learnerCourseDetails);
+  useEffect(() => {
+    if (!customCoursePageRoute) return;
+    navigate({
+      to: `${RouteMatcher.basePath(tagName)}/${customCoursePageRoute}`,
+      search: { enrollInviteId, packageSessionId, bannerImage, level },
+      replace: true,
+    });
+  }, [customCoursePageRoute, tagName, navigate, enrollInviteId, packageSessionId, bannerImage, level]);
 
   useEffect(() => {
     if (!instituteId) return;
@@ -433,12 +492,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       .then((res) => {
         if (cancelled) return;
         const cd = (
-          res.data as { courseDetails?: { showInstructors?: boolean } } | null
+          res.data as { courseDetails?: LearnerCourseDetailsSettings } | null
         )?.courseDetails;
         setShowInstructors(cd?.showInstructors ?? false);
+        setLearnerCourseDetails(cd ?? null);
       })
       .catch(() => {
-        if (!cancelled) setShowInstructors(false);
+        if (cancelled) return;
+        setShowInstructors(false);
+        setLearnerCourseDetails(null);
       });
     return () => {
       cancelled = true;
@@ -1047,7 +1109,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             })}
           </p>
           <button
-            onClick={() => navigate({ to: `/${tagName}` })}
+            onClick={() => navigate({ to: RouteMatcher.pagePath(tagName) })}
             className="px-4 py-2 bg-primary-500 text-white rounded-catalogue-sm hover:bg-primary-400 transition-colors"
           >
             {t("courseDetails.backToCatalog")}
@@ -1109,6 +1171,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // resolved text-catalogue-text-primary to near-black (dark on dark), and the
   // content below stayed white.
   const isDarkMode = (catalogueData?.globalSettings as any)?.mode === "dark";
+
+  // The syllabus tree. Rendered once, but at a different point in the column
+  // depending on the view (see isOutlineView), so it is bound here rather than
+  // written out twice — courseData is guaranteed non-null past the guard above.
+  const courseStructure = (
+    <CourseStructureDetails
+      courseDepth={courseData.courseDepth}
+      courseId={courseData.courseId || courseId}
+      instituteId={instituteId}
+      packageSessionId={courseData.packageSessionId}
+      levelId={courseData.levelId}
+      variant={structureVariant}
+    />
+  );
 
   return (
     <div
@@ -1213,14 +1289,23 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 {/* Course highlights accordion — collapsed by default,
                     wraps the what-you'll-learn / about / who-should-learn /
                     instructors sections that used to stack as separate cards
-                    below the structure. */}
-                <CourseHighlightsAccordion
-                  whyLearn={courseData.whyLearn}
-                  aboutCourse={courseData.aboutCourse}
-                  whoShouldLearn={courseData.whoShouldLearn}
-                  instructors={courseData.instructors || []}
-                  showInstructors={showInstructors}
-                />
+                    below the structure. Outline view drops it: the syllabus
+                    is the pitch there, and the marketing copy pushes it below
+                    the fold. */}
+                {!isOutlineView && (
+                  <CourseHighlightsAccordion
+                    whyLearn={courseData.whyLearn}
+                    aboutCourse={courseData.aboutCourse}
+                    whoShouldLearn={courseData.whoShouldLearn}
+                    instructors={courseData.instructors || []}
+                    showInstructors={showInstructors}
+                  />
+                )}
+
+                {/* Outline view leads with the syllabus, above the mobile
+                    price card; every other view keeps it below (see the same
+                    block further down). */}
+                {isOutlineView && courseStructure}
 
                 {/* Course Overview Card - Mobile First */}
                 <div className="lg:hidden">
@@ -1355,13 +1440,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 </div>
 
                 {/* Course Structure */}
-                <CourseStructureDetails
-                  courseDepth={courseData.courseDepth}
-                  courseId={courseData.courseId || courseId}
-                  instituteId={instituteId}
-                  packageSessionId={courseData.packageSessionId}
-                  levelId={courseData.levelId}
-                />
+                {!isOutlineView && courseStructure}
 
                 {/* Content sections (what-you'll-learn / about /
                     who-should-learn / instructors / tags) moved into the

@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 #   "audio_minutes" → flat_base + minutes × per_unit  (minutes from
 #                     duration_seconds or audio_minutes), floored at params.min_credits
 #   "chars"         → flat_base + ceil(transcript_chars / params.chars_per_unit) × per_unit
+#   "images"        → flat_base + num_images × per_unit
 #   "flat"          → flat_base (+ params.questions_add / homework_add toggles)
 # ============================================================================
 DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
@@ -132,7 +133,8 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "params": {},
     },
     # HTML Document slide AI authoring — one large creative-HTML LLM call
-    # (claude-sonnet-5, up to ~32k output tokens), flat per call, charged as
+    # (see _DEFAULT_MODEL in routers/html_document.py, up to ~32k output
+    # tokens), flat per call, charged as
     # max(flat, actual). A full CREATE costs more than a conversational EDIT
     # (which reuses the existing page), so they are priced separately.
     "html_document": {          # first generation (create)
@@ -157,6 +159,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "flat_base_credits": Decimal("0"),
         "per_unit_credits": Decimal("0.5"),
         "unit_field": "pages",
+        "params": {},
+    },
+    # Per generated textbook illustration on an HTML doc page (real image-model
+    # spend). Charged as num_images × per_unit for the pictures that actually
+    # came back, on top of the generation charge.
+    "html_document_image": {
+        "request_type": "image",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("2"),
+        "unit_field": "images",
         "params": {},
     },
     # AI Page Builder — one wizard run composes a full catalogue page as
@@ -322,6 +334,44 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # ── Live AI tutor (V494) ──────────────────────────────────────────────
     # One strong-model compile call per slide, charged as max(flat, actual).
     # Reuses request_type 'content' so no ai_token_usage CHECK change is needed.
+    # Prepared voice: every spoken line of a compiled slide synthesised once
+    # per language (cost review 2026-09-07). Measured on prod: ~5,000
+    # characters per slide per language (narration, recap, questions, hints,
+    # predict prompts and the fixed lines) ≈ $0.13 on Smallest; charged 15
+    # credits per slide per language, one time.
+    "tutor_voice_prepare": {
+        "request_type": "tts_premium",
+        "flat_base_credits": Decimal("15"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Premium teacher avatar (Spatius): per started lesson minute while the
+    # avatar is on, on top of tutor_live_minute. Vendor ≈ $0.0072/min.
+    "tutor_avatar_minute": {
+        "request_type": "conversation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("1"),
+        "unit_field": "audio_minutes",
+        "params": {"min_credits": "0"},
+    },
+    # Custom teacher assets, charged once to the institute (owner decision
+    # 2026-09-07): a cloned voice when the clone is made; an animated avatar
+    # when the request is fulfilled (Spatius Studio today, API later).
+    "tutor_voice_clone": {
+        "request_type": "tts_premium",
+        "flat_base_credits": Decimal("200"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "tutor_avatar_create": {
+        "request_type": "conversation",
+        "flat_base_credits": Decimal("1000"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     "tutor_compile_slide": {
         "request_type": "content",
         "flat_base_credits": Decimal("2"),
@@ -346,6 +396,21 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "flat_base_credits": Decimal("0"),
         "per_unit_credits": Decimal("3"),
         "unit_field": "audio_minutes",
+        "params": {"min_credits": 0},
+    },
+    # One AI-written analysis per ASSESSMENT, charged once; the stored report is
+    # re-downloadable free afterwards. assessment_service sends zero token
+    # counts so max(parametric, actual) resolves to exactly this flat number —
+    # the teacher is quoted a price and billed that price. Rate also lives on
+    # the ai_tool_pricing row (admin_core V500); this entry is the half that
+    # must never be missing, because without it estimate-tool 400s, the FE
+    # badge renders nothing and `sufficient` stays null (which reads as
+    # "allowed"), so the report generates and nobody is charged.
+    "assessment_class_ai_report": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("10"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
         "params": {"min_credits": 0},
     },
 }
@@ -500,6 +565,16 @@ class ToolCostEstimator:
                 "component": "length",
                 "detail": f"{chars} chars → {units} unit(s) × {per_unit}",
                 "credits": float(char_credits),
+            })
+
+        elif unit_field == "images":
+            num_images = max(0, int(params.get("num_images") or 0))
+            image_credits = Decimal(num_images) * per_unit
+            total += image_credits
+            breakdown.append({
+                "component": "images",
+                "detail": f"{num_images} image(s) × {per_unit}",
+                "credits": float(image_credits),
             })
 
         elif unit_field == "pages":

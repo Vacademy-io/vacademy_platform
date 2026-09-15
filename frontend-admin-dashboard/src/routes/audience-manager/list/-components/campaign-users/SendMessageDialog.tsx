@@ -19,6 +19,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import {
+    getEmailConfigurations,
+    type EmailConfiguration,
+} from '@/services/email-configuration-service';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
     ChatCircleDots,
@@ -68,6 +72,11 @@ interface SendMessageDialogProps {
     instituteId: string;
     customFields: Array<{ id: string; fieldName: string; fieldKey: string }>;
     leadCount: number;
+    /**
+     * audience_response ids ticked in the lead table. When non-empty the send goes to
+     * exactly these leads; empty/omitted keeps the original whole-audience blast.
+     */
+    selectedResponseIds?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +171,7 @@ export function SendMessageDialog({
     instituteId,
     customFields: customFieldsProp,
     leadCount,
+    selectedResponseIds,
 }: SendMessageDialogProps) {
     const { t } = useTranslation('audienceManagerSendMessageDialog');
     const CHANNELS = useMemo(() => buildChannels(t), [t]);
@@ -201,6 +211,11 @@ export function SendMessageDialog({
     // Email state
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
+    // The institute's configured senders. The type code is what the backend resolves
+    // EMAIL_SETTING.data.<type> by, so the dropdown must offer the real codes — a
+    // hardcoded list silently fell back to the default sender whenever it didn't match
+    // (e.g. a marketing address saved as MARKETING_EMAIL).
+    const [emailSenders, setEmailSenders] = useState<EmailConfiguration[]>([]);
     const [emailType, setEmailType] = useState('UTILITY_EMAIL');
     const [emailTemplates, setEmailTemplates] = useState<MessageTemplate[]>([]);
     const [loadingEmailTemplates, setLoadingEmailTemplates] = useState(false);
@@ -224,6 +239,14 @@ export function SendMessageDialog({
     const [resolvedLeadCount, setResolvedLeadCount] = useState<number | null>(
         leadCount > 0 ? leadCount : null
     );
+
+    // A ticked selection wins over the audience total everywhere: the payload, the review
+    // screen and the send button. Previously the dialog ignored the selection entirely and
+    // every send was a whole-audience blast.
+    const hasSelection = (selectedResponseIds?.length ?? 0) > 0;
+    const selectionCount = selectedResponseIds?.length ?? 0;
+    // Recipient count actually being sent to (null = unknown, "all members").
+    const targetCount = hasSelection ? selectionCount : resolvedLeadCount;
 
     // -----------------------------------------------------------------------
     // Reset on close
@@ -294,6 +317,30 @@ export function SendMessageDialog({
             cancelled = true;
         };
     }, [channel, instituteId]);
+
+    // -----------------------------------------------------------------------
+    // Fetch the institute's configured email senders when channel is EMAIL
+    // -----------------------------------------------------------------------
+    useEffect(() => {
+        if (channel !== 'EMAIL') return;
+        let cancelled = false;
+        getEmailConfigurations()
+            .then((configs) => {
+                if (cancelled) return;
+                setEmailSenders(configs);
+                // Keep the current pick if it still exists, else use the first sender.
+                setEmailType((prev) =>
+                    configs.some((c) => c.type === prev) ? prev : configs[0]?.type ?? prev
+                );
+            })
+            .catch(() => {
+                // Non-fatal: the select falls back to the default sender below.
+                if (!cancelled) setEmailSenders([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [channel]);
 
     // -----------------------------------------------------------------------
     // Fetch saved email templates when channel is EMAIL
@@ -484,6 +531,8 @@ export function SendMessageDialog({
                 channel: channel as SendAudienceMessageRequest['channel'],
                 variable_mapping:
                     Object.keys(cleanedMapping).length > 0 ? cleanedMapping : undefined,
+                // Only the ticked rows when there is a selection; omitted = whole audience.
+                response_ids: hasSelection ? selectedResponseIds : undefined,
             };
 
             if (channel === 'WHATSAPP' && selectedTemplate) {
@@ -547,6 +596,8 @@ export function SendMessageDialog({
         pushTitle,
         pushBody,
         campaignId,
+        hasSelection,
+        selectedResponseIds,
     ]);
 
     // -----------------------------------------------------------------------
@@ -713,18 +764,31 @@ export function SendMessageDialog({
                     <div className="space-y-2">
                         <Label>{t('emailStep.emailTypeLabel')}</Label>
                         <Select value={emailType} onValueChange={setEmailType}>
-                            <SelectTrigger className="w-60">
+                            <SelectTrigger className="w-80">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="UTILITY_EMAIL">
-                                    {t('emailStep.utilityEmail')}
-                                </SelectItem>
-                                <SelectItem value="PROMOTIONAL_EMAIL">
-                                    {t('emailStep.promotionalEmail')}
-                                </SelectItem>
+                                {emailSenders.length > 0 ? (
+                                    emailSenders.map((c) => (
+                                        <SelectItem key={c.type} value={c.type}>
+                                            {c.name} ({c.email})
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <>
+                                        <SelectItem value="UTILITY_EMAIL">
+                                            {t('emailStep.utilityEmail')}
+                                        </SelectItem>
+                                        <SelectItem value="PROMOTIONAL_EMAIL">
+                                            {t('emailStep.promotionalEmail')}
+                                        </SelectItem>
+                                    </>
+                                )}
                             </SelectContent>
                         </Select>
+                        <p className="text-xs text-muted-foreground">
+                            {t('emailStep.emailTypeHint')}
+                        </p>
                     </div>
                     <div className="space-y-2">
                         <Label>{t('emailStep.subjectLabel')}</Label>
@@ -1015,9 +1079,11 @@ export function SendMessageDialog({
                             {t('review.recipientsLabel')}
                         </p>
                         <p className="text-sm font-medium">
-                            {resolvedLeadCount !== null
-                                ? t('review.recipientsAllKnown', { count: resolvedLeadCount })
-                                : t('review.recipientsAllUnknown')}
+                            {hasSelection
+                                ? t('review.recipientsSelected', { count: selectionCount })
+                                : resolvedLeadCount !== null
+                                  ? t('review.recipientsAllKnown', { count: resolvedLeadCount })
+                                  : t('review.recipientsAllUnknown')}
                         </p>
                     </div>
 
@@ -1065,8 +1131,8 @@ export function SendMessageDialog({
                     ) : (
                         <>
                             <PaperPlaneTilt className="me-2 h-4 w-4" />
-                            {resolvedLeadCount !== null
-                                ? t('review.sendButtonKnown', { count: resolvedLeadCount })
+                            {targetCount !== null
+                                ? t('review.sendButtonKnown', { count: targetCount })
                                 : t('review.sendButtonUnknown')}
                         </>
                     )}
@@ -1084,7 +1150,9 @@ export function SendMessageDialog({
                 <DialogHeader>
                     <DialogTitle>{t('dialogTitle')}</DialogTitle>
                     <DialogDescription>
-                        {t('dialogDescription', { campaignName })}
+                        {hasSelection
+                            ? t('dialogDescriptionSelected', { count: selectionCount })
+                            : t('dialogDescription', { campaignName })}
                     </DialogDescription>
                 </DialogHeader>
 

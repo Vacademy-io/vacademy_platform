@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { RouteMatcher } from "../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { useNavigate } from "@tanstack/react-router";
@@ -9,6 +10,7 @@ import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
+import { pageOpensWithOwnHeader } from "../-utils/page-own-header";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -320,7 +322,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             {t("courseSubPage.pageNotFoundDetail", { page })}
           </p>
           <button
-            onClick={() => navigate({ to: `/${tagName}` })}
+            onClick={() => navigate({ to: RouteMatcher.pagePath(tagName) })}
             className="px-4 py-2 bg-primary-600 text-white rounded-catalogue-sm hover:bg-primary-700"
           >
             {t("courseSubPage.goBackToCatalogue")}
@@ -344,16 +346,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const enabledComponents = (currentPage.components || []).filter(
     (c: any) => c?.enabled !== false
   );
-  const OPENS_WITH_OWN_TITLE = new Set([
-    "heroSection",
-    "sectionHeading",
-    "detailBlocks",
-    "htmlBlock",
-    "banner",
-  ]);
-  const hasOwnPageHeader =
-    enabledComponents.some((c: any) => c?.type === "heroSection") ||
-    OPENS_WITH_OWN_TITLE.has(enabledComponents[0]?.type);
+  const hasOwnPageHeader = pageOpensWithOwnHeader(enabledComponents);
   const themeSettings = catalogueData?.globalSettings?.theme as any;
 
   return (
@@ -498,7 +491,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
               console.log("[CourseSubPage] Lead collection is disabled, not showing modal");
             }
           }}
-          onNavigate={(route) => navigate({ to: `/${tagName}/${route.replace(/^\//, '')}` })}
+          onNavigate={(route) => navigate({ to: RouteMatcher.pagePath(tagName, route) })}
         />
       )}
     </div>

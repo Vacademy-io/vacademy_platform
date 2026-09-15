@@ -75,8 +75,7 @@ function RouteComponent() {
     });
 
     const retryMutation = useMutation({
-        mutationFn: (attemptId: string) =>
-            triggerAIEvaluation([attemptId], 'google/gemini-3.1-pro-preview'),
+        mutationFn: (attemptId: string) => triggerAIEvaluation([attemptId]),
         onSuccess: (processIds, attemptId) => {
             toast.success(t('toasts.restartSuccess'));
             queryClient.invalidateQueries({ queryKey: ['EVALUATION_PROCESSES', assessmentId] });

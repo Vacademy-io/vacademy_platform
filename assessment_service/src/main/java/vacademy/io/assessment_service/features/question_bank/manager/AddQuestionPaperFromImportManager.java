@@ -289,26 +289,7 @@ public class AddQuestionPaperFromImportManager {
         questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.get().getId(), savedQuestionIds);
         addQuestionEntityTags(savedQuestions, questionRequestBody.getAddedQuestions(), questionRequestBody.getInstituteId());
 
-        newQuestions = new ArrayList<>();
-        newOptions = new ArrayList<>();
-
-        for (var importQuestion : questionRequestBody.getUpdatedQuestions()) {
-            Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
-
-            if (existingQuestion.isEmpty())
-                continue;
-            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, false, existingQuestion.get());
-            if (importQuestion.getParentRichText() != null) {
-                question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
-            }
-            List<Option> questionOptions = question.getOptions();
-            newQuestions.add(question);
-            newOptions.addAll(questionOptions);
-        }
-
-        var savedUpdatedQuestions = questionRepository.saveAll(newQuestions);
-        optionRepository.saveAll(newOptions);
-        addQuestionEntityTags(savedUpdatedQuestions, questionRequestBody.getUpdatedQuestions(), questionRequestBody.getInstituteId());
+        updateQuestionsInPlace(questionRequestBody.getUpdatedQuestions(), questionRequestBody.getInstituteId());
 
         newQuestions = new ArrayList<>();
         newOptions = new ArrayList<>();
@@ -325,6 +306,38 @@ public class AddQuestionPaperFromImportManager {
 
         return true;
 
+    }
+
+    /**
+     * Rewrite existing questions (text, options, answer key, explanation) by id,
+     * keeping their ids so every assessment section and question paper that
+     * maps to them sees the edit. Shared by the question-paper edit and by
+     * editing an assessment's questions directly, which has no paper to go
+     * through - questions added to an assessment by upload or SQL never had one.
+     */
+    @Transactional
+    public List<Question> updateQuestionsInPlace(List<QuestionDTO> updatedQuestions, String instituteId) throws JsonProcessingException {
+        List<Question> newQuestions = new ArrayList<>();
+        List<Option> newOptions = new ArrayList<>();
+        for (var importQuestion : updatedQuestions) {
+            if (importQuestion.getId() == null) continue;
+            Optional<Question> existingQuestion = questionRepository.findById(importQuestion.getId());
+
+            if (existingQuestion.isEmpty())
+                continue;
+            Question question = makeQuestionAndOptionFromImportQuestion(importQuestion, false, existingQuestion.get());
+            if (importQuestion.getParentRichText() != null) {
+                question.setParentRichText(AssessmentRichTextData.fromDTO(importQuestion.getParentRichText()));
+            }
+            List<Option> questionOptions = question.getOptions();
+            newQuestions.add(question);
+            newOptions.addAll(questionOptions);
+        }
+
+        var savedUpdatedQuestions = questionRepository.saveAll(newQuestions);
+        optionRepository.saveAll(newOptions);
+        addQuestionEntityTags(savedUpdatedQuestions, updatedQuestions, instituteId);
+        return savedUpdatedQuestions;
     }
 
     public AddQuestionDTO addPrivateQuestions(CustomUserDetails user, AddQuestionDTO questionRequestBody, boolean isPublicQuestion) throws JsonProcessingException {

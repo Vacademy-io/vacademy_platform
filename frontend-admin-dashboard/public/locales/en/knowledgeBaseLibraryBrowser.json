@@ -1,0 +1,30 @@
+{
+    "facets": {
+        "subject": "Subject",
+        "level": "Class / Exam",
+        "board": "Board",
+        "language": "Language"
+    },
+    "describeSize": {
+        "sources_one": "{{formatted}} source",
+        "sources_other": "{{formatted}} sources",
+        "pages_one": "{{formatted}} page",
+        "pages_other": "{{formatted}} pages"
+    },
+    "card": {
+        "unlocked": "Unlocked",
+        "credits_one": "{{count}} credit",
+        "credits_other": "{{count}} credits"
+    },
+    "intro": "Ready-made knowledge bases from Vacademy. Unlock one and use it to build question papers and assessments straight away — no uploading, no waiting for a book to process.",
+    "manageLibrary": "Manage library",
+    "searchPlaceholder": "Search libraries",
+    "clearFilters": "Clear filters",
+    "empty": {
+        "noneMatch": "No libraries match those filters",
+        "noneYet": "No libraries published yet",
+        "widenSearch": "Try widening your search.",
+        "willAppear": "Vacademy-published libraries will appear here as they are released."
+    },
+    "footerNote": "Unlocking a library is a one-time charge and lasts forever, including material we add to it later."
+}

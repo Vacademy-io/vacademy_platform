@@ -36,9 +36,19 @@ class TutorSettings:
     compile_model: Optional[str] = None
     strictness: str = "normal"
     generate_images: bool = True
+    # Teacher voice speed multiplier (0.7–1.3, 1.0 = the engine's natural
+    # pace); a learner's own "slower / faster" is applied on top of it.
+    voice_pace: float = 1.0
+    # Media file id of the teacher's face shown to learners; blank = the
+    # built-in illustrated face.
+    teacher_avatar_file_id: Optional[str] = None
     # {"knowledge_base_id": ..., "mode": "STRICT"|"BLENDED"} saved at creation
     # so recompiles from the course page stay grounded.
     kb_grounding: Optional[Dict[str, Any]] = None
+    # Premium teacher avatar: "none" | "spatius" and the vendor's avatar id
+    # (created from the teacher's face photo).
+    avatar_provider: str = "none"
+    avatar_id: Optional[str] = None
 
     @property
     def course_language(self) -> str:
@@ -78,6 +88,15 @@ def _apply(s: TutorSettings, d: Dict[str, Any]) -> None:
     v = pick("compileModel", "compile_model"); s.compile_model = str(v) if v else s.compile_model
     v = pick("strictness");              s.strictness = str(v) if v else s.strictness
     v = pick("generateImages", "generate_images"); s.generate_images = bool(v) if v is not None else s.generate_images
+    v = pick("voicePace", "voice_pace")
+    if v is not None:
+        try:
+            s.voice_pace = max(0.7, min(1.3, float(v)))
+        except (TypeError, ValueError):
+            pass
+    v = pick("teacherAvatarFileId", "teacher_avatar_file_id"); s.teacher_avatar_file_id = str(v)[:255] if v else s.teacher_avatar_file_id
+    v = pick("avatarProvider", "avatar_provider"); s.avatar_provider = str(v) if v in ("none", "spatius") else s.avatar_provider
+    v = pick("avatarId", "avatar_id");   s.avatar_id = str(v)[:120] if v else s.avatar_id
     v = pick("kbGrounding", "kb_grounding")
     if isinstance(v, dict) and v.get("knowledge_base_id"):
         s.kb_grounding = {"knowledge_base_id": str(v["knowledge_base_id"]),
@@ -103,4 +122,21 @@ def resolve_settings(db: Session, *, package_id: str, institute_id: str) -> Tuto
             _apply(s, _extract(row[0]))
     except Exception:  # noqa: BLE001
         logger.warning("package tutor settings unreadable for %s", package_id, exc_info=True)
+    _enforce_registry(db, s, institute_id)
     return s
+
+
+def _enforce_registry(db: Session, s: TutorSettings, institute_id: str) -> None:
+    """A saved avatar must be a ready registry row the institute may see; a
+    voice registered to another institute is dropped to the provider default."""
+    from ..asset_registry import avatar_allowed, voice_blocked
+    try:
+        if s.avatar_provider != "none" and s.avatar_id:
+            if not avatar_allowed(db, institute_id=institute_id, provider=s.avatar_provider, avatar_id=s.avatar_id):
+                logger.info("tutor avatar %s not allowed for institute %s; ignoring", s.avatar_id, institute_id)
+                s.avatar_provider, s.avatar_id = "none", None
+        if s.tts_voice and voice_blocked(db, institute_id=institute_id, provider=s.tts_provider, voice_id=s.tts_voice):
+            logger.info("tutor voice %s not allowed for institute %s; ignoring", s.tts_voice, institute_id)
+            s.tts_voice = None
+    except Exception:  # noqa: BLE001
+        logger.warning("asset registry check failed for %s", institute_id, exc_info=True)

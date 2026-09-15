@@ -1,5 +1,6 @@
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BatchSection } from './batch-section';
 import { useGetBatchesQuery } from '@/routes/manage-institute/batches/-services/get-batches';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -15,6 +16,7 @@ import { ContentTerms, RoleTerms } from '@/routes/settings/-components/NamingSet
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 
 export const ManageBatches = () => {
+    const { t } = useTranslation('manageInstituteManageBatches');
     const { setNavHeading } = useNavHeadingStore();
 
     const { getAllSessions, instituteDetails } = useInstituteDetailsStore();
@@ -61,7 +63,7 @@ export const ManageBatches = () => {
     }, [instituteDetails]);
 
     useEffect(() => {
-        setNavHeading('Manage Batches');
+        setNavHeading(t('navHeading'));
     }, []);
 
     if (isLoading) return <DashboardLoader />;
@@ -69,7 +71,7 @@ export const ManageBatches = () => {
     if (isError)
         return (
             <div className="flex h-full flex-col items-center justify-center text-neutral-500">
-                <p>Unable to fetch batches. Please try again later.</p>
+                <p>{t('fetchError')}</p>
             </div>
         );
 
@@ -78,12 +80,13 @@ export const ManageBatches = () => {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p className="text-lg font-semibold sm:text-xl">
-                        {getTerminology(RoleTerms.Learner, 'Learner')} Batches
+                        {t('heading', { learner: getTerminology(RoleTerms.Learner, 'Learner') })}
                     </p>
                     <p className="text-xs text-neutral-500 sm:text-sm">
-                        Manage and organize your{' '}
-                        {getTerminology(RoleTerms.Learner, 'Learner').toLocaleLowerCase()} batches
-                        by {getTerminology(ContentTerms.Session, 'Session').toLocaleLowerCase()}.
+                        {t('subheading', {
+                            learner: getTerminology(RoleTerms.Learner, 'Learner').toLocaleLowerCase(),
+                            session: getTerminology(ContentTerms.Session, 'Session').toLocaleLowerCase(),
+                        })}
                     </p>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-4">
@@ -91,7 +94,9 @@ export const ManageBatches = () => {
                         <MyDropdown
                             currentValue={currentSession}
                             dropdownList={sessionList}
-                            placeholder={`Select ${getTerminology(ContentTerms.Session, 'Session')}`}
+                            placeholder={t('selectSessionPlaceholder', {
+                                session: getTerminology(ContentTerms.Session, 'Session'),
+                            })}
                             handleChange={handleSessionChange}
                         />
                     )}
@@ -114,13 +119,13 @@ export const ManageBatches = () => {
                     <EmptyBatchImage className="size-24 text-neutral-400 sm:size-32" />
                     <p className="text-base font-medium text-neutral-600 sm:text-lg">
                         {currentSession
-                            ? `No batches found for ${currentSession.name}`
-                            : 'No sessions available'}
+                            ? t('emptyState.noBatchesForSession', { session: currentSession.name })
+                            : t('emptyState.noSessionsAvailable')}
                     </p>
                     <p className="max-w-md text-xs text-neutral-500 sm:text-sm">
                         {currentSession
-                            ? 'Create a new batch in this session to get started.'
-                            : 'Please create a session first before adding batches.'}
+                            ? t('emptyState.createBatchHint')
+                            : t('emptyState.createSessionHint')}
                     </p>
                     {currentSession && <CreateBatchDialog />}
                 </div>

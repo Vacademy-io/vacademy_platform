@@ -89,6 +89,9 @@ public class AssessmentBasicDetail extends IStep {
                 break;
             case "SURVEY":
                 setStepKeys(getStepsForSurvey());
+                // The missing break here handed every survey the manual-upload
+                // exam's step keys (live-window dates required, result type).
+                break;
             case "MANUAL_UPLOAD_EXAM":
                 setStepKeys(getStepsForManualUploadExam());
                 break;

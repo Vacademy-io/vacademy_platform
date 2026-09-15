@@ -143,6 +143,7 @@ export const enum SettingsTabs {
     GuardianSettings = 'guardianSettings',
     LearnerCredentials = 'learnerCredentials',
     GtmSettings = 'gtmSettings',
+    UtmSettings = 'utmSettings',
     Tnc = 'tnc',
     Integrations = 'integrations',
     DoubtManagement = 'doubtManagement',

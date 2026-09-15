@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CaretLeft, CaretRight, MagnifyingGlass, UsersThree, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -54,6 +55,7 @@ export function MenteePicker({
     onChange,
     singleSelect = false,
 }: MenteePickerProps) {
+    const { t } = useTranslation('mentorshipMenteePicker');
     const [query, setQuery] = useState('');
     const [debounced, setDebounced] = useState('');
     const [batchIds, setBatchIds] = useState<string[]>([]);
@@ -61,8 +63,8 @@ export function MenteePicker({
     const [selectingAll, setSelectingAll] = useState(false);
 
     useEffect(() => {
-        const t = setTimeout(() => setDebounced(query), 300);
-        return () => clearTimeout(t);
+        const timer = setTimeout(() => setDebounced(query), 300);
+        return () => clearTimeout(timer);
     }, [query]);
 
     // Narrowing the filter shortens the list, so page 4 of the old result set is
@@ -131,15 +133,15 @@ export function MenteePicker({
             onChange(next);
             toast.success(
                 added === 0
-                    ? 'Everyone matching this filter was already selected'
-                    : `Selected ${added} more ${added === 1 ? 'student' : 'students'}`
+                    ? t('toast.allAlreadySelected')
+                    : t('toast.selectedMore', { count: added })
             );
         } catch (error) {
             reportApiError(error, {
                 feature: 'mentorship',
                 tags: { 'mentorship.action': 'select-all-students' },
                 extra: { batchCount: batchIds.length, totalMatching },
-                fallbackMessage: "Couldn't load every matching student",
+                fallbackMessage: t('toast.selectAllFailed'),
             });
         } finally {
             setSelectingAll(false);
@@ -163,18 +165,18 @@ export function MenteePicker({
                             setQuery(e.target.value)
                         }
                         inputType="text"
-                        inputPlaceholder="Search by name"
+                        inputPlaceholder={t('searchPlaceholder')}
                         className="pl-9 sm:w-full"
                     />
                 </div>
                 {batchOptions.length > 0 && (
                     <MultiSelectFilter
-                        label="Batch"
+                        label={t('batchFilter.label')}
                         icon={<UsersThree size={15} className="text-neutral-500" />}
                         options={batchOptions}
                         selected={batchIds}
                         onChange={setBatchIds}
-                        placeholder="Search batches…"
+                        placeholder={t('batchFilter.placeholder')}
                         widthClass="w-56"
                     />
                 )}
@@ -186,15 +188,14 @@ export function MenteePicker({
                 <div className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-2.5">
                     <div className="flex items-center justify-between gap-2">
                         <span className="text-caption font-medium text-neutral-700">
-                            {selected.length} {selected.length === 1 ? 'student' : 'students'}{' '}
-                            selected
+                            {t('selectedSummary.count', { count: selected.length })}
                         </span>
                         <button
                             type="button"
                             className="text-caption font-medium text-neutral-500 hover:text-neutral-700"
                             onClick={() => onChange([])}
                         >
-                            Clear all
+                            {t('selectedSummary.clearAll')}
                         </button>
                     </div>
                     <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
@@ -207,7 +208,9 @@ export function MenteePicker({
                                 <button
                                     type="button"
                                     onClick={() => onChange(removeSelection(selected, [row]))}
-                                    aria-label={`Remove ${studentLabel(row)}`}
+                                    aria-label={t('selectedSummary.removeAria', {
+                                        name: studentLabel(row),
+                                    })}
                                     className="shrink-0 text-neutral-400 hover:text-danger-600"
                                 >
                                     <X size={11} weight="bold" />
@@ -216,7 +219,7 @@ export function MenteePicker({
                         ))}
                         {selected.length > 40 && (
                             <span className="px-1 py-0.5 text-caption text-neutral-500">
-                                +{selected.length - 40} more
+                                {t('selectedSummary.more', { count: selected.length - 40 })}
                             </span>
                         )}
                     </div>
@@ -231,11 +234,21 @@ export function MenteePicker({
                                 checked={pageState === 'all'}
                                 onCheckedChange={togglePage}
                                 disabled={results.length === 0}
-                                aria-label="Select every student on this page"
+                                aria-label={t('pageSelection.selectAllAria')}
                             />
                             <span className="text-caption text-neutral-600">
-                                {pageState === 'all' ? 'Deselect' : 'Select'} all on this page
-                                {results.length > 0 ? ` (${results.length})` : ''}
+                                {results.length > 0
+                                    ? t(
+                                          pageState === 'all'
+                                              ? 'pageSelection.deselectAllCount'
+                                              : 'pageSelection.selectAllCount',
+                                          { count: results.length }
+                                      )
+                                    : t(
+                                          pageState === 'all'
+                                              ? 'pageSelection.deselectAll'
+                                              : 'pageSelection.selectAll'
+                                      )}
                             </span>
                         </label>
                         {selectAll.available && totalMatching > results.length && (
@@ -247,14 +260,16 @@ export function MenteePicker({
                                 disable={selectingAll}
                             >
                                 {selectingAll
-                                    ? 'Selecting…'
-                                    : `Select all ${totalMatching} matching`}
+                                    ? t('selectAllMatching.selecting')
+                                    : t('selectAllMatching.button', { count: totalMatching })}
                             </MyButton>
                         )}
                         {selectAll.blocked && (
                             <span className="text-caption text-neutral-500">
-                                {totalMatching} match — filter by batch to select them all at once
-                                (max {MAX_BULK_SELECT})
+                                {t('selectAllMatching.blocked', {
+                                    count: totalMatching,
+                                    max: MAX_BULK_SELECT,
+                                })}
                             </span>
                         )}
                     </div>
@@ -262,11 +277,13 @@ export function MenteePicker({
 
                 <div className="max-h-72 overflow-y-auto">
                     {isLoading ? (
-                        <div className="p-4 text-body text-neutral-400">Loading students…</div>
+                        <div className="p-4 text-body text-neutral-400">
+                            {t('results.loading')}
+                        </div>
                     ) : isError ? (
                         <div className="flex flex-col items-start gap-2 p-4">
                             <span className="text-body text-danger-600">
-                                Couldn&apos;t load students.
+                                {t('results.loadError')}
                             </span>
                             <MyButton
                                 type="button"
@@ -274,14 +291,14 @@ export function MenteePicker({
                                 scale="small"
                                 onClick={() => refetch()}
                             >
-                                Retry
+                                {t('results.retry')}
                             </MyButton>
                         </div>
                     ) : results.length === 0 ? (
                         <div className="p-4 text-body text-neutral-400">
                             {filtered
-                                ? 'No enrolled students match this filter'
-                                : 'No enrolled students yet'}
+                                ? t('results.emptyFiltered')
+                                : t('results.emptyAll')}
                         </div>
                     ) : (
                         results.map((row) => {
@@ -304,7 +321,9 @@ export function MenteePicker({
                                     <Checkbox
                                         checked={isSel}
                                         onCheckedChange={() => toggle(row)}
-                                        aria-label={`Select ${studentLabel(row)}`}
+                                        aria-label={t('results.selectRowAria', {
+                                            name: studentLabel(row),
+                                        })}
                                     />
                                     <span className="flex min-w-0 flex-col">
                                         <span className="truncate text-body text-neutral-700">
@@ -325,8 +344,8 @@ export function MenteePicker({
                 {totalMatching > 0 && (
                     <div className="flex items-center justify-between gap-2 border-t border-neutral-200 px-3 py-2">
                         <span className="text-caption text-neutral-500">
-                            {rangeStart}–{rangeEnd} of {totalMatching}
-                            {isFetching && !isLoading ? ' · updating…' : ''}
+                            {t('pagination.range', { start: rangeStart, end: rangeEnd, total: totalMatching })}
+                            {isFetching && !isLoading ? ` · ${t('pagination.updating')}` : ''}
                         </span>
                         {totalPages > 1 && (
                             <span className="flex items-center gap-1">
@@ -337,12 +356,12 @@ export function MenteePicker({
                                     layoutVariant="icon"
                                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                                     disable={page === 0}
-                                    aria-label="Previous page"
+                                    aria-label={t('pagination.previousAria')}
                                 >
                                     <CaretLeft size={14} />
                                 </MyButton>
                                 <span className="text-caption text-neutral-500">
-                                    {page + 1} / {totalPages}
+                                    {t('pagination.pageOf', { page: page + 1, total: totalPages })}
                                 </span>
                                 <MyButton
                                     type="button"
@@ -351,7 +370,7 @@ export function MenteePicker({
                                     layoutVariant="icon"
                                     onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                                     disable={page >= totalPages - 1}
-                                    aria-label="Next page"
+                                    aria-label={t('pagination.nextAria')}
                                 >
                                     <CaretRight size={14} />
                                 </MyButton>

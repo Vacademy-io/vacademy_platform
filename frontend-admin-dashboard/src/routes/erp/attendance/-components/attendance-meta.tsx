@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
 import { getActiveLocale } from '@/lib/formatters';
 import { humanizeToken } from '@/routes/erp/people/-components/EmployeeFields';
@@ -34,8 +35,9 @@ export const attendanceStatusTone = (status: string | null | undefined): StatusT
 
 /** The chip used for an attendance status anywhere in the module. */
 export const AttendanceStatusChip = ({ status }: { status?: string | null }) => {
+    const { t } = useTranslation('erpAttendanceMeta');
     if (!status) {
-        return <span className="text-body text-muted-foreground">Not marked</span>;
+        return <span className="text-body text-muted-foreground">{t('notMarked')}</span>;
     }
     return (
         <StatusChip

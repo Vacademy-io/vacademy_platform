@@ -34,6 +34,7 @@ import {
     voicesForModel,
 } from '@/routes/calling/ai-agents/-services/tts-catalog';
 import type { TtsModelId, VoiceOption } from '@/routes/calling/ai-agents/-services/tts-catalog';
+import { VOICE_MODULATION_OPTIONS } from '@/routes/calling/ai-agents/-services/ai-agents';
 
 /** Wire shape of an AI agent (Vacademy AI persona) — mirrors backend AiAgentDTO. */
 export interface AiAgent {
@@ -54,6 +55,8 @@ export interface AiAgent {
     pace?: number;
     /** Expressiveness 0.01–2.0 (~0.6 model default); empty = model default. */
     temperature?: number;
+    /** Voice modulation 1.0–2.5 (pitch-range expansion on the audio, any engine); empty = platform default. */
+    voiceModulation?: number;
     /** Optional booking page this agent auto-books on when a call yields a meeting request. */
     bookingPageId?: string;
     /**
@@ -98,6 +101,20 @@ export interface AiCallActionRule {
      * equal the template's parameter count or Meta rejects the send outright (#132000). design-lint-ignore: Meta API error code, not a color literal
      */
     templateParams?: string[];
+    /**
+     * WhatsApp only: the image or document a media-header template shows above its body.
+     * Required for such a template — without it Meta rejects the send with 132012,
+     * "header: Format mismatch, expected IMAGE, received UNKNOWN". Travels to the send as
+     * the `_headerUrl` variable, which both provider paths keep out of the body params.
+     */
+    templateHeaderUrl?: string;
+    /**
+     * Which kind of file `templateHeaderUrl` points at. Derived from the chosen template,
+     * never typed. The send must say so explicitly — WhatsAppService treats anything that
+     * is not literally "image" as a document, so an absent type makes Meta reject an image
+     * template with 132012, "expected IMAGE, received DOCUMENT".
+     */
+    templateHeaderType?: 'image' | 'document';
     /**
      * EMAIL only: the message the person receives. Email has no template layer — it is
      * sent verbatim and its FIRST LINE becomes the subject. Supports {{name}}.
@@ -553,6 +570,37 @@ export function AiAgentsCard({
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
                                     {t('form.expressivenessField.hint')}
+                                </p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>{t('form.voiceModulation.label')}</Label>
+                                <Select
+                                    value={
+                                        VOICE_MODULATION_OPTIONS.find(
+                                            (o) => o.factor === editing.voiceModulation
+                                        )?.value ?? 'default'
+                                    }
+                                    onValueChange={(v) =>
+                                        patch({
+                                            voiceModulation: VOICE_MODULATION_OPTIONS.find(
+                                                (o) => o.value === v
+                                            )?.factor,
+                                        })
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {VOICE_MODULATION_OPTIONS.map((o) => (
+                                            <SelectItem key={o.value} value={o.value}>
+                                                {t(`form.voiceModulation.options.${o.value}`)}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    {t('form.voiceModulation.hint')}
                                 </p>
                             </div>
                         </div>

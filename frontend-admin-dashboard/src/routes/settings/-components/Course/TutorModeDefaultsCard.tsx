@@ -20,9 +20,14 @@ import { saveInstituteSettingKey } from '@/services/package-settings';
 import {
     TUTOR_MODE_SETTING_KEY,
     TUTOR_TTS_PROVIDERS,
+    TUTOR_VOICE_PACES,
     cloneTutorVoice,
+    getTutorOptions,
     type TutorModeSetting,
+    type TutorOptions,
 } from '@/services/tutor';
+import { TeacherPresenceField } from '@/components/common/tutor/TeacherPresenceField';
+import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 
 const DEFAULTS: TutorModeSetting = {
     enabled: true,
@@ -38,6 +43,8 @@ const DEFAULTS: TutorModeSetting = {
     compileModel: '',
     strictness: 'normal',
     generateImages: true,
+    voicePace: 1,
+    teacherAvatarFileId: '',
 };
 
 /**
@@ -52,6 +59,12 @@ export const TutorModeDefaultsCard: React.FC = () => {
     const [dirty, setDirty] = useState(false);
     const [cloning, setCloning] = useState(false);
     const [cloneName, setCloneName] = useState('');
+    const [options, setOptions] = useState<TutorOptions | null>(null);
+    useEffect(() => {
+        getTutorOptions()
+            .then(setOptions)
+            .catch(() => setOptions(null));
+    }, []);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const cloneVoice = async () => {
@@ -206,10 +219,12 @@ export const TutorModeDefaultsCard: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                         <Label>Voice</Label>
-                        <Input
-                            value={value.ttsVoice ?? ''}
-                            placeholder="provider default (female)"
-                            onChange={(e) => update('ttsVoice', e.target.value)}
+                        <VoicePicker
+                            value={value.ttsVoice || undefined}
+                            onChange={(v) => update('ttsVoice', v ?? '')}
+                            provider={value.ttsProvider ?? 'sarvam'}
+                            voices={options?.voices?.[value.ttsProvider ?? 'sarvam'] ?? []}
+                            inheritLabel="Provider default (female)"
                         />
                     </div>
                     <div className="space-y-1">
@@ -232,19 +247,41 @@ export const TutorModeDefaultsCard: React.FC = () => {
                         </Select>
                     </div>
                     <div className="space-y-1">
+                        <Label>Voice pace</Label>
+                        <Select
+                            value={String(
+                                typeof value.voicePace === 'number' ? value.voicePace : 1
+                            )}
+                            onValueChange={(v) => update('voicePace', Number(v))}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {TUTOR_VOICE_PACES.map((p) => (
+                                    <SelectItem key={p.value} value={String(p.value)}>
+                                        {p.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
                         <Label>Live model (LLM)</Label>
-                        <Input
-                            value={value.llmModel ?? ''}
-                            placeholder="platform default"
-                            onChange={(e) => update('llmModel', e.target.value)}
+                        <ModelPicker
+                            value={value.llmModel || undefined}
+                            onChange={(v) => update('llmModel', v ?? '')}
+                            models={options?.models ?? []}
+                            inheritLabel="Platform default"
                         />
                     </div>
                     <div className="space-y-1">
                         <Label>Compile model</Label>
-                        <Input
-                            value={value.compileModel ?? ''}
-                            placeholder="platform default"
-                            onChange={(e) => update('compileModel', e.target.value)}
+                        <ModelPicker
+                            value={value.compileModel || undefined}
+                            onChange={(v) => update('compileModel', v ?? '')}
+                            models={options?.models ?? []}
+                            inheritLabel="Platform default"
                         />
                     </div>
                     <div className="space-y-1">
@@ -266,6 +303,18 @@ export const TutorModeDefaultsCard: React.FC = () => {
                         </Select>
                     </div>
                 </div>
+                <TeacherPresenceField
+                    fileId={value.teacherAvatarFileId || undefined}
+                    teacherName={value.teacherName}
+                    provider={value.avatarProvider ?? 'none'}
+                    avatarId={value.avatarId}
+                    options={options}
+                    onFaceChange={(id) => update('teacherAvatarFileId', id ?? '')}
+                    onAvatarChange={(provider, avatarId) => {
+                        update('avatarProvider', provider ?? 'none');
+                        update('avatarId', avatarId);
+                    }}
+                />
                 <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
                     <p className="flex items-center gap-2 text-sm font-medium text-neutral-800">
                         <Waveform className="size-4 text-primary-500" />
@@ -274,8 +323,11 @@ export const TutorModeDefaultsCard: React.FC = () => {
                     <p className="text-xs text-neutral-600">
                         Upload a clean 5–15 second recording of the teacher speaking (mp3, wav, mp4
                         or webm, under 5 MB). Only upload a voice you have the person&apos;s
-                        permission to use. The cloned voice becomes the tutor voice for every course
-                        that inherits these defaults.
+                        permission to use. The cloned voice is private to this institute and becomes
+                        the tutor voice for every course that inherits these defaults.
+                        {options?.fees?.voice
+                            ? ` Charged once: ${options.fees.voice} credits per voice.`
+                            : ''}
                     </p>
                     <div className="flex flex-wrap items-end gap-2">
                         <div className="space-y-1">

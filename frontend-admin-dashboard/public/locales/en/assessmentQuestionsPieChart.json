@@ -26,5 +26,9 @@
         "title": "Participation Breakdown",
         "total_one": "{{count}} total",
         "total_other": "{{count}} total"
+    },
+    "unavailable": {
+        "title": "Overview not available for the selected institute",
+        "body": "This assessment isn't linked to the institute currently selected. Switch to the institute it belongs to and reload the page."
     }
 }

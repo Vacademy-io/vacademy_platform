@@ -14,6 +14,14 @@ T = {
         "en": "Hi {name}! I'm {teacher}, and I'll be teaching you today. We're starting with {slide}. Let's begin.",
         "hi": "नमस्ते {name}! मैं {teacher} हूँ और आज मैं आपको पढ़ाऊँगी। हम {slide} से शुरू कर रहे हैं। चलिए शुरू करते हैं।",
     },
+    "greet_interview": {
+        "en": "Hi {name}, I'm {teacher}, and I'll be your interviewer today. Think aloud, take your time, and I'll give you feedback after each answer. Ready?",
+        "hi": "नमस्ते {name}, मैं {teacher} हूँ, और आज मैं आपका interviewer हूँ। सोचते हुए बोलिए, समय लीजिए, और हर जवाब के बाद मैं feedback दूँगी। तैयार?",
+    },
+    "greet_practice": {
+        "en": "Hi {name}, I'm {teacher}. This is a practice session: I'll set up a situation, you try it, and we improve it together. Let's start.",
+        "hi": "नमस्ते {name}, मैं {teacher} हूँ। यह एक practice session है: मैं situation दूँगी, आप try करेंगे, और हम साथ में बेहतर करेंगे। शुरू करते हैं।",
+    },
     "resume": {
         "en": "Welcome back, {name}! Last time we were in {slide}. {summary} Let's pick up from where we left off.",
         "hi": "वापस स्वागत है, {name}! पिछली बार हम {slide} पर थे। {summary} चलिए वहीं से आगे बढ़ते हैं।",
@@ -63,11 +71,75 @@ T = {
     "fallback_correct": {"en": "That's right. Let's continue.", "hi": "बिल्कुल सही। चलिए आगे बढ़ते हैं।"},
     "fallback_hint": {"en": "Not quite. Look at the board again: {hint}. Try once more.", "hi": "पूरी तरह नहीं। बोर्ड को फिर देखिए: {hint}। एक बार फिर कोशिश कीजिए।"},
     "fallback_move_on": {"en": "Let's note that for later and keep going. {expected}", "hi": "इसे बाद के लिए नोट कर लेते हैं और आगे बढ़ते हैं। {expected}"},
+    # Weak-concept revisits (design §6.6)
+    "revisit_intro_topic": {
+        "en": "Before we move on, let's quickly go back to {n} point(s) that gave you trouble.",
+        "hi": "आगे बढ़ने से पहले, चलिए जल्दी से {n} बिंदु(ओं) पर लौटते हैं जिनमें दिक्कत हुई थी।",
+    },
+    "revisit_intro_slide": {
+        "en": "Before we finish, let's revisit {n} point(s) that need a little more practice.",
+        "hi": "समाप्त करने से पहले, चलिए {n} बिंदु(ओं) को फिर से देखते हैं जिन पर थोड़ा और अभ्यास चाहिए।",
+    },
+    "revisit_ask": {"en": "About {concept}. {prompt}", "hi": "{concept} के बारे में। {prompt}"},
+    "revisit_done_topic": {"en": "Good, that's the revisit done. Let's move to the next part.",
+                           "hi": "बहुत अच्छे, दोहराव पूरा हुआ। चलिए अगले हिस्से पर चलते हैं।"},
+    "revisit_done_slide": {"en": "That's the revisit done. Well done for sticking with it.",
+                           "hi": "दोहराव पूरा हुआ। लगे रहने के लिए शाबाश।"},
+    "revisit_skipped": {"en": "Okay, we'll leave that one for another day.", "hi": "ठीक है, इसे किसी और दिन के लिए छोड़ते हैं।"},
+    # Silence recovery (a minute on an open question)
+    "nudge_hint": {"en": "Take your time. Here's a hint: {hint}", "hi": "आराम से सोचिए। एक संकेत: {hint}"},
+    "nudge_open": {"en": "Take your time. If you'd like, say 'skip' and we'll come back to this later.",
+                   "hi": "आराम से सोचिए। चाहें तो 'skip' कहिए, हम इस पर बाद में लौटेंगे।"},
+    # Predict-then-reveal
+    "predict_intro": {"en": "Before I show you, a quick guess: {question}", "hi": "दिखाने से पहले, एक अंदाज़ा लगाइए: {question}"},
+    "predict_ack": {"en": "Good guess. Let's see.", "hi": "अच्छा अंदाज़ा। चलिए देखते हैं।"},
+    # The right answer stays on the board when the teacher moves on.
+    "answer_note": {"en": "Answer: {expected}", "hi": "उत्तर: {expected}"},
 }
+
+
+# ── rolling summary shape ────────────────────────────────────────────────────
+# A model-written summary is two paragraphs: what the teacher says to the
+# learner on return, then her private notes. The deterministic fallback
+# written at session end starts with "Session on" and is never spoken.
+
+LEGACY_SUMMARY_PREFIX = "Session on "
+
+
+def resume_line(summary: Optional[str]) -> Optional[str]:
+    """The sentence(s) to say to a returning learner, or None for a legacy
+    (deterministic) summary."""
+    s = (summary or "").strip()
+    if not s or s.startswith(LEGACY_SUMMARY_PREFIX) or "\n\n" not in s:
+        return None
+    first = s.split("\n\n", 1)[0].strip()
+    return first[:400] or None
+
+
+def summary_notes(summary: Optional[str]) -> str:
+    """The teacher's notes part (everything but the spoken line)."""
+    s = (summary or "").strip()
+    if "\n\n" in s and not s.startswith(LEGACY_SUMMARY_PREFIX):
+        return s.split("\n\n", 1)[1].strip()
+    return s
 
 
 _LEADING_GREETING = re.compile(
     r"^\s*(?:hi|hello|hey|namaste|नमस्ते|welcome(?: back)?)[^.!?।]*[.!?।]\s*", re.IGNORECASE)
+
+
+_NAME_GREETING = re.compile(r"^\s*(?:hi|hello|hey|namaste|नमस्ते|welcome(?: back)?)[,!]?\s*\{student_name\}[,!]?\s*", re.IGNORECASE)
+_NAME_INLINE = re.compile(r"\s*,?\s*\{student_name\}\s*,?\s*")
+
+
+def neutralize_name(text_: str) -> str:
+    """The same line without the learner's name (for prepared audio and
+    learners whose name is unknown): "Hi {student_name}, a force is a push."
+    → "A force is a push."; "Look, {student_name}, at the arrow" → "Look at the arrow"."""
+    t = _NAME_GREETING.sub("", text_ or "", count=1)
+    t = _NAME_INLINE.sub(" ", t)
+    t = " ".join(t.split()).strip()
+    return (t[0].upper() + t[1:]) if t else t
 
 
 def strip_leading_greeting(narration: str) -> str:
@@ -92,7 +164,7 @@ DECISION_SCHEMA = """Return ONE JSON object and nothing else:
 {
   "action": "advance" | "remediate" | "answer_doubt" | "wait",
   "say": "what you say next, 1-4 spoken sentences, in the session language, addressing the learner directly",
-  "board_ops": [ {"op":"highlight","target":"<element id on the board>","style":"pulse"} | {"op":"annotate","id":"s-1","target":"<element id>","text":"<=8 words","position":"right"} ],
+  "board_ops": [ {"op":"highlight","target":"<element id on the board>","style":"pulse"} | {"op":"annotate","id":"s-1","target":"<element id>","text":"<=8 words","position":"right"} | {"op":"callout","id":"note-1","kind":"example","text":"<=30 words: a worked example or the key line, ONLY with action remediate or answer_doubt"} ],
   "assessment": {"score": 0.0-1.0, "misconception": "<short label or null>", "evidence": "<what in the answer shows it>"},
   "learner_state_delta": {"note": "<one line about this learner, or null>"}
 }
@@ -100,21 +172,49 @@ Rules: "advance" only when score >= the pass threshold. "remediate" = the answer
 concrete hint anchored on the board and re-asks in fewer words (never reveal the full answer on the first remediation).
 "answer_doubt" = the learner asked something instead of answering: answer briefly from the concept material, then
 invite them to answer the check. "wait" = the learner said something that is neither (small talk): respond in one
-sentence and re-ask. Only highlight/annotate ops, only targets that exist on the board. No markdown."""
+sentence and re-ask. Ops: highlight/annotate on targets that exist on the board, plus at most ONE callout note when you
+remediate or answer a doubt (a worked example or the one line to remember — it stays on the board). ECHOES: an answer
+that repeats the teacher's own hint or words nearly verbatim is NOT understanding: score it at most 0.6 and, the first
+time, use action "wait" to ask for it in their own words or for the reason why. No markdown."""
 
 
-def system_prompt(teacher: str, lang: str, strictness: str) -> str:
+LIVE_PERSONA = {
+    "lesson": "You are {teacher}, a one-to-one teacher speaking to a learner over a shared whiteboard.",
+    "interview": ("You are {teacher}, a professional interviewer running a mock interview over a shared whiteboard. "
+                  "You are evaluating a CANDIDATE, not teaching a student: react like an interviewer (brief, fair, "
+                  "specific), give the model answer and the method only after their attempt, never say 'let's learn' "
+                  "or 'look at the board again' as a lesson would, and move to the next question cleanly."),
+    "practice": ("You are {teacher}, a coach running a practice session over a shared whiteboard. The learner "
+                 "attempts, you give short concrete feedback and a better version, then the next attempt."),
+}
+
+
+def greet_key(style: str) -> str:
+    return {"interview": "greet_interview", "practice": "greet_practice"}.get(style or "lesson", "greet")
+
+
+def system_prompt(teacher: str, lang: str, strictness: str, style: str = "lesson") -> str:
     tone = {
         "gentle": "Very encouraging; accept partial answers generously; never make the learner feel wrong.",
         "strict": "Precise; award credit only for correct, complete answers; correct terminology firmly but kindly.",
     }.get(strictness, "Warm and clear; give credit for the right idea in the learner's own words.")
+    persona = LIVE_PERSONA.get(style or "lesson", LIVE_PERSONA["lesson"]).format(teacher=teacher)
     return (
-        f"You are {teacher}, a one-to-one teacher speaking to a learner over a shared whiteboard. "
+        f"{persona} "
         f"Session language: {LANG_NAMES.get(lang, lang)}. {tone}\n"
         "You evaluate the learner's answer to the check for the CURRENT concept using its rubric and the listed "
         "misconceptions, and decide what happens next. Keep every spoken line short; the learner is listening, not reading.\n\n"
         + DECISION_SCHEMA
     )
+
+
+_TRAILING_Q = re.compile(r"[?？]\s*[\"'”’)]*\s*$")
+
+
+def narration_asks(say: str) -> bool:
+    """The narration already ended on a question: speaking the check prompt
+    too would ask the learner twice (older plans; new ones are validated)."""
+    return bool(_TRAILING_Q.search((say or "").strip()))
 
 
 def _ops_as_text(ops: List[Dict[str, Any]]) -> str:
@@ -153,6 +253,8 @@ def turn_prompt(
     remediation_no: int,
     mode: str,
     final_attempt: bool = False,
+    source_block: Optional[str] = None,
+    revisit: bool = False,
 ) -> str:
     parts = [
         f"LEARNER: {learner_name or 'the learner'}\n{learner_block}".strip(),
@@ -165,8 +267,12 @@ def turn_prompt(
             "expected": check.get("expected"), "rubric": check.get("rubric"),
             "misconceptions": check.get("misconceptions") or [], "pass_threshold": check.get("pass_threshold", 0.7),
         }, ensure_ascii=False),
+        ("SOURCE MATERIAL (the course's own material for this concept; ground your hint in it):\n" + source_block[:6000])
+        if source_block else "",
         "RECENT TRANSCRIPT:\n" + "\n".join(f"{m['role']}: {m['text']}" for m in transcript[-6:]),
-        f"THIS IS REMEDIATION #{remediation_no} FOR THIS CONCEPT." if remediation_no else "FIRST ANSWER FOR THIS CONCEPT.",
+        ("THIS IS A REVISIT: the learner found this concept hard earlier in the lesson; the check above is a fresh "
+         "question on the same idea and this is their ONE attempt at it."
+         if revisit else (f"THIS IS REMEDIATION #{remediation_no} FOR THIS CONCEPT." if remediation_no else "FIRST ANSWER FOR THIS CONCEPT.")),
         ("THIS IS THE LEARNER'S FINAL ATTEMPT ON THIS CHECK. Do NOT re-ask. If the answer is still wrong, use action "
          "\"remediate\" and in `say` give the correct answer in one clear sentence, then say you will move on."
          if final_attempt else ""),
@@ -211,7 +317,7 @@ def learner_block(state: Dict[str, Any], tags: List[str]) -> str:
     relevant = {t: mastery[t] for t in tags if t in mastery}
     lines = []
     if state.get("rolling_summary"):
-        lines.append("Previous sessions: " + str(state["rolling_summary"])[:600])
+        lines.append("Previous sessions: " + summary_notes(str(state["rolling_summary"]))[:600])
     if relevant:
         lines.append("Mastery on this concept's tags: " + ", ".join(f"{t}={round(float(v.get('score', 0)), 2)}" for t, v in relevant.items()))
     mis = state.get("misconceptions_json") or []
@@ -220,3 +326,75 @@ def learner_block(state: Dict[str, Any], tags: List[str]) -> str:
     if state.get("pace"):
         lines.append(f"Pace preference: {state['pace']}")
     return "\n".join(lines)
+
+
+# ── revisit question (design §6.6) ───────────────────────────────────────────
+
+REVISIT_QUESTION_SCHEMA = """Return ONE JSON object and nothing else:
+{"prompt": "<the new question, 1-2 spoken sentences>", "expected": "<the answer you expect, one line>", "rubric": "<what earns credit, one line>"}"""
+
+
+def revisit_question_prompt(
+    *, lang: str, concept_title: str, concept_say: str, teach_notes: Optional[str], check: Dict[str, Any],
+    previous_answer: Optional[str], misconception: Optional[str],
+) -> str:
+    parts = [
+        f"CONCEPT: {concept_title}\nWHAT WAS TAUGHT: {concept_say}" + (f"\nTEACHING NOTES: {teach_notes}" if teach_notes else ""),
+        "ORIGINAL CHECK (do not reuse its wording):\n" + json.dumps({
+            "prompt": check.get("prompt"), "expected": check.get("expected"), "rubric": check.get("rubric"),
+            "misconceptions": check.get("misconceptions") or []}, ensure_ascii=False),
+        (f"THE LEARNER'S EARLIER ANSWER: {previous_answer[:300]}" if previous_answer else "")
+        + (f"\nMISCONCEPTION HEARD: {misconception}" if misconception else ""),
+        f"Write ONE fresh question on the same idea, approached from a different angle (an example, a why, a what-if), "
+        f"answerable in one or two spoken sentences, in {LANG_NAMES.get(lang, lang)}. No options, no markdown.",
+        REVISIT_QUESTION_SCHEMA,
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+# ── rolling summary rewrite (design §6.6, §6.9) ─────────────────────────────
+
+SUMMARY_SCHEMA = """Return ONE JSON object and nothing else:
+{"say_next_time": "<1-2 sentences you will say to the learner when they return: what went well and what to revisit; warm, specific, no lists>",
+ "notes": "<60-120 words of private notes: what they know, which concepts are weak (name them), misconceptions heard, how they answer, pace>"}"""
+
+
+def summary_prompt(*, teacher: str, learner_name: Optional[str], lang: str, digest: Dict[str, Any]) -> str:
+    attempts = digest.get("attempts") or []
+    lines = [
+        f"You are {teacher}, a one-to-one teacher. Rewrite your notes about {learner_name or 'the learner'} after today's lesson.",
+        f"TODAY ({digest.get('date')}, {digest.get('duration_minutes', 0)} min): "
+        + "; ".join(f"{s.get('title')} — {s.get('done_today', s.get('done', 0))} concept(s) today, "
+                    f"{s.get('done', 0)}/{s.get('total', 0)} overall" for s in (digest.get("slides") or [])),
+        "ANSWERS TODAY:\n" + ("\n".join(
+            f"- {a.get('concept')}: score {a.get('score') if a.get('score') is not None else 'n/a'}, {a.get('action')}"
+            + (f", misconception: {a.get('misconception')}" if a.get("misconception") else "")
+            + (f", said: \"{a.get('answer')}\"" if a.get("answer") else "")
+            for a in attempts[:40]) or "(no checks answered)"),
+        ("STILL WEAK: " + ", ".join(digest.get("weak_titles") or [])) if digest.get("weak_titles") else "",
+        ("PREVIOUS NOTES:\n" + str(digest.get("previous_summary"))[:900]) if digest.get("previous_summary") else "",
+        f"Pace preference: {digest.get('pace')}" if digest.get("pace") else "",
+        f"`say_next_time` must be in {LANG_NAMES.get(lang, lang)} and address the learner directly, but it must NOT greet "
+        "or say the learner's name (the teacher has already said \"welcome back\" before it); `notes` in English. "
+        "Merge with the previous notes and drop what is no longer true.",
+        SUMMARY_SCHEMA,
+    ]
+    return "\n\n".join(p for p in lines if p)
+
+
+# ── predict-then-reveal turn ─────────────────────────────────────────────────
+
+PREDICT_SCHEMA = """Return ONE JSON object and nothing else:
+{"say": "1-2 spoken sentences reacting to the guess (warm; if it is close say what was right; if not, do not reveal the answer — say what to watch for), in the session language", "close": true|false}"""
+
+
+def predict_prompt(*, learner_name: Optional[str], question: str, concept_title: str, concept_say: str,
+                   answer: str, lang: str) -> str:
+    return "\n\n".join([
+        f"LEARNER: {learner_name or 'the learner'}",
+        f"You asked them to GUESS before teaching '{concept_title}': {question}",
+        f"WHAT YOU ARE ABOUT TO TEACH (do not reveal it yet): {concept_say}",
+        f"THEIR GUESS ({LANG_NAMES.get(lang, lang)}): {answer.strip()}",
+        "React in 1-2 sentences and hand over to the explanation. Any guess is fine; never grade it. JSON only.",
+        PREDICT_SCHEMA,
+    ])

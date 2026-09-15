@@ -53,4 +53,17 @@ public class SubscriptionDTO {
      * "also enable auto-pay for future renewals" option on manual renewal.
      */
     private boolean autopayAvailable;
+
+    /**
+     * True when at least one other plan is flagged switchable for this membership —
+     * gates the "Change plan" entry point so the UI never opens an empty picker.
+     */
+    private boolean canChangePlan;
+
+    /**
+     * A downgrade the learner has already booked for the end of the cycle. Surfaced here
+     * so the card can say "you move to X on <date>" without a second round trip — without
+     * it, "you're on Monthly" quietly stops being true at the next renewal.
+     */
+    private vacademy.io.admin_core_service.features.plan_change.dto.ScheduledPlanChangeDTO scheduledPlanChange;
 }

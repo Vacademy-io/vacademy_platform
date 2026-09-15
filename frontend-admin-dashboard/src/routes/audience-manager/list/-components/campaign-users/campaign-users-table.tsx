@@ -12,6 +12,17 @@ import {
 } from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
+import {
+    hasUtmSelection,
+    toUtmFiltersPayload,
+    utmValueLabel,
+} from '@/components/shared/leads/utm-filter-encoding';
+import {
+    UTM_FILTER_DIMENSIONS,
+    type UtmFilterDimension,
+    type UtmFilterSelection,
+} from '@/services/utm-list-filters';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
 import {
     decodeSelectionToEntries,
@@ -35,6 +46,7 @@ import {
     Clock,
     CaretDown,
     Trash,
+    ArrowsLeftRight,
     Phone,
     CircleNotch,
 } from '@phosphor-icons/react';
@@ -85,6 +97,7 @@ import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
+import { MigrateLeadsDialog } from '@/components/shared/leads/migrate-leads-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import {
     LeadEmptyState,
@@ -238,6 +251,21 @@ const CampaignUsersContent = ({
                 .flatMap(([fieldId, values]) => decodeSelectionToEntries(fieldId, values)),
         [customFieldFilters]
     );
+
+    // Campaign (UTM) filters — one value list per dimension. The controls
+    // render nothing while the institute's UTM setting is off.
+    const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>({});
+    const { t: tUtm } = useTranslation('utmListFilters');
+    const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) => {
+        setPage(0);
+        setUtmFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[dimension];
+            else next[dimension] = values;
+            return next;
+        });
+    };
+    const utmFiltersPayload = useMemo(() => toUtmFiltersPayload(utmFilters), [utmFilters]);
 
     // ── Dialog state ─────────────────────────────────────────
     const [showBulkImport, setShowBulkImport] = useState(false);
@@ -438,6 +466,7 @@ const CampaignUsersContent = ({
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
+            utm_filters: utmFiltersPayload,
             call_history_filter: callHistoryFilter || undefined,
         };
     }, [
@@ -452,6 +481,7 @@ const CampaignUsersContent = ({
         slaFilters,
         counsellorFilters,
         customFieldFiltersPayload,
+        utmFiltersPayload,
         callHistoryFilter,
         ALL_VALUE,
         ALL_ACTIVE_VALUE,
@@ -578,8 +608,11 @@ const CampaignUsersContent = ({
     >(
         new Map()
     );
+    // Response ids of the ticked rows — what "Send message" targets when a selection exists.
+    const selectedResponseIds = useMemo(() => Array.from(selectedLeads.keys()), [selectedLeads]);
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const [bulkMigrateOpen, setBulkMigrateOpen] = useState(false);
     const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
@@ -705,6 +738,7 @@ const CampaignUsersContent = ({
         setToDate('');
         setAppliedRange({ from: '', to: '' });
         setCustomFieldFilters({});
+        setUtmFilters({});
     };
 
     const isDateFilterActive = !!appliedRange.from || !!appliedRange.to;
@@ -715,7 +749,8 @@ const CampaignUsersContent = ({
         leadStatusFilters.length > 0 ||
         slaFilters.length > 0 ||
         counsellorFilters.length > 0 ||
-        customFieldFiltersPayload.length > 0;
+        customFieldFiltersPayload.length > 0 ||
+        hasUtmSelection(utmFilters);
 
     // Active filter chips
     const chips: { label: string; onRemove: () => void }[] = [];
@@ -789,6 +824,24 @@ const CampaignUsersContent = ({
                     f.field_id,
                     removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
                 ),
+        });
+    });
+
+    UTM_FILTER_DIMENSIONS.forEach((dimension) => {
+        (utmFilters[dimension] ?? []).forEach((value) => {
+            chips.push({
+                label: tUtm('chip', {
+                    dimension: tUtm(
+                        `dimensions.${dimension === 'source_type' ? 'sourceType' : dimension}`
+                    ),
+                    value: utmValueLabel(value, tUtm('untagged')),
+                }),
+                onRemove: () =>
+                    setUtmFilter(
+                        dimension,
+                        (utmFilters[dimension] ?? []).filter((v) => v !== value)
+                    ),
+            });
         });
     });
 
@@ -1138,6 +1191,12 @@ const CampaignUsersContent = ({
                             </SelectItem>
                         </SelectContent>
                     </Select>
+                    <UtmFilterControls
+                        surface="LEADS"
+                        instituteId={instituteId ?? ''}
+                        selection={utmFilters}
+                        onChange={setUtmFilter}
+                    />
                     <ManageListFiltersLink surface="LEADS" />
                     <Popover>
                         <PopoverTrigger asChild>
@@ -1329,6 +1388,11 @@ const CampaignUsersContent = ({
                                 <MyDropdown
                                     dropdownList={[
                                         {
+                                            label: t('bulkToolbar.sendMessage'),
+                                            value: 'send-message',
+                                            icon: <PaperPlaneTilt className="size-4" />,
+                                        },
+                                        {
                                             label: t('bulkToolbar.assignLeads'),
                                             value: 'assign',
                                             icon: <UserPlus className="size-4" />,
@@ -1338,9 +1402,17 @@ const CampaignUsersContent = ({
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
-                                        // Delete is admin-only, matching the endpoint's own check.
+                                        // Move and delete are admin-only, matching those
+                                        // endpoints' own checks.
                                         ...(canDeleteLeads
                                             ? [
+                                                  {
+                                                      label: t('bulkToolbar.moveLeads'),
+                                                      value: 'migrate',
+                                                      icon: (
+                                                          <ArrowsLeftRight className="size-4" />
+                                                      ),
+                                                  },
                                                   {
                                                       label: t('bulkToolbar.deleteLeads'),
                                                       value: 'delete',
@@ -1352,8 +1424,16 @@ const CampaignUsersContent = ({
                                             : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'send-message') {
+                                            setShowSendMessage(true);
+                                            return;
+                                        }
                                         if (value === 'delete') {
                                             setBulkDeleteOpen(true);
+                                            return;
+                                        }
+                                        if (value === 'migrate') {
+                                            setBulkMigrateOpen(true);
                                             return;
                                         }
                                         setBulkActionMode(
@@ -1440,6 +1520,19 @@ const CampaignUsersContent = ({
                     }}
                 />
 
+                <MigrateLeadsDialog
+                    open={bulkMigrateOpen}
+                    onOpenChange={setBulkMigrateOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    // This view is one list, so exclude it from the picker.
+                    currentAudienceId={campaignId}
+                    onSuccess={() => {
+                        setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
+                />
+
                 {noteTarget && (
                     <AddLeadNoteDialog
                         open={!!noteTarget}
@@ -1483,6 +1576,7 @@ const CampaignUsersContent = ({
                 instituteId={instituteId || ''}
                 customFields={bulkImportCustomFields}
                 leadCount={totalElements}
+                selectedResponseIds={selectedResponseIds}
             />
             <ExportColumnPickerDialog
                 open={exportPickerOpen}

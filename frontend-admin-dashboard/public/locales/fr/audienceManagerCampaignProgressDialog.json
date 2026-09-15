@@ -10,7 +10,11 @@
         "cancelled": "Annulé",
         "onCall": "En communication",
         "ringing": "Sonnerie",
-        "dialing": "Composition en cours"
+        "dialing": "Composition en cours",
+        "waitingAt": "#{{position}} in line",
+        "nextUp": "Next up",
+        "cancelled_queue": "Cancelled",
+        "expired": "Expired"
     },
     "header": {
         "allFinished_one": "Le {{count}} appel est terminé",
@@ -20,19 +24,24 @@
         "liveSuffix_one": " · {{count}} en cours",
         "liveSuffix_many": " · {{count}} d'appels en cours",
         "liveSuffix_other": " · {{count}} en cours",
-        "parallelLabel_one": "{{count}} à la fois",
         "parallelLabel_many": "{{count}} d'appels à la fois",
-        "parallelLabel_other": "{{count}} à la fois"
+        "waiting_one": "{{count}} waiting",
+        "waiting_other": "{{count}} waiting",
+        "waitingWithEta_one": "{{count}} waiting · about {{eta}} left",
+        "waitingWithEta_other": "{{count}} waiting · about {{eta}} left"
     },
     "list": {
         "dialingFirst": "Composition du premier prospect…",
         "defaultLeadName": "Prospect",
-        "duration": "{{minutes}} min {{seconds}} s"
+        "duration": "{{minutes}} min {{seconds}} s",
+        "droppedNotice_one": "{{count}} lead will not be called (cancelled or expired).",
+        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired)."
     },
     "error": {
         "pollPaused": "Mises à jour en direct suspendues (nouvelle tentative en cours) — les appels continuent de se dérouler côté serveur."
     },
     "footer": {
-        "backgroundNotice": "S'exécute en arrière-plan — fermer cette fenêtre n'arrête pas les appels. Le résultat et l'attribution du conseiller de chaque appel se font automatiquement."
+        "backgroundNotice": "S'exécute en arrière-plan — fermer cette fenêtre n'arrête pas les appels. Le résultat et l'attribution du conseiller de chaque appel se font automatiquement.",
+        "cancelRemaining": "Cancel remaining"
     }
 }

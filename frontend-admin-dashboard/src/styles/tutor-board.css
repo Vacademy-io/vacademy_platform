@@ -3,10 +3,10 @@
 .tutor-board-preview .tutor-board {
     @apply relative min-h-48 rounded-xl border border-neutral-200 bg-neutral-50 px-5 py-4 text-neutral-800;
     background-image:
-        linear-gradient(theme('colors.neutral.200') 1px, transparent 1px),
-        linear-gradient(90deg, theme('colors.neutral.200') 1px, transparent 1px);
+        linear-gradient(theme('colors.neutral.100') 1px, transparent 1px),
+        linear-gradient(90deg, theme('colors.neutral.100') 1px, transparent 1px);
     background-size: 24px 24px;
-    font-family: 'Segoe Print', 'Bradley Hand', 'Comic Neue', 'Trebuchet MS', ui-rounded, system-ui, sans-serif;
+    font-family: 'Kalam', 'Segoe Print', 'Bradley Hand', 'Comic Neue', 'Trebuchet MS', ui-rounded, system-ui, sans-serif;
     line-height: 1.45;
 }
 .tutor-board-preview .tb-heading {
@@ -93,3 +93,28 @@
 .tutor-board-preview .tb-media-task {
     @apply my-2 rounded-lg border-2 border-dashed border-primary-300 bg-primary-50 p-3 font-semibold text-primary-600;
 }
+
+/* Preview playback: the same entrance, stroke-draw and stepped-part rules the
+   learner's lesson uses, so "Play" shows what learners see. */
+.tutor-board-preview .tb-op { opacity: 0; transform: translateY(6px); }
+.tutor-board-preview .tb-op.tb-enter { opacity: 1; transform: none; transition: opacity 0.5s ease, transform 0.5s ease; }
+.tutor-board-preview .tb-svg .tb-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tb-draw 0.9s ease-out forwards; }
+@keyframes tb-draw { 0% { stroke-dashoffset: 1; fill-opacity: 0; } 60% { fill-opacity: 0; } 100% { stroke-dashoffset: 0; fill-opacity: 1; } }
+.tutor-board-preview .tb-svg .tb-step { opacity: 0; transform: translateY(6px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.tutor-board-preview .tb-svg .tb-step.tb-step-on { opacity: 1; transform: none; }
+
+/* Side-by-side columns (compare and contrast) and notes the teacher wrote live. */
+.tutor-board-preview .tb-columns { @apply my-2 grid gap-3; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tutor-board-preview .tb-columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tutor-board-preview .tb-col { @apply min-w-0 rounded-lg border border-neutral-200 bg-white/60 px-3 py-2; }
+.tutor-board-preview .tb-col > .tb-heading { @apply mb-2 border-b-2 text-base; }
+
+/* A formula never escapes its card: KaTeX output scrolls sideways rather than
+   overlapping the next column, and un-typeset raw LaTeX (KaTeX failed, or the
+   HTML is shown before typesetting) wraps instead of bleeding. */
+.tutor-board-preview .tb-formula { max-width: 100%; overflow-x: auto; }
+.tutor-board-preview .tb-latex { display: block; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
+.tutor-board-preview .tb-latex .katex, .tutor-board-preview .tb-latex .katex-display { overflow-wrap: normal; word-break: normal; }
+.tutor-board-preview .tb-table { display: block; max-width: 100%; overflow-x: auto; }
+
+.tutor-board-preview .tb-formula .katex-display { @apply my-1; }

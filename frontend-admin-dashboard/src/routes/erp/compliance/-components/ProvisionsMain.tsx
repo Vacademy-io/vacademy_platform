@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DownloadSimple, Sparkle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { MyInput } from '@/components/design-system/input';
@@ -50,6 +51,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
  * imply an institute owes both, which no institute does.
  */
 export const ProvisionsMain = () => {
+    const { t } = useTranslation('erpProvisionsMain');
     const { isHrAdmin } = useHrRole();
     const [asOfDate, setAsOfDate] = useState<string>(todayIso());
 
@@ -67,20 +69,16 @@ export const ProvisionsMain = () => {
 
     return (
         <div className="flex flex-col gap-5">
-            <p className="text-body text-neutral-500">
-                What the institute would owe its people for long service, and the statutory bonus
-                for the year. These are provisions for the books — nothing here pays anyone until
-                you materialize it into payroll.
-            </p>
+            <p className="text-body text-neutral-500">{t('description')}</p>
 
             <Tabs defaultValue={isGulf ? 'eosb' : 'gratuity'} className="flex flex-col gap-4">
                 <TabsList className="w-fit">
                     {isGulf ? (
-                        <TabsTrigger value="eosb">End of service (EOSB)</TabsTrigger>
+                        <TabsTrigger value="eosb">{t('tabs.eosb')}</TabsTrigger>
                     ) : (
-                        <TabsTrigger value="gratuity">Gratuity</TabsTrigger>
+                        <TabsTrigger value="gratuity">{t('tabs.gratuity')}</TabsTrigger>
                     )}
-                    {!isGulf && <TabsTrigger value="bonus">Statutory bonus</TabsTrigger>}
+                    {!isGulf && <TabsTrigger value="bonus">{t('tabs.bonus')}</TabsTrigger>}
                 </TabsList>
 
                 {!isGulf && (
@@ -111,29 +109,32 @@ const AsOfControl = ({
     asOfDate: string;
     onAsOfDateChange: (v: string) => void;
     onDownload: () => Promise<void>;
-}) => (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex w-64 flex-col gap-1.5">
-            <span className="text-caption text-neutral-600">As of date</span>
-            <MyInput
-                inputType="date"
-                input={asOfDate}
-                onChangeFunction={(e) => onAsOfDateChange(e.target.value)}
-                inputPlaceholder=""
-                className="w-full"
-            />
+}) => {
+    const { t } = useTranslation('erpProvisionsMain');
+    return (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex w-64 flex-col gap-1.5">
+                <span className="text-caption text-neutral-600">{t('asOf.label')}</span>
+                <MyInput
+                    inputType="date"
+                    input={asOfDate}
+                    onChangeFunction={(e) => onAsOfDateChange(e.target.value)}
+                    inputPlaceholder=""
+                    className="w-full"
+                />
+            </div>
+            <MyButton
+                buttonType="secondary"
+                scale="medium"
+                onAsyncClick={onDownload}
+                loadingText={t('asOf.preparing')}
+            >
+                <DownloadSimple size={16} />
+                {t('asOf.downloadCsv')}
+            </MyButton>
         </div>
-        <MyButton
-            buttonType="secondary"
-            scale="medium"
-            onAsyncClick={onDownload}
-            loadingText="Preparing…"
-        >
-            <DownloadSimple size={16} />
-            Download CSV
-        </MyButton>
-    </div>
-);
+    );
+};
 
 const GratuityTab = ({
     asOfDate,
@@ -142,6 +143,7 @@ const GratuityTab = ({
     asOfDate: string;
     onAsOfDateChange: (v: string) => void;
 }) => {
+    const { t } = useTranslation('erpProvisionsMain');
     const query = useQuery({
         queryKey: hrKeys.gratuity(asOfDate),
         queryFn: () => fetchGratuityProvision(asOfDate),
@@ -158,11 +160,11 @@ const GratuityTab = ({
                 { asOfDate },
                 `gratuity_provision_${asOfDate}.csv`
             );
-            toast.success('Gratuity provision downloaded');
+            toast.success(t('gratuity.downloadSuccess'));
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-compliance',
-                fallbackMessage: 'Could not download the gratuity provision.',
+                fallbackMessage: t('gratuity.downloadError'),
             });
         }
     };
@@ -178,32 +180,35 @@ const GratuityTab = ({
                 <HrLoadingRows rows={5} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Could not compute the gratuity provision."
+                    message={t('gratuity.computeError')}
                     onRetry={() => void query.refetch()}
                 />
             ) : rows.length === 0 ? (
                 <HrEmptyState
-                    title="No employees to provision for"
-                    description="Nobody on the roster has service recorded as of this date."
+                    title={t('gratuity.emptyTitle')}
+                    description={t('gratuity.emptyDescription')}
                 />
             ) : (
                 <>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <ComplianceStat label="Employees" value={data?.employee_count ?? rows.length} />
                         <ComplianceStat
-                            label="Total liability"
+                            label={t('gratuity.stats.employees')}
+                            value={data?.employee_count ?? rows.length}
+                        />
+                        <ComplianceStat
+                            label={t('gratuity.stats.totalLiability')}
                             value={data?.total_accrued_liability}
                             currency={data?.currency}
                             isMoney
                         />
                         <ComplianceStat
-                            label="Vested"
+                            label={t('gratuity.stats.vested')}
                             value={data?.vested_accrued_liability}
                             currency={data?.currency}
                             isMoney
                         />
                         <ComplianceStat
-                            label="Monthly run-rate"
+                            label={t('gratuity.stats.monthlyRunRate')}
                             value={data?.total_monthly_run_rate}
                             currency={data?.currency}
                             isMoney
@@ -213,12 +218,24 @@ const GratuityTab = ({
                         <table className="w-full text-body">
                             <thead>
                                 <tr className="border-b border-neutral-200 bg-neutral-50 text-caption uppercase text-neutral-500">
-                                    <th className="px-4 py-2 text-start font-medium">Employee</th>
-                                    <th className="px-4 py-2 text-end font-medium">Years</th>
-                                    <th className="px-4 py-2 text-end font-medium">Monthly basic</th>
-                                    <th className="px-4 py-2 text-end font-medium">Liability</th>
-                                    <th className="px-4 py-2 text-end font-medium">Run-rate</th>
-                                    <th className="px-4 py-2 text-end font-medium">Vested</th>
+                                    <th className="px-4 py-2 text-start font-medium">
+                                        {t('gratuity.table.employee')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('gratuity.table.years')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('gratuity.table.monthlyBasic')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('gratuity.table.liability')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('gratuity.table.runRate')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('gratuity.table.vested')}
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -253,7 +270,11 @@ const GratuityTab = ({
                                         </td>
                                         <td className="px-4 py-2.5 text-end">
                                             <StatusChip
-                                                text={r.vested ? 'Vested' : 'Not yet'}
+                                                text={
+                                                    r.vested
+                                                        ? t('gratuity.vestedChip')
+                                                        : t('gratuity.notYetChip')
+                                                }
                                                 textSize="text-caption"
                                                 status={r.vested ? 'SUCCESS' : 'INFO'}
                                             />
@@ -276,6 +297,7 @@ const EosbTab = ({
     asOfDate: string;
     onAsOfDateChange: (v: string) => void;
 }) => {
+    const { t } = useTranslation('erpProvisionsMain');
     const query = useQuery({
         queryKey: hrKeys.eosb(asOfDate),
         queryFn: () => fetchEosbProvision(asOfDate),
@@ -292,11 +314,11 @@ const EosbTab = ({
                 { asOfDate },
                 `eosb_provision_${asOfDate}.csv`
             );
-            toast.success('EOSB provision downloaded');
+            toast.success(t('eosb.downloadSuccess'));
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-compliance',
-                fallbackMessage: 'Could not download the EOSB provision.',
+                fallbackMessage: t('eosb.downloadError'),
             });
         }
     };
@@ -308,40 +330,40 @@ const EosbTab = ({
                 onAsOfDateChange={onAsOfDateChange}
                 onDownload={handleDownload}
             />
-            <p className="text-caption text-neutral-500">
-                Statutory liability is what an employee could claim today; the accounting accrual is
-                what the books should already carry. They differ before an employee qualifies.
-            </p>
+            <p className="text-caption text-neutral-500">{t('eosb.description')}</p>
             {query.isLoading ? (
                 <HrLoadingRows rows={5} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Could not compute the EOSB provision."
+                    message={t('eosb.computeError')}
                     onRetry={() => void query.refetch()}
                 />
             ) : rows.length === 0 ? (
                 <HrEmptyState
-                    title="No employees to provision for"
-                    description="Nobody on the roster has service recorded as of this date."
+                    title={t('eosb.emptyTitle')}
+                    description={t('eosb.emptyDescription')}
                 />
             ) : (
                 <>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <ComplianceStat label="Employees" value={data?.employee_count ?? rows.length} />
                         <ComplianceStat
-                            label="Statutory liability"
+                            label={t('eosb.stats.employees')}
+                            value={data?.employee_count ?? rows.length}
+                        />
+                        <ComplianceStat
+                            label={t('eosb.stats.statutoryLiability')}
                             value={data?.total_statutory_liability}
                             currency={data?.currency}
                             isMoney
                         />
                         <ComplianceStat
-                            label="Accounting accrual"
+                            label={t('eosb.stats.accountingAccrual')}
                             value={data?.total_accounting_accrual}
                             currency={data?.currency}
                             isMoney
                         />
                         <ComplianceStat
-                            label="Monthly run-rate"
+                            label={t('eosb.stats.monthlyRunRate')}
                             value={data?.total_monthly_run_rate}
                             currency={data?.currency}
                             isMoney
@@ -351,12 +373,24 @@ const EosbTab = ({
                         <table className="w-full text-body">
                             <thead>
                                 <tr className="border-b border-neutral-200 bg-neutral-50 text-caption uppercase text-neutral-500">
-                                    <th className="px-4 py-2 text-start font-medium">Employee</th>
-                                    <th className="px-4 py-2 text-end font-medium">Years</th>
-                                    <th className="px-4 py-2 text-end font-medium">Monthly basic</th>
-                                    <th className="px-4 py-2 text-end font-medium">Statutory</th>
-                                    <th className="px-4 py-2 text-end font-medium">Accrual</th>
-                                    <th className="px-4 py-2 text-end font-medium">Eligible</th>
+                                    <th className="px-4 py-2 text-start font-medium">
+                                        {t('eosb.table.employee')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('eosb.table.years')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('eosb.table.monthlyBasic')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('eosb.table.statutory')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('eosb.table.accrual')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('eosb.table.eligible')}
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -391,7 +425,11 @@ const EosbTab = ({
                                         </td>
                                         <td className="px-4 py-2.5 text-end">
                                             <StatusChip
-                                                text={r.statutory_eligible ? 'Eligible' : 'Not yet'}
+                                                text={
+                                                    r.statutory_eligible
+                                                        ? t('eosb.eligibleChip')
+                                                        : t('eosb.notYetChip')
+                                                }
                                                 textSize="text-caption"
                                                 status={r.statutory_eligible ? 'SUCCESS' : 'INFO'}
                                             />
@@ -408,6 +446,7 @@ const EosbTab = ({
 };
 
 const BonusTab = () => {
+    const { t } = useTranslation('erpProvisionsMain');
     const [financialYear, setFinancialYear] = useState(() => financialYearOf());
     const [bonusPct, setBonusPct] = useState('8.33');
     const [payoutPeriod, setPayoutPeriod] = useState<MonthValue>(() => currentMonthValue());
@@ -433,17 +472,19 @@ const BonusTab = () => {
                 month: payoutPeriod.month,
                 year: payoutPeriod.year,
             });
+            const createdCount = result.created_count ?? 0;
+            const skippedExisting = result.skipped_existing_count ?? 0;
             toast.success(
-                `${result.created_count ?? 0} bonus adjustments created for ${formatMonthValue(payoutPeriod)}` +
-                    (result.skipped_existing_count
-                        ? ` · ${result.skipped_existing_count} already existed`
-                        : '')
+                t('bonus.materializeSuccess', {
+                    count: createdCount,
+                    period: formatMonthValue(payoutPeriod),
+                }) + (skippedExisting ? t('bonus.alreadyExisted', { count: skippedExisting }) : '')
             );
             void query.refetch();
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-compliance',
-                fallbackMessage: 'Could not create the bonus adjustments.',
+                fallbackMessage: t('bonus.materializeError'),
             });
         }
     };
@@ -452,7 +493,7 @@ const BonusTab = () => {
         <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-end gap-3">
                 <div className="flex flex-col gap-1.5">
-                    <span className="text-caption text-neutral-600">Financial year</span>
+                    <span className="text-caption text-neutral-600">{t('bonus.financialYear')}</span>
                     <MyDropdown
                         currentValue={financialYear}
                         dropdownList={recentFinancialYears()}
@@ -460,7 +501,7 @@ const BonusTab = () => {
                     />
                 </div>
                 <div className="flex w-40 flex-col gap-1.5">
-                    <span className="text-caption text-neutral-600">Rate (%)</span>
+                    <span className="text-caption text-neutral-600">{t('bonus.rate')}</span>
                     <MyInput
                         inputType="number"
                         input={bonusPct}
@@ -469,66 +510,69 @@ const BonusTab = () => {
                         className="w-full"
                     />
                 </div>
-                <span className="pb-2 text-caption text-neutral-500">
-                    The Act allows 8.33% to 20%.
-                </span>
+                <span className="pb-2 text-caption text-neutral-500">{t('bonus.rateHint')}</span>
             </div>
 
             {!pctValid ? (
                 <HrEmptyState
-                    title="Enter a rate between 8.33 and 20"
-                    description="The Payment of Bonus Act sets those as the minimum and maximum."
+                    title={t('bonus.invalidRateTitle')}
+                    description={t('bonus.invalidRateDescription')}
                 />
             ) : query.isLoading ? (
                 <HrLoadingRows rows={5} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Could not compute the bonus."
+                    message={t('bonus.computeError')}
                     onRetry={() => void query.refetch()}
                 />
             ) : rows.length === 0 ? (
                 <HrEmptyState
-                    title="Nobody to compute"
-                    description="No employees were on the roster during this financial year."
+                    title={t('bonus.emptyTitle')}
+                    description={t('bonus.emptyDescription')}
                 />
             ) : (
                 <>
                     <div className="grid gap-3 sm:grid-cols-3">
-                        <ComplianceStat label="Eligible employees" value={data?.eligible_count ?? eligibleRows.length} />
                         <ComplianceStat
-                            label="Total bonus"
+                            label={t('bonus.stats.eligibleEmployees')}
+                            value={data?.eligible_count ?? eligibleRows.length}
+                        />
+                        <ComplianceStat
+                            label={t('bonus.stats.totalBonus')}
                             value={data?.total_bonus}
                             currency={data?.currency}
                             isMoney
                         />
-                        <ComplianceStat label="Applied rate" value={`${data?.bonus_pct ?? pct}%`} />
+                        <ComplianceStat
+                            label={t('bonus.stats.appliedRate')}
+                            value={`${data?.bonus_pct ?? pct}%`}
+                        />
                     </div>
 
                     <Card className="flex flex-wrap items-end justify-between gap-3 p-4">
                         <div className="flex flex-col gap-1">
                             <span className="text-subtitle font-medium text-neutral-700">
-                                Pay this bonus
+                                {t('bonus.payCardTitle')}
                             </span>
                             <span className="text-caption text-neutral-500">
-                                Creates one BONUS-scoped adjustment per eligible employee. A bonus
-                                payroll run for that month pays and taxes them.
+                                {t('bonus.payCardDescription')}
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
                             <MonthPicker
                                 value={payoutPeriod}
                                 onChange={setPayoutPeriod}
-                                label="Payout"
+                                label={t('bonus.payoutLabel')}
                             />
                             <MyButton
                                 buttonType="primary"
                                 scale="medium"
                                 onAsyncClick={handleMaterialize}
-                                loadingText="Creating…"
+                                loadingText={t('bonus.materializing')}
                                 disabled={eligibleRows.length === 0}
                             >
                                 <Sparkle size={16} />
-                                Materialize
+                                {t('bonus.materialize')}
                             </MyButton>
                         </div>
                     </Card>
@@ -537,11 +581,21 @@ const BonusTab = () => {
                         <table className="w-full text-body">
                             <thead>
                                 <tr className="border-b border-neutral-200 bg-neutral-50 text-caption uppercase text-neutral-500">
-                                    <th className="px-4 py-2 text-start font-medium">Employee</th>
-                                    <th className="px-4 py-2 text-end font-medium">Monthly basic</th>
-                                    <th className="px-4 py-2 text-end font-medium">Months</th>
-                                    <th className="px-4 py-2 text-end font-medium">Wage base</th>
-                                    <th className="px-4 py-2 text-end font-medium">Bonus</th>
+                                    <th className="px-4 py-2 text-start font-medium">
+                                        {t('bonus.table.employee')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('bonus.table.monthlyBasic')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('bonus.table.months')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('bonus.table.wageBase')}
+                                    </th>
+                                    <th className="px-4 py-2 text-end font-medium">
+                                        {t('bonus.table.bonus')}
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>

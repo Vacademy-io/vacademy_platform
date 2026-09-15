@@ -1,0 +1,32 @@
+{
+    "couldNotLoad": "Could not load notification stats.",
+    "emailStats": {
+        "sent": "Emails sent",
+        "delivered": "Delivered",
+        "opened": "Opened",
+        "clicked": "Clicked",
+        "bounced": "Bounced",
+        "inbound": "Inbound replies"
+    },
+    "waStats": {
+        "out": "WhatsApp out",
+        "in": "WhatsApp in"
+    },
+    "sections": {
+        "email": "Email",
+        "whatsapp": "WhatsApp"
+    },
+    "emailSubtitle": {
+        "notConfigured": "No sender email configured for this institute.",
+        "fullyConfigured": "Sender + inbound inbox configured.",
+        "senderOnly": "Sender configured. Inbound replies not yet enabled."
+    },
+    "waSubtitle": {
+        "connected": "WhatsApp business channel connected.",
+        "notConfigured": "No WhatsApp channel mapped to this institute."
+    },
+    "activeBatches": "Active batches",
+    "batchesCompleted_one": "Batches completed ({{count}}d)",
+    "batchesCompleted_other": "Batches completed ({{count}}d)",
+    "viewStat": "View {{label}}"
+}

@@ -41,6 +41,7 @@
         "selectPrompt": "Select the {{courses}} you'd like to enroll in"
     },
     "courseFinder": {
+        "continueToRegister": "Continue to register",
         "dialogHeading": "Select your class",
         "showCourses": "Show my {{courses}}",
         "defaultSubheading": "Pick yours to see the {{courses}} available for you",
@@ -239,6 +240,8 @@
             "days_one": "{{count}} day access",
             "days_other": "{{count}} days access"
         },
-        "goToMyCourses": "Go to My {{courses}}"
+        "goToMyCourses": "Go to My {{courses}}",
+        "redirecting": "Taking you to the next page…",
+        "redirectNow": "Continue now"
     }
 }

@@ -48,9 +48,9 @@ import {
 } from '@/services/live-session-settings';
 import { LIVE_SESSION_SETTINGS_QUERY_KEY } from '@/hooks/useLiveSessionSettings';
 import {
-    TIMEZONE_OPTIONS,
-    WAITING_ROOM_OPTIONS,
-    WAITING_ROOM_TYPE_OPTIONS,
+    buildTimezoneOptions,
+    buildWaitingRoomOptions,
+    buildWaitingRoomTypeOptions,
 } from '@/routes/study-library/live-session/schedule/-constants/options';
 import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/enums';
 import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
@@ -109,6 +109,12 @@ interface LiveSessionSettingsProps {
 
 export default function LiveSessionSettings({ embedded = false }: LiveSessionSettingsProps = {}) {
     const { t } = useTranslation('settingsLiveSession');
+    // These option lists carry translated labels, so they are built from the
+    // shared options namespace instead of being module-level constants.
+    const { t: tOptions } = useTranslation('studyLibraryOptions');
+    const TIMEZONE_OPTIONS = buildTimezoneOptions(tOptions);
+    const WAITING_ROOM_OPTIONS = buildWaitingRoomOptions(tOptions);
+    const WAITING_ROOM_TYPE_OPTIONS = buildWaitingRoomTypeOptions(tOptions);
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<LiveSessionSettingsType>(
         DEFAULT_LIVE_SESSION_SETTINGS

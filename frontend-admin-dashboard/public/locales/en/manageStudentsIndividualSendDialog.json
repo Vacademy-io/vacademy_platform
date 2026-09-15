@@ -74,7 +74,9 @@
         "selectPlaceholder": "Select an approved template",
         "emptyText": "No approved template matches your search.",
         "languageCodeLabel": "Language Code",
-        "templatePreviewLabel": "Template Preview"
+        "templatePreviewLabel": "Template Preview",
+        "previewHint": "Highlighted parts are placeholders — the next step fills them with this learner's details.",
+        "headerBadge": "{{kind}} header"
     },
     "mediaKind": {
         "image": "image",
@@ -95,7 +97,8 @@
         "sourcePlaceholder": "Select source...",
         "literalOption": "Literal value...",
         "literalPlaceholder": "Type a value",
-        "unresolved": "(unresolved)"
+        "unresolved": "(unresolved)",
+        "livePreviewLabel": "Message preview"
     },
     "reviewStep": {
         "messageSent": "Message Sent",
@@ -124,10 +127,21 @@
             "DELIVERED": "Delivered",
             "READ": "Read",
             "FAILED": "Failed"
-        }
+        },
+        "messagePreviewLabel": "Message that will be sent"
     },
     "footer": {
         "back": "Back",
         "next": "Next"
+    },
+    "templatePicker": {
+        "showFullMessage": "Show full message",
+        "showLess": "Show less"
+    },
+    "waPreview": {
+        "image": "Image",
+        "video": "Video",
+        "document": "Document",
+        "emptyBody": "This template has no message body."
     }
 }

@@ -103,7 +103,30 @@
         "tryAgain": "Please try again in a moment.",
         "paymentReceivedToast": "Payment received!",
         "paymentReceivedToastBody": "Your membership is being reactivated — this takes a few seconds.",
-        "paymentNotCompletedToast": "Payment not completed"
+        "paymentNotCompletedToast": "Payment not completed",
+        "changePlan": "Change plan",
+        "changePlanTitle": "Change your plan",
+        "changePlanSubtitle": "You're on {{plan}}. Pick what you'd like to move to.",
+        "changePlanSubtitleNoPlan": "Pick the plan you'd like to move to.",
+        "changePlanLoadFailed": "We couldn't load the available plans. Please try again in a moment.",
+        "changePlanNoOptions": "There aren't any other plans you can switch to right now.",
+        "planChangeUpgrade": "Upgrade",
+        "planChangeDowngrade": "Downgrade",
+        "planChangeCadence": "{{price}} every {{days}} days",
+        "planChangePayNow": "Pay {{amount}} now — starts immediately",
+        "planChangeFreeOn": "Free — starts {{date}}",
+        "planChangeFreeAtCycleEnd": "Free — starts at the end of your current period",
+        "planChangeCredit": "Includes {{amount}} credit for the time left on your current plan",
+        "planChangeMandateReauth": "You'll be asked to re-approve auto-pay for the new amount.",
+        "planChangeAutopayRequired": "Re-approve auto-pay so future renewals keep working",
+        "planChangeCancel": "Cancel",
+        "planChangeConfirmPay": "Pay {{amount}}",
+        "planChangeConfirmSchedule": "Schedule this change",
+        "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+        "planChangeScheduledNoDate": "Moving to {{plan}} at the end of your current period.",
+        "planChangeCancelScheduled": "Cancel this change",
+        "planChangeScheduledToast": "Plan change scheduled",
+        "planChangeScheduledToastBody": "You'll move to {{plan}} on {{date}}. Nothing changes until then."
     },
     "books": {
         "title": "BOOKS",
@@ -219,7 +242,11 @@
         "awardedTooltip": "{{name}} — Awarded by your institute",
         "awardedTooltipWithReason": "{{name}} — Awarded by your institute: {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} unlocked",
-        "emptyPrompt": "Complete your first {{slide}} to unlock a badge"
+        "emptyPrompt": "Complete your first {{slide}} to unlock a badge",
+        "manualLockedHint": "Awarded by your institute — not unlocked automatically",
+        "manualLockedTooltip": "{{name}} — Awarded by your institute, not unlocked automatically",
+        "celebrateTitle": "New badge unlocked!",
+        "celebrateAwardedTitle": "Your institute awarded you a badge"
     },
     "tnc": {
         "title": "Accept Terms & Conditions",
@@ -398,5 +425,14 @@
             "viewAllClassesButton": "View All Classes",
             "dateAtTime": "{{date}} at {{time}}"
         }
+    },
+    "getApp": {
+        "title": "Get the app",
+        "subtitle": "For a seamless experience, download our apps.",
+        "android": "Android app",
+        "ios": "iPhone & iPad app",
+        "windows": "Windows app",
+        "mac": "Mac app",
+        "webPortal": "Web portal"
     }
 }

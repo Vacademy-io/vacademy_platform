@@ -23,7 +23,21 @@ export interface TutorCheckEvent {
   prompt: string | null;
   options: string[];
   remediation: number;
+  /** A fresh question on a concept the learner found hard earlier (one attempt). */
+  revisit?: boolean;
+  /** A guess the teacher asks for before the board appears (never graded). */
+  predict?: boolean;
 }
+
+/** What a teacher line is: a verdict carries a score, a note the concept it closes. */
+export interface TutorSayMeta {
+  kind?: string;
+  score?: number | null;
+  concept_id?: string | null;
+  cleared?: boolean;
+}
+
+export type TutorPace = "slower" | "slow" | "normal" | "fast";
 
 export interface TutorLessonEvent {
   slide_id: string;
@@ -63,9 +77,13 @@ interface Callbacks {
   onState?: (ev: TutorStateEvent) => void;
   /** `replay` = the board being restored on resume (show at once, no writing animation pacing). */
   onBoard?: (ops: TutorBoardOp[], clear: boolean, live: boolean, topicId?: string | null, replay?: boolean) => void;
-  onAiText?: (text: string) => void;
-  /** The sentence(s) the next audio segment speaks (voice mode). */
-  onSegmentText?: (text: string) => void;
+  onAiText?: (text: string, meta: TutorSayMeta) => void;
+  /** The sentence(s) the next audio segment speaks (voice mode), with their index in the narration. */
+  onSegmentText?: (text: string, index: number, count: number) => void;
+  /** A short silence before a question. */
+  onBeat?: (ms: number) => void;
+  /** The teacher's pace changed (a control word or the pace picker). */
+  onPace?: (pace: TutorPace) => void;
   onAudioChunk?: (base64: string) => void;
   onAudioSegmentEnd?: () => void;
   onAudioEnd?: (reason: string, detail?: string) => void;
@@ -79,6 +97,8 @@ interface Callbacks {
   /** The server closed the session on its own (idle, time limit). */
   onEnded?: (reason: string) => void;
   onClose?: () => void;
+  /** Guest lessons: the token to authenticate with instead of the signed-in user's. */
+  getToken?: () => string | null | undefined;
 }
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
@@ -140,7 +160,7 @@ export function useTutorSocket(callbacks: Callbacks) {
       const ws = new WebSocket(wsUrl(socketPath));
       wsRef.current = ws;
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "auth", token: readToken() }));
+        ws.send(JSON.stringify({ type: "auth", token: cbRef.current.getToken?.() || readToken() }));
         setConnectionState("connected");
         pingRef.current = setInterval(() => send({ type: "ping" }), 25000);
       };
@@ -169,10 +189,16 @@ export function useTutorSocket(callbacks: Callbacks) {
             cb.onBoard?.((msg.ops as TutorBoardOp[]) || [], !!msg.clear, !!msg.live, msg.topic_id as string | null, !!msg.replay);
             break;
           case "ai_text":
-            cb.onAiText?.(String(msg.text ?? ""));
+            cb.onAiText?.(String(msg.text ?? ""), (msg.meta as TutorSayMeta) || {});
             break;
           case "segment_text":
-            cb.onSegmentText?.(String(msg.text ?? ""));
+            cb.onSegmentText?.(String(msg.text ?? ""), Number(msg.index ?? 0), Number(msg.count ?? 1));
+            break;
+          case "beat":
+            cb.onBeat?.(Number(msg.ms ?? 400));
+            break;
+          case "pace":
+            cb.onPace?.(String(msg.pace) as TutorPace);
             break;
           case "audio_chunk":
             cb.onAudioChunk?.(String(msg.data ?? ""));
@@ -235,7 +261,7 @@ export function useTutorSocket(callbacks: Callbacks) {
     sendAsk: (text: string) => send({ type: "ask", text }),
     sendControl: (intent: "repeat" | "skip" | "slower" | "faster" | "doubt" | "pause" | "resume" | "done") =>
       send({ type: "control", intent }),
-    sendConfig: (cfg: { language?: "en" | "hi"; speak?: boolean }) => send({ type: "config", ...cfg }),
+    sendConfig: (cfg: { language?: "en" | "hi"; speak?: boolean; pace?: TutorPace; avatar?: boolean }) => send({ type: "config", ...cfg }),
     sendNextSlide: (slideId: string) => send({ type: "next_slide", slide_id: slideId }),
     sendAudioChunk: (base64: string) => send({ type: "audio_chunk", data: base64 }),
     sendAudioEnd: (mime?: string) => send({ type: "audio_end", mime: mime || "audio/webm" }),

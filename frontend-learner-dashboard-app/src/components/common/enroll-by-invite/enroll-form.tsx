@@ -108,6 +108,8 @@ import { CourseStructureDetails as CatalogCourseStructureDetails } from "@/route
 import { useTranslation } from "react-i18next";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { trackUtmAttribution } from "@/lib/utm-attribution";
+import { resolveLearnerIdentity } from "@/lib/learner-identity";
 
 // SUBSCRIPTION, FREE, UPFRONT, DONATION
 
@@ -883,6 +885,22 @@ const EnrollByInvite = ({
         if (response?.user_id) {
           setSubmittedUserId(response.user_id);
         }
+        // Attribute HERE, not after payment: the next thing the browser does
+        // is leave for the gateway, so a report fired later would be lost on
+        // every abandoned cart — exactly the population a campaign report has
+        // to be able to see.
+        // Contact details ride along so a missing user_id degrades to a
+        // contact-matched row rather than dropping the touch: the server
+        // refuses a touch it cannot attach to anyone.
+        const paidDetails = getUserDetails();
+        trackUtmAttribution({
+          instituteId,
+          userId: response?.user_id,
+          email: paidDetails.email || undefined,
+          mobileNumber: paidDetails.contact || undefined,
+          sourceType: "ENROLL_INVITE",
+          sourceId: inviteData?.id,
+        });
       } catch (error) {
         console.error("Form submission failed (non-blocking):", error);
         // We do not block the user; they can proceed to payment step without this
@@ -1514,6 +1532,24 @@ const EnrollByInvite = ({
           // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
+        // A FREE enrolment skips the abandoned-cart submit above, so this is
+        // the only place its campaign touch can be recorded. Before the
+        // redirect branch — a configured redirectPath leaves the page.
+        // Identity via getUserDetails(), NOT form.getValues().email: this form
+        // is custom-field driven, so its values are {value: ...} objects keyed
+        // by whatever the institute named the field. Reading `.email` off it
+        // yielded an object (or undefined), which the server rejected — so the
+        // FREE path recorded nothing at all.
+        const freeUser = paymentResponse?.user;
+        const freeDetails = getUserDetails();
+        trackUtmAttribution({
+          instituteId,
+          userId: freeUser?.id || submittedUserId || undefined,
+          email: freeUser?.email || freeDetails.email || undefined,
+          mobileNumber: freeDetails.contact || undefined,
+          sourceType: "ENROLL_INVITE",
+          sourceId: inviteData?.id,
+        });
         if (inviteConfig?.redirectPath) {
           window.location.href = inviteConfig.redirectPath;
           return;
@@ -2455,45 +2491,34 @@ const EnrollByInvite = ({
   }, [inviteData]);
 
   // Helper function to get user details from registration data
+  /**
+   * The learner's OWN email / phone / name out of a custom-field-driven form.
+   *
+   * Delegates to the shared resolver rather than substring-matching field keys
+   * here. The old local version asked only "does the key contain 'email'?",
+   * which silently returns nothing on an institute that names the field
+   * anything else — and a UTM touch with no identity is dropped by the server,
+   * so the campaign that produced the enrolment disappears with no error. The
+   * shared resolver matches the platform's storage KEY first, falls back to the
+   * label, prefers a field the visitor actually FILLED IN over an empty match,
+   * and knows that "School Name" is not the learner's name.
+   */
   const getUserDetails = () => {
     const registrationData = form.getValues();
+    const candidates = Object.entries(registrationData ?? {}).map(
+      ([key, field]) => {
+        const f = field as { value?: unknown; name?: string; type?: string } | undefined;
+        return {
+          key,
+          name: f?.name ?? key,
+          type: f?.type ?? "",
+          value: f?.value == null ? "" : String(f.value),
+        };
+      }
+    );
 
-    // Find email field
-    const emailEntry = Object.entries(registrationData).find(([key]) => {
-      const lowerKey = key.toLowerCase();
-      return (
-        lowerKey.includes("email") ||
-        lowerKey.includes("mail") ||
-        lowerKey.includes("mailid")
-      );
-    });
-
-    // Find phone/contact field
-    const phoneEntry = Object.entries(registrationData).find(([key]) => {
-      const lowerKey = key.toLowerCase();
-      return (
-        lowerKey.includes("phone") ||
-        lowerKey.includes("mobile") ||
-        lowerKey.includes("contact") ||
-        lowerKey.includes("tel")
-      );
-    });
-
-    // Find name field
-    const nameEntry = Object.entries(registrationData).find(([key]) => {
-      const lowerKey = key.toLowerCase();
-      return (
-        lowerKey.includes("name") ||
-        lowerKey.includes("full_name") ||
-        lowerKey.includes("fullname")
-      );
-    });
-
-    return {
-      email: emailEntry ? String(emailEntry[1]?.value || "") : "",
-      contact: phoneEntry ? String(phoneEntry[1]?.value || "") : "",
-      name: nameEntry ? String(nameEntry[1]?.value || "") : "",
-    };
+    const { email, phone, name } = resolveLearnerIdentity(candidates);
+    return { email, contact: phone, name };
   };
 
   // State to track if there is unapplied referral code text

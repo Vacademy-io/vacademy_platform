@@ -202,10 +202,20 @@ types the compiler does not handle at all.
 }
 ```
 
-Rules the compiler must obey (enforced by validation, not by trust):
+Rules the compiler must obey (enforced by validation, not by trust) — in **two tiers**, since
+2026-09-09. A rule is either *structural* (the runtime cannot serve the plan without it, so it is
+fatal and the model must fix it) or *quality* (pedagogy: asked for once, then let go and recorded
+on the plan as `quality_notes`). A structurally sound plan is never discarded for a quality
+preference: that would leave the slide unteachable with the compile already paid for. Structural =
+valid ops, unique ids, a check with an expected answer or rubric, non-empty `say`, `say_i18n`,
+resolved media urls. Quality = the word budget, one heading per concept, one diagram per concept,
+"the board shows something to look at" (a `formula` or a comparison `table` counts — a derivation
+is visual), and the engagement rules (recap, example, predict, quick-check mix).
 
-- Board fragments are small. A concept adds at most one heading, one diagram or image, and
-  about 40 words of text. A topic's cumulative board must fit one screen.
+
+- Board fragments are small (quality). A concept adds at most one heading, one diagram or image,
+  and about 40 words of text — formulas and diagram labels do not count toward the budget. A
+  topic's cumulative board must fit one screen.
 - Every concept has a `say` of 2 to 4 sentences and a `check`, except the first concept of a
   topic, which may have `check.type = "none"`.
 - `say` is compiled in the course language and, in phase 1, also in the other supported
@@ -946,17 +956,134 @@ Follow-ups shipped 2026-09-04 (owner QA round 1 and the next-batch request):
   (`data[0].b64_json`, PNG, 30-70 s), chat image models (Gemini, GPT) call chat completions with
   `modalities`. The page also edits `ai_model_defaults` (default / fallback per pipeline use case).
 
+- **Batch 3 (2026-09-04).** Teacher insights (WP9): `GET /tutor/v1/packages/{id}/insights` and a
+  card on the Tutor Mode tab — lessons, learners, minutes, the concepts learners get wrong most
+  with the recorded misconceptions, and a per-learner table, filterable by batch and period.
+  Phones: a compact teacher strip, the outline in a bottom sheet, board and chat splitting the
+  screen. Admin preview plays boards (entrance, stroke-draw, stepped parts). Doubt and remediation
+  turns carry passages from the course's knowledge base (`kb_source_block`, §6.5). Super-admin
+  portal: Credits & pricing card editing `ai_tool_pricing` (tutor compile / image / live minute
+  first), plus `tutor.live.preflight_minutes` and `tutor.live.max_minutes` as number settings.
+
+Engagement build (2026-09-05, from the student-side review): the board writes itself with the
+voice — every element op carries `say_index` and the socket sends sentence-level `segment_text`
+frames with an index, so the learner app reveals elements and diagram steps as their sentence
+plays and pulses the element being explained; a diagram quality gate (`svg_check.py`: viewBox,
+label coordinates, font floor, overlaps, fills) with one repair round and an auto-layout
+fallback built from the parts; soft engagement rules (`plan_validator.soft_errors`, one repair
+round, never a failed plan): a recap bullet board + spoken `summary_say` per topic, an example
+callout per topic, a `predict` question before the first concept of later topics, a third of
+checks quick (mcq with 3 options / numeric), a `hint` per check, one-idea open questions; a
+`columns` op, arrows drawn as lines, annotation positions honoured, Kalam loaded for the
+handwriting face; verdict chips, "n of m so far" and a streak on the learner panel, a scorecard
+at slide end; a 60-second nudge with the hint on a silent question before the idle exit; live
+notes (one callout per remediation/doubt turn stays on the board; the right answer is written
+when the teacher moves on); spoken rhythm rules, segments ≤200 chars, a beat before questions,
+definitions slightly slower; predict-then-reveal turns (`run_predict`, never graded); and a
+learner pace picker (slower / slow / medium / fast) persisted per learner. Learners can switch the
+lesson language (English / हिंदी) from the panel; every SPOKEN line is compiled in both languages
+(`say_i18n`, `summary_say_i18n`, `predict_i18n`, `check.prompt_i18n`, `check.hint_i18n`) and a
+Hinglish check (`plan_validator.is_hinglish`, ≥15% Devanagari among letters) rejects English
+passed off as Hindi; a line whose translation is missing falls back to a canned line in the
+session language, never to the other language. Board text and MCQ options stay in the course
+language. Teacher bubbles are tracked per turn so overlapping turns never merge.
+
+Teacher avatar, premium (2026-09-07, owner picked Spatius over Simli): an animated likeness built
+from the teacher's face photo (`POST /tutor/v1/avatar/create`, consent confirmed by the institute;
+`GET /tutor/v1/avatar/jobs/{id}`; `services/spatius_service.py`, env `SPATIUS_API_KEY` /
+`SPATIUS_APP_ID` / `SPATIUS_CONSOLE_HOST`). Setting `avatarProvider` + `avatarId` on the institute
+or course. In a voice lesson the start response carries `avatar`, the learner app fetches a
+session token (`POST /tutor/v1/sessions/{id}/avatar-token`), loads `@spatius/avatarkit` on demand,
+renders the face on the device and feeds each spoken segment as 16 kHz PCM16 (`useSpatiusAvatar`,
+AvatarKit plays the audio in sync); barge-in maps to `interrupt()`. Charged `tutor_avatar_minute`
+(1 credit/min, vendor ≈ $0.0072/min) only while the device reports the avatar on (config frame
+`avatar`); learners can hide it. Dark until the keys are set.
+
 Still open (tracked, not silent):
 
-- **AI-video slides.** Copilot `HTML_VIDEO` slides are parked in NEEDS_DETAILS like uploaded
-  videos; compiling from the video's script (§4.2 table) is not implemented.
-- **KB source material on doubt turns** (§6.5 budget row) is not supplied; the doubt prompt has
-  the concept text only.
-- **Weak-concept revisits** at topic / chapter end (§6.6) and the model-written rolling summary
-  are not implemented; the summary is deterministic.
+- **Video and PDF slides now compile from their own words** (`services/tutor/source_text.py`):
+  AI videos from the copilot's narration script (S3, free), YouTube videos from their caption
+  track (free; parked with a reason when the video has no captions or YouTube blocks the
+  datacenter IP), uploaded videos through Whisper on the render worker (`transcription` tool,
+  per audio-minute, once per file — cached in `file_conversion`), PDFs from the PyMuPDF text
+  layer (free; scanned PDFs are parked — no OCR). The plan keeps the media task first, then
+  3–8 teaching concepts with checks drawn from the text. A description typed in the slide
+  editor (`video.description`) now counts as details. `POST /tutor/v1/compile/estimate`
+  prices a compile before it runs (compile + transcription minutes + image cap, from the
+  estimator so portal overrides apply) and the admin confirms in a dialog; the 402 gate uses
+  the same numbers. Uploaded lectures are transcribed through OpenRouter's audio endpoint
+  (`openai/whisper-large-v3-turbo`, `services/openrouter_transcription.py`: ffmpeg extracts
+  10-minute mono mp3 chunks, four in flight, joined in order; platform settings
+  `tutor.transcription.provider` / `.model`; institute BYOK key else platform key; the render
+  worker's resumable Whisper job is the fallback) — minutes for an 82-minute lecture; the
+  institute pays the `transcription` tool per minute and the provider's USD cost is recorded
+  in ai_token_usage. Scanned PDFs are read with MathPix OCR (`html_document_pdf`, per page,
+  once per file) when the OCR switch is on. AI videos have no video file (an HTML animation),
+  so they are taught from the script on the board like a document, without a media task.
+  Verified 2026-09-04: YouTube refuses caption requests from the Hetzner nodes
+  (`RequestBlocked`), so YouTube slides park with that reason until an egress proxy (the
+  library supports Webshare/generic proxies) or a yt-dlp → Whisper path exists. Still open:
+  that proxy, and AI-video slides whose script was never generated.
+- **Weak-concept revisits** (§6.6) are per slide, not per chapter: a topic summary re-asks the
+  weak concepts of that topic (fresh model-written question, one attempt, at most three), slide
+  end re-asks up to three weakest weak-or-skipped concepts not yet revisited this session. A
+  correct revisit clears the concept (`revisit_ok`); a wrong one keeps it weak (`revisit_weak`)
+  and the teacher gives the answer and moves on. The revisit is never persisted: a session that
+  ends mid-revisit resumes on the summary and revisits again. The rolling summary is rewritten
+  by the model after every session (`runtime/summary.py`, background task on socket close):
+  paragraph 1 is spoken in the next greeting, paragraph 2 feeds the decision prompt and the
+  insights "note" column. Chapter-level revisits (across slides) remain open.
 - **Stock images** (§4.5) do not exist; the compile prompt only offers generated images.
 - **Fallback to the ordinary slide viewer** for non-teachable slides (§4.2) is not implemented:
   the sidebar skips them.
-- The TTS cache is in-process (empties on deploy); moving it under the media path is open.
+- Prepared voice (2026-09-07): every spoken line of a READY plan is synthesised once after the compile
+  (`voice_cache.warm_plan`, charged `tutor_voice_prepare` per slide per language), stored as mp3 in S3 and
+  indexed in `tutor_tts_cache`; the socket checks the in-process LRU, then this cache, then the vendor,
+  and stores what it synthesises live. See COST_AND_CREDITS_REVIEW.md §6a.
 - `teaching_media.cost_credits` / `file_id` are not populated for generated images.
-- Teacher-facing insights (WP9: weak-concept heatmap, session counts) are not built.
+- Teacher insights: `GET /tutor/v1/insights` (institute-wide, optional course / batch filter) and
+  `GET /tutor/v1/insights/export.csv?sheet=learners|concepts|courses` (row caps 5000 / 2000 / 500);
+  the admin card lives on Settings → Course settings (institute) and the course's Tutor Mode tab.
+
+## 16. Teacher voices and avatars: the asset registry (7 September 2026)
+
+**Problem.** Cloned voices were listed straight from the Smallest account with the platform key, so
+every institute saw every other institute's clones, and any voice or avatar id could be pasted into
+settings. Avatars had no stock gallery, no platform layer and a manual creation path.
+
+**Registry.** `tutor_asset_registry` (created by ai_service at startup; `app/models/tutor_asset_registry.py`,
+service `app/services/tutor/asset_registry.py`): one row per asset with `kind` (voice|avatar),
+`provider`, `external_id` (vendor id), `display_name`, `institute_id` (NULL = platform stock),
+`status` (requested → processing → ready | failed | disabled), consent, source photo, requester,
+vendor job id, credits charged.
+
+**Visibility.** `GET /tutor/v1/options` and `/assets` return platform stock plus the caller's own
+rows only. `resolve_settings` drops an avatar that is not a ready visible row and a voice that is
+registered to another institute (`_enforce_registry`).
+
+**Flows.**
+- Voice: `POST /tutor/v1/voice/clone` clones on Smallest, registers the row to the institute and
+  charges `tutor_voice_clone` once.
+- Avatar: `POST /tutor/v1/avatar/create` (photo file id + consent) registers a `requested` row. If
+  the Spatius Open API is enabled it queues the vendor job and the row moves to `processing`; the
+  admin card polls `GET /tutor/v1/avatar/assets/{id}` and the row becomes `ready` with the vendor
+  id, charging `tutor_avatar_create`. Until the vendor enables the API, the request waits in the
+  super-admin queue.
+- Super admin (health portal → "Tutor Avatars & Voices", `/super-admin/v1/tutor-assets`):
+  register stock avatars from app.spatius.ai/avatars/library (UUIDs) or institute-private assets,
+  fulfil requests by pasting the Studio-built avatar id (charges the fee unless unticked), refuse
+  with a reason, disable, delete.
+
+**Admin UI.** `TeacherPresenceField`: photo upload, then "Photo only" (live minute) vs "Animated
+avatar — Premium" (live + avatar minute, shown per learner-minute), a gallery of stock + own
+avatars, and the request-my-avatar block with consent. Course tab can inherit the institute choice.
+
+**Learner UI.** `TeacherPanel`: the avatar is a 4:3 card with the name, state and the stop / mute /
+hide controls overlaid; language and pace are segmented dials that wrap; progress shows as "n/m right".
+
+**Vendor notes.** AvatarKit fetches `/assets/avatar_core_wasm-<hash>.wasm`; the learner build copies
+it from the package (`vite.config.ts`, copy-only — the SDK's own plugin overwrites `_headers`).
+Spatius session tokens: `POST console.us-west.spatius.ai/v1/console/session-tokens`; avatars and
+jobs: `console.spatius.ai/v1/open/...` with `X-App-ID` + `X-API-Key`; the account needs "Open API
+access" enabled by Spatius before creation works (403 otherwise).
+

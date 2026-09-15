@@ -30,6 +30,7 @@ from ...token_usage_service import TokenUsageService
 from .. import plan_store
 from ..slide_source import list_package_slides, slide_in_package_session
 from .settings import TutorSettings, resolve_settings
+from . import prompts
 from . import state as sm
 from .state import LessonPlan, Pointer, from_plan_view
 
@@ -103,6 +104,33 @@ def chapter_slides(db: Session, *, package_session_id: str, chapter_id: str) -> 
     ]
 
 
+# ── knowledge base passages for doubt / remediation turns (design §6.5) ─────
+
+KB_SOURCE_MAX_CHARS = 6000
+
+
+async def kb_source_block(lesson: LessonPlan, institute_id: str, concept_title: str, question: str) -> Optional[str]:
+    """Passages from the course's own knowledge base for this concept and
+    question, budgeted to ~1.5k tokens. None when the plan was not grounded
+    or the KB does not cover the question."""
+    if not lesson.kb or not lesson.kb.get("knowledge_base_id"):
+        return None
+    try:
+        from ...kb import course_grounding
+        with db_session() as db:
+            g = await course_grounding.ground_slide(
+                db, kb_id=str(lesson.kb["knowledge_base_id"]), institute_id=institute_id,
+                query=" ".join(p for p in [lesson.slide_title, concept_title, (question or "")[:300]] if p),
+                mode=str(lesson.kb.get("mode") or "STRICT"), faithful=False,
+            )
+        if not g or not g.supported or not (g.passages or "").strip():
+            return None
+        return g.passages.strip()[:KB_SOURCE_MAX_CHARS]
+    except Exception:  # noqa: BLE001
+        logger.warning("KB passages unavailable for doubt turn", exc_info=True)
+        return None
+
+
 # ── quiz slides: what to write back to the activity log ─────────────────────
 
 _OPTION_REF = re.compile(r"\b(?:option\s*)?([1-6]|[a-f])\b")
@@ -159,19 +187,54 @@ LIVE_MINUTE_TOOL = "tutor_live_minute"
 LIVE_PREFLIGHT_MINUTES = 5
 
 
+def preflight_minutes(db: Optional[Session] = None) -> int:
+    try:
+        return max(0, int(float(get_platform_setting("tutor.live.preflight_minutes", default=LIVE_PREFLIGHT_MINUTES, db=db) or 0)))
+    except Exception:  # noqa: BLE001
+        return LIVE_PREFLIGHT_MINUTES
+
+
+def session_max_seconds(db: Optional[Session] = None) -> int:
+    try:
+        minutes = int(float(get_platform_setting("tutor.live.max_minutes", default=90, db=db) or 90))
+    except Exception:  # noqa: BLE001
+        minutes = 90
+    return max(10, min(240, minutes)) * 60
+
+
 def preflight_live_session(db: Session, institute_id: str) -> Optional[str]:
     """Voice lessons cost credits per minute: refuse to start one the
-    institute cannot afford for a few minutes. Returns the 402 detail, or
-    None when the session may start (unknown balance never blocks)."""
+    institute cannot afford for a few minutes (super-admin setting). Returns
+    the 402 detail, or None when the session may start (unknown balance
+    never blocks)."""
+    minutes = preflight_minutes(db)
+    if minutes <= 0:
+        return None
     try:
         est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL,
-                                     tool_params={"audio_minutes": LIVE_PREFLIGHT_MINUTES}, institute_id=institute_id)
+                                     tool_params={"audio_minutes": minutes}, institute_id=institute_id)
     except Exception:  # noqa: BLE001
         return None
     if est.get("sufficient") is False:
-        return (f"Not enough credits for a voice lesson: {LIVE_PREFLIGHT_MINUTES} minutes need ≈"
+        return (f"Not enough credits for a voice lesson: {minutes} minutes need ≈"
                 f"{est.get('estimated_credits')} credits, balance is {est.get('current_balance')}.")
     return None
+
+
+AVATAR_MINUTE_TOOL = "tutor_avatar_minute"
+
+
+def bill_avatar_minute(*, tutor_session_id: str, institute_id: str, user_id: str, minute_no: int) -> None:
+    """The premium teacher avatar: one more charge per lesson minute while it
+    is on (idempotent per session+minute), with the vendor's cost recorded."""
+    from ...spatius_service import SPATIUS_USD_PER_MINUTE
+    record_tool_billing(
+        tool_key=AVATAR_MINUTE_TOOL, tool_params={"audio_minutes": 1}, request_type=RequestType.CONVERSATION,
+        model="spatius-avatar", institute_id=institute_id, user_id=user_id, user_role="STUDENT",
+        request_id=tutor_session_id, idempotency_key=f"tutor_avatar:{tutor_session_id}:{minute_no}",
+        provider_cost_usd=SPATIUS_USD_PER_MINUTE, seconds=60,
+    )
+    bump_telemetry(tutor_session_id, avatar_minutes=1)
 
 
 def bill_live_minute(*, tutor_session_id: str, institute_id: str, user_id: str, minute_no: int) -> bool:
@@ -221,6 +284,7 @@ def availability(db: Session, *, package_id: str, package_session_id: Optional[s
         "enabled": bool(s.enabled),
         "default_on": bool(s.default_on),
         "teacher_name": s.teacher_name,
+        "teacher_avatar_file_id": s.teacher_avatar_file_id,
         "course_language": s.course_language,
         "languages": s.languages,
         "session_language": s.session_language,
@@ -260,8 +324,12 @@ def load_lesson(db: Session, slide_id: str) -> Optional[LessonPlan]:
     if plan is None:
         return None
     view = plan_store.plan_view(db, plan)
-    row = db.execute(text("SELECT title FROM slide WHERE id = :s"), {"s": slide_id}).first()
-    view["slide_title"] = (row[0] if row else None) or ""
+    if slide_id.startswith("demo:"):
+        from ..demo import demo_title
+        view["slide_title"] = demo_title(db, slide_id) or ""
+    else:
+        row = db.execute(text("SELECT title FROM slide WHERE id = :s"), {"s": slide_id}).first()
+        view["slide_title"] = (row[0] if row else None) or ""
     return from_plan_view(view)
 
 
@@ -270,13 +338,15 @@ def _norm_title(t: Optional[str]) -> str:
 
 
 def slide_progress(st: TutorLearnerState, slide_id: str) -> Dict[str, Any]:
-    """This slide's saved position (V497); falls back to the legacy columns
-    when the row predates them."""
+    """This slide's saved position (V497, per slide). The legacy columns
+    (current_slide_id / current_concept_id / current_phase) are NOT a
+    fallback: start_session points current_slide_id at the slide being
+    opened while phase and concept still belong to the previous slide, so a
+    fresh slide would resume at the other slide's position — a learner who
+    had just finished one slide opened the next one at "slide done"."""
     prog = (st.progress_json or {}).get(slide_id) if st.progress_json else None
     if isinstance(prog, dict) and (prog.get("concept_id") or prog.get("phase")):
         return dict(prog)
-    if st.current_slide_id == slide_id and (st.current_concept_id or st.current_phase):
-        return {"concept_id": st.current_concept_id, "topic_id": st.current_topic_id, "phase": st.current_phase}
     return {}
 
 
@@ -359,6 +429,48 @@ def reload_state(user_id: str, package_session_id: str) -> Optional[Dict[str, An
         return None
 
 
+def note_start_progress(tutor_session_id: str, slide_id: str, done: int) -> None:
+    """Where the learner stood on this slide when the session opened it, so the
+    session summary can report what was done TODAY (progress_json is cumulative)."""
+    try:
+        with db_session() as db:
+            ts = db.get(TutorSession, tutor_session_id)
+            if ts is None:
+                return
+            summ = dict(ts.summary_json or {})
+            start = dict(summ.get("start_done") or {})
+            start.setdefault(slide_id, int(done or 0))
+            summ["start_done"] = start
+            ts.summary_json = summ
+            db.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def summary_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
+    """Arguments for summary.rewrite_rolling_summary when the socket is not
+    around to supply them (REST end)."""
+    try:
+        with db_session() as db:
+            ts = db.get(TutorSession, tutor_session_id)
+            if ts is None:
+                return None
+            pkg = package_of_session(db, ts.package_session_id)
+            settings = resolve_settings(db, package_id=pkg[0] if pkg else "", institute_id=ts.institute_id)
+            try:
+                live_model = settings.llm_model or get_platform_setting("tutor.live.model", default=None, db=db) or None
+            except Exception:  # noqa: BLE001
+                live_model = settings.llm_model or None
+            return {"tutor_session_id": ts.id, "user_id": ts.user_id, "institute_id": ts.institute_id,
+                    "package_session_id": ts.package_session_id, "model": live_model,
+                    "teacher": settings.teacher_name or "Asha",
+                    "lang": ts.language if ts.language in ("en", "hi") else settings.course_language,
+                    "learner_name": learner_name(db, ts.user_id)}
+    except Exception:  # noqa: BLE001
+        logger.warning("summary_context failed", exc_info=True)
+        return None
+
+
 def session_owner(tutor_session_id: str) -> Optional[Dict[str, Any]]:
     """Who owns the session and whether it is still ACTIVE — the only thing
     the socket needs before the auth frame arrives."""
@@ -403,28 +515,39 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
             "language": ts.language, "started_slide_id": ts.started_slide_id,
             "settings": settings, "lesson": lesson, "state": state, "pointer": pointer,
             "previous_slide": previous,
-            "learner_name": learner_name(db, ts.user_id),
+            "learner_name": (ts.summary_json or {}).get("learner_name") or learner_name(db, ts.user_id),
+            # What the teacher says about last time (model-written summary).
+            "resume_line": prompts.resume_line(st.rolling_summary),
             "tts_provider": tts_provider, "tts_voice": tts_voice, "live_model": live_model,
+            "max_seconds": (int((ts.summary_json or {}).get("max_minutes") or 0) * 60) or session_max_seconds(db),
+            # Public demo: unbilled, short, no premium avatar.
+            "demo": bool((ts.summary_json or {}).get("demo")),
         }
 
 
 def record_media_usage(*, kind: str, institute_id: str, user_id: str, session_id: str, language: str,
-                       characters: int, detail: Optional[str] = None, provider: str = "sarvam") -> None:
+                       characters: int, detail: Optional[str] = None, provider: str = "sarvam",
+                       seconds: Optional[float] = None, cached: bool = False) -> None:
     """Attribute TTS / STT spend to the institute (same row shape as the
-    voice call's metering), in its own short session."""
+    voice call's metering), in its own short session, with what the vendor
+    charged us (`total_price`); a cached line costs nothing."""
+    from ...provider_rates import stt_cost_usd, tts_cost_usd
     try:
+        cost = 0.0 if cached else (tts_cost_usd(provider, characters) if kind == "tts" else stt_cost_usd(provider, seconds or 0.0))
         with db_session() as db:
             TokenUsageService(db).record_usage(
                 api_provider=ApiProvider.GOOGLE_TTS,
                 prompt_tokens=0, completion_tokens=0, total_tokens=0,
                 request_type=RequestType.TTS_PREMIUM if kind == "tts" else RequestType.TRANSCRIPTION,
                 institute_id=institute_id, user_id=user_id,
-                model=({"sarvam": "sarvam:bulbul-v3", "google": "google:chirp3-hd", "edge": "edge:neural"}.get(provider, provider)
+                model=({"sarvam": "sarvam:bulbul-v3", "google": "google:chirp3-hd", "edge": "edge:neural", "smallest": "smallest:lightning-v3.1"}.get(provider, provider)
                        if kind == "tts" else "sarvam:saaras-v3"),
                 request_id=session_id,
                 tts_provider=provider if kind == "tts" else "sarvam",
                 character_count=max(int(characters or 0), 0),
-                metadata={"surface": "tutor", "language": language, "detail": detail},
+                total_price=cost,
+                metadata={"surface": "tutor", "language": language, "detail": detail, "cached": cached,
+                          **({"seconds": round(float(seconds), 1)} if seconds else {})},
             )
             db.commit()
     except Exception:  # noqa: BLE001
@@ -435,17 +558,17 @@ def record_media_usage(*, kind: str, institute_id: str, user_id: str, session_id
 
 def start_session(
     *, user_id: str, institute_id: str, package_session_id: str, slide_id: Optional[str], mode: str,
-    language: Optional[str],
+    language: Optional[str], guest: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create the tutor session (+ its chat session for the transcript) and
     return everything the socket needs to open: settings, lesson, pointer."""
     with db_session() as db:
         pkg = package_of_session(db, package_session_id)
-        if not pkg:
+        if not pkg and not guest:
             raise ValueError("Batch not found")
-        package_id, package_name = pkg
+        package_id, package_name = pkg if pkg else ("", "Tutezy demo")
         settings = resolve_settings(db, package_id=package_id, institute_id=institute_id)
-        if not settings.enabled:
+        if not settings.enabled and not guest:
             raise PermissionError("Tutor mode is not enabled for this course")
         st = get_or_create_state(db, user_id=user_id, package_session_id=package_session_id, institute_id=institute_id)
         target_slide = slide_id or st.current_slide_id
@@ -453,7 +576,7 @@ def start_session(
             raise ValueError("No slide to teach: pass slide_id")
         # The session teaches only what this batch exposes: a slide id from
         # another course (or an unpublished one) is not a plan lookup.
-        if not slide_in_package_session(db, target_slide, package_session_id):
+        if not (guest and target_slide.startswith("demo:")) and not slide_in_package_session(db, target_slide, package_session_id):
             if slide_id:
                 raise LookupError("This slide is not part of this batch")
             raise ValueError("No slide to teach: pass slide_id")
@@ -474,13 +597,15 @@ def start_session(
         ts = TutorSession(
             id=str(uuid4()), user_id=user_id, institute_id=institute_id, package_session_id=package_session_id,
             chat_session_id=chat.id, mode=mode, tts_provider=settings.tts_provider, tts_voice=settings.tts_voice,
-            language=lang, started_slide_id=target_slide, status="ACTIVE", summary_json={"turns": 0},
+            language=lang, started_slide_id=target_slide, status="ACTIVE",
+            # A public demo carries its own name, length and no-billing flag.
+            summary_json={"turns": 0, **({"demo": True, "learner_name": guest.get("name"), "max_minutes": guest.get("minutes")} if guest else {})},
         )
         db.add(ts)
         st.current_slide_id = target_slide
         st.updated_at = datetime.utcnow()
         db.commit()
-        name = learner_name(db, user_id)
+        name = (guest or {}).get("name") or learner_name(db, user_id)
         return {
             "tutor_session_id": ts.id, "chat_session_id": chat.id, "package_id": package_id,
             "package_name": package_name, "settings": settings, "lesson": lesson, "pointer": pointer,
@@ -550,6 +675,82 @@ def save_pointer(*, user_id: str, package_session_id: str, lesson: LessonPlan, p
             db.commit()
     except Exception:  # noqa: BLE001
         logger.warning("save_pointer failed", exc_info=True)
+
+
+def clear_weak(*, user_id: str, package_session_id: str, concept_id: str) -> None:
+    """A revisit was answered correctly: the concept leaves the weak list."""
+    try:
+        with db_session() as db:
+            st = db.query(TutorLearnerState).filter(TutorLearnerState.user_id == user_id,
+                                                    TutorLearnerState.package_session_id == package_session_id).first()
+            if st is None:
+                return
+            st.weak_concepts_json = [c for c in (st.weak_concepts_json or []) if c != concept_id]
+            st.updated_at = datetime.utcnow()
+            db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("clear_weak failed", exc_info=True)
+
+
+def write_rolling_summary(*, user_id: str, package_session_id: str, text_: str) -> None:
+    try:
+        with db_session() as db:
+            st = db.query(TutorLearnerState).filter(TutorLearnerState.user_id == user_id,
+                                                    TutorLearnerState.package_session_id == package_session_id).first()
+            if st is None:
+                return
+            st.rolling_summary = (text_ or "")[:1500] or None
+            st.updated_at = datetime.utcnow()
+            db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("write_rolling_summary failed", exc_info=True)
+
+
+def session_digest(tutor_session_id: str) -> Optional[Dict[str, Any]]:
+    """What happened in one session, for the summary rewrite: the slides
+    touched, every answer with its concept title, what is still weak, the
+    previous notes."""
+    try:
+        with db_session() as db:
+            ts = db.get(TutorSession, tutor_session_id)
+            if ts is None:
+                return None
+            attempts = (db.query(TutorConceptAttempt).filter(TutorConceptAttempt.tutor_session_id == tutor_session_id)
+                        .order_by(TutorConceptAttempt.created_at).all())
+            st = db.query(TutorLearnerState).filter(TutorLearnerState.user_id == ts.user_id,
+                                                    TutorLearnerState.package_session_id == ts.package_session_id).first()
+            weak_ids = list((st.weak_concepts_json or []) if st else [])
+            ids = {a.concept_id for a in attempts} | set(weak_ids)
+            titles: Dict[str, str] = {}
+            if ids:
+                for cid, title in db.query(TeachingConcept.id, TeachingConcept.title).filter(TeachingConcept.id.in_(list(ids))).all():
+                    titles[cid] = title
+            started = ts.started_at.isoformat() if ts.started_at else ""
+            slides = []
+            for sid, prog in ((st.progress_json or {}) if st else {}).items():
+                if isinstance(prog, dict) and (sid == ts.started_slide_id or str(prog.get("updated_at") or "") >= started):
+                    slides.append({"slide_id": sid, "title": prog.get("slide_title") or "", "done": prog.get("done") or 0,
+                                   "total": prog.get("total") or 0, "phase": prog.get("phase")})
+            ended = ts.ended_at or datetime.utcnow()
+            summ = dict(ts.summary_json or {})
+            start_done = summ.get("start_done") or {}
+            for s in slides:
+                s["done_today"] = max(0, int(s["done"] or 0) - int(start_done.get(s["slide_id"]) or 0))
+            return {
+                "turns": int(summ.get("turns") or 0), "concepts_taught": int(summ.get("concepts_taught") or 0),
+                "date": ts.started_at.date().isoformat() if ts.started_at else "",
+                "duration_minutes": int(max(0.0, (ended - ts.started_at).total_seconds()) // 60) if ts.started_at else 0,
+                "slides": slides,
+                "attempts": [{"concept": titles.get(a.concept_id, a.concept_id), "score": float(a.score) if a.score is not None else None,
+                              "action": a.action_taken, "misconception": a.misconception,
+                              "answer": (a.student_answer or "")[:120]} for a in attempts],
+                "weak_titles": [titles[c] for c in weak_ids if c in titles],
+                "previous_summary": st.rolling_summary if st else None,
+                "pace": st.pace if st else None,
+            }
+    except Exception:  # noqa: BLE001
+        logger.warning("session_digest failed", exc_info=True)
+        return None
 
 
 def record_attempt(
@@ -626,12 +827,20 @@ def end_session(*, tutor_session_id: str, user_id: str, package_session_id: str,
     out: Dict[str, Any] = {}
     try:
         with db_session() as db:
+            # Exactly one caller closes a session (the socket's finally and the
+            # REST fallback can race): the row flips ACTIVE → status atomically.
+            flipped = db.execute(text("""
+                UPDATE tutor_session SET status = :s, ended_at = CURRENT_TIMESTAMP
+                WHERE id = :id AND status = 'ACTIVE' RETURNING id
+            """), {"s": status, "id": tutor_session_id}).first()
+            if flipped is None:
+                db.commit()
+                return {"tutor_session_id": tutor_session_id, "transitioned": False}
             ts = db.get(TutorSession, tutor_session_id)
             if ts is None:
                 return out
-            ts.ended_at = datetime.utcnow()
-            ts.status = status
-            secs = max(0.0, (ts.ended_at - ts.started_at).total_seconds())
+            db.refresh(ts)
+            secs = max(0.0, ((ts.ended_at or datetime.utcnow()) - ts.started_at).total_seconds())
             ts.minutes_billed = int(math.ceil(secs / 60.0))
             summ = dict(ts.summary_json or {})
             summ["duration_seconds"] = int(secs)
@@ -642,17 +851,21 @@ def end_session(*, tutor_session_id: str, user_id: str, package_session_id: str,
             st = db.query(TutorLearnerState).filter(TutorLearnerState.user_id == user_id,
                                                     TutorLearnerState.package_session_id == package_session_id).first()
             if st is not None:
-                weak = [a.concept_id for a in attempts if a.action_taken == "advance_weak"]
+                weak = [a.concept_id for a in attempts if a.action_taken in ("advance_weak", "revisit_weak")]
+                cleared = {a.concept_id for a in attempts if a.action_taken == "revisit_ok"}
                 line = (f"Session on {ts.started_at.date().isoformat()}: {len(attempts)} answer(s), "
                         f"average score {summ['avg_score'] if summ['avg_score'] is not None else 'n/a'}; "
-                        + (f"{len(set(weak))} concept(s) flagged for review. " if weak else "no weak spots flagged. "))
+                        + (f"{len(set(weak) - cleared)} concept(s) flagged for review. " if set(weak) - cleared else "no weak spots flagged. ")
+                        + (f"{len(cleared)} cleared on revisit. " if cleared else ""))
                 prev = (st.rolling_summary or "").strip()
-                st.rolling_summary = (line + " " + prev)[:1500]
+                # A model-written summary keeps its spoken line first; the
+                # background rewrite (summary.py) replaces the whole thing.
+                st.rolling_summary = ((prev + " " + line) if prompts.resume_line(prev) else (line + " " + prev))[:1500]
                 st.updated_at = datetime.utcnow()
             if ts.chat_session_id:
                 ChatSessionRepository(db).close_session(ts.chat_session_id)
             db.commit()
-            out = {"tutor_session_id": tutor_session_id, "minutes": ts.minutes_billed, "summary": summ}
+            out = {"tutor_session_id": tutor_session_id, "minutes": ts.minutes_billed, "summary": summ, "transitioned": True}
     except Exception:  # noqa: BLE001
         logger.warning("end_session failed", exc_info=True)
     return out

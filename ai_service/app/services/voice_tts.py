@@ -54,6 +54,75 @@ def smallest_available() -> bool:
     return bool(os.environ.get("SMALLEST_API_KEY"))
 
 
+# Smallest's `speed` is not the ratio it names. Measured 2026-09-04 on
+# lightning_v3.1 / nirupma with a 6.9 s sentence (speed → actual duration
+# ratio): 0.9 only made it 4% longer, 0.8 16%, while 1.25 made it 17% shorter.
+# The pace an admin picks is the ratio they expect, so it is mapped through
+# this table (piecewise-linear inverse) before it becomes the engine's speed.
+_SMALLEST_SPEED_TABLE = (  # (engine speed, measured duration ratio)
+    (0.5, 0.55), (0.6, 0.67), (0.7, 0.77), (0.8, 0.86), (0.9, 0.96), (1.0, 1.0),
+    (1.25, 1.21), (1.5, 1.45), (1.75, 1.68), (2.0, 1.96),
+)
+
+
+def smallest_speed_for_ratio(ratio: float) -> float:
+    """Engine `speed` that yields the wanted duration ratio (1.0 = natural)."""
+    r = max(_SMALLEST_SPEED_TABLE[0][1], min(_SMALLEST_SPEED_TABLE[-1][1], float(ratio)))
+    for (s0, r0), (s1, r1) in zip(_SMALLEST_SPEED_TABLE, _SMALLEST_SPEED_TABLE[1:]):
+        if r0 <= r <= r1:
+            if r1 == r0:
+                return s0
+            return round(s0 + (s1 - s0) * (r - r0) / (r1 - r0), 3)
+    return 1.0
+
+
+_smallest_voice_cache: Dict[str, Any] = {"at": 0.0, "voices": []}
+
+
+async def list_smallest_voices() -> List[Dict[str, Any]]:
+    """Smallest lightning_v3.1 voice catalogue (234 voices; cached an hour):
+    [{id, name, gender, languages, age, accent}]."""
+    import time as _time
+    import httpx
+
+    key = os.environ.get("SMALLEST_API_KEY", "")
+    if not key:
+        return []
+    if _smallest_voice_cache["voices"] and _time.time() - _smallest_voice_cache["at"] < 3600:
+        return list(_smallest_voice_cache["voices"])
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.get("https://api.smallest.ai/waves/v1/lightning-v3.1/get_voices",
+                             headers={"Authorization": f"Bearer {key}"})
+        if r.status_code >= 400:
+            raise RuntimeError(f"Smallest voices {r.status_code}: {r.text[:200]}")
+        payload = r.json()
+    items = payload.get("voices") if isinstance(payload, dict) else payload
+    out: List[Dict[str, Any]] = []
+    for v in items or []:
+        if not isinstance(v, dict) or not v.get("voiceId"):
+            continue
+        tags = v.get("tags") or {}
+        out.append({
+            "id": str(v["voiceId"]), "name": v.get("displayName") or v["voiceId"],
+            "gender": (tags.get("gender") or "").lower() or None,
+            "languages": [str(x).lower() for x in (tags.get("language") or [])],
+            "age": tags.get("age") or None, "accent": tags.get("accent") or None,
+        })
+    out.sort(key=lambda x: ((x["gender"] or "z"), x["name"].lower()))
+    _smallest_voice_cache.update(at=_time.time(), voices=out)
+    return list(out)
+
+
+SARVAM_FEMALE = {"ritu", "priya", "neha", "pooja", "simran", "kavya", "ishita", "shreya", "roopa", "tanya", "shruti",
+                 "suhani", "kavitha", "rupali"}
+
+
+def sarvam_voice_catalogue() -> List[Dict[str, Any]]:
+    return [{"id": v, "name": v.capitalize(), "gender": "female" if v in SARVAM_FEMALE else "male",
+             "languages": ["english", "hindi"]}
+            for v in sorted(SARVAM_V3_SPEAKERS, key=lambda x: (x not in SARVAM_FEMALE, x))]
+
+
 TTS_PROVIDERS: Dict[str, Dict[str, Any]] = {
     "smallest": {
         "label": "Smallest.ai Lightning v3.1",
@@ -205,8 +274,8 @@ async def _smallest(text: str, language: str, voice: str, pace: Optional[float] 
         "output_format": "wav",
         "language": SMALLEST_LANG.get(language, "auto"),
     }
-    if pace and abs(pace - 1.0) >= 0.05:
-        body["speed"] = round(max(0.5, min(2.0, pace)), 2)
+    if pace and abs(pace - 1.0) >= 0.02:
+        body["speed"] = smallest_speed_for_ratio(max(0.5, min(2.0, pace)))
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.post(SMALLEST_TTS_URL, json=body,
                               headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
@@ -300,5 +369,5 @@ async def synthesize_speech(
 
 
 __all__ = ["SARVAM_DEFAULT_FEMALE", "SARVAM_V3_SPEAKERS", "SMALLEST_DEFAULT_VOICE", "TTS_PROVIDERS", "clone_voice_smallest",
-           "default_voice_for", "list_cloned_voices_smallest", "list_tts_providers", "sarvam_speaker", "smallest_available",
-           "synthesize_speech"]
+           "default_voice_for", "list_cloned_voices_smallest", "list_smallest_voices", "list_tts_providers",
+           "sarvam_speaker", "sarvam_voice_catalogue", "smallest_available", "smallest_speed_for_ratio", "synthesize_speech"]

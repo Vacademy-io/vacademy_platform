@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { StudentSelectionDialog } from "./select-students";
 import {
     Card,
@@ -53,11 +54,12 @@ const ShimmerLoadingTable = ({
     isPolling: boolean;
     loadingText?: string;
 }) => {
+    const { t } = useTranslation("evaluatorAiEvaluation");
     return (
         <div className="flex w-full flex-col gap-4">
             <div className="text-base font-bold">
                 {" "}
-                {!isPolling ? "Please wait we are Evaluating students..." : loadingText}
+                {!isPolling ? t("evaluatingStudents") : loadingText}
             </div>
             <div className="w-full overflow-x-auto">
                 <table className="min-w-full rounded-md border border-muted">
@@ -102,6 +104,7 @@ const ShimmerLoadingTable = ({
 };
 
 export const EvaluatedStudents = () => {
+    const { t } = useTranslation("evaluatorAiEvaluation");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [evaluatedData, setEvaluatedData] = useState<EvaluatedStudent[]>(() => {
         const storedData = localStorage.getItem("evaluatedStudentData");
@@ -219,11 +222,18 @@ export const EvaluatedStudents = () => {
                                     JSON.stringify(students),
                                 );
                                 setEvaluatedData(students);
-                                toast.success(`Successfully evaluated ${students.length} students`);
+                                toast.success(
+                                    t("evaluatedStudentsSuccess", { count: students.length }),
+                                );
                             } else {
                                 if (statusResponse.data.response.includes("File Still Processing"))
-                                    toast.error(`File is processing please try again`);
-                                else toast.error(`Evaluation failed for ${selectedAssessment}`);
+                                    toast.error(t("fileProcessingRetry"));
+                                else
+                                    toast.error(
+                                        t("evaluationFailedFor", {
+                                            assessment: selectedAssessment,
+                                        }),
+                                    );
                             }
                         }
                     } catch (error) {
@@ -242,7 +252,7 @@ export const EvaluatedStudents = () => {
             });
         } catch (error) {
             console.error("Evaluation error:", error);
-            toast.error("Failed to evaluate students");
+            toast.error(t("failedToEvaluateStudents"));
             setIsPolling(false);
             setLoading(false);
         }
@@ -269,7 +279,9 @@ export const EvaluatedStudents = () => {
         <main className="flex min-h-screen flex-col items-center">
             <div className="flex w-full justify-between gap-4">
                 <h1 className="mb-8 items-center text-xl font-bold">
-                    Evaluation list {assessmentName && `for ${assessmentName}`}
+                    {assessmentName
+                        ? t("evaluationListForAssessment", { assessment: assessmentName })
+                        : t("evaluationList")}
                 </h1>
 
                 <MyButton
@@ -282,7 +294,7 @@ export const EvaluatedStudents = () => {
                     }}
                 >
                     <FileMagnifyingGlass size={32} />
-                    Evaluate Students
+                    {t("evaluateStudents")}
                 </MyButton>
             </div>
 
@@ -308,11 +320,10 @@ export const EvaluatedStudents = () => {
                     </CardHeader>
                     <CardContent className="flex flex-col items-center justify-center pb-6 text-center">
                         <CardTitle className="mb-2 mt-4 text-xl font-medium">
-                            No Evaluated Students
+                            {t("noEvaluatedStudents")}
                         </CardTitle>
                         <CardDescription className="max-w-md">
-                            You haven&apos;t evaluated any students yet. Click the "Evaluate
-                            Student" button to select students for evaluation.
+                            {t("noEvaluatedStudentsDescription")}
                         </CardDescription>
                     </CardContent>
                     <CardFooter className="flex justify-center pb-6">
@@ -326,7 +337,7 @@ export const EvaluatedStudents = () => {
                             }}
                         >
                             <FileMagnifyingGlass size={32} />
-                            Evaluate Students
+                            {t("evaluateStudents")}
                         </MyButton>
                     </CardFooter>
                 </Card>
@@ -337,7 +348,7 @@ export const EvaluatedStudents = () => {
                 onOpenChange={setIsDialogOpen}
                 // @ts-expect-error : //FIXME this error
                 onSubmit={handleStudentSubmit}
-                title="Select Students for Assignment"
+                title={t("selectStudentsForAssignment")}
             />
         </main>
     );

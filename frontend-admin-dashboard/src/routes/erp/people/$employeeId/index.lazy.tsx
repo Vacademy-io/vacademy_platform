@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
@@ -27,14 +28,15 @@ function EmployeeDetailRoute() {
 }
 
 function EmployeeDetailPage() {
+    const { t } = useTranslation('erpEmployeeDetail');
     const { employeeId } = Route.useParams();
     const { tab = 'profile' } = Route.useSearch();
     const navigate = useNavigate();
 
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">People</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
 
     const { isHrAdmin, isHrStaff } = useHrRole();
     const employeeQuery = useEmployee(employeeId);
@@ -68,26 +70,26 @@ function EmployeeDetailPage() {
                 className="w-fit"
                 onClick={() => navigate({ to: '/erp/people' })}
             >
-                <ArrowLeft size={16} /> All employees
+                <ArrowLeft size={16} /> {t('backButton')}
             </MyButton>
 
             {employeeQuery.isLoading ? (
                 <HrLoadingRows rows={4} />
             ) : employeeQuery.isError ? (
                 <HrErrorState
-                    message="Couldn't load this employee."
+                    message={t('errorMessage')}
                     onRetry={() => employeeQuery.refetch()}
                 />
             ) : !employee ? (
                 <HrEmptyState
-                    title="This employee no longer exists"
-                    description="They may have been removed. Go back to the list to find the right record."
+                    title={t('emptyTitle')}
+                    description={t('emptyDescription')}
                 />
             ) : (
                 <>
                     <div className="flex flex-wrap items-center gap-3">
                         <h2 className="text-h2-semibold text-foreground">
-                            {employee.full_name || employee.employee_code || 'Employee'}
+                            {employee.full_name || employee.employee_code || t('fallbackName')}
                         </h2>
                         <EmploymentStatusChip status={employee.employment_status} />
                         {employee.employee_code && (
@@ -99,9 +101,9 @@ function EmployeeDetailPage() {
 
                     <Tabs value={tab} onValueChange={(value) => setTab(value as EmployeeDetailTab)}>
                         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-                            <TabsTrigger value="profile">Profile</TabsTrigger>
-                            <TabsTrigger value="salary">Salary</TabsTrigger>
-                            <TabsTrigger value="employment">Employment</TabsTrigger>
+                            <TabsTrigger value="profile">{t('tabs.profile')}</TabsTrigger>
+                            <TabsTrigger value="salary">{t('tabs.salary')}</TabsTrigger>
+                            <TabsTrigger value="employment">{t('tabs.employment')}</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="profile" className="mt-6">

@@ -1,0 +1,23 @@
+{
+    "navHeading": "Créer une annonce",
+    "fixIssues_one": "Corrigez {{count}} problème avant de créer cette annonce.",
+    "fixIssues_many": "Corrigez {{count}} problèmes avant de créer cette annonce.",
+    "fixIssues_other": "Corrigez {{count}} problèmes avant de créer cette annonce.",
+    "toast": {
+        "createdImmediate": "Annonce créée et mise en file d'attente pour l'envoi.",
+        "scheduled": "Annonce planifiée."
+    },
+    "sections": {
+        "howItWillLook": "Aperçu du rendu"
+    },
+    "actions": {
+        "reviewAndPreview": "Vérifier et prévisualiser",
+        "keepEditing": "Continuer la modification",
+        "createAndSend": "Créer et envoyer",
+        "scheduleAnnouncement": "Planifier l'annonce",
+        "creating": "Création…"
+    },
+    "dialog": {
+        "reviewHeading": "Vérifier et prévisualiser"
+    }
+}

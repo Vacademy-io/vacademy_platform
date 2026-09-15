@@ -227,6 +227,11 @@ export const TELEPHONY_AI_CALL_CAMPAIGN = (audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/ai-call/campaign/${audienceId}`;
 // Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
 // picker on the Call button when an institute has multiple ExoPhones.
+// "Can this person call, and if not why" — always 200, unlike CALL_OPTIONS which
+// throws when the institute has calling off. Used to decide whether a Call button
+// renders at all, on pages that are not about calling.
+export const TELEPHONY_CALL_AVAILABILITY = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/calls/availability?instituteId=${encodeURIComponent(instituteId)}`;
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/options?instituteId=${encodeURIComponent(instituteId)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`;
 // userId + instituteId are both required — the backend rejects cross-institute lookups.
@@ -312,6 +317,11 @@ export const TELEPHONY_COUNSELLOR_ENDPOINTS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}`;
 export const TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${encodeURIComponent(id)}`;
+// Who may be given an extension: this institute's counsellors AND admins.
+// Deliberately not the lead-counsellor picker — an extension is a phone-system
+// fact, so an admin who never touches the CRM still needs one to call a learner.
+export const TELEPHONY_ENDPOINT_ELIGIBLE_USERS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}/eligible-users`;
 export const TELEPHONY_NUMBERS = `${BASE_URL}/admin-core-service/v1/telephony/numbers`;
 export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/numbers/${id}`;
@@ -350,6 +360,11 @@ export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/repo
 export const DELETE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/delete`;
 /** Restore soft-deleted leads (ADMIN only). Same body shape as DELETE_AUDIENCE_LEADS. */
 export const RESTORE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/restore`;
+/**
+ * Move leads to another lead list (ADMIN only). Partial success — the response reports how many
+ * moved and which were skipped, with a reason each.
+ */
+export const MIGRATE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/migrate`;
 export const UPDATE_LEAD_PROFILE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
 
@@ -359,6 +374,18 @@ export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiri
 // Distinct values a custom field holds across the institute's leads — searchable
 // + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
 export const GET_LEAD_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/custom-field-values`;
+// Campaign attribution recorded against a learner (utm_source/medium/campaign),
+// written by the learner app on a successful submission. Base path, the userId
+// is appended by the caller.
+export const GET_USER_UTM_ATTRIBUTION = `${BASE_URL}/admin-core-service/v1/utm/user`;
+export const GET_UTM_CAMPAIGN_SUMMARY = `${BASE_URL}/admin-core-service/v1/utm/summary`;
+// Distinct values per UTM dimension across the institute's recorded touches —
+// the option lists behind the campaign filter dropdowns on the list pages.
+export const GET_UTM_FILTER_OPTIONS = `${BASE_URL}/admin-core-service/v1/utm/filter-options`;
+// Campaign-attribution dashboard (people / enrolments per source, medium,
+// campaign …, daily trend, campaign matrix) over a date window.
+export const GET_UTM_DASHBOARD = `${BASE_URL}/admin-core-service/v1/utm/dashboard`;
+
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
@@ -421,6 +448,8 @@ export const COUNSELOR_POOL_BY_ID = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}`;
 export const COUNSELOR_POOL_AUDIENCE = (poolId: string, audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}`;
+export const COUNSELOR_POOL_AUDIENCE_ASSIGNMENT = (poolId: string, audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}/assignment`;
 export const COUNSELOR_POOL_AUDIENCES = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences`;
 export const COUNSELOR_POOL_AUDIENCE_ORDER = (poolId: string, audienceId: string) =>
@@ -532,6 +561,9 @@ export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-pa
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;
 export const STEP2_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/submit`;
 export const STEP2_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/questions-of-sections`;
+export const STEP2_QUESTIONS_FULL_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/questions-of-sections/full`;
+export const STEP2_EDIT_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/edit-questions`;
+export const COPY_INTAKE_BASE_URL = `${BASE_URL}/assessment-service/assessment/copy-intake/v1`;
 export const STEP3_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-participants/create/v1/submit`;
 export const STEP4_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-access/create/v1/submit`;
 export const GET_ASSESSMENT_INIT_DETAILS = `${BASE_URL}/assessment-service/assessment/admin/assessment-admin-list-init`;
@@ -546,6 +578,18 @@ export const GET_EXPORT_PDF_URL_RANK_MARK = `${BASE_URL}/assessment-service/asse
 export const GET_EXPORT_CSV_URL_RANK_MARK = `${BASE_URL}/assessment-service/assessment/export/csv/marks-rank`;
 export const GET_EXPORT_PDF_URL_QUESTION_INSIGHTS = `${BASE_URL}/assessment-service/assessment/export/pdf/question-insights`;
 export const GET_EXPORT_PDF_URL_STUDENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/student-report`;
+// AI diagnostic report (teacher copy). The PDF endpoint generates the analysis
+// when it does not exist yet, which spends the institute's AI credits — the
+// status endpoint says which of the two a download would be, and is free.
+// ONE AI diagnostic report for a whole assessment. The FIRST generation makes a
+// real model call and spends AI credits; the result is stored and every later
+// download re-serves it free. regenerate=true is a deliberate paid refresh.
+// Free, read-only: does a report already exist, is it stale, and what would a
+// new one cost. Asked before offering Generate so the price is shown up front.
+export const GET_AI_ASSESSMENT_REPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/ai-assessment-report/status`;
+export const GET_EXPORT_PDF_URL_AI_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/ai-assessment-report`;
+export const GET_EXPORT_PDF_URL_AI_STUDENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/ai-student-report`;
+export const GET_AI_STUDENT_REPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/ai-student-report/status`;
 export const GET_EXPORT_PDF_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/respondent-list`;
 export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/respondent-list`;
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
@@ -611,6 +655,7 @@ export const UPDATE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/update-
 export const ADD_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/add-subject`;
 export const DELETE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/delete-subject`;
 export const UPDATE_SUBJECT_ORDER = `${BASE_URL}/admin-core-service/subject/v1/update-subject-order`;
+export const GET_SUBJECTS_BY_IDS = `${BASE_URL}/admin-core-service/subject/v1/subjects-by-ids`;
 
 export const ADD_MODULE = `${BASE_URL}/admin-core-service/subject/v1/add-module`;
 export const DELETE_MODULE = `${BASE_URL}/admin-core-service/subject/v1/delete-module`;
@@ -999,6 +1044,12 @@ export const NOTIFICATION_SERVICE_BASE = `${BASE_URL}/notification-service/v1`;
 // Chatbot Flow Builder
 export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;
 
+// AI credits consumed by those flows' AI_RESPONSE nodes. Lives in admin-core, not
+// notification-service: credit_transactions is in the admin-core database, and the
+// flow id travels on the transaction as batch_id so the rollup needs no join.
+export const CHATBOT_FLOW_AI_USAGE = `${BASE_URL}/admin-core-service/ai-usage/v1/chatbot-flows/usage`;
+export const CHATBOT_FLOW_AI_USAGE_LOGS = `${BASE_URL}/admin-core-service/ai-usage/v1/chatbot-flows/logs`;
+
 // WhatsApp Inbox
 export const WHATSAPP_INBOX_BASE = `${NOTIFICATION_SERVICE_BASE}/inbox`;
 
@@ -1132,6 +1183,11 @@ export const WORKFLOW_LOGS_BASE = `${BASE_URL}/admin-core-service/workflow/logs`
 export const GET_USER_PLANS = `${BASE_URL}/admin-core-service/v1/user-plan/all`;
 export const GET_PAYMENT_LOGS = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
 export const GET_PAYMENT_COLLECTION_SUMMARY = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/collection-summary`;
+// Plan change (admin override — applies immediately, takes no payment).
+export const GET_USER_PLAN_CHANGE_OPTIONS = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/change-options`;
+export const CHANGE_USER_PLAN = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/change-plan`;
 
 // System files
 export const ADD_SYSTEM_FILE = `${BASE_URL}/admin-core-service/system-files/v1/add`;

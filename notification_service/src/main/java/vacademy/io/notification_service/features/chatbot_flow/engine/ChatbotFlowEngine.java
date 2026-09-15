@@ -596,6 +596,10 @@ public class ChatbotFlowEngine {
             // they never received. Read-and-clear so the next node in the chain still logs.
             if (context.isSendFailureLogged()) {
                 context.setSendFailureLogged(false);
+                // Drop any id from an earlier message of this same node — no row is written here,
+                // and a leftover id would end up on the NEXT node's row, giving one message the
+                // ticks of another.
+                context.setLastProviderMessageId(null);
                 return;
             }
 
@@ -619,6 +623,12 @@ public class ChatbotFlowEngine {
             outLog.setChannelId(context.getPhoneNumber());
             outLog.setBody(messageBody);
             outLog.setSource("CHATBOT_FLOW");
+            // The provider message id from the send this row describes. It is the only key the
+            // sent/delivered/read webhooks join on, so without it a bot reply keeps a single grey
+            // tick no matter how many status events arrive. Read-and-clear, like sendFailureLogged,
+            // so the next node in the chain cannot inherit this node's id.
+            outLog.setSourceId(context.getLastProviderMessageId());
+            context.setLastProviderMessageId(null);
             outLog.setSenderBusinessChannelId(context.getBusinessChannelId());
             outLog.setNotificationDate(Instant.now());
             outLog.setUserId(context.getUserId());

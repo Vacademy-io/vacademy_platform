@@ -44,6 +44,23 @@
             "title": "Réévaluer l’ensemble de l’évaluation",
             "confirmMessagePrefix": "Voulez-vous vraiment effectuer la réévaluation pour",
             "confirmMessageSuffix": "pour l’ensemble de l’évaluation ?"
+        },
+        "aiReport": {
+            "title": "Télécharger le rapport IA",
+            "intro": "Un rapport de diagnostic destiné à l’enseignant pour",
+            "bulletWeakness": "Faiblesses détaillées par section, thème et question, des plus faibles aux plus fortes",
+            "bulletCharts": "Graphiques de répartition des réponses, comparaison par section, précision par thème et niveaux cognitifs",
+            "bulletActions": "Erreurs conceptuelles avec remédiation, et un plan d’action hiérarchisé",
+            "checking": "Vérification de la disponibilité de l’analyse…",
+            "usesCredits": "L’analyse de cette tentative n’a pas encore été générée. Le téléchargement consommera les crédits IA de votre établissement. Les téléchargements suivants de la même tentative sont gratuits.",
+            "alreadyGenerated": "L’analyse de cette tentative est prête — le téléchargement ne consommera aucun crédit IA.",
+            "unsupported": "Cette tentative ne peut pas être analysée ; aucun rapport IA n’est disponible.",
+            "balance_one": "Solde : {{count}} crédit",
+            "balance_other": "Solde : {{count}} crédits",
+            "generateAndDownload": "Générer et télécharger",
+            "download": "Télécharger",
+            "generating": "Génération…",
+            "downloaded": "Rapport IA téléchargé."
         }
     },
     "dropdown": {
@@ -63,7 +80,8 @@
         "loadingEvaluatedCopy": "Chargement de la copie évaluée...",
         "generatingReport": "Génération du rapport...",
         "downloadReport": "Télécharger le rapport",
-        "releaseResult": "Publier le résultat"
+        "releaseResult": "Publier le résultat",
+        "downloadAiReport": "Télécharger le rapport IA"
     },
     "toasts": {
         "reattemptProvided": "Une nouvelle tentative a été accordée à {{name}}.",
@@ -78,6 +96,7 @@
         "noSubmissionFile": "Aucun fichier de soumission trouvé pour cette tentative.",
         "popupBlocked": "Veuillez autoriser les fenêtres pop-up pour voir la soumission.",
         "submissionLoadError": "Échec du chargement de la soumission. Veuillez réessayer.",
-        "reportGenerateError": "Échec de la génération du rapport. Veuillez réessayer."
+        "reportGenerateError": "Échec de la génération du rapport. Veuillez réessayer.",
+        "aiReportError": "Impossible de télécharger le rapport IA. Veuillez réessayer."
     }
 }

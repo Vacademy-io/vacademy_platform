@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Form } from '@/components/ui/form';
@@ -11,15 +13,16 @@ import type { DesignationDTO } from '@/routes/erp/-shared/hr-types';
 import { useSaveDesignation } from '../-hooks/use-hr-people';
 import { HrTextField, HrTextareaField } from './HrFormFields';
 
-const designationSchema = z.object({
-    name: z.string().min(1, 'Give the designation a name'),
-    code: z.string(),
-    level: z.string().regex(/^\d*$/, 'Use a whole number'),
-    grade: z.string(),
-    description: z.string(),
-});
+const buildDesignationSchema = (t: TFunction) =>
+    z.object({
+        name: z.string().min(1, t('errors.nameRequired')),
+        code: z.string(),
+        level: z.string().regex(/^\d*$/, t('errors.levelWholeNumber')),
+        grade: z.string(),
+        description: z.string(),
+    });
 
-type DesignationFormValues = z.infer<typeof designationSchema>;
+type DesignationFormValues = z.infer<ReturnType<typeof buildDesignationSchema>>;
 
 interface DesignationFormDialogProps {
     open: boolean;
@@ -33,8 +36,10 @@ export function DesignationFormDialog({
     onOpenChange,
     designation,
 }: DesignationFormDialogProps) {
+    const { t } = useTranslation('erpDesignationFormDialog');
     const isEdit = !!designation?.id;
     const saveDesignation = useSaveDesignation();
+    const designationSchema = buildDesignationSchema(t);
 
     const defaults = (): DesignationFormValues => ({
         name: designation?.name ?? '',
@@ -69,21 +74,21 @@ export function DesignationFormDialog({
                 grade: values.grade.trim() || undefined,
                 description: values.description.trim() || undefined,
             });
-            toast.success(isEdit ? 'Designation updated' : 'Designation added');
+            toast.success(isEdit ? t('toasts.updated') : t('toasts.added'));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-people',
                 tags: { 'erp.action': isEdit ? 'update-designation' : 'create-designation' },
                 extra: { designationId: designation?.id },
-                fallbackMessage: 'Could not save this designation',
+                fallbackMessage: t('errors.saveFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading={isEdit ? 'Edit designation' : 'Add designation'}
+            heading={isEdit ? t('editHeading') : t('addHeading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-lg"
@@ -95,16 +100,16 @@ export function DesignationFormDialog({
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Saving…"
+                        loadingText={t('saving')}
                     >
-                        {isEdit ? 'Save changes' : 'Add designation'}
+                        {isEdit ? t('saveChanges') : t('addHeading')}
                     </MyButton>
                 </>
             }
@@ -118,36 +123,36 @@ export function DesignationFormDialog({
                     <HrTextField
                         control={form.control}
                         name="name"
-                        label="Name"
-                        placeholder="e.g. Senior Teacher"
+                        label={t('fields.nameLabel')}
+                        placeholder={t('fields.namePlaceholder')}
                         required
                     />
                     <div className="grid gap-4 sm:grid-cols-3">
                         <HrTextField
                             control={form.control}
                             name="code"
-                            label="Code"
-                            placeholder="e.g. SR-TCH"
+                            label={t('fields.codeLabel')}
+                            placeholder={t('fields.codePlaceholder')}
                         />
                         <HrTextField
                             control={form.control}
                             name="level"
-                            label="Level"
-                            placeholder="e.g. 3"
-                            description="Higher means more senior."
+                            label={t('fields.levelLabel')}
+                            placeholder={t('fields.levelPlaceholder')}
+                            description={t('fields.levelHelp')}
                         />
                         <HrTextField
                             control={form.control}
                             name="grade"
-                            label="Grade"
-                            placeholder="e.g. L3"
+                            label={t('fields.gradeLabel')}
+                            placeholder={t('fields.gradePlaceholder')}
                         />
                     </div>
                     <HrTextareaField
                         control={form.control}
                         name="description"
-                        label="Description"
-                        placeholder="What this designation covers"
+                        label={t('fields.descriptionLabel')}
+                        placeholder={t('fields.descriptionPlaceholder')}
                     />
                 </form>
             </Form>

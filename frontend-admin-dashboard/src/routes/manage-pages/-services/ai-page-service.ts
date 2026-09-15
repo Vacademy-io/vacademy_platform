@@ -35,6 +35,10 @@ export interface GeneratePagePayload {
     images?: AiPageImage[];
     inspiration_image_urls?: string[];
     source_url?: string;
+    /** Someone else's website whose LAYOUT the admin wants. Screenshotted
+     *  server-side and read like inspiration screenshots; with global_settings
+     *  pinned only its structure is taken — colours, fonts and logo stay ours. */
+    reference_url?: string;
     courses?: AiCourseSnapshotItem[];
     terminology?: Record<string, string>;
     direction?: string;
@@ -223,7 +227,12 @@ export interface GenerateSitePayload {
     /** Reference screenshots for the whole site — analysed once server-side and
      *  shared by every page, so the site comes out in one design language. */
     inspiration_image_urls?: string[];
+    /** See GeneratePagePayload.reference_url — captured once for the whole site. */
+    reference_url?: string;
     design_language?: DesignLanguageId;
+    /** The site's existing theme/fonts/motion; when set every page is composed
+     *  into it and a reference contributes layout only. */
+    global_settings?: Record<string, any>;
 }
 
 export interface GenerateSiteResponse {

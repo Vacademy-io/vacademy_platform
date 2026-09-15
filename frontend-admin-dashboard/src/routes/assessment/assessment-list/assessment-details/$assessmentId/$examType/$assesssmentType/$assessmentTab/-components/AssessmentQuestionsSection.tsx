@@ -36,6 +36,11 @@ import {
 } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { calculateAverageMarks, calculateAveragePenalty } from '../-utils/helper';
 import { QuestionData } from '@/types/assessments/assessment-steps';
+import {
+    QuestionOptionsList,
+    optionsFromQuestionData,
+    type QuestionOptionView,
+} from '@/components/common/assessment/question-options-list';
 import { useMemo, useState, useEffect } from 'react';
 import TipTapEditor from '@/components/tiptap/TipTapEditor';
 import { CriteriaPreviewDialog } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-components/StepComponents/-components/CriteriaPreviewDialog';
@@ -63,6 +68,7 @@ interface Question {
     questionDuration: QuestionDuration;
     evaluation_criteria_json?: string | null;
     criteria_template_id?: string | null; // From API, indicates if from template
+    options?: QuestionOptionView[];
 }
 
 // Custom hook for data transformation
@@ -90,6 +96,7 @@ const useAdaptiveMarking = (questionsForSection: QuestionData[]) => {
                 },
                 evaluation_criteria_json: questionData.evaluation_criteria_json || null,
                 criteria_template_id: questionData.criteria_template_id || null,
+                options: optionsFromQuestionData(questionData),
             };
         });
     }, [questionsForSection]);
@@ -385,6 +392,7 @@ const QuestionsTable = ({
                                                 onChange={() => {}}
                                                 editable={false}
                                             />
+                                            <QuestionOptionsList options={question.options} />
                                         </TableCell>
                                         <TableCell className="align-top">
                                             <Badge

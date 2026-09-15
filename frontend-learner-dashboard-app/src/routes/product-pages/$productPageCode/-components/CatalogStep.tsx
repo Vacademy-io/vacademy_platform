@@ -41,6 +41,12 @@ interface CatalogStepProps {
    */
   courseIds?: string;
   onNext: () => void;
+  /**
+   * Jump past the cart to the details step. Supplied by the shell, which owns
+   * the step machine and has to remember the cart was skipped so Back from the
+   * form does not land on a step the visitor never saw.
+   */
+  onJumpToForm?: () => void;
 }
 
 function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
@@ -65,6 +71,7 @@ export const CatalogStep = ({
   levels,
   courseIds,
   onNext,
+  onJumpToForm,
 }: CatalogStepProps) => {
   const { t } = useTranslation("productPages");
   const courses = useCourseTerms().courses;
@@ -123,14 +130,27 @@ export const CatalogStep = ({
   );
 
   const handlePick = (group: ProductPageFinderGroup) => {
+    const inGroup = pageData.mappings.filter(
+      (m) => m.status === "ACTIVE" && mappingInGroup(m, group),
+    );
+
+    // One class, one course, and the page asked to skip ahead: select it and go
+    // straight to the details step. Only for a group of exactly one — choosing
+    // among several is the visitor's decision, not the page's, so anything
+    // wider falls through to the catalogue below.
+    if (onJumpToForm && usableFinder?.onPick === "GO_TO_FORM" && inGroup.length === 1) {
+      setSelection([inGroup[0]!.ps_invite_payment_option_id]);
+      rememberChoice(group.id);
+      onJumpToForm();
+      return;
+    }
+
     // Drop what belongs to another class, keep what belongs to this one.
     // Carrying everything through would enrol a Class 9 student in the Class 6
     // test they glanced at first, with the cart their only warning; clearing
     // everything would silently discard a course the page itself preselected,
     // or one added while browsing before answering.
-    const kept = pageData.mappings
-      .filter((m) => mappingInGroup(m, group))
-      .map((m) => m.ps_invite_payment_option_id);
+    const kept = inGroup.map((m) => m.ps_invite_payment_option_id);
     // Read at click time rather than subscribing: a live subscription here
     // re-renders the whole designed page — header, hero, every block — on each
     // add or remove, when the basket is only ever needed at this instant.

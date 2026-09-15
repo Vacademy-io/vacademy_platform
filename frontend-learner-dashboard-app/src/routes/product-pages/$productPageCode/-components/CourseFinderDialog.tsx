@@ -6,7 +6,7 @@ import type {
   ProductPageFinderGroup,
   ProductPageMappingResponse,
 } from "../-types/product-page-types";
-import { usableGroups, mappingInGroup } from "../-utils/course-finder";
+import { finderCtaLabel, usableGroups, mappingInGroup } from "../-utils/course-finder";
 import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 
 interface CourseFinderDialogProps {
@@ -50,6 +50,22 @@ export const CourseFinderDialog = ({
   const active = mappings.filter((m) => m.status === "ACTIVE");
   const groups = usableGroups(finder, mappings);
   const chosenGroup = groups.find((g) => g.id === chosen) ?? null;
+
+  /**
+   * What the confirm button says.
+   *
+   * The default has to follow what the button DOES: with GO_TO_FORM it opens a
+   * registration form, and "Show my courses" would be a promise the click does
+   * not keep. An admin-set label wins, and `{{class}}` in it becomes the pick
+   * so the button can name the class the visitor just chose.
+   */
+  const ctaLabel = finderCtaLabel(
+    finder.ctaLabel,
+    chosenGroup?.label ?? null,
+    finder.onPick === "GO_TO_FORM"
+      ? t("courseFinder.continueToRegister")
+      : t("courseFinder.showCourses", { courses: courses.toLocaleLowerCase() }),
+  );
 
   /**
    * Escape closes the dialog ONLY where skipping is allowed. Where it is not,
@@ -169,7 +185,7 @@ export const CourseFinderDialog = ({
             className="catalogue-btn catalogue-btn-primary disabled:cursor-not-allowed disabled:opacity-40"
             style={chosenGroup ? { backgroundColor: primaryColor, borderColor: primaryColor } : undefined}
           >
-            {t("courseFinder.showCourses", { courses: courses.toLocaleLowerCase() })}
+            {ctaLabel}
           </button>
         </div>
       </div>

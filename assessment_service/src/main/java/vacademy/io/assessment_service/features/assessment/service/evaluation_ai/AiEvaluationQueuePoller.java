@@ -147,7 +147,11 @@ public class AiEvaluationQueuePoller {
                 if (claimedCount == 0) {
                         return List.of();
                 }
-                return processRepository.findClaimedPending(instanceId);
+                // Rows a previous tick claimed but could not dispatch (a failed tick)
+                // come back here too; still hand out at most `room` at a time so the
+                // in-flight cap holds. The rest stay ours for the next tick.
+                List<AiEvaluationProcess> claimed = processRepository.findClaimedPending(instanceId);
+                return claimed.size() > room ? claimed.subList(0, room) : claimed;
         }
 
         /**
@@ -165,8 +169,12 @@ public class AiEvaluationQueuePoller {
                         return;
                 }
 
-                String model = process.getAssessment() == null ? null : process.getAssessment().getAiEvaluationModel();
                 try {
+                        // Inside the try: the assessment is fetched with the claim query, but
+                        // a lazy proxy here once threw "no Session" before the try and took
+                        // the whole tick down with it - every tick, for every row.
+                        String model = process.getAssessment() == null ? null
+                                        : process.getAssessment().getAiEvaluationModel();
                         aiEvaluationAsyncService.evaluateAttemptAsync(processId, attemptId, model);
                         log.info("[ai-eval-poller] dispatched evaluation {} for attempt {} (model {})",
                                         processId, attemptId, model);

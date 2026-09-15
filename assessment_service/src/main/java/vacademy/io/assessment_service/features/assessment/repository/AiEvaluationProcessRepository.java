@@ -136,7 +136,9 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
                         @Param("batchSize") int batchSize);
 
         /** The rows this instance just claimed, to hand to the async worker. */
-        @Query("SELECT p FROM AiEvaluationProcess p WHERE p.claimedBy = :claimedBy AND p.status = 'PENDING' "
+        @Query("SELECT p FROM AiEvaluationProcess p "
+                        + "JOIN FETCH p.studentAttempt LEFT JOIN FETCH p.assessment "
+                        + "WHERE p.claimedBy = :claimedBy AND p.status = 'PENDING' "
                         + "ORDER BY p.createdAt")
         List<AiEvaluationProcess> findClaimedPending(@Param("claimedBy") String claimedBy);
 }

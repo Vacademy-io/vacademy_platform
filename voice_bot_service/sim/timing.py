@@ -721,6 +721,13 @@ SCENARIOS: List[Scenario] = [
              replies=[PITCH_Q, "Got it. Who sends the daily link right now?"],
              checks=chk_unheard_turn, max_secs=40,
              note="2026-09-15: 3 of 81 turns produced no transcript; callers said Hello? into silence"),
+    Scenario("yes_after_nudge",
+             # Call 92743351 (2026-09-15): silent caller, two nudges, "Yes" right
+             # after "Hello? Are you there?" — the reply took 6.2 s.
+             caller=[Say("Yes.", after_bot_stop=3, offset=0.4, stt_latency=0.6)],
+             replies=["Great. So the reason I called — we work with yoga teachers on the daily link."],
+             checks=chk_turn_latency, max_secs=40,
+             note="yes after the second nudge must be answered like any yes"),
     Scenario("voicemail_hangs_up",
              caller=[Say("Your call has been forwarded to voicemail.", 2.4, at=0.3, stt_latency=0.3),
                      Say("At the tone, please record your message.", 2.2, at=4.0, stt_latency=0.3)],

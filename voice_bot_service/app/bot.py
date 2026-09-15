@@ -1729,7 +1729,9 @@ class RunGuard(FrameProcessor):
     async def _release(self, frame: Frame, direction: FrameDirection):
         # Silence already elapsed counts: a final that landed 0.4 s after the
         # voice stopped waits 0.2 s, not 0.6.
-        await asyncio.sleep(max(0.0, self._grace - self._quiet_for()))
+        t0 = time.time()
+        q0 = self._quiet_for()
+        await asyncio.sleep(max(0.0, self._grace - q0))
         if self._quiet_for() < 0.4:
             # They went on. Wait for the rest, then run ONCE on everything the
             # context holds by then. The run is not simply dropped: when the
@@ -1762,6 +1764,8 @@ class RunGuard(FrameProcessor):
                 else:
                     stable += 0.1
         self._held = None
+        logger.info("run-guard: short answer's run released after %.2fs (quiet %.2fs at hold)",
+                    time.time() - t0, q0 if q0 != float("inf") else -1.0)
         await self.push_frame(frame, direction)
 
     def _context_len(self) -> int:
@@ -1805,10 +1809,13 @@ class RunGuard(FrameProcessor):
                                 "since the previous run")
                     return
                 self._last_allowed_fp = fp
-                if (self._grace > 0 and len(msgs) > 2
-                        and 0 < self._caller_words(msgs) <= self._max_words):
+                words = self._caller_words(msgs)
+                if self._grace > 0 and len(msgs) > 2 and 0 < words <= self._max_words:
+                    logger.info("run-guard: holding the run for a %d-word answer (quiet %.2fs)",
+                                words, min(self._quiet_for(), 99.0))
                     self._held = self.create_task(self._release(frame, direction))
                     return
+                logger.info("run-guard: run passed (%d caller words)", words)
         await self.push_frame(frame, direction)
 
 

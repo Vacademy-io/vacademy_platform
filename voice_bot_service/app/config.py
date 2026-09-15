@@ -100,6 +100,20 @@ class Settings:
         default_factory=lambda: float(_env("SMALLEST_FINALIZE_RETRY_SECS", "0.7")))
     smallest_finalize_retries: int = field(
         default_factory=lambda: int(_env("SMALLEST_FINALIZE_RETRIES", "3")))
+    # A VAD stop inside the first `hold_below` s of a turn is usually a breath
+    # ("Uh," … "I think mix"). Finalizing there made Pulse return an empty final
+    # and drop the REST of the sentence: 5-6 s utterances with no transcript on
+    # calls 82c1f95a (twice), 91d1541e, 15aadcdb. Hold the finalize `hold_secs`;
+    # a new onset inside the hold cancels it. Costs that hold on a genuine
+    # one-word answer only. SMALLEST_HOLD_BELOW_SECS=0 disables.
+    # DEFAULT OFF: on the bench it cost +0.6 s on every one-word answer (yes
+    # 0.11 -> 0.72 s; real-recording p90 0.19 -> 0.74 s) and the drops could
+    # not be reproduced there to prove the benefit. The orphan re-ask is the
+    # live mitigation; set SMALLEST_HOLD_BELOW_SECS=1.5 on the box to trial it.
+    smallest_hold_below_secs: float = field(
+        default_factory=lambda: float(_env("SMALLEST_HOLD_BELOW_SECS", "0")))
+    smallest_hold_secs: float = field(
+        default_factory=lambda: float(_env("SMALLEST_HOLD_SECS", "0.5")))
     # "telephony", NOT "latest_long": measured on the caller channel of real call
     # 31a1acf1 (8 kHz Hindi phone audio), latest_long dropped most of every
     # utterance ("क्या बात कर रहा है?" for a 15-word sentence) while telephony
@@ -580,6 +594,17 @@ class Settings:
     # re-delivered the intro on calls 17be14f2/761decff — see bot.RunGuard.
     run_guard_enabled: bool = field(
         default_factory=lambda: _env("RUN_GUARD_ENABLED", "true").lower() == "true")
+    # Short-answer grace (bot.RunGuard): a run whose new caller words are at
+    # most SHORT_ANSWER_MAX_WORDS is held this long, and dropped if the caller's
+    # voice resumes inside it — "Yes." + breath + the real answer must be
+    # answered once, as one turn. 0 = off. Bare yes/haan replies pay the grace
+    # (less the silence already elapsed when their final lands). 0.8 covers a
+    # 0.45 s breath plus the VAD's 0.2 s onset; 0.6 lost the race once in three
+    # real-STT sim runs (2026-09-15).
+    short_answer_grace_secs: float = field(
+        default_factory=lambda: float(_env("SHORT_ANSWER_GRACE_SECS", "0.8")))
+    short_answer_max_words: int = field(
+        default_factory=lambda: int(_env("SHORT_ANSWER_MAX_WORDS", "3")))
     # Cushion questions in context instead of firing them bare ("Do you take live
     # classes?") — founder 2026-09-08, "it's asking questions as if she is my
     # mother... humanize the prompt, inculcate this into AI calling in general".
@@ -649,8 +674,10 @@ class Settings:
         default_factory=lambda: float(_env("STOP_REISSUE_EVERY_SECS", "3.0")))
     orphan_min_utterance_secs: float = field(
         default_factory=lambda: float(_env("ORPHAN_MIN_UTTERANCE_SECS", "0.4")))
+    # 3.5 s: past the p90 of a Smallest final that needed the finalize retry
+    # (2.26 s on 2026-09-15), so a late transcript is not mistaken for a lost one.
     orphan_window_lo_secs: float = field(
-        default_factory=lambda: float(_env("ORPHAN_WINDOW_LO_SECS", "2.5")))
+        default_factory=lambda: float(_env("ORPHAN_WINDOW_LO_SECS", "3.5")))
     orphan_window_hi_secs: float = field(
         default_factory=lambda: float(_env("ORPHAN_WINDOW_HI_SECS", "10.0")))
     orphan_bot_quiet_secs: float = field(

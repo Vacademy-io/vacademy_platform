@@ -2593,6 +2593,100 @@ async def test_run_guard_kill_switch_and_empty_context_pass_through():
     assert len(rec.passed) == 2
 
 
+# ── RunGuard short-answer grace: "Yes." + a breath + the real answer ─────────
+def _graced_guard(quiet):
+    import app.diagnostics as dg
+    d = dg.CallDiagnostics()
+    ctx = _FakeCtx()
+    rec = _RGRec()
+    g = b.RunGuard(ctx, enabled=lambda: True, diag=d,
+                   short_answer_grace_secs=0.5, short_answer_max_words=3, quiet_for=quiet)
+    g.push_frame = rec.push
+    g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    return g, ctx, rec, d
+
+
+_CONVO = [{"role": "system", "content": "…"},
+          {"role": "user", "content": "[NOW deliver your opening…]"},
+          {"role": "assistant", "content": "Hi, is this Riya? Can I take a minute?"}]
+
+
+@pytest.mark.asyncio
+async def test_short_answer_run_waits_for_the_rest_when_the_voice_resumes():
+    """Real-STT sim breath_then_long_answer_*: the run on "Yes" alone must not
+    fire while the caller goes on; it runs once, after they stop, on the
+    context as it stands then."""
+    from pipecat.frames.frames import LLMRunFrame
+    state = {"quiet": 0.1}
+    g, ctx, rec, d = _graced_guard(lambda: state["quiet"])
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [{"role": "user", "content": "Yes"},
+                             {"role": "user", "content": "[That was their ANSWER…]"}]
+    await g.process_frame(LLMRunFrame(), D)
+    assert rec.passed == [], "answered the short part immediately"
+    await asyncio.sleep(0.45)                 # past the grace check (0.4 s in)
+    assert rec.passed == [], "answered the short part while the caller was still talking"
+    ctx.messages = ctx.messages + [{"role": "user", "content": "I take classes in the evening"}]
+    state["quiet"] = 5.0                      # the voice stopped
+    await asyncio.sleep(1.3)                  # settle (1.0 s) + slack
+    assert len(rec.passed) == 1, "the combined turn never ran"
+    assert d.short_answer_holds == 1
+
+
+@pytest.mark.asyncio
+async def test_short_answer_run_is_superseded_by_the_next_turn():
+    from pipecat.frames.frames import LLMRunFrame
+    state = {"quiet": 0.1}
+    g, ctx, rec, _ = _graced_guard(lambda: state["quiet"])
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [{"role": "user", "content": "हाँ"}]
+    await g.process_frame(LLMRunFrame(), D)
+    await asyncio.sleep(0.45)                 # past the grace check (0.4 s in)
+    ctx.messages = ctx.messages + [{"role": "user", "content": "मैं शाम को क्लास लेती हूँ"}]
+    state["quiet"] = 5.0
+    await g.process_frame(LLMRunFrame(), D)   # the aggregator's own run for the rest
+    assert len(rec.passed) == 1
+    await asyncio.sleep(1.3)
+    assert len(rec.passed) == 1, "the held run fired on top of the newer one"
+
+
+@pytest.mark.asyncio
+async def test_short_answer_run_fires_after_the_grace_when_the_caller_is_quiet():
+    from pipecat.frames.frames import LLMRunFrame
+    import time as _t
+    stopped = _t.monotonic() - 0.2                   # quiet 0.2 s already → waits ~0.3
+    g, ctx, rec, d = _graced_guard(lambda: _t.monotonic() - stopped)
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [{"role": "user", "content": "Yes, go ahead."}]
+    await g.process_frame(LLMRunFrame(), D)
+    assert rec.passed == []
+    await asyncio.sleep(0.5)
+    assert len(rec.passed) == 1
+    assert d.short_answer_holds == 0
+
+
+@pytest.mark.asyncio
+async def test_long_answers_and_the_greet_are_never_held():
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, _ = _graced_guard(lambda: 0.0)     # voice live — would hold if eligible
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO[:2]                        # the greet cue
+    await g.process_frame(LLMRunFrame(), D)
+    ctx.messages = _CONVO + [{"role": "user", "content": "I take classes in the evening at the studio"}]
+    await g.process_frame(LLMRunFrame(), D)
+    assert len(rec.passed) == 2
+
+
+def test_caller_words_skip_cues_and_span_trailing_user_messages():
+    n = b.RunGuard._caller_words
+    assert n([{"role": "user", "content": "Yes"},
+              {"role": "user", "content": "[That was their ANSWER to the question…]"}]) == 1
+    assert n([{"role": "assistant", "content": "a b c d"}, {"role": "user", "content": "हाँ जी।"}]) == 2
+    assert n([{"role": "user", "content": "[NOW deliver your opening…]"}]) == 0
+    assert n([{"role": "user", "content": [{"type": "text", "text": "yes, go ahead"}]}]) == 3
+
+
 # ── the greet must key on acoustics, not the aggregator's turn lifecycle ─────
 def test_greet_ignores_a_stale_open_turn():
     """Fake-clock replay of 17be14f2: voice ticks stop at 0.9s but the TURN
@@ -3406,7 +3500,7 @@ def test_resay_requires_an_interruption_after_the_greet_was_queued():
     had played and nothing had cancelled it -> the caller heard the intro twice."""
     import inspect
     src = inspect.getsource(b.run_bot)
-    resay = src[src.index("async def _resay_opening(text)"):src.index("_opening_resaid = True")]
+    resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resaid = True")]
     assert 'flags["last_cut_t"] > _greet_queued_t' in resay
     greet = src[src.index("async def _greet_when_ready"):]
     assert "_greet_queued_t = time.time()" in greet
@@ -4110,6 +4204,9 @@ def test_fragment_continuation_shapes():
     assert f("It happens to my frie", "nd", 0.5)
     assert f("? It makes", "some", 0.9)
     assert f("You still", "me?", 0.5)
+    assert f("आप कौन बोल रहे", "हैं?", 0.5)        # Devanagari tail with the sentence end
+    assert f(", मैं मैं बच्चे का पिता बोल रहा", "हूँ।", 0.5)
+    assert not f("It is offline.", "नहीं।", 0.5)   # a finished piece, then a new one
     assert not f("Okay.", "Hello?", 0.6)              # finished, then a new utterance
     assert not f("Yes, go ahead", "Actually wait, I am busy now", 0.8)   # long = new
     assert not f("Yes, go ahead", "hello", 1.4)       # too late to be the same breath
@@ -4500,3 +4597,90 @@ async def test_who_is_this_licenses_the_intro_again():
     rec.text.clear()
     await _reply(g, "I'm Aarushi, from Vacademy.")
     assert [t.strip() for t in rec.text] == ["I'm Aarushi, from Vacademy."], rec.text
+
+
+# ── call 91d1541e (2026-09-15): screened call; a 5.6 s turn with no transcript ──
+
+def test_call_screener_second_fragment_is_the_operator():
+    from app.turntake import is_carrier_announcement, is_call_screener
+    assert is_carrier_announcement("I'll see if this person is available")
+    assert is_call_screener("Hi. If you record your name and reason for calling,")
+    assert not is_call_screener("Your call has been forwarded to voicemail")
+
+
+@pytest.mark.asyncio
+async def test_the_human_after_a_screener_gets_the_opening_again():
+    rec = _Rec()
+    said = []
+
+    async def resay(text, force=False):
+        said.append((text, force)); return True
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._resay_opening = resay
+    tc._bot_spoke_once = lambda: True
+    await _feed(tc, "Hi. If you record your name and reason for calling,")
+    await _feed(tc, "I'll see if this person is available")
+    assert tc.screener_seen and rec.frames == []
+    await _feed(tc, "Hello")
+    assert said == [("Hello", True)], said
+    assert rec.frames == [], "the hello must not drive its own generation"
+    assert not tc.screener_seen, "consumed"
+
+
+def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
+    from app import callstate as cs
+    cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,
+                            stall_recovery_enabled=False, graceful_stop_deadline_secs=10.0,
+                            no_words_timeout_secs=1e9, stall_after_secs=1e9,
+                            orphan_window_secs=(3.5, 10.0), orphan_connect_grace_secs=6.0)
+    s = cs.CallState()
+    s.user_started_t, s.user_stopped_t, s.bot_stopped_t, s.transcript_t = 20.0, 22.0, 10.0, 5.0
+    s.voice_tick_t = 22.0
+    assert cs.watchdog_decide(s, 24.0, cfg).kind != cs.ORPHAN_ASK, "too early (a retried final may still land)"
+    d = cs.watchdog_decide(s, 26.0, cfg)
+    assert d.kind == cs.ORPHAN_ASK, d
+    cs.apply_decision(s, d, 26.0)
+    assert cs.watchdog_decide(s, 27.0, cfg).kind != cs.ORPHAN_ASK, "re-fired on the same silence"
+    # the turn is still OPEN (no transcript, aggregator holding): the acoustic
+    # stamp must drive the window, not the previous turn's stop
+    s.user_started_t, s.user_stopped_t, s.voice_tick_t = 30.0, 22.0, 32.0
+    assert cs.watchdog_decide(s, 33.0, cfg).kind != cs.ORPHAN_ASK, "voice still recent"
+    d2 = cs.watchdog_decide(s, 36.0, cfg); assert d2.kind == cs.ORPHAN_ASK, d2
+    cs.apply_decision(s, d2, 36.0)
+    s.user_started_t, s.user_stopped_t, s.voice_tick_t = 40.0, 42.0, 42.0
+    assert cs.watchdog_decide(s, 46.0, cfg).kind != cs.ORPHAN_ASK, "third ask must not fire"
+
+
+def test_caller_asks_who_shapes():
+    from app.turntake import caller_asks_who as f
+    for t in ("आप कौन बोल रहे हैं?", "Aap kaun bol rahi ho", "Who is this?", "who's calling", "आप कहाँ से बोल रहे हैं"):
+        assert f(t), t
+    assert not f("Yes, go ahead.") and not f("kaun se class mein hai")
+
+
+@pytest.mark.asyncio
+async def test_who_is_calling_cues_the_answer_first():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._reply_in_flight = lambda: False
+    await _feed(tc, "आप कौन बोल रहे हैं?")
+    assert any("who is calling" in c for c in rec.cues()), rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_the_callers_thank_you_after_our_goodbye_does_not_reopen_the_call():
+    """Call 82c1f95a: "Thank you for your time. Namaste." → caller "Thank you."
+    → re-engaged → nothing left to say → "Yes, go ahead." as the last line."""
+    from app.turntake import caller_says_goodbye as g
+    for t in ("Thank you.", "Okay, bye", "Theek hai ji", "Thanks, namaste", "धन्यवाद"):
+        assert g(t), t
+    for t in ("Wait, one more question", "What about the fees?", "Actually I have a doubt"):
+        assert not g(t), t
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    tc._end_pending = lambda: True
+    stamped = []
+    tc._on_transcript = lambda backchannel=False, substantive=False: stamped.append(backchannel)
+    await _feed(tc, "Thank you.")
+    assert rec.frames == [], "the goodbye reached the model and re-opened the call"
+    assert stamped == [True]

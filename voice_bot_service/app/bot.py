@@ -31,7 +31,7 @@ from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from pipecat.frames.frames import (
+from pipecat.frames.frames import (VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame, 
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     EndFrame,
@@ -96,7 +96,7 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
-                       is_echo_of_answer)
+                       is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye)
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +193,7 @@ class TranscriptCollector(FrameProcessor):
                  fillers_armed=None, bot_stopped_t=None, duck=None,
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
+                 end_pending=None,
                  diag=None, in_machine_window=None, reply_in_flight=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  voice_live=None, resay_opening=None):
@@ -235,6 +236,9 @@ class TranscriptCollector(FrameProcessor):
         self._human_turns = 0          # finals that reached the model as the callee's
         self._prev_final = ""          # every final, carrier or not (split-phrase matching)
         self._prev_final_t = 0.0
+        # A call-screening prompt was heard: the opening went to a recorder,
+        # and the human's first hello must get it again (consumed by the resay).
+        self.screener_seen = False
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
@@ -253,6 +257,7 @@ class TranscriptCollector(FrameProcessor):
         self._interrupt_on_vad = interrupt_on_vad or (lambda: False)
         # True while a reply cancelled moments ago could still be picked up.
         self._recently_cut = recently_cut or (lambda: False)
+        self._end_pending = end_pending or (lambda: False)
 
         async def _noop_absorb(text):
             return None
@@ -311,8 +316,18 @@ class TranscriptCollector(FrameProcessor):
             self._on_voice_tick()         # voice is live RIGHT NOW (acoustics)
         if isinstance(frame, UserStartedSpeakingFrame):
             self._on_voice_tick()
-            self._set_user_speaking(True)
+        if isinstance(frame, (VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame)):
+            # The VAD's own onset/stop: the acoustic truth the orphan re-ask
+            # keys on. The aggregator's UserStopped comes ~5 s late when no
+            # transcript arrives (it is still waiting for one). Only the ONSET
+            # opens the caller's turn — treating the stop as "speaking" too
+            # re-stamped user_started_t at the acoustic stop, so the re-ask
+            # measured from the aggregator's late stop after all (timing sim
+            # unheard_turn, 2026-09-15: asked 9.4 s late).
+            self._on_voice_tick()
             self._on_activity(user=True)
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._set_user_speaking(True)
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._set_user_speaking(False)
             self._on_activity(user=True)  # give them thinking time from speech END
@@ -354,6 +369,12 @@ class TranscriptCollector(FrameProcessor):
                 logger.info("turn-gate: carrier announcement %r — not the callee, "
                             "dropping from context", text[:48])
                 self._carrier_seen = True
+                if is_call_screener(text):
+                    self.screener_seen = True
+                # Heard, just not the callee: stamp it, or the silence after a
+                # recording reads as a swallowed utterance and the orphan
+                # re-ask apologises to a voicemail (timing sim, 2026-09-15).
+                self._on_transcript(backchannel=True)
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
                 return
@@ -400,6 +421,7 @@ class TranscriptCollector(FrameProcessor):
                     self._diag.bump("carrier_announcements")
                 logger.info("turn-gate: recording scrap %r after a carrier phrase — dropping",
                             text[:32])
+                self._on_transcript(backchannel=True)
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
                 return
@@ -423,6 +445,7 @@ class TranscriptCollector(FrameProcessor):
                 if self._diag is not None:
                     self._diag.bump("carrier_announcements")
                 logger.info("turn-gate: machine-greeting scrap %r — dropping", text[:32])
+                self._on_transcript(backchannel=True)
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
                 return
@@ -483,6 +506,28 @@ class TranscriptCollector(FrameProcessor):
             self._outcome.transcript.append({"role": "user", "text": text})
             self._human_turns += 1
             self._on_activity(user=True)
+            # We said goodbye and they said "Thank you." / "Okay, bye." That is
+            # their goodbye, not re-engagement. Call 82c1f95a (2026-09-15): it
+            # re-opened the call, the model had nothing left, and the last thing
+            # the caller heard was "Yes, go ahead."
+            if self._end_pending() and caller_says_goodbye(text):
+                logger.info("turn-gate: caller's goodbye after ours (%r) — closing", text[:24])
+                self._on_transcript(backchannel=True)
+                if self._duck is not None and self._duck.is_ducked():
+                    await self._on_absorb(None)
+                return
+            # The phone screened us: our opening played to a recorder, and this
+            # is the person finally picking up. Whatever the played transcript
+            # says, THEY have heard none of it — say the opening again and let
+            # it be the answer to their hello (calls 612f5e37, 91d1541e).
+            if (self.screener_seen and self._resay_opening is not None
+                    and (is_audio_check(text) or caller_checking_presence(text))):
+                self.screener_seen = False
+                if await self._resay_opening(text, force=True):
+                    self._on_transcript(backchannel=True)
+                    if self._duck is not None and self._duck.is_ducked():
+                        await self._on_absorb(None)
+                    return
             # Mid-reply = a reply is audibly playing, OR held by a duck. NOT
             # "ducked" by itself: ducked with nothing held and the bot quiet
             # means the reply ENDED during the hold — a backchannel then is an
@@ -722,6 +767,17 @@ class TranscriptCollector(FrameProcessor):
                                 text[:24], q[:48])
                     await self.push_frame(LLMMessagesAppendFrame(
                         messages=[{"role": "user", "content": presence_cue(q)}]), direction)
+            # "Aap kaun bol rahi ho?" — the answer must come FIRST. Call 91d1541e
+            # (2026-09-15): the model re-asked the child's name (dropped as a
+            # repeat), then gave its name as the third sentence: 4 s of waiting.
+            elif (caller_asks_who(text) and self._bot_spoke_once()
+                  and not text.startswith("[")):
+                logger.info("turn-gate: caller asked who is calling — answer first")
+                await self.push_frame(LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content":
+                               "[They asked who is calling. FIRST sentence: your name and "
+                               "your institute. SECOND: one short line on why you called. "
+                               "Nothing before that — no filler, no question.]"}]), direction)
         await self.push_frame(frame, direction)
 
     def looks_like_voicemail(self) -> bool:
@@ -1004,7 +1060,7 @@ class NoRepeatGate(FrameProcessor):
 
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
                  no_echo=None, handbacks=None, played_text=None, end_forced=None,
-                 request_next_step=None):
+                 request_next_step=None, drop_stale_bridge=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         self._last_caller_text = last_caller_text or (lambda: "")
@@ -1062,6 +1118,10 @@ class NoRepeatGate(FrameProcessor):
         # per call: a second one would be a regeneration loop.
         self._request_next_step = request_next_step
         self._next_steps = 0
+        # "Just a second." queued while the model composed, arriving at the TTS
+        # AFTER the reply's audio began (the LLM processor holds frames during a
+        # generation): call dd5eb5cc heard the question, then "Just a second."
+        self._drop_stale_bridge = drop_stale_bridge
         self._last_suppressed = ""
 
     def _trim_echo(self, sentence: str) -> str:
@@ -1378,6 +1438,10 @@ class NoRepeatGate(FrameProcessor):
             await self.push_frame(frame, direction)
             return
 
+        if (isinstance(frame, TTSSpeakFrame) and self._drop_stale_bridge is not None
+                and self._drop_stale_bridge(frame.text or "")):
+            logger.info("no-repeat: dropping stale bridge line — the reply is already playing")
+            return
         if (isinstance(frame, LLMTextFrame) and direction == FrameDirection.DOWNSTREAM
                 and not isinstance(frame, TTSTextFrame)):
             self._buf += frame.text or ""
@@ -1610,12 +1674,101 @@ class RunGuard(FrameProcessor):
     with the context unchanged since the previous run, and is swallowed.
     """
 
-    def __init__(self, context, enabled=None, diag=None):
+    def __init__(self, context, enabled=None, diag=None,
+                 short_answer_grace_secs: float = 0.0, short_answer_max_words: int = 3,
+                 quiet_for=None):
         super().__init__()
         self._context = context
         self._enabled = enabled or (lambda: True)
         self._diag = diag
         self._last_allowed_fp = None
+        # SHORT-ANSWER GRACE. "Yes." — a breath — "I take classes in the evening,
+        # mostly at the studio…": the VAD stops inside the breath, Smart Turn
+        # calls "Yes." complete, the STT finalizes it, and the run fires ~20 ms
+        # later. The model answers a bare yes, its audio starts, the caller's
+        # continuation barges it down, and the real answer then gets a SECOND
+        # reply — the "talks over me / re-asks what I just said" of the founder's
+        # 2026-09-15 calls, reproduced with the real STT in sim.timing
+        # breath_then_long_answer_*. A run whose new caller words are this short
+        # is held for the grace; if their voice resumes inside it, the run is
+        # dropped and the next turn answers the whole thing. Longer answers are
+        # never held — the cost is paid only where the breath is likely.
+        self._grace = short_answer_grace_secs
+        self._max_words = short_answer_max_words
+        # Seconds since the caller's voice was last live — ACOUSTIC (VAD ticks),
+        # never the aggregator's turn flag, which stays up for seconds after the
+        # words (first real-STT run: a 6 s hold on "Yes, go ahead").
+        self._quiet_for = quiet_for or (lambda: float("inf"))
+        self._held: Optional[asyncio.Task] = None
+
+    @staticmethod
+    def _caller_words(msgs) -> int:
+        """Words the caller said in the unanswered user messages at the end of
+        the context, steering cues excluded. The turn-gate appends its cue as a
+        user message of its own AFTER the words ("Yes" then "[That was their
+        ANSWER…]"), so a single-message count would read the cue and see 0."""
+        n = 0
+        for msg in reversed(msgs):
+            role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
+            if role != "user":
+                break
+            content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+            if isinstance(content, list):          # multimodal parts
+                content = " ".join(str(part.get("text", "")) if isinstance(part, dict) else str(part)
+                                   for part in content)
+            text = re.sub(r"\[[^\]]*\]", " ", str(content or ""))
+            n += len([w for w in re.split(r"[\s,.!?।]+", text) if w])
+        return n
+
+    def _drop_held(self, why: str):
+        if self._held is not None and not self._held.done():
+            self._held.cancel()
+            logger.info("run-guard: held short-answer run superseded — %s", why)
+        self._held = None
+
+    async def _release(self, frame: Frame, direction: FrameDirection):
+        # Silence already elapsed counts: a final that landed 0.4 s after the
+        # voice stopped waits 0.2 s, not 0.6.
+        await asyncio.sleep(max(0.0, self._grace - self._quiet_for()))
+        if self._quiet_for() < 0.4:
+            # They went on. Wait for the rest, then run ONCE on everything the
+            # context holds by then. The run is not simply dropped: when the
+            # rest arrives as fragment continuations, the turn-gate appends them
+            # WITHOUT a run (a reply was in flight, as far as it knows), and a
+            # dropped run would leave the caller in silence (real-STT sim,
+            # 2026-09-15: "Yes" / "go ahe" / "ad." → no reply until the nudge).
+            # A newer run from the aggregator supersedes this one (see
+            # process_frame), so a continuation that IS a new turn costs nothing.
+            if self._diag is not None:
+                self._diag.bump("short_answer_holds")
+            logger.info("run-guard: caller's voice resumed within %.1fs of a short "
+                        "answer — waiting for the rest", self._grace)
+            waited = 0.0
+            while self._quiet_for() < 0.4 and waited < 30.0:
+                await asyncio.sleep(0.1)
+                waited += 0.1
+            # Time for the tail's final to land and be appended (Smallest
+            # finalizes 0.1-0.8 s after the stop): run once the context has
+            # been still for 0.5 s, 1.5 s at most.
+            stable = 0.0
+            waited = 0.0
+            n = self._context_len()
+            while stable < 0.5 and waited < 1.5:
+                await asyncio.sleep(0.1)
+                waited += 0.1
+                m = self._context_len()
+                if m != n:
+                    n, stable = m, 0.0
+                else:
+                    stable += 0.1
+        self._held = None
+        await self.push_frame(frame, direction)
+
+    def _context_len(self) -> int:
+        try:
+            return len(self._context.get_messages())
+        except Exception:
+            return -1
 
     def _fingerprint(self, msgs):
         last = msgs[-1]
@@ -1633,6 +1786,9 @@ class RunGuard(FrameProcessor):
                 msgs = []
             if msgs:
                 role, fp = self._fingerprint(msgs)
+                # A newer run supersedes a held one (its context contains the
+                # held words too).
+                self._drop_held("a newer turn arrived")
                 if role != "user":
                     # Nothing new to answer — the last word was OURS.
                     if self._diag is not None:
@@ -1649,6 +1805,10 @@ class RunGuard(FrameProcessor):
                                 "since the previous run")
                     return
                 self._last_allowed_fp = fp
+                if (self._grace > 0 and len(msgs) > 2
+                        and 0 < self._caller_words(msgs) <= self._max_words):
+                    self._held = self.create_task(self._release(frame, direction))
+                    return
         await self.push_frame(frame, direction)
 
 
@@ -3319,6 +3479,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             diag.bump("bot_turns")
         flags["bot_speaking"] = speaking
         flags["tts_gen_t"] = 0.0
+        if speaking:
+            flags["bot_started_t"] = time.time()
         # Set when the FIRST frame reaches the line, not when the opening ends:
         # call 31763255 (2026-09-12) — "yes." to "Hi, is this Shreyash?" landed
         # 3.4 s into the opening and was dropped as a machine-greeting scrap
@@ -3378,6 +3540,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     stt_lang, _ = _agent_language(agent)
     eng = stt_lang == "en-IN"
+    orphan_text = ("Sorry, I didn't catch that — could you say it again?" if eng
+                   else "माफ़ कीजिए, आवाज़ कट गई — क्या आप दोबारा बोल सकते हैं?")
     nudge_text = ("Hello? Are you still there?" if eng
                   else "Hello? Kya aap sun paa rahe hain?")
     cap_farewell = ("I have to end the call now — our team will reach out to you shortly. "
@@ -3481,6 +3645,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     }
     _fixed_lines.update(eng_fillers if eng else settings.filler_phrases)
     _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
+    _fixed_lines.add(orphan_text)
     _fixed_lines.discard("")
     tts_candidates = ttscache.CallCandidates(ttscache.get_cache())
     tts_watcher = ttscache.install_tts_cache(
@@ -3601,10 +3766,33 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     _opening_resaid = False
     _greet_queued_t = 0.0      # stamped by _greet_when_ready when it queues the opening
 
-    async def _resay_opening(text) -> bool:
+    async def _resay_opening(text, force: bool = False) -> bool:
         nonlocal _opening_resaid
-        if _opening_resaid or diag.greet_path != "scripted":
+        if _opening_resaid or diag.greet_path != "scripted" or not _greet_queued_t:
             return False
+        if not force:
+            # Only when something actually KILLED the queued opening: an
+            # interruption after it was queued. Call 09c5279a (2026-09-10): the
+            # caller's "Hello" arrived 0.85s after the greet was queued but before
+            # the pipeline had even started playing it; nothing had cancelled it,
+            # the re-say queued a second copy, and the caller heard the whole
+            # introduction twice back to back.
+            if not (flags["last_cut_t"] > _greet_queued_t):
+                return False
+            if not _opening_barely_heard(_opening_for_cache, outcome.transcript,
+                                         flags["reply_started_t"]):
+                return False
+        # force=True: a call screener took the opening and the human has just
+        # picked up — the "was it cut / barely heard" tests are about THEIR
+        # ears, and none of it reached them (calls 612f5e37, 91d1541e).
+        _opening_resaid = True
+        diag.bump("opening_resaid")
+        logger.info("greet: %s — saying the opening again corr=%s",
+                    "the line was screening; the person just picked up" if force
+                    else "caller's %r cut the opening at its start" % (text or "")[:20], corr)
+        await task.queue_frames([TTSSpeakFrame(_opening_for_cache,
+                                               append_to_context=False)])
+        return True
         # Only when something actually KILLED the queued opening: an
         # interruption after it was queued. Call 09c5279a (2026-09-10): the
         # caller's "Hello" arrived 0.85s after the greet was queued but before
@@ -3667,6 +3855,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      gate_enabled=lambda: settings.duck_enabled,
                                      interrupt_on_vad=lambda: settings.interrupt_on_vad,
                                      recently_cut=_recently_cut, diag=diag,
+                                     end_pending=lambda: (flags["end_pending_since"] != 0.0
+                                                          or outcome.end_requested),
                                      in_machine_window=_in_machine_window,
                                      reply_in_flight=_reply_in_flight,
                                      bot_spoke_once=lambda: flags["bot_spoke_once"],
@@ -3715,6 +3905,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # language break the caller hears immediately — and these lines bypass
         # the prompt's SCRIPT rule entirely because they never touch the LLM.
         request_next_step=_ask_for_next_step,
+        drop_stale_bridge=lambda text: (text == bridge_line
+                                        and flags["bridged_reply_t"] > 0
+                                        and flags["bot_started_t"] > flags["bridged_reply_t"]),
         handbacks=(NoRepeatGate._HANDBACK_EN
                    if _agent_language(agent)[0] == "en-IN" else None),
         # PlayedTranscriptRecorder's record of what the caller actually heard —
@@ -3744,7 +3937,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     run_guard = RunGuard(llm_context,
                          enabled=lambda: settings.run_guard_enabled,
-                         diag=diag)
+                         diag=diag,
+                         short_answer_grace_secs=settings.short_answer_grace_secs,
+                         short_answer_max_words=settings.short_answer_max_words,
+                         quiet_for=lambda: (time.time() - flags["voice_tick_t"]
+                                            if flags["voice_tick_t"] else float("inf")))
 
     # One EQ per call: it carries IIR state across frames, so it must not be
     # shared between concurrent calls. None when disabled or scipy is missing,
@@ -4095,7 +4292,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             orphan_window_secs=(settings.orphan_window_lo_secs,
                                 settings.orphan_window_hi_secs),
             orphan_bot_quiet_secs=settings.orphan_bot_quiet_secs,
-            orphan_connect_grace_secs=_OFF,               # orphan re-ask retired
+            # Re-enabled 2026-09-15 with the STT finalize retry in place: three
+            # of 81 caller turns that day got no transcript at all, and in every
+            # one the caller said "Hello?" 4-14 s later into silence. The window
+            # opens at 3.5 s, past the retried final's p90 (2.26 s).
+            orphan_connect_grace_secs=settings.orphan_connect_grace_secs,
+            max_orphan_asks=2,
             orphan_transcript_lookback_secs=settings.orphan_transcript_lookback_secs,
             max_nudges=settings.max_nudges,
             no_words_timeout_secs=_OFF,                   # dead-air clock retired
@@ -4119,6 +4321,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             d = watchdog_decide(flags, now, cfg)
             apply_decision(flags, d, now)
 
+            if (flags["user_started_t"] > flags["transcript_t"]
+                    and 2.0 < now - flags["user_started_t"] < 3.05):
+                # Orphan diagnostics, once per unheard turn (at ~2-3 s).
+                logger.info("watchdog: no transcript %.1fs after onset — kind %s since stop %.1f "
+                            "since voice %.1f since bot_stop %.1f asks %d",
+                            now - flags["user_started_t"], d.kind,
+                            now - flags["user_stopped_t"] if flags["user_stopped_t"] else -1.0,
+                            now - flags["voice_tick_t"] if flags["voice_tick_t"] else -1.0,
+                            now - flags["bot_stopped_t"], flags["orphan_asks"])
             if d.kind == NONE:
                 # Idle fallback for the turn pipecat's idle controller cannot see:
                 # its timer starts on BotStoppedSpeaking while the caller is quiet,
@@ -4177,7 +4388,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                             "corr=%s", d.detail, bridge_line, corr)
                 await task.queue_frames([TTSSpeakFrame(bridge_line, append_to_context=False)])
                 continue
-            # Retired branches (idle/orphan/stall/deaf) are disabled by config;
+            if d.kind == ORPHAN_ASK:
+                # The caller audibly spoke (VAD), the STT returned nothing even
+                # after the finalize retries, and the bot has been quiet since.
+                # Admit it rather than sit in silence until they say "Hello?".
+                diag.bump("orphan_reasks")
+                logger.info("orphan: %.1fs since the caller stopped and no transcript — "
+                            "asking them to say it again corr=%s", d.detail, corr)
+                await task.queue_frames([TTSSpeakFrame(orphan_text, append_to_context=True)])
+                continue
+            # Retired branches (idle/stall/deaf) are disabled by config;
             # reaching one means the sentinel values above were changed — say so.
             logger.warning("watchdog: unexpected decision %s corr=%s", d.kind, corr)
 

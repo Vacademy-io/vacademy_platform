@@ -15,6 +15,7 @@ STT accuracy (the stub transcribes perfectly), audio quality, vendor outages."""
 from __future__ import annotations
 
 import argparse
+import logging
 import asyncio
 import json
 import sys
@@ -42,14 +43,18 @@ def _load_wav(path: Path) -> np.ndarray:
 # ending: a clip cut mid-word made it hold EVERY caller turn open for the full
 # 5 s stop-timeout. Picked by the Say text; anything else uses the long clip.
 CLIPS = {k: _load_wav(FIXTURE_DIR / "caller" / f"caller_{k}_8k.wav")
-         for k in ("yes_go_ahead", "yes", "hello", "haan", "cut_the_call", "good_morning", "long")}
+         for k in ("yes_go_ahead", "yes", "hello", "haan", "cut_the_call", "good_morning", "long",
+                   # A short answer, a 0.45 s breath, then a long sentence — the
+                   # shape Smallest Pulse DROPPED on the founder's 2026-09-15 calls
+                   # (VAD stop inside the breath → finalize → the rest never lands).
+                   "pause_then_long", "haan_pause_long", "yga_pause_long")}
 _CLIP_FOR = {"yes, go ahead.": "yes_go_ahead", "yes.": "yes", "hello.": "hello", "hello?": "hello",
              "haan.": "haan", "good morning.": "good_morning",
              "i don't need this. cut the call, thank you.": "cut_the_call"}
 
 
-def clip_for(text: str, secs: float) -> np.ndarray:
-    key = _CLIP_FOR.get(text.strip().lower())
+def clip_for(text: str, secs: float, clip: str | None = None) -> np.ndarray:
+    key = clip or _CLIP_FOR.get(text.strip().lower())
     if key:
         return CLIPS[key]
     return CLIPS["long"][: int(secs * SR_LINE)]
@@ -67,6 +72,7 @@ class Say:
     offset: float = 0.0
     stt_latency: float = 0.55           # Sarvam final after the voice stops
     finals: List[str] | None = None     # split into several finals (fragments)
+    clip: str | None = None             # CLIPS key, when the text has no clip of its own
 
 
 @dataclass
@@ -84,6 +90,10 @@ class Scenario:
     # the cached-sentence path (own audio context, synchronous frames) runs for
     # real. Non-empty also keeps the agent's speech_cache_mode FULL.
     cache_warm: List[str] = field(default_factory=list)
+    # Needs the REAL STT (python -m sim.timing --real-stt): the check is about
+    # what the vendor transcribes from the fixture audio, not the pipeline.
+    # Skipped by "all" without the flag.
+    real_stt: bool = False
 
 
 # ── the simulated line ──────────────────────────────────────────────────────
@@ -114,7 +124,7 @@ class Line:
         return bool(self.bot) and self.now() < self.bot[-1][1]
 
 
-def build(scenario: Scenario, line: Line, verbose: bool = False):
+def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool = False):
     from pipecat.frames.frames import (Frame, InputAudioRawFrame, InterruptionFrame,
                                        LLMContextFrame, LLMFullResponseEndFrame,
                                        LLMFullResponseStartFrame, LLMTextFrame,
@@ -287,7 +297,24 @@ def build(scenario: Scenario, line: Line, verbose: bool = False):
         async def connected(self):
             await self._call_event_handler("on_client_connected", None)
 
-    stt = SimSTT()
+    if real_stt:
+        # The production STT (STT_PROVIDER from the env), fed the fixture audio
+        # at line rate. Its finals are tapped here so the report and the checks
+        # see exactly what the pipeline saw.
+        from pipecat.frames.frames import InterimTranscriptionFrame
+        from app.providers import build_stt
+        stt = build_stt(SR_LINE)
+        _orig_push = stt.push_frame
+
+        async def _tap(frame, direction=FrameDirection.DOWNSTREAM):
+            if (isinstance(frame, TranscriptionFrame)
+                    and not isinstance(frame, InterimTranscriptionFrame) and frame.text.strip()):
+                line.finals.append((line.now(), frame.text.strip()))
+                log("STT final:", repr(frame.text.strip()))
+            await _orig_push(frame, direction)
+        stt.push_frame = _tap
+    else:
+        stt = SimSTT()
     llm = SimLLM()
     tts = SimTTS()
     pending: List[Say] = list(scenario.caller)
@@ -315,7 +342,7 @@ def build(scenario: Scenario, line: Line, verbose: bool = False):
                         due = (not (line.bot_speaking() and line.bot[-1] is iv)) and line.now() >= iv[1] + s.offset
                     if due:
                         pending.remove(s); speaking = s; pos = 0; spoken_frames = 0
-                        clip = clip_for(s.text, s.secs)
+                        clip = clip_for(s.text, s.secs, s.clip)
                         total_frames = len(clip) // frame_n
                         line.caller.append([line.now(), line.now() + total_frames / 50])
                         log("CALLER starts:", repr(s.text), f"({total_frames / 50:.2f}s)")
@@ -328,12 +355,15 @@ def build(scenario: Scenario, line: Line, verbose: bool = False):
                 await inp.push_audio_frame(InputAudioRawFrame(chunk.tobytes(), SR_LINE, 1))
                 if spoken_frames >= total_frames:
                     s = speaking; speaking = None
+                    if real_stt:
+                        continue                    # the vendor decides what was said
                     finals = s.finals or [s.text]
 
                     async def _emit(finals=finals, lat=s.stt_latency):
                         await asyncio.sleep(lat)
                         for k, f in enumerate(finals):
-                            await stt.emit(f)
+                            if f:                       # "" = the STT returned nothing
+                                await stt.emit(f)
                             if k + 1 < len(finals):
                                 await asyncio.sleep(0.5)
                     inp.create_task(_emit())
@@ -378,14 +408,15 @@ def _warm_cache(tts, agent: Dict[str, Any], lines: List[str]) -> None:
             raise RuntimeError(f"cache warm refused {norm!r}")
 
 
-async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = False) -> Dict[str, Any]:
+async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = False,
+                       real_stt: bool = False) -> Dict[str, Any]:
     from app import bot as b
     ctx = json.loads(json.dumps(ctx))
     ctx["agent"]["speech_cache_mode"] = "FULL" if scenario.cache_warm else "OFF"
     ctx["agent"]["voiceModulation"] = 1.0
     ctx["corr"] = f"sim-{scenario.key}"
     line = Line()
-    transport, providers = build(scenario, line, verbose)
+    transport, providers = build(scenario, line, verbose, real_stt)
     if scenario.cache_warm:
         _warm_cache(providers["tts"], ctx["agent"], scenario.cache_warm)
     outcome = b.CallOutcome(corr=ctx["corr"], context=ctx)
@@ -555,6 +586,68 @@ def chk_fragment_tail(res):
     return f
 
 
+LONG_ANSWER = ("Yes, I take classes in the evening, mostly at the studio near my house, "
+               "and a few students come to my home on weekends")
+_LONG_KEYS = ("classes", "evening", "studio", "students", "weekends")
+
+
+def chk_breath_then_long(res):
+    """A short answer, a breath, then the real answer — all one caller turn.
+    Founder's 2026-09-15 calls: the VAD stopped inside the breath, Smallest
+    finalized on the short part and the long part NEVER arrived (5 sightings).
+    The vendor must deliver the long part, promptly, and the bot must answer
+    it — not the short part, and not with a "say it again"."""
+    f = []
+    if len(res["caller"]) < 2:
+        return ["caller turns missing"]
+    cstart, cend = res["caller"][1]
+    finals = [(t, x) for t, x in res["finals"] if t >= cstart]
+    heard = " ".join(x for _, x in finals).lower()
+    got = [k for k in _LONG_KEYS if k in heard]
+    if len(got) < 4:
+        f.append(f"the long part was dropped: finals after the turn {finals!r}")
+    else:
+        t_long = next(t for t, x in finals if sum(k in x.lower() for k in _LONG_KEYS) >= 2)
+        if t_long - cend > 1.5:
+            f.append(f"long part transcribed {t_long - cend:.2f}s after the caller stopped")
+    texts = " ".join(_assistant_texts(res)).lower()
+    if "say it again" in texts or "didn't catch" in texts:
+        f.append("asked the caller to repeat a turn that was audible and transcribable")
+    prompts = [p for p in res.get("llm_prompts", []) if any(k in p.lower() for k in _LONG_KEYS)]
+    if not prompts:
+        f.append("the model never received the long answer")
+    replies = [iv for iv in res["bot"] if iv[0] >= cend]
+    if not replies:
+        f.append("no bot audio after the caller's answer")
+    elif replies[0][0] - cend > 3.0:
+        f.append(f"reply started {replies[0][0] - cend:.2f}s after the caller stopped")
+    # One generation for the whole turn. A run on the short part alone (or on a
+    # mid-sentence fragment) is the bot answering before the caller finished.
+    if res.get("llm_runs", 0) > 2:
+        f.append(f"{res['llm_runs']} generations — answered a partial turn (short part or fragment) "
+                 f"before the caller finished: {[p[:40] for p in res.get('llm_prompts', [])[1:]]}")
+    if any(iv[0] < cend - 0.3 for iv in res["bot"] if iv[0] > cstart + 0.5):
+        f.append("bot audio started while the caller was still talking")
+    return f
+
+
+def chk_unheard_turn(res):
+    """The caller spoke, the STT returned nothing (3 of 81 turns on 2026-09-15).
+    Within ~7 s the bot must ask them to say it again — not sit silent until
+    the 8 s nudge or the caller's own "Hello?"."""
+    f = []
+    if len(res["caller"]) < 2:
+        return ["caller turns missing"]
+    cend = res["caller"][1][1]
+    texts = " ".join(_assistant_texts(res)).lower()
+    if "say it again" not in texts and "didn't catch" not in texts:
+        f.append("never asked the caller to repeat an unheard turn")
+    asks = [iv for iv in res["bot"] if cend + 3.0 <= iv[0] <= cend + 7.5]
+    if not asks:
+        f.append(f"no bot audio 3-7.5 s after the unheard turn (bot: {res['bot']})")
+    return f
+
+
 def chk_voicemail(res):
     """Call 24089872: the carrier's recording spoke, nobody else did. No nudge,
     no farewell — hang up as soon as the idle clock fires."""
@@ -602,7 +695,32 @@ def chk_cached_opener(res):
     return f
 
 
+_BREATH_REPLIES = [PITCH_Q, "Got it — evenings at the studio, weekends at home. Who sends the daily link right now?"]
+_BREATH_NOTE = "2026-09-15: VAD stop inside a 0.45 s breath; Smallest finalized the short part, the rest was dropped"
+
 SCENARIOS: List[Scenario] = [
+    Scenario("breath_then_long_answer_yes",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("Yes. " + LONG_ANSWER, after_bot_stop=2, offset=0.8, clip="pause_then_long")],
+             replies=_BREATH_REPLIES, checks=chk_breath_then_long, max_secs=45,
+             real_stt=True, note=_BREATH_NOTE),
+    Scenario("breath_then_long_answer_haan",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("Haan. " + LONG_ANSWER, after_bot_stop=2, offset=0.8, clip="haan_pause_long")],
+             replies=_BREATH_REPLIES, checks=chk_breath_then_long, max_secs=45,
+             real_stt=True, note=_BREATH_NOTE),
+    Scenario("breath_then_long_answer_yga",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("Yes, go ahead. " + LONG_ANSWER, after_bot_stop=2, offset=0.8, clip="yga_pause_long")],
+             replies=_BREATH_REPLIES, checks=chk_breath_then_long, max_secs=45,
+             real_stt=True, note=_BREATH_NOTE),
+    Scenario("unheard_turn_gets_a_repeat_request",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("It's a mix of online and studio.", 1.6, after_bot_stop=2, offset=0.8,
+                         finals=[""], stt_latency=0.4)],
+             replies=[PITCH_Q, "Got it. Who sends the daily link right now?"],
+             checks=chk_unheard_turn, max_secs=40,
+             note="2026-09-15: 3 of 81 turns produced no transcript; callers said Hello? into silence"),
     Scenario("voicemail_hangs_up",
              caller=[Say("Your call has been forwarded to voicemail.", 2.4, at=0.3, stt_latency=0.3),
                      Say("At the tone, please record your message.", 2.2, at=4.0, stt_latency=0.3)],
@@ -681,14 +799,27 @@ async def main():
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--out", default="sim_timing.json")
     ap.add_argument("--ci", action="store_true")
+    ap.add_argument("--real-stt", action="store_true",
+                    help="use the production STT (STT_PROVIDER env) on the fixture audio; "
+                         "'all' then includes the real_stt scenarios")
+    ap.add_argument("--app-log", action="store_true",
+                    help="show app.* INFO lines (watchdog/orphan diagnostics) alongside events")
     args = ap.parse_args()
+    if args.app_log:
+        # Only stdlib loggers under app.*; pipecat's loguru stays as-is.
+        h = logging.StreamHandler()
+        h.setFormatter(logging.Formatter("        app: %(message)s"))
+        logging.getLogger("app").addHandler(h)
+        logging.getLogger("app").setLevel(
+            logging.DEBUG if os.environ.get("SIM_APP_DEBUG") else logging.INFO)
     ctx = json.loads((FIXTURE_DIR / "yoga_agent_context.json").read_text(encoding="utf-8"))
-    keys = [s.key for s in SCENARIOS] if args.scenarios == "all" else args.scenarios.split(",")
+    keys = ([s.key for s in SCENARIOS if args.real_stt or not s.real_stt]
+            if args.scenarios == "all" else args.scenarios.split(","))
     results = []
     for k in keys:
         sc = BY_KEY[k]
         try:
-            res = await run_scenario(sc, ctx, args.verbose)
+            res = await run_scenario(sc, ctx, args.verbose, args.real_stt)
         except Exception as e:  # noqa: BLE001
             res = {"key": k, "fails": [f"run error: {type(e).__name__}: {str(e)[:160]}"], "turn_latency": []}
         results.append(res)

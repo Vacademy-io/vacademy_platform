@@ -175,6 +175,12 @@ _CARRIER_PHRASES = (
     # "name and reason." on call 2fc70065 — the tail is three words, so the 1-2
     # word scrap filter cannot reach it, and no human answering a phone says it.
     "name and reason", "your name and", "and reason",
+    # Call screening (Google/Pixel style): "If you record your name and reason
+    # for calling, I'll see if this person is available." The SECOND fragment
+    # matched nothing on calls 612f5e37 / 91d1541e (2026-09-14/15): it cut our
+    # opening at 6 of 221 chars and the model replied to the screener.
+    "see if this person", "this person is available", "if this person",
+    "i'll see if", "ill see if", "person is available",
     # Call-connect bridges. JustDial plays "You are getting connected by Just
     # Dial" to the callee (transcribed as Josh/Job/Jove Dial on 2026-09-15);
     # it counted as the callee speaking first, our opening was SKIPPED on every
@@ -189,6 +195,19 @@ _CARRIER_PHRASES = (
     "आप जिस नंबर", "डायल किया गया नंबर", "उपलब्ध नहीं", "स्विच ऑफ",
     "थोड़ी देर बाद", "व्यस्त है", "संपर्क क्षेत्र", "कृपया बाद में",
 )
+
+
+_SCREENER_PHRASES = ("record your name", "name and reason", "see if this person",
+                     "this person is available", "if this person", "i'll see if",
+                     "ill see if", "person is available")
+
+
+def is_call_screener(text: str) -> bool:
+    """A screening prompt: the phone answered, NOT the person. Our opening plays
+    into the screener's recorder; the human who then picks up has heard none of
+    it, so their first "Hello" must get the opening again."""
+    t = (text or "").casefold()
+    return any(p in t for p in _SCREENER_PHRASES)
 
 
 def is_carrier_announcement(text: str) -> bool:
@@ -372,6 +391,11 @@ def is_fragment_continuation(prev: str, text: str, dt: float, window: float = 1.
     if first.islower() and first.isascii():
         return True                       # "hing", "nd", "some", "me?" — the engine
                                           # only capitalises a sentence START
+    if not first.isascii() and first.isalpha() and len(t.split()) <= 4:
+        # Devanagari has no case to read. "आप कौन बोल रहे" + "हैं?", "…पिता बोल
+        # रहा" + "हूँ।" (calls 91d1541e, 612f5e37): the tail carries the sentence
+        # end, which is exactly why it is the tail.
+        return True
     # Neither piece is punctuated as a sentence and the tail is short: one breath.
     return not t.endswith(_TERMINAL) and len(t.split()) <= 4
 
@@ -425,6 +449,34 @@ def is_echo_of_answer(sentence: str, caller_text: str, bot_question: str = "") -
     return all(_stem(w) in ref for w in content)
 
 
+_WHO_PHRASES = ("who is this", "who's this", "who are you", "who is calling", "who's calling",
+                "who is speaking", "who am i speaking", "kaun bol", "kon bol", "aap kaun",
+                "aap kon", "kaun hai", "kon hai", "kahan se bol", "where are you calling from",
+                "which company", "कौन बोल", "आप कौन", "कहाँ से")
+
+
+def caller_asks_who(text: str) -> bool:
+    """"Who is calling?" in any of the ways callers say it."""
+    t = (text or "").casefold()
+    return any(p in t for p in _WHO_PHRASES)
+
+
+_GOODBYE_WORDS = frozenset({
+    "thank", "thanks", "thankyou", "you", "ok", "okay", "bye", "goodbye", "namaste",
+    "namaskar", "dhanyavaad", "dhanyawad", "shukriya", "theek", "hai", "sure", "great",
+    "fine", "alright", "welcome", "ji", "sir", "ma'am", "maam", "madam", "haan", "yes",
+    "धन्यवाद", "नमस्ते", "ठीक", "है", "जी", "शुक्रिया", "ओके",
+})
+
+
+def caller_says_goodbye(text: str) -> bool:
+    """After OUR goodbye: "Thank you." / "Okay, bye." / "Theek hai ji" is theirs."""
+    if caller_wants_to_end(text):
+        return True
+    ws = _words(text)
+    return 0 < len(ws) <= 5 and all(w in _GOODBYE_WORDS for w in ws)
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))
@@ -434,11 +486,7 @@ def caller_asked_to_repeat(text: str) -> bool:
     # "Who is this?" after the opening IS a request to hear the intro again —
     # the gate dropped "I'm Aarushi, from Vacademy." as already-said and asked
     # the model for a "next step" twice (call 180504b7, 2026-09-15).
-    if any(p in t for p in ("who is this", "who's this", "who are you", "who is calling",
-                            "who's calling", "who is speaking", "who am i speaking",
-                            "kaun bol", "kon bol", "aap kaun", "aap kon", "kaun hai",
-                            "kon hai", "kahan se bol", "where are you calling from",
-                            "which company", "कौन बोल", "आप कौन")):
+    if caller_asks_who(t):
         return True
     return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
         len(ws) <= 5 and bool(ws & {"phir", "फिर", "samajh", "समझ", "sunai", "सुनाई"}))

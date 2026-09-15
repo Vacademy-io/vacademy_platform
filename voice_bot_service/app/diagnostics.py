@@ -211,6 +211,10 @@ class CallDiagnostics:
     # unchanged — call 17be14f2). Each one is a reply-to-nothing that used to
     # re-deliver the intro. Evidence, not a fault.
     empty_runs_blocked: int = 0
+    # Short-answer runs ("Yes." + a breath) dropped because the caller's voice
+    # resumed inside the grace — the whole turn was answered once instead
+    # (bot.RunGuard, 2026-09-15). The fix working, not a fault.
+    short_answer_holds: int = 0
     # Opening clauses dropped because they only parroted the caller's own answer
     # back at them ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"). A high count is the
     # model reaching for the restatement on every turn despite the prompt rule —
@@ -872,6 +876,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "contentFreeTurns": d.content_free_turns,
                 "unsaidReverted": d.unsaid_reverted,
                 "emptyRunsBlocked": d.empty_runs_blocked,
+                "shortAnswerHolds": d.short_answer_holds,
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,

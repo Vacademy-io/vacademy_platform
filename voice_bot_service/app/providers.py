@@ -71,7 +71,8 @@ def _register_saaras_v4() -> bool:
         return False
 
 
-def _smallest_with_finalize_retry(base, retry_secs: float, retries: int):
+def _smallest_with_finalize_retry(base, retry_secs: float, retries: int,
+                                  hold_below: float = 0.0, hold_secs: float = 0.0):
     """Subclass that asks Pulse AGAIN when a caller turn produced no transcript.
 
     pipecat sends `{"type":"finalize"}` the moment our VAD says the caller
@@ -88,14 +89,18 @@ def _smallest_with_finalize_retry(base, retry_secs: float, retries: int):
         return base                       # kill switch: plain pipecat
     import asyncio as _asyncio
     import json as _json
+    import time as _time
     from pipecat.frames.frames import (VADUserStartedSpeakingFrame,
                                        VADUserStoppedSpeakingFrame)
+    from pipecat.services.stt_service import WebsocketSTTService
 
     class _FinalizeRetrySTT(base):
         def __init__(self, *a, **kw):
             super().__init__(*a, **kw)
             self._got_final = True
             self._retry_task = None
+            self._hold_task = None
+            self._speaking_since = 0.0
 
         async def _process_response(self, data):
             # ONLY a real final counts as "it answered". Keepalives and empty
@@ -131,15 +136,51 @@ def _smallest_with_finalize_retry(base, retry_secs: float, retries: int):
             except Exception:
                 logger.warning("stt: finalize retry failed", exc_info=True)
 
-        async def process_frame(self, frame, direction):
-            if isinstance(frame, VADUserStartedSpeakingFrame):
-                self._cancel_retry()
-            await super().process_frame(frame, direction)
-            if isinstance(frame, VADUserStoppedSpeakingFrame):
-                # super() has just sent the first finalize.
+        async def _hold_then_finalize(self, wait: float):
+            """A VAD stop inside the first `hold_below` seconds of a turn is
+            usually a breath ("Uh," … "I think mix"), not the end. Sending
+            finalize there made Pulse return an empty final for the prefix and
+            DROP the rest of the sentence (calls 82c1f95a x2, 91d1541e, 15aadcdb:
+            5-6 s utterances with no transcript at all). Hold it; a new VAD
+            onset inside the hold cancels it and the real stop sends its own."""
+            try:
+                await _asyncio.sleep(wait)
+                ws = getattr(self, "_websocket", None)
+                state = getattr(ws, "state", None)
+                if ws is not None and state is not None and state.name == "OPEN":
+                    await ws.send(_json.dumps({"type": "finalize"}))
                 self._got_final = False
                 self._cancel_retry()
                 self._retry_task = self.create_task(self._retry_finalize())
+            except _asyncio.CancelledError:
+                pass
+
+        async def process_frame(self, frame, direction):
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._cancel_retry()
+                self._cancel_hold()
+                if not self._speaking_since:
+                    self._speaking_since = _time.time()
+            if isinstance(frame, VADUserStoppedSpeakingFrame) and hold_below > 0:
+                spoken = _time.time() - (self._speaking_since or _time.time())
+                if 0 <= spoken < hold_below:
+                    # Everything the base class does EXCEPT the finalize.
+                    await WebsocketSTTService.process_frame(self, frame, direction)
+                    self._cancel_hold()
+                    self._hold_task = self.create_task(self._hold_then_finalize(hold_secs))
+                    return
+            await super().process_frame(frame, direction)
+            if isinstance(frame, VADUserStoppedSpeakingFrame):
+                # super() has just sent the first finalize.
+                self._speaking_since = 0.0
+                self._got_final = False
+                self._cancel_retry()
+                self._retry_task = self.create_task(self._retry_finalize())
+
+        def _cancel_hold(self):
+            t, self._hold_task = getattr(self, "_hold_task", None), None
+            if t is not None and not t.done():
+                t.cancel()
 
     _FinalizeRetrySTT.__name__ = base.__name__
     return _FinalizeRetrySTT
@@ -195,7 +236,8 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
         from pipecat.services.smallest.stt import SmallestSTTService
         stt_cls = _smallest_with_finalize_retry(
             SmallestSTTService, s.smallest_finalize_retry_secs,
-            s.smallest_finalize_retries)
+            s.smallest_finalize_retries,
+            hold_below=s.smallest_hold_below_secs, hold_secs=s.smallest_hold_secs)
         # Per-agent pins arrive as BCP-47 ("hi-IN"); Pulse wants bare codes and
         # has no Hinglish code, "hi" IS the code-switching mode. Unknown → default.
         tag = (language or "").strip().lower()

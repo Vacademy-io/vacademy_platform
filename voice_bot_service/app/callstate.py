@@ -52,6 +52,7 @@ class CallState:
     voice_tick_t: float = 0.0
     # When bot audio last STOPPED (dedupe scope + orphan turn-stealing guard).
     bot_stopped_t: float = 0.0
+    bot_started_t: float = 0.0        # when bot audio last STARTED (stale-bridge drop)
     # When the LLM began composing the CURRENT reply. A reply is "in flight"
     # from here until its audio stops, and there is a ~0.5-1.0s window inside
     # that where the bot is not yet audible — call bc84958c fell into exactly
@@ -63,6 +64,7 @@ class CallState:
     substantive_t: float = 0.0
     # One-shot guards.
     orphan_used: bool = False
+    orphan_asks: int = 0
     # Consecutive caller utterances that produced NO transcript. Reset by any real
     # transcript. This is the "we cannot hear them" signal — see HEARING_FAILED.
     deaf_streak: int = 0
@@ -115,6 +117,7 @@ class WatchdogConfig:
     orphan_window_secs: tuple = (2.5, 10.0)
     orphan_bot_quiet_secs: float = 2.0
     orphan_connect_grace_secs: float = 6.0
+    max_orphan_asks: int = 2
     # Clock-skew guard for the orphan discriminator. transcript_t is stamped from
     # SARVAM's server-side final; user_started_t from pipecat's LOCAL Silero VAD.
     # For short answers the final routinely lands BEFORE Silero even reports the
@@ -211,6 +214,31 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
             and not s.bot_speaking and not s.user_speaking):
         return Decision(ARM_STOP, now - s.end_pending_since)
 
+    # 2c) VAD-orphan: caller audibly spoke, no transcript since the utterance
+    #    BEGAN (finals land mid-speech, so comparing against utterance START is
+    #    the only correct discriminator — the stopped_t variant steamrolled).
+    lo, hi = cfg.orphan_window_secs
+    # ACOUSTIC stop, not the aggregator's: with no transcript the turn stays
+    # open ~5 s (Smart Turn waiting), user_stopped_t is the PREVIOUS turn's,
+    # and the ask came 9.4 s after the caller went quiet (timing sim,
+    # 2026-09-15). voice_tick_t is when the caller's voice was last live.
+    acoustic_stop = (s.voice_tick_t if s.voice_tick_t > s.user_started_t
+                     else s.user_stopped_t)
+    # BEFORE the speaking gate below: with no transcript the aggregator keeps
+    # the turn open (user_speaking) for its 5 s speech timeout, and the ask
+    # would wait for that instead of the caller's actual silence. The window's
+    # low edge (lo) is measured from the acoustic stop, so a caller who is
+    # still talking (fresh voice ticks) can never be talked over.
+    if (not s.bot_speaking and s.deaf_streak < cfg.max_deaf_streak
+            and s.user_started_t > 0 and acoustic_stop > s.user_started_t
+            and not s.orphan_used and s.orphan_asks < cfg.max_orphan_asks
+            and s.transcript_t < s.user_started_t - cfg.orphan_transcript_lookback_secs
+            and acoustic_stop - s.user_started_t >= cfg.orphan_min_utterance_secs
+            and lo <= now - acoustic_stop <= hi
+            and now - s.bot_stopped_t >= cfg.orphan_bot_quiet_secs
+            and now - cfg.connected_at > cfg.orphan_connect_grace_secs):
+        return Decision(ORPHAN_ASK, now - acoustic_stop)
+
     # 3) Hard call-duration cap. (Deliberately BEFORE the speaking check — the
     #    cap is a spend bound and must fire even mid-conversation.)
     if now - cfg.connected_at >= cfg.cap_secs:
@@ -245,19 +273,6 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     #    someone who is answering clearly is worse than admitting the problem.
     if s.deaf_streak >= cfg.max_deaf_streak:
         return Decision(HEARING_FAILED, float(s.deaf_streak))
-
-    # 6) VAD-orphan: caller audibly spoke, no transcript since the utterance
-    #    BEGAN (finals land mid-speech, so comparing against utterance START is
-    #    the only correct discriminator — the stopped_t variant steamrolled).
-    lo, hi = cfg.orphan_window_secs
-    if (s.user_stopped_t > 0 and not s.orphan_used
-            and s.transcript_t < s.user_started_t - cfg.orphan_transcript_lookback_secs
-            and s.user_started_t > 0
-            and s.user_stopped_t - s.user_started_t >= cfg.orphan_min_utterance_secs
-            and lo <= now - s.user_stopped_t <= hi
-            and now - s.bot_stopped_t >= cfg.orphan_bot_quiet_secs
-            and now - cfg.connected_at > cfg.orphan_connect_grace_secs):
-        return Decision(ORPHAN_ASK, now - s.user_stopped_t)
 
     # 6) Idle nudge → capped escalation to hangup. Two clocks:
     #    - `t` (any activity — pauses while either side audibly speaks);
@@ -330,7 +345,13 @@ def apply_decision(s: CallState, d: Decision, now: float) -> None:
     elif d.kind == LLM_BRIDGE:
         s.bridged_reply_t = s.reply_started_t
     elif d.kind == ORPHAN_ASK:
-        s.orphan_used = True
+        s.orphan_asks += 1
+        # Twice per call at most; orphan_used stays the hard stop.
+        s.orphan_used = s.orphan_asks >= 2
+        # The apology is a bot turn: the next tick must not re-fire on the same
+        # silence; the window re-arms only after the caller speaks again.
+        s.user_stopped_t = 0.0
+        s.user_started_t = 0.0
         # Each unheard utterance compounds; a real transcript clears it.
         s.deaf_streak += 1
         s.t = now

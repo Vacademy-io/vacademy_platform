@@ -563,6 +563,13 @@ class TranscriptCollector(FrameProcessor):
             if (self.screener_seen and self._resay_opening is not None
                     and (is_audio_check(text) or caller_checking_presence(text))):
                 self.screener_seen = False
+                if self._is_bot_speaking():
+                    # The opening is still playing into what was the screener;
+                    # the person picked up in the middle of it. Cut it, then
+                    # start it again from the top (call 28570ec0: 12 s of the
+                    # tail, then the whole thing again).
+                    logger.info("turn-gate: person picked up mid-opening — cutting it to restart")
+                    await self.broadcast_interruption()
                 if await self._resay_opening(text, force=True):
                     self._on_transcript(backchannel=True)
                     if self._duck is not None and self._duck.is_ducked():
@@ -1673,7 +1680,8 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("handbacks")
                     try:
-                        await self._request_next_step(self._held_tail)
+                        await self._request_next_step(self._held_tail, kind="all-repeat",
+                                                      attempt=self._next_steps)
                     except Exception:
                         logger.exception("no-repeat: next-step request failed — handing back")
                         line = self._handbacks[self._handback % len(self._handbacks)]
@@ -1871,6 +1879,35 @@ class RunGuard(FrameProcessor):
         self._note_run()
         await self.push_frame(frame, direction)
 
+    # A turn Smart Turn closed in the middle of a clause: no sentence-final
+    # mark and the last word is one that never ends a sentence ("अ, Rishika के
+    # previous class में" — call 28570ec0, 2026-09-15: the run answered the
+    # half-sentence by re-asking the question, the caller's "eighty three
+    # percent" came 2 s later). Smallest punctuates finished sentences.
+    _CLAUSE_TAILS = frozenset({
+        "में", "के", "की", "का", "को", "से", "पर", "और", "या", "कि", "तो", "ने", "भी", "ही",
+        "mein", "ke", "ki", "ka", "ko", "se", "par", "aur", "ya", "ki", "toh", "bhi",
+        "and", "or", "but", "the", "a", "an", "to", "of", "in", "on", "at", "for", "with",
+        "is", "are", "was", "my", "his", "her", "our", "their", "so", "because", "that",
+    })
+
+    def _ends_mid_clause(self, msgs) -> bool:
+        for msg in reversed(msgs):
+            role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
+            if role != "user":
+                return False
+            content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+            text = str(content or "").strip()
+            if text.startswith("[") and text.endswith("]"):
+                continue                              # a steering cue, look behind it
+            if not text:
+                return False
+            if text[-1] in ".!?।":
+                return False
+            last = re.split(r"[\s,]+", text.casefold())[-1] if text else ""
+            return last in self._CLAUSE_TAILS
+        return False
+
     def _note_run(self):
         try:
             msgs = self._context.get_messages()
@@ -1925,9 +1962,11 @@ class RunGuard(FrameProcessor):
                     return
                 self._last_allowed_fp = fp
                 words = self._caller_words(msgs)
-                if self._grace > 0 and len(msgs) > 2 and 0 < words <= self._max_words:
-                    logger.info("run-guard: holding the run for a %d-word answer (quiet %.2fs)",
-                                words, min(self._quiet_for(), 99.0))
+                unfinished = self._grace > 0 and len(msgs) > 2 and self._ends_mid_clause(msgs)
+                if self._grace > 0 and len(msgs) > 2 and (0 < words <= self._max_words or unfinished):
+                    logger.info("run-guard: holding the run for a %d-word %s (quiet %.2fs)",
+                                words, "unfinished clause" if unfinished and words > self._max_words
+                                else "answer", min(self._quiet_for(), 99.0))
                     self._held = self.create_task(self._release(frame, direction))
                     return
                 logger.info("run-guard: run passed (%d caller words)", words)
@@ -4056,6 +4095,17 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         await task.queue_frames([LLMMessagesAppendFrame(
             messages=[{"role": "user", "content": cue}], run_llm=True)])
 
+    def _bridge_is_stale(text: str) -> bool:
+        return (text == bridge_line and flags["bridged_reply_t"] > 0
+                and flags["bot_started_t"] > flags["bridged_reply_t"])
+
+    # Same test at SYNTHESIS time: with per-sentence contexts the TTS pauses
+    # frame processing while a context plays, so a line that was fresh when
+    # it passed the gate can be minutes stale when the vendor gets to it.
+    if hasattr(tts, "skip_text_if"):
+        tts.skip_text_if = lambda text: ("the reply it covered for is already playing"
+                                         if _bridge_is_stale(text) else None)
+
     no_repeat = NoRepeatGate(
         enabled=lambda: settings.no_repeat_enabled,
         end_forced=lambda: outcome.end_forced,
@@ -4067,9 +4117,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # language break the caller hears immediately — and these lines bypass
         # the prompt's SCRIPT rule entirely because they never touch the LLM.
         request_next_step=_ask_for_next_step,
-        drop_stale_bridge=lambda text: (text == bridge_line
-                                        and flags["bridged_reply_t"] > 0
-                                        and flags["bot_started_t"] > flags["bridged_reply_t"]),
+        drop_stale_bridge=_bridge_is_stale,
         handbacks=(NoRepeatGate._HANDBACK_EN
                    if _agent_language(agent)[0] == "en-IN" else None),
         # PlayedTranscriptRecorder's record of what the caller actually heard —
@@ -4550,7 +4598,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 diag.bump("llm_bridges")
                 logger.info("llm bridge: reply composing %.1fs with no audio — saying %r "
                             "corr=%s", d.detail, bridge_line, corr)
-                await task.queue_frames([TTSSpeakFrame(bridge_line, append_to_context=False)])
+                # From the sentinel, NOT task.queue_frames: a frame queued at
+                # the source waits behind the LLM service, whose process_frame
+                # is blocked for the whole generation — so the bridge could
+                # only ever play AFTER the reply it was covering for (call
+                # 28570ec0, 2026-09-15: "एक सेकंड।" 25 s late, after a 4-sentence
+                # answer). Pushed here it reaches the TTS while the model is
+                # still thinking, which is the only time it is worth saying.
+                await sentinel.push_frame(TTSSpeakFrame(bridge_line, append_to_context=False))
                 continue
             if d.kind == ORPHAN_ASK:
                 # The caller audibly spoke (VAD), the STT returned nothing even

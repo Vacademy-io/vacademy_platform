@@ -4360,7 +4360,7 @@ async def test_an_all_repeat_reply_after_an_answer_asks_for_the_next_step():
     rec = _NRRec()
     asked = []
 
-    async def _next_step(held):
+    async def _next_step(held, kind="", attempt=0):
         asked.append(held)
     caller = {"t": "Yes"}
     g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
@@ -4475,7 +4475,7 @@ async def test_a_filler_only_reply_after_the_caller_spoke_asks_for_the_next_step
     rec = _NRRec()
     asked = []
 
-    async def _next_step(held):
+    async def _next_step(held, kind="", attempt=0):
         asked.append(held)
     caller = {"t": ". अ, हाँ, बोल सकते हैं sir"}
     g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
@@ -4814,6 +4814,47 @@ def test_call_alert_line_fires_for_non_green(caplog):
         rp._alert(o, dg.to_payload(dg.CallDiagnostics()))
     lines = [r.getMessage() for r in caplog.records if "call-alert" in r.getMessage()]
     assert len(lines) == 1 and "OPENING_REPLAYED:RED" in lines[0] and "alert-t" in lines[0], lines
+
+
+def test_run_guard_holds_a_turn_that_ends_mid_clause():
+    """Call 28570ec0: Smart Turn closed 'अ, Rishika के previous class में' — six
+    words, no sentence mark, ending in a postposition — and the run answered
+    the half-sentence. That shape is held like a short answer."""
+    g = b.RunGuard(_FakeCtx(), enabled=lambda: True, short_answer_grace_secs=0.5)
+    ends = g._ends_mid_clause
+    assert ends([{"role": "user", "content": "अ, Rishika के previous class में"}])
+    assert ends([{"role": "user", "content": "I want a good environment and"}])
+    assert ends([{"role": "user", "content": "I take classes in the"},
+                 {"role": "user", "content": "[That was their ANSWER…]"}]), "a cue after the words"
+    assert not ends([{"role": "user", "content": "Rishabh के previous class में eighty three percent है।"}])
+    assert not ends([{"role": "user", "content": "It's a mix of online and studio."}])
+    assert not ends([{"role": "user", "content": "Yes, go ahead"}])
+
+
+@pytest.mark.asyncio
+async def test_stale_bridge_is_skipped_at_synthesis_time():
+    """Call 28570ec0: 'एक सेकंड।' passed the gate fresh, then waited behind a
+    25 s reply inside the TTS and played after it. The synthesis-time hook
+    is the last gate."""
+    from app import providers as pv
+
+    class _Base:
+        sent = []
+
+        async def _push_tts_frames(self, src_frame, *a, **k):
+            self.sent.append(src_frame.text)
+
+    class _F:
+        def __init__(self, text): self.text = text
+    G = pv._letterless_guard(_Base)
+    g = G()
+    stale = {"v": False}
+    g.skip_text_if = lambda text: "stale" if (text == "एक सेकंड।" and stale["v"]) else None
+    await g._push_tts_frames(_F("एक सेकंड।"))
+    stale["v"] = True
+    await g._push_tts_frames(_F("एक सेकंड।"))
+    await g._push_tts_frames(_F("Class 10."))
+    assert _Base.sent == ["एक सेकंड।", "Class 10."], _Base.sent
 
 
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():

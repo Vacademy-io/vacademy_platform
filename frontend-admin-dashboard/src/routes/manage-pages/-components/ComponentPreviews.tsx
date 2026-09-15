@@ -12,6 +12,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { renderHtmlPage, renderHtmlSection } from '../-utils/catalogue-html';
+import { isHexDark } from '../-utils/style-engine';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { PRODUCT_PAGE_OPEN_URL, AUDIENCE_CAMPAIGN_OPEN_URL } from '@/constants/urls';
@@ -471,6 +472,10 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
     const surfaceStyle: React.CSSProperties = bgImage
         ? { backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } // design-lint-ignore: page-builder background image
         : { backgroundColor: props.backgroundColor || '#F8FAFC' /* design-lint-ignore: page-builder default color */ };
+    // Mirrors the learner hero: a dark author colour flips the band's tokens
+    // to light ink, so the canvas shows the same legible headline the live
+    // page will — not navy-on-navy that "looks broken" only once published.
+    const darkBand = !bgImage && isHexDark(props.backgroundColor);
 
     const visibleButtons = (props.left?.buttons ?? []).filter((b: any) => b?.text?.trim());
     const visibleChips = (props.statChips ?? []).filter(
@@ -558,7 +563,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
         const imgs = [...collage, '', '', '', '', ''].slice(0, 5);
         return (
             <section
-                className="w-full overflow-hidden"
+                className={`w-full overflow-hidden ${darkBand ? 'dark' : ''}`}
                 style={surfaceStyle}
             >
                 <div className="mx-auto flex max-w-6xl items-stretch gap-6 px-8 py-10">
@@ -597,7 +602,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
 
     return (
         <section
-            className={`w-full py-10 px-8 ${isSplit ? '' : 'text-center'}`}
+            className={`w-full py-10 px-8 ${isSplit ? '' : 'text-center'} ${darkBand ? 'dark' : ''}`}
             style={surfaceStyle}
         >
             <div className={`mx-auto max-w-6xl ${isSplit ? 'grid grid-cols-2 gap-8 items-center' : 'flex flex-col items-center gap-4'}`}>

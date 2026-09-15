@@ -6,6 +6,7 @@ import { Clock } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { Preferences } from "@capacitor/preferences";
 import { safeParse } from "@/lib/storage";
+import { isUntimedPlayMode } from "@/lib/untimed-play-mode";
 
 export function SectionTimer() {
   const { t } = useTranslation("questionTest");
@@ -38,6 +39,8 @@ export function SectionTimer() {
   }, []);
   useEffect(() => {
     if (!currentTimer?.isRunning) return;
+    // Practice tests and surveys have no clock, section-wise or otherwise.
+    if (isUntimedPlayMode(playMode)) return;
 
     const timer = setInterval(() => {
       const newTime = Math.max(0, currentTimer.timeLeft - 1000);
@@ -53,7 +56,7 @@ export function SectionTimer() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [currentTimer?.isRunning, currentTimer?.timeLeft, currentSection]);
+  }, [currentTimer?.isRunning, currentTimer?.timeLeft, currentSection, playMode]);
 
   if (!currentTimer) return null;
 

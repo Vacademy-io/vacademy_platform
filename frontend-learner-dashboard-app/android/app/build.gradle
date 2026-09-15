@@ -89,7 +89,7 @@ android {
 		shikshanation {
 			dimension "client"
 			applicationId "com.shikshanation.new.app"
-			versionCode 12
+			versionCode 13
 			versionName "2.5.7"
 			// Change app name for Fivesep
 			resValue "string", "app_name", "Shiksha Nation"

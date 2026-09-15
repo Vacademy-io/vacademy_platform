@@ -97,7 +97,7 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
-                       is_screener_hold)
+                       is_screener_hold, spoken_key)
 
 logger = logging.getLogger(__name__)
 
@@ -481,6 +481,17 @@ class TranscriptCollector(FrameProcessor):
                          or (self._duck is not None and self._duck.has_pending_audio()))):
                 logger.info("turn-gate: fragment continuation %r of %r — absorbing, "
                             "not interrupting", text[:24], self._last_text[-24:])
+                # "Hell" + "o" over our opening (call f28888b2): the pieces
+                # never read as a hello, the LLM answered "Hell o" with the
+                # pitch, and the caller heard a call that "started from the
+                # middle". Joined, it is the hello — say the opening again.
+                joined = "".join((self._last_text + text).split())
+                if (self._resay_opening is not None
+                        and (caller_checking_presence(joined) or is_audio_check(joined))
+                        and await self._resay_opening(joined)):
+                    self._last_text = (self._last_text + " " + text.casefold()).strip()
+                    self._last_text_t = now
+                    return
                 t = self._outcome.transcript
                 if t and t[-1].get("role") == "user":
                     t[-1]["text"] = (t[-1]["text"] + " " + text).strip()
@@ -1429,9 +1440,12 @@ class NoRepeatGate(FrameProcessor):
             # pending that is absent from the played transcript is un-recorded.
             if self._pending and self._played_text is not None:
                 try:
-                    played = normalize_spoken(self._played_text() or "")
+                    played_raw = self._played_text() or ""
+                    played = spoken_key(played_raw)
                     for norm, topic, prev_exemplar in self._pending:
-                        if norm and norm not in played:
+                        if norm and spoken_key(norm) not in played:
+                            logger.info("no-repeat: not in the played text (tail %r)",
+                                        played_raw[-100:])
                             for i in range(len(self._spoken) - 1, -1, -1):
                                 if self._spoken[i] == norm:
                                     del self._spoken[i]
@@ -3478,6 +3492,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # travel with the REPORT, which survives restarts, not the log.
     def _silence_cause(gap: float) -> str:
         if gap < 2.5:
+            return ""
+        if flags["bot_speaking"]:
+            # The caller broke in while we were still talking: whatever the
+            # last stop stamp says, the line was not silent (call f28888b2:
+            # 18.8 s of a pitch counted as "awaiting_playout").
             return ""
         now = time.time()
         if flags["ducked_since"] > 0:

@@ -4691,6 +4691,17 @@ def test_screener_hold_lines():
         assert not f(t), t
 
 
+def test_spoken_key_ignores_vendor_punctuation():
+    """Call f28888b2: the played text (rebuilt from Smallest's word timestamps)
+    lacks our "—", "50+" and "।"; the sentence must still count as heard."""
+    from app.turntake import spoken_key as k
+    ours = "हमारे यहाँ 50+ faculties हैं और सभी full-time payroll पर हैं — वो सिर्फ class लेते हैं।"
+    played = "हमारे यहाँ 50 faculties हैं और सभी full time payroll पर हैं वो सिर्फ class लेते हैं"
+    assert k(ours) == k(played)
+    assert k("तो आकाश सिर्फ एक faculty से नहीं पढ़ रहा — उसके पीछे") in k("x " + "तो आकाश सिर्फ एक faculty से नहीं पढ़ रहा उसके पीछे" + " y")
+    assert k("Is this number on WhatsApp?") not in k("And you send it to all your students on WhatsApp?")
+
+
 def test_caller_asks_who_shapes():
     from app.turntake import caller_asks_who as f
     for t in ("आप कौन बोल रहे हैं?", "Aap kaun bol rahi ho", "Who is this?", "who's calling", "आप कहाँ से बोल रहे हैं",

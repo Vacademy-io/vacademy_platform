@@ -548,6 +548,18 @@ def normalize_spoken(sentence: str) -> str:
     return " ".join((sentence or "").split()).casefold()
 
 
+def spoken_key(text: str) -> str:
+    """Letters, digits and combining marks only, casefolded, no spaces — for
+    "was this sentence in what played?" The played transcript is rebuilt from
+    the vendor's per-word timestamps, which do not carry our punctuation ("—",
+    "50+", "।"), so a plain substring test failed on exactly those sentences
+    and the gate un-recorded lines the caller had heard for 27 s (call
+    f28888b2, 2026-09-15) — then said them again."""
+    import unicodedata
+    return "".join(ch for ch in (text or "").casefold()
+                   if unicodedata.category(ch)[0] in ("L", "N", "M"))
+
+
 # ── asking the same QUESTION twice, in different words ─────────────────────
 # Sentence similarity catches a re-rendered sentence but not a paraphrase. Live
 # call 597aeb3f asked for the class twice — "Aur wo abhi kis class mein hai?"

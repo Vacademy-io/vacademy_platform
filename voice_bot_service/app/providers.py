@@ -755,12 +755,33 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
     ), "sarvam", s.sarvam_tts_model)
 
 
+def _letterless_guard(cls):
+    """Subclass `cls` so a sentence with no letter or digit never reaches the
+    vendor. Smallest renders a bare "." as 9 s of hum (measured 2026-09-15:
+    '.' → 9.13 s of audio, no words; call af7e93bd — "नब्बे तीन परसेंट..."
+    became "…परसेंट.." + "." inside pipecat's own text aggregator, downstream
+    of every gate of ours). The skip happens before a context is created, so
+    the sequencer sees nothing to wait for."""
+    class _NoLetterless(cls):
+        async def _push_tts_frames(self, src_frame, *args, **kwargs):
+            text = getattr(src_frame, "text", "") or ""
+            if not any(ch.isalnum() for ch in text):
+                logger.info("tts: letterless sentence %r skipped — the vendor hums on it",
+                            text.strip()[:12])
+                return None
+            return await super()._push_tts_frames(src_frame, *args, **kwargs)
+    _NoLetterless.__name__ = cls.__name__
+    _NoLetterless.__qualname__ = cls.__qualname__
+    return _NoLetterless
+
+
 def _build_smallest(cls, s, model: str, voice: str, speed: float,
                     language: str | None = None):
     """Construct Smallest.ai Lightning. Split out so build_tts can wrap it in one
     try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
     which only responds to prose), and its voice palettes are per-model — the API
     hard-rejects a cross-model voice, which is a mute call."""
+    cls = _letterless_guard(cls)
     return cls(
         api_key=s.smallest_api_key,
         sample_rate=s.smallest_sample_rate,

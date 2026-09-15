@@ -4689,6 +4689,45 @@ async def test_a_restatement_only_reply_asks_for_the_next_step_twice_then_speaks
         "budget spent: better a weak line than silence"
 
 
+@pytest.mark.asyncio
+async def test_ellipses_never_reach_the_tts_as_their_own_sentence():
+    """Call af7e93bd (first gemma4 call): "नब्बे तीन परसेंट..." — pipecat's TTS
+    aggregator split it into "…परसेंट.." and a bare ".", and Smallest hummed
+    for ~10 s on the dot. Mid-sentence "..." is a comma, at the end one stop."""
+    rec = _NRRec()
+    g = _no_repeat(rec, caller="ninety three percent")
+    await _reply(g, "अच्छा! ", "ये तो अच्छी बात है सर। ", "नब्बे तीन परसेंट... ",
+                 "You set your timings once... and every morning the class just appears.")
+    joined = "".join(rec.text)
+    assert ".." not in joined, joined
+    assert "नब्बे तीन परसेंट." in joined, joined
+    # The gate's own splitter ends a sentence at "..." — that is fine, as long
+    # as what reaches the TTS ends in ONE stop and no dot travels alone.
+    assert "timings once." in joined and "and every morning" in joined, joined
+
+
+@pytest.mark.asyncio
+async def test_smallest_never_receives_a_letterless_sentence():
+    """Belt to the gate's braces: whatever splits text upstream, a bare "." must
+    not be synthesised — Smallest returns ~9 s of hum for it (af7e93bd)."""
+    from app import providers as pv
+
+    class _Base:
+        sent = []
+
+        async def _push_tts_frames(self, src_frame, *a, **k):
+            self.sent.append(src_frame.text)
+
+    class _F:
+        def __init__(self, text): self.text = text
+    G = pv._letterless_guard(_Base)
+    g = G()
+    for t in (".", "..", " ", "।", "नब्बे तीन परसेंट.", "Class 10.", "?!"):
+        await g._push_tts_frames(_F(t))
+    assert _Base.sent == ["नब्बे तीन परसेंट.", "Class 10."], _Base.sent
+    assert G.__name__ == "_Base", "engine_of / _tag_engine key on the class name"
+
+
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
     from app import callstate as cs
     cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,

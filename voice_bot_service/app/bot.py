@@ -1406,6 +1406,14 @@ class NoRepeatGate(FrameProcessor):
         # style in later replies (call c9aa4062, 2026-09-09).
         if self._emitted and text and not text[0].isspace():
             text = " " + text
+        # An ellipsis is not a sentence. The gate's splitter keeps "..." on the
+        # sentence, but pipecat's TTS text aggregator splits it again into
+        # "…परसेंट.." and a bare "." — and Smallest renders a lone "." as a
+        # multi-second hum (call af7e93bd, 2026-09-15: "नब्बे तीन परसेंट..."
+        # → 10 s of drone). A pause mid-sentence becomes a comma; at the end,
+        # one full stop.
+        text = re.sub(r"\.{2,}(\s*$)", r".\1", text)
+        text = re.sub(r"\s*\.{2,}\s*", ", ", text)
         # A 10-digit run is a phone number, and a TTS reads "9425677707" as a
         # nine-billion numeral (call 4565478b, 2026-09-10: "क्या मैं ये link आपके
         # WhatsApp number 9425677707 पर भेज दूँ?"). Space the digits so it is

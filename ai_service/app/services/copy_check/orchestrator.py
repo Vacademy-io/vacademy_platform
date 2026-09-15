@@ -8,6 +8,7 @@ and between questions — matching the Java cancellation model.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
@@ -29,6 +30,12 @@ from .validator import validate_and_cap
 from .enforce_bridge import apply_enforcement
 
 logger = logging.getLogger(__name__)
+
+# A silent job looks dead to Java's stale-job sweeper, which requeues it and
+# would then run the same copy twice. Long phases (a 30-page handwriting read,
+# Mathpix enrichment) post no step change of their own, so the running job
+# re-posts its current step this often to say "still here".
+HEARTBEAT_SECONDS = float(os.getenv("COPY_CHECK_HEARTBEAT_SECONDS", "60"))
 
 
 def describe_failure(exc: BaseException) -> str:
@@ -110,6 +117,32 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     rubric_snapshot = load_snapshot(db, assessment_id)
     rubric_resolver = RubricResolver(rubric_snapshot, _llm_for_criteria)
 
+    current_step = {"step": "QUEUED"}
+
+    async def _progress(step: str, **kwargs: Any) -> None:
+        current_step["step"] = step
+        await callbacks.progress(callback_base, process_id, job_id, step=step, **kwargs)
+
+    async def _heartbeat() -> None:
+        while True:
+            await asyncio.sleep(HEARTBEAT_SECONDS)
+            try:
+                await callbacks.progress(callback_base, process_id, job_id, step=current_step["step"])
+            except Exception as e:  # best-effort; the next beat will try again
+                logger.debug("copy-check job %s heartbeat failed: %s", job_id, e)
+
+    heartbeat = asyncio.create_task(_heartbeat())
+
+    async def _stop_heartbeat() -> None:
+        """Before any terminal callback: a beat in flight alongside complete/failed
+        could land after it and be applied to a finished process."""
+        if not heartbeat.done():
+            heartbeat.cancel()
+            try:
+                await heartbeat
+            except (asyncio.CancelledError, Exception):
+                pass
+
     try:
         # 0. Rubric coherence: generate any missing rubrics ONCE, persist them,
         # and reuse for every student — so two students on the same question are
@@ -159,7 +192,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         render = _render_client()
         if not render.is_configured:
             raise RuntimeError("RENDER_WORKER_URL not configured on ai_service")
-        await callbacks.progress(callback_base, process_id, job_id, step="LAYOUT_OCR_STARTED")
+        await _progress("LAYOUT_OCR_STARTED")
         layout_map = await render.submit_and_wait(
             pdf_url, dpi=200, poll_interval=3.0, timeout=300.0,
             cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
@@ -175,9 +208,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         # rather than `preferred_model`: reading the page is not a place to let
         # a picker choose a text-only model and silently fall back to noise.
         cancellation.check(job_id, process_id)
-        await callbacks.progress(
-            callback_base, process_id, job_id, step="HANDWRITING_READ",
-        )
+        await _progress("HANDWRITING_READ")
         try:
             layout_map = await vision_transcript.enrich_layout_with_vision(
                 pdf_url, layout_map, llm,
@@ -206,9 +237,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 f"{quality.get('avg_chars_per_page')} chars/page) — needs manual evaluation"
             )
 
-        await callbacks.progress(
-            callback_base, process_id, job_id, step="LAYOUT_OCR_DONE", layout_map=layout_map,
-        )
+        await _progress("LAYOUT_OCR_DONE", layout_map=layout_map)
 
         # 2. Selective math fallback (cheap if there are no flagged lines).
         cancellation.check(job_id, process_id)
@@ -218,7 +247,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         # Java flips the process to EVALUATING on this step. Python never sent
         # it, so that branch was dead and the UI showed "OCR done" for most of
         # the run — the grading loop is the long part.
-        await callbacks.progress(callback_base, process_id, job_id, step="GRADING")
+        await _progress("GRADING")
         total_awarded = 0.0
         total_max = 0.0
         evaluated = 0
@@ -316,6 +345,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         )
 
         # 5. Done.
+        await _stop_heartbeat()
         await callbacks.complete(
             callback_base, process_id, job_id,
             total_marks_awarded=round(total_awarded, 2),
@@ -347,9 +377,12 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         )
     except (cancellation.Cancelled, OcrCancelled):
         logger.info(f"copy-check job {job_id} cancelled")
+        await _stop_heartbeat()
         await callbacks.failed(callback_base, process_id, job_id, "Cancelled by user")
     except Exception as e:
         logger.exception(f"copy-check job {job_id} failed")
+        await _stop_heartbeat()
         await callbacks.failed(callback_base, process_id, job_id, str(e))
     finally:
+        heartbeat.cancel()
         cancellation.cleanup(job_id, process_id=process_id)

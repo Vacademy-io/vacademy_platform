@@ -39,6 +39,7 @@ public class AssessmentWorkflowEventPublisher {
     public static final String ASSESSMENT_REMINDER_BEFORE_START = "ASSESSMENT_REMINDER_BEFORE_START";
     public static final String ASSESSMENT_REATTEMPT_GRANTED = "ASSESSMENT_REATTEMPT_GRANTED";
     public static final String ASSESSMENT_REATTEMPT_REQUESTED = "ASSESSMENT_REATTEMPT_REQUESTED";
+    public static final String ASSESSMENT_AI_EVALUATION_COMPLETED = "ASSESSMENT_AI_EVALUATION_COMPLETED";
 
     @Autowired
     WorkflowTriggerClient workflowTriggerClient;
@@ -373,6 +374,25 @@ public class AssessmentWorkflowEventPublisher {
         putIfPresent(ctx, "studentEmail", registration.getUserEmail());
         putIfPresent(ctx, "studentMobile", registration.getPhoneNumber());
         putIfPresent(ctx, "username", registration.getUsername());
+    }
+
+    /**
+     * Fires ASSESSMENT_AI_EVALUATION_COMPLETED when a bulk AI copy-check batch
+     * finishes - every uploaded copy is graded, failed, or waiting for a person.
+     * Lets an institute wire "email the coordinator" / "post to the staff group"
+     * automations to it; the counts ride along for the message.
+     */
+    public void publishAiEvaluationBatchCompleted(Assessment assessment, String instituteId,
+                                                  String batchId, Map<String, Object> counts) {
+        if (assessment == null || instituteId == null) {
+            return;
+        }
+        Map<String, Object> ctx = contextBuilder.forAssessment(assessment, instituteId);
+        putIfPresent(ctx, "batchId", batchId);
+        if (counts != null) {
+            ctx.putAll(counts);
+        }
+        emit(ASSESSMENT_AI_EVALUATION_COMPLETED, assessment.getId(), instituteId, ctx);
     }
 
     private void emit(String eventName, String assessmentId, String instituteId, Map<String, Object> ctx) {

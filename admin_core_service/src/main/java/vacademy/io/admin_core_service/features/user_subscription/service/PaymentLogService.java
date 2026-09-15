@@ -98,7 +98,7 @@ public class PaymentLogService {
     private UserPlanRepository userPlanRepository;
 
     /**
-     * How far ahead the "Upcoming" card looks. Obligations falling due inside this window are
+     * How far ahead the Upcoming card looks. Obligations falling due inside this window are
      * reported as expected money, not as due.
      */
     @Value("${payments.due.upcoming-days:30}")
@@ -1173,7 +1173,7 @@ public class PaymentLogService {
      *
      * Due is deliberately NOT derived from payment_log: that table only holds payments someone
      * actually raised, so an overdue instalment nobody has paid does not appear in it at all. Nor
-     * is it "plan price minus payments": that counted every abandoned checkout and every coupon
+     * is it plan price minus payments: that counted every abandoned checkout and every coupon
      * discount as debt. Obligations live on the plan — see
      * {@link UserPlanRepository#DUE_OBLIGATION_CTES} for exactly what counts.
      */

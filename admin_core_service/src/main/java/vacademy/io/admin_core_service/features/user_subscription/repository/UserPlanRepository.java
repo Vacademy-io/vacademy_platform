@@ -342,6 +342,15 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * admin activated it by hand. That may be an offline payment nobody recorded or a free
          * grant; the card shows the count as a hygiene hint rather than guessing it is owed.
          * Sub-org learners are excluded — their practice pays at org level.
+         *
+         * <p>The invoice arm counts invoices raised against the institute directly. They carry no
+         * user_plan and no package session, so they count only for the whole institute, never
+         * inside a course-filtered view. REJECTED is a voided invoice: visible in the table
+         * (struck through) but neither collected nor owed.
+         *
+         * <p>The SQL text deliberately carries no comments: an apostrophe, quote, semicolon or
+         * colon inside a native-query comment reaches the query parser and has broken production
+         * before. Explain here, not there.
          */
         String DUE_OBLIGATION_CTES = """
                 WITH cpo_sched AS (
@@ -433,10 +442,6 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                               AND psli.status = 'ACTIVE'
                               AND psli.package_session_id IN (:packageSessionIds)))
                 ), invoice_obligations AS (
-                  -- Invoices raised against the institute directly. They carry no user_plan and no
-                  -- package session, so they count only for the whole institute, never inside a
-                  -- course-filtered view. REJECTED is a voided invoice: visible in the table
-                  -- (struck through) but neither collected nor owed.
                   SELECT inv.id AS user_plan_id,
                          inv.user_id AS user_id,
                          'Invoice' AS course_name,
@@ -476,8 +481,8 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * Every enrolment one learner holds at an institute, priced individually — the Due side
          * view.
          *
-         * Deliberately NOT filtered by status. {@link #findOutstandingLearners} answers "how much
-         * is owed" and so bills only live plans; this answers "why", and an admin cannot check that
+         * Deliberately NOT filtered by status. {@link #findOutstandingLearners} answers how much
+         * is owed and so bills only live plans; this answers why, and an admin cannot check that
          * a cancelled enrolment was excluded if the row is missing entirely. {@code countsTowardsDue}
          * carries the same rule as the card — a live CPO or subscription plan (or invoice) — so the
          * rows that DO count always re-add to the figure on it. A one-time purchase is returned with
@@ -519,6 +524,23 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          *
          * The PAID side is pre-aggregated and joined rather than looked up per plan: as a
          * correlated subquery this took 33 s on an institute with 8,380 live plans, 172 ms this way.
+         *
+         * <p>Two details of the {@code paid} CTE, explained here because the SQL text carries no
+         * comments (an apostrophe, quote or colon inside a native-query comment has broken the
+         * query parser in production before):
+         * <ul>
+         *   <li>ONE invoice per payment log. A single payment can be mapped to more than one invoice
+         *       (duplicate invoices do get generated for the same payment), and joining the mapping
+         *       table directly fanned that payment out into a row per invoice, so the sum counted
+         *       the same money once per invoice. The LATERAL collapses it back to a single row,
+         *       preferring an invoice belonging to the institute being queried so the scoping
+         *       predicate can never drop a payment that is also mapped to another institute.</li>
+         *   <li>The ORDER BY inside that LATERAL uses a CASE rather than a boolean DESC: in Postgres
+         *       DESC means NULLS FIRST, so a NULL institute_id would outrank the wanted institute
+         *       and silently drop the payment. The id is a tie-break so the pick is deterministic.</li>
+         *   <li>An invoice carries no package session, so invoice payments count only for the whole
+         *       institute and never leak into a course-filtered view.</li>
+         * </ul>
          */
         @Query(value = DUE_OBLIGATION_CTES + """
                 , paid AS (
@@ -526,23 +548,11 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     FROM payment_log pl
                     LEFT JOIN user_plan up ON up.id = pl.user_plan_id
                     LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
-                    -- ONE invoice per payment log. A single payment can be mapped to more than
-                    -- one invoice (duplicate invoices do get generated for the same payment), and
-                    -- joining the mapping table directly fanned that payment out into a row per
-                    -- invoice, so SUM(payment_amount) counted the same money once per invoice —
-                    -- Suchbliss reported ~2x collected off one such ₹7,200 payment. The lateral
-                    -- collapses it back to a single row, preferring an invoice belonging to the
-                    -- institute being queried so the scoping predicate below can never drop a
-                    -- payment that is mapped to another institute's invoice as well.
                     LEFT JOIN LATERAL (
                       SELECT i2.institute_id, i2.user_id
                         FROM invoice_payment_log_mapping m
                         JOIN invoice i2 ON i2.id = m.invoice_id
                        WHERE m.payment_log_id = pl.id
-                       -- CASE, not `(... = :instituteId) DESC`: in Postgres DESC means NULLS
-                       -- FIRST, so a NULL institute_id would outrank the institute we want
-                       -- and silently drop the payment from this institute's total. id is a
-                       -- tie-break so the pick is deterministic.
                        ORDER BY CASE WHEN i2.institute_id = :instituteId THEN 0 ELSE 1 END,
                                 i2.created_at, i2.id
                        LIMIT 1
@@ -557,8 +567,6 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                                   WHERE psli.enroll_invite_id = ei.id
                                     AND psli.status = 'ACTIVE'
                                     AND psli.package_session_id IN (:packageSessionIds))))
-                       -- An invoice carries no package session, so it is counted only for the
-                       -- whole institute, never leaked into a course-filtered view.
                        OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
                 ), live AS (
                   SELECT * FROM obligations WHERE is_live
@@ -583,7 +591,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("upcomingDays") int upcomingDays);
 
         /**
-         * The learners behind the "Due payment" card: who owes money now, how much, what falls due
+         * The learners behind the Due card: who owes money now, how much, what falls due
          * next, and (for CPO) their instalment position. Built on the same
          * {@link #DUE_OBLIGATION_CTES}, so these rows always add up to the card above them.
          *

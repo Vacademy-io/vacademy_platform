@@ -42,7 +42,6 @@ import { exportEntriesToCsv, fetchAllPaymentLogs } from '../-utils/exportPayment
 import {
     classifyEntry,
     isDueEligibleEntry,
-    computeBillingFromEntries,
     computePaymentSummary,
     summarizeBucketAmount,
 } from '../-utils/paymentSummary';
@@ -218,9 +217,9 @@ export function TransactionsView() {
     );
 
     /**
-     * What learners were billed, paid, and still owe. Payment records can't answer this: a
-     * part-paid instalment plan leaves one PAID row and no trace of the balance, and an enrolment
-     * that never paid leaves no row at all. Same window and course scope as the table.
+     * What came in, what learners with access still owe, and what falls due next. Payment records
+     * can't answer the last two: an overdue instalment nobody paid has no row at all, and a lapsed
+     * renewal leaves only the failed attempt. Same window and course scope as the table.
      */
     const { data: billingSummary } = useQuery({
         queryKey: [
@@ -239,24 +238,25 @@ export function TransactionsView() {
         retry: false,
     });
 
-    /**
-     * Prefer the server figures; without them (older backend, failed request) derive what we can
-     * from the rows on screen — that still prices each enrolment properly, it just can't see
-     * enrolments that have never paid anything.
-     */
-    const entryBilling = useMemo(() => computeBillingFromEntries(allEntries), [allEntries]);
-    const billing = billingSummary
-        ? {
-              totalBilled: billingSummary.total_billed,
-              collected: billingSummary.collected,
-              due: billingSummary.due,
-              currency: billingSummary.currency || '',
-              planCount: billingSummary.plan_count,
-              settledPlanCount: billingSummary.settled_plan_count,
-          }
-        : entryBilling.planCount > 0
-          ? entryBilling
-          : null;
+    // No client-side fallback for the balance cards: pricing the rows on screen is exactly the
+    // model that reported abandoned checkouts and coupon discounts as debt. Without the server
+    // figures Due and Upcoming show a dash.
+    const billing = useMemo(
+        () =>
+            billingSummary
+                ? {
+                      collected: billingSummary.collected,
+                      due: billingSummary.due,
+                      upcoming: billingSummary.upcoming,
+                      upcomingDays: billingSummary.upcoming_days,
+                      learnersOwing: billingSummary.learners_owing,
+                      learnersUpcoming: billingSummary.learners_upcoming,
+                      activatedWithoutPaymentCount: billingSummary.activated_without_payment_count,
+                      currency: billingSummary.currency || '',
+                  }
+                : null,
+        [billingSummary]
+    );
 
     const pagedData: PaymentLogsResponse | undefined = useMemo(() => {
         if (!allData) return undefined;
@@ -431,6 +431,8 @@ export function TransactionsView() {
             setView('balances');
             return;
         }
+        // Upcoming is informational — there is no list of not-yet-due learners to open.
+        if (key === 'upcoming') return;
         setView('records');
         // Clicking the active tile again clears back to "all".
         setStatusBucket(key === statusBucket ? 'total' : key);
@@ -438,12 +440,14 @@ export function TransactionsView() {
 
     const handleSummarySelect = (key: SummaryStatusKey) => handleSegmentSelect(key);
 
-    // Segmented switch. The first four narrow the payment records; the last swaps in the learners
-    // who still owe money, counted from the balances query rather than from the records.
+    // Segmented switch. The first five narrow the payment records; the last swaps in the learners
+    // who owe money, counted from the balances query rather than from the records. Abandoned is
+    // the stale-checkout pile — a warm-lead list for counsellors, not money in flight.
     const segments: StatusSegment[] = [
         { key: 'total', label: 'All', count: allEntries.length },
         { key: 'paid', label: 'Paid', count: paymentSummary.paid.count },
         { key: 'pending', label: 'Pending', count: paymentSummary.pending.count },
+        { key: 'abandoned', label: 'Abandoned', count: paymentSummary.abandoned.count },
         { key: 'failed', label: 'Failed', count: paymentSummary.failed.count },
         { key: 'due', label: 'Due', count: outstanding?.totalElements ?? 0 },
     ];
@@ -549,7 +553,8 @@ export function TransactionsView() {
         setDetailOpen(true);
     };
 
-    // Subline: "N payments · ₹X collected · M need attention".
+    // Subline: "N payments · ₹X collected · M need attention". Abandoned checkouts are not
+    // "attention" — nothing can be done about a gateway order that has already expired.
     const collectedAmount = summarizeBucketAmount(paymentSummary.paid.amountByCurrency).display;
     const needAttention = paymentSummary.pending.count + paymentSummary.failed.count;
 
@@ -620,13 +625,11 @@ export function TransactionsView() {
                     </div>
                 </div>
 
-                {/* KPI tiles — Total / Collected / Due / Failed (same row as the dashboard) */}
+                {/* KPI tiles — Collected / Due / Upcoming / Pending / Failed (same row as the dashboard) */}
                 <PaymentKpiCards
                     summary={paymentSummary}
                     billing={billing}
-                    totalCount={allEntries.length}
                     isLoading={isLoadingPayments}
-                    truncated={allData?.truncated}
                     activeKey={view === 'balances' ? 'due' : statusBucket}
                     onSelect={handleSummarySelect}
                 />

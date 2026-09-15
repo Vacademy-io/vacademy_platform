@@ -18,7 +18,16 @@ public interface LearnerPlanBreakdownProjection {
 
     Double getPaid();
 
-    /** True when the status is one the institute still bills — ACTIVE / PENDING_FOR_PAYMENT. */
+    /** Overdue on this enrolment right now. */
+    Double getDue();
+
+    /** Falling due on this enrolment within the upcoming horizon. */
+    Double getUpcoming();
+
+    /**
+     * True for a live CPO / subscription plan or an unpaid invoice — the kinds that can owe. A
+     * one-time purchase or a dead plan carries false and contributes nothing to the learner's due.
+     */
     Boolean getCountsTowardsDue();
 
     String getCurrency();

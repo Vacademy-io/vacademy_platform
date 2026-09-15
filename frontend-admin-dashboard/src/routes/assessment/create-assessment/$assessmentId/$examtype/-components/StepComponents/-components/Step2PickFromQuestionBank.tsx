@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Archive, MagnifyingGlass, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import { MyInput } from '@/components/design-system/input';
 import { MyPagination } from '@/components/design-system/pagination';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getInstituteId } from '@/constants/helper';
 import { useKnowledgeBases } from '@/routes/knowledge-base/-hooks';
+import { curriculumOnly, ownOnly } from '@/routes/knowledge-base/-components/curriculum/curriculum';
 import {
     filterQuestionBank,
     parseSourceMeta,
@@ -77,7 +79,11 @@ const Step2PickFromQuestionBank = ({
     const [totalPages, setTotalPages] = useState(0);
     const [selected, setSelected] = useState<Map<string, QuestionBankQuestion>>(new Map());
 
-    const { data: knowledgeBases } = useKnowledgeBases();
+    const { data: allKnowledgeBases } = useKnowledgeBases();
+    // Own bases stay chips; curriculum books (up to ~100 for an institute on
+    // classes 1-12) go in one dropdown instead of a wall of chips.
+    const knowledgeBases = useMemo(() => ownOnly(allKnowledgeBases), [allKnowledgeBases]);
+    const curriculumBases = useMemo(() => curriculumOnly(allKnowledgeBases), [allKnowledgeBases]);
     const instituteId = getInstituteId();
 
     const sectionName = form.getValues(`section.${index}.sectionName`) || `Section ${index + 1}`;
@@ -273,19 +279,36 @@ const Step2PickFromQuestionBank = ({
                         </MyButton>
                     </div>
 
-                    {(knowledgeBases?.length ?? 0) > 0 && (
+                    {(knowledgeBases.length > 0 || curriculumBases.length > 0) && (
                         <div className="flex flex-col gap-1">
                             <p className="text-caption text-neutral-500">Knowledge base</p>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 {chip('Any', '', kbId === '', () => {
                                     setPage(0);
                                     setKbId('');
                                 })}
-                                {knowledgeBases?.map((kb) =>
+                                {knowledgeBases.map((kb) =>
                                     chip(kb.name, kb.id, kbId === kb.id, () => {
                                         setPage(0);
                                         setKbId(kb.id);
                                     })
+                                )}
+                                {curriculumBases.length > 0 && (
+                                    <MyDropdown
+                                        currentValue={
+                                            curriculumBases.find((kb) => kb.id === kbId)?.name ?? ''
+                                        }
+                                        placeholder="Curriculum book…"
+                                        dropdownList={curriculumBases.map((kb) => ({
+                                            label: kb.name,
+                                            value: kb.id,
+                                        }))}
+                                        handleChange={(v) => {
+                                            setPage(0);
+                                            setKbId(v);
+                                        }}
+                                        contentClassName="max-h-72 overflow-y-auto"
+                                    />
                                 )}
                             </div>
                         </div>

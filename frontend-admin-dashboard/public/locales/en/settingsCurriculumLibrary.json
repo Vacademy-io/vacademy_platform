@@ -12,8 +12,8 @@
         "secondary": "9–10",
         "senior": "11–12"
     },
-    "pickAtLeastOne": "Pick at least one class, or nothing will show.",
-    "hint": "Only the chosen boards and classes appear under Knowledge Base → Curriculum and in the assessment builder. Everything else stays hidden. No credits are charged for using them.",
+    "pickAtLeastOne": "Pick at least one board and one class, or nothing will show.",
+    "hint": "Only the chosen boards and classes appear under Knowledge Base → Curriculum and in the assessment builder; everything else stays hidden. There is no unlock fee — generating questions and asking use AI credits as usual.",
     "save": "Save",
     "saving": "Saving…",
     "toast": {

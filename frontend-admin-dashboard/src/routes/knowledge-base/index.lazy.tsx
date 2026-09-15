@@ -208,6 +208,11 @@ function KnowledgeBaseListPage() {
     // configured for them (Settings → AI → Curriculum library).
     const bases = useMemo(() => ownOnly(allBases), [allBases]);
     const curriculum = useMemo(() => curriculumOnly(allBases), [allBases]);
+    // The setting can be switched off elsewhere while this tab is open; the
+    // trigger unmounts, so the selection must follow it.
+    useEffect(() => {
+        if (tab === 'curriculum' && !isLoading && curriculum.length === 0) setTab('mine');
+    }, [tab, isLoading, curriculum.length]);
 
     useEffect(() => {
         setNavHeading(t('navHeading'));

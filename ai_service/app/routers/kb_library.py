@@ -274,6 +274,17 @@ async def unlock(
     if listing["status"] != "PUBLISHED":
         raise HTTPException(400, "This library is not available")
 
+    # Curriculum textbooks are not for sale: access comes from the institute's
+    # Curriculum library setting (V517). The catalogue never shows them, but a
+    # hand-typed URL or direct API call must not charge 50 credits for
+    # something the setting grants for free.
+    if listing.get("collection") == kb_library.CURRICULUM:
+        raise HTTPException(
+            400,
+            "This is a curriculum textbook. Enable it under Settings → AI → "
+            "Curriculum library instead of unlocking it.",
+        )
+
     # The catalogue already hides archived bases, but a direct link would still
     # reach here — and charging for an archived corpus is a refund waiting to
     # happen.

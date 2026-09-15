@@ -227,7 +227,10 @@ def upsert_listing(
     collection: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create or edit the catalogue entry. Never changes status — publishing is
-    a separate, deliberate act."""
+    a separate, deliberate act.
+
+    `collection` None on an existing listing leaves the stored value alone
+    (see the UPDATE); it is set by the curriculum loader, not by the dialog."""
     existing = db.execute(
         text("SELECT id FROM knowledge_base_listing WHERE knowledge_base_id = :kb_id"),
         {"kb_id": kb_id},
@@ -251,7 +254,13 @@ def upsert_listing(
                        cover_file_id = :cover_file_id, cover_alt = :cover_alt,
                        subject = :subject, level = :level, board = :board,
                        language = :language, tags = CAST(:tags AS JSONB),
-                       sort_weight = :sort_weight, collection = :collection,
+                       sort_weight = :sort_weight,
+                       -- NULL means "not mentioned", never "clear it": the
+                       -- publisher's Edit dialog does not know about
+                       -- collection, and an ordinary cover/summary edit that
+                       -- nulled it would turn a curriculum textbook into a paid
+                       -- library and revoke every institute's access.
+                       collection = COALESCE(CAST(:collection AS VARCHAR), collection),
                        updated_at = CURRENT_TIMESTAMP
                  WHERE knowledge_base_id = :kb_id
                 """

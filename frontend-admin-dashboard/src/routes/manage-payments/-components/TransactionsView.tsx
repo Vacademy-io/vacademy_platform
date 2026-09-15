@@ -48,6 +48,7 @@ import {
 } from '../-utils/paymentSummary';
 import { ALL_TIME_RANGE, type DateRangeValue } from '../-utils/dateRange';
 import { resolvePaymentLogInvoices } from '../-utils/resolvePaymentLogInvoices';
+import { derivePaymentPlanOptions, filterEntriesByPaymentPlan } from '../-utils/paymentPlanFilter';
 
 const PAGE_SIZE = 20;
 
@@ -96,6 +97,9 @@ export function TransactionsView() {
     // normally has no row to filter to. It swaps the table rather than narrowing it.
     const [view, setView] = useState<'records' | 'balances'>('records');
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
+    // Payment plan is the one detailed filter the API can't apply; it narrows the loaded set
+    // locally, before the KPI tiles are computed, so it behaves like the server-side ones.
+    const [selectedPaymentPlans, setSelectedPaymentPlans] = useState<SelectOption[]>([]);
     const [selectedPaymentSources, setSelectedPaymentSources] = useState<SelectOption[]>([]);
     const [selectedPaymentTypes, setSelectedPaymentTypes] = useState<SelectOption[]>([]);
     const [packageSessionFilter, setPackageSessionFilter] = useState<PackageSessionFilter>({});
@@ -179,9 +183,20 @@ export function TransactionsView() {
         staleTime: 30000,
     });
 
-    // Everything the API returned for the current filters — the KPI tiles always describe this set,
-    // so the numbers don't collapse to whichever tile is selected.
-    const allEntries = useMemo(() => allData?.entries ?? [], [allData]);
+    // Everything the API returned for the current filters. The plan picker offers the plans seen
+    // in this set — before the plan filter narrows it — so choosing one never hides the others.
+    const loadedEntries = useMemo(() => allData?.entries ?? [], [allData]);
+    const paymentPlanOptions = useMemo(
+        () => derivePaymentPlanOptions(loadedEntries),
+        [loadedEntries]
+    );
+
+    // The loaded set narrowed to the selected plans — the KPI tiles always describe this set, so
+    // the numbers don't collapse to whichever tile is selected.
+    const allEntries = useMemo(
+        () => filterEntriesByPaymentPlan(loadedEntries, selectedPaymentPlans),
+        [loadedEntries, selectedPaymentPlans]
+    );
 
     const paymentSummary = useMemo(() => computePaymentSummary(allEntries), [allEntries]);
 
@@ -438,6 +453,7 @@ export function TransactionsView() {
     const detailedFilterCount =
         selectedPaymentTypes.length +
         selectedUserPlanStatuses.length +
+        selectedPaymentPlans.length +
         selectedPaymentSources.length +
         (packageSessionFilter.packageSessionIds?.length ||
             (packageSessionFilter.packageId ? 1 : 0));
@@ -461,6 +477,14 @@ export function TransactionsView() {
                     setSelectedUserPlanStatuses((prev) => prev.filter((x) => x.value !== s.value)),
             })
         );
+        selectedPaymentPlans.forEach((p) =>
+            chips.push({
+                id: `payment-plan-${p.value}`,
+                label: `Payment plan: ${p.label}`,
+                onRemove: () =>
+                    setSelectedPaymentPlans((prev) => prev.filter((x) => x.value !== p.value)),
+            })
+        );
         selectedPaymentSources.forEach((s) =>
             chips.push({
                 id: `source-${s.value}`,
@@ -479,6 +503,7 @@ export function TransactionsView() {
     }, [
         selectedPaymentTypes,
         selectedUserPlanStatuses,
+        selectedPaymentPlans,
         selectedPaymentSources,
         packageSessionFilter,
     ]);
@@ -498,6 +523,7 @@ export function TransactionsView() {
         setStatusBucket('total');
         setView('records');
         setSelectedUserPlanStatuses([]);
+        setSelectedPaymentPlans([]);
         setSelectedPaymentSources([]);
         setSelectedPaymentTypes([]);
         setPackageSessionFilter({});
@@ -724,6 +750,12 @@ export function TransactionsView() {
                                 selectedUserPlanStatuses={selectedUserPlanStatuses}
                                 onUserPlanStatusesChange={(statuses) => {
                                     setSelectedUserPlanStatuses(statuses);
+                                    setCurrentPage(0);
+                                }}
+                                paymentPlanOptions={paymentPlanOptions}
+                                selectedPaymentPlans={selectedPaymentPlans}
+                                onPaymentPlansChange={(plans) => {
+                                    setSelectedPaymentPlans(plans);
                                     setCurrentPage(0);
                                 }}
                                 selectedPaymentSources={selectedPaymentSources}

@@ -1,0 +1,19 @@
+{
+    "loadingVideo": "Chargement de la vidéo...",
+    "retry": "Réessayer",
+    "workInProgress": "Travail en cours",
+    "videoBeingGenerated": "La vidéo est en cours de génération...",
+    "generatingHint": "Cela peut prendre quelques minutes. Veuillez revenir plus tard.",
+    "vimeoPlayerTitle": "Lecteur vidéo Vimeo",
+    "toast": {
+        "jumpedTo": "Vidéo déplacée à {{time}}"
+    },
+    "errors": {
+        "refreshFailed": "Échec de l'actualisation de l'URL de la vidéo",
+        "loadFailed": "Échec du chargement de la vidéo",
+        "loadUrlsFailed": "Échec du chargement des URL de la vidéo",
+        "urlExpiredRefreshing": "L'URL de la vidéo a expiré. Actualisation en cours...",
+        "playbackError": "Erreur de lecture vidéo : {{message}}",
+        "unknownError": "Erreur inconnue"
+    }
+}

@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UseFormReturn } from 'react-hook-form';
-import { InviteLinkFormValues, relatedCourses } from '../GenerateInviteLinkSchema';
+import { InviteLinkFormValues, getRelatedCourses } from '../GenerateInviteLinkSchema';
 import { Switch as ShadSwitch } from '@/components/ui/switch';
 
 interface InviteViaEmailCardProps {
@@ -8,6 +10,12 @@ interface InviteViaEmailCardProps {
 }
 
 const ShowRelatedCoursesCard = ({ form }: InviteViaEmailCardProps) => {
+    // getRelatedCourses() reads i18next.t() live (it used to be a `relatedCourses` constant
+    // frozen at module-import time, before the namespace could ever load). Recompute it here
+    // — memoized on the active language — instead of importing a frozen array.
+    const { i18n } = useTranslation();
+    const relatedCourses = useMemo(() => getRelatedCourses(), [i18n.language]);
+
     return (
         <Card className="mb-4">
             <CardHeader>

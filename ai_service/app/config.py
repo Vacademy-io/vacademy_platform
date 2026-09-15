@@ -88,6 +88,21 @@ class Settings(BaseSettings):
     # frame-regen path — bumping the default raises the floor without
     # changing the env override. Override via `LLM_DEFAULT_MODEL` if needed.
     llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "google/gemini-3.1-pro-preview")
+    # CRM Call Intelligence (call_intelligence_service). Founder decision
+    # 2026-09-11: on by default for every AI-agent call at no extra charge, so
+    # the per-call cost has to be near zero. Measured on OpenRouter against a
+    # real 209 s Hindi call: GLM-5.3-flash ~$0.0004 per call for the analysis;
+    # for transcription, whisper-large-v3-turbo ($0.0002/min) locked onto the
+    # English screener in the first 30 s and rendered the whole Hindi call as
+    # garbled English (with or without language=hi), whisper-large-v3 dropped
+    # sentences, gpt-4o-mini-transcribe ($0.0017/min) was clean Devanagari with
+    # code-switching intact — so that is the default. Both overridable.
+    # (The render-box Whisper this replaces failed 45% of runs "at capacity".)
+    call_intel_llm_model: str = os.getenv("CALL_INTEL_LLM_MODEL", "z-ai/glm-5.3-flash")
+    call_intel_stt_model: str = os.getenv("CALL_INTEL_STT_MODEL", "openai/gpt-4o-mini-transcribe")
+    # "openrouter" (default) | "render" — the render worker stays as the fallback
+    # when OpenRouter transcription fails and RENDER_SERVER_URL is configured.
+    call_intel_stt_backend: str = os.getenv("CALL_INTEL_STT_BACKEND", "openrouter")
     # NOTE: for ai-service in production this default is DEAD — the Deployment
     # spec sets LLM_DEFAULT_MODEL=google/gemini-2.5-flash as a literal env value,
     # so that is what actually serves the learner chatbot. Change the model in the
@@ -217,6 +232,9 @@ class Settings(BaseSettings):
     # Default value works for dev/stage if matching common_service
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "357638792F423F4428472B4B6250655368566D597133743677397A2443264629")
     jwt_algorithm: str = "HS256"
+    # Voice sockets verify any token they are given. Flip this on once every
+    # client ships one, and unauthenticated calls are refused outright.
+    voice_require_auth: bool = os.getenv("VOICE_REQUIRE_AUTH", "false").lower() == "true"
     jwt_token_expiry_minutes: int = 43200  # 30 days in minutes (matching Java 2592000000ms)
 
     # Internal service-to-service auth.
@@ -226,6 +244,32 @@ class Settings(BaseSettings):
     # MUST be set in production; if unset, the internal endpoints reject all
     # requests (no implicit fallback).
     internal_service_token: Optional[str] = os.getenv("INTERNAL_SERVICE_TOKEN")
+
+    # ── MCP server (Model Context Protocol) ────────────────────────────────
+    # Global kill switch. Off by default: the endpoint, its OAuth routes and the
+    # discovery documents only exist when this is on. Per-institute enablement is
+    # a separate gate (MCP_SERVER_SETTING), so flipping this on grants nobody
+    # anything until an institute opts in.
+    mcp_server_enabled: bool = os.getenv("MCP_SERVER_ENABLED", "false").lower() == "true"
+    # Public URL of the MCP endpoint. It is BOTH the OAuth issuer and the RFC 8707
+    # resource identifier, so it must be the externally reachable URL and must be
+    # HTTPS (the SDK exempts localhost for local development).
+    mcp_issuer_url: str = os.getenv(
+        "MCP_ISSUER_URL",
+        f"{os.getenv('AI_SERVICE_PUBLIC_URL', 'https://backend-stage.vacademy.io/').rstrip('/')}/ai-service/mcp",
+    )
+    # Where the browser is sent to log in and approve a connection.
+    admin_dashboard_url: str = os.getenv("ADMIN_DASHBOARD_URL", "https://dash.vacademy.io")
+    # Encrypts the platform tokens stored against each grant. REQUIRED when the
+    # MCP server is enabled — startup refuses to mount it otherwise, rather than
+    # persisting credentials in clear.
+    mcp_token_encryption_key: Optional[str] = os.getenv("MCP_TOKEN_ENCRYPTION_KEY")
+    mcp_access_token_ttl_seconds: int = int(os.getenv("MCP_ACCESS_TOKEN_TTL_SECONDS", "3600"))
+    mcp_refresh_token_ttl_seconds: int = int(os.getenv("MCP_REFRESH_TOKEN_TTL_SECONDS", str(30 * 24 * 3600)))
+    # A parked /authorize request: long enough to log in, short enough to matter.
+    mcp_auth_txn_ttl_seconds: int = int(os.getenv("MCP_AUTH_TXN_TTL_SECONDS", "900"))
+    # An issued authorization code. OAuth 2.1 recommends a maximum of 10 minutes.
+    mcp_auth_code_ttl_seconds: int = int(os.getenv("MCP_AUTH_CODE_TTL_SECONDS", "300"))
 
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 

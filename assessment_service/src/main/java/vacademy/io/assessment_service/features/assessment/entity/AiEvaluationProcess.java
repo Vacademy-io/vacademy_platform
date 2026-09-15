@@ -2,6 +2,7 @@ package vacademy.io.assessment_service.features.assessment.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
@@ -68,9 +69,28 @@ public class AiEvaluationProcess {
         @Column(name = "completed_at")
         private Date completedAt;
 
+        /**
+         * Which instance picked this job up, and when (V43).
+         *
+         * Dispatch used to be a plain in-JVM @Async call, so a pod dying between the
+         * INSERT and the work starting left the job PENDING until the sweeper noticed.
+         * A claim lets any replica drain the queue, and claimedAt is what makes an
+         * abandoned claim recoverable rather than permanent.
+         */
+        @Column(name = "claimed_by", length = 120)
+        private String claimedBy;
+
+        @Column(name = "claimed_at")
+        private Date claimedAt;
+
         @Column(name = "created_at", insertable = false, updatable = false)
         private Date createdAt;
 
-        @Column(name = "updated_at", insertable = false, updatable = false)
+        // A real heartbeat: every status/progress save moves it, so "no activity
+        // for N minutes" can be read off this column. It used to be DB-default
+        // only, which made a row's age its start time and a 200-copy bulk run
+        // look stale while it was still queued.
+        @UpdateTimestamp
+        @Column(name = "updated_at")
         private Date updatedAt;
 }

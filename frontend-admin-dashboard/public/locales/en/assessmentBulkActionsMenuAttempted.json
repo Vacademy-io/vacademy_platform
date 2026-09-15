@@ -1,0 +1,14 @@
+{
+    "menu": {
+        "provideReattempt": "Provide Reattempt",
+        "revaluate": "Revaluate",
+        "questionWise": "Question Wise",
+        "entireAssessment": "Entire Assessment",
+        "releaseResult": "Release Result",
+        "exportReports": "Export Reports (ZIP)"
+    },
+    "actionInfo": {
+        "selectedStudents_one": "{{count}} student",
+        "selectedStudents_other": "{{count}} students"
+    }
+}

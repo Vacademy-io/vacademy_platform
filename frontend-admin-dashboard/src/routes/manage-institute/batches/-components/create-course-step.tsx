@@ -7,6 +7,7 @@ import { Plus } from '@phosphor-icons/react';
 import { AddCourseButton } from '@/components/common/study-library/add-course/add-course-button';
 import { MyButton } from '@/components/design-system/button';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useAddCourse } from '@/services/study-library/course-operations/add-course';
 import { CourseFormData } from '@/components/common/study-library/add-course/add-course-form';
@@ -19,6 +20,7 @@ interface CreateCourseStepProps {
 }
 
 export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseStepProps) => {
+    const { t } = useTranslation('manageInstituteCreateCourseStep');
     const { getCourseFromPackage, instituteDetails } = useInstituteDetailsStore();
     const [courseList, setCourseList] = useState(getCourseFromPackage());
     const form = useFormContext();
@@ -29,11 +31,11 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
             { requestData: requestData },
             {
                 onSuccess: () => {
-                    toast.success('Batch created successfully');
+                    toast.success(t('toast.batchCreated'));
                     handleOpenManageBatchDialog(false);
                 },
                 onError: () => {
-                    toast.error('Failed to create batch');
+                    toast.error(t('toast.createFailed'));
                 },
             }
         );
@@ -57,7 +59,9 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
                 render={({ field }) => (
                     <FormItem className="space-y-3">
                         <FormLabel className="text-base font-medium text-neutral-700">
-                            {getTerminology(ContentTerms.Course, SystemTerms.Course)} Selection
+                            {t('selectionLabel', {
+                                course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                            })}
                         </FormLabel>
                         <FormControl>
                             <RadioGroup
@@ -80,11 +84,12 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
                                         htmlFor="existing-course"
                                         className={`cursor-pointer font-normal ${courseList.length === 0 ? 'text-neutral-400' : 'text-neutral-600'}`}
                                     >
-                                        Select existing{' '}
-                                        {getTerminology(
-                                            ContentTerms.Course,
-                                            SystemTerms.Course
-                                        ).toLocaleLowerCase()}
+                                        {t('selectExisting', {
+                                            course: getTerminology(
+                                                ContentTerms.Course,
+                                                SystemTerms.Course
+                                            ).toLocaleLowerCase(),
+                                        })}
                                     </FormLabel>
                                 </FormItem>
                                 <FormItem className="flex items-center space-x-2 space-y-0">
@@ -95,11 +100,12 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
                                         htmlFor="new-course"
                                         className="cursor-pointer font-normal text-neutral-600"
                                     >
-                                        Create new{' '}
-                                        {getTerminology(
-                                            ContentTerms.Course,
-                                            SystemTerms.Course
-                                        ).toLocaleLowerCase()}
+                                        {t('createNew', {
+                                            course: getTerminology(
+                                                ContentTerms.Course,
+                                                SystemTerms.Course
+                                            ).toLocaleLowerCase(),
+                                        })}
                                     </FormLabel>
                                 </FormItem>
                             </RadioGroup>
@@ -113,7 +119,7 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
                 <FormField
                     control={form.control}
                     name="selectedCourse"
-                    rules={{ required: 'Please select a course' }}
+                    rules={{ required: t('validation.selectCourse') }}
                     render={({ field }) => (
                         <FormItem className="flex flex-col gap-1.5">
                             <FormLabel className="text-neutral-700">
@@ -125,10 +131,12 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
                                     currentValue={field.value}
                                     dropdownList={courseList}
                                     handleChange={field.onChange}
-                                    placeholder={`Select a ${getTerminology(
-                                        ContentTerms.Course,
-                                        SystemTerms.Course
-                                    ).toLocaleLowerCase()}`}
+                                    placeholder={t('selectPlaceholder', {
+                                        course: getTerminology(
+                                            ContentTerms.Course,
+                                            SystemTerms.Course
+                                        ).toLocaleLowerCase(),
+                                    })}
                                     disable={courseList.length === 0}
                                 />
                             </FormControl>
@@ -156,7 +164,7 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
                                     e.stopPropagation();
                                 }}
                             >
-                                <Plus size={18} className="mr-1" /> Add New Course
+                                <Plus size={18} className="me-1" /> {t('addNewCourse')}
                             </MyButton>
                         }
                     />

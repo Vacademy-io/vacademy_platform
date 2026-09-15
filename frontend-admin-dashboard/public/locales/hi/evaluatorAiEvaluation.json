@@ -1,0 +1,14 @@
+{
+    "evaluatingStudents": "कृपया प्रतीक्षा करें, हम छात्रों का मूल्यांकन कर रहे हैं...",
+    "evaluatedStudentsSuccess_one": "{{count}} छात्र का सफलतापूर्वक मूल्यांकन किया गया",
+    "evaluatedStudentsSuccess_other": "{{count}} छात्रों का सफलतापूर्वक मूल्यांकन किया गया",
+    "fileProcessingRetry": "फ़ाइल संसाधित हो रही है, कृपया फिर से प्रयास करें",
+    "evaluationFailedFor": "{{assessment}} के लिए मूल्यांकन विफल रहा",
+    "failedToEvaluateStudents": "छात्रों का मूल्यांकन करने में विफल",
+    "evaluationList": "मूल्यांकन सूची",
+    "evaluationListForAssessment": "{{assessment}} के लिए मूल्यांकन सूची",
+    "evaluateStudents": "छात्रों का मूल्यांकन करें",
+    "noEvaluatedStudents": "कोई मूल्यांकित छात्र नहीं",
+    "noEvaluatedStudentsDescription": "आपने अभी तक किसी भी छात्र का मूल्यांकन नहीं किया है। मूल्यांकन के लिए छात्रों को चुनने हेतु \"छात्रों का मूल्यांकन करें\" बटन पर क्लिक करें।",
+    "selectStudentsForAssignment": "असाइनमेंट के लिए छात्रों का चयन करें"
+}

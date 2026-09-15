@@ -1,0 +1,17 @@
+{
+    "navHeading": "असेसमेंट",
+    "assessmentListHeading": "असेसमेंट सूची",
+    "createAssessment": "असेसमेंट बनाएं",
+    "assessmentIdLabel": "असेसमेंट ID: {{id}}",
+    "loadingDetails": "असेसमेंट विवरण लोड हो रहा है...",
+    "columnQuestion": "प्रश्न",
+    "columnAnswer": "उत्तर",
+    "columnCriteria": "मानदंड",
+    "confirmDeleteAssessment": "क्या आप वाकई इस असेसमेंट को हटाना चाहते हैं? ",
+    "delete": "हटाएं",
+    "failedToLoadDetails": "असेसमेंट विवरण लोड करने में विफल",
+    "noAssessmentsAvailable": "कोई असेसमेंट उपलब्ध नहीं है",
+    "noAnswerAvailable": "कोई उत्तर उपलब्ध नहीं है",
+    "viewLess": "कम देखें",
+    "viewMore": "और देखें"
+}

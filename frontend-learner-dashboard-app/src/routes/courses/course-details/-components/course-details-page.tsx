@@ -1,4 +1,5 @@
 import { Steps } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
 // Removed unused icon imports to improve modularity and avoid linter warnings
 import { toTitleCase } from "@/lib/utils";
@@ -43,7 +44,7 @@ import {
 } from "@/types/institute-details/institute-details-interface";
 // CourseStructureResponse no longer needed - using single course fetch
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { AuthModal } from "@/components/common/auth/modal/AuthModal";
 // import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 // import { TokenKey } from "@/constants/auth/tokens";
@@ -165,6 +166,7 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
+    const { t } = useTranslation("coursesRouteB");
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const router = useRouter();
@@ -366,7 +368,9 @@ export const CourseDetailsPage = () => {
         const catalogCourse = courseData.find(course => course.id === searchParams.courseId);
         if (catalogCourse?.instructors && catalogCourse.instructors.length > 0) {
             const instructor = catalogCourse.instructors[0];
-            return instructor.full_name || instructor.username || 'Unknown Instructor';
+            return instructor.full_name || instructor.username || t("courseDetailsPage.unknownInstructor", {
+                instructor: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+            });
         }
 
         return undefined; // Change null to undefined to match the expected type
@@ -551,7 +555,7 @@ export const CourseDetailsPage = () => {
             if (courseDetailsData?.course) {
                 try {
                     const transformedData =
-                        await transformApiDataToCourseData(courseDetailsData);
+                        await transformApiDataToCourseData(courseDetailsData, t);
                     if (transformedData) {
                         form.reset({
                             courseData: transformedData,
@@ -650,7 +654,12 @@ export const CourseDetailsPage = () => {
                                 src={
                                     form.watch("courseData").courseBannerMediaId
                                 }
-                                alt="Course Banner"
+                                alt={t("courseDetailsPage.courseBannerAlt", {
+                                    course: getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ),
+                                })}
                                 className="size-full object-cover"
                                 onError={(e) => {
                                     e.currentTarget.style.display = "none";
@@ -732,7 +741,7 @@ export const CourseDetailsPage = () => {
                 </div>
                 {/* Main Content */}
                 <div className="px-12 py-6 sm:py-8">
-                    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+                    <div className="flex flex-col lg:flex-row gap-section lg:gap-8">
                         {/* Left Column - Full width on mobile, 2/3 on larger screens */}
                         <div className="w-full lg:w-2/3 lg:grow">
                             {/* Session and Level Selectors */}
@@ -765,7 +774,7 @@ export const CourseDetailsPage = () => {
                                     ) : sessionOptions.length > 1 ? (
                                         <div className="flex flex-col gap-2 w-full sm:w-auto">
                                             <label className="text-sm font-medium">
-                                                Session
+                                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}
                                             </label>
                                             <Select
                                                 value={selectedSession}
@@ -774,7 +783,7 @@ export const CourseDetailsPage = () => {
                                                 }
                                             >
                                                 <SelectTrigger className="w-full sm:w-48">
-                                                    <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`} />
+                                                    <SelectValue placeholder={t("courseDetailsPage.selectors.sessionPlaceholder", { session: getTerminology(ContentTerms.Session, SystemTerms.Session) })} />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {sessionOptions.map(
@@ -817,7 +826,7 @@ export const CourseDetailsPage = () => {
                                                 disabled={!selectedSession}
                                             >
                                                 <SelectTrigger className="w-full sm:w-48">
-                                                    <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`} />
+                                                    <SelectValue placeholder={t("courseDetailsPage.selectors.levelPlaceholder", { level: getTerminology(ContentTerms.Level, SystemTerms.Level) })} />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {levelOptions.map(
@@ -858,13 +867,14 @@ export const CourseDetailsPage = () => {
                                                 />
                                             </div>
                                             <h2 className="text-sm sm:text-base font-bold text-gray-900">
-                                                {toTitleCase(
-                                                    getTerminology(
-                                                        ContentTerms.Course,
-                                                        SystemTerms.Course
-                                                    )
-                                                )} {" "}
-                                                Overview
+                                                {t("courseDetailsPage.mobileCard.overview", {
+                                                    course: toTitleCase(
+                                                        getTerminology(
+                                                            ContentTerms.Course,
+                                                            SystemTerms.Course
+                                                        )
+                                                    ),
+                                                })}
                                             </h2>
                                         </div>
 
@@ -873,7 +883,7 @@ export const CourseDetailsPage = () => {
                                             {/* Author */}
                                             {getAuthorName() && (
                                                 <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg">
-                                                    <span className="text-xs font-medium text-gray-700">Author</span>
+                                                    <span className="text-xs font-medium text-gray-700">{t("courseDetailsPage.mobileCard.author")}</span>
                                                     <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
                                                         {getAuthorName()}
                                                     </span>
@@ -918,7 +928,7 @@ export const CourseDetailsPage = () => {
 
                                             {/* Total Duration */}
                                             <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg">
-                                                <span className="text-xs font-medium text-gray-700">{getTerminology(ContentTerms.Course, SystemTerms.Course)} Time</span>
+                                                <span className="text-xs font-medium text-gray-700">{t("courseDetailsPage.mobileCard.courseTime", { course: getTerminology(ContentTerms.Course, SystemTerms.Course) })}</span>
                                                 <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
                                                     {(() => {
                                                         // Priority 1: Backend read_time_in_minutes
@@ -953,7 +963,7 @@ export const CourseDetailsPage = () => {
                                                         layoutVariant="default"
                                                         className="!min-w-full !w-full"
                                                     >
-                                                        Enroll
+                                                        {t("courseDetailsPage.enroll")}
                                                     </MyButton>
                                                 }
                                             />
@@ -980,9 +990,9 @@ export const CourseDetailsPage = () => {
                             {extractTextFromHTML(
                                 form.getValues("courseData").whatYoullLearn
                             ) && (
-                                <div className="mb-6 sm:mb-8">
-                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
-                                        What you&apos;ll learn?
+                                <div className="mb-6 sm:mb-8 space-y-stack">
+                                    <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
+                                        {t("courseDetailsPage.sections.whatYoullLearn")}
                                     </h2>
                                     <div className="rounded-lg">
                                         <p
@@ -1001,9 +1011,11 @@ export const CourseDetailsPage = () => {
                             {extractTextFromHTML(
                                 form.getValues("courseData").aboutTheCourse
                             ) && (
-                                <div className="mb-6 sm:mb-8">
-                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
-                                        About this course
+                                <div className="mb-6 sm:mb-8 space-y-stack">
+                                    <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
+                                        {t("courseDetailsPage.sections.aboutThisCourse", {
+                                            course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                        })}
                                     </h2>
                                     <div className="rounded-lg">
                                         <p
@@ -1022,9 +1034,9 @@ export const CourseDetailsPage = () => {
                             {extractTextFromHTML(
                                 form.getValues("courseData").whoShouldLearn
                             ) && (
-                                <div className="mb-6 sm:mb-8">
-                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
-                                        Who should join?
+                                <div className="mb-6 sm:mb-8 space-y-stack">
+                                    <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
+                                        {t("courseDetailsPage.sections.whoShouldJoin")}
                                     </h2>
                                     <div className="rounded-lg">
                                         <p
@@ -1043,9 +1055,9 @@ export const CourseDetailsPage = () => {
                             {form.getValues("courseData").instructors &&
                                 form.getValues("courseData").instructors
                                     .length > 0 && (
-                                    <div className="mb-6 sm:mb-8">
-                                        <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
-                                            Instructors
+                                    <div className="mb-6 sm:mb-8 space-y-stack">
+                                        <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
+                                            {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
                                         </h2>
                                         <div className="space-y-3 sm:space-y-4">
                                             {form
@@ -1103,7 +1115,7 @@ export const CourseDetailsPage = () => {
                                                 layoutVariant="default"
                                                 className="!min-w-full !w-full"
                                             >
-                                                Enroll
+                                                {t("courseDetailsPage.enroll")}
                                             </MyButton>
                                         }
                                     />

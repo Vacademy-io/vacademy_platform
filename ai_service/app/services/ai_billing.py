@@ -82,8 +82,15 @@ def charge_tool(
     request_id: Optional[str] = None,
     idempotency_key: Optional[str] = None,
     usage_markup: Decimal = Decimal("1"),
+    provider_cost_usd: Optional[float] = None,
+    seconds: Optional[int] = None,
+    character_count: Optional[int] = None,
 ) -> Decimal:
     """Deduct max(parametric, actual × usage_markup) for a metered tool.
+
+    `provider_cost_usd` is what the vendor charged us for this call (voice,
+    speech-to-text, OCR, image); it lands in ai_token_usage.total_price so
+    margins can be read from our own rows.
 
     usage_markup (default 1×) marks up ONLY the actual token cost — used to
     make heavy-usage tools (e.g. HTML document generation with big PDFs / large
@@ -123,6 +130,9 @@ def charge_tool(
         idempotency_key=idempotency_key,
         user_role=user_role,
         subject_user_id=subject_user_id,
+        total_price=provider_cost_usd,
+        seconds=seconds,
+        character_count=character_count,
         # Post-paid: the work was already delivered, so never silently drop the
         # charge if a concurrent spend slipped the balance below the estimate.
         allow_negative=True,
@@ -145,6 +155,9 @@ def record_tool_billing(
     request_id: Optional[str] = None,
     idempotency_key: Optional[str] = None,
     usage_markup: Decimal = Decimal("1"),
+    provider_cost_usd: Optional[float] = None,
+    seconds: Optional[int] = None,
+    character_count: Optional[int] = None,
 ) -> None:
     """Best-effort tool charge on a fresh session. Swallows all errors — the
     work has already happened, so a billing failure must not fail the response."""
@@ -167,6 +180,9 @@ def record_tool_billing(
                 request_id=request_id,
                 idempotency_key=idempotency_key,
                 usage_markup=usage_markup,
+                provider_cost_usd=provider_cost_usd,
+                seconds=seconds,
+                character_count=character_count,
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Tool billing failed (tool=%s, request_id=%s): %s", tool_key, request_id, exc)

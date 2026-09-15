@@ -1,8 +1,9 @@
+import type { TFunction } from "i18next";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { CourseDetailsFormValues } from "../-components/course-details-schema";
 import { BatchForSessionType } from "@/types/institute-details/institute-details-interface";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 // Utility functions for YouTube URL handling
 export function isYouTubeUrl(url: string): boolean {
@@ -129,8 +130,12 @@ function extractDirectUrl(value: string | null | undefined): string | null {
   return null;
 }
 
+// `t` is optional so existing callers that don't pass a translator keep
+// getting the English fallback unchanged; pass a `coursesRouteB` TFunction
+// to localize the "Unknown Instructor" fallback.
 export const transformApiDataToCourseData = async (
-  apiData: CourseWithSessionsType
+  apiData: CourseWithSessionsType,
+  t?: TFunction
 ) => {
   if (!apiData) return null;
 
@@ -215,7 +220,11 @@ export const transformApiDataToCourseData = async (
             instructor.full_name ||
             instructor.name ||
             instructor.username ||
-            "Unknown Instructor",
+            (t
+              ? t("courseDetailsPage.unknownInstructor", {
+                  instructor: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+                })
+              : "Unknown Instructor"),
         })) || [],
       sessions: apiData.sessions.map((session) => ({
         levelDetails: session.level_with_details.map((level) => {

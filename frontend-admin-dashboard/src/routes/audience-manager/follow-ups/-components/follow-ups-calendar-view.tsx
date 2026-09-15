@@ -14,6 +14,8 @@ import {
     subMonths,
 } from 'date-fns';
 import { CaretLeft, CaretRight, CalendarBlank } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
@@ -48,7 +50,19 @@ import {
  */
 
 const MAX_PILLS_PER_DAY = 3;
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+function buildDayLabels(t: TFunction): Record<(typeof DAY_KEYS)[number], string> {
+    return {
+        sun: t('dayLabels.sun'),
+        mon: t('dayLabels.mon'),
+        tue: t('dayLabels.tue'),
+        wed: t('dayLabels.wed'),
+        thu: t('dayLabels.thu'),
+        fri: t('dayLabels.fri'),
+        sat: t('dayLabels.sat'),
+    };
+}
 
 interface FollowUpsCalendarViewProps {
     vms: LeadCardVM[];
@@ -88,6 +102,8 @@ export function FollowUpsCalendarView({
     hiddenColumns,
     extraColumns,
 }: FollowUpsCalendarViewProps) {
+    const { t } = useTranslation('audienceManagerFollowUpsCalendarView');
+    const dayLabels = useMemo(() => buildDayLabels(t), [t]);
     const month = useMemo(() => safeParseMonth(monthStr), [monthStr]);
     const selectedDate = useMemo(() => safeParseDate(selectedDateStr), [selectedDateStr]);
 
@@ -134,7 +150,7 @@ export function FollowUpsCalendarView({
                         scale="medium"
                         layoutVariant="icon"
                         onClick={goPrev}
-                        aria-label="Previous month"
+                        aria-label={t('nav.previousMonth')}
                     >
                         <CaretLeft className="size-4" />
                     </MyButton>
@@ -144,33 +160,33 @@ export function FollowUpsCalendarView({
                         scale="medium"
                         layoutVariant="icon"
                         onClick={goNext}
-                        aria-label="Next month"
+                        aria-label={t('nav.nextMonth')}
                     >
                         <CaretRight className="size-4" />
                     </MyButton>
                 </div>
                 <MyButton buttonType="secondary" scale="small" onClick={goToday}>
                     <CalendarBlank className="size-4" />
-                    Today
+                    {t('nav.today')}
                 </MyButton>
             </div>
 
             {error ? (
                 <LeadEmptyState
-                    title="Couldn't load follow-ups"
-                    description="Something went wrong loading the calendar. Try again."
+                    title={t('error.title')}
+                    description={t('error.description')}
                 />
             ) : (
                 <>
                     {/* Grid view (md+) */}
                     <div className="hidden md:block">
                         <div className="grid grid-cols-7 overflow-hidden rounded-t-lg border border-b-0 border-border">
-                            {DAY_LABELS.map((d) => (
+                            {DAY_KEYS.map((d) => (
                                 <div
                                     key={d}
                                     className="bg-muted p-2 text-caption text-muted-foreground"
                                 >
-                                    {d}
+                                    {dayLabels[d]}
                                 </div>
                             ))}
                         </div>
@@ -225,7 +241,7 @@ export function FollowUpsCalendarView({
                                             })}
                                             {overflow > 0 && (
                                                 <span className="px-2 text-caption text-muted-foreground">
-                                                    +{overflow} more
+                                                    {t('overflowMore', { count: overflow })}
                                                 </span>
                                             )}
                                         </div>
@@ -239,8 +255,8 @@ export function FollowUpsCalendarView({
                     <div className="md:hidden">
                         {visibleDaysWithEvents.length === 0 ? (
                             <LeadEmptyState
-                                title="No follow-ups this month"
-                                description="Switch month using the arrows above or pick a counsellor."
+                                title={t('agenda.emptyTitle')}
+                                description={t('agenda.emptyDescription')}
                             />
                         ) : (
                             <div className="flex flex-col gap-2">
@@ -273,8 +289,7 @@ export function FollowUpsCalendarView({
                                                     bucketPillClasses(dom)
                                                 )}
                                             >
-                                                {dayList.length}{' '}
-                                                {dayList.length === 1 ? 'task' : 'tasks'}
+                                                {t('agenda.tasks', { count: dayList.length })}
                                             </span>
                                         </button>
                                     );
@@ -292,21 +307,23 @@ export function FollowUpsCalendarView({
                             <div className="flex items-center gap-2 text-caption">
                                 {dayCounts.overdue > 0 && (
                                     <span className="rounded-md border border-danger-200 bg-danger-100 px-2 py-0.5 text-danger-600">
-                                        {dayCounts.overdue} overdue
+                                        {t('dayCounts.overdue', { count: dayCounts.overdue })}
                                     </span>
                                 )}
                                 {dayCounts.today > 0 && (
                                     <span className="rounded-md border border-warning-200 bg-warning-100 px-2 py-0.5 text-warning-600">
-                                        {dayCounts.today} today
+                                        {t('dayCounts.today', { count: dayCounts.today })}
                                     </span>
                                 )}
                                 {dayCounts.upcoming > 0 && (
                                     <span className="rounded-md border border-info-200 bg-info-100 px-2 py-0.5 text-info-600">
-                                        {dayCounts.upcoming} upcoming
+                                        {t('dayCounts.upcoming', { count: dayCounts.upcoming })}
                                     </span>
                                 )}
                                 {dayCounts.all === 0 && (
-                                    <span className="text-muted-foreground">No follow-ups</span>
+                                    <span className="text-muted-foreground">
+                                        {t('dayCounts.none')}
+                                    </span>
                                 )}
                             </div>
                         </div>
@@ -324,8 +341,8 @@ export function FollowUpsCalendarView({
                             extraColumns={extraColumns}
                             emptyState={
                                 <LeadEmptyState
-                                    title="Nothing on this day"
-                                    description="Pick another day on the calendar above."
+                                    title={t('dayPanel.emptyTitle')}
+                                    description={t('dayPanel.emptyDescription')}
                                 />
                             }
                         />

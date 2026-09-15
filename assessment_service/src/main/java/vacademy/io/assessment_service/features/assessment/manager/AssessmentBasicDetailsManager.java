@@ -74,6 +74,12 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
         Optional.ofNullable(basicAssessmentDetailsDTO.getResultType()).ifPresent(assessment::setResultType);
+        // ifPresent, not a plain set: AI evaluation spends institute credits, so a
+        // partial basic-details save must never flip it on or off by omission.
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationEnabled())
+                .ifPresent(assessment::setAiEvaluationEnabled);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationModel())
+                .ifPresent(assessment::setAiEvaluationModel);
 
         // The subject lives on the institute mapping, not the assessment. Load it
         // so subject changes are persisted on edit; without this the mapping is
@@ -119,6 +125,12 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
         Optional.ofNullable(basicAssessmentDetailsDTO.getResultType()).ifPresent(assessment::setResultType);
+        // ifPresent, not a plain set: AI evaluation spends institute credits, so a
+        // partial basic-details save must never flip it on or off by omission.
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationEnabled())
+                .ifPresent(assessment::setAiEvaluationEnabled);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationModel())
+                .ifPresent(assessment::setAiEvaluationModel);
         addOrUpdateTestCreationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestCreation());
         addOrUpdateBoundationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestBoundation());
 

@@ -1,0 +1,86 @@
+{
+    "header": {
+        "title": "Déduplication",
+        "description": "Contrôlez ce qui se passe lorsqu'une nouvelle soumission de prospect correspond à un prospect déjà existant. Désactivé par défaut — l'activation de cette option n'affecte pas les prospects déjà capturés."
+    },
+    "loading": "Chargement des paramètres de déduplication…",
+    "enabled": {
+        "enabled": "Activé",
+        "disabled": "Désactivé"
+    },
+    "fields": {
+        "matchBy": {
+            "label": "Faire correspondre les prospects par",
+            "hint": "L'identifiant qui compte comme doublon.",
+            "placeholder": "Sélectionner un champ",
+            "options": {
+                "email": "Adresse e-mail",
+                "phone": "Numéro de téléphone"
+            }
+        },
+        "scope": {
+            "label": "S'applique à",
+            "hint": "Vérifiez uniquement la liste de prospects sur laquelle la soumission est faite, un ensemble spécifique de listes de prospects, ou toutes les listes de prospects de l'établissement.",
+            "placeholder": "Sélectionner une portée",
+            "options": {
+                "campaign": "Cette liste de prospects uniquement",
+                "selected": "Listes de prospects spécifiques",
+                "institute": "Toutes les listes de prospects de cet établissement"
+            }
+        },
+        "audienceLists": {
+            "label": "Listes de prospects",
+            "hint": "Les doublons ne sont vérifiés que dans les listes de prospects sélectionnées ici. Les sélectionner toutes bascule automatiquement vers l'ensemble de l'établissement.",
+            "placeholder": "Sélectionner des listes de prospects",
+            "placeholderLoading": "Chargement des listes de prospects…"
+        },
+        "action": {
+            "label": "Lorsqu'un doublon est trouvé",
+            "hint": "Bloquez la soumission, ou laissez-la passer et appliquez les règles de prospect répété ci-dessous.",
+            "placeholder": "Sélectionner une action",
+            "options": {
+                "reject": "Rejeter la soumission",
+                "allowReassign": "Laisser passer et réattribuer"
+            }
+        }
+    },
+    "repeatLead": {
+        "title": "Gestion des prospects répétés",
+        "counsellorMode": {
+            "label": "Attribuer un conseiller ?",
+            "placeholder": "Sélectionner",
+            "options": {
+                "none": "N'en attribuer aucun",
+                "sameAsPrevious": "Conserver leur conseiller précédent",
+                "specific": "Toujours attribuer un conseiller spécifique",
+                "roundRobin": "Utiliser la répartition tournante, comme pour les nouveaux prospects"
+            }
+        },
+        "counsellorPicker": {
+            "label": "Conseiller"
+        },
+        "statusMode": {
+            "label": "Statut du prospect",
+            "placeholder": "Sélectionner",
+            "options": {
+                "keepExisting": "Conserver leur statut actuel",
+                "resetToNew": "Réinitialiser à Nouveau"
+            }
+        }
+    },
+    "counsellorPicker": {
+        "clearAriaLabel": "Effacer le conseiller sélectionné",
+        "searchPlaceholder": "Tapez pour rechercher des conseillers…",
+        "searching": "Recherche en cours…"
+    },
+    "toasts": {
+        "saved": "Paramètres de déduplication enregistrés",
+        "saveFailed": "Échec de l'enregistrement des paramètres de déduplication",
+        "pickLeadList": "Choisissez au moins une liste de prospects, ou sélectionnez une autre portée",
+        "pickCounsellor": "Choisissez un conseiller, ou sélectionnez une autre option de conseiller pour prospect répété"
+    },
+    "footer": {
+        "save": "Enregistrer les paramètres de déduplication",
+        "saving": "Enregistrement…"
+    }
+}

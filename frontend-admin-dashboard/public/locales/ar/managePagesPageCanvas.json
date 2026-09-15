@@ -1,0 +1,121 @@
+{
+    "globalSettings": {
+        "title": "الإعدادات العامة",
+        "description": "تهيئة الترويسة والتذييل والخصائص العامة",
+        "header": "الترويسة",
+        "footer": "التذييل",
+        "selectedIndicator": "● محدد",
+        "overview": {
+            "title": "نظرة عامة على الإعدادات",
+            "catalogueType": "نوع الكتالوج",
+            "notAvailable": "غير متاح",
+            "themeMode": "وضع المظهر",
+            "fontFamily": "نوع الخط",
+            "defaultFont": "افتراضي",
+            "payment": "الدفع",
+            "leadCollection": "جمع العملاء المحتملين",
+            "enquiry": "الاستفسار",
+            "enabledBadge": "✓ مفعّل",
+            "disabledBadge": "✗ معطّل"
+        }
+    },
+    "page": {
+        "notFound": "الصفحة غير موجودة",
+        "componentsCount_zero": "مكوّنات الصفحة • لا يوجد مكوّن ({{count}})",
+        "componentsCount_one": "مكوّنات الصفحة • مكوّن واحد ({{count}})",
+        "componentsCount_two": "مكوّنات الصفحة • مكوّنان ({{count}})",
+        "componentsCount_few": "مكوّنات الصفحة • {{count}} مكوّنات",
+        "componentsCount_many": "مكوّنات الصفحة • {{count}} مكوّنًا",
+        "componentsCount_other": "مكوّنات الصفحة • {{count}} مكوّن",
+        "duplicateComponentTitle": "تكرار المكوّن",
+        "deleteComponentTitle": "حذف المكوّن",
+        "confirmDeleteComponent": "هل تريد حذف هذا المكوّن؟",
+        "selected": "محدد",
+        "empty": {
+            "title": "لا توجد مكوّنات في هذه الصفحة",
+            "hint": "اسحب المكوّنات من المكتبة لإضافتها"
+        }
+    },
+    "summary": {
+        "hero": {
+            "fallbackTitle": "قسم البطل"
+        },
+        "catalogue": {
+            "fallbackTitle": "كتالوج الدورات",
+            "layoutLine": "التخطيط: {{layout}} • المرشحات: {{filters}}",
+            "filtersEnabled": "مفعّلة",
+            "filtersDisabled": "معطّلة",
+            "filterCountSuffix_zero": " • لا مرشحات ({{count}})",
+            "filterCountSuffix_one": " • مرشح واحد ({{count}})",
+            "filterCountSuffix_two": " • مرشحان ({{count}})",
+            "filterCountSuffix_few": " • {{count}} مرشحات",
+            "filterCountSuffix_many": " • {{count}} مرشحًا",
+            "filterCountSuffix_other": " • {{count}} مرشح"
+        },
+        "courseDetails": {
+            "title": "صفحة تفاصيل الدورة",
+            "enquirySuffix": "الاستفسار • ",
+            "paymentSuffix": "الدفع • ",
+            "addToCart": "أضف إلى السلة"
+        },
+        "cart": {
+            "title": "سلة التسوق",
+            "quantityControlsSuffix": "أدوات التحكم بالكمية • ",
+            "pricingEnabled": "التسعير مفعّل"
+        },
+        "mediaShowcase": {
+            "title": "عرض الوسائط",
+            "layoutSlides_zero": "التخطيط: {{layout}} • لا شرائح ({{count}})",
+            "layoutSlides_one": "التخطيط: {{layout}} • شريحة واحدة ({{count}})",
+            "layoutSlides_two": "التخطيط: {{layout}} • شريحتان ({{count}})",
+            "layoutSlides_few": "التخطيط: {{layout}} • {{count}} شرائح",
+            "layoutSlides_many": "التخطيط: {{layout}} • {{count}} شريحة",
+            "layoutSlides_other": "التخطيط: {{layout}} • {{count}} شريحة",
+            "autoplaySuffix": " • تشغيل تلقائي"
+        },
+        "buyRent": {
+            "fallbackTitle": "قسم الشراء/الإيجار",
+            "buyFallback": "شراء",
+            "rentFallback": "إيجار",
+            "buyRentLine": "{{buy}} • {{rent}}"
+        },
+        "stats": {
+            "title": "أبرز الإحصاءات",
+            "count_zero": "لا توجد إحصاءات ({{count}})",
+            "count_one": "إحصائية واحدة ({{count}})",
+            "count_two": "إحصائيتان ({{count}})",
+            "count_few": "{{count}} إحصاءات",
+            "count_many": "{{count}} إحصائية",
+            "count_other": "{{count}} إحصائية"
+        },
+        "testimonials": {
+            "fallbackTitle": "الشهادات",
+            "countLayout_zero": "لا توجد شهادات ({{count}}) • التخطيط: {{layout}}",
+            "countLayout_one": "شهادة واحدة ({{count}}) • التخطيط: {{layout}}",
+            "countLayout_two": "شهادتان ({{count}}) • التخطيط: {{layout}}",
+            "countLayout_few": "{{count}} شهادات • التخطيط: {{layout}}",
+            "countLayout_many": "{{count}} شهادة • التخطيط: {{layout}}",
+            "countLayout_other": "{{count}} شهادة • التخطيط: {{layout}}"
+        },
+        "policy": {
+            "fallbackTitle": "محتوى السياسة",
+            "subtitle": "صفحة السياسة"
+        },
+        "header": {
+            "fallbackTitle": "الترويسة",
+            "navItems_zero": "لا عناصر تنقل ({{count}})",
+            "navItems_one": "عنصر تنقل واحد ({{count}})",
+            "navItems_two": "عنصرا تنقل ({{count}})",
+            "navItems_few": "{{count}} عناصر تنقل",
+            "navItems_many": "{{count}} عنصر تنقل",
+            "navItems_other": "{{count}} عنصر تنقل"
+        },
+        "footer": {
+            "title": "التذييل",
+            "layout": "التخطيط: {{layout}}"
+        },
+        "hideDetails": "إخفاء التفاصيل",
+        "showDetails": "عرض التفاصيل",
+        "fullConfigurationLabel": "التهيئة الكاملة:"
+    }
+}

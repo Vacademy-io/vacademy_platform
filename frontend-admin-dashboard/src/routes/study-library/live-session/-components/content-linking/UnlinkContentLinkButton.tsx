@@ -3,6 +3,7 @@
 // two surfaces (Track B) stay visually and behaviorally identical.
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, FilePdf, Trash, VideoCamera } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
@@ -42,15 +43,16 @@ export function UnlinkContentLinkButton({
     /** Destination batch display name — disambiguates same-named chapters across batches. */
     batchName?: string;
 }) {
+    const { t } = useTranslation('studyLibraryUnlinkContentLinkButton');
     const [confirmOpen, setConfirmOpen] = useState(false);
     const unlinkMutation = useUnlinkSessionContent();
 
     const handleConfirm = async () => {
         try {
             await unlinkMutation.mutateAsync(linkId);
-            toast.success(`Removed from ${chapterName}`);
+            toast.success(t('removedFrom', { chapterName }));
         } catch {
-            toast.error('Could not remove the link. Please try again.');
+            toast.error(t('couldNotRemove'));
         } finally {
             setConfirmOpen(false);
         }
@@ -74,7 +76,7 @@ export function UnlinkContentLinkButton({
                             {' · '}
                         </>
                     ) : null}
-                    Added to <span className="font-medium">{chapterName}</span>
+                    {t('addedTo')} <span className="font-medium">{chapterName}</span>
                     {batchName ? (
                         <span className="text-neutral-500"> · {batchName}</span>
                     ) : null}
@@ -83,8 +85,8 @@ export function UnlinkContentLinkButton({
                     type="button"
                     onClick={() => setConfirmOpen(true)}
                     className="ml-1 shrink-0 text-neutral-400 transition-colors hover:text-danger-600"
-                    aria-label={`Remove from ${chapterName}`}
-                    title="Remove"
+                    aria-label={t('removeFromAriaLabel', { chapterName })}
+                    title={t('remove')}
                 >
                     <Trash className="size-3.5" />
                 </button>
@@ -93,19 +95,19 @@ export function UnlinkContentLinkButton({
             <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Remove this slide?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('removeThisSlideTitle')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will also remove the slide from the chapter.
+                            {t('removeThisSlideDescription')}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={handleConfirm}
                             disabled={unlinkMutation.isPending}
                             className="bg-danger-600 text-white hover:bg-danger-700"
                         >
-                            {unlinkMutation.isPending ? 'Removing…' : 'Remove'}
+                            {unlinkMutation.isPending ? t('removingEllipsis') : t('remove')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

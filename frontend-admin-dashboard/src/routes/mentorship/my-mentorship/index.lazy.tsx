@@ -15,6 +15,7 @@ import {
     WarningCircle,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -57,10 +58,11 @@ function MyMentorshipRoute() {
 }
 
 function MyMentorshipPage() {
+    const { t, i18n } = useTranslation('mentorshipMyMentorshipIndex');
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">My Mentorship</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
 
     const navigate = useNavigate();
     const instituteId = getInstituteId();
@@ -112,7 +114,7 @@ function MyMentorshipPage() {
             reportApiError(error, {
                 feature: 'mentorship',
                 tags: { 'mentorship.action': 'connect-google' },
-                fallbackMessage: "Couldn't start Google connect. Please try again.",
+                fallbackMessage: t('connectGoogleError'),
             });
             setConnecting(false);
         }
@@ -126,9 +128,9 @@ function MyMentorshipPage() {
         if (!myBookingUrl) return;
         try {
             await navigator.clipboard.writeText(myBookingUrl);
-            toast.success('Booking link copied');
+            toast.success(t('bookingLink.copiedToast'));
         } catch {
-            toast.error('Could not copy link');
+            toast.error(t('bookingLink.copyFailedToast'));
         }
     };
 
@@ -148,10 +150,7 @@ function MyMentorshipPage() {
                 extra: { studentUserId: mentee.student_user_id },
                 // A 403 here is permanent (chat off, or a role pair the institute
                 // forbids) — "try again" would be a lie.
-                fallbackMessage: describeDirectChatError(
-                    error,
-                    "Couldn't open the chat. Please try again."
-                ),
+                fallbackMessage: describeDirectChatError(error, t('chatError')),
             });
         } finally {
             setMessagingId(null);
@@ -162,7 +161,7 @@ function MyMentorshipPage() {
         () => [
             {
                 id: 'student',
-                header: 'Student',
+                header: t('table.student'),
                 size: 240,
                 cell: ({ row }) => {
                     const m = row.original;
@@ -178,7 +177,7 @@ function MyMentorshipPage() {
                                     type="button"
                                     onClick={() => setDetailMentee(m)}
                                     className="truncate text-left text-body font-medium text-neutral-700 hover:text-primary-600 hover:underline"
-                                    title="Open this student's profile"
+                                    title={t('table.openProfileTitle')}
                                 >
                                     {m.name || m.student_user_id}
                                 </button>
@@ -194,7 +193,7 @@ function MyMentorshipPage() {
             },
             {
                 id: 'contact',
-                header: 'Phone',
+                header: t('table.phone'),
                 size: 140,
                 cell: ({ row }) => (
                     <span className="text-body tabular-nums text-neutral-600">
@@ -204,23 +203,23 @@ function MyMentorshipPage() {
             },
             {
                 id: 'assigned',
-                header: 'Assigned',
+                header: t('table.assigned'),
                 size: 120,
                 cell: ({ row }) => (
                     <span className="text-caption text-neutral-500">
                         {row.original.assignment_method === 'ROUND_ROBIN'
-                            ? 'Auto-assigned'
-                            : 'Assigned'}
+                            ? t('table.autoAssigned')
+                            : t('table.assigned')}
                     </span>
                 ),
             },
             {
                 id: 'actions',
-                header: 'Actions',
+                header: t('table.actions'),
                 size: 150,
                 cell: ({ row }) => {
                     const m = row.original;
-                    const label = m.name || 'this student';
+                    const label = m.name || t('table.defaultStudentLabel');
                     return (
                         <div className="flex items-center gap-1">
                             <MyButton
@@ -229,8 +228,8 @@ function MyMentorshipPage() {
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => setScheduleFor(m)}
-                                aria-label={`Schedule a 1:1 with ${label}`}
-                                title="Book a 1:1 — the student doesn't have to do anything"
+                                aria-label={t('table.scheduleAriaLabel', { name: label })}
+                                title={t('table.scheduleTitle')}
                             >
                                 <CalendarPlus size={18} />
                             </MyButton>
@@ -241,7 +240,7 @@ function MyMentorshipPage() {
                                 layoutVariant="icon"
                                 onClick={() => message(m)}
                                 disable={!chat.enabled || messagingId === m.student_user_id}
-                                aria-label={`Message ${label}`}
+                                aria-label={t('table.messageAriaLabel', { name: label })}
                                 title={messageActionTitle(chat.enabled)}
                             >
                                 <ChatCircle size={18} />
@@ -252,8 +251,8 @@ function MyMentorshipPage() {
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => setDetailMentee(m)}
-                                aria-label={`Open ${label}`}
-                                title="Learning progress, notes and scheduled calls"
+                                aria-label={t('table.openAriaLabel', { name: label })}
+                                title={t('table.openRowTitle')}
                             >
                                 <NotePencil size={18} />
                             </MyButton>
@@ -265,7 +264,7 @@ function MyMentorshipPage() {
         // `message` and the setters are stable for the row's purposes; only the
         // in-flight message id changes what a cell renders.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [messagingId, chat.enabled]
+        [messagingId, chat.enabled, t]
     );
 
     // The backend refuses every /my-* mentorship endpoint for someone who isn't a mentor
@@ -276,19 +275,17 @@ function MyMentorshipPage() {
         return (
             <div className="flex flex-col gap-6 p-6">
                 <MentorshipPageHeader
-                    title="My Mentorship"
-                    subtitle="Your mentees, availability and booking link"
+                    title={t('pageTitle')}
+                    subtitle={t('pageSubtitle')}
                 />
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <UsersThree size={40} className="text-neutral-300" />
                     <div className="flex flex-col gap-1">
                         <p className="text-body font-medium text-neutral-700">
-                            You&apos;re not set up as a mentor here
+                            {t('notMentor.title')}
                         </p>
                         <p className="max-w-md text-caption text-neutral-500">
-                            This page is a mentor&apos;s own workspace — their mentees,
-                            availability and booking link. To manage everyone&apos;s
-                            mentorship, use Overview, Mentors, Sessions or Requests.
+                            {t('notMentor.description')}
                         </p>
                     </div>
                     <MyButton
@@ -297,7 +294,7 @@ function MyMentorshipPage() {
                         scale="small"
                         onClick={() => profileQuery.refetch()}
                     >
-                        Retry
+                        {t('retry')}
                     </MyButton>
                 </div>
             </div>
@@ -307,8 +304,8 @@ function MyMentorshipPage() {
     return (
         <div className="flex flex-col gap-6 p-6">
             <MentorshipPageHeader
-                title="My Mentorship"
-                subtitle="Your mentees, availability and booking link"
+                title={t('pageTitle')}
+                subtitle={t('pageSubtitle')}
             />
 
             {profileQuery.isLoading && (
@@ -330,15 +327,15 @@ function MyMentorshipPage() {
                         />
                         <div className="flex min-w-0 flex-col">
                             <span className="truncate text-body font-medium text-neutral-700">
-                                {profile.display_name || profile.name || 'You'}
+                                {profile.display_name || profile.name || t('profile.youFallback')}
                             </span>
                             <span className="truncate text-caption text-neutral-500">
-                                {profile.title || 'Mentor'}
+                                {profile.title || t('profile.mentorFallback')}
                             </span>
                             <span className="truncate text-caption text-neutral-400">
-                                {(profile.assigned_student_count ?? 0) === 1
-                                    ? '1 mentee assigned'
-                                    : `${profile.assigned_student_count ?? 0} mentees assigned`}
+                                {t('profile.menteesAssigned', {
+                                    count: profile.assigned_student_count ?? 0,
+                                })}
                             </span>
                         </div>
                     </div>
@@ -352,18 +349,19 @@ function MyMentorshipPage() {
                                 <GoogleLogo size={20} weight="bold" className="text-primary-600" />
                             </span>
                             <span className="min-w-0 flex-1 text-body font-medium text-neutral-700">
-                                Google Calendar
+                                {t('googleCalendar.title')}
                             </span>
                             {profile.google_connected && (
                                 <span className="flex shrink-0 items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
-                                    <CheckCircle size={14} weight="fill" /> Connected
+                                    <CheckCircle size={14} weight="fill" />{' '}
+                                    {t('googleCalendar.connected')}
                                 </span>
                             )}
                         </div>
                         <p className="text-caption text-neutral-500">
                             {profile.google_connected
-                                ? 'Your bookings appear on your own calendar with a Meet link.'
-                                : 'Optional. Connect your Google Calendar so your 1:1 bookings land on your own calendar with a Meet link.'}
+                                ? t('googleCalendar.connectedDescription')
+                                : t('googleCalendar.disconnectedDescription')}
                         </p>
                         {profile.google_connected ? (
                             profile.google_email && (
@@ -380,7 +378,7 @@ function MyMentorshipPage() {
                                 onClick={connectGoogle}
                                 disable={connecting}
                             >
-                                {connecting ? 'Redirecting…' : 'Connect Google'}
+                                {connecting ? t('googleCalendar.redirecting') : t('googleCalendar.connect')}
                             </MyButton>
                         )}
                     </div>
@@ -395,13 +393,13 @@ function MyMentorshipPage() {
                                 />
                             </span>
                             <span className="min-w-0 flex-1 text-body font-medium text-neutral-700">
-                                Your 1:1 booking link
+                                {t('bookingLink.title')}
                             </span>
                         </div>
                         <p className="text-caption text-neutral-500">
                             {myBookingUrl
-                                ? 'Share this link so learners can book a session with you.'
-                                : 'Booking isn’t set up yet. Ask your admin to enable your booking page.'}
+                                ? t('bookingLink.shareDescription')
+                                : t('bookingLink.notSetUpDescription')}
                         </p>
                         {myBookingUrl && (
                             <span className="flex min-w-0 items-center gap-1 text-caption text-neutral-400">
@@ -417,9 +415,9 @@ function MyMentorshipPage() {
                                 buttonType="secondary"
                                 scale="small"
                                 onClick={() => setAvailabilityOpen(true)}
-                                title="Set your weekly hours, meeting location and session types"
+                                title={t('bookingLink.editAvailabilityTitle')}
                             >
-                                <Clock size={16} /> Edit availability
+                                <Clock size={16} /> {t('bookingLink.editAvailability')}
                             </MyButton>
                             {myBookingUrl && (
                                 <>
@@ -428,18 +426,18 @@ function MyMentorshipPage() {
                                         buttonType="secondary"
                                         scale="small"
                                         onClick={copyMyBookingLink}
-                                        title="Copy your booking link to share with learners"
+                                        title={t('bookingLink.copyLinkTitle')}
                                     >
-                                        <Copy size={16} /> Copy link
+                                        <Copy size={16} /> {t('bookingLink.copyLink')}
                                     </MyButton>
                                     <a
                                         href={myBookingUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-caption font-medium text-primary-500 hover:text-primary-600"
-                                        title="Open your booking page in a new tab"
+                                        title={t('bookingLink.openTitle')}
                                     >
-                                        Open
+                                        {t('bookingLink.open')}
                                     </a>
                                 </>
                             )}
@@ -454,11 +452,12 @@ function MyMentorshipPage() {
                 <div className="flex flex-col gap-3 rounded-lg border border-warning-200 bg-warning-50 p-4">
                     <div className="flex flex-col">
                         <span className="text-body font-medium text-neutral-700">
-                            {awaitingReview.data?.length} session
-                            {(awaitingReview.data?.length ?? 0) === 1 ? '' : 's'} to record
+                            {t('awaitingReview.heading', {
+                                count: awaitingReview.data?.length ?? 0,
+                            })}
                         </span>
                         <span className="text-caption text-neutral-500">
-                            Until you record it, a session doesn&apos;t count as delivered anywhere.
+                            {t('awaitingReview.description')}
                         </span>
                     </div>
                     <div className="flex flex-col gap-2">
@@ -469,11 +468,13 @@ function MyMentorshipPage() {
                             >
                                 <div className="flex min-w-0 flex-col">
                                     <span className="truncate text-body text-neutral-700">
-                                        {session.student_name || 'Mentee'}
+                                        {session.student_name || t('awaitingReview.menteeFallback')}
                                     </span>
                                     <span className="truncate text-caption text-neutral-400">
                                         {session.scheduled_start_utc
-                                            ? new Date(session.scheduled_start_utc).toLocaleString()
+                                            ? new Date(session.scheduled_start_utc).toLocaleString(
+                                                  i18n.language
+                                              )
                                             : ''}
                                     </span>
                                 </div>
@@ -483,7 +484,7 @@ function MyMentorshipPage() {
                                     scale="small"
                                     onClick={() => setRecordSession(session)}
                                 >
-                                    Record
+                                    {t('awaitingReview.record')}
                                 </MyButton>
                             </div>
                         ))}
@@ -494,18 +495,19 @@ function MyMentorshipPage() {
             <div className="flex flex-wrap items-end justify-between gap-3">
                 <div className="flex flex-col">
                     <h3 className="flex items-center gap-2 text-title font-semibold text-neutral-700">
-                        Mentees
+                        {t('mentees.heading')}
                         {!isLoading && !isError && (
                             <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-medium text-neutral-500">
                                 {menteeQuery
-                                    ? `${mentees.length} of ${allMentees.length}`
-                                    : data?.total_elements ?? allMentees.length}
+                                    ? t('mentees.filteredCount', {
+                                          count: mentees.length,
+                                          total: allMentees.length,
+                                      })
+                                    : (data?.total_elements ?? allMentees.length)}
                             </span>
                         )}
                     </h3>
-                    <p className="text-caption text-neutral-500">
-                        Students assigned to you for mentorship.
-                    </p>
+                    <p className="text-caption text-neutral-500">{t('mentees.subtitle')}</p>
                 </div>
                 <div className="relative w-full sm:w-72">
                     <MagnifyingGlass
@@ -518,7 +520,7 @@ function MyMentorshipPage() {
                             setMenteeSearch(e.target.value)
                         }
                         inputType="text"
-                        inputPlaceholder="Search by name, email or phone"
+                        inputPlaceholder={t('mentees.searchPlaceholder')}
                         className="pl-9 sm:w-full"
                     />
                 </div>
@@ -547,7 +549,7 @@ function MyMentorshipPage() {
                     <div className="flex items-center gap-2">
                         <WarningCircle size={18} weight="fill" className="text-danger-600" />
                         <p className="text-body text-danger-600">
-                            Couldn&apos;t load your mentees.
+                            {t('mentees.loadError')}
                         </p>
                     </div>
                     <MyButton
@@ -556,7 +558,7 @@ function MyMentorshipPage() {
                         scale="small"
                         onClick={() => refetch()}
                     >
-                        Retry
+                        {t('retry')}
                     </MyButton>
                 </div>
             ) : allMentees.length === 0 ? (
@@ -564,10 +566,10 @@ function MyMentorshipPage() {
                     <UsersThree size={40} className="text-neutral-300" />
                     <div className="flex flex-col gap-1">
                         <p className="text-body font-medium text-neutral-700">
-                            No students assigned yet
+                            {t('mentees.emptyTitle')}
                         </p>
                         <p className="text-caption text-neutral-500">
-                            Your admin will assign students to you here.
+                            {t('mentees.emptyDescription')}
                         </p>
                     </div>
                 </div>
@@ -575,7 +577,7 @@ function MyMentorshipPage() {
                 <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <MagnifyingGlass size={32} className="text-neutral-300" />
                     <p className="text-body font-medium text-neutral-700">
-                        No mentees match &ldquo;{menteeSearch.trim()}&rdquo;
+                        {t('mentees.noSearchMatch', { query: menteeSearch.trim() })}
                     </p>
                     <MyButton
                         type="button"
@@ -583,7 +585,7 @@ function MyMentorshipPage() {
                         scale="small"
                         onClick={() => setMenteeSearch('')}
                     >
-                        Clear search
+                        {t('mentees.clearSearch')}
                     </MyButton>
                 </div>
             ) : (

@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.repository;
 
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -46,6 +48,29 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
                         @Param("cutoff") Date cutoff);
 
         /**
+         * Dispatched rows with no heartbeat since the cutoff. Uses updated_at, which
+         * every progress callback touches, so a copy that is genuinely being graded
+         * is never mistaken for one whose worker died with it.
+         */
+        @Query("SELECT p FROM AiEvaluationProcess p " +
+                        "WHERE p.status IN :statuses AND COALESCE(p.updatedAt, p.startedAt) < :cutoff")
+        List<AiEvaluationProcess> findSilentDispatched(@Param("statuses") List<String> statuses,
+                        @Param("cutoff") Date cutoff);
+
+        /**
+         * Heartbeat: move updated_at and nothing else, and only while the process
+         * is still running. A bulk UPDATE so it cannot overwrite a concurrent
+         * status change the way a full entity save would.
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Query("UPDATE AiEvaluationProcess p SET p.updatedAt = :now WHERE p.id = :id AND p.status NOT IN :terminal")
+        int touch(@Param("id") String id, @Param("now") Date now, @Param("terminal") List<String> terminal);
+
+        /** How many copies are with the AI service right now (dispatched, not finished). */
+        @Query("SELECT COUNT(p) FROM AiEvaluationProcess p WHERE p.status IN :statuses")
+        long countByStatusIn(@Param("statuses") List<String> statuses);
+
+        /**
          * All AI-evaluation processes for an assessment within one institute,
          * newest first, with the attempt + registration eagerly loaded for the
          * dashboard (participant name). The registration.instituteId filter scopes
@@ -77,4 +102,43 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
                         "LEFT JOIN FETCH reg.assessment " +
                         "WHERE p.id = :processId")
         Optional<AiEvaluationProcess> findByIdWithCompleteDetails(@Param("processId") String processId);
+
+        /**
+         * Atomically claim one batch of queued jobs for this instance (V43).
+         *
+         * The whole point is that this is a single UPDATE, not a read-then-write.
+         * Prod runs several replicas and they all poll: with a SELECT followed by a
+         * separate UPDATE, two pods routinely read the same PENDING row and both start
+         * grading it -- which for AI evaluation means grading the same attempt twice and
+         * CHARGING THE INSTITUTE TWICE. Postgres serialises the UPDATE, so exactly one
+         * pod's write lands and only it sees rows affected.
+         *
+         * A claim older than :staleBefore is treated as abandoned and may be re-claimed,
+         * so a pod that died holding jobs does not strand them.
+         *
+         * Ordered oldest-first so a backlog drains fairly rather than starving the
+         * earliest submissions.
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Transactional
+        @Query(value = "UPDATE ai_evaluation_process SET claimed_by = :claimedBy, claimed_at = :now "
+                        + "WHERE id IN ("
+                        + "    SELECT id FROM ai_evaluation_process "
+                        + "    WHERE status = 'PENDING' "
+                        + "      AND (claimed_at IS NULL OR claimed_at < :staleBefore) "
+                        + "    ORDER BY created_at "
+                        + "    LIMIT :batchSize "
+                        + "    FOR UPDATE SKIP LOCKED"
+                        + ")", nativeQuery = true)
+        int claimPendingJobs(@Param("claimedBy") String claimedBy,
+                        @Param("now") Date now,
+                        @Param("staleBefore") Date staleBefore,
+                        @Param("batchSize") int batchSize);
+
+        /** The rows this instance just claimed, to hand to the async worker. */
+        @Query("SELECT p FROM AiEvaluationProcess p "
+                        + "JOIN FETCH p.studentAttempt LEFT JOIN FETCH p.assessment "
+                        + "WHERE p.claimedBy = :claimedBy AND p.status = 'PENDING' "
+                        + "ORDER BY p.createdAt")
+        List<AiEvaluationProcess> findClaimedPending(@Param("claimedBy") String claimedBy);
 }

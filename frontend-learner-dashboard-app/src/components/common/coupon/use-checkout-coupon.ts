@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
     validateCouponGeneric,
     couponErrorMessage,
@@ -46,6 +47,7 @@ export const useCheckoutCoupon = ({
     onApplied,
     onCleared,
 }: UseCheckoutCouponOpts) => {
+    const { t } = useTranslation("layoutCommonB");
     const [state, setState] = useState<CheckoutCouponState>(initialState);
 
     const setCode = useCallback((code: string) => {
@@ -65,7 +67,7 @@ export const useCheckoutCoupon = ({
             const raw = typeof override === "string" ? override : state.code;
             const code = raw.trim().toUpperCase();
             if (!code) {
-                setState((prev) => ({ ...prev, error: "Enter a coupon code first." }));
+                setState((prev) => ({ ...prev, error: t("couponInput.errors.enterCodeFirst") }));
                 return;
             }
             setState((prev) => ({ ...prev, isApplying: true, error: null }));
@@ -98,7 +100,7 @@ export const useCheckoutCoupon = ({
                         (e as { response?: { data?: { message?: string } } })?.response?.data
                             ?.message ??
                         (e as Error)?.message ??
-                        "Could not apply coupon. Please try again.",
+                        t("couponInput.errors.applyFailed"),
                 }));
             }
         },

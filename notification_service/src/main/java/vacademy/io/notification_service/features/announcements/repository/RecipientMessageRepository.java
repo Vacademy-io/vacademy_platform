@@ -92,6 +92,18 @@ public interface RecipientMessageRepository extends JpaRepository<RecipientMessa
     // Utility finder for SSE event filtering/routing
     List<RecipientMessage> findByAnnouncementIdAndUserId(String announcementId, String userId);
 
+    /**
+     * Distinct recipients of an announcement, as bare user ids.
+     *
+     * <p>SSE fan-out only ever needs the user ids, and a broadcast announcement can hold an order of
+     * magnitude more rows than users (one row per delivery, not per user). Hydrating full entities
+     * just to call {@code getUserId()} on them loaded 1116 rows to reach 93 users on the worst
+     * announcement in prod, and then delivered the same event to each of those users 12 times.
+     * Use this instead of {@link #findByAnnouncementId(String)} on any send path.
+     */
+    @Query("SELECT DISTINCT rm.userId FROM RecipientMessage rm WHERE rm.announcementId = :announcementId AND rm.userId IS NOT NULL")
+    List<String> findDistinctUserIdsByAnnouncementId(@Param("announcementId") String announcementId);
+
     // Mode-specific queries with joins to mode-specific tables
     
     /**

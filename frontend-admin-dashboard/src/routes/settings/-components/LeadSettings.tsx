@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -99,6 +100,7 @@ function weightsSum(w: LeadSettingsData['scoringWeights']): number {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function LeadSettings() {
+    const { t } = useTranslation('settingsLead');
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<LeadSettingsData>(DEFAULT_LEAD_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
@@ -119,13 +121,13 @@ export default function LeadSettings() {
     const { mutate: save, isPending: saving } = useMutation({
         mutationFn: saveLeadSettings,
         onSuccess: () => {
-            toast.success('Lead settings saved');
+            toast.success(t('toasts.saved'));
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['lead-settings'] });
             queryClient.invalidateQueries({ queryKey: ['lead-settings-config'] });
         },
         onError: () => {
-            toast.error('Failed to save lead settings');
+            toast.error(t('toasts.saveFailed'));
         },
     });
 
@@ -145,7 +147,7 @@ export default function LeadSettings() {
     const handleSave = () => {
         const total = weightsSum(settings.scoringWeights);
         if (total !== 100) {
-            toast.error(`Scoring weights must sum to 100 (current: ${total})`);
+            toast.error(t('toasts.weightsSumError', { total }));
             return;
         }
         save(settings);
@@ -158,15 +160,15 @@ export default function LeadSettings() {
         <div className="p-6">
             <Tabs defaultValue="config" className="w-full">
                 <TabsList className="mb-4">
-                    <TabsTrigger value="config">Configuration</TabsTrigger>
-                    <TabsTrigger value="pools">Pools</TabsTrigger>
-                    <TabsTrigger value="forms">Forms</TabsTrigger>
-                    <TabsTrigger value="workbench">Workbench</TabsTrigger>
+                    <TabsTrigger value="config">{t('tabs.config')}</TabsTrigger>
+                    <TabsTrigger value="pools">{t('tabs.pools')}</TabsTrigger>
+                    <TabsTrigger value="forms">{t('tabs.forms')}</TabsTrigger>
+                    <TabsTrigger value="workbench">{t('tabs.workbench')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="config" className="space-y-6">
                     {isLoading ? (
-                        <div className="text-sm text-muted-foreground">Loading lead settings…</div>
+                        <div className="text-sm text-muted-foreground">{t('loading')}</div>
                     ) : (
                         <ConfigSection
                             settings={settings}
@@ -221,16 +223,14 @@ function ConfigSection({
     saving,
     hasChanges,
 }: ConfigSectionProps) {
+    const { t } = useTranslation('settingsLead');
     return (
         <div className="space-y-6">
             {/* ── Enable / Disable Lead System ── */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Lead Management System</CardTitle>
-                    <CardDescription>
-                        Controls whether lead scoring, tier badges, and the lead sidebar tab are
-                        visible institute-wide. Disabling hides all lead UI without deleting data.
-                    </CardDescription>
+                    <CardTitle>{t('enableCard.title')}</CardTitle>
+                    <CardDescription>{t('enableCard.description')}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex items-center gap-3">
@@ -240,7 +240,7 @@ function ConfigSection({
                             onCheckedChange={(v) => update({ enabled: v })}
                         />
                         <Label htmlFor="lead-enabled" className="cursor-pointer">
-                            {settings.enabled ? 'Enabled' : 'Disabled'}
+                            {settings.enabled ? t('enableCard.enabled') : t('enableCard.disabled')}
                         </Label>
                     </div>
                 </CardContent>
@@ -251,25 +251,23 @@ function ConfigSection({
                     {/* ── Score Badge Visibility ── */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Score Badge Visibility</CardTitle>
-                            <CardDescription>
-                                Choose where the HOT / WARM / COLD score badge appears.
-                            </CardDescription>
+                            <CardTitle>{t('visibilityCard.title')}</CardTitle>
+                            <CardDescription>{t('visibilityCard.description')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {(
                                 [
                                     [
                                         'showScoreInEnquiryTable',
-                                        'Enquiries table (Admissions → Enquiries)',
+                                        t('visibilityCard.options.enquiryTable'),
                                     ],
                                     [
                                         'showScoreInContactsTable',
-                                        'Contacts table (Manage Contacts)',
+                                        t('visibilityCard.options.contactsTable'),
                                     ],
                                     [
                                         'showScoreInStudentsTable',
-                                        'Students table (Manage Students)',
+                                        t('visibilityCard.options.studentsTable'),
                                     ],
                                 ] as [keyof LeadSettingsData, string][]
                             ).map(([key, label]) => (
@@ -290,34 +288,31 @@ function ConfigSection({
                     {/* ── Scoring Weights ── */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Scoring Weights</CardTitle>
-                            <CardDescription>
-                                Each factor contributes its weight percentage to the final score
-                                (0–100). Weights must sum to exactly 100.
-                            </CardDescription>
+                            <CardTitle>{t('weightsCard.title')}</CardTitle>
+                            <CardDescription>{t('weightsCard.description')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {(
                                 [
                                     [
                                         'sourceQuality',
-                                        'Source Quality',
-                                        'Score based on how the lead came in (e.g. Walk-in > Google Ads > Manual)',
+                                        t('weightsCard.factors.sourceQuality.label'),
+                                        t('weightsCard.factors.sourceQuality.description'),
                                     ],
                                     [
                                         'profileCompleteness',
-                                        'Profile Completeness',
-                                        'Percentage of key fields filled (name, email, phone, class, etc.)',
+                                        t('weightsCard.factors.profileCompleteness.label'),
+                                        t('weightsCard.factors.profileCompleteness.description'),
                                     ],
                                     [
                                         'recency',
-                                        'Recency',
-                                        'Time decay — newer leads score higher, older ones decay',
+                                        t('weightsCard.factors.recency.label'),
+                                        t('weightsCard.factors.recency.description'),
                                     ],
                                     [
                                         'engagement',
-                                        'Engagement',
-                                        'Number of timeline notes and interactions recorded',
+                                        t('weightsCard.factors.engagement.label'),
+                                        t('weightsCard.factors.engagement.description'),
                                     ],
                                 ] as [keyof LeadSettingsData['scoringWeights'], string, string][]
                             ).map(([key, label, desc]) => (
@@ -348,7 +343,7 @@ function ConfigSection({
                             <Separator />
 
                             <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium">Total</span>
+                                <span className="font-medium">{t('weightsCard.total')}</span>
                                 <span
                                     className={
                                         weightError
@@ -357,7 +352,7 @@ function ConfigSection({
                                     }
                                 >
                                     {weightTotal} / 100
-                                    {weightError && ' — must equal 100'}
+                                    {weightError && ` — ${t('weightsCard.mustEqual100')}`}
                                 </span>
                             </div>
                         </CardContent>
@@ -366,11 +361,11 @@ function ConfigSection({
                     {/* ── Recency Decay ── */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Recency Decay</CardTitle>
+                            <CardTitle>{t('recencyCard.title')}</CardTitle>
                             <CardDescription>
-                                Number of days before a lead&apos;s recency score starts to decay
-                                toward 0. A lead submitted today scores 100 for recency; one
-                                submitted {settings.recencyDecayDays} days ago scores ~50.
+                                {t('recencyCard.description', {
+                                    days: settings.recencyDecayDays,
+                                })}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -387,7 +382,9 @@ function ConfigSection({
                                     }
                                     className="w-24"
                                 />
-                                <span className="text-sm text-muted-foreground">days</span>
+                                <span className="text-sm text-muted-foreground">
+                                    {t('recencyCard.unit')}
+                                </span>
                             </div>
                         </CardContent>
                     </Card>
@@ -400,7 +397,7 @@ function ConfigSection({
                             onClick={handleSave}
                             disable={saving || !hasChanges}
                         >
-                            {saving ? 'Saving…' : 'Save scoring settings'}
+                            {saving ? t('saveButton.saving') : t('saveButton.save')}
                         </MyButton>
                     </div>
 

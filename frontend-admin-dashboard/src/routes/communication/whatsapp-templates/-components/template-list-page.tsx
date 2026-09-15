@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple, ArrowSquareOut, Info, WarningCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
@@ -10,6 +11,7 @@ import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { TemplateBuilder } from './template-builder';
 
 export function TemplateListPage() {
+    const { t } = useTranslation('communicationTemplateListPage');
     const [templates, setTemplates] = useState<WhatsAppTemplateDTO[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -37,7 +39,7 @@ export function TemplateListPage() {
             setLoadError(
                 reportApiError(err, {
                     feature: 'whatsapp-template-list',
-                    fallbackMessage: 'Could not load templates.',
+                    fallbackMessage: t('couldNotLoadTemplates'),
                 })
             );
         } finally { setLoading(false); }
@@ -58,32 +60,32 @@ export function TemplateListPage() {
             const result = await syncTemplates(instituteId);
             toast.success(
                 result.synced > 0
-                    ? `Synced ${result.synced} template${result.synced === 1 ? '' : 's'} from ${providerLabel}`
-                    : `${providerLabel} has no templates for this account yet`
+                    ? t('syncedCount', { count: result.synced, provider: providerLabel })
+                    : t('noTemplatesForAccount', { provider: providerLabel })
             );
             loadTemplates();
         } catch (err) {
             // Almost always an expired token or missing credentials — the server now says which.
             reportApiError(err, {
                 feature: 'whatsapp-template-sync',
-                fallbackMessage: `Could not sync templates from ${providerLabel}.`,
+                fallbackMessage: t('couldNotSyncTemplates', { provider: providerLabel }),
             });
         } finally { setSyncing(false); }
     };
 
-    const handleDelete = async (t: WhatsAppTemplateDTO) => {
-        const warning = t.status === 'APPROVED' || t.status === 'PENDING'
-            ? `Delete "${t.name}"? It will also be removed from ${providerLabel}, and anything still sending it will stop working.`
-            : `Delete the draft "${t.name}"?`;
+    const handleDelete = async (tpl: WhatsAppTemplateDTO) => {
+        const warning = tpl.status === 'APPROVED' || tpl.status === 'PENDING'
+            ? t('deleteConfirmLive', { name: tpl.name, provider: providerLabel })
+            : t('deleteConfirmDraft', { name: tpl.name });
         if (!confirm(warning)) return;
         try {
-            await deleteTemplate(t.id!);
-            toast.success('Template deleted');
+            await deleteTemplate(tpl.id!);
+            toast.success(t('templateDeleted'));
             loadTemplates();
         } catch (err) {
             reportApiError(err, {
                 feature: 'whatsapp-template-delete',
-                fallbackMessage: `Could not delete "${t.name}".`,
+                fallbackMessage: t('couldNotDeleteTemplate', { name: tpl.name }),
             });
         }
     };
@@ -93,14 +95,14 @@ export function TemplateListPage() {
             const submitted = await submitToMeta(id);
             toast.success(
                 submitted.status === 'APPROVED'
-                    ? 'Template approved by Meta and ready to use.'
-                    : 'Template submitted to Meta for approval.'
+                    ? t('approvedByMeta')
+                    : t('submittedForApproval')
             );
             loadTemplates();
         } catch (err) {
             reportApiError(err, {
                 feature: 'whatsapp-template-submit',
-                fallbackMessage: 'Meta rejected the template.',
+                fallbackMessage: t('metaRejectedTemplate'),
                 toastDuration: 8000,
             });
         }
@@ -126,9 +128,17 @@ export function TemplateListPage() {
             DISABLED: 'bg-orange-100 text-orange-600',
             DELETED: 'bg-gray-200 text-gray-400',
         };
+        const labels: Record<string, string> = {
+            DRAFT: t('status.draft'),
+            PENDING: t('status.pending'),
+            APPROVED: t('status.approved'),
+            REJECTED: t('status.rejected'),
+            DISABLED: t('status.disabled'),
+            DELETED: t('status.deleted'),
+        };
         return (
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${styles[status] || styles.DRAFT}`}>
-                {status}
+                {labels[status] || status}
             </span>
         );
     };
@@ -139,9 +149,14 @@ export function TemplateListPage() {
             UTILITY: 'bg-blue-50 text-blue-600',
             AUTHENTICATION: 'bg-cyan-50 text-cyan-600',
         };
+        const labels: Record<string, string> = {
+            MARKETING: t('category.marketing'),
+            UTILITY: t('category.utility'),
+            AUTHENTICATION: t('category.authentication'),
+        };
         return (
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${styles[cat] || 'bg-gray-50 text-gray-500'}`}>
-                {cat}
+                {labels[cat] || cat}
             </span>
         );
     };
@@ -158,33 +173,33 @@ export function TemplateListPage() {
         <div className="p-4 sm:p-6 w-full max-w-6xl mx-auto">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Message Templates</h1>
+                    <h1 className="text-2xl font-bold text-gray-800">{t('pageTitle')}</h1>
                     <p className="text-sm text-gray-500 mt-1">
                         {canCreateViaApi
-                            ? 'Create, manage, and submit templates for Meta approval'
-                            : 'View synced templates. Create new templates in WATI Dashboard.'}
+                            ? t('subtitleApi')
+                            : t('subtitleWati')}
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.WhatsApp}
-                        label="WhatsApp settings"
+                        label={t('whatsappSettings')}
                     />
                     <button onClick={handleSync} disabled={syncing}
                         className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50">
                         <ArrowClockwise size={16} className={syncing ? 'animate-spin' : ''} />
-                        {syncing ? 'Syncing...' : 'Sync Templates'}
+                        {syncing ? t('syncing') : t('syncTemplates')}
                     </button>
 
                     {canCreateViaApi ? (
                         <button onClick={() => setIsCreating(true)}
                             className="flex items-center gap-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            <Plus size={16} /> Create Template
+                            <Plus size={16} /> {t('createTemplate')}
                         </button>
                     ) : (
                         <a href="https://app.wati.io/template-messages" target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
-                            <ArrowSquareOut size={16} /> Create in WATI
+                            <ArrowSquareOut size={16} /> {t('createInWati')}
                         </a>
                     )}
                 </div>
@@ -195,11 +210,11 @@ export function TemplateListPage() {
                 <div className="flex items-start gap-2 p-3 mb-4 bg-blue-50 border border-blue-200 rounded-lg">
                     <Info size={18} className="text-blue-500 mt-0.5 shrink-0" />
                     <div className="text-xs text-blue-700">
-                        <p className="font-medium">WATI Provider Active</p>
+                        <p className="font-medium">{t('watiBanner.title')}</p>
                         <p className="mt-0.5">
-                            Templates must be created in the <a href="https://app.wati.io/template-messages" target="_blank" rel="noopener noreferrer" className="underline font-medium">WATI Dashboard</a>.
-                            Once approved by Meta, click "Sync Templates" to import them here.
-                            You can then use them in chatbot flows and the WhatsApp inbox.
+                            {t('watiBanner.beforeLink')}{' '}
+                            <a href="https://app.wati.io/template-messages" target="_blank" rel="noopener noreferrer" className="underline font-medium">{t('watiBanner.linkText')}</a>
+                            {t('watiBanner.afterLink')}
                         </p>
                     </div>
                 </div>
@@ -214,74 +229,74 @@ export function TemplateListPage() {
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}>
-                        {tab === 'ALL' ? 'All' : tab === 'WHATSAPP' ? 'WhatsApp' : 'Email'}
+                        {tab === 'ALL' ? t('tabAll') : tab === 'WHATSAPP' ? t('tabWhatsapp') : t('tabEmail')}
                     </button>
                 ))}
             </div>
 
             {/* Search */}
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search templates..."
+                placeholder={t('searchPlaceholder')}
                 className="w-full px-3 py-2 text-sm border rounded-lg mb-4" />
 
             {loading ? (
-                <p className="text-center text-gray-400 py-8">Loading templates...</p>
+                <p className="text-center text-gray-400 py-8">{t('loadingTemplates')}</p>
             ) : loadError ? (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-danger-200 bg-danger-50 py-10 text-center">
                     <WarningCircle size={24} className="text-danger-600" />
                     <p className="max-w-md px-4 text-sm text-danger-600">{loadError}</p>
                     <button onClick={loadTemplates}
                         className="rounded-lg border border-danger-200 bg-white px-4 py-2 text-sm hover:bg-danger-50">
-                        Try again
+                        {t('tryAgain')}
                     </button>
                 </div>
             ) : filtered.length === 0 ? (
                 <div className="text-center py-12">
                     <p className="text-gray-400 mb-4">
                         {templates.length === 0
-                            ? `No templates yet. Create one or sync from ${providerLabel}.`
-                            : 'No templates match your search.'}
+                            ? t('noTemplatesYet', { provider: providerLabel })
+                            : t('noTemplatesMatchSearch')}
                     </p>
                     {templates.length === 0 && canCreateViaApi && (
                         <button onClick={() => setIsCreating(true)}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            Create Template
+                            {t('createTemplate')}
                         </button>
                     )}
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {filtered.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between p-4 bg-white rounded-lg border hover:border-blue-200 transition">
+                    {filtered.map((tpl) => (
+                        <div key={tpl.id} className="flex items-center justify-between p-4 bg-white rounded-lg border hover:border-blue-200 transition">
                             <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-mono text-sm font-medium text-gray-800 break-all">{t.name}</span>
-                                    {statusBadge(t.status || 'DRAFT')}
-                                    {categoryBadge(t.category)}
-                                    <span className="text-xs text-gray-400">{t.language}</span>
-                                    {t.createdViaVacademy && (
-                                        <span className="text-[10px] px-1 py-0.5 bg-blue-50 text-blue-500 rounded">Vacademy</span>
+                                    <span className="font-mono text-sm font-medium text-gray-800 break-all">{tpl.name}</span>
+                                    {statusBadge(tpl.status || 'DRAFT')}
+                                    {categoryBadge(tpl.category)}
+                                    <span className="text-xs text-gray-400">{tpl.language}</span>
+                                    {tpl.createdViaVacademy && (
+                                        <span className="text-[10px] px-1 py-0.5 bg-blue-50 text-blue-500 rounded">{t('vacademyBadge')}</span>
                                     )}
                                 </div>
-                                <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{t.bodyText}</p>
-                                {t.rejectionReason && (
-                                    <p className="text-xs text-red-500 mt-1">Rejection: {t.rejectionReason}</p>
+                                <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{tpl.bodyText}</p>
+                                {tpl.rejectionReason && (
+                                    <p className="text-xs text-red-500 mt-1">{t('rejectionReason', { reason: tpl.rejectionReason })}</p>
                                 )}
                             </div>
                             <div className="flex items-center gap-1 ml-3 shrink-0">
-                                {canCreateViaApi && (t.status === 'DRAFT' || t.status === 'REJECTED') && (
+                                {canCreateViaApi && (tpl.status === 'DRAFT' || tpl.status === 'REJECTED') && (
                                     <>
-                                        <button onClick={() => setEditingTemplate(t)} title="Edit"
+                                        <button onClick={() => setEditingTemplate(tpl)} title={t('edit')}
                                             className="p-2 rounded hover:bg-gray-100">
                                             <PencilSimple size={16} className="text-gray-500" />
                                         </button>
-                                        <button onClick={() => handleSubmit(t.id!)} title="Submit to Meta"
+                                        <button onClick={() => handleSubmit(tpl.id!)} title={t('submitToMeta')}
                                             className="p-2 rounded hover:bg-gray-100">
                                             <PaperPlaneRight size={16} className="text-blue-500" />
                                         </button>
                                     </>
                                 )}
-                                <button onClick={() => handleDelete(t)} title="Delete"
+                                <button onClick={() => handleDelete(tpl)} title={t('delete')}
                                     className="p-2 rounded hover:bg-gray-100">
                                     <Trash size={16} className="text-red-400" />
                                 </button>

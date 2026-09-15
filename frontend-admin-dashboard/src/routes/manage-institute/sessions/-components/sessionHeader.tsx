@@ -3,6 +3,7 @@ import { AddSessionDialog } from './session-operations/add-session/add-session-d
 import { AddSessionDataType } from './session-operations/add-session/add-session-form';
 import { toast } from 'sonner';
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { Plus } from '@phosphor-icons/react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -11,6 +12,7 @@ import { getTerminology, getTerminologyPlural } from '@/components/common/layout
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export default function SessionHeader() {
+    const { t } = useTranslation('manageInstituteSessionHeader');
     const [disableAddButton, setDisableAddButton] = useState(true);
     const { instituteDetails } = useInstituteDetailsStore();
     const addSessionMutation = useAddSession();
@@ -40,20 +42,21 @@ export default function SessionHeader() {
             {
                 onSuccess: () => {
                     toast.success(
-                        ` ${getTerminology(
-                            ContentTerms.Session,
-                            SystemTerms.Session
-                        )} added successfully`
+                        t('toast.added', {
+                            session: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                        })
                     );
                     setIsAddSessionDiaogOpen(false);
                 },
                 onError: (error) => {
                     toast.error(
                         error.message ||
-                        `Failed to add ${getTerminology(
-                            ContentTerms.Session,
-                            SystemTerms.Session
-                        ).toLocaleLowerCase()}`
+                        t('toast.addFailed', {
+                            session: getTerminology(
+                                ContentTerms.Session,
+                                SystemTerms.Session
+                            ).toLocaleLowerCase(),
+                        })
                     );
                 },
             }
@@ -73,7 +76,7 @@ export default function SessionHeader() {
                 disable={disableAddButton}
                 onClick={() => formSubmitRef.current()}
             >
-                Add
+                {t('add')}
             </MyButton>
         </div>
     );
@@ -86,14 +89,17 @@ export default function SessionHeader() {
         <div className="flex flex-col gap-4 text-neutral-600 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2">
                 <div className="text-lg font-[600] sm:text-xl">
-                    Manage Your {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                    {t('manageYourSessions', {
+                        session: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                    })}
                 </div>
                 <div className="text-sm sm:text-base">
-                    Effortlessly organize, upload, and track educational resources in one place.
-                    Provide{' '}
-                    {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLocaleLowerCase()}
-                    with easy access to the materials they need to succeed, ensuring a seamless
-                    learning experience.
+                    {t('description', {
+                        learnerPlural: getTerminologyPlural(
+                            RoleTerms.Learner,
+                            SystemTerms.Learner
+                        ).toLocaleLowerCase(),
+                    })}
                 </div>
             </div>
             <div className="self-end sm:self-auto">
@@ -102,12 +108,17 @@ export default function SessionHeader() {
                         <NoCourseDialog
                             isOpen={isOpen}
                             setIsOpen={setIsOpen}
-                            type="Adding Sessions"
-                            content="You need to create a course before"
+                            type={t('noCourseDialog.type')}
+                            content={t('noCourseDialog.content')}
                             trigger={
                                 <MyButton>
-                                    <Plus /> Add New{' '}
-                                    {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                                    <Plus />{' '}
+                                    {t('addNew', {
+                                        session: getTerminology(
+                                            ContentTerms.Session,
+                                            SystemTerms.Session
+                                        ),
+                                    })}
                                 </MyButton>
                             }
                         />
@@ -120,8 +131,13 @@ export default function SessionHeader() {
                         trigger={
                             <div className="flex flex-col items-center gap-1">
                                 <MyButton disable={!instituteDetails?.batches_for_sessions.length}>
-                                    <Plus /> Add New{' '}
-                                    {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                                    <Plus />{' '}
+                                    {t('addNew', {
+                                        session: getTerminology(
+                                            ContentTerms.Session,
+                                            SystemTerms.Session
+                                        ),
+                                    })}
                                 </MyButton>
                             </div>
                         }

@@ -11,6 +11,7 @@
  * shows; only the layout differs.
  */
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { X, CaretLeft, CaretRight } from '@phosphor-icons/react';
@@ -122,6 +123,7 @@ function resolveInitialSection(settings: StudentSideViewSettings): StudentSideVi
 }
 
 export const StudentProfileOverlay = () => {
+    const { t } = useTranslation('manageStudentsProfileOverlay');
     const {
         selectedStudent,
         isOverlayOpen,
@@ -158,6 +160,9 @@ export const StudentProfileOverlay = () => {
         | 'COLD'
         | undefined;
     const isActive = (selectedStudent?.status || '').toUpperCase() === 'ACTIVE';
+    // Display label is translated; `tier` itself stays the raw enum for the
+    // TIER_PILL style lookup and any downstream logic.
+    const tierLabel = tier ? t(`leadTier.${tier.toLowerCase()}` as const) : undefined;
 
     // Load display settings (which sections are visible + order) when the overlay opens.
     useEffect(() => {
@@ -335,7 +340,7 @@ export const StudentProfileOverlay = () => {
                                     ) : imageUrl ? (
                                         <img
                                             src={imageUrl}
-                                            alt={selectedStudent.full_name || 'Profile'}
+                                            alt={selectedStudent.full_name || t('header.photoAlt')}
                                             className="size-full object-cover"
                                         />
                                     ) : selectedStudent.full_name ? (
@@ -358,7 +363,9 @@ export const StudentProfileOverlay = () => {
                                 pills inline per handoff identity row. */}
                             <div className="flex min-w-0 flex-1 flex-col gap-1">
                                 <span className="text-xs font-bold uppercase tracking-widest text-primary-700">
-                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
+                                    {t('header.title', {
+                                        term: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
+                                    })}
                                 </span>
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h1
@@ -370,7 +377,7 @@ export const StudentProfileOverlay = () => {
                                         )}
                                         title={selectedStudent.full_name || undefined}
                                     >
-                                        {selectedStudent.full_name || 'Unknown'}
+                                        {selectedStudent.full_name || t('header.unknownName')}
                                     </h1>
                                     {selectedStudent.status && (
                                         <StatusChips status={selectedStudent.status} />
@@ -381,13 +388,16 @@ export const StudentProfileOverlay = () => {
                                                 'rounded-full px-2 py-0.5 text-xs font-semibold',
                                                 TIER_PILL[tier]
                                             )}
-                                            title={`Lead tier ${tier}${
+                                            title={
                                                 typeof leadHeaderProfile?.best_score === 'number'
-                                                    ? ` · score ${leadHeaderProfile.best_score}`
-                                                    : ''
-                                            }`}
+                                                    ? t('leadTier.titleWithScore', {
+                                                          tier: tierLabel,
+                                                          score: leadHeaderProfile.best_score,
+                                                      })
+                                                    : t('leadTier.titleSimple', { tier: tierLabel })
+                                            }
                                         >
-                                            {tier}
+                                            {tierLabel}
                                             {typeof leadHeaderProfile?.best_score === 'number'
                                                 ? ` · ${leadHeaderProfile.best_score}`
                                                 : ''}
@@ -416,8 +426,8 @@ export const StudentProfileOverlay = () => {
                                             type="button"
                                             onClick={goPrevLearner}
                                             disabled={!hasPrev}
-                                            aria-label="Previous learner (←)"
-                                            title="Previous learner (←)"
+                                            aria-label={t('nav.prevLearner')}
+                                            title={t('nav.prevLearner')}
                                             className="flex size-9 items-center justify-center text-neutral-600 transition-colors hover:bg-muted hover:text-card-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                                         >
                                             <CaretLeft className="size-4" weight="bold" />
@@ -430,8 +440,8 @@ export const StudentProfileOverlay = () => {
                                             type="button"
                                             onClick={goNextLearner}
                                             disabled={!hasNext}
-                                            aria-label="Next learner (→)"
-                                            title="Next learner (→)"
+                                            aria-label={t('nav.nextLearner')}
+                                            title={t('nav.nextLearner')}
                                             className="flex size-9 items-center justify-center text-neutral-600 transition-colors hover:bg-muted hover:text-card-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                                         >
                                             <CaretRight className="size-4" weight="bold" />
@@ -447,8 +457,8 @@ export const StudentProfileOverlay = () => {
                                     type="button"
                                     onClick={closeOverlay}
                                     className="flex size-9 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-                                    aria-label="Close (Esc)"
-                                    title="Close (Esc)"
+                                    aria-label={t('nav.close')}
+                                    title={t('nav.close')}
                                 >
                                     <X className="size-5" />
                                 </button>
@@ -460,11 +470,11 @@ export const StudentProfileOverlay = () => {
                             items={
                                 [
                                     selectedStudent.institute_enrollment_number && {
-                                        label: 'Enrollment No',
+                                        label: t('contextStrip.enrollmentNo'),
                                         value: selectedStudent.institute_enrollment_number,
                                     },
                                     selectedStudent.created_at && {
-                                        label: 'Joined',
+                                        label: t('contextStrip.joined'),
                                         value: new Date(
                                             selectedStudent.created_at
                                         ).toLocaleDateString(undefined, {
@@ -474,15 +484,15 @@ export const StudentProfileOverlay = () => {
                                         }),
                                     },
                                     selectedStudent.city && {
-                                        label: 'City',
+                                        label: t('contextStrip.city'),
                                         value: selectedStudent.city,
                                     },
                                     selectedStudent.email && {
-                                        label: 'Email',
+                                        label: t('contextStrip.email'),
                                         value: selectedStudent.email,
                                     },
                                     selectedStudent.mobile_number && {
-                                        label: 'Phone',
+                                        label: t('contextStrip.phone'),
                                         value: selectedStudent.mobile_number,
                                     },
                                 ] as Array<ContextStripItem | false | null | undefined>

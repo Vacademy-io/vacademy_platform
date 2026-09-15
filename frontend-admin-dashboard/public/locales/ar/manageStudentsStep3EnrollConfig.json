@@ -1,0 +1,43 @@
+{
+    "courseInviteSection": {
+        "heading": "دعوة التسجيل لكل {{term}}",
+        "description": "اختر رابط دعوة لكل {{term}}. اتركه فارغًا لاستخدام الدعوة الافتراضية تلقائيًا.",
+        "inviteLinkLabel": "رابط الدعوة",
+        "accessDaysLabel": "تجاوز أيام الوصول",
+        "accessDaysPlaceholder": "من الدعوة",
+        "autoResolvedFromDefault": "(تم الحل تلقائيًا من الدعوة الافتراضية)"
+    },
+    "globalOptions": {
+        "heading": "الخيارات العامة",
+        "notifyLearnersLabel": "إشعار {{term}}",
+        "notifyLearnersDescription": "إرسال رسائل تأكيد التسجيل عبر البريد الإلكتروني إلى {{term}} المسجلين حديثًا",
+        "sendCredentialsLabel": "إرسال بيانات الدخول",
+        "sendCredentialsDescription": "إرسال بريد إلكتروني للتسجيل يحتوي على بيانات الدخول إلى {{term}} الجدد",
+        "duplicateHandling": {
+            "label": "إذا كان {{term}} مسجلاً بالفعل",
+            "skipOption": "تخطٍ صامت (موصى به)",
+            "errorOption": "وضع علامة كخطأ في التقرير",
+            "skipDescription": "سيتم تخطي {{term}} الذين لديهم وصول نشط أو دعوة معلقة بصمت.",
+            "errorDescription": "سيظهر {{term}} الذين لديهم وصول نشط أو دعوة معلقة كحالات فشل في النتائج.",
+            "alwaysReenrolled": "يُعاد تسجيل {{term}} المنتهية صلاحيتهم أو الملغاة دائمًا."
+        },
+        "paymentDate": {
+            "label": "تاريخ الدفع (اختياري)",
+            "placeholder": "اختر تاريخ الدفع",
+            "description": "التاريخ الذي تم فيه الدفع"
+        },
+        "transactionId": {
+            "label": "رقم المعاملة (اختياري)",
+            "placeholder": "أدخل رقم المعاملة",
+            "description": "مرجع معاملة الدفع الخارجي"
+        }
+    },
+    "workflows": {
+        "heading": "سير العمل الذي سيتم تفعيله عند التسجيل",
+        "loading": "جارٍ تحميل سير العمل المرتبط…",
+        "noneLinked": "لا توجد سير عمل آلية مرتبطة بـ {{term}} المحددة.",
+        "global": "عام",
+        "firesOnEveryEnrollment": "يتم تفعيله عند كل عملية تسجيل مجمّعة:",
+        "noCourseSpecific": "لا توجد سير عمل خاصة بهذه الدورة."
+    }
+}

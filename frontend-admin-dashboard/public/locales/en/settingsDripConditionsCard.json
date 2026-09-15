@@ -1,0 +1,52 @@
+{
+    "header": {
+        "title": "Drip Conditions",
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+    },
+    "info": {
+        "description": "Releases course content gradually instead of all at once. Set the schedule per course from Course Details → Schedule Unlock, or per item from its three-dot menu."
+    },
+    "enforce": {
+        "label": "Apply unlock rules to learners",
+        "hint": "Off means you can set rules up and preview them without anything changing for learners. Turn it on when the schedule is ready to go live.",
+        "warning": {
+            "prefix": "This institute already has",
+            "ruleCount_one": "{{count}} saved rule",
+            "ruleCount_other": "{{count}} saved rules",
+            "suffix": ". Some may be old or unfinished — they have never affected learners. Switching this on applies all of them at once, so review them in each course first."
+        }
+    },
+    "schedule": {
+        "title": "Default schedule",
+        "description": "What the per-course scheduler starts from. Every course can still override it.",
+        "level": {
+            "label": "Release one",
+            "options": {
+                "subject": "Subject",
+                "module": "Module",
+                "chapter": "Chapter",
+                "slide": "Slide"
+            }
+        },
+        "interval": {
+            "label": "Every … days"
+        },
+        "startDay": {
+            "label": "First one opens on day"
+        },
+        "anchor": {
+            "label": "Counted from",
+            "enrollment": "Each learner's enrollment date",
+            "sessionStart": "The batch start date"
+        },
+        "time": {
+            "label": "Opens at"
+        },
+        "behavior": {
+            "label": "Until then",
+            "lock": "Show locked",
+            "hide": "Hide completely"
+        }
+    }
+}

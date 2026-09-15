@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -118,10 +120,10 @@ const DISPOSITIONS = [
     'Not_Interested',
 ] as const;
 
-const ASSIGNMENT_MODES: { value: AssignmentMode; label: string }[] = [
-    { value: 'ROUND_ROBIN', label: 'Round robin' },
-    { value: 'TIME_BASED', label: 'On-shift only' },
-    { value: 'MANUAL', label: 'Manual' },
+const ASSIGNMENT_MODES: { value: AssignmentMode; labelKey: string }[] = [
+    { value: 'ROUND_ROBIN', labelKey: 'assignmentModes.roundRobin' },
+    { value: 'TIME_BASED', labelKey: 'assignmentModes.timeBased' },
+    { value: 'MANUAL', labelKey: 'assignmentModes.manual' },
 ];
 
 const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
@@ -163,39 +165,37 @@ interface ProviderMeta {
     campaignPlaceholder: string;
     campaignHelp: string;
 }
-const PROVIDER_META: Record<string, ProviderMeta> = {
-    AAVTAAR: {
-        label: 'Aavtaar',
-        companyCodeLabel: 'Company Code',
-        companyCodePlaceholder: 'Your provider company code',
-        tokenLabel: 'Bearer Token',
-        tokenPlaceholder: 'Paste the API token',
-        campaignPlaceholder: 'Campaign ID from your provider',
-        campaignHelp:
-            'The campaign that defines the AI script/persona for outbound calls. Provided by your AI-calling provider.',
-    },
-    VACADEMY_AI: {
-        label: 'Vacademy AI Agent',
-        companyCodeLabel: 'Account Code',
-        companyCodePlaceholder: 'Not needed — calls run on your Vacademy Voice number',
-        tokenLabel: 'API Token',
-        tokenPlaceholder: 'Not needed for Vacademy AI',
-        campaignPlaceholder: 'Pick an agent from the AI Agents section below',
-        campaignHelp:
-            'Vacademy AI agents are authored in the "AI Agents" section below — saving one registers it here automatically (its id is the campaign id).',
-    },
+const PROVIDER_META_BUILDERS: Record<string, (t: TFunction) => ProviderMeta> = {
+    AAVTAAR: (t) => ({
+        label: t('provider.aavtaar.label'),
+        companyCodeLabel: t('provider.aavtaar.companyCodeLabel'),
+        companyCodePlaceholder: t('provider.aavtaar.companyCodePlaceholder'),
+        tokenLabel: t('provider.aavtaar.tokenLabel'),
+        tokenPlaceholder: t('provider.aavtaar.tokenPlaceholder'),
+        campaignPlaceholder: t('provider.aavtaar.campaignPlaceholder'),
+        campaignHelp: t('provider.aavtaar.campaignHelp'),
+    }),
+    VACADEMY_AI: (t) => ({
+        label: t('provider.vacademyAi.label'),
+        companyCodeLabel: t('provider.vacademyAi.companyCodeLabel'),
+        companyCodePlaceholder: t('provider.vacademyAi.companyCodePlaceholder'),
+        tokenLabel: t('provider.vacademyAi.tokenLabel'),
+        tokenPlaceholder: t('provider.vacademyAi.tokenPlaceholder'),
+        campaignPlaceholder: t('provider.vacademyAi.campaignPlaceholder'),
+        campaignHelp: t('provider.vacademyAi.campaignHelp'),
+    }),
 };
-const titleCase = (code: string) =>
-    code ? code.charAt(0).toUpperCase() + code.slice(1).toLowerCase() : 'Provider';
-const metaFor = (code: string): ProviderMeta =>
-    PROVIDER_META[code] ?? {
-        label: titleCase(code),
-        companyCodeLabel: 'Account / Company Code',
-        companyCodePlaceholder: 'Your provider account code',
-        tokenLabel: 'API Token',
-        tokenPlaceholder: 'Paste the API token',
-        campaignPlaceholder: 'Campaign / agent ID',
-        campaignHelp: 'The campaign or agent that defines the AI script for outbound calls.',
+const titleCase = (code: string, t: TFunction) =>
+    code ? code.charAt(0).toUpperCase() + code.slice(1).toLowerCase() : t('provider.fallbackLabel');
+const metaFor = (code: string, t: TFunction): ProviderMeta =>
+    PROVIDER_META_BUILDERS[code]?.(t) ?? {
+        label: titleCase(code, t),
+        companyCodeLabel: t('provider.fallback.companyCodeLabel'),
+        companyCodePlaceholder: t('provider.fallback.companyCodePlaceholder'),
+        tokenLabel: t('provider.fallback.tokenLabel'),
+        tokenPlaceholder: t('provider.fallback.tokenPlaceholder'),
+        campaignPlaceholder: t('provider.fallback.campaignPlaceholder'),
+        campaignHelp: t('provider.fallback.campaignHelp'),
     };
 const webhookPathFor = (code: string) =>
     code === 'AAVTAAR'
@@ -280,6 +280,7 @@ const saveAiConfig = async (payload: AiConfigSave): Promise<void> => {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function AiCallingSettings() {
+    const { t } = useTranslation('settingsAiCalling');
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<AiCallingSettingsData>(DEFAULT_AI_CALLING_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
@@ -301,12 +302,12 @@ export default function AiCallingSettings() {
     const { mutate: save, isPending: saving } = useMutation({
         mutationFn: saveAiCallingSettings,
         onSuccess: () => {
-            toast.success('AI calling settings saved');
+            toast.success(t('toast.settingsSaved'));
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['ai-calling-settings'] });
         },
         onError: () => {
-            toast.error('Failed to save AI calling settings');
+            toast.error(t('toast.settingsSaveFailed'));
         },
     });
 
@@ -333,25 +334,25 @@ export default function AiCallingSettings() {
     const { mutate: saveCreds, isPending: savingCreds } = useMutation({
         mutationFn: saveAiConfig,
         onSuccess: () => {
-            toast.success('Credentials saved');
+            toast.success(t('toast.credentialsSaved'));
             setApiToken('');
             setWebhookSecret('');
             queryClient.invalidateQueries({ queryKey: ['ai-calling-config'] });
         },
         onError: (err: unknown) => {
             const msg = (err as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
-            toast.error(msg ?? 'Failed to save credentials');
+            toast.error(msg ?? t('toast.credentialsSaveFailed'));
         },
     });
 
     const handleSaveCreds = () => {
-        const m = metaFor(settings.provider);
+        const m = metaFor(settings.provider, t);
         if (!companyCode.trim()) {
-            toast.error(`${m.companyCodeLabel} is required.`);
+            toast.error(t('toast.fieldRequired', { field: m.companyCodeLabel }));
             return;
         }
         if (!cfg?.hasToken && !apiToken.trim()) {
-            toast.error(`${m.tokenLabel} is required.`);
+            toast.error(t('toast.fieldRequired', { field: m.tokenLabel }));
             return;
         }
         saveCreds({
@@ -483,13 +484,13 @@ export default function AiCallingSettings() {
 
     const handleSave = () => {
         if (settings.enabled && !settings.defaultCampaignId.trim()) {
-            toast.error('A default Campaign ID is required to enable AI calling.');
+            toast.error(t('toast.campaignIdRequired'));
             return;
         }
         save(settings);
     };
 
-    const meta = metaFor(settings.provider);
+    const meta = metaFor(settings.provider, t);
     const webhookPath = webhookPathFor(settings.provider);
 
     return (
@@ -497,12 +498,8 @@ export default function AiCallingSettings() {
             {/* ── Enable + Campaign ── */}
             <Card>
                 <CardHeader>
-                    <CardTitle>AI Calling</CardTitle>
-                    <CardDescription>
-                        When enabled, leads are first called by the AI voice agent. The recording
-                        and AI summary appear on the lead profile, and a counsellor is assigned only
-                        when the outcome rules below say so.
-                    </CardDescription>
+                    <CardTitle>{t('enableCard.title')}</CardTitle>
+                    <CardDescription>{t('enableCard.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex items-center gap-3">
@@ -512,7 +509,7 @@ export default function AiCallingSettings() {
                             onCheckedChange={(v) => update({ enabled: v })}
                         />
                         <Label htmlFor="ai-calling-enabled" className="cursor-pointer">
-                            {settings.enabled ? 'Enabled' : 'Disabled'}
+                            {settings.enabled ? t('enableCard.enabled') : t('enableCard.disabled')}
                         </Label>
                     </div>
 
@@ -525,12 +522,11 @@ export default function AiCallingSettings() {
                             onCheckedChange={(v) => update({ showInLeadList: v })}
                         />
                         <Label htmlFor="ai-show-in-lead-list" className="cursor-pointer">
-                            Show the AI-call button on lead rows
+                            {t('enableCard.showInLeadList')}
                         </Label>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        Controls only the manual robot button in lead lists. Automated AI workflows
-                        run regardless of this toggle.
+                        {t('enableCard.showInLeadListHint')}
                     </p>
 
                     <Separator />
@@ -542,39 +538,34 @@ export default function AiCallingSettings() {
                             onCheckedChange={(v) => update({ inboundLeadCapture: { enabled: v } })}
                         />
                         <Label htmlFor="ai-inbound-lead-capture" className="cursor-pointer">
-                            Capture inbound callers as leads
+                            {t('enableCard.inboundLeadCapture')}
                         </Label>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        For an inbound AI helpline: when someone calls and isn&apos;t already a
-                        lead, a lead is created (matched by phone, so repeat callers aren&apos;t
-                        duplicated) and the call attaches to it — so it shows in Recent Leads and
-                        the Call Log, and you can follow up. Off means unknown callers&apos; calls
-                        are recorded but no lead is made.
+                        {t('enableCard.inboundLeadCaptureHint')}
                     </p>
 
                     <Separator />
 
                     <div className="grid max-w-md gap-2">
-                        <Label htmlFor="ai-provider">AI voice provider</Label>
+                        <Label htmlFor="ai-provider">{t('enableCard.providerLabel')}</Label>
                         <Select
                             value={settings.provider}
                             onValueChange={(v) => update({ provider: v })}
                         >
                             <SelectTrigger id="ai-provider">
-                                <SelectValue placeholder="Select a provider" />
+                                <SelectValue placeholder={t('enableCard.providerPlaceholder')} />
                             </SelectTrigger>
                             <SelectContent>
                                 {providerCodes.map((code) => (
                                     <SelectItem key={code} value={code}>
-                                        {metaFor(code).label}
+                                        {metaFor(code, t).label}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                            The AI calling agent used for this institute. The credentials and
-                            campaign below are for the selected provider.
+                            {t('enableCard.providerHint')}
                         </p>
                     </div>
 
@@ -582,7 +573,9 @@ export default function AiCallingSettings() {
 
                     {settings.enabled && (
                         <div className="grid max-w-md gap-2">
-                            <Label htmlFor="ai-campaign-id">Default Campaign ID</Label>
+                            <Label htmlFor="ai-campaign-id">
+                                {t('enableCard.defaultCampaignIdLabel')}
+                            </Label>
                             <Input
                                 id="ai-campaign-id"
                                 value={settings.defaultCampaignId}
@@ -598,14 +591,12 @@ export default function AiCallingSettings() {
             {/* ── Campaigns (inbound / outbound) ── */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Campaigns / Agents</CardTitle>
+                    <CardTitle>{t('campaigns.title')}</CardTitle>
                     <CardDescription>
-                        Register each AI campaign id and give it an agent <b>name</b> (e.g.
-                        &ldquo;Class Feedback&rdquo;). Workflows reference the <b>name</b>, not the
-                        raw id — pick the same name once per provider and switching provider
-                        resolves to the right id automatically. Tag each Outbound (you dial) or
-                        Inbound (they dial your AI line); Inbound ids classify incoming webhooks
-                        (matched to the lead by phone).
+                        {t('campaigns.description.part1')} <b>{t('campaigns.description.nameWord')}</b>{' '}
+                        {t('campaigns.description.part2')}{' '}
+                        <b>{t('campaigns.description.nameWord')}</b>
+                        {t('campaigns.description.part3')}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -614,13 +605,13 @@ export default function AiCallingSettings() {
                             <div key={i} className="flex items-center gap-2">
                                 <Input
                                     value={c.name}
-                                    placeholder="Agent name (e.g. Class Feedback)"
+                                    placeholder={t('campaigns.agentNamePlaceholder')}
                                     onChange={(e) => updateCampaign(i, { name: e.target.value })}
                                     className="flex-1"
                                 />
                                 <Input
                                     value={c.campaignId}
-                                    placeholder="Campaign ID"
+                                    placeholder={t('campaigns.campaignIdPlaceholder')}
                                     onChange={(e) =>
                                         updateCampaign(i, { campaignId: e.target.value })
                                     }
@@ -631,12 +622,12 @@ export default function AiCallingSettings() {
                                     onValueChange={(v) => updateCampaign(i, { provider: v })}
                                 >
                                     <SelectTrigger className="w-32">
-                                        <SelectValue placeholder="Provider" />
+                                        <SelectValue placeholder={t('campaigns.providerPlaceholder')} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {providerCodes.map((code) => (
                                             <SelectItem key={code} value={code}>
-                                                {metaFor(code).label}
+                                                {metaFor(code, t).label}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -651,8 +642,12 @@ export default function AiCallingSettings() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="OUTBOUND">Outbound</SelectItem>
-                                        <SelectItem value="INBOUND">Inbound</SelectItem>
+                                        <SelectItem value="OUTBOUND">
+                                            {t('campaigns.outbound')}
+                                        </SelectItem>
+                                        <SelectItem value="INBOUND">
+                                            {t('campaigns.inbound')}
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <MyButton
@@ -665,15 +660,12 @@ export default function AiCallingSettings() {
                             </div>
                         ))}
                         {(settings.campaigns ?? []).length === 0 && (
-                            <p className="text-xs text-muted-foreground">
-                                No campaigns registered yet. Add one and tag it Inbound to enable
-                                inbound-call detection.
-                            </p>
+                            <p className="text-xs text-muted-foreground">{t('campaigns.empty')}</p>
                         )}
                     </div>
                     <div>
                         <MyButton buttonType="secondary" scale="medium" onClick={addCampaign}>
-                            <Plus className="size-4" /> Add campaign
+                            <Plus className="size-4" /> {t('campaigns.addCampaign')}
                         </MyButton>
                     </div>
                 </CardContent>
@@ -687,11 +679,8 @@ export default function AiCallingSettings() {
             {/* ── Credentials ── */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Credentials</CardTitle>
-                    <CardDescription>
-                        API credentials for this institute&apos;s AI calling provider. The token and
-                        webhook secret are stored encrypted and never shown again.
-                    </CardDescription>
+                    <CardTitle>{t('credentials.title')}</CardTitle>
+                    <CardDescription>{t('credentials.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid max-w-md gap-2">
@@ -712,14 +701,14 @@ export default function AiCallingSettings() {
                             value={apiToken}
                             placeholder={
                                 cfg?.hasToken
-                                    ? '•••••••• (saved — leave blank to keep)'
+                                    ? t('credentials.savedPlaceholder')
                                     : meta.tokenPlaceholder
                             }
                             onChange={(e) => setApiToken(e.target.value)}
                         />
                     </div>
                     <div className="grid max-w-md gap-2">
-                        <Label htmlFor="ai-webhook-secret">Webhook Secret</Label>
+                        <Label htmlFor="ai-webhook-secret">{t('credentials.webhookSecretLabel')}</Label>
                         <Input
                             id="ai-webhook-secret"
                             type="password"
@@ -727,15 +716,13 @@ export default function AiCallingSettings() {
                             value={webhookSecret}
                             placeholder={
                                 cfg?.hasWebhookSecret
-                                    ? '•••••••• (saved — leave blank to keep)'
-                                    : 'Secret for the webhook URL ?token='
+                                    ? t('credentials.savedPlaceholder')
+                                    : t('credentials.webhookSecretPlaceholder')
                             }
                             onChange={(e) => setWebhookSecret(e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                            Authenticates the provider&apos;s end-of-call webhook. Hand your AI
-                            provider the URL {webhookPath}?instituteId=…&amp;token=&lt;this
-                            secret&gt;.
+                            {t('credentials.webhookHelp', { webhookPath })}
                         </p>
                     </div>
                     <div className="flex justify-end">
@@ -745,7 +732,7 @@ export default function AiCallingSettings() {
                             onClick={handleSaveCreds}
                             disable={savingCreds}
                         >
-                            {savingCreds ? 'Saving…' : 'Save credentials'}
+                            {savingCreds ? t('credentials.saving') : t('credentials.save')}
                         </MyButton>
                     </div>
                 </CardContent>
@@ -756,15 +743,12 @@ export default function AiCallingSettings() {
                     {/* ── Retry & Calling Window ── */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Retries &amp; Calling Shifts</CardTitle>
-                            <CardDescription>
-                                If a lead doesn&apos;t answer, the AI retries within these limits
-                                before giving up. Retries are only placed inside the shifts below.
-                            </CardDescription>
+                            <CardTitle>{t('retryCard.title')}</CardTitle>
+                            <CardDescription>{t('retryCard.description')}</CardDescription>
                         </CardHeader>
                         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div className="grid gap-2">
-                                <Label htmlFor="max-retries">Max retries</Label>
+                                <Label htmlFor="max-retries">{t('retryCard.maxRetries')}</Label>
                                 <Input
                                     id="max-retries"
                                     type="number"
@@ -778,7 +762,7 @@ export default function AiCallingSettings() {
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="max-per-day">Max calls per day (per lead)</Label>
+                                <Label htmlFor="max-per-day">{t('retryCard.maxPerDay')}</Label>
                                 <Input
                                     id="max-per-day"
                                     type="number"
@@ -795,7 +779,7 @@ export default function AiCallingSettings() {
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="retry-gap">Minutes between retries</Label>
+                                <Label htmlFor="retry-gap">{t('retryCard.retryGap')}</Label>
                                 <Input
                                     id="retry-gap"
                                     type="number"
@@ -810,15 +794,13 @@ export default function AiCallingSettings() {
                                     className="w-28"
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    How long the bot waits before re-dialing a no-answer lead.
+                                    {t('retryCard.retryGapHint')}
                                 </p>
                             </div>
                             <div className="grid gap-2 sm:col-span-2">
-                                <Label>Calling shifts</Label>
+                                <Label>{t('retryCard.callingShifts')}</Label>
                                 <p className="text-xs text-muted-foreground">
-                                    Time windows the bot may (re)dial in. Add multiple shifts (e.g.
-                                    morning + evening). Applies to the timed retry re-dialer;
-                                    immediate new-lead, manual and bulk calls fire right away.
+                                    {t('retryCard.callingShiftsHint')}
                                 </p>
                                 <div className="space-y-2">
                                     {settings.callingShifts.map((shift, i) => (
@@ -832,7 +814,7 @@ export default function AiCallingSettings() {
                                                 className="w-36"
                                             />
                                             <span className="text-sm text-muted-foreground">
-                                                to
+                                                {t('retryCard.shiftTo')}
                                             </span>
                                             <Input
                                                 type="time"
@@ -859,12 +841,12 @@ export default function AiCallingSettings() {
                                         scale="medium"
                                         onClick={addShift}
                                     >
-                                        <Plus className="size-4" /> Add shift
+                                        <Plus className="size-4" /> {t('retryCard.addShift')}
                                     </MyButton>
                                 </div>
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="timezone">Timezone</Label>
+                                <Label htmlFor="timezone">{t('retryCard.timezone')}</Label>
                                 <Input
                                     id="timezone"
                                     value={settings.timezone}
@@ -873,7 +855,9 @@ export default function AiCallingSettings() {
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="connect-threshold">Min connect seconds</Label>
+                                <Label htmlFor="connect-threshold">
+                                    {t('retryCard.connectThreshold')}
+                                </Label>
                                 <Input
                                     id="connect-threshold"
                                     type="number"
@@ -888,8 +872,7 @@ export default function AiCallingSettings() {
                                     className="w-28"
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Shorter calls count as &ldquo;not connected&rdquo; and are
-                                    retried.
+                                    {t('retryCard.connectThresholdHint')}
                                 </p>
                             </div>
                         </CardContent>
@@ -898,19 +881,18 @@ export default function AiCallingSettings() {
                     {/* ── Outcome → Action ── */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Outcome &rarr; Action</CardTitle>
-                            <CardDescription>
-                                For each AI-call outcome, choose what happens. Outcomes left off
-                                both lists are retried until max retries, then assigned to a human.
-                                Add custom outcomes below for the dispositions your own AI agent
-                                returns.
-                            </CardDescription>
+                            <CardTitle>{t('outcomeAction.title')}</CardTitle>
+                            <CardDescription>{t('outcomeAction.description')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-6 gap-y-1 text-xs font-medium text-muted-foreground">
-                                <span>Disposition</span>
-                                <span className="w-28 text-center">Assign counsellor</span>
-                                <span className="w-28 text-center">Stop (no retry)</span>
+                                <span>{t('outcomeAction.dispositionHeader')}</span>
+                                <span className="w-28 text-center">
+                                    {t('outcomeAction.assignHeader')}
+                                </span>
+                                <span className="w-28 text-center">
+                                    {t('outcomeAction.stopHeader')}
+                                </span>
                             </div>
                             {[...DISPOSITIONS, ...settings.customDispositions].map((d) => {
                                 const isCustom = !(DISPOSITIONS as readonly string[]).includes(d);
@@ -926,7 +908,9 @@ export default function AiCallingSettings() {
                                                     type="button"
                                                     onClick={() => removeCustomDisposition(d)}
                                                     className="text-muted-foreground transition-colors hover:text-danger-600"
-                                                    aria-label={`Remove ${d.replace(/_/g, ' ')}`}
+                                                    aria-label={t('outcomeAction.removeAria', {
+                                                        disposition: d.replace(/_/g, ' '),
+                                                    })}
                                                 >
                                                     <Trash size={14} />
                                                 </button>
@@ -962,7 +946,7 @@ export default function AiCallingSettings() {
                                             addCustomDisposition();
                                         }
                                     }}
-                                    placeholder="Add a custom outcome (e.g. Wrong Number)"
+                                    placeholder={t('outcomeAction.addOutcomePlaceholder')}
                                     className="h-9 max-w-xs"
                                 />
                                 <MyButton
@@ -972,7 +956,7 @@ export default function AiCallingSettings() {
                                     onClick={addCustomDisposition}
                                     disable={!newDisposition.trim()}
                                 >
-                                    <Plus size={14} /> Add outcome
+                                    <Plus size={14} /> {t('outcomeAction.addOutcome')}
                                 </MyButton>
                             </div>
                         </CardContent>
@@ -981,15 +965,12 @@ export default function AiCallingSettings() {
                     {/* ── Counsellor Assignment ── */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Counsellor Assignment</CardTitle>
-                            <CardDescription>
-                                How a counsellor is picked when a lead qualifies (or when retries
-                                are exhausted).
-                            </CardDescription>
+                            <CardTitle>{t('assignmentCard.title')}</CardTitle>
+                            <CardDescription>{t('assignmentCard.description')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid gap-2">
-                                <Label>Assignment mode</Label>
+                                <Label>{t('assignmentCard.modeLabel')}</Label>
                                 <div className="flex flex-wrap gap-2">
                                     {ASSIGNMENT_MODES.map((m) => (
                                         <MyButton
@@ -1002,7 +983,7 @@ export default function AiCallingSettings() {
                                             scale="medium"
                                             onClick={() => update({ assignmentMode: m.value })}
                                         >
-                                            {m.label}
+                                            {t(m.labelKey)}
                                         </MyButton>
                                     ))}
                                 </div>
@@ -1017,7 +998,7 @@ export default function AiCallingSettings() {
                                     onCheckedChange={(v) => update({ assignExhaustedToHuman: v })}
                                 />
                                 <Label htmlFor="assign-exhausted" className="cursor-pointer">
-                                    Assign no-answer leads to a human after retries are exhausted
+                                    {t('assignmentCard.assignExhausted')}
                                 </Label>
                             </div>
                         </CardContent>
@@ -1033,7 +1014,7 @@ export default function AiCallingSettings() {
                     onClick={handleSave}
                     disable={saving || !hasChanges || isLoading}
                 >
-                    {saving ? 'Saving…' : 'Save AI calling settings'}
+                    {saving ? t('save.saving') : t('save.save')}
                 </MyButton>
             </div>
         </div>
@@ -1049,6 +1030,7 @@ export default function AiCallingSettings() {
  * that fixes it.
  */
 function AiCarrierStatusStrip() {
+    const { t } = useTranslation('settingsAiCalling');
     const instituteId = getCurrentInstituteId() ?? '';
     const { data, isLoading } = useQuery({
         queryKey: ['ai-voice-carrier', instituteId],
@@ -1059,12 +1041,16 @@ function AiCarrierStatusStrip() {
     if (isLoading || !data) return null;
 
     const line = data.ready
-        ? `AI calls go out on ${
-              data.mode === 'DEDICATED'
-                  ? 'a dedicated Vacademy Voice line'
-                  : `your ${data.primaryProviderName ?? 'calling'} account`
-          }${data.callerId ? ` (${data.callerId})` : ''}.`
-        : (data.blockingReason ?? 'AI calls can’t be placed yet.');
+        ? t('carrierStrip.readyLine', {
+              line:
+                  data.mode === 'DEDICATED'
+                      ? t('carrierStrip.dedicatedLine')
+                      : t('carrierStrip.providerLine', {
+                            provider: data.primaryProviderName ?? t('carrierStrip.defaultProviderWord'),
+                        }),
+              callerIdSuffix: data.callerId ? ` (${data.callerId})` : '',
+          })
+        : (data.blockingReason ?? t('carrierStrip.notReadyFallback'));
 
     return (
         <div
@@ -1080,7 +1066,7 @@ function AiCarrierStatusStrip() {
                 {line}
             </span>
             <Link to="/settings/telephony" className="text-caption text-primary-500 underline">
-                Manage the AI calling line
+                {t('carrierStrip.manageLink')}
             </Link>
         </div>
     );

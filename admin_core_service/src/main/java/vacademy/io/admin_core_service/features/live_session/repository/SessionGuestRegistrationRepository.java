@@ -59,7 +59,8 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
                 'EXTERNAL_USER' AS sourceType,
                 lsl.status_type AS statusType,
                 lsl.engagement_data AS engagementData,
-                lsl.provider_total_duration_minutes AS providerTotalDurationMinutes
+                lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                lsl.provider_total_duration_seconds AS providerTotalDurationSeconds
             FROM session_guest_registrations sgr
             LEFT JOIN live_session_logs lsl
                 ON lsl.session_id = sgr.session_id

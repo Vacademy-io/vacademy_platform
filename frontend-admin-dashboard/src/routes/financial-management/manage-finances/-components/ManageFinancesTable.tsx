@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -39,13 +41,17 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
     PENDING: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
 };
 
-const INSTALLMENT_STATUS_COLORS: Record<string, { bg: string; label: string }> = {
-    PAID: { bg: '#10b981', label: 'Paid' },
-    PARTIAL_PAID: { bg: '#f59e0b', label: 'Partial' },
-    OVERDUE: { bg: '#ef4444', label: 'Overdue' },
-    PENDING: { bg: '#e5e7eb', label: 'Pending' },
-    WAIVED: { bg: '#3b82f6', label: 'Waived' },
-};
+function buildInstallmentStatusColors(
+    t: TFunction
+): Record<string, { bg: string; label: string }> {
+    return {
+        PAID: { bg: '#10b981', label: t('installmentStatus.paid') },
+        PARTIAL_PAID: { bg: '#f59e0b', label: t('installmentStatus.partial') },
+        OVERDUE: { bg: '#ef4444', label: t('installmentStatus.overdue') },
+        PENDING: { bg: '#e5e7eb', label: t('installmentStatus.pending') },
+        WAIVED: { bg: '#3b82f6', label: t('installmentStatus.waived') },
+    };
+}
 
 function StatusPill({ status }: { status: string }) {
     const style = STATUS_STYLES[status] || STATUS_STYLES['PENDING']!;
@@ -75,6 +81,7 @@ function PercentageProgressBar({
     overdue: number;
     total: number;
 }) {
+    const { t } = useTranslation('financialManagementManageFinancesTable');
     if (total <= 0) return <span className="text-gray-400">—</span>;
 
     const paidPct = Math.round((paid / total) * 100);
@@ -88,25 +95,27 @@ function PercentageProgressBar({
                     <div
                         className="h-full bg-emerald-500 transition-all"
                         style={{ width: `${paidPct}%` }}
-                        title={`Paid: ${paidPct}%`}
+                        title={t('progressBar.paidTooltip', { percent: paidPct })}
                     />
                 )}
                 {overduePct > 0 && (
                     <div
                         className="h-full bg-red-500 transition-all"
                         style={{ width: `${overduePct}%` }}
-                        title={`Overdue: ${overduePct}%`}
+                        title={t('progressBar.overdueTooltip', { percent: overduePct })}
                     />
                 )}
                 {duePct > 0 && (
                     <div
                         className="h-full bg-orange-400 transition-all"
                         style={{ width: `${duePct}%` }}
-                        title={`Due: ${duePct}%`}
+                        title={t('progressBar.dueTooltip', { percent: duePct })}
                     />
                 )}
             </div>
-            <div className="text-[10px] text-gray-500 font-medium">{paidPct}% paid</div>
+            <div className="text-[10px] text-gray-500 font-medium">
+                {t('progressBar.paidLabel', { percent: paidPct })}
+            </div>
         </div>
     );
 }
@@ -114,13 +123,15 @@ function PercentageProgressBar({
 // ─── Installment Progress Bar (per fee type in expanded row) ───────────────
 
 function InstallmentProgressBar({ statuses }: { statuses: string[] }) {
+    const { t } = useTranslation('financialManagementManageFinancesTable');
     if (!statuses || statuses.length === 0) return <span className="text-gray-400">—</span>;
+
+    const statusColors = buildInstallmentStatusColors(t);
 
     return (
         <div className="flex items-center gap-[2px] min-w-[80px] max-w-[160px]">
             {statuses.map((status, idx) => {
-                const config =
-                    INSTALLMENT_STATUS_COLORS[status] || INSTALLMENT_STATUS_COLORS['PENDING']!;
+                const config = statusColors[status] || statusColors['PENDING']!;
                 return (
                     <div
                         key={idx}
@@ -129,7 +140,7 @@ function InstallmentProgressBar({ statuses }: { statuses: string[] }) {
                     >
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-50 pointer-events-none">
                             <div className="rounded bg-gray-800 px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap shadow-lg">
-                                #{idx + 1}: {config.label}
+                                {t('installmentTooltip', { number: idx + 1, label: config.label })}
                             </div>
                         </div>
                     </div>
@@ -180,6 +191,7 @@ function groupByFeeType(installments: InstallmentDetailDTO[]): FeeTypeGroup[] {
 }
 
 function ExpandedRowContent({ studentId, cpoId }: { studentId: string; cpoId: string }) {
+    const { t } = useTranslation('financialManagementManageFinancesTable');
     const { data, isLoading, error } = useQuery({
         queryKey: getInstallmentDetailsQueryKey(studentId, cpoId),
         queryFn: () => fetchInstallmentDetails(studentId, cpoId),
@@ -198,27 +210,28 @@ function ExpandedRowContent({ studentId, cpoId }: { studentId: string; cpoId: st
     if (error) {
         return (
             <div className="px-6 py-3 text-sm text-red-600">
-                Failed to load installment details.
+                {t('expandedRow.loadFailed')}
             </div>
         );
     }
 
     if (!data || data.length === 0) {
         return (
-            <div className="px-6 py-3 text-sm text-gray-500">No installments found.</div>
+            <div className="px-6 py-3 text-sm text-gray-500">{t('expandedRow.noInstallments')}</div>
         );
     }
 
     const feeTypeGroups = groupByFeeType(data);
+    const statusColors = buildInstallmentStatusColors(t);
 
     return (
         <div className="px-6 py-3 space-y-2">
             {/* Legend */}
             <div className="flex items-center gap-4 mb-1">
                 <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-                    Installment Status:
+                    {t('legend.installmentStatus')}
                 </span>
-                {Object.entries(INSTALLMENT_STATUS_COLORS).map(([key, config]) => (
+                {Object.entries(statusColors).map(([key, config]) => (
                     <div key={key} className="flex items-center gap-1">
                         <span
                             className="inline-block h-2.5 w-2.5 rounded-sm"
@@ -235,22 +248,22 @@ function ExpandedRowContent({ studentId, cpoId }: { studentId: string; cpoId: st
                     <thead>
                         <tr className="bg-gray-100/80 border-b border-gray-200">
                             <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                Fee Type
+                                {t('expandedRow.columns.feeType')}
                             </th>
                             <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                Expected
+                                {t('expandedRow.columns.expected')}
                             </th>
                             <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                Paid
+                                {t('expandedRow.columns.paid')}
                             </th>
                             <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                Due
+                                {t('expandedRow.columns.due')}
                             </th>
                             <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                Overdue
+                                {t('expandedRow.columns.overdue')}
                             </th>
                             <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider min-w-[140px]">
-                                Installments
+                                {t('expandedRow.columns.installments')}
                             </th>
                         </tr>
                     </thead>
@@ -298,6 +311,7 @@ export function ManageFinancesTable({
     onPageChange,
     isFeeTypeFiltered = false,
 }: ManageFinancesTableProps) {
+    const { t } = useTranslation('financialManagementManageFinancesTable');
     const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
 
     // Modal state (eye button only)
@@ -413,7 +427,7 @@ export function ManageFinancesTable({
             },
             {
                 id: 'package',
-                header: 'Course / Package',
+                header: t('columns.package'),
                 accessorFn: (row) => {
                     const ids = row.package_session_ids || [];
                     return ids.length ? ids.map((id) => getPackageName(id)).join(', ') : '—';
@@ -435,7 +449,7 @@ export function ManageFinancesTable({
             },
             {
                 id: 'cpoName',
-                header: 'CPO / Plan',
+                header: t('columns.cpoName'),
                 accessorFn: (row) => row.cpo_name || '',
                 cell: ({ row }) => (
                     <div className="text-sm font-medium text-gray-700">
@@ -446,7 +460,7 @@ export function ManageFinancesTable({
             },
             {
                 id: 'totalExpected',
-                header: 'Expected',
+                header: t('columns.expected'),
                 accessorFn: (row) => row.total_expected_amount ?? 0,
                 cell: ({ row }) => (
                     <div className="font-semibold text-gray-800">
@@ -457,7 +471,7 @@ export function ManageFinancesTable({
             },
             {
                 id: 'totalPaid',
-                header: 'Paid',
+                header: t('columns.paid'),
                 accessorFn: (row) => row.total_paid_amount ?? 0,
                 cell: ({ row }) => (
                     <div className="font-semibold text-emerald-700">
@@ -468,7 +482,7 @@ export function ManageFinancesTable({
             },
             {
                 id: 'dueAmount',
-                header: 'Due',
+                header: t('columns.due'),
                 accessorFn: (row) => row.due_amount ?? 0,
                 cell: ({ row }) => {
                     const due = row.original.due_amount ?? 0;
@@ -484,7 +498,7 @@ export function ManageFinancesTable({
             },
             {
                 id: 'overdueAmount',
-                header: 'Overdue',
+                header: t('columns.overdue'),
                 accessorFn: (row) => row.overdue_amount ?? 0,
                 cell: ({ row }) => {
                     const od = row.original.overdue_amount ?? 0;
@@ -500,14 +514,14 @@ export function ManageFinancesTable({
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columns.status'),
                 accessorFn: (row) => row.status || '',
                 cell: ({ row }) => <StatusPill status={row.original.status} />,
                 size: 120,
             },
             {
                 id: 'progress',
-                header: 'Progress',
+                header: t('columns.progress'),
                 cell: ({ row }) => {
                     const r = row.original;
                     if (isFeeTypeFiltered) {
@@ -544,7 +558,7 @@ export function ManageFinancesTable({
                             });
                         }}
                         className="rounded-full p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                        title="View installments"
+                        title={t('actions.viewInstallments')}
                     >
                         <Eye size={18} weight="duotone" />
                     </button>
@@ -552,7 +566,7 @@ export function ManageFinancesTable({
                 size: 50,
             },
         ],
-        [getPackageName, isExpanded, toggleExpand, isFeeTypeFiltered]
+        [getPackageName, isExpanded, toggleExpand, isFeeTypeFiltered, t]
     );
 
     // ── Render expanded row ────────────────────────────────────────────
@@ -578,9 +592,9 @@ export function ManageFinancesTable({
     if (error) {
         return (
             <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center shadow-sm">
-                <p className="font-semibold text-red-800">Unable to load payment data</p>
+                <p className="font-semibold text-red-800">{t('error.title')}</p>
                 <p className="mt-2 text-sm text-red-600">
-                    {error instanceof Error ? error.message : 'Please try again.'}
+                    {error instanceof Error ? error.message : t('error.genericMessage')}
                 </p>
             </div>
         );
@@ -591,9 +605,9 @@ export function ManageFinancesTable({
     if (tableData.content.length === 0) {
         return (
             <div className="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
-                <p className="text-lg font-semibold text-gray-600">No payment records found.</p>
+                <p className="text-lg font-semibold text-gray-600">{t('empty.title')}</p>
                 <p className="mt-2 text-sm text-gray-400">
-                    Try adjusting your filters to see more results.
+                    {t('empty.subtitle')}
                 </p>
             </div>
         );
@@ -625,22 +639,20 @@ export function ManageFinancesTable({
                 {/* Pagination */}
                 <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-white px-5 py-3 shadow-sm">
                     <div className="text-sm text-gray-500 font-medium">
-                        Showing{' '}
-                        <span className="font-semibold text-gray-800">
-                            {tableData.page_no * tableData.page_size + 1}
-                        </span>
-                        {' – '}
-                        <span className="font-semibold text-gray-800">
-                            {Math.min(
-                                (tableData.page_no + 1) * tableData.page_size,
-                                tableData.total_elements
-                            )}
-                        </span>{' '}
-                        of{' '}
-                        <span className="font-semibold text-gray-800">
-                            {tableData.total_elements}
-                        </span>{' '}
-                        records
+                        <Trans
+                            i18nKey="pagination.showingRange"
+                            ns="financialManagementManageFinancesTable"
+                            count={tableData.total_elements}
+                            values={{
+                                start: tableData.page_no * tableData.page_size + 1,
+                                end: Math.min(
+                                    (tableData.page_no + 1) * tableData.page_size,
+                                    tableData.total_elements
+                                ),
+                                count: tableData.total_elements,
+                            }}
+                            components={{ b: <span className="font-semibold text-gray-800" /> }}
+                        />
                     </div>
                     <MyPagination
                         currentPage={currentPage}

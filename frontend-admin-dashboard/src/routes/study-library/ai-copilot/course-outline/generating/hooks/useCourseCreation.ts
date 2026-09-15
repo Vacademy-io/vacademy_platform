@@ -1,17 +1,98 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { SessionProgress } from '../../../shared/types';
 import { createCourseWithContent, setProgressCallback } from '../services/courseCreationService';
 import { getUserRoles, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { submitForReview } from '@/routes/study-library/courses/-services/approval-services';
+import { savePackageSettingKey } from '@/services/package-settings';
+import {
+    TUTOR_MODE_SETTING_KEY,
+    compileTutorPlans,
+    getInstituteTutorDefaults,
+    newCompileRunId,
+    type TutorModeSetting,
+} from '@/services/tutor';
+
+/**
+ * Live AI Tutor: after the copilot persists a course, mark it tutor-enabled and
+ * compile every teachable slide.
+ *
+ * The prompt page's choices survive in their OWN sessionStorage keys
+ * (`coursePersonalizedTeaching`, `courseLanguage`, `courseKbGrounding`): the
+ * generating page deletes `courseConfig` as soon as the outline loads, long
+ * before the course is created. The institute's Tutor Mode defaults decide
+ * whether images are generated and whether tutor mode is available at all.
+ * Never throws; failures are shown, not swallowed.
+ */
+async function startTutorPreparation(courseId: string, t: TFunction): Promise<void> {
+    try {
+        if (sessionStorage.getItem('coursePersonalizedTeaching') === '0') return;
+        const institute: TutorModeSetting | null = await getInstituteTutorDefaults().catch(
+            () => null
+        );
+        if (institute?.enabled === false) return; // tutor mode switched off for the institute
+        const language = (sessionStorage.getItem('courseLanguage') || 'English')
+            .toLowerCase()
+            .startsWith('hi')
+            ? 'hi'
+            : 'en';
+        let kb: { knowledge_base_id?: string; mode?: 'STRICT' | 'BLENDED' } | null = null;
+        try {
+            kb = JSON.parse(sessionStorage.getItem('courseKbGrounding') || 'null');
+        } catch {
+            kb = null;
+        }
+        const kbGrounding = kb?.knowledge_base_id
+            ? { knowledge_base_id: kb.knowledge_base_id, mode: kb.mode ?? 'STRICT' }
+            : null;
+        const generateImages = institute?.generateImages !== false;
+        await savePackageSettingKey(
+            courseId,
+            TUTOR_MODE_SETTING_KEY,
+            {
+                enabled: true,
+                defaultOn: institute?.defaultOn !== false,
+                generateImages,
+                languages: [language, language === 'en' ? 'hi' : 'en'],
+                kbGrounding,
+            },
+            'Tutor Mode'
+        );
+        toast.info(t('tutorPreparing'));
+        let ready = 0;
+        let failed = 0;
+        await compileTutorPlans(
+            courseId,
+            {
+                language,
+                generate_images: generateImages,
+                compile_run_id: newCompileRunId(),
+                ...(kbGrounding ? { kb_grounding: kbGrounding } : {}),
+            },
+            (ev) => {
+                if (ev.type === 'PLAN_READY' || ev.type === 'PLAN_UP_TO_DATE') ready += 1;
+                if (ev.type === 'PLAN_ERROR') failed += 1;
+            }
+        );
+        if (failed === 0) toast.success(t('tutorReady', { count: ready }));
+        else toast.warning(t('tutorPartial', { ready, failed }));
+    } catch (error) {
+        console.warn('[Course Creation] Tutor preparation failed:', error);
+        const msg = error instanceof Error ? error.message : t('unknownError');
+        toast.error(t('tutorPrepFailed', { msg }));
+    }
+}
 
 /**
  * Custom hook for handling course creation
  */
 export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: SessionProgress[]) => {
     const navigate = useNavigate();
+    const { t } = useTranslation('studyLibraryUseCourseCreation');
     const [isCreatingCourse, setIsCreatingCourse] = useState(false);
     const [creationProgress, setCreationProgress] = useState<string>('');
 
@@ -22,17 +103,17 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
 
     const handleCreateCourse = async (status?: 'ACTIVE' | 'DRAFT') => {
         if (!courseMetadata) {
-            toast.error('Course metadata not found. Please regenerate the course outline.');
+            toast.error(t('metadataMissing'));
             return;
         }
 
         if (!sessionsWithProgress || sessionsWithProgress.length === 0) {
-            toast.error('No sessions found. Please generate content first.');
+            toast.error(t('noSessions'));
             return;
         }
 
         setIsCreatingCourse(true);
-        setCreationProgress('Initializing course creation...');
+        setCreationProgress(t('progress.initializing'));
 
         try {
             // Extract course name - check multiple possible field names
@@ -40,10 +121,10 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
                 courseMetadata.course_name ||
                 courseMetadata.courseName ||
                 courseMetadata.title ||
-                'New Course';
+                t('defaultCourseName');
             console.log('[Course Creation] Extracted course name:', courseName);
 
-            setCreationProgress('Creating course...');
+            setCreationProgress(t('progress.creating'));
             // Extract metadata fields - using confirmed API structure with UI edit fallbacks
             const metadata = {
                 aboutCourse:
@@ -106,22 +187,27 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
                 levelId: courseMetadata.level || undefined, // Pass the levelId from courseMetadata
             });
 
-            setCreationProgress('Course created successfully!');
-            toast.success('Course created successfully!');
+            setCreationProgress(t('progress.created'));
+            toast.success(t('progress.created'));
             // Clear saved draft since course is now created
             localStorage.removeItem('aiCourseDraft');
+
+            // Live AI Tutor: enable tutor mode on the new course and compile its
+            // teaching plans in the background. Best-effort — the course exists
+            // either way, and the Tutor Mode tab can prepare it later.
+            void startTutorPreparation(result.courseId, t);
 
             // Navigate to the course details page
             console.log('[Course Creation] Navigating to course:', result.courseId);
 
             if (isTeacher && status === 'ACTIVE') {
-                setCreationProgress('Submitting for review...');
+                setCreationProgress(t('progress.submitting'));
                 try {
                     await submitForReview(result.courseId);
-                    toast.success('Course submitted for review!');
+                    toast.success(t('reviewSubmitted'));
                 } catch (reviewError) {
                     console.error('Error submitting for review:', reviewError);
-                    toast.error('Course created but failed to submit for review.');
+                    toast.error(t('reviewSubmitFailed'));
                 }
             }
 
@@ -133,7 +219,7 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
             }, 1000);
         } catch (error) {
             console.error('Error creating course:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Failed to create course';
+            const errorMessage = error instanceof Error ? error.message : t('createFailed');
             toast.error(errorMessage);
             setCreationProgress('');
         } finally {

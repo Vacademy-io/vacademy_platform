@@ -15,6 +15,8 @@ public class AuthServiceRoutes {
     public static final String GET_USER_BY_ID_WITH_PASSWORD = "/auth-service/internal/user/user-by-id-with-password";
     public static final String GENERATE_TOKEN_FOR_LEARNER = "/auth-service/v1/internal/generate-token-for-learner";
     public static final String SEND_CRED_TO_USERS = "/auth-service/internal/v1/user-operation/send-passwords";
+    /** One user's current login details, branded for an institute, linking to a given portal. */
+    public static final String RESEND_LOGIN_DETAILS = "/auth-service/internal/v1/user-operation/resend-login-details";
     public static final String CREATE_OR_GET_EXISTING_BY_ID = "/auth-service/internal/user/create-or-get-existing-by-id";
     public static final String GET_STUDENT_LOGIN_STATS = "/auth-service/analytics/student-login-stats";
     public static final String CREATE_MULTIPLE_USERS = "/auth-service/v1/user/internal/create-multiple-users";

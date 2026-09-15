@@ -7,6 +7,7 @@ import {
   DomainRoutingResponse,
   setCachedInstituteBranding,
   setCachedPreferredCountries,
+  setCachedPhoneCountryGeoMode,
 } from "@/services/domain-routing";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -117,6 +118,19 @@ export const useDomainRouting = () => {
             ? data.stackNameBelowLogo
             : null,
       });
+
+      // Hand the app/portal links to the sidebar directly as well. The cache
+      // write above is not enough on its own: the sidebar fills itself from the
+      // navbar's institute-details query, which can resolve before this one and
+      // does not look again afterwards.
+      try {
+        const { default: useSidebarStore } = await import(
+          "@/components/common/layout-container/sidebar/useSidebar"
+        );
+        useSidebarStore.getState().setAppLinks(data as unknown as Record<string, unknown>);
+      } catch {
+        // Best-effort: the cache write above still covers the common ordering.
+      }
 
       // Store per-institute learner settings for quick access
       // Key: LEARNER_<instituteId>, Values: privacyPolicyUrl, termsAndConditionUrl
@@ -231,6 +245,8 @@ export const useDomainRouting = () => {
 
       // Cache preferred countries for synchronous access by phone inputs
       setCachedPreferredCountries(data.commaSeparatedPreferredCountry ?? null);
+      // ...and the portal's rule for when the visitor's own country may win.
+      setCachedPhoneCountryGeoMode(data.phoneCountryGeoMode ?? null);
 
       // Update global state
       setInstituteId(data.instituteId);

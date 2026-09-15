@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Warning, EnvelopeSimple, WhatsappLogo } from '@phosphor-icons/react';
@@ -18,30 +20,31 @@ import {
 } from '@/services/student-list-section/updateStudentCredentials';
 import { getInstituteId } from '@/constants/helper';
 
-const credentialsSchema = z
-    .object({
-        username: z
-            .string()
-            .trim()
-            .min(3, 'Username must be at least 3 characters')
-            // Usernames are typed into a login box; whitespace is invisible there
-            // and produces a "wrong credentials" the learner cannot diagnose.
-            .regex(/^\S+$/, 'Username cannot contain spaces'),
-        password: z
-            .string()
-            .trim()
-            // Optional: blank means "keep the current password". Only enforce a
-            // length once the admin has actually typed something.
-            .refine((value) => value.length === 0 || value.length >= 6, {
-                message: 'Password must be at least 6 characters',
-            }),
-    })
-    .refine((values) => values.username.length > 0 || values.password.length > 0, {
-        message: 'Nothing to update',
-        path: ['username'],
-    });
+const buildCredentialsSchema = (t: TFunction) =>
+    z
+        .object({
+            username: z
+                .string()
+                .trim()
+                .min(3, t('validation.usernameMinLength'))
+                // Usernames are typed into a login box; whitespace is invisible there
+                // and produces a "wrong credentials" the learner cannot diagnose.
+                .regex(/^\S+$/, t('validation.usernameNoSpaces')),
+            password: z
+                .string()
+                .trim()
+                // Optional: blank means "keep the current password". Only enforce a
+                // length once the admin has actually typed something.
+                .refine((value) => value.length === 0 || value.length >= 6, {
+                    message: t('validation.passwordMinLength'),
+                }),
+        })
+        .refine((values) => values.username.length > 0 || values.password.length > 0, {
+            message: t('validation.nothingToUpdate'),
+            path: ['username'],
+        });
 
-type CredentialsFormValues = z.infer<typeof credentialsSchema>;
+type CredentialsFormValues = z.infer<ReturnType<typeof buildCredentialsSchema>>;
 
 interface EditCredentialsDialogProps {
     open: boolean;
@@ -59,9 +62,12 @@ export const EditCredentialsDialog = ({
     currentUsername,
     onUpdated,
 }: EditCredentialsDialogProps) => {
+    const { t } = useTranslation('manageStudentsEditCredentialsDialog');
     const queryClient = useQueryClient();
     const [isSaving, setIsSaving] = useState(false);
     const [sendingChannel, setSendingChannel] = useState<CredentialChannel | null>(null);
+
+    const credentialsSchema = useMemo(() => buildCredentialsSchema(t), [t]);
 
     const form = useForm<CredentialsFormValues>({
         resolver: zodResolver(credentialsSchema),
@@ -86,7 +92,7 @@ export const EditCredentialsDialog = ({
     const handleSend = async (channel: CredentialChannel) => {
         const instituteId = getInstituteId();
         if (!instituteId) {
-            toast.error('Institute not found');
+            toast.error(t('toast.instituteNotFound'));
             return;
         }
         setSendingChannel(channel);
@@ -106,7 +112,8 @@ export const EditCredentialsDialog = ({
         } catch (error: unknown) {
             const axiosError = error as { response?: { data?: { message?: string } } };
             toast.error(
-                axiosError.response?.data?.message || `Failed to send credentials on ${channel}.`
+                axiosError.response?.data?.message ||
+                    t('toast.sendFailed', { channel })
             );
         } finally {
             setSendingChannel(null);
@@ -119,7 +126,7 @@ export const EditCredentialsDialog = ({
         const usernameChanged = nextUsername !== currentUsername;
 
         if (!usernameChanged && !nextPassword) {
-            toast.info('No changes to save');
+            toast.info(t('toast.noChangesToSave'));
             return;
         }
 
@@ -135,7 +142,7 @@ export const EditCredentialsDialog = ({
             queryClient.invalidateQueries({ queryKey: ['students'] });
             if (usernameChanged) onUpdated?.(nextUsername);
 
-            toast.success('Credentials updated. The learner must sign in again.');
+            toast.success(t('toast.updateSuccess'));
             onOpenChange(false);
         } catch (error: unknown) {
             // auth_service returns 510 (VacademyException's default) for a taken
@@ -147,7 +154,7 @@ export const EditCredentialsDialog = ({
             if (axiosError.response?.status === 510 && message) {
                 form.setError('username', { message });
             } else {
-                toast.error(message || 'Failed to update credentials. Please try again.');
+                toast.error(message || t('toast.updateFailed'));
             }
         } finally {
             setIsSaving(false);
@@ -156,7 +163,7 @@ export const EditCredentialsDialog = ({
 
     return (
         <MyDialog
-            heading="Edit Credentials"
+            heading={t('dialog.heading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-md"
@@ -170,7 +177,7 @@ export const EditCredentialsDialog = ({
                     <div className="flex items-center gap-2 rounded-md bg-warning-50 px-3 py-2">
                         <Warning className="size-4 shrink-0 text-warning-600" />
                         <p className="text-caption text-neutral-600">
-                            Saving signs the learner out of any active session.
+                            {t('dialog.sessionWarning')}
                         </p>
                     </div>
 
@@ -182,10 +189,10 @@ export const EditCredentialsDialog = ({
                                 <FormItem>
                                     <FormControl>
                                         <MyInput
-                                            label="Username"
+                                            label={t('fields.username.label')}
                                             required
                                             inputType="text"
-                                            inputPlaceholder="Enter username"
+                                            inputPlaceholder={t('fields.username.placeholder')}
                                             input={field.value}
                                             onChangeFunction={field.onChange}
                                             onBlur={field.onBlur}
@@ -209,9 +216,9 @@ export const EditCredentialsDialog = ({
                                 <FormItem>
                                     <FormControl>
                                         <MyInput
-                                            label="New Password"
+                                            label={t('fields.password.label')}
                                             inputType="password"
-                                            inputPlaceholder="Leave blank to keep current password"
+                                            inputPlaceholder={t('fields.password.placeholder')}
                                             input={field.value}
                                             onChangeFunction={field.onChange}
                                             onBlur={field.onBlur}
@@ -238,11 +245,11 @@ export const EditCredentialsDialog = ({
                     <div className="flex flex-col gap-2 rounded-md border border-neutral-200 p-3">
                         <div className="flex items-center justify-between gap-2">
                             <p className="text-caption font-medium text-neutral-700">
-                                Send credentials
+                                {t('send.title')}
                             </p>
                             {isFormDirty && (
                                 <span className="text-caption text-neutral-400">
-                                    Save changes first
+                                    {t('send.saveChangesFirst')}
                                 </span>
                             )}
                         </div>
@@ -256,7 +263,7 @@ export const EditCredentialsDialog = ({
                                 className="flex-1"
                             >
                                 <EnvelopeSimple className="mr-1.5 size-4" />
-                                {sendingChannel === 'EMAIL' ? 'Sending...' : 'Email'}
+                                {sendingChannel === 'EMAIL' ? t('send.sending') : t('send.email')}
                             </MyButton>
                             <MyButton
                                 type="button"
@@ -267,7 +274,7 @@ export const EditCredentialsDialog = ({
                                 className="flex-1"
                             >
                                 <WhatsappLogo className="mr-1.5 size-4" />
-                                {sendingChannel === 'WHATSAPP' ? 'Sending...' : 'WhatsApp'}
+                                {sendingChannel === 'WHATSAPP' ? t('send.sending') : t('send.whatsapp')}
                             </MyButton>
                         </div>
                     </div>
@@ -280,7 +287,7 @@ export const EditCredentialsDialog = ({
                             disable={isSaving}
                             onClick={() => onOpenChange(false)}
                         >
-                            Cancel
+                            {t('actions.cancel')}
                         </MyButton>
                         <MyButton
                             type="submit"
@@ -288,7 +295,7 @@ export const EditCredentialsDialog = ({
                             scale="medium"
                             disable={isSaving}
                         >
-                            {isSaving ? 'Saving...' : 'Save Changes'}
+                            {isSaving ? t('actions.saving') : t('actions.save')}
                         </MyButton>
                     </div>
                 </form>

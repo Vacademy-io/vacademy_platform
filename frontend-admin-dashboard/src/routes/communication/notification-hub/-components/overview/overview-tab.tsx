@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { ArrowClockwise } from '@phosphor-icons/react';
 import { getInstituteId } from '@/constants/helper';
 import { StatsCards } from './stats-cards';
@@ -12,15 +14,19 @@ import {
     type HubRecentItem,
 } from '../../-services/hub-api';
 
-const WINDOW_OPTIONS = [
-    { label: 'Last 24h', days: 1 },
-    { label: 'Last 7 days', days: 7 },
-    { label: 'Last 30 days', days: 30 },
-];
+function buildWindowOptions(t: TFunction): Array<{ label: string; days: number }> {
+    return [
+        { label: t('window.last24h'), days: 1 },
+        { label: t('window.last7Days'), days: 7 },
+        { label: t('window.last30Days'), days: 30 },
+    ];
+}
 
 const RECENT_PAGE_SIZE = 20;
 
 export function OverviewTab() {
+    const { t } = useTranslation('communicationOverviewTab');
+    const windowOptions = buildWindowOptions(t);
     const instituteId = getInstituteId() || '';
     const [windowDays, setWindowDays] = useState(7);
     const [overview, setOverview] = useState<HubOverview | null>(null);
@@ -87,7 +93,7 @@ export function OverviewTab() {
             {/* Controls */}
             <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    {WINDOW_OPTIONS.map((opt) => (
+                    {windowOptions.map((opt) => (
                         <button
                             key={opt.days}
                             onClick={() => setWindowDays(opt.days)}
@@ -104,7 +110,7 @@ export function OverviewTab() {
                 <button
                     onClick={load}
                     className="p-2 rounded hover:bg-gray-100 text-gray-500"
-                    title="Refresh"
+                    title={t('refresh')}
                 >
                     <ArrowClockwise size={16} />
                 </button>

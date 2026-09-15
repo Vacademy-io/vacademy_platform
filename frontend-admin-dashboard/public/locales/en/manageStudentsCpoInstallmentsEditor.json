@@ -1,0 +1,69 @@
+{
+    "status": {
+        "paid": "Paid",
+        "partialPaid": "Partially Paid",
+        "overdue": "Overdue",
+        "waived": "Waived"
+    },
+    "row": {
+        "updateSuccessToast": "Installment updated",
+        "updateErrorToast": "Update failed",
+        "discountOptionNone": "none",
+        "discountOptionPercentage": "%",
+        "discountOptionFlat": "₹",
+        "reasonPlaceholder": "Reason",
+        "save": "Save"
+    },
+    "cpoDiscount": {
+        "heading": "Discount",
+        "typeLabel": "Type",
+        "discountOptionNone": "none",
+        "discountOptionPercentage": "% of total",
+        "discountOptionFlat": "flat ₹ off",
+        "valueLabel": "Value",
+        "reasonLabel": "Reason",
+        "reasonPlaceholder": "e.g. Sibling discount",
+        "removeSuccessToast": "CPO discount removed",
+        "applySuccessToast": "CPO discount applied",
+        "applyErrorToast": "Failed to apply CPO discount",
+        "applying": "Applying…",
+        "apply": "Apply",
+        "remove": "Remove"
+    },
+    "offlinePayment": {
+        "amountRequiredError": "Enter a positive amount",
+        "recordedSuccessToast": "Recorded {{amount}} offline payment",
+        "recordErrorToast": "Payment record failed",
+        "addPaymentButton": "+ Add Payment",
+        "heading": "Add Payment",
+        "amountLabel": "Amount (₹)",
+        "dateLabel": "Date",
+        "referenceLabel": "Reference",
+        "referencePlaceholder": "cheque #, UPI ref…",
+        "generateInvoiceLabel": "Generate invoice",
+        "saving": "Saving…",
+        "saveAndAllocate": "Save & FIFO-allocate",
+        "cancel": "Cancel"
+    },
+    "card": {
+        "installmentCount_one": "{{count}} installment",
+        "installmentCount_other": "{{count}} installments",
+        "net": "Net {{amount}}",
+        "paid": "Paid {{amount}}",
+        "outstanding": "Outstanding {{amount}}",
+        "loadingInstallments": "Loading installments…",
+        "loadInstallmentsError": "Could not load installments.",
+        "tableHeaders": {
+            "index": "#",
+            "startDate": "Start Date",
+            "dueDate": "Due Date",
+            "default": "Default",
+            "amount": "Amount",
+            "discount": "Discount",
+            "paid": "Paid",
+            "status": "Status"
+        }
+    },
+    "loadingPlans": "Loading CPO plans…",
+    "loadPlansError": "Could not load CPO plans."
+}

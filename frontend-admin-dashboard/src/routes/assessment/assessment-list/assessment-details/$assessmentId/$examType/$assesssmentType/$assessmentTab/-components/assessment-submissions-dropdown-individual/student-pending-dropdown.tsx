@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -10,6 +11,11 @@ import { DotsThree, WarningCircle } from '@phosphor-icons/react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { AssessmentRevaluateStudentInterface } from '@/types/assessments/assessment-overview';
 
+// Internal menu-option keys — decoupled from the translated display labels below
+// so branching logic never depends on the current locale's text.
+const MENU_OPTION_SEND_REMINDER = 'SEND_REMINDER';
+const MENU_OPTION_REMOVE_PARTICIPANTS = 'REMOVE_PARTICIPANTS';
+
 const SendReminderComponent = ({
     student,
     onClose,
@@ -17,18 +23,21 @@ const SendReminderComponent = ({
     student: AssessmentRevaluateStudentInterface;
     onClose: () => void;
 }) => {
+    const { t } = useTranslation('assessmentStudentPendingDropdown');
     return (
         <DialogContent className="flex flex-col p-0">
-            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Send Reminder</h1>
+            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
+                {t('dialogs.sendReminder.title')}
+            </h1>
             <div className="flex flex-col gap-2 p-4">
                 <div className="flex items-center text-danger-600">
-                    <p>Attention</p>
+                    <p>{t('dialogs.attentionLabel')}</p>
                     <WarningCircle size={18} />
                 </div>
                 <h1>
-                    A reminder will be sent to{' '}
-                    <span className="text-primary-500">{student.full_name}</span> who hasn’t yet
-                    appeared for the Assessment
+                    {t('dialogs.sendReminder.confirmMessagePrefix')}{' '}
+                    <span className="text-primary-500">{student.full_name}</span>{' '}
+                    {t('dialogs.sendReminder.confirmMessageSuffix')}
                 </h1>
                 <div className="flex justify-end">
                     <MyButton
@@ -38,7 +47,7 @@ const SendReminderComponent = ({
                         className="mt-4 font-medium"
                         onClick={onClose}
                     >
-                        Send
+                        {t('dialogs.sendReminder.send')}
                     </MyButton>
                 </div>
             </div>
@@ -53,18 +62,21 @@ const RemoveParticipantComponent = ({
     student: AssessmentRevaluateStudentInterface;
     onClose: () => void;
 }) => {
+    const { t } = useTranslation('assessmentStudentPendingDropdown');
     return (
         <DialogContent className="flex flex-col p-0">
-            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Remove Participant</h1>
+            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
+                {t('dialogs.removeParticipant.title')}
+            </h1>
             <div className="flex flex-col gap-2 p-4">
                 <div className="flex items-center text-danger-600">
-                    <p>Attention</p>
+                    <p>{t('dialogs.attentionLabel')}</p>
                     <WarningCircle size={18} />
                 </div>
                 <h1>
-                    Are you sure you want remove{' '}
-                    <span className="text-primary-500">{student.full_name}</span> from this
-                    Assessment?
+                    {t('dialogs.removeParticipant.confirmMessagePrefix')}{' '}
+                    <span className="text-primary-500">{student.full_name}</span>{' '}
+                    {t('dialogs.removeParticipant.confirmMessageSuffix')}
                 </h1>
                 <div className="flex justify-end">
                     <MyButton
@@ -74,7 +86,7 @@ const RemoveParticipantComponent = ({
                         className="mt-4 font-medium"
                         onClick={onClose}
                     >
-                        Remove
+                        {t('dialogs.removeParticipant.remove')}
                     </MyButton>
                 </div>
             </div>
@@ -83,6 +95,7 @@ const RemoveParticipantComponent = ({
 };
 
 const StudentPendingDropdown = ({ student }: { student: AssessmentRevaluateStudentInterface }) => {
+    const { t } = useTranslation('assessmentStudentPendingDropdown');
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
     const [openDialog, setOpenDialog] = useState(false);
     const handleMenuOptionsChange = (value: string) => {
@@ -106,24 +119,24 @@ const StudentPendingDropdown = ({ student }: { student: AssessmentRevaluateStude
                 <DropdownMenuContent>
                     <DropdownMenuItem
                         className="cursor-pointer"
-                        onClick={() => handleMenuOptionsChange('Send Reminder')}
+                        onClick={() => handleMenuOptionsChange(MENU_OPTION_SEND_REMINDER)}
                     >
-                        Send Reminder
+                        {t('dropdown.sendReminder')}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                         className="cursor-pointer"
-                        onClick={() => handleMenuOptionsChange('Remove Participants')}
+                        onClick={() => handleMenuOptionsChange(MENU_OPTION_REMOVE_PARTICIPANTS)}
                     >
-                        Remove Participants
+                        {t('dropdown.removeParticipants')}
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
             {/* Dialog should be controlled by openDialog state */}
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                {selectedOption === 'Send Reminder' && (
+                {selectedOption === MENU_OPTION_SEND_REMINDER && (
                     <SendReminderComponent student={student} onClose={() => setOpenDialog(false)} />
                 )}
-                {selectedOption === 'Remove Participants' && (
+                {selectedOption === MENU_OPTION_REMOVE_PARTICIPANTS && (
                     <RemoveParticipantComponent
                         student={student}
                         onClose={() => setOpenDialog(false)}

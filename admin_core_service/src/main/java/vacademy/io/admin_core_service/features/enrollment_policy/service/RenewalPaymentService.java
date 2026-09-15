@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
+import vacademy.io.admin_core_service.features.user_subscription.util.PlanValidityResolver;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -46,6 +47,7 @@ public class RenewalPaymentService {
     private final vacademy.io.admin_core_service.features.invoice.service.InvoiceService invoiceService;
     private final vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService paymentNotificatonService;
     private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+    private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -252,6 +254,16 @@ public class RenewalPaymentService {
         log.info("Processing successful renewal for UserPlan: {}", userPlan.getId());
 
         try {
+            // A downgrade booked for the end of this cycle lands here, BEFORE the new end
+            // date is worked out — so the extension uses the new plan's validity, not the
+            // one the learner is leaving.
+            try {
+                planChangeService.applyScheduledChangeIfDue(userPlan);
+            } catch (Exception pce) {
+                log.error("Scheduled plan change could not be applied for plan {} — renewing on the "
+                        + "existing plan instead: {}", userPlan.getId(), pce.getMessage(), pce);
+            }
+
             // Extend UserPlan endDate based on subscription period
             Date newEndDate = calculateNewEndDate(userPlan);
             userPlan.setEndDate(newEndDate);
@@ -458,29 +470,11 @@ public class RenewalPaymentService {
     /**
      * Validity days for the plan, from the linked PaymentPlan (falling back to
      * the plan snapshot on user_plan.plan_json), defaulting to 30 only if
-     * nothing is resolvable.
+     * nothing is resolvable. Shared with the plan-change proration, which has to
+     * agree with the renewal on how long a plan lasts.
      */
     private int resolveValidityDays(UserPlan userPlan) {
-        if (userPlan.getPaymentPlan() != null && userPlan.getPaymentPlan().getValidityInDays() != null
-                && userPlan.getPaymentPlan().getValidityInDays() > 0) {
-            return userPlan.getPaymentPlan().getValidityInDays();
-        }
-        if (StringUtils.hasText(userPlan.getPlanJson())) {
-            try {
-                var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(userPlan.getPlanJson());
-                var v = node.get("validityInDays");
-                if (v == null) {
-                    v = node.get("validity_in_days");
-                }
-                if (v != null && v.asInt() > 0) {
-                    return v.asInt();
-                }
-            } catch (Exception e) {
-                log.debug("Could not read validityInDays from plan_json for UserPlan: {}", userPlan.getId());
-            }
-        }
-        log.warn("No validity_in_days resolvable for UserPlan: {} — defaulting to 30 days", userPlan.getId());
-        return 30;
+        return PlanValidityResolver.resolveValidityDays(userPlan);
     }
 
     /**

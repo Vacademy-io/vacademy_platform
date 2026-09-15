@@ -1,0 +1,77 @@
+{
+    "title": "قائمة الطلاب",
+    "enrollTriggerButton": "تسجيل {{term}}",
+    "dialog": {
+        "editHeading": "تعديل الطالب",
+        "addHeading": "تسجيل الطالب"
+    },
+    "form": {
+        "nameLabel": "الاسم",
+        "namePlaceholder": "الاسم",
+        "enrollIdLabel": "معرّف التسجيل",
+        "enrollIdPlaceholder": "معرّف التسجيل",
+        "replaceResponseLabel": "استبدال الإجابة (اختياري)",
+        "uploadResponseLabel": "تحميل الإجابة (اختياري)",
+        "currentPdfId": "معرّف PDF الحالي: {{pdfId}}",
+        "updateButton": "تحديث",
+        "enrollButton": "تسجيل"
+    },
+    "attemptDialog": {
+        "heading": "إضافة محاولة جديدة",
+        "fileLabel": "تحميل ملف الإجابة بصيغة PDF",
+        "submitButton": "إضافة محاولة"
+    },
+    "common": {
+        "uploading": "جارٍ التحميل...",
+        "uploadFile": "تحميل الملف"
+    },
+    "table": {
+        "name": "الاسم",
+        "enrollmentId": "معرّف التسجيل",
+        "attemptCount": "عدد المحاولات",
+        "viewPdf": "عرض PDF",
+        "actions": "الإجراءات",
+        "attemptsCount_zero": "لا توجد محاولات ({{count}})",
+        "attemptsCount_one": "محاولة واحدة",
+        "attemptsCount_two": "محاولتان",
+        "attemptsCount_few": "{{count}} محاولات",
+        "attemptsCount_many": "{{count}} محاولة",
+        "attemptsCount_other": "{{count}} محاولة",
+        "attemptLabel": "المحاولة {{number}}",
+        "noFile": "لا يوجد ملف",
+        "openMenu": "فتح القائمة",
+        "edit": "تعديل",
+        "addAttempt": "إضافة محاولة",
+        "deleteCurrentAttempt": "حذف المحاولة الحالية",
+        "deleteStudent": "حذف الطالب",
+        "emptyState": "لم يتم العثور على طلاب مسجّلين.",
+        "submitSelected": "إرسال المحدد ({{count}})"
+    },
+    "toast": {
+        "fileUploaded": "تم تحميل الملف بنجاح",
+        "uploadFailed": "فشل التحميل",
+        "fillAllFields": "يرجى ملء جميع الحقول وتحميل ملف.",
+        "studentUpdated": "تم تحديث الطالب بنجاح!",
+        "studentEnrolled": "تم تسجيل الطالب بنجاح!",
+        "failedUpdateStudent": "فشل تحديث الطالب",
+        "failedEnrollStudent": "فشل تسجيل الطالب",
+        "studentDeleted": "تم حذف الطالب بنجاح!",
+        "noFileAvailable": "لا يوجد ملف متاح",
+        "noFileIdAvailable": "لا يوجد معرّف ملف متاح",
+        "couldNotRetrievePdfUrl": "تعذّر استرداد رابط PDF",
+        "failedRetrievePdf": "فشل استرداد PDF",
+        "uploadRequired": "يرجى تحميل ملف.",
+        "attemptAdded": "تمت إضافة محاولة جديدة بنجاح!",
+        "failedAddAttempt": "فشل إضافة المحاولة",
+        "studentNotFound": "الطالب غير موجود.",
+        "cannotDeleteOnlyAttempt": "لا يمكن حذف المحاولة الوحيدة. احذف الطالب بدلاً من ذلك.",
+        "attemptDeleted": "تم حذف المحاولة بنجاح!",
+        "selectAtLeastOneStudent": "يرجى تحديد طالب واحد على الأقل",
+        "submittedStudents_zero": "لم يتم إرسال أي طالب ({{count}})",
+        "submittedStudents_one": "تم إرسال طالب واحد",
+        "submittedStudents_two": "تم إرسال طالبين",
+        "submittedStudents_few": "تم إرسال {{count}} طلاب",
+        "submittedStudents_many": "تم إرسال {{count}} طالبًا",
+        "submittedStudents_other": "تم إرسال {{count}} طالب"
+    }
+}

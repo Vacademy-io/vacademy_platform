@@ -1,0 +1,126 @@
+{
+    "heading": "Announcement History",
+    "tabs": {
+        "all": "All",
+        "planned": "Planned",
+        "past": "Past"
+    },
+    "toolbar": {
+        "searchLabel": "Search title",
+        "searchPlaceholder": "Search…",
+        "statusLabel": "Status",
+        "statusAll": "All",
+        "fromLabel": "From",
+        "toLabel": "To"
+    },
+    "status": {
+        "DRAFT": "Draft",
+        "PENDING_APPROVAL": "Pending approval",
+        "REJECTED": "Rejected",
+        "SCHEDULED": "Scheduled",
+        "ACTIVE": "Active",
+        "INACTIVE": "Inactive",
+        "DELIVERED": "Delivered",
+        "CANCELLED": "Cancelled"
+    },
+    "results_one": "{{count}} result",
+    "results_other": "{{count}} results",
+    "sizeLabel": "Size",
+    "prev": "Prev",
+    "next": "Next",
+    "page": "Page {{page}}",
+    "table": {
+        "title": "Title",
+        "status": "Status",
+        "modes": "Modes",
+        "mediums": "Mediums",
+        "schedule": "Schedule",
+        "createdBy": "Created By",
+        "createdAt": "Created At",
+        "actions": "Actions",
+        "loading": "Loading…",
+        "empty": "No announcements",
+        "recipientsPrefix": "Recipients:",
+        "recipientsMore": "+{{count}}"
+    },
+    "actions": {
+        "view": "View",
+        "stats": "Stats",
+        "approve": "Approve",
+        "reject": "Reject",
+        "deliverNow": "Deliver now",
+        "delete": "Delete"
+    },
+    "toasts": {
+        "statsLoadFailed": "Failed to load stats",
+        "approved": "Approved",
+        "approveFailed": "Approve failed",
+        "rejected": "Rejected",
+        "rejectFailed": "Reject failed",
+        "deliveryTriggered": "Delivery triggered",
+        "triggerFailed": "Trigger failed",
+        "deleted": "Deleted",
+        "deleteFailed": "Delete failed"
+    },
+    "detailsDialog": {
+        "title": "Announcement Details",
+        "content": "Content",
+        "modes": "Modes",
+        "mediums": "Mediums",
+        "recipients": "Recipients"
+    },
+    "statsDialog": {
+        "title": "Delivery Stats",
+        "loading": "Loading statistics...",
+        "overviewTitle": "Delivery overview",
+        "tiles": {
+            "recipients": "Recipients",
+            "delivered": "Delivered",
+            "read": "Read",
+            "failed": "Failed",
+            "dismissed": "Dismissed",
+            "dismissRate": "Dismiss rate"
+        },
+        "emailEventsTitle": "Email events",
+        "viaSes": "via SES",
+        "emailTiles": {
+            "emailsSent": "Emails sent",
+            "delivered": "Delivered",
+            "opened": "Opened",
+            "clicked": "Clicked",
+            "bounced": "Bounced",
+            "rejected": "Rejected",
+            "complained": "Complained",
+            "awaitingEvents": "Awaiting events"
+        },
+        "pendingNote": "Emails were dispatched but no SES events have come back yet. If you're running locally, ensure the SES → SNS → notification_service webhook is configured.",
+        "noEmails": "No emails were sent for this announcement.",
+        "recipientsSection": {
+            "title": "Recipients",
+            "loadFailed": "Failed to load recipients",
+            "loading": "Loading recipients...",
+            "empty": "No recipients found for this announcement.",
+            "table": {
+                "name": "Name",
+                "mode": "Mode",
+                "status": "Status",
+                "seenAt": "Seen at",
+                "dismissedAt": "Dismissed at"
+            },
+            "pagePagination": "Page {{page}} of {{totalPages}}"
+        }
+    },
+    "rejectDialog": {
+        "title": "Reject Announcement",
+        "reasonPlaceholder": "Reason",
+        "cancel": "Cancel",
+        "reject": "Reject"
+    },
+    "schedule": {
+        "none": "-",
+        "immediate": "Immediate",
+        "oneTime": "One-time",
+        "recurring": "Recurring",
+        "cron": "CRON: {{expr}}"
+    }
+}

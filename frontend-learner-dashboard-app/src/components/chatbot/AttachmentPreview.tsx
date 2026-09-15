@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { SpinnerGap } from "@phosphor-icons/react";
 
 export interface PendingAttachment {
@@ -32,6 +33,8 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
   attachments,
   onRemove,
 }) => {
+  const { t } = useTranslation("chatFeatureB");
+
   if (attachments.length === 0) return null;
 
   return (
@@ -43,7 +46,7 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
         >
           <img
             src={att.previewUrl || att.url}
-            alt={att.name || "attachment"}
+            alt={att.name || t("common.attachmentAlt")}
             className="size-full object-cover"
           />
           {/* Loading spinner overlay while upload is in progress */}

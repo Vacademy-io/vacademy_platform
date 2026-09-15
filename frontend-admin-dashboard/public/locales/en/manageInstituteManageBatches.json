@@ -1,0 +1,13 @@
+{
+    "navHeading": "Manage Batches",
+    "fetchError": "Unable to fetch batches. Please try again later.",
+    "heading": "{{learner}} Batches",
+    "subheading": "Manage and organize your {{learner}} batches by {{session}}.",
+    "selectSessionPlaceholder": "Select {{session}}",
+    "emptyState": {
+        "noBatchesForSession": "No batches found for {{session}}",
+        "noSessionsAvailable": "No sessions available",
+        "createBatchHint": "Create a new batch in this session to get started.",
+        "createSessionHint": "Please create a session first before adding batches."
+    }
+}

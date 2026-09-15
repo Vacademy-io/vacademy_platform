@@ -8,6 +8,7 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect } from 'react';
 import { CaretLeft } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 export const Route = createFileRoute('/assessment/export/$assessmentId/')({
     component: () => (
@@ -18,6 +19,7 @@ export const Route = createFileRoute('/assessment/export/$assessmentId/')({
 });
 
 function RouteComponent() {
+    const { t } = useTranslation('assessmentExportIndex');
     const { assessmentId } = Route.useParams();
     const { setNavHeading } = useNavHeadingStore();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
@@ -33,7 +35,7 @@ function RouteComponent() {
         setNavHeading(
             <div className="flex items-center gap-4">
                 <CaretLeft onClick={() => window.history.back()} className="cursor-pointer" />
-                <h1 className="text-lg">Preview and Export</h1>
+                <h1 className="text-lg">{t('pageHeading')}</h1>
             </div>
         );
     }, []);

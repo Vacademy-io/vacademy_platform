@@ -1,0 +1,32 @@
+{
+    "kpis": {
+        "activeLearners": {
+            "label": "सक्रिय {{learners}}",
+            "subtitle": "कुल {{total}} में से"
+        },
+        "totalCourses": {
+            "label": "कुल {{courses}}",
+            "subtitle": "सक्रिय {{courses}}"
+        },
+        "teamMembers": {
+            "label": "टीम सदस्य",
+            "subtitle": "{{admins}}, {{teachers}} और स्टाफ़"
+        },
+        "outstandingFees": {
+            "label": "बकाया शुल्क",
+            "subtitle": "अतिदेय मदों में बकाया"
+        },
+        "overdueItems": {
+            "label": "अतिदेय मदें",
+            "subtitle": "फ़ॉलो-अप की आवश्यकता है"
+        },
+        "classesToday": {
+            "label": "आज {{sessions}}",
+            "subtitle": "निर्धारित {{sessions}}"
+        }
+    },
+    "breakdown": {
+        "inactive": "निष्क्रिय",
+        "terminated": "समाप्त"
+    }
+}

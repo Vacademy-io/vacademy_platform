@@ -1,0 +1,7 @@
+{
+    "noSessionsFound": "Aucune session trouvée",
+    "noCourseDialog": {
+        "type": "Ajout de sessions",
+        "content": "Vous devez d'abord créer un cours"
+    }
+}

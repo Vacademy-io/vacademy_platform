@@ -330,7 +330,7 @@ async def generate_paper(
         # board maps a rewritten question back by index, so a silent skip inside
         # the formatter would otherwise replace the WRONG question.
         raw_kept, formatted, format_warnings = kb_paper.pair_with_formatted(
-            generated.questions
+            generated.questions, kb_id=kb_id, generation_id=generation_id
         )
         payload = {
             "blueprint": blueprint.to_dict(),
@@ -363,7 +363,15 @@ async def generate_paper(
         return json.dumps(payload)
 
     ai_task_service.schedule(task_id, work)
-    return {"task_id": task_id, "status": "PROGRESS", "planned": blueprint.total_questions}
+    # generation_id is returned so the caller can mark the run SAVED once the questions
+    # land somewhere. The section endpoint below already did this; without it here, a
+    # whole-paper run stayed READY forever in the history even after it was used.
+    return {
+        "task_id": task_id,
+        "status": "PROGRESS",
+        "generation_id": generation_id,
+        "planned": blueprint.total_questions,
+    }
 
 
 class SectionRequest(BaseModel):
@@ -481,7 +489,7 @@ async def generate_for_section(
                 )
 
             raw_kept, formatted, format_warnings = kb_paper.pair_with_formatted(
-                generated.questions
+                generated.questions, kb_id=kb_id, generation_id=generation_id
             )
             payload = {
                 "blueprint": blueprint.to_dict(),
@@ -596,7 +604,7 @@ async def regenerate_question(
 
     # Format BEFORE billing: a question that cannot be converted is not a
     # delivered question, and charging for it would be charging for nothing.
-    raw_kept, formatted, _ = kb_paper.pair_with_formatted(generated.questions[:1])
+    raw_kept, formatted, _ = kb_paper.pair_with_formatted(generated.questions[:1], kb_id=kb_id)
     if not formatted:
         raise HTTPException(
             422,

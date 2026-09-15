@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -118,7 +119,10 @@ const formatValue = (k: DashboardKpi, currency: string): string => {
 
 export default function KpiBand({ instituteId, roles }: KpiBandProps) {
     const navigate = useNavigate();
-    const { data, isLoading, isError } = useQuery(getDashboardKpisQuery({ instituteId, roles }));
+    const { t, i18n } = useTranslation('dashboardKpisService');
+    const { data, isLoading, isError } = useQuery(
+        getDashboardKpisQuery({ instituteId, roles, t, language: i18n.language })
+    );
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
     const currency = resolveInstituteCurrency(instituteDetails);
 

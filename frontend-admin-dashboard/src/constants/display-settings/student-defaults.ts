@@ -78,14 +78,45 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
         { id: 'gamification', visible: true },
         { id: 'exploreMemberships', visible: true },
         { id: 'exploreBooks', visible: true },
+        // Declared LAST on purpose — see FRACTIONAL_ORDERS below.
+        { id: 'enrolledCourses', visible: true },
+        // On by default. It self-hides for any institute with no app link on
+        // its domain-routing row, so the only institutes it reaches are the
+        // ones that actually ship an app. Note this means those institutes
+        // advertise the downloads twice until they turn `sidebar.appLinks` off.
+        { id: 'getApp', visible: true },
     ];
-    return defaults.map((w, idx) => ({ ...w, order: idx + 1 }));
+    // Widgets added after this list shipped cannot simply be spliced in: order
+    // comes from the array index, and an institute that saved earlier already
+    // holds orders 1..15. Inserting mid-list would renumber the defaults and
+    // hand the new widget an order a saved widget occupies — and moveWidget
+    // reorders by SWAPPING two rows' order values, so a tie leaves both rows'
+    // arrows permanently inert and onSave writes the duplicate back.
+    //
+    // So the new id is declared last (every pre-existing widget keeps its exact
+    // original order) and given a FRACTIONAL order instead: 2.5 sorts between
+    // continueLearning (2) and coursesStat (3), which is where the widget
+    // belongs, and can never equal an integer order a saved institute holds.
+    // Swapping preserves the set of orders, so reordering cannot create a
+    // duplicate either.
+    // getApp is a rail widget. 12.5 puts it last in the rail — after
+    // upcomingLiveClasses (10), myMentors (11) and thisWeekAttendance (12) —
+    // without colliding with gamification (13) in the main column.
+    const FRACTIONAL_ORDERS: Record<string, number> = {
+        enrolledCourses: 2.5,
+        getApp: 12.5,
+    };
+    return defaults.map((w, idx) => ({
+        ...w,
+        order: FRACTIONAL_ORDERS[w.id] ?? idx + 1,
+    }));
 }
 
 export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     sidebar: {
         visible: true,
         tabs: defaultSidebarTabs(),
+        appLinks: true,
     },
     dashboard: {
         widgets: defaultDashboardWidgets(),
@@ -184,6 +215,21 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         enabled: false,
         enabledTours: [...LEARNER_TOUR_KEYS],
         pdfGuideEnabled: false,
+    },
+    concentration: {
+        enabled: true,
+        frequency: {
+            min_minutes: 5,
+            max_minutes: 7,
+        },
+        behavior: {
+            allow_skip: false,
+            penalty_type: 'pause',
+        },
+        appearance: {
+            title: 'Focus Check',
+            subtitle: 'Select the matching number to continue your streak',
+        },
     },
     postLoginRedirectRoute: '/dashboard',
 };

@@ -33,6 +33,8 @@ from .routers.knowledge_base import router as knowledge_base_router
 from .routers.kb_paper import router as kb_paper_router
 from .routers.kb_library import router as kb_library_router
 from .routers.voice_agent import router as voice_agent_router
+from .routers.tutor import router as tutor_router
+from .routers.tutor_ws import router as tutor_ws_router
 from .routers.input_asset import router as input_asset_router
 from .routers.reels import router as reels_router
 from .routers.studio_projects import router as studio_router
@@ -88,6 +90,12 @@ async def _lifespan(app: FastAPI):
             ensure_chat_quiz_state_schema(db)
             from .repositories.ai_video_cast_repository import ensure_ai_video_cast_schema
             ensure_ai_video_cast_schema(db)
+            from .models.tutor_tts_cache import ensure_tutor_tts_cache_schema
+            ensure_tutor_tts_cache_schema(db)
+            from .models.tutor_asset_registry import ensure_tutor_asset_registry_schema
+            ensure_tutor_asset_registry_schema(db)
+            from .services.tutor.demo import ensure_tutor_demo_schema
+            ensure_tutor_demo_schema(db)
         sweep_stale_tasks()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_task startup init skipped: %s", exc)
@@ -124,7 +132,24 @@ async def _lifespan(app: FastAPI):
         start_help_corpus_sync()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("help corpus sync startup skipped: %s", exc)
-    yield
+
+    # MCP: the Streamable HTTP session manager needs a task group alive for the
+    # whole app lifetime. Mounting the SDK's ASGI app bypasses its own lifespan,
+    # so the host app has to run it or every MCP request fails.
+    mcp_server = getattr(app.state, "mcp_server", None)
+    if mcp_server is None:
+        yield
+        return
+
+    try:
+        with db_session() as db:
+            from .mcp.schema import ensure_mcp_schema
+            ensure_mcp_schema(db)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("mcp schema init skipped: %s", exc)
+
+    async with mcp_server.session_manager.run():
+        yield
 
 
 def create_app() -> FastAPI:
@@ -207,7 +232,10 @@ def create_app() -> FastAPI:
         # with allow_credentials=True a wildcard here would be invalid — so
         # Server-Timing has to be listed explicitly or the client reads nothing,
         # silently and with no error.
-        expose_headers=["Server-Timing"],
+        # Mcp-* are read by browser-based MCP clients (e.g. the Inspector);
+        # without them the session id is invisible to JS and the client cannot
+        # continue a stream.
+        expose_headers=["Server-Timing", "Mcp-Session-Id", "Mcp-Protocol-Version"],
     )
 
     # Outermost middleware: stamps how long we took, so the browser can subtract it
@@ -244,6 +272,8 @@ def create_app() -> FastAPI:
     app.include_router(kb_paper_router, prefix=settings.api_base_path)
     app.include_router(kb_library_router, prefix=settings.api_base_path)
     app.include_router(voice_agent_router, prefix=settings.api_base_path)
+    app.include_router(tutor_router, prefix=settings.api_base_path)
+    app.include_router(tutor_ws_router, prefix=settings.api_base_path)
     # Primary path: /input-asset/* — handles both video and image kinds.
     app.include_router(
         input_asset_router,
@@ -302,6 +332,74 @@ def create_app() -> FastAPI:
     # See docs/ai_content/AI_VIDEO_STUDIO.md for phase status.
     app.include_router(studio_router, prefix=settings.api_base_path)
 
+    # MCP server (Model Context Protocol) — off unless MCP_SERVER_ENABLED.
+    # The consent/settings router declares its own absolute /ai-service/mcp/oauth
+    # prefix, so it must be registered BEFORE the mount below: Starlette matches
+    # routes in order and the mount owns everything under /ai-service/mcp.
+    _mount_mcp(app, settings)
+
     return app
+
+
+def _mount_mcp(app: FastAPI, settings) -> None:
+    """
+    Attach the MCP endpoint, its OAuth routes, and the OAuth discovery documents.
+
+    Refuses to mount (rather than degrading) when the encryption key is missing:
+    every grant persists the approving user's platform tokens, and storing those
+    unencrypted is not an acceptable fallback.
+    """
+    logger = logging.getLogger(__name__)
+    if not settings.mcp_server_enabled:
+        logger.info("MCP server disabled (MCP_SERVER_ENABLED is not true).")
+        return
+
+    try:
+        from starlette.routing import Route
+
+        from .mcp.consent import router as mcp_consent_router
+        from .mcp.server import McpExactPathAdapter, build_mcp_asgi_app, build_mcp_server
+        from .mcp.well_known import build_discovery_routes
+    except Exception as exc:  # noqa: BLE001
+        logger.error("MCP server could not be imported; not mounting: %s", exc)
+        return
+
+    if not settings.mcp_token_encryption_key:
+        logger.error(
+            "MCP_SERVER_ENABLED is true but MCP_TOKEN_ENCRYPTION_KEY is not set — "
+            "refusing to mount the MCP server."
+        )
+        return
+
+    try:
+        mcp_server = build_mcp_server()
+        mcp_app = build_mcp_asgi_app(settings, mcp_server)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("MCP server failed to build; not mounting: %s", exc)
+        return
+
+    app.include_router(mcp_consent_router)
+    # The exact path first, then the subtree. A Mount alone would answer the
+    # bare /ai-service/mcp — the URL users paste into their AI client — with a
+    # 307 to the trailing-slash form; see McpExactPathAdapter.
+    app.router.routes.append(
+        Route(
+            f"{settings.api_base_path}/mcp",
+            endpoint=McpExactPathAdapter(mcp_app),
+            methods=["GET", "POST", "DELETE", "OPTIONS"],
+        )
+    )
+    app.mount(f"{settings.api_base_path}/mcp", mcp_app)
+
+    # RFC 9728 / RFC 8414 discovery lives at the ROOT, not under /ai-service, so
+    # the ingress needs a /.well-known route to this service (see the chart).
+    for route in build_discovery_routes(settings):
+        app.router.routes.append(route)
+
+    # The MCP session manager needs a running task group for the life of the app.
+    # The SDK's own lifespan is bypassed when its app is mounted, so the host app
+    # owns it — see _lifespan, which reads this back off app.state.
+    app.state.mcp_server = mcp_server
+    logger.info("MCP server mounted at %s/mcp (issuer %s)", settings.api_base_path, settings.mcp_issuer_url)
 
 

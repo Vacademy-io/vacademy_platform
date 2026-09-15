@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate } from '@tanstack/react-router';
 import { renderHtmlPage, type HtmlAction } from '../../-utils/catalogue-html';
 
@@ -39,7 +40,7 @@ export const HtmlPageSection = ({
                     // Routes are page slugs within THIS site; '' is the home
                     // page. Going through the router keeps it a client-side
                     // navigation and keeps the tag scope.
-                    navigate({ to: action.route ? `/${tagName}/${action.route}` : `/${tagName}` });
+                    navigate({ to: RouteMatcher.pagePath(tagName, action.route) });
                     break;
                 case 'lead-form':
                     window.dispatchEvent(
@@ -49,7 +50,7 @@ export const HtmlPageSection = ({
                     );
                     break;
                 case 'enrol':
-                    if (action.courseId) navigate({ to: `/${tagName}/course/${action.courseId}` });
+                    if (action.courseId) navigate({ to: `${RouteMatcher.basePath(tagName)}/course/${action.courseId}` });
                     break;
                 case 'link':
                     window.open(action.href, '_blank', 'noopener,noreferrer');

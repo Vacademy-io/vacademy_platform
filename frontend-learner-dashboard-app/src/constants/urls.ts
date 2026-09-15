@@ -99,6 +99,14 @@ export const LEARNER_SUBSCRIPTION_LIST = `${BASE_URL}/admin-core-service/learner
 export const LEARNER_SUBSCRIPTION_CANCEL = (userPlanId: string) =>
   `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/cancel`;
 
+// Plan change (upgrade / downgrade). The options endpoint prices every switchable plan
+// for this learner at this moment; the change endpoint books it. Same path is used with
+// DELETE to call off a downgrade that has not landed yet.
+export const LEARNER_PLAN_CHANGE_OPTIONS = (userPlanId: string) =>
+  `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/change-options`;
+export const LEARNER_PLAN_CHANGE = (userPlanId: string) =>
+  `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/change-plan`;
+
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
 export const EXPORT_AI_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/ai-pdf`;
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;
@@ -198,6 +206,9 @@ export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/instit
 // Open (unauthenticated) guest-query endpoints — used by the login page pre-auth.
 export const OPEN_DOUBT_CONFIG = `${BASE_URL}/admin-core-service/open/institute/v1/doubts/config`;
 export const OPEN_DOUBT_CREATE = `${BASE_URL}/admin-core-service/open/institute/v1/doubts/create`;
+// Open (unauthenticated) read of STUDENT_DISPLAY_SETTINGS — lets pre-login screens
+// (login page, public catalogue) honour learner display toggles such as signup.enabled.
+export const OPEN_STUDENT_DISPLAY_SETTINGS = `${BASE_URL}/admin-core-service/open/institute/setting/v1/student-display`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;

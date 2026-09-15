@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { DotsThree } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -20,6 +21,7 @@ export const SingleCorrectQuestionPaperTemplatePPTView = ({
     setCurrentQuestionIndex,
     className,
 }: QuestionPaperTemplateFormProps) => {
+    const { t } = useTranslation('assessmentSingleCorrectPPTQP');
     const { control, getValues, setValue } = form;
 
     const [isDropdownVisible, setIsDropdownVisible] = useState(false); // State to track dropdown visibility
@@ -103,7 +105,9 @@ export const SingleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'a') : '(a.)'}
+                                    {optionsType
+                                        ? formatStructure(optionsType, 'a')
+                                        : t('optionMarker.fallback', { label: 'a' })}
                                 </span>
                             </div>
                         </div>
@@ -138,7 +142,9 @@ export const SingleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'b') : '(b.)'}
+                                    {optionsType
+                                        ? formatStructure(optionsType, 'b')
+                                        : t('optionMarker.fallback', { label: 'b' })}
                                 </span>
                             </div>
                         </div>
@@ -175,7 +181,9 @@ export const SingleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'c') : '(c.)'}
+                                    {optionsType
+                                        ? formatStructure(optionsType, 'c')
+                                        : t('optionMarker.fallback', { label: 'c' })}
                                 </span>
                             </div>
                         </div>
@@ -210,7 +218,9 @@ export const SingleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'd') : '(d.)'}
+                                    {optionsType
+                                        ? formatStructure(optionsType, 'd')
+                                        : t('optionMarker.fallback', { label: 'd' })}
                                 </span>
                             </div>
                         </div>
@@ -258,10 +268,10 @@ export const SingleCorrectQuestionPaperTemplatePPTView = ({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="mt-1">
                             <DropdownMenuItem onClick={handleDuplicateSlide}>
-                                Duplicate Slide
+                                {t('dropdownMenu.duplicateSlide')}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={handleDeleteSlide}>
-                                Delete Slide
+                                {t('dropdownMenu.deleteSlide')}
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

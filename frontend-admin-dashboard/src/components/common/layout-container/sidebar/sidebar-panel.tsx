@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 import { SidebarItem } from './sidebar-item';
@@ -115,6 +116,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     logoHeightPx = null,
     stackNameBelowLogo = false,
 }) => {
+    const { t } = useTranslation('sidebarPanel');
     const navigate = useNavigate();
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
@@ -207,7 +209,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                                 return (
                                     <img
                                         src={instituteLogo}
-                                        alt="logo"
+                                        alt={t('logoAlt')}
                                         className="object-contain"
                                         style={{
                                             width: logoSpansFullWidth
@@ -250,9 +252,9 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                     )}
                 </div>
                 {isPartnershipLinkage && mainInstituteName && (
-                    <div className="flex items-center gap-2 px-4 pb-3 pl-14 text-neutral-500">
+                    <div className="flex items-center gap-2 px-4 pb-3 ps-14 text-neutral-500">
                         <span className="whitespace-nowrap text-[10px] font-medium text-neutral-500">
-                            Powered by
+                            {t('poweredBy')}
                         </span>
                         {mainInstituteLogoUrl ? (
                             <div className="flex shrink-0 items-center justify-center overflow-hidden rounded">
@@ -329,13 +331,13 @@ interface RecentTabsListProps {
 }
 
 const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, onItemClick }) => {
+    const { t } = useTranslation('sidebarPanel');
+
     if (entries.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
-                <p className="text-xs text-neutral-400">No recent tabs</p>
-                <p className="text-[10px] text-neutral-300">
-                    Navigate to pages and they'll appear here
-                </p>
+                <p className="text-xs text-neutral-400">{t('recentTabs.emptyTitle')}</p>
+                <p className="text-[10px] text-neutral-300">{t('recentTabs.emptyDescription')}</p>
             </div>
         );
     }
@@ -343,7 +345,7 @@ const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, 
     return (
         <div className="flex flex-col gap-0.5">
             <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                Recently Visited
+                {t('recentTabs.heading')}
             </p>
             {entries.map((entry, idx) => {
                 const colors = getCategoryColors(entry.category);
@@ -380,20 +382,23 @@ const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, 
 
 // ─── Support Options ───────────────────────────────────────────
 
-const SUPPORT_PLAN_SHORT: Record<string, string> = {
-    DEDICATED: 'Dedicated',
-    PREMIUM: 'Premium',
-    AVERAGE: 'Average',
-    LOW: 'Low',
-    NONE: 'No plan',
+/** Maps a support-plan key to its translation key under `support.plan.*`. */
+const SUPPORT_PLAN_TRANSLATION_KEY: Record<string, string> = {
+    DEDICATED: 'support.plan.dedicated',
+    PREMIUM: 'support.plan.premium',
+    AVERAGE: 'support.plan.average',
+    LOW: 'support.plan.low',
+    NONE: 'support.plan.none',
 };
 
 function SupportOptions() {
+    const { t } = useTranslation('sidebarPanel');
     const [open, setOpen] = React.useState(false);
     const [hover, setHover] = React.useState(false);
     const config = useSupportConfig();
     const planKey = config.data?.plan?.key;
-    const planLabel = planKey ? SUPPORT_PLAN_SHORT[planKey] ?? planKey : null;
+    const planLabelKey = planKey ? SUPPORT_PLAN_TRANSLATION_KEY[planKey] : null;
+    const planLabel = planLabelKey ? t(planLabelKey) : planKey ?? null;
 
     return (
         <>
@@ -414,12 +419,12 @@ function SupportOptions() {
                         hover ? 'text-teal-600' : 'text-neutral-500'
                     )}
                 >
-                    Support
+                    {t('support.button')}
                 </span>
                 {planLabel ? (
                     <span
-                        className="ml-auto rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-500"
-                        title={`${planLabel} support plan`}
+                        className="ms-auto rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-500"
+                        title={t('support.planTooltip', { plan: planLabel })}
                     >
                         {planLabel}
                     </span>
@@ -481,6 +486,8 @@ interface SettingsTabsListProps {
 }
 
 const SettingsTabsList: React.FC<SettingsTabsListProps> = ({ tabs, activeTab, onItemClick }) => {
+    const { t } = useTranslation('sidebarPanel');
+
     // Group by domain, then by group, driven by the fixed order arrays —
     // never by this array's authoring order, which is free to change.
     const groupedByDomain = React.useMemo(() => {
@@ -498,7 +505,7 @@ const SettingsTabsList: React.FC<SettingsTabsListProps> = ({ tabs, activeTab, on
     // other domain starts collapsed to just its header, so the resting view
     // is 7 short lines instead of a full 37-item scroll.
     const activeDomain = React.useMemo(
-        () => tabs.find((t) => t.tab === activeTab)?.domain,
+        () => tabs.find((tab) => tab.tab === activeTab)?.domain,
         [tabs, activeTab]
     );
     const [expandedDomains, setExpandedDomains] = React.useState<Set<string>>(
@@ -528,10 +535,10 @@ const SettingsTabsList: React.FC<SettingsTabsListProps> = ({ tabs, activeTab, on
                     inputType="text"
                     input={query}
                     onChangeFunction={(e) => setQuery(e.target.value)}
-                    inputPlaceholder="Search settings"
-                    className="h-8 pl-8 text-caption"
+                    inputPlaceholder={t('settings.searchPlaceholder')}
+                    className="h-8 ps-8 text-caption"
                 />
-                <MagnifyingGlass className="absolute left-4 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
+                <MagnifyingGlass className="absolute start-4 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
             </div>
             {SETTINGS_DOMAIN_ORDER.map((domain) => {
                 const groups = groupedByDomain.get(domain);

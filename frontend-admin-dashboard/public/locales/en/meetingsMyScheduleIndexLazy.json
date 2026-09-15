@@ -1,0 +1,14 @@
+{
+    "navHeading": "My Schedule",
+    "heading": "My Schedule",
+    "subtitle": "Meetings where you are the host",
+    "viewList": "List",
+    "viewCalendar": "Calendar",
+    "bookingPagesTitle": "Create and manage your booking pages",
+    "bookingPages": "Booking Pages",
+    "newMeeting": "New Meeting",
+    "emptyTitle": "No meetings this week",
+    "emptyDescription": "Schedule a meeting or share your booking link to fill your calendar.",
+    "nextMeetingLabel": "Next meeting:",
+    "goToThatWeek": "Go to that week"
+}

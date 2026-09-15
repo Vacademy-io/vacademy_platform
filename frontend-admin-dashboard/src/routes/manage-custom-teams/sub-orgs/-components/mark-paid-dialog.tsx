@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Dialog,
     DialogContent,
@@ -38,6 +39,7 @@ export function MarkPaidDialog({
     invoiceNumber,
     onSuccess,
 }: MarkPaidDialogProps) {
+    const { t } = useTranslation('manageCustomTeamsMarkPaidDialog');
     const [transactionId, setTransactionId] = useState<string>('');
     const [notes, setNotes] = useState<string>('');
 
@@ -54,13 +56,13 @@ export function MarkPaidDialog({
                 notes: notes.trim() || undefined,
             }),
         onSuccess: () => {
-            toast.success(`Invoice ${invoiceNumber || invoiceId} marked as paid`);
+            toast.success(t('toasts.markedPaid', { invoice: invoiceNumber || invoiceId }));
             onSuccess?.();
             onOpenChange(false);
         },
         onError: (err: any) => {
             toast.error(
-                err?.response?.data?.message || err?.message || 'Failed to mark invoice as paid'
+                err?.response?.data?.message || err?.message || t('toasts.failed')
             );
         },
     });
@@ -69,30 +71,30 @@ export function MarkPaidDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[420px]">
                 <DialogHeader>
-                    <DialogTitle>Mark invoice paid</DialogTitle>
+                    <DialogTitle>{t('title')}</DialogTitle>
                     <DialogDescription>
-                        Records a manual / offline payment against{' '}
-                        {invoiceNumber ? <strong>{invoiceNumber}</strong> : 'this invoice'} and
-                        flips its status to PAID. Both fields below are optional.
+                        {t('descriptionPrefix')}{' '}
+                        {invoiceNumber ? <strong>{invoiceNumber}</strong> : t('thisInvoice')}{' '}
+                        {t('descriptionSuffix')}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-1">
                     <div className="space-y-1">
-                        <Label htmlFor="mp-transaction-id">Transaction reference</Label>
+                        <Label htmlFor="mp-transaction-id">{t('fields.transactionReference')}</Label>
                         <Input
                             id="mp-transaction-id"
                             value={transactionId}
                             onChange={(e) => setTransactionId(e.target.value)}
-                            placeholder="cheque #, UPI ref, receipt no."
+                            placeholder={t('fields.transactionReferencePlaceholder')}
                         />
                     </div>
                     <div className="space-y-1">
-                        <Label htmlFor="mp-notes">Notes</Label>
+                        <Label htmlFor="mp-notes">{t('fields.notes')}</Label>
                         <Input
                             id="mp-notes"
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Optional note (shown on email + side-view)"
+                            placeholder={t('fields.notesPlaceholder')}
                         />
                     </div>
                 </div>
@@ -104,7 +106,7 @@ export function MarkPaidDialog({
                         onClick={() => onOpenChange(false)}
                         disable={mutation.isPending}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
@@ -116,10 +118,10 @@ export function MarkPaidDialog({
                         {mutation.isPending ? (
                             <>
                                 <Loader2 className="size-4 animate-spin" />
-                                Saving…
+                                {t('saving')}
                             </>
                         ) : (
-                            'Mark as paid'
+                            t('markAsPaid')
                         )}
                     </MyButton>
                 </DialogFooter>

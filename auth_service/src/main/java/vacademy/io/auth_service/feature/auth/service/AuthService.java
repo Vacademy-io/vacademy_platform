@@ -30,6 +30,7 @@ import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
+import vacademy.io.common.core.utils.TextSanitizer;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
@@ -135,7 +136,15 @@ public class AuthService {
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
         boolean isAlreadyPresent = false;
-        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
+        // cleanIdentifier() first: an email pasted with an invisible character (ZWSP,
+        // BOM, NBSP) would otherwise be stored verbatim AND used as the dedupe key,
+        // so the account is created unfindable and the learner can never log in.
+        // The User entity repeats this on persist; doing it here keeps the lookup
+        // below matching what actually gets written.
+        String normalizedEmail = TextSanitizer.cleanIdentifier(registerRequest.getEmail());
+        normalizedEmail = normalizedEmail != null ? normalizedEmail.toLowerCase() : null;
+        registerRequest.setEmail(normalizedEmail);
+        registerRequest.setFullName(TextSanitizer.clean(registerRequest.getFullName()));
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         User user;
         if (optionalUser.isPresent()) {
@@ -167,7 +176,16 @@ public class AuthService {
 
     @Transactional
     public User createUser(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
-        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
+        // cleanIdentifier() first: an email pasted with an invisible character (ZWSP,
+        // BOM, NBSP) would otherwise be stored verbatim AND used as the dedupe key,
+        // so the account is created unfindable and the learner can never log in.
+        // The User entity repeats this on persist; doing it here keeps the lookup
+        // below matching what actually gets written.
+        String normalizedEmail = TextSanitizer.cleanIdentifier(registerRequest.getEmail());
+        normalizedEmail = normalizedEmail != null ? normalizedEmail.toLowerCase() : null;
+        registerRequest.setEmail(normalizedEmail);
+        registerRequest.setUsername(TextSanitizer.cleanIdentifier(registerRequest.getUsername()));
+        registerRequest.setFullName(TextSanitizer.clean(registerRequest.getFullName()));
         Optional<User> optionalUser = Optional.empty();
 
         if (StringUtils.hasText(registerRequest.getMobileNumber())) {
@@ -450,7 +468,16 @@ public class AuthService {
 
     @Transactional
     public User createUserForLearnerEnrollment(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail, String overrideLoginUrl) {
-        String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
+        // cleanIdentifier() first: an email pasted with an invisible character (ZWSP,
+        // BOM, NBSP) would otherwise be stored verbatim AND used as the dedupe key,
+        // so the account is created unfindable and the learner can never log in.
+        // The User entity repeats this on persist; doing it here keeps the lookup
+        // below matching what actually gets written.
+        String normalizedEmail = TextSanitizer.cleanIdentifier(registerRequest.getEmail());
+        normalizedEmail = normalizedEmail != null ? normalizedEmail.toLowerCase() : null;
+        registerRequest.setEmail(normalizedEmail);
+        registerRequest.setUsername(TextSanitizer.cleanIdentifier(registerRequest.getUsername()));
+        registerRequest.setFullName(TextSanitizer.clean(registerRequest.getFullName()));
         Optional<User> optionalUser = Optional.empty();
 
         if (StringUtils.hasText(registerRequest.getMobileNumber())) {

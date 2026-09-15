@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     GET_USER_LEAD_PROFILE,
@@ -207,15 +209,17 @@ function formatDate(iso: string | null | undefined): string {
     });
 }
 
-function statusLabel(status: string): { label: string; className: string } {
-    switch (status) {
-        case 'CONVERTED':
-            return { label: 'Converted', className: 'bg-green-100 text-green-700' };
-        case 'LOST':
-            return { label: 'Lost', className: 'bg-red-100 text-red-700' };
-        default:
-            return { label: 'Lead', className: 'bg-blue-100 text-blue-700' };
-    }
+function buildStatusLabel(t: TFunction) {
+    return function statusLabel(status: string): { label: string; className: string } {
+        switch (status) {
+            case 'CONVERTED':
+                return { label: t('status.converted'), className: 'bg-green-100 text-green-700' };
+            case 'LOST':
+                return { label: t('status.lost'), className: 'bg-red-100 text-red-700' };
+            default:
+                return { label: t('status.lead'), className: 'bg-blue-100 text-blue-700' };
+        }
+    };
 }
 
 function sourceLabel(source: string | null): string {
@@ -275,14 +279,20 @@ interface LeadScoreDetail {
     is_manual_override: boolean;
 }
 
-const FACTOR_META: Record<string, { label: string; color: string }> = {
-    source_quality: { label: 'Source Quality', color: 'bg-primary-500' },
-    profile_completeness: { label: 'Profile Completeness', color: 'bg-success-500' },
-    recency: { label: 'Recency', color: 'bg-warning-500' },
-    engagement: { label: 'Engagement', color: 'bg-info-500' },
-};
+function buildFactorMeta(t: TFunction): Record<string, { label: string; color: string }> {
+    return {
+        source_quality: { label: t('scoreFactors.sourceQuality'), color: 'bg-primary-500' },
+        profile_completeness: {
+            label: t('scoreFactors.profileCompleteness'),
+            color: 'bg-success-500',
+        },
+        recency: { label: t('scoreFactors.recency'), color: 'bg-warning-500' },
+        engagement: { label: t('scoreFactors.engagement'), color: 'bg-info-500' },
+    };
+}
 
 function ManualScoreEditor({ responseId }: { responseId: string }) {
+    const { t } = useTranslation('manageStudentsLeadProfile');
     const queryClient = useQueryClient();
     const [editing, setEditing] = useState(false);
     const [value, setValue] = useState('');
@@ -301,15 +311,15 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
             queryClient.invalidateQueries({ queryKey: ['lead-score-breakdown', responseId] });
             queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
             setEditing(false);
-            toast.success('Score updated');
+            toast.success(t('scoreEditor.scoreUpdated'));
         },
-        onError: () => toast.error('Failed to update score'),
+        onError: () => toast.error(t('scoreEditor.updateFailed')),
     });
 
     const handleSave = () => {
         const n = Number(value);
         if (!value || isNaN(n) || n < 0 || n > 100) {
-            toast.error('Enter a number between 0 and 100');
+            toast.error(t('scoreEditor.enterValidNumber'));
             return;
         }
         mutate(n);
@@ -332,7 +342,7 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
                         if (e.key === 'Escape') setEditing(false);
                     }}
                     className="w-16 rounded-md border border-neutral-300 px-2 py-1 text-xs tabular-nums focus:border-primary-400 focus:outline-none"
-                    placeholder="0–100"
+                    placeholder={t('scoreEditor.placeholder')}
                 />
                 <button
                     onClick={handleSave}
@@ -361,14 +371,16 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
                 className="flex items-center gap-1 text-xs text-neutral-400 transition-colors hover:text-primary-600"
             >
                 <PencilSimple size={11} />
-                {isManual ? `Manual: ${currentScore}` : 'Set score manually'}
+                {isManual
+                    ? t('scoreEditor.manualScore', { score: currentScore })
+                    : t('scoreEditor.setManually')}
             </button>
             {isManual && (
                 <button
                     onClick={handleClear}
                     disabled={isPending}
                     className="text-xs text-neutral-300 transition-colors hover:text-danger-500 disabled:opacity-50"
-                    title="Clear manual override — restores calculated score"
+                    title={t('scoreEditor.clearOverrideTitle')}
                 >
                     <X size={11} />
                 </button>
@@ -378,7 +390,9 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
 }
 
 function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
+    const { t } = useTranslation('manageStudentsLeadProfile');
     const [open, setOpen] = useState(false);
+    const factorMeta = buildFactorMeta(t);
 
     const { data, isLoading } = useQuery<LeadScoreDetail>({
         queryKey: ['lead-score-breakdown', responseId],
@@ -400,7 +414,7 @@ function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
                 className="flex items-center gap-1 text-xs text-neutral-400 transition-colors hover:text-primary-600"
             >
                 <ChartBar size={13} weight="bold" />
-                {open ? 'Hide breakdown' : 'Score breakdown'}
+                {open ? t('scoreBreakdown.hideBreakdown') : t('scoreBreakdown.showBreakdown')}
             </button>
 
             {open && (
@@ -408,21 +422,21 @@ function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
                     {isLoading && (
                         <div className="flex items-center gap-2 text-neutral-400">
                             <div className="size-3 animate-spin rounded-full border border-neutral-400 border-t-transparent" />
-                            Loading…
+                            {t('scoreBreakdown.loading')}
                         </div>
                     )}
 
                     {isManualData && (
                         <div className="mb-2 flex items-center gap-1 rounded-md bg-warning-50 px-2 py-1 text-warning-700">
                             <PencilSimple size={11} weight="bold" />
-                            <span>Score was set manually — breakdown is proportional</span>
+                            <span>{t('scoreBreakdown.manualNotice')}</span>
                         </div>
                     )}
 
                     {factors && (
                         <div className="flex flex-col gap-2.5">
                             {(
-                                Object.entries(FACTOR_META) as [
+                                Object.entries(factorMeta) as [
                                     string,
                                     { label: string; color: string },
                                 ][]
@@ -461,7 +475,9 @@ function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
 
                             {(factors.initial_score?.value ?? 0) > 0 && (
                                 <div className="flex items-center justify-between border-t border-neutral-200 pt-2">
-                                    <span className="text-neutral-500">Initial Bonus</span>
+                                    <span className="text-neutral-500">
+                                        {t('scoreBreakdown.initialBonus')}
+                                    </span>
                                     <span className="font-semibold text-primary-600">
                                         +{factors.initial_score!.value}
                                     </span>
@@ -469,7 +485,9 @@ function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
                             )}
 
                             <div className="flex items-center justify-between border-t border-neutral-200 pt-2">
-                                <span className="font-semibold text-neutral-700">Total</span>
+                                <span className="font-semibold text-neutral-700">
+                                    {t('scoreBreakdown.total')}
+                                </span>
                                 <span className="font-bold text-neutral-800">
                                     {data?.raw_score ?? '—'} / 100
                                 </span>
@@ -602,20 +620,35 @@ const DEFAULT_ACTION_CONFIG = {
     bgColor: 'bg-neutral-100',
 };
 
-const NOTE_ACTION_TYPES = [
-    { value: 'NOTE', label: 'Note', icon: <NotePencil weight="fill" className="size-3.5" /> },
-    { value: 'CALL_LOG', label: 'Call Log', icon: <Phone weight="fill" className="size-3.5" /> },
-    {
-        value: 'FOLLOW_UP',
-        label: 'Follow Up',
-        icon: <CalendarCheck weight="fill" className="size-3.5" />,
-    },
-    { value: 'MEETING', label: 'Meeting', icon: <Buildings weight="fill" className="size-3.5" /> },
-];
+function buildNoteActionTypes(t: TFunction) {
+    return [
+        {
+            value: 'NOTE',
+            label: t('noteActionTypes.note'),
+            icon: <NotePencil weight="fill" className="size-3.5" />,
+        },
+        {
+            value: 'CALL_LOG',
+            label: t('noteActionTypes.callLog'),
+            icon: <Phone weight="fill" className="size-3.5" />,
+        },
+        {
+            value: 'FOLLOW_UP',
+            label: t('noteActionTypes.followUp'),
+            icon: <CalendarCheck weight="fill" className="size-3.5" />,
+        },
+        {
+            value: 'MEETING',
+            label: t('noteActionTypes.meeting'),
+            icon: <Buildings weight="fill" className="size-3.5" />,
+        },
+    ];
+}
 
 // ── Timeline Event Item ───────────────────────────────────────────────────────
 
 function TimelineEventItem({ event }: { event: TimelineEvent }) {
+    const { t } = useTranslation('manageStudentsLeadProfile');
     const config = ACTION_CONFIG[event.action_type] ?? DEFAULT_ACTION_CONFIG;
     const [isTextExpanded, setIsTextExpanded] = useState(false);
 
@@ -681,7 +714,9 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
                                         onClick={() => setIsTextExpanded(!isTextExpanded)}
                                         className="mt-1 text-xs font-medium text-primary-600 hover:underline"
                                     >
-                                        {isTextExpanded ? 'View less' : 'View more'}
+                                        {isTextExpanded
+                                            ? t('timeline.viewLess')
+                                            : t('timeline.viewMore')}
                                     </button>
                                 )}
                             </div>
@@ -689,7 +724,8 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
                     })()}
                 {event.actor_name && (
                     <p className="mt-1.5 text-caption text-neutral-400">
-                        by <span className="font-medium text-neutral-500">{event.actor_name}</span>
+                        {t('timeline.by')}{' '}
+                        <span className="font-medium text-neutral-500">{event.actor_name}</span>
                     </p>
                 )}
                 {/* Call recording + details (Call Log) */}
@@ -711,12 +747,14 @@ interface AddNoteFormProps {
 }
 
 function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
+    const { t } = useTranslation('manageStudentsLeadProfile');
     const [noteText, setNoteText] = useState('');
     const [actionType, setActionType] = useState('NOTE');
     const [isExpanded, setIsExpanded] = useState(false);
     const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
     const [scheduleTime, setScheduleTime] = useState('');
     const queryClient = useQueryClient();
+    const noteActionTypes = buildNoteActionTypes(t);
 
     // The rich text editor emits HTML — check the rendered text for emptiness.
     const isNoteEmpty = !parseHtmlToString(noteText).trim();
@@ -748,7 +786,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 content: noteText.trim() || null,
             }),
         onSuccess: () => {
-            toast.success('Follow-up scheduled');
+            toast.success(t('addNote.followUpScheduled'));
             resetForm();
             // Invalidate follow-ups list and lead caches.
             if (audienceResponseId) {
@@ -758,12 +796,14 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
             }
             invalidateLeadCaches(queryClient, userId);
         },
-        onError: () => toast.error('Failed to schedule follow-up'),
+        onError: () => toast.error(t('addNote.followUpFailed')),
     });
 
     const createNoteMutation = useMutation({
         mutationFn: () => {
-            const label = NOTE_ACTION_TYPES.find((t) => t.value === actionType)?.label || 'Note';
+            const label =
+                noteActionTypes.find((nt) => nt.value === actionType)?.label ||
+                t('noteActionTypes.note');
             return createTimelineEventApi({
                 type: 'STUDENT',
                 type_id: userId,
@@ -775,7 +815,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
             });
         },
         onSuccess: () => {
-            toast.success('Note added');
+            toast.success(t('addNote.noteAdded'));
             resetForm();
             // Invalidate every lead-related cache so the new event count + recomputed
             // best_score show up on the drawer card and across all tables that pull
@@ -783,7 +823,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
             // timeline insert, so a single round-trip is enough.
             invalidateLeadCaches(queryClient, userId);
         },
-        onError: () => toast.error('Failed to add note'),
+        onError: () => toast.error(t('addNote.noteFailed')),
     });
 
     const isPending = createNoteMutation.isPending || createFollowUpMutation.isPending;
@@ -811,7 +851,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
-                Add a note or log activity…
+                {t('addNote.addPrompt')}
             </button>
         );
     }
@@ -819,7 +859,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
     return (
         <div className="rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                {NOTE_ACTION_TYPES.map((type) => (
+                {noteActionTypes.map((type) => (
                     <button
                         key={type.value}
                         onClick={() => setActionType(type.value)}
@@ -839,7 +879,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 <div className="flex flex-col gap-2">
                     <div>
                         <label className="mb-1 block text-xs font-medium text-neutral-600">
-                            Schedule time <span className="text-danger-500">*</span>
+                            {t('addNote.scheduleTimeLabel')} <span className="text-danger-500">*</span>
                         </label>
                         <input
                             type="datetime-local"
@@ -852,14 +892,14 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                         <RichTextEditor
                             value={noteText}
                             onChange={setNoteText}
-                            placeholder="Add a note for this follow-up (optional)…"
+                            placeholder={t('addNote.followUpPlaceholder')}
                             minHeight={56}
                             minimalToolbar
                         />
                     </div>
                     {!audienceResponseId && (
                         <p className="text-caption text-amber-600">
-                            No campaign response linked — follow-up cannot be scheduled.
+                            {t('addNote.noResponseLinked')}
                         </p>
                     )}
                 </div>
@@ -876,7 +916,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                     <RichTextEditor
                         value={noteText}
                         onChange={setNoteText}
-                        placeholder="Type your note here…"
+                        placeholder={t('addNote.notePlaceholder')}
                         minHeight={64}
                         minimalToolbar
                     />
@@ -888,7 +928,9 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
             )}
             <div className="mt-2 flex items-center justify-between">
                 <span className="text-caption text-neutral-400">
-                    {isFollowUp ? 'Schedule time is required' : 'Ctrl+Enter to submit'}
+                    {isFollowUp
+                        ? t('addNote.scheduleRequired')
+                        : t('addNote.ctrlEnterSubmit')}
                 </span>
                 <div className="flex items-center gap-2">
                     <Button
@@ -897,7 +939,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                         className="h-7 px-3 text-xs text-neutral-500"
                         onClick={resetForm}
                     >
-                        Cancel
+                        {t('addNote.cancel')}
                     </Button>
                     <Button
                         size="sm"
@@ -905,7 +947,11 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                         onClick={handleSubmit}
                         disabled={isPending || !canSubmit}
                     >
-                        {isPending ? 'Saving…' : isFollowUp ? 'Schedule Follow-up' : 'Add Note'}
+                        {isPending
+                            ? t('addNote.saving')
+                            : isFollowUp
+                              ? t('addNote.scheduleFollowUp')
+                              : t('addNote.addNote')}
                     </Button>
                 </div>
             </div>
@@ -916,6 +962,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
 // ── Audience List Section ─────────────────────────────────────────────────────
 
 function AudienceListSection({ userId }: { userId: string }) {
+    const { t } = useTranslation('manageStudentsLeadProfile');
     const { data: audiences, isLoading } = useQuery({
         queryKey: ['user-audiences', userId],
         queryFn: () => fetchUserAudiences(userId),
@@ -933,7 +980,9 @@ function AudienceListSection({ userId }: { userId: string }) {
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
                 <div className="h-3.5 w-1 rounded-full bg-primary-500" />
-                <h4 className="text-sm font-semibold text-neutral-700">Linked Campaigns</h4>
+                <h4 className="text-sm font-semibold text-neutral-700">
+                    {t('audiences.linkedCampaigns')}
+                </h4>
                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-neutral-500">
                     {audiences.length}
                 </span>
@@ -946,7 +995,7 @@ function AudienceListSection({ userId }: { userId: string }) {
                     >
                         <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-neutral-800">
-                                {a.campaign_name || 'Unnamed Campaign'}
+                                {a.campaign_name || t('audiences.unnamedCampaign')}
                             </p>
                             <div className="mt-0.5 flex items-center gap-2 text-caption text-neutral-400">
                                 {a.source_type && <span>{sourceLabel(a.source_type)}</span>}
@@ -979,6 +1028,7 @@ function CrossStageTimeline({
     userId: string;
     audienceResponseId?: string | null;
 }) {
+    const { t } = useTranslation('manageStudentsLeadProfile');
     const [page, setPage] = useState(0);
     const pageSize = 5;
 
@@ -993,7 +1043,9 @@ function CrossStageTimeline({
         <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
                 <div className="h-3.5 w-1 rounded-full bg-primary-500" />
-                <h4 className="text-sm font-semibold text-neutral-700">Activity & Notes</h4>
+                <h4 className="text-sm font-semibold text-neutral-700">
+                    {t('crossStageTimeline.activityAndNotes')}
+                </h4>
                 {data?.totalElements !== undefined && (
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-neutral-500">
                         {data.totalElements}
@@ -1007,7 +1059,7 @@ function CrossStageTimeline({
                 <div className="flex items-center justify-center py-6">
                     <div className="flex items-center gap-2 text-sm text-neutral-500">
                         <div className="size-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                        Loading activity…
+                        {t('crossStageTimeline.loadingActivity')}
                     </div>
                 </div>
             )}
@@ -1021,7 +1073,10 @@ function CrossStageTimeline({
                     {data.totalPages > 1 && (
                         <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3">
                             <span className="text-caption text-neutral-400">
-                                Page {page + 1} of {data.totalPages}
+                                {t('crossStageTimeline.pageOf', {
+                                    current: page + 1,
+                                    total: data.totalPages,
+                                })}
                             </span>
                             <div className="flex gap-1.5">
                                 <Button
@@ -1031,7 +1086,7 @@ function CrossStageTimeline({
                                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                                     disabled={page === 0}
                                 >
-                                    Previous
+                                    {t('crossStageTimeline.previous')}
                                 </Button>
                                 <Button
                                     variant="outline"
@@ -1042,7 +1097,7 @@ function CrossStageTimeline({
                                     }
                                     disabled={page >= data.totalPages - 1}
                                 >
-                                    Next
+                                    {t('crossStageTimeline.next')}
                                 </Button>
                             </div>
                         </div>
@@ -1053,9 +1108,11 @@ function CrossStageTimeline({
             {data && data.content.length === 0 && (
                 <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-6 text-center">
                     <ListBullets weight="fill" className="size-8 text-neutral-300" />
-                    <p className="text-sm font-medium text-neutral-500">No activity yet</p>
+                    <p className="text-sm font-medium text-neutral-500">
+                        {t('crossStageTimeline.noActivityYet')}
+                    </p>
                     <p className="text-xs text-neutral-400">
-                        Notes, status changes, and other events will appear here
+                        {t('crossStageTimeline.noActivityHint')}
                     </p>
                 </div>
             )}
@@ -1069,10 +1126,20 @@ interface StudentLeadProfileProps {
     userId: string;
 }
 
+function buildTierLabels(t: TFunction): Record<'HOT' | 'WARM' | 'COLD', string> {
+    return {
+        HOT: t('tier.hot'),
+        WARM: t('tier.warm'),
+        COLD: t('tier.cold'),
+    };
+}
+
 export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
+    const { t } = useTranslation('manageStudentsLeadProfile');
     const instituteId = getCurrentInstituteId() ?? '';
     const queryClient = useQueryClient();
     const [showAssignCounselor, setShowAssignCounselor] = useState(false);
+    const tierLabels = buildTierLabels(t);
 
     const queryKey = ['user-lead-profile', userId, instituteId];
 
@@ -1107,19 +1174,19 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
     const { mutate: changeStatus, isPending: changingStatus } = useMutation({
         mutationFn: (status: string) => updateLeadStatus(userId, instituteId, status),
         onSuccess: (_data, status) => {
-            toast.success(`Lead marked as ${status}`);
+            toast.success(t('profile.leadMarkedAs', { status }));
             invalidateLeadCaches(queryClient, userId);
         },
-        onError: () => toast.error('Failed to update lead status'),
+        onError: () => toast.error(t('profile.statusUpdateFailed')),
     });
 
     const { mutate: changeTier, isPending: changingTier } = useMutation({
         mutationFn: (tier: string) => updateLeadTier(userId, instituteId, tier),
         onSuccess: (_data, tier) => {
-            toast.success(`Lead tier set to ${tier}`);
+            toast.success(t('profile.leadTierSetTo', { tier }));
             invalidateLeadCaches(queryClient, userId);
         },
-        onError: () => toast.error('Failed to update lead tier'),
+        onError: () => toast.error(t('profile.tierUpdateFailed')),
     });
 
     if (isLoading) {
@@ -1137,10 +1204,10 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             <div className="flex flex-col gap-6">
                 <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-10 text-center">
                     <ChartBar weight="fill" className="size-10 text-neutral-300" />
-                    <p className="text-sm font-medium text-neutral-500">No lead profile yet</p>
-                    <p className="text-xs text-neutral-400">
-                        A profile will appear once this user submits an enquiry or is scored.
+                    <p className="text-sm font-medium text-neutral-500">
+                        {t('profile.noProfileYet')}
                     </p>
+                    <p className="text-xs text-neutral-400">{t('profile.noProfileHint')}</p>
                 </div>
                 {/* Still show audience list and note form even without a lead profile */}
                 <AudienceListSection userId={userId} />
@@ -1149,7 +1216,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         );
     }
 
-    const { label: sLabel, className: sClass } = statusLabel(profile.conversion_status);
+    const { label: sLabel, className: sClass } = buildStatusLabel(t)(profile.conversion_status);
     const isConverted = profile.conversion_status === 'CONVERTED';
 
     return (
@@ -1158,7 +1225,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             <div className="rounded-xl border border-neutral-100 bg-gradient-to-r from-neutral-50 to-white p-4">
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="mb-1 text-xs text-muted-foreground">Lead Interest Score</p>
+                        <p className="mb-1 text-xs text-muted-foreground">
+                            {t('profile.leadInterestScore')}
+                        </p>
                         <LeadScoreBadge
                             score={profile.best_score}
                             tier={profile.lead_tier}
@@ -1169,7 +1238,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                                 className="mt-1 text-caption text-neutral-400"
                                 title={new Date(profile.last_calculated_at).toLocaleString()}
                             >
-                                Last calculated{' '}
+                                {t('profile.lastCalculatedLabel')}{' '}
                                 {format(new Date(profile.last_calculated_at), 'MMM d, h:mm a')}
                             </p>
                         )}
@@ -1185,7 +1254,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                     </span>
                 </div>
                 <div className="mt-3 border-t border-neutral-100 pt-3">
-                    <p className="mb-1.5 text-xs text-muted-foreground">Set Tier</p>
+                    <p className="mb-1.5 text-xs text-muted-foreground">{t('profile.setTier')}</p>
                     <div className="flex gap-1.5">
                         {(['HOT', 'WARM', 'COLD'] as const).map((tier) => {
                             const isActive =
@@ -1214,7 +1283,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                                     disabled={changingTier}
                                     className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${colors[tier]}`}
                                 >
-                                    {tier}
+                                    {tierLabels[tier]}
                                 </button>
                             );
                         })}
@@ -1226,22 +1295,22 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <StatCard
                     icon={<Megaphone size={18} />}
-                    label="Campaigns"
+                    label={t('profile.campaigns')}
                     value={profile.campaign_count}
                 />
                 <StatCard
                     icon={<Lightning size={18} />}
-                    label="Timeline Events"
+                    label={t('profile.timelineEvents')}
                     value={profile.total_timeline_events}
                 />
                 <StatCard
                     icon={<CalendarCheck size={18} />}
-                    label="Demo Attendance"
+                    label={t('profile.demoAttendance')}
                     value={profile.demo_attendance_count}
                 />
                 <StatCard
                     icon={<ChartBar size={18} />}
-                    label="Best Source"
+                    label={t('profile.bestSource')}
                     value={sourceLabel(profile.best_source_type)}
                 />
             </div>
@@ -1249,30 +1318,30 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             {/* ── Dates ── */}
             <div className="space-y-2 rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-sm">
                 <div className="flex justify-between">
-                    <span className="text-muted-foreground">Last Activity</span>
+                    <span className="text-muted-foreground">{t('profile.lastActivity')}</span>
                     <span className="font-medium">{formatDate(profile.last_activity_at)}</span>
                 </div>
                 <div className="flex justify-between">
-                    <span className="text-muted-foreground">Lead Since</span>
+                    <span className="text-muted-foreground">{t('profile.leadSince')}</span>
                     <span className="font-medium">{formatDate(profile.created_at)}</span>
                 </div>
                 {isConverted && (
                     <div className="flex justify-between">
-                        <span className="text-muted-foreground">Converted On</span>
+                        <span className="text-muted-foreground">{t('profile.convertedOn')}</span>
                         <span className="font-medium text-green-700">
                             {formatDate(profile.converted_at)}
                         </span>
                     </div>
                 )}
                 <div className="flex justify-between">
-                    <span className="text-muted-foreground">Score Updated</span>
+                    <span className="text-muted-foreground">{t('profile.scoreUpdated')}</span>
                     <span className="font-medium">{formatDate(profile.last_calculated_at)}</span>
                 </div>
             </div>
 
             {/* ── Status control ── */}
             <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
-                <p className="mb-2 text-xs text-muted-foreground">Lead Status</p>
+                <p className="mb-2 text-xs text-muted-foreground">{t('profile.leadStatus')}</p>
                 {(() => {
                     // Dropdown instead of a wall of chips — there can be dozens of
                     // statuses. Selecting one updates the lead status immediately.
@@ -1296,7 +1365,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                                             />
                                         )}
                                         <span className="truncate">
-                                            {current?.label ?? 'Select status'}
+                                            {current?.label ?? t('profile.selectStatus')}
                                         </span>
                                     </span>
                                     <CaretDown className="size-4 shrink-0 text-neutral-400" />
@@ -1331,14 +1400,16 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 })()}
                 {isConverted && (
                     <p className="mt-2 text-caption text-green-600">
-                        Score updates are frozen while converted.
+                        {t('profile.scoreFrozenWhileConverted')}
                     </p>
                 )}
             </div>
 
             {/* ── Assigned Counselor ── */}
             <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
-                <p className="mb-1.5 text-xs text-muted-foreground">Assigned Counselor</p>
+                <p className="mb-1.5 text-xs text-muted-foreground">
+                    {t('profile.assignedCounselor')}
+                </p>
                 {profile.assigned_counselor_name ? (
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -1353,7 +1424,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                             onClick={() => setShowAssignCounselor(true)}
                             className="text-caption text-neutral-400 hover:text-primary-600"
                         >
-                            Reassign
+                            {t('profile.reassign')}
                         </button>
                     </div>
                 ) : (
@@ -1361,7 +1432,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                         onClick={() => setShowAssignCounselor(true)}
                         className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-neutral-200 py-2 text-xs text-neutral-500 hover:border-primary-300 hover:text-primary-600"
                     >
-                        + Assign a Counselor
+                        {t('profile.assignCounselorPrompt')}
                     </button>
                 )}
             </div>
@@ -1393,7 +1464,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                     <div className="h-3.5 w-1 rounded-full bg-primary-500" />
-                    <h4 className="text-sm font-semibold text-neutral-700">Call History</h4>
+                    <h4 className="text-sm font-semibold text-neutral-700">
+                        {t('profile.callHistory')}
+                    </h4>
                 </div>
                 {/* AI rollup across this lead's analyzed calls (self-hides when the
                     feature is off or the lead has no analyzed calls). */}

@@ -63,6 +63,7 @@ public class PlatformRazorpayWebHookService {
     @Autowired private PlatformPaymentRepository paymentRepository;
     @Autowired private PlatformPaymentItemRepository paymentItemRepository;
     @Autowired private PlatformInvoiceService platformInvoiceService;
+    @Autowired private PlatformInvoicePdfService platformInvoicePdfService;
     @Autowired private CreditClient creditClient;
     @Autowired private InstituteRepository instituteRepository;
     @Autowired private PaymentNotificatonService paymentNotificationService;
@@ -293,6 +294,19 @@ public class PlatformRazorpayWebHookService {
         String packName = items.isEmpty() ? "AI Credits" : items.get(0).getPackCodeSnapshot();
         String totalDisplay = formatMajor(payment.getTotalAmountMinor(), payment.getCurrency());
 
+        // Render the GST tax invoice and attach it. A render failure must not
+        // block the confirmation — the PDF is also downloadable on demand from
+        // AI Credits → Billing, so fall back to the no-attachment email.
+        byte[] invoicePdf = null;
+        String invoiceFileName = null;
+        try {
+            invoicePdf = platformInvoicePdfService.renderPdf(invoice);
+            invoiceFileName = platformInvoicePdfService.fileName(invoice);
+        } catch (Exception e) {
+            log.error("Invoice PDF render failed for {} — sending confirmation without attachment: {}",
+                    invoice.getInvoiceNumber(), e.getMessage());
+        }
+
         paymentNotificationService.sendCreditPackConfirmation(
                 payment.getInstituteId(),
                 email,
@@ -300,7 +314,9 @@ public class PlatformRazorpayWebHookService {
                 invoice.getInvoiceNumber(),
                 totalCredits.stripTrailingZeros().toPlainString(),
                 totalDisplay,
-                packName);
+                packName,
+                invoicePdf,
+                invoiceFileName);
     }
 
     private static String formatMajor(long amountMinor, String currency) {

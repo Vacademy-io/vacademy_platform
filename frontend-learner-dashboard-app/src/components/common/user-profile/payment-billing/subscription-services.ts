@@ -2,6 +2,8 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import {
   LEARNER_SUBSCRIPTION_LIST,
   LEARNER_SUBSCRIPTION_CANCEL,
+  LEARNER_PLAN_CHANGE_OPTIONS,
+  LEARNER_PLAN_CHANGE,
 } from "@/constants/urls";
 
 /**
@@ -29,6 +31,93 @@ export interface Subscription {
   can_renew_manually?: boolean;
   /** Invite has autopay configured — gates the "enable auto-pay" option. */
   autopay_available?: boolean;
+  /**
+   * At least one other plan is flagged switchable for this membership. Gates the
+   * "Change plan" entry point so we never open an empty picker.
+   */
+  can_change_plan?: boolean;
+  /** A downgrade already booked for the end of the cycle, if any. */
+  scheduled_plan_change?: ScheduledPlanChange | null;
+}
+
+/**
+ * A downgrade the learner booked but which has not landed yet. Shown on the card because
+ * otherwise "you're on Monthly" quietly stops being true at the next renewal.
+ */
+export interface ScheduledPlanChange {
+  change_request_id: string;
+  to_plan_id: string;
+  to_plan_name?: string | null;
+  to_plan_price?: number | null;
+  currency?: string | null;
+  effective_from?: string | null;
+}
+
+/**
+ * One plan the learner may switch to, already priced for them right now — mirrors the
+ * backend PlanChangeTargetDTO.
+ */
+export interface PlanChangeTarget {
+  plan_id: string;
+  plan_name?: string | null;
+  payment_option_id: string;
+  option_name?: string | null;
+  option_type?: string | null;
+  enroll_invite_id?: string | null;
+  price?: number | null;
+  currency?: string | null;
+  validity_in_days?: number | null;
+  feature_json?: string | null;
+  description?: string | null;
+  /** UPGRADE | DOWNGRADE | LATERAL */
+  direction: string;
+  /** IMMEDIATE | END_OF_CYCLE */
+  effective_type: string;
+  /** Unused value of the current plan, credited against this plan's price. */
+  proration_credit?: number | null;
+  /** What the learner pays now. 0 for a scheduled downgrade. */
+  amount_due_now?: number | null;
+  effective_from?: string | null;
+  /**
+   * Taking this target invalidates the existing auto-pay mandate (price above its
+   * max_amount, or a different gateway), so the checkout must re-register the mandate.
+   */
+  requires_mandate_reauth?: boolean;
+  /** Also moves the learner to a different payment option + enroll invite. */
+  cross_option?: boolean;
+}
+
+export interface PlanChangeOptions {
+  user_plan_id: string;
+  current_plan_id?: string | null;
+  current_plan_name?: string | null;
+  current_plan_price?: number | null;
+  current_payment_option_id?: string | null;
+  current_option_name?: string | null;
+  currency?: string | null;
+  current_validity_in_days?: number | null;
+  current_end_date?: string | null;
+  targets: PlanChangeTarget[];
+  scheduled_change?: ScheduledPlanChange | null;
+  can_change_plan: boolean;
+  /** Populated when can_change_plan is false, so the UI can say why. */
+  blocked_reason?: string | null;
+}
+
+export interface PlanChangeResult {
+  /** PENDING_PAYMENT | SCHEDULED | APPLIED — branch on this, not on which fields are set. */
+  status: string;
+  change_request_id: string;
+  direction: string;
+  to_plan_id: string;
+  to_plan_name?: string | null;
+  effective_from?: string | null;
+  amount_due_now?: number | null;
+  proration_credit?: number | null;
+  currency?: string | null;
+  requires_mandate_reauth?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payment_response?: any;
 }
 
 export const SUBSCRIPTION_LIST_QUERY_KEY = "LEARNER_SUBSCRIPTION_LIST";
@@ -76,4 +165,49 @@ export const initiateRenewalPayment = async (
     { params: { instituteId, withAutopay } }
   );
   return response.data;
+};
+
+export const PLAN_CHANGE_OPTIONS_QUERY_KEY = "LEARNER_PLAN_CHANGE_OPTIONS";
+
+/** The plans this learner may switch to, priced for them right now. */
+export const fetchPlanChangeOptions = async (
+  instituteId: string,
+  userPlanId: string
+): Promise<PlanChangeOptions> => {
+  const response = await authenticatedAxiosInstance.get(
+    LEARNER_PLAN_CHANGE_OPTIONS(userPlanId),
+    { params: { instituteId } }
+  );
+  return response.data;
+};
+
+/**
+ * Book a plan change. Sends only the target plan id — the price, the proration and whether
+ * the target is even allowed are all derived server-side, never trusted from here.
+ *
+ * An upgrade comes back PENDING_PAYMENT with a gateway checkout payload; a downgrade comes
+ * back SCHEDULED with the date it takes effect and nothing to pay.
+ */
+export const requestPlanChange = async (
+  instituteId: string,
+  userPlanId: string,
+  targetPlanId: string,
+  withAutopay: boolean
+): Promise<PlanChangeResult> => {
+  const response = await authenticatedAxiosInstance.post(
+    LEARNER_PLAN_CHANGE(userPlanId),
+    { target_plan_id: targetPlanId, with_autopay: withAutopay },
+    { params: { instituteId } }
+  );
+  return response.data;
+};
+
+/** Call off a downgrade booked for the end of the cycle. */
+export const cancelScheduledPlanChange = async (
+  instituteId: string,
+  userPlanId: string
+): Promise<void> => {
+  await authenticatedAxiosInstance.delete(LEARNER_PLAN_CHANGE(userPlanId), {
+    params: { instituteId },
+  });
 };

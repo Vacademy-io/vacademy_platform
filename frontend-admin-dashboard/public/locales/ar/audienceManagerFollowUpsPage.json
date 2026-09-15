@@ -1,0 +1,93 @@
+{
+    "navHeading": "المتابعات",
+    "heading": {
+        "team": "المتابعات",
+        "mine": "متابعاتي"
+    },
+    "subline": {
+        "teamAllCaughtUp": "الفريق أنجز كل شيء",
+        "selfAllCaughtUp": "أنجزتَ كل شيء",
+        "tasksDueToday_admin_zero": "لا توجد لدى الفريق مهام مستحقة اليوم ({{count}})",
+        "tasksDueToday_admin_one": "لدى الفريق مهمة واحدة مستحقة اليوم ({{count}})",
+        "tasksDueToday_admin_two": "لدى الفريق مهمتان مستحقتان اليوم ({{count}})",
+        "tasksDueToday_admin_few": "لدى الفريق {{count}} مهام مستحقة اليوم",
+        "tasksDueToday_admin_many": "لدى الفريق {{count}} مهمة مستحقة اليوم",
+        "tasksDueToday_admin_other": "لدى الفريق {{count}} مهمة مستحقة اليوم",
+        "tasksDueToday_user_zero": "ليس لديك مهام مستحقة اليوم ({{count}})",
+        "tasksDueToday_user_one": "لديك مهمة واحدة مستحقة اليوم ({{count}})",
+        "tasksDueToday_user_two": "لديك مهمتان مستحقتان اليوم ({{count}})",
+        "tasksDueToday_user_few": "لديك {{count}} مهام مستحقة اليوم",
+        "tasksDueToday_user_many": "لديك {{count}} مهمة مستحقة اليوم",
+        "tasksDueToday_user_other": "لديك {{count}} مهمة مستحقة اليوم",
+        "overdueSuffix_zero": " · لا يوجد متأخر ({{count}})",
+        "overdueSuffix_one": " · مهمة واحدة متأخرة ({{count}})",
+        "overdueSuffix_two": " · مهمتان متأخرتان ({{count}})",
+        "overdueSuffix_few": " · {{count}} مهام متأخرة",
+        "overdueSuffix_many": " · {{count}} مهمة متأخرة",
+        "overdueSuffix_other": " · {{count}} مهمة متأخرة"
+    },
+    "tabs": {
+        "list": "قائمة",
+        "calendar": "تقويم"
+    },
+    "showing": {
+        "prefix": "عرض",
+        "suffix_zero": "متابعة",
+        "suffix_one": "متابعة",
+        "suffix_two": "متابعتان",
+        "suffix_few": "متابعات",
+        "suffix_many": "متابعة",
+        "suffix_other": "متابعة",
+        "suffix_overdue_zero": "متابعة متأخرة",
+        "suffix_overdue_one": "متابعة متأخرة",
+        "suffix_overdue_two": "متابعتان متأخرتان",
+        "suffix_overdue_few": "متابعات متأخرة",
+        "suffix_overdue_many": "متابعة متأخرة",
+        "suffix_overdue_other": "متابعة متأخرة",
+        "suffix_today_zero": "متابعة مستحقة اليوم",
+        "suffix_today_one": "متابعة مستحقة اليوم",
+        "suffix_today_two": "متابعتان مستحقتان اليوم",
+        "suffix_today_few": "متابعات مستحقة اليوم",
+        "suffix_today_many": "متابعة مستحقة اليوم",
+        "suffix_today_other": "متابعة مستحقة اليوم",
+        "suffix_upcoming_zero": "متابعة قادمة",
+        "suffix_upcoming_one": "متابعة قادمة",
+        "suffix_upcoming_two": "متابعتان قادمتان",
+        "suffix_upcoming_few": "متابعات قادمة",
+        "suffix_upcoming_many": "متابعة قادمة",
+        "suffix_upcoming_other": "متابعة قادمة"
+    },
+    "table": {
+        "actionHeader": "إجراء"
+    },
+    "callReasons": {
+        "noSubmissionId": "لا يوجد معرّف تقديم لهذا العميل المحتمل",
+        "noPhone": "لا يوجد رقم هاتف مسجل لهذا العميل المحتمل",
+        "callInProgress": "هناك مكالمة أخرى قيد البدء…"
+    },
+    "errors": {
+        "loadFailedTitle": "تعذّر تحميل المتابعات",
+        "loadFailedDescription": "حدث خطأ ما أثناء جلب المتابعات. حاول مرة أخرى."
+    },
+    "empty": {
+        "title": {
+            "teamAllCaughtUp": "لا توجد متابعات معلّقة على مستوى الفريق",
+            "selfAllCaughtUp": "أنجزتَ كل شيء",
+            "noOverdue": "لا توجد متابعات متأخرة",
+            "nothingToday": "لا شيء مستحق اليوم",
+            "noUpcoming": "لا توجد متابعات قادمة خلال الأيام السبعة القادمة",
+            "default": "لا توجد متابعات"
+        },
+        "description": {
+            "overdueNudge_zero": "لا لديك مهام متأخرة ({{count}}) — بدّل إلى \"المعلّقة\" أعلاه.",
+            "overdueNudge_one": "لديك مهمة واحدة متأخرة ({{count}}) — بدّل إلى \"المعلّقة\" أعلاه.",
+            "overdueNudge_two": "لديك مهمتان متأخرتان ({{count}}) — بدّل إلى \"المعلّقة\" أعلاه.",
+            "overdueNudge_few": "لديك {{count}} مهام متأخرة — بدّل إلى \"المعلّقة\" أعلاه.",
+            "overdueNudge_many": "لديك {{count}} مهمة متأخرة — بدّل إلى \"المعلّقة\" أعلاه.",
+            "overdueNudge_other": "لديك {{count}} مهمة متأخرة — بدّل إلى \"المعلّقة\" أعلاه.",
+            "upcomingNudge": "بدّل إلى \"القادمة\" أعلاه لترى ما هو مستحق تاليًا.",
+            "teamAllCaughtUp": "أنجز الفريق كل المتابعات في هذا العرض.",
+            "selfAllCaughtUp": "لا توجد لديك متابعات معلّقة في هذا العرض."
+        }
+    }
+}

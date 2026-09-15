@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.audience.dto.*;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
@@ -77,6 +78,11 @@ public class AudienceController {
     }
 
     @PostMapping("/campaign")
+    @Auditable(
+            entityType = "AUDIENCE",
+            action = "CREATE",
+            entityIdExpr = "#result?.body",
+            descriptionExpr = "'created audience ' + (#audienceDTO?.campaignName ?: 'list')")
     public ResponseEntity<String> createCampaign(
             @RequestBody AudienceDTO audienceDTO,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -91,6 +97,13 @@ public class AudienceController {
     }
 
     @PutMapping("/campaign/{audienceId}")
+    @Auditable(
+            entityType = "AUDIENCE",
+            action = "UPDATE",
+            entityIdExpr = "#audienceId",
+            captureBefore = "@crmAuditNarrator.audienceSnapshot(#audienceId)",
+            descriptionExpr = "'updated audience ' + (#audienceDTO?.campaignName "
+                    + "?: @crmAuditNarrator.nameFromSnapshot(#before, #audienceId))")
     public ResponseEntity<String> updateCampaign(
             @PathVariable String audienceId,
             @RequestBody AudienceDTO audienceDTO,
@@ -120,6 +133,14 @@ public class AudienceController {
     }
 
     @DeleteMapping("/campaign/{instituteId}/{audienceId}")
+    @Auditable(
+            entityType = "AUDIENCE",
+            action = "DELETE",
+            entityIdExpr = "#audienceId",
+            // The name has to be read before the delete — after it, there is
+            // nothing left to look up.
+            captureBefore = "@crmAuditNarrator.audienceSnapshot(#audienceId)",
+            descriptionExpr = "'deleted audience ' + @crmAuditNarrator.nameFromSnapshot(#before, #audienceId)")
     public ResponseEntity<String> deleteCampaign(
             @PathVariable String instituteId,
             @PathVariable String audienceId) {
@@ -142,6 +163,12 @@ public class AudienceController {
      * unaffected.
      */
     @PostMapping("/lead/submit")
+    @Auditable(
+            entityType = "LEAD",
+            action = "CREATE",
+            entityIdExpr = "#result?.body",
+            descriptionExpr = "'added lead ' + (#requestDTO?.userDTO?.fullName "
+                    + "?: #requestDTO?.userDTO?.mobileNumber ?: #requestDTO?.userDTO?.email ?: 'contact')")
     public ResponseEntity<String> submitLead(
             @RequestBody SubmitLeadRequestDTO requestDTO,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -157,6 +184,16 @@ public class AudienceController {
      * running the import when the audience-access setting asks for it.
      */
     @PostMapping("/lead/bulk-submit")
+    @Auditable(
+            entityType = "LEAD",
+            action = "IMPORT",
+            entityIdExpr = "#request?.audienceId",
+            // A CSV import body is unbounded — thousands of rows of PII. The
+            // summary in the description is what an audit reader needs.
+            payload = Auditable.PayloadMode.NONE,
+            descriptionExpr = "'imported ' + (#result?.body?.summary?.successful ?: (#request?.rows?.size() ?: 0)) "
+                    + "+ ' lead(s)' + (#request?.audienceId != null ? ' into ' "
+                    + "+ @crmAuditNarrator.audienceFor(#request.audienceId) : '')")
     public ResponseEntity<BulkSubmitLeadResponseDTO> bulkSubmitLead(
             @RequestBody BulkSubmitLeadRequestDTO request,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -218,6 +255,16 @@ public class AudienceController {
      * {@code institute_id} the ADMIN check is made against.</p>
      */
     @PostMapping("/leads/delete")
+    @Auditable(
+            entityType = "LEAD",
+            action = "DELETE",
+            entityIdExpr = "#request?.responseIds != null and #request.responseIds.size() == 1 "
+                    + "? #request.responseIds[0] : null",
+            // A delete that matched nothing still returns 200; logging it would
+            // claim leads were removed that never were.
+            conditionExpr = "#result?.body != null and #result.body['deleted'] != null "
+                    + "and #result.body['deleted'] > 0",
+            descriptionExpr = "'deleted lead ' + @crmAuditNarrator.leadsFor(#request?.responseIds)")
     public ResponseEntity<Map<String, Object>> deleteLeads(
             @RequestBody LeadDeleteRequestDTO request,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -227,11 +274,46 @@ public class AudienceController {
 
     /** Restore soft-deleted leads — the inverse of {@link #deleteLeads}. ADMIN only. */
     @PostMapping("/leads/restore")
+    @Auditable(
+            entityType = "LEAD",
+            action = "RESTORE",
+            entityIdExpr = "#request?.responseIds != null and #request.responseIds.size() == 1 "
+                    + "? #request.responseIds[0] : null",
+            conditionExpr = "#result?.body != null and #result.body['restored'] != null "
+                    + "and #result.body['restored'] > 0",
+            descriptionExpr = "'restored lead ' + @crmAuditNarrator.leadsFor(#request?.responseIds)")
     public ResponseEntity<Map<String, Object>> restoreLeads(
             @RequestBody LeadDeleteRequestDTO request,
             @RequestAttribute("user") CustomUserDetails user) {
         int restored = audienceService.restoreLeads(request, user);
         return ResponseEntity.ok(Map.of("restored", restored));
+    }
+
+    /**
+     * Move leads from one lead list to another. ADMIN only.
+     *
+     * <p>Body-based for the same reasons as {@link #deleteLeads} — an id LIST, a {@code scope},
+     * and the {@code institute_id} the ADMIN check runs against — plus the target list and how the
+     * move should treat that list's automation.</p>
+     *
+     * <p>Partial success: the response reports how many moved and which were skipped, with a
+     * reason each. Merging two lists collides by definition, so refusing the whole batch over one
+     * collision would make the operation unusable.</p>
+     */
+    @PostMapping("/leads/migrate")
+    @Auditable(
+            entityType = "LEAD",
+            action = "MIGRATE",
+            entityIdExpr = "#request?.responseIds != null and #request.responseIds.size() == 1 "
+                    + "? #request.responseIds[0] : null",
+            // A migration that moved nothing still returns 200 (every lead was skipped);
+            // logging it would claim leads changed list when none did.
+            conditionExpr = "#result?.body != null and #result.body.migrated > 0",
+            descriptionExpr = "'moved lead ' + @crmAuditNarrator.leadsFor(#request?.responseIds)")
+    public ResponseEntity<MigrateLeadsResponseDTO> migrateLeads(
+            @RequestBody MigrateLeadsRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(audienceService.migrateLeads(request, user));
     }
 
     /**
@@ -242,6 +324,11 @@ public class AudienceController {
      * and the lead's custom field values. It never touches {@code student}.
      */
     @PutMapping("/lead/{responseId}/profile")
+    @Auditable(
+            entityType = "LEAD",
+            action = "UPDATE",
+            entityIdExpr = "#responseId",
+            descriptionExpr = "'updated lead ' + @crmAuditNarrator.leadFor(#responseId)")
     public ResponseEntity<String> updateLeadProfile(@PathVariable String responseId,
                                                     @RequestBody LeadProfileEditRequestDTO request) {
         audienceService.updateLeadProfile(responseId, request);
@@ -252,6 +339,11 @@ public class AudienceController {
      * Send a message to audience campaign leads.
      */
     @PostMapping("/campaign/{audienceId}/send")
+    @Auditable(
+            entityType = "AUDIENCE",
+            action = "SEND_MESSAGE",
+            entityIdExpr = "#audienceId",
+            descriptionExpr = "'sent a message to audience ' + @crmAuditNarrator.audienceFor(#audienceId)")
     public ResponseEntity<SendAudienceMessageResponseDTO> sendMessage(
             @PathVariable String audienceId,
             @RequestBody SendAudienceMessageRequestDTO request) {
@@ -298,6 +390,12 @@ public class AudienceController {
      * POST /admin-core-service/v1/audience/walk-in/submit
      */
     @PostMapping("/walk-in/submit")
+    @Auditable(
+            entityType = "LEAD",
+            action = "CREATE",
+            entityIdExpr = "#result?.body?.audienceResponseId",
+            descriptionExpr = "'registered walk-in lead ' + (#walkInDTO?.parentName "
+                    + "?: #walkInDTO?.childName ?: #walkInDTO?.parentMobile ?: 'contact')")
     public ResponseEntity<SubmitLeadWithEnquiryResponseDTO> submitWalkIn(
             @RequestBody WalkInRegistrationDTO walkInDTO,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -324,6 +422,12 @@ public class AudienceController {
      * Body: { "score": 75 }  — pass null to clear the override.
      */
     @PutMapping("/lead/{responseId}/score/manual")
+    @Auditable(
+            entityType = "LEAD",
+            action = "SCORE_CHANGE",
+            entityIdExpr = "#responseId",
+            descriptionExpr = "'changed lead score of ' + @crmAuditNarrator.leadFor(#responseId) "
+                    + "+ ' to ' + (#body != null and #body['score'] != null ? #body['score'] : 'auto')")
     public ResponseEntity<LeadScoreDTO> setManualScore(
             @PathVariable String responseId,
             @RequestBody java.util.Map<String, Integer> body,
@@ -338,6 +442,11 @@ public class AudienceController {
      * POST /admin-core-service/v1/audience/campaign/{audienceId}/recalculate-scores
      */
     @PostMapping("/campaign/{audienceId}/recalculate-scores")
+    @Auditable(
+            entityType = "AUDIENCE",
+            action = "RECALCULATE_SCORES",
+            entityIdExpr = "#audienceId",
+            descriptionExpr = "'recalculated lead scores for audience ' + @crmAuditNarrator.audienceFor(#audienceId)")
     public ResponseEntity<String> recalculateScores(@PathVariable String audienceId) {
         audienceService.recalculateScoresForAudience(audienceId);
         return ResponseEntity.ok("Scores recalculated for campaign: " + audienceId);
@@ -373,6 +482,11 @@ public class AudienceController {
      * POST /admin-core-service/v1/audience/user-lead-profile/mark-converted
      */
     @PostMapping("/user-lead-profile/mark-converted")
+    @Auditable(
+            entityType = "LEAD",
+            action = "CONVERT",
+            entityIdExpr = "#userId",
+            descriptionExpr = "'marked lead ' + @crmAuditNarrator.leadUserFor(#userId) + ' as converted'")
     public ResponseEntity<UserLeadProfileDTO> markLeadConverted(
             @RequestParam String userId,
             @RequestParam String instituteId) {
@@ -385,6 +499,11 @@ public class AudienceController {
      * POST /admin-core-service/v1/audience/user-lead-profile/update-status?userId=...&instituteId=...&status=...
      */
     @PostMapping("/user-lead-profile/update-status")
+    @Auditable(
+            entityType = "LEAD",
+            action = "STATUS_CHANGE",
+            entityIdExpr = "#userId",
+            descriptionExpr = "'changed lead status of ' + @crmAuditNarrator.leadUserFor(#userId) + ' to ' + #status")
     public ResponseEntity<UserLeadProfileDTO> updateLeadStatus(
             @RequestParam String userId,
             @RequestParam String instituteId,
@@ -424,6 +543,11 @@ public class AudienceController {
      * POST /admin-core-service/v1/audience/user-lead-profile/update-tier?userId=...&instituteId=...&tier=HOT
      */
     @PostMapping("/user-lead-profile/update-tier")
+    @Auditable(
+            entityType = "LEAD",
+            action = "TIER_CHANGE",
+            entityIdExpr = "#userId",
+            descriptionExpr = "'changed lead tier of ' + @crmAuditNarrator.leadUserFor(#userId) + ' to ' + #tier")
     public ResponseEntity<UserLeadProfileDTO> updateLeadTier(
             @RequestParam String userId,
             @RequestParam String instituteId,
@@ -479,6 +603,17 @@ public class AudienceController {
      * assigned is a silent no-op (no event noise).
      */
     @PostMapping("/user-lead-profile/assign-counselor")
+    @Auditable(
+            entityType = "LEAD",
+            // One mapping, two logical operations: a blank counselorId removes
+            // the assignment. Stamping both ASSIGN would make removals invisible.
+            actionExpr = "(#counselorId == null or #counselorId.isBlank()) ? 'UNASSIGN' : 'ASSIGN'",
+            entityIdExpr = "#userId",
+            // Unassigning a lead that has no counsellor returns early with a 200
+            // and changes nothing; only a lead that HAD one is a real removal.
+            captureBefore = "@crmAuditNarrator.assignedCounsellorFor(#userId, #instituteId)",
+            conditionExpr = "(#counselorId != null and !#counselorId.isBlank()) or #before != null",
+            descriptionExpr = "@crmAuditNarrator.counsellorAssignment(#userId, #counselorId, #counselorName)")
     public ResponseEntity<UserLeadProfileDTO> assignCounselor(
             @RequestParam String userId,
             @RequestParam String instituteId,

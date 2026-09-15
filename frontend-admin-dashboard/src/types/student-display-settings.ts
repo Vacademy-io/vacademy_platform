@@ -45,6 +45,9 @@ export type StudentDashboardWidgetId =
     | 'coursesStat'
     | 'evaluationStat'
     | 'continueLearning'
+    // The learner's enrolled courses with per-course progress and a way back
+    // in. Distinct from coursesStat, which is only the count tile.
+    | 'enrolledCourses'
     | 'learningAnalytics'
     | 'liveClasses'
     | 'thisWeekAttendance'
@@ -57,6 +60,11 @@ export type StudentDashboardWidgetId =
     // widget and the "go buy more" button can be controlled independently.
     | 'exploreMemberships'
     | 'exploreBooks'
+    // "Get the app" download card. Shows the store links configured on the
+    // institute's domain-routing row — the same source the learner sidebar
+    // footer uses, so an institute can carry them in the sidebar, the
+    // dashboard, both, or neither (see `sidebar.appLinks`).
+    | 'getApp'
     | 'custom';
 
 /**
@@ -77,6 +85,7 @@ export const RETIRED_WIDGET_IDS: ReadonlySet<string> = new Set([
 export const WIDGET_LABELS: Record<string, string> = {
     gettingStarted: "Getting Started checklist (“Let's get you started”)",
     continueLearning: 'Continue Learning',
+    enrolledCourses: 'Enrolled Courses (one card per enrolled course)',
     coursesStat: 'Courses (stat card)',
     liveClasses: 'Live Sessions (stat card)',
     evaluationStat: 'Assessments (stat card)',
@@ -90,6 +99,7 @@ export const WIDGET_LABELS: Record<string, string> = {
     gamification: 'Gamification (XP, streak, badges)',
     exploreMemberships: 'Explore Memberships (button)',
     exploreBooks: 'Explore Books (button)',
+    getApp: 'Get the app (download links card)',
     custom: 'Custom',
 };
 
@@ -132,7 +142,7 @@ export interface StudentSignupSettings {
 }
 
 // UI
-export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay';
+export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay' | 'corporate';
 export interface StudentUiSettings {
     type: StudentUiType;
 }
@@ -402,11 +412,38 @@ export interface StudentLiveClassesSettings {
     showClassMaterials: boolean;
 }
 
+// Periodic "Active Focus Check" shown over video slides in the learner app: the
+// learner must tap a highlighted number to keep watching. The learner app owns
+// the whole behaviour; the admin app only needs to round-trip the block so that
+// saving Student Display settings never drops an institute's opt-out.
+export interface StudentConcentrationSettings {
+    enabled: boolean;
+    frequency: {
+        min_minutes: number;
+        max_minutes: number;
+    };
+    behavior: {
+        allow_skip: boolean;
+        penalty_type: 'pause' | 'flag_only';
+    };
+    appearance: {
+        title: string;
+        subtitle: string;
+    };
+}
+
 // Root schema
 export interface StudentDisplaySettingsData {
     sidebar: {
         visible: boolean; // toggle to show/hide entire sidebar
         tabs: StudentSidebarTabConfig[];
+        /**
+         * Whether the learner sidebar footer carries the "Apps & Portals"
+         * download row. Defaults to true (the historical behaviour). Turn it
+         * off to move those links to the dashboard's getApp widget instead of
+         * showing both.
+         */
+        appLinks?: boolean;
     };
     dashboard: {
         widgets: StudentDashboardWidgetConfig[];
@@ -427,5 +464,6 @@ export interface StudentDisplaySettingsData {
     };
     liveClasses: StudentLiveClassesSettings;
     tutorials: StudentTutorialSettings;
+    concentration: StudentConcentrationSettings;
     postLoginRedirectRoute: string;
 }

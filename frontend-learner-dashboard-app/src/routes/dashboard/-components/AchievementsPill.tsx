@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Trophy, Star } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { getCachedGamification, type PlayGamificationData } from "@/services/play-gamification";
@@ -13,6 +14,7 @@ import { AchievementsDialog } from "./AchievementsDialog";
  * pages the learner reaches without passing through the dashboard first.
  */
 export function AchievementsPill({ className }: { className?: string }) {
+  const { t } = useTranslation("dashboard");
   const storeData = usePlayGamificationStore((s) => s.data);
   const [fallback, setFallback] = useState<PlayGamificationData | null>(null);
   const [open, setOpen] = useState(false);
@@ -43,8 +45,8 @@ export function AchievementsPill({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Your achievements"
-        title="Your achievements"
+        aria-label={t("achievements.title")}
+        title={t("achievements.title")}
         className={cn(
           "flex h-9 items-center gap-2 rounded-full border border-primary-200/50 bg-white px-2.5 transition-colors duration-200 hover:border-primary-300 hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-700 [.ui-play_&]:rounded-full [.ui-play_&]:border-border",
           className

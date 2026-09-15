@@ -187,3 +187,55 @@ def test_people_named_in_the_evidence_are_all_kept():
 def test_people_backstop_ignores_pages_without_people_sections():
     page = {"components": [{"id": "h", "type": "heroSection", "props": {}}]}
     assert pb.strip_fabricated_people(page, "", []) == 0 and len(page["components"]) == 1
+
+
+def test_capture_session_routes_every_request_through_the_ssrf_guard(monkeypatch):
+    # The browser runs inside the cluster: sub-requests (redirects, <img>, XHR)
+    # must be gated like the first URL, or an internal response ends up painted
+    # into a screenshot the admin can see.
+    seen = []
+
+    class Route:
+        def __init__(self, url): self.request = type("R", (), {"url": url})(); self.action = None
+        async def continue_(self): self.action = "continue"
+        async def abort(self, reason=""): self.action = "abort"
+
+    class Page:
+        async def goto(self, *a, **k): pass
+        async def wait_for_load_state(self, *a, **k): pass
+        async def evaluate(self, *a, **k): return [1000, 500]
+        async def wait_for_timeout(self, *a, **k): pass
+        async def screenshot(self, **k): return b"png"
+
+    class Context:
+        handler = None
+        async def add_init_script(self, *a): pass
+        async def route(self, pattern, handler): Context.handler = handler
+        async def new_page(self): return Page()
+
+    class Browser:
+        async def new_context(self, **k): return Context()
+        async def close(self): pass
+
+    class Chromium:
+        async def launch(self, **k): return Browser()
+
+    class PW:
+        chromium = Chromium()
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+
+    monkeypatch.setattr(pb, "_is_public_http_host", lambda u: (seen.append(u), not u.startswith("http://internal"))[1])
+    png = asyncio.run(pb._capture_reference_png("https://public.example/", PW))
+    assert png == b"png" and Context.handler is not None, "guard must be installed on the context"
+    ok = Route("https://cdn.example/a.png"); bad = Route("http://internal.svc:8080/actuator")
+    asyncio.run(Context.handler(ok, ok.request)); asyncio.run(Context.handler(bad, bad.request))
+    assert ok.action == "continue" and bad.action == "abort"
+    assert "http://internal.svc:8080/actuator" in seen
+
+
+def test_short_names_given_in_the_brief_survive():
+    page = {"components": [{"id": "q", "type": "testimonialSection", "props": {"testimonials": [
+        {"name": "Li Na", "quote": "in the brief"}, {"name": "Yu Bo", "quote": "not in the brief"}]}}]}
+    n = pb.strip_fabricated_people(page, "Feedback from Li Na, our first learner.", [])
+    assert n == 1 and [t["name"] for t in page["components"][0]["props"]["testimonials"]] == ["Li Na"]

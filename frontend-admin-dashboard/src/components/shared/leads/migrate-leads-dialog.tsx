@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -74,6 +75,9 @@ export const MigrateLeadsDialog = ({
 }: MigrateLeadsDialogProps) => {
     const [targetAudienceId, setTargetAudienceId] = useState('');
     const [workflowAnchor, setWorkflowAnchor] = useState<LeadWorkflowAnchor>('PRESERVE');
+    // Event-driven automations (the list's "Lead Submitted" workflows — AI calls, instant
+    // messages). Distinct from the anchor above, which only re-times the scheduled drips.
+    const [runDestinationAutomations, setRunDestinationAutomations] = useState(false);
     const [result, setResult] = useState<LeadMigrateResult | null>(null);
 
     // One page of lists, newest first. An institute with more lists than this would not see the
@@ -109,6 +113,7 @@ export const MigrateLeadsDialog = ({
                 targetAudienceId,
                 instituteId,
                 workflowAnchor,
+                runDestinationAutomations,
             }),
         onSuccess: (res) => {
             setResult(res);
@@ -278,15 +283,43 @@ export const MigrateLeadsDialog = ({
                             </RadioGroup>
                         </div>
 
-                        {workflowAnchor === 'RESET_TO_TARGET' && (
+                        <label
+                            htmlFor="run-destination-automations"
+                            className={cn(
+                                'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
+                                runDestinationAutomations
+                                    ? 'border-primary-300 bg-primary-50'
+                                    : 'border-neutral-200 hover:bg-neutral-50'
+                            )}
+                        >
+                            <Checkbox
+                                id="run-destination-automations"
+                                checked={runDestinationAutomations}
+                                onCheckedChange={(v) => setRunDestinationAutomations(v === true)}
+                                className="mt-0.5"
+                            />
+                            <div className="flex flex-col gap-0.5">
+                                <Label className="cursor-pointer text-body font-medium text-neutral-800">
+                                    Run the destination list&apos;s automations for these leads
+                                </Label>
+                                <span className="text-caption text-neutral-500">
+                                    Fires {targetName || 'the new list'}&apos;s &quot;Lead Submitted&quot;
+                                    workflows — AI calls, instant WhatsApp/email — for each moved lead,
+                                    as if it had just been submitted there.
+                                </span>
+                            </div>
+                        </label>
+
+                        {(workflowAnchor === 'RESET_TO_TARGET' || runDestinationAutomations) && (
                             <div className="flex items-start gap-3 rounded-md border border-warning-200 bg-warning-50 p-3">
                                 <Warning
                                     weight="fill"
                                     className="mt-0.5 size-5 shrink-0 text-warning-600"
                                 />
                                 <p className="text-caption text-warning-700">
-                                    This will start sending {targetName || 'the new list'}&apos;s
-                                    messages to {responseIds.length} lead
+                                    This will start {targetName || 'the new list'}&apos;s
+                                    {runDestinationAutomations ? ' calls and messages' : ' messages'} for{' '}
+                                    {responseIds.length} lead
                                     {responseIds.length === 1 ? '' : 's'}. Leads who opted out are
                                     never moved.
                                 </p>

@@ -72,7 +72,9 @@ export const CurriculumPicker = ({ knowledgeBases, onPick, className }: Curricul
                 <div className="flex flex-col gap-1">
                     <span className="text-caption text-neutral-600">{t('class')}</span>
                     <MyDropdown
-                        currentValue={cls}
+                        // MyDropdown prints currentValue verbatim when closed,
+                        // so hand it the label ("Class 11"), not the value ("11").
+                        currentValue={cls ? classLabel(cls, t) : ''}
                         dropdownList={classes.map((c) => ({ label: classLabel(c, t), value: c }))}
                         placeholder={t('choose')}
                         handleChange={(v) => {

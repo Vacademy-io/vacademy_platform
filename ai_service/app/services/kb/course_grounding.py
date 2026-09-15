@@ -440,9 +440,16 @@ async def ground_slide(
     # both trees share, and deterministic slides carry their section's span.
     if not hits and page_start is not None and page_end is not None:
         try:
+            # Pin the span to the node's own source when it has one: chapters
+            # of a textbook library each restart at page 1, so an unscoped
+            # "pages 3-7" would return page 3-7 of every chapter in the book.
+            span_source = (
+                repo.get_node_source_ids(kb_id, [node_id]) if node_id else []
+            )
             hits = repo.get_chunks_for_pages(
                 kb_id=kb_id, institute_id=kb["institute_id"],
                 page_start=int(page_start), page_end=int(page_end),
+                source_id=span_source[0] if len(span_source) == 1 else None,
             )
             if hits:
                 all_fids = [fid for h in hits for fid in h.get("figure_ids", [])]

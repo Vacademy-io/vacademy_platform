@@ -63,10 +63,12 @@ const CurriculumLibrarySettings = () => {
             });
             const data = response.data?.data;
             if (data && typeof data === 'object') {
+                // Shown exactly as stored: coercing an empty boards list back
+                // to NCERT here would make the card disagree with what the
+                // server actually grants.
                 setSetting({
                     enabled: Boolean(data.enabled),
-                    boards:
-                        Array.isArray(data.boards) && data.boards.length ? data.boards : ['NCERT'],
+                    boards: Array.isArray(data.boards) ? data.boards.map(String) : [],
                     classes: Array.isArray(data.classes) ? data.classes.map(String) : [],
                 });
             }
@@ -216,11 +218,12 @@ const CurriculumLibrarySettings = () => {
                                     </button>
                                 ))}
                             </div>
-                            {setting.enabled && setting.classes.length === 0 && (
-                                <p className="text-caption text-warning-600">
-                                    {t('pickAtLeastOne')}
-                                </p>
-                            )}
+                            {setting.enabled &&
+                                (setting.classes.length === 0 || setting.boards.length === 0) && (
+                                    <p className="text-caption text-warning-600">
+                                        {t('pickAtLeastOne')}
+                                    </p>
+                                )}
                         </div>
 
                         <p className="text-caption text-neutral-500">{t('hint')}</p>
@@ -230,7 +233,13 @@ const CurriculumLibrarySettings = () => {
                                 buttonType="primary"
                                 scale="medium"
                                 onClick={save}
-                                disable={saving || !dirty}
+                                disable={
+                                    saving ||
+                                    !dirty ||
+                                    (setting.enabled &&
+                                        (setting.classes.length === 0 ||
+                                            setting.boards.length === 0))
+                                }
                             >
                                 {saving ? t('saving') : t('save')}
                             </MyButton>

@@ -4627,6 +4627,68 @@ async def test_the_human_after_a_screener_gets_the_opening_again():
     assert not tc.screener_seen, "consumed"
 
 
+@pytest.mark.asyncio
+async def test_screener_flag_dies_with_the_first_human_turn():
+    """Call 196838de: the father's first line was substantive, not a hello, so
+    the screener flag stayed armed — and his "Hello?" 2 min 20 s later replayed
+    the whole opening. The person talking to us is proof the screen is over."""
+    rec = _Rec()
+    said = []
+
+    async def resay(text, force=False):
+        said.append((text, force)); return True
+    tc = _replay_collector(rec, bot_speaking=False, in_machine_window=lambda: False)
+    tc._resay_opening = resay
+    tc._bot_spoke_once = lambda: True
+    tc.screener_seen = True
+    await _feed(tc, "मैं बच्ची का पिता बोलता हूँ, बोलिए।")
+    assert not tc.screener_seen, "a real turn from the person must clear the screener"
+    await _feed(tc, "Hello?")
+    assert said == [], "the opening must not be replayed mid-conversation"
+
+
+@pytest.mark.asyncio
+async def test_carry_on_cue_names_the_words_they_heard():
+    """Call 196838de: 'अच्छा' mid-sentence cancelled the reply; the carry-on cue
+    let the model restart the sentence from its first word. The cue must say
+    where they were."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    tc._outcome.transcript.append({"role": "assistant", "text":
+        "लेकिन इस level पर हमारा focus सिर्फ marks improve करने का नहीं होता focus ये होता है कि उसके concepts और मजबूत हों"})
+    await _feed(tc, "अच्छा")
+    cues = [c for c in rec.cues() if "heard you up to" in c]
+    assert cues, rec.cues()
+    assert "उसके concepts और मजबूत हों" in cues[0]
+    assert "do not restart the sentence" in cues[0]
+
+
+@pytest.mark.asyncio
+async def test_a_restatement_only_reply_asks_for_the_next_step_twice_then_speaks():
+    """Call 71e8f39b: five replies in a row were nothing but the caller's answer
+    said back ("You are taking offline classes." …) and each was spoken. Ask
+    the model for its next line instead — twice — then fall back to speaking."""
+    rec = _NRRec()
+    asked = []
+
+    async def _next_step(held, kind="", attempt=0):
+        asked.append((kind, attempt))
+    caller = {"t": "No."}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "You'd be taking classes online these days I'm guessing — or is it all offline right now?")
+    rec.text.clear()
+    await _reply(g, "Okay, so you are taking offline classes.")
+    assert asked == [("restatement", 1)] and rec.text == [], (asked, rec.text)
+    await _reply(g, "You are not taking any online classes right now.")
+    assert asked == [("restatement", 1), ("restatement", 2)] and rec.text == [], (asked, rec.text)
+    await _reply(g, "You only take offline classes.")
+    assert len(asked) == 2 and [t.strip() for t in rec.text] == ["You only take offline classes."], \
+        "budget spent: better a weak line than silence"
+
+
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
     from app import callstate as cs
     cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,

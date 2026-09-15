@@ -525,6 +525,12 @@ class TranscriptCollector(FrameProcessor):
             self._last_text_t = now
             self._outcome.transcript.append({"role": "user", "text": text})
             self._human_turns += 1
+            # The person is on the line and talking to us: the screener is
+            # history. Left armed, a mid-conversation "Hello?" replayed the whole
+            # opening 2 min 20 s into call 196838de and the caller hung up. A
+            # hello itself is the pickup the resay below is for — not this.
+            if not (is_audio_check(text) or caller_checking_presence(text)):
+                self.screener_seen = False
             self._on_activity(user=True)
             # We said goodbye and they said "Thank you." / "Okay, bye." That is
             # their goodbye, not re-engagement. Call 82c1f95a (2026-09-15): it
@@ -705,10 +711,20 @@ class TranscriptCollector(FrameProcessor):
                                    "them, close politely. Do not restate "
                                    "their answer again.]")
                         else:
-                            cue = ("[They just acknowledged you — carry on "
-                                   "from where you were interrupted, in one "
-                                   "short sentence. Do not restart or "
-                                   "re-greet.]")
+                            # With the words they actually heard: without them
+                            # the model restarted the cut sentence from its
+                            # first word and the caller heard ten seconds
+                            # again (call 196838de, 2026-09-15).
+                            heard = self._heard_tail()
+                            cue = (("[They just acknowledged you. They heard you up "
+                                    "to: \"" + heard + "\". Now carry on from right "
+                                    "after those words, in one short sentence — do not "
+                                    "repeat what they heard, do not restart the "
+                                    "sentence, do not re-greet.]") if heard else
+                                   ("[They just acknowledged you — carry on "
+                                    "from where you were interrupted, in one "
+                                    "short sentence. Do not restart or "
+                                    "re-greet.]"))
                         # A continuation must ADD, never restate: arm the strict
                         # no-repeat bar for the reply this cue generates. Call
                         # 17be14f2's audible repetition was this exact reply
@@ -827,6 +843,13 @@ class TranscriptCollector(FrameProcessor):
             if entry.get("role") == "assistant":
                 return "?" in (entry.get("text") or "") or "？" in (entry.get("text") or "")
         return True
+
+    def _heard_tail(self, words: int = 12) -> str:
+        """The last words of what the caller actually heard (played transcript)."""
+        for entry in reversed(self._outcome.transcript):
+            if entry.get("role") == "assistant" and (entry.get("text") or "").strip():
+                return " ".join((entry["text"] or "").split()[-words:])
+        return ""
 
     def _last_played_question(self) -> str:
         """The last question the caller HEARD (played transcript), or ''."""
@@ -1650,10 +1673,31 @@ class NoRepeatGate(FrameProcessor):
                     # "Okay.Yes, go ahead." as one glued word (call a59696ed).
                     await self._emit(line, direction)
             if self._emitted == 0 and self._echo_held:
-                # Nothing but the restatement came: better a weak line than silence.
                 held, self._echo_held = self._echo_held, ""
-                logger.info("no-echo: restatement was the whole reply — speaking it")
-                await self._emit(held, direction)
+                if (self._request_next_step is not None and self._next_steps < 2
+                        and not self._end_forced()):
+                    # Speaking it is how call 71e8f39b looped: "You are taking
+                    # offline classes." / "You are not taking any online classes
+                    # right now." / "You only take offline classes." — five
+                    # restatements in a row to a caller saying yes/no/hello. Ask
+                    # for the next line instead; the second request offers a
+                    # polite goodbye as the way out.
+                    self._next_steps += 1
+                    logger.info("no-echo: restatement was the whole reply — asking for "
+                                "the next step (%d/2)", self._next_steps)
+                    if self._diag is not None:
+                        self._diag.bump("handbacks")
+                    try:
+                        await self._request_next_step(held, kind="restatement",
+                                                      attempt=self._next_steps)
+                    except Exception:
+                        logger.exception("no-echo: next-step request failed — speaking the restatement")
+                        await self._emit(held, direction)
+                else:
+                    # Nothing but the restatement came and the budget is spent:
+                    # better a weak line than silence.
+                    logger.info("no-echo: restatement was the whole reply — speaking it")
+                    await self._emit(held, direction)
             self._echo_held = ""
             if self._emitted == 0 and self._cf_held:
                 # The model answered "you talk" for the second turn running. Say
@@ -3927,25 +3971,37 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      resay_opening=_resay_opening)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
-    async def _ask_for_next_step(held: str):
+    async def _ask_for_next_step(held: str, kind: str = "", attempt: int = 0):
         """NoRepeatGate found that the whole reply repeated a question the caller
-        had just answered. Rather than hand the turn back to someone who has just
-        spoken, ask the model for its next line. `task` is bound later in this
-        function — the closure resolves it at call time, like on_continuation."""
-        if held:
+        had just answered (or only restated their answer). Rather than hand the
+        turn back to someone who has just spoken, ask the model for its next
+        line. `task` is bound later in this function — the closure resolves it
+        at call time, like on_continuation."""
+        if kind == "restatement":
+            why = ("[Your last reply only said their answer back to them and asked "
+                   "nothing. Do not restate it again. ")
+            what = "restatement"
+        elif held:
             why = ("[Your last reply only repeated a question they have ALREADY "
                    "answered. Do not ask it again, and do not restate their answer. ")
+            what = "all-repeat"
         else:
             why = ("[Your last reply was only an acknowledgment and the caller is "
                    "waiting. Do not acknowledge again. ")
-        logger.info("next-step: requesting a fresh line (%s) corr=%s",
-                    "all-repeat" if held else "filler-only", corr)
+            what = "filler-only"
+        if attempt >= 2:
+            # Second time round: a concrete way out, or the model loops.
+            tail = ("Either ask ONE new question that moves the call forward, or — if "
+                    "what they said means this is not for them — say a one-line polite "
+                    "goodbye and append " + END_MARKER + ".]")
+        else:
+            tail = ("Say your NEXT line now — the next question or the next useful "
+                    "fact, in one or two short sentences — or close politely if what "
+                    "they said means this is not for them.]")
+        logger.info("next-step: requesting a fresh line (%s, attempt %d) corr=%s",
+                    what, attempt, corr)
         await task.queue_frames([LLMMessagesAppendFrame(
-            messages=[{"role": "user", "content": why +
-                       "Say your NEXT line now — the next question or the next useful "
-                       "fact, in one or two short sentences — or close politely if what "
-                       "they said means this is not for them.]"}],
-            run_llm=True)])
+            messages=[{"role": "user", "content": why + tail}], run_llm=True)])
 
     no_repeat = NoRepeatGate(
         enabled=lambda: settings.no_repeat_enabled,

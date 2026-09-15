@@ -66,6 +66,9 @@ class ListingUpsert(BaseModel):
     tags: List[str] = Field(default_factory=list)
     sort_weight: int = 0
     institute_id: Optional[str] = None
+    # NULL = paid library. "CURRICULUM" = pre-loaded textbook library (V517):
+    # hidden from the catalogue, granted by the institute setting.
+    collection: Optional[str] = Field(None, max_length=30)
 
 
 class StatusChange(BaseModel):
@@ -106,6 +109,7 @@ async def catalogue(
     language: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
     limit: int = Query(60, ge=1, le=200),
+    collection: Optional[str] = Query(None, description="e.g. CURRICULUM; default = paid libraries only"),
     institute_id: Optional[str] = Query(None),
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
@@ -115,7 +119,7 @@ async def catalogue(
     return {
         "libraries": kb_library.list_catalogue(
             db, resolved, subject=subject, level=level, board=board,
-            language=language, query=q, limit=limit,
+            language=language, query=q, limit=limit, collection=collection,
         ),
         "unlock_credits": _unlock_price(db, resolved),
     }
@@ -192,6 +196,7 @@ async def upsert_listing(
         subject=body.subject, level=body.level, board=body.board,
         language=body.language, tags=body.tags, sort_weight=body.sort_weight,
         created_by=caller.user_id,
+        collection=(body.collection or "").strip().upper() or None,
     )
 
 

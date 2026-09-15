@@ -4778,6 +4778,44 @@ def test_replay_invariants_catch_todays_call_shapes():
     assert R.invariants(ok) == [], R.invariants(ok)
 
 
+def test_played_invariants_name_todays_faults():
+    """The two Call-Health faults added 2026-09-15 read the PLAYED transcript."""
+    from app import report as rp, diagnostics as dg
+    op = "नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से।"
+    o = b.CallOutcome(corr="t", context={})
+    o.transcript = [{"role": "assistant", "text": op},
+                    {"role": "user", "text": "मैं बच्ची का पिता बोलता हूँ"},
+                    {"role": "assistant", "text": "जी सर। Rishabh के previous class में कितने marks आए थे?"},
+                    {"role": "user", "text": "ninety four"},
+                    {"role": "assistant", "text": "जी सर। Rishabh के previous class में कितने marks आए थे?"},
+                    {"role": "user", "text": "Hello"},
+                    {"role": "assistant", "text": op}]
+    replays, repeats, samples = rp._played_invariants(o)
+    assert replays == 1 and repeats == 1, (replays, repeats, samples)
+    d = dg.CallDiagnostics()
+    d.opening_replays, d.repeated_lines = replays, repeats
+    v = dg.verdict(d)
+    assert v["faults"].get(dg.OPENING_REPLAYED) == dg.RED and v["faults"].get(dg.REPEATED_LINE) == dg.AMBER
+    assert v["headline"] == dg.OPENING_REPLAYED
+    # a repeat the caller asked for is not a fault
+    o.transcript = [{"role": "assistant", "text": "Which number should I send the invite to?"},
+                    {"role": "user", "text": "Sorry, say that again"},
+                    {"role": "assistant", "text": "Which number should I send the invite to?"}]
+    assert rp._played_invariants(o) == (0, 0, [])
+
+
+def test_call_alert_line_fires_for_non_green(caplog):
+    from app import report as rp, diagnostics as dg
+    import logging as _lg
+    o = b.CallOutcome(corr="alert-t", context={})
+    d = dg.CallDiagnostics(); d.opening_replays = 1
+    with caplog.at_level(_lg.WARNING, logger="app.report"):
+        rp._alert(o, dg.to_payload(d))
+        rp._alert(o, dg.to_payload(dg.CallDiagnostics()))
+    lines = [r.getMessage() for r in caplog.records if "call-alert" in r.getMessage()]
+    assert len(lines) == 1 and "OPENING_REPLAYED:RED" in lines[0] and "alert-t" in lines[0], lines
+
+
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
     from app import callstate as cs
     cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,

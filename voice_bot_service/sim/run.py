@@ -47,6 +47,7 @@ async def simulate(persona, base_ctx, agent_chat, caller_chat, max_tokens=180):
     gates = g.TextGates()
     convo, history = [], []
     ttfts = []
+    next_steps = 0
     if opening:
         sp = gates.pass_reply(opening)
         convo.append({"role": "assistant", "text": sp.text, "raw": opening, "ended": False})
@@ -87,6 +88,22 @@ async def simulate(persona, base_ctx, agent_chat, caller_chat, max_tokens=180):
         raw, ttft = await agent_chat(system, history, max_tokens, float(agent.get("temperature") or 0.6))
         ttfts.append(ttft)
         sp = gates.pass_reply(raw)
+        # Mirror NoRepeatGate → _ask_for_next_step: a reply that said nothing
+        # new (restatement / all-repeat) gets the next-step cue and a re-run,
+        # at most twice per call; the model's answer to the cue is what plays.
+        while sp.next_step and next_steps < 2 and not forced:
+            next_steps += 1
+            what, cue = b.next_step_cue(sp.held, sp.next_step, next_steps)
+            history.append({"role": "assistant", "content": raw})
+            history.append({"role": "user", "content": cue})
+            raw2, ttft2 = await agent_chat(system, history, max_tokens, float(agent.get("temperature") or 0.6))
+            ttfts.append(ttft2)
+            sp2 = gates.pass_reply(raw2)
+            convo.append({"role": "assistant", "text": "", "raw": raw, "dropped": sp.dropped,
+                          "next_step": what, "ended": False, "sends": [], "had_markup": sp.had_markup})
+            raw, sp = raw2, sp2
+        if sp.next_step and not sp.text and sp.held:
+            sp.text = sp.held                  # budget spent: better a weak line than silence
         if forced:
             sp.ended = True
         convo.append({"role": "assistant", "text": sp.text, "raw": raw, "ended": sp.ended,

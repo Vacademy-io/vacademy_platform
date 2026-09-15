@@ -164,10 +164,31 @@ def grade(persona, convo: List[Dict], lead_name: str, now: Optional[datetime] = 
                             w.rstrip().endswith("?") or re.match(r"^(so|okay|ok|alright|right|it'?s)\b", w)):
                         echoes.append(sent.strip())
         if len(echoes) >= 2:
-            # A warning while the model still does this on 4/4 runs (the text sim
-            # cannot see the turn-gate cue that breaks the loop in production);
-            # promote to a fail once the prompt alone holds it under 2.
-            warns.append(f"restated/double-checked the caller's answer {len(echoes)}x: {echoes[:3]}")
+            # A FAIL since 2026-09-15: the text sim now runs the same next-step
+            # path production does (sim/gates.py next_step → bot.next_step_cue),
+            # so a loop here is a loop on the phone (call 71e8f39b).
+            fails.append(f"restated/double-checked the caller's answer {len(echoes)}x: {echoes[:3]}")
+    if "no_restatement_only_turns" in checks:           # call 71e8f39b
+        # A turn that is nothing but the caller's answer said back — no
+        # question, no fact — is dead air with words. One is tolerated; two
+        # in a call is the loop the founder heard five times.
+        only = [t["text"] for t in bot[1:]
+                if t["text"] and "?" not in t["text"] and len(t["text"].split()) <= 12
+                and re.match(r"^(so|okay|ok|alright|right|got it|you|you're|you are|it'?s)\b", t["text"].strip().lower())]
+        if len(only) >= 2:
+            fails.append(f"restatement-only turns {len(only)}x: {only[:3]}")
+        steps = sum(1 for t in convo if t.get("next_step"))
+        if steps >= 2 and any(t.get("next_step") for t in convo[-3:]):
+            warns.append(f"next-step budget exhausted ({steps}) — the model kept restating")
+    if "answers_who" in checks:                         # calls 91d1541e/b2f6330a
+        for i, t in enumerate(convo):
+            if t["role"] == "user" and re.search(r"who is this|who are you|name of your|which company", t["text"], re.I):
+                nxt = next((x for x in convo[i + 1:] if x["role"] == "assistant" and x["text"]), None)
+                if nxt is None:
+                    continue
+                first = re.split(r"(?<=[.!?])\s+", nxt["text"].strip())[0]
+                if not re.search(r"aarushi|vacademy|shreya|shiksha", first, re.I):
+                    fails.append(f"asked who is calling; first sentence did not answer: {first[:70]!r}")
     if "reasks_after_hello" in checks:                 # call f08f5712
         # After a caller "Hello?" the bot must put its question back on the line,
         # not just confirm it is there.

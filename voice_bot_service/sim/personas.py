@@ -104,6 +104,29 @@ PERSONAS: List[Persona] = [
             "that restates or double-checks that, and 'Okay, bye' [HANGUP] if they close the call. "
             "Never volunteer anything else.",
             checks=["no_confirmation_loop"], max_turns=6),
+    Persona("offline_monosyllable", "Rekha Pillai",                     # call 71e8f39b, 2026-09-15
+            _STYLE + " You teach yoga ONLY offline, at a studio. You answer in one word: 'Yes.' to "
+            "the opening, 'Offline.' when asked online/offline, and then ONLY 'No.' / 'Yes, ma'am.' / "
+            "'Hello?' (rotate them) to everything else — you never volunteer a sentence. If the caller "
+            "asks ONE clear new question (about going online, a demo, or a callback) answer it in "
+            "three words. If they say goodbye, say 'Okay, bye' [HANGUP]. After eight replies say "
+            "'Okay, bye' [HANGUP] regardless.",
+            checks=["no_confirmation_loop", "no_restatement_only_turns"], max_turns=8),
+    Persona("who_is_this_twice", "Kiran Bhatt",                          # calls 91d1541e/b2f6330a
+            _STYLE + " You did not catch the opening. Your first reply is 'Sorry, who is this?'. "
+            "Whatever they say next, your second reply is 'Uh, can I know the name of your company?'. "
+            "If they answer with their name and company plainly, say 'Okay, go on' and then answer "
+            "normally (you teach yoga online on Zoom, 20 students, you send the link yourself). If they "
+            "pitch instead of answering who they are, say 'You didn't say who you are' and hang up "
+            "with [HANGUP].",
+            checks=["answers_who"], max_turns=6),
+    Persona("breath_then_answer", "Sanjay Kaul",                           # calls dd5eb5cc/a3ed8482
+            _STYLE + " You start every answer with a bare 'Yes.' or 'Haan.' as its own sentence and "
+            "then give the real answer in the same reply, e.g. 'Yes. I take classes in the evening, "
+            "mostly at the studio.' You teach evenings at a studio and weekends at home, send the "
+            "link on WhatsApp yourself, collect fees on GPay. Agree to a demo tomorrow at six PM when "
+            "offered and give your number as 'this number'. Hang up with [HANGUP] after the demo is set.",
+            checks=["no_confirmation_loop"], max_turns=8),
     Persona("objector", "Deepak Menon",
             _STYLE + " You run online yoga on Zoom with 40 students. After the pitch say: 'We manage fine "
             "on WhatsApp groups. Why would I pay for this?' Push back once more if the answer is generic, "

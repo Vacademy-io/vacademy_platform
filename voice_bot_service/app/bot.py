@@ -1935,6 +1935,33 @@ class RunGuard(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+def next_step_cue(held: str, kind: str = "", attempt: int = 0):
+    """The steering cue for a reply that said nothing new: (what, cue text).
+    Module-level so the text simulator (sim/run.py) sends the SAME words."""
+    if kind == "restatement":
+        why = ("[Your last reply only said their answer back to them and asked "
+               "nothing. Do not restate it again. ")
+        what = "restatement"
+    elif held:
+        why = ("[Your last reply only repeated a question they have ALREADY "
+               "answered. Do not ask it again, and do not restate their answer. ")
+        what = "all-repeat"
+    else:
+        why = ("[Your last reply was only an acknowledgment and the caller is "
+               "waiting. Do not acknowledge again. ")
+        what = "filler-only"
+    if attempt >= 2:
+        # Second time round: a concrete way out, or the model loops.
+        tail = ("Either ask ONE new question that moves the call forward, or — if "
+                "what they said means this is not for them — say a one-line polite "
+                "goodbye and append " + END_MARKER + ".]")
+    else:
+        tail = ("Say your NEXT line now — the next question or the next useful "
+                "fact, in one or two short sentences — or close politely if what "
+                "they said means this is not for them.]")
+    return what, why + tail
+
+
 # Spoken when a requested human transfer could not be registered. A module
 # constant rather than an inline default so the TTS cache can pre-warm it: it is
 # a fixed, bot-authored line like the farewells and the handbacks.
@@ -4023,31 +4050,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         turn back to someone who has just spoken, ask the model for its next
         line. `task` is bound later in this function — the closure resolves it
         at call time, like on_continuation."""
-        if kind == "restatement":
-            why = ("[Your last reply only said their answer back to them and asked "
-                   "nothing. Do not restate it again. ")
-            what = "restatement"
-        elif held:
-            why = ("[Your last reply only repeated a question they have ALREADY "
-                   "answered. Do not ask it again, and do not restate their answer. ")
-            what = "all-repeat"
-        else:
-            why = ("[Your last reply was only an acknowledgment and the caller is "
-                   "waiting. Do not acknowledge again. ")
-            what = "filler-only"
-        if attempt >= 2:
-            # Second time round: a concrete way out, or the model loops.
-            tail = ("Either ask ONE new question that moves the call forward, or — if "
-                    "what they said means this is not for them — say a one-line polite "
-                    "goodbye and append " + END_MARKER + ".]")
-        else:
-            tail = ("Say your NEXT line now — the next question or the next useful "
-                    "fact, in one or two short sentences — or close politely if what "
-                    "they said means this is not for them.]")
+        what, cue = next_step_cue(held, kind, attempt)
         logger.info("next-step: requesting a fresh line (%s, attempt %d) corr=%s",
                     what, attempt, corr)
         await task.queue_frames([LLMMessagesAppendFrame(
-            messages=[{"role": "user", "content": why + tail}], run_llm=True)])
+            messages=[{"role": "user", "content": cue}], run_llm=True)])
 
     no_repeat = NoRepeatGate(
         enabled=lambda: settings.no_repeat_enabled,

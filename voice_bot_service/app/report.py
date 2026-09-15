@@ -622,10 +622,64 @@ def _diagnostics_blob(outcome: CallOutcome) -> Optional[Dict[str, Any]]:
         if outcome.crashed:
             d.crash = getattr(outcome, "crash_detail", None) or "pipeline_error"
         d.machine_markers = _machine_markers(outcome)
-        return diagnostics.to_payload(d)
+        d.opening_replays, d.repeated_lines, d.repeated_line_samples = _played_invariants(outcome)
+        payload = diagnostics.to_payload(d)
+        _alert(outcome, payload)
+        return payload
     except Exception:
         logger.exception("diagnostics blob failed corr=%s", outcome.corr)
         return None
+
+
+def _played_invariants(outcome: CallOutcome) -> tuple:
+    """(opening_replays, repeated_lines, samples) over the PLAYED transcript —
+    the same two invariants sim.replay checks offline, so a live call fails
+    the same way a replayed one would."""
+    import re as _re
+    from app.turntake import spoken_key, caller_checking_presence, caller_asked_to_repeat
+    tr = [t for t in outcome.transcript if isinstance(t, dict) and t.get("text")]
+    bot = [t["text"] for t in tr if t.get("role") == "assistant"]
+    if not bot:
+        return 0, 0, []
+    opening = spoken_key(" ".join(bot[0].split()[:6]))
+    replays, seen_user = 0, False
+    for t in tr[1:]:
+        if t.get("role") == "user":
+            if not (caller_checking_presence(t["text"]) or caller_asked_to_repeat(t["text"])):
+                seen_user = True
+        elif seen_user and opening and opening in spoken_key(t["text"]):
+            replays += 1
+    said: Dict[str, int] = {}
+    repeats: List[str] = []
+    for idx, t in enumerate(tr):
+        if t.get("role") != "assistant":
+            continue
+        for s in _re.split(r"(?<=[.!?।])\s+", t["text"]):
+            s = s.strip()
+            if len(s.split()) < 5:
+                continue
+            k = spoken_key(s)
+            if k in said:
+                between = [u["text"] for u in tr[said[k] + 1:idx] if u.get("role") == "user"]
+                if not any(caller_checking_presence(u) or caller_asked_to_repeat(u) for u in between):
+                    repeats.append(s[:80])
+            said[k] = idx
+    return replays, len(repeats), repeats
+
+
+def _alert(outcome: CallOutcome, payload: Optional[Dict[str, Any]]) -> None:
+    """One WARNING line per call whose health is not GREEN, with the fault
+    codes — so a journald watch (or a person grepping) sees the calls that
+    went wrong without opening the dashboard. The founder found six defects
+    by ear on 2026-09-15 that the counters had already logged at INFO."""
+    try:
+        v = payload or {}
+        if v.get("health") in ("AMBER", "RED"):
+            logger.warning("call-alert corr=%s health=%s headline=%r faults=%s",
+                           outcome.corr, v.get("health"), v.get("headlineText"),
+                           ",".join(f"{c}:{l}" for c, l in (v.get("faultLevels") or {}).items()))
+    except Exception:
+        pass
 
 
 # Verbatim IVR/voicemail openers seen in the live corpus. EVIDENCE ONLY in v1 —

@@ -24,6 +24,13 @@ class Spoken:
     sends: List[str]
     raw: str
     had_markup: bool = False
+    # Production asks the model for its NEXT line instead of speaking a reply
+    # that said nothing new (NoRepeatGate → _ask_for_next_step): "restatement"
+    # (the whole reply was the caller's answer said back), "all-repeat" (every
+    # sentence already said, after a caller answer). sim/run.py mirrors the
+    # re-run, twice per call, with the same cue words (bot.next_step_cue).
+    next_step: str = ""
+    held: str = ""
 
 
 class TextGates:
@@ -67,13 +74,25 @@ class TextGates:
         # the caller's answer back is dropped when anything real follows it,
         # spoken when it is the whole reply. (The wrapper never ran the gate's
         # process_frame, so until 2026-09-13 the text sim could not see this.)
-        if len(kept) >= 2 and self.gate._no_echo():
+        next_step, held = "", ""
+        if kept and self.gate._no_echo():
             last_q = next((x for x in reversed(self.gate._spoken[:-len(kept)]) if "?" in x), "")
             if is_echo_of_answer(kept[0], self._last_user, last_q):
-                dropped.append(kept[0])
-                kept = kept[1:]
+                if len(kept) >= 2:
+                    dropped.append(kept[0])
+                    kept = kept[1:]
+                elif not ended and not transfer:
+                    # The restatement IS the reply (call 71e8f39b): production
+                    # asks for the next step instead of speaking it.
+                    next_step, held = "restatement", kept[0]
+                    dropped.append(kept[0])
+                    kept = []
+        if (not kept and dropped and not next_step and not ended and not transfer
+                and self._last_user.strip() and not self._last_user.startswith("[")):
+            next_step, held = "all-repeat", dropped[-1]
         return Spoken(text=" ".join(kept), dropped=dropped, ended=ended, transfer=transfer,
-                      sends=sends, raw=raw, had_markup=had_markup or ("<" in emit and ">" in emit))
+                      sends=sends, raw=raw, had_markup=had_markup or ("<" in emit and ">" in emit),
+                      next_step=next_step, held=held)
 
 
 def _sentences(text: str) -> List[str]:

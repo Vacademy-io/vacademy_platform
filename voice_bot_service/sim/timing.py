@@ -588,9 +588,9 @@ def chk_forced_close(res):
     return f
 
 
-def chk_turn_latency(res):
-    slow = [x for x in res["turn_latency"] if x > 2.5]
-    return [f"turn latency {slow} s (caller stop → bot audio)"] if slow else []
+def chk_turn_latency(res, bar: float = 2.5):
+    slow = [x for x in res["turn_latency"] if x > bar]
+    return [f"turn latency {slow} s (caller stop → bot audio, bar {bar})"] if slow else []
 
 
 def chk_fragment_tail(res):
@@ -678,6 +678,36 @@ def chk_unheard_turn(res):
     return f
 
 
+def chk_screener_then_person(res):
+    """Call 196838de (2026-09-15): Google call screen answered, our opening
+    played into its recorder, the father picked up with a substantive line —
+    and 2 min later his "Hello?" replayed the whole opening. The opening is
+    said exactly twice (screener, then the person), never again; a mid-call
+    "Hello?" gets a short confirm + the question, within 3 s."""
+    f = []
+    texts = _assistant_texts(res)
+    if not texts:
+        return ["bot said nothing"]
+    head = _key(" ".join(texts[0].split()[:4]))
+    n = sum(1 for t in texts if head and head in _key(t))
+    if n < 2:
+        f.append(f"the person who picked up after the screener never heard the opening ({n} openings)")
+    if n > 2:
+        f.append(f"opening said {n}x — replayed after the person was already talking")
+    if len(res["caller"]) < 4:
+        return f + ["caller turns missing"]
+    hello_end = res["caller"][3][1]
+    nxt = [iv for iv in res["bot"] if hello_end - 0.5 <= iv[0] <= hello_end + 3.0]
+    if not nxt:
+        f.append(f"no reply within 3 s of the mid-call Hello? (bot: {res['bot'][-3:]})")
+    return f
+
+
+def _key(text: str) -> str:
+    from app.turntake import spoken_key
+    return spoken_key(text)
+
+
 def chk_voicemail(res):
     """Call 24089872: the carrier's recording spoke, nobody else did. No nudge,
     no farewell — hang up as soon as the idle clock fires."""
@@ -758,6 +788,15 @@ SCENARIOS: List[Scenario] = [
              replies=["Great. So the reason I called — we work with yoga teachers on the daily link."],
              checks=chk_turn_latency, max_secs=40,
              note="yes after the second nudge must be answered like any yes"),
+    Scenario("screener_then_person",
+             caller=[Say("Hi. If you record your name and reason for calling, I'll see if this person is available",
+                         3.0, at=0.4, stt_latency=0.3),
+                     Say("Hello.", at=11.0, stt_latency=0.4),
+                     Say("Yes, this is me. Go ahead.", 1.6, after_bot_stop=2, offset=0.8, stt_latency=0.5),
+                     Say("Hello?", after_bot_stop=3, offset=5.0, stt_latency=0.4)],
+             replies=[PITCH_Q, "Got it. Who sends the daily link right now?", "Yes, I'm here. Who sends the daily link right now?"],
+             checks=chk_screener_then_person, max_secs=60,
+             note="call 196838de: screener flag stayed armed; a later Hello? replayed the opening"),
     Scenario("voicemail_hangs_up",
              caller=[Say("Your call has been forwarded to voicemail.", 2.4, at=0.3, stt_latency=0.3),
                      Say("At the tone, please record your message.", 2.2, at=4.0, stt_latency=0.3)],
@@ -786,7 +825,10 @@ SCENARIOS: List[Scenario] = [
                      Say("Yes.", after_bot_start=2, offset=_after_word(PITCH_Q, "now?"),
                          stt_latency=0.4)],
              replies=[PITCH_Q, "Great — so it's on you. Honestly, the fees part is what most teachers are fed up with."],
-             checks=lambda r: chk_yes_over_tail(r) + chk_turn_latency(r), max_secs=40,
+             # 3.0, not 2.5: a bare "Yes." pays the short-answer grace (0.8 s
+             # minus the silence already elapsed) by design since 8de0c67de3 —
+             # measured 2.44-2.57 s here, flapping on the old bar under any load.
+             checks=lambda r: chk_yes_over_tail(r) + chk_turn_latency(r, 3.0), max_secs=40,
              note="call 34f258c2: '…Is that you?' → 'Yes.' → the held tail 'or does someone help?' resumed"),
     Scenario("farewell_without_marker",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],

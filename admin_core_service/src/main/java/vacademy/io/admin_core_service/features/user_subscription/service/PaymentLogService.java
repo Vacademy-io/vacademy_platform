@@ -5,6 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
@@ -73,6 +74,13 @@ import org.springframework.context.annotation.Lazy;
 @Transactional
 public class PaymentLogService {
 
+    /**
+     * Derived listing status for a PAYMENT_PENDING log older than
+     * {@code payments.pending.abandoned-after-hours}. Never persisted — the row keeps its gateway
+     * status, only the listing reports it this way.
+     */
+    public static final String ABANDONED_PAYMENT_STATUS = "ABANDONED";
+
     private static final Logger log = LoggerFactory.getLogger(PaymentLogService.class);
 
     @Autowired
@@ -88,6 +96,21 @@ public class PaymentLogService {
 
     @Autowired
     private UserPlanRepository userPlanRepository;
+
+    /**
+     * How far ahead the "Upcoming" card looks. Obligations falling due inside this window are
+     * reported as expected money, not as due.
+     */
+    @Value("${payments.due.upcoming-days:30}")
+    private int upcomingDays;
+
+    /**
+     * A PAYMENT_PENDING log older than this is an abandoned checkout, not a payment in progress.
+     * Gateway orders expire long before it (Razorpay's in ~24 h), so nothing older can still
+     * complete. Reported as ABANDONED so the cards stop counting it as money in flight.
+     */
+    @Value("${payments.pending.abandoned-after-hours:24}")
+    private long abandonedAfterHours;
 
     @Autowired
     private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
@@ -1146,12 +1169,13 @@ public class PaymentLogService {
     }
 
     /**
-     * Total billed / collected / due for an institute — the numbers an admin means by those words.
+     * Collected / due / upcoming for an institute — the numbers an admin means by those words.
      *
-     * Deliberately NOT derived from payment_log: that table only holds payments someone actually
-     * raised, so a part-paid instalment plan looks fully collected and an enrolment that never paid
-     * a rupee does not appear at all. Billing lives on the plan; see
-     * {@link UserPlanRepository#getBillingSummary}.
+     * Due is deliberately NOT derived from payment_log: that table only holds payments someone
+     * actually raised, so an overdue instalment nobody has paid does not appear in it at all. Nor
+     * is it "plan price minus payments": that counted every abandoned checkout and every coupon
+     * discount as debt. Obligations live on the plan — see
+     * {@link UserPlanRepository#DUE_OBLIGATION_CTES} for exactly what counts.
      */
     public BillingSummaryResponseDTO getBillingSummary(BillingSummaryRequestDTO request) {
         if (!StringUtils.hasText(request.getInstituteId())) {
@@ -1171,19 +1195,28 @@ public class PaymentLogService {
                 endDate,
                 noPackageSessions,
                 // A native IN (...) needs a non-empty list even when the guard above skips it.
-                noPackageSessions ? List.of("__none__") : request.getPackageSessionIds());
+                noPackageSessions ? List.of("__none__") : request.getPackageSessionIds(),
+                upcomingDays);
 
         double collected = row != null && row.getCollected() != null ? row.getCollected() : 0d;
         double due = row != null && row.getDue() != null ? row.getDue() : 0d;
+        double upcoming = row != null && row.getUpcoming() != null ? row.getUpcoming() : 0d;
 
         return BillingSummaryResponseDTO.builder()
-                // Total is derived, never read back: the three cards must always reconcile.
+                // Total is derived, never read back: the cards must always reconcile.
                 .totalBilled(collected + due)
                 .collected(collected)
                 .due(due)
+                .upcoming(upcoming)
+                .upcomingDays(upcomingDays)
+                .learnersOwing(row != null && row.getLearnersOwing() != null ? row.getLearnersOwing() : 0L)
+                .learnersUpcoming(
+                        row != null && row.getLearnersUpcoming() != null ? row.getLearnersUpcoming() : 0L)
                 .planCount(row != null && row.getPlanCount() != null ? row.getPlanCount() : 0L)
-                .settledPlanCount(
-                        row != null && row.getSettledPlanCount() != null ? row.getSettledPlanCount() : 0L)
+                .activatedWithoutPaymentCount(
+                        row != null && row.getActivatedWithoutPaymentCount() != null
+                                ? row.getActivatedWithoutPaymentCount()
+                                : 0L)
                 .currency(row != null ? row.getCurrency() : null)
                 .build();
     }
@@ -1215,20 +1248,20 @@ public class PaymentLogService {
         return userPlanRepository.findLearnerPlanBreakdown(
                 request.getInstituteId(), userId, startDate, endDate, noPackageSessions,
                 // Postgres rejects an empty IN list, so hand it a value that can never match.
-                noPackageSessions ? List.of("__none__") : packageSessionIds).stream()
+                noPackageSessions ? List.of("__none__") : packageSessionIds,
+                upcomingDays).stream()
                 .map(row -> {
-                    double billed = row.getBilled() != null ? row.getBilled() : 0d;
-                    double paid = row.getPaid() != null ? row.getPaid() : 0d;
                     boolean counts = Boolean.TRUE.equals(row.getCountsTowardsDue());
                     return LearnerPlanBreakdownDTO.builder()
                             .userPlanId(row.getUserPlanId())
                             .courseName(row.getCourseName())
                             .planStatus(row.getPlanStatus())
                             .paymentType(row.getPaymentType())
-                            .billed(billed)
-                            .paid(paid)
-                            // A dead plan owes nothing, whatever its price says — mirrors the card.
-                            .due(counts ? Math.max(0d, billed - paid) : 0d)
+                            .billed(row.getBilled() != null ? row.getBilled() : 0d)
+                            .paid(row.getPaid() != null ? row.getPaid() : 0d)
+                            // Already 0 for anything that cannot owe — the query applies the rule.
+                            .due(row.getDue() != null ? row.getDue() : 0d)
+                            .upcoming(row.getUpcoming() != null ? row.getUpcoming() : 0d)
                             .countsTowardsDue(counts)
                             .currency(row.getCurrency())
                             .build();
@@ -1260,6 +1293,7 @@ public class PaymentLogService {
                 endDate,
                 noPackageSessions,
                 noPackageSessions ? List.of("__none__") : request.getPackageSessionIds(),
+                upcomingDays,
                 PageRequest.of(pageNo, pageSize));
 
         // Names/emails/phones live in the auth service, so resolve the page's learners in one call
@@ -1288,6 +1322,7 @@ public class PaymentLogService {
                     .billed(row.getBilled() != null ? row.getBilled() : 0d)
                     .paid(row.getPaid() != null ? row.getPaid() : 0d)
                     .due(row.getDue() != null ? row.getDue() : 0d)
+                    .upcoming(row.getUpcoming() != null ? row.getUpcoming() : 0d)
                     .planCount(row.getPlanCount() != null ? row.getPlanCount() : 0L)
                     .pendingInstallments(
                             row.getPendingInstallments() != null ? row.getPendingInstallments() : 0L)
@@ -1665,6 +1700,15 @@ public class PaymentLogService {
                 }
             }
             return PaymentStatusEnum.FAILED.name();
+        }
+
+        // A checkout that was opened and never finished. Gateway orders expire within a day, so
+        // a PAYMENT_PENDING row older than the threshold cannot still complete — it is an
+        // abandoned cart, and must not be shown as a payment in progress or as money owed.
+        if (PaymentStatusEnum.PAYMENT_PENDING.name().equals(paymentLog.getPaymentStatus())
+                && paymentLog.getCreatedAt() != null
+                && paymentLog.getCreatedAt().plusHours(abandonedAfterHours).isBefore(LocalDateTime.now())) {
+            return ABANDONED_PAYMENT_STATUS;
         }
 
         return paymentLog.getPaymentStatus();

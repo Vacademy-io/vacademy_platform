@@ -79,7 +79,7 @@ const toCsvRow = (entry: PaymentLogEntry): Record<string, string | number> => {
         'Payment Type': derivePaymentTypeLabel(entry),
         'Course / Membership': plan?.enroll_invite?.name ?? '',
         'Invite Code': plan?.enroll_invite?.invite_code ?? '',
-        Organization: plan?.source === 'SUB_ORG' ? (plan?.sub_org_details?.name ?? '') : '',
+        Organization: plan?.source === 'SUB_ORG' ? plan?.sub_org_details?.name ?? '' : '',
         'Payment Plan': plan?.payment_plan_dto?.name ?? '',
         'Transaction ID': log?.transaction_id ?? '',
     };
@@ -144,10 +144,7 @@ export const exportPaymentLogsToCsv = async (
  * Export an already-loaded set of payment entries (e.g. the current searched + filtered view)
  * to CSV and trigger a download. Returns the number of rows written.
  */
-export const exportEntriesToCsv = (
-    entries: PaymentLogEntry[],
-    instituteName?: string
-): number => {
+export const exportEntriesToCsv = (entries: PaymentLogEntry[], instituteName?: string): number => {
     const csv = Papa.unparse(entries.map(toCsvRow));
     const datePart = new Date().toISOString().slice(0, 10);
     const namePart = (instituteName || 'institute')

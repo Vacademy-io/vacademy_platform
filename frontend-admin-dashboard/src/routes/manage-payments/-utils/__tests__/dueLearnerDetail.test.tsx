@@ -33,6 +33,7 @@ const learner: OutstandingLearner = {
     billed: 8400,
     paid: 3,
     due: 8397,
+    upcoming: 0,
     plan_count: 2,
     pending_installments: 0,
     next_due_date: null,
@@ -48,6 +49,7 @@ const plans: LearnerPlanBreakdown[] = [
         billed: 7200,
         paid: 1,
         due: 7199,
+        upcoming: 0,
         counts_towards_due: true,
         currency: 'INR',
     },
@@ -59,6 +61,7 @@ const plans: LearnerPlanBreakdown[] = [
         billed: 1200,
         paid: 1,
         due: 1199,
+        upcoming: 0,
         counts_towards_due: true,
         currency: 'INR',
     },
@@ -70,6 +73,7 @@ const plans: LearnerPlanBreakdown[] = [
         billed: 1200,
         paid: 1,
         due: 0,
+        upcoming: 0,
         counts_towards_due: false,
         currency: 'INR',
     },
@@ -108,7 +112,7 @@ describe('DueLearnerDetailSheet', () => {
         await waitFor(() => expect(screen.getByText('Cancelled')).toBeInTheDocument());
     });
 
-    it('asks the server for this learner under the row\'s own window and course scope', async () => {
+    it("asks the server for this learner under the row's own window and course scope", async () => {
         // Not a detail: unscoped, the sheet would list enrolments the clicked row never counted
         // and the sections would stop adding up to the totals above them.
         const filters = { start_date_in_utc: '2026-08-01T00:00:00', package_session_ids: ['ps1'] };
@@ -119,9 +123,7 @@ describe('DueLearnerDetailSheet', () => {
     it('still shows the totals when the breakdown request fails', async () => {
         mockFetch.mockRejectedValue(new Error('boom'));
         renderSheet();
-        await waitFor(() =>
-            expect(screen.getByText(/could not load/i)).toBeInTheDocument()
-        );
+        await waitFor(() => expect(screen.getByText(/could not load/i)).toBeInTheDocument());
         // The header figures come from the row, not the request, so they must survive.
         expect(screen.getByText('Billed')).toBeInTheDocument();
     });

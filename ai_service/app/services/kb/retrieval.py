@@ -87,8 +87,12 @@ class KbRetrievalService:
         query: str,
         top_k: int = DEFAULT_TOP_K,
         similarity_threshold: float = DEFAULT_THRESHOLD,
+        source_ids: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
-        """Ranked chunks from one KB, each with page anchors and real figures."""
+        """Ranked chunks from one KB, each with page anchors and real figures.
+
+        `source_ids` pins the search to particular sources (the chapters a
+        teacher ticked in a textbook library)."""
         kb = self.repo.get_kb(kb_id, institute_id)
         if not kb:
             return []
@@ -119,6 +123,7 @@ class KbRetrievalService:
             embedding_dim=kb["embedding_dim"],
             top_k=top_k,
             similarity_threshold=similarity_threshold,
+            source_ids=source_ids,
         )
 
         # Hydrate figures in one query rather than per hit.

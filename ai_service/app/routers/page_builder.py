@@ -428,6 +428,196 @@ async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]
         return None, f"fetch error: {type(e).__name__}"
 
 
+# Reference-site capture. One desktop viewport, a scroll-through so lazy
+# sections mount, then a full-page PNG sliced into viewport-tall tiles: the
+# vision pass reads at most _MAX_INSPIRATION_IMAGES images, and one 9000px
+# strip downscaled to 1568px tall is unreadable, while six 1600px tiles keep
+# every section legible. Everything here is best-effort — a capture failure
+# degrades to "no reference", never to a failed build.
+_REFERENCE_VIEWPORT = {"width": 1440, "height": 900}
+_REFERENCE_TILE_HEIGHT = 1600
+_REFERENCE_NAV_TIMEOUT_MS = 20_000
+_REFERENCE_IDLE_TIMEOUT_MS = 8_000
+_REFERENCE_SETTLE_MS = 1_200
+_REFERENCE_GROWTH_POLL_MS = 500
+_REFERENCE_GROWTH_MAX_MS = 10_000
+_REFERENCE_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
+# Automation tells that make sites swap their real page for a "browser not
+# supported" interstitial (Khan Academy did, on navigator.webdriver).
+_REFERENCE_INIT_SCRIPT = "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+
+
+async def _wait_for_reference_to_settle(page: Any) -> None:
+    """Poll the document's height + text length until two consecutive reads
+    agree (or the budget runs out). A page that is still a spinner keeps
+    changing; a rendered one holds still within a second or two."""
+    last: Optional[tuple] = None
+    waited = 0
+    while waited < _REFERENCE_GROWTH_MAX_MS:
+        try:
+            cur = tuple(await page.evaluate(
+                "() => [document.body ? document.body.scrollHeight : 0, document.body ? document.body.innerText.length : 0]"
+            ))
+        except Exception:  # noqa: BLE001
+            return
+        # "Settled" needs real content: a blank splash (no text) never counts.
+        if last is not None and cur == last and cur[1] > 80:
+            return
+        last = cur
+        await page.wait_for_timeout(_REFERENCE_GROWTH_POLL_MS)
+        waited += _REFERENCE_GROWTH_POLL_MS
+
+
+_CONSENT_BUTTON_RE = r"^(accept( all)?( cookies)?|allow( all)?( cookies)?|i agree|agree|got it|ok(ay)?|accept & close|accept and close)$"
+
+
+async def _dismiss_consent_banner(page: Any) -> None:
+    """Click the first visible 'Accept cookies'-style button, if any. A consent
+    modal over the hero would otherwise be what the vision pass describes.
+    Best-effort; never raises."""
+    try:
+        clicked = await page.evaluate(
+            """(re) => {
+                const rx = new RegExp(re, 'i');
+                const els = [...document.querySelectorAll('button, [role="button"], a')];
+                for (const el of els) {
+                    const t = (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
+                    if (!t || t.length > 40 || !rx.test(t)) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 20 || r.height < 12) continue;
+                    el.click(); return t;
+                }
+                return null;
+            }""",
+            _CONSENT_BUTTON_RE,
+        )
+        if clicked:
+            await page.wait_for_timeout(600)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _slice_screenshot(png: bytes, tile_height: int = _REFERENCE_TILE_HEIGHT, max_tiles: int = _MAX_INSPIRATION_IMAGES) -> List[bytes]:
+    """Cut a full-page PNG into top-to-bottom tiles (PNG bytes). A short page
+    yields one tile; a very long one is truncated at max_tiles — the fold and
+    the first few bands carry the design language, the footer rarely does."""
+    from io import BytesIO
+    from PIL import Image
+
+    img = Image.open(BytesIO(png))
+    img.load()
+    width, height = img.size
+    if width <= 0 or height <= 0:
+        return []
+    tiles: List[bytes] = []
+    top = 0
+    while top < height and len(tiles) < max_tiles:
+        bottom = min(height, top + tile_height)
+        # Drop a sliver at the end (< 15% of a tile) — a footer strip on its
+        # own is a wasted image slot.
+        if tiles and (bottom - top) < tile_height * 0.15:
+            break
+        buf = BytesIO()
+        img.crop((0, top, width, bottom)).save(buf, format="PNG", optimize=True)
+        tiles.append(buf.getvalue())
+        top = bottom
+    return tiles
+
+
+async def _capture_reference_screenshots(url: str, warnings: List[str]) -> List[str]:
+    """Screenshot a reference website → data: URLs the vision pass can read
+    directly. SSRF-guarded like every other fetch here. Returns [] on any
+    failure and says why in warnings."""
+    target = (url or "").strip()
+    if not target:
+        return []
+    if not target.lower().startswith(("http://", "https://")):
+        target = "https://" + target
+    if not _is_public_http_host(target):
+        warnings.append("Reference site skipped: not a public http(s) host")
+        return []
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        warnings.append("Reference site skipped: screenshot engine unavailable")
+        return []
+    png: Optional[bytes] = None
+    try:
+        async with async_playwright() as pw:
+            # Full Chromium (new headless), not the headless shell: sites that
+            # fingerprint the shell answer with "browser not supported" banners.
+            # The shell is the fallback where only it is installed.
+            try:
+                browser = await pw.chromium.launch(headless=True, channel="chromium", args=["--disable-dev-shm-usage"])
+            except Exception:  # noqa: BLE001
+                browser = await pw.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
+            try:
+                context = await browser.new_context(viewport=_REFERENCE_VIEWPORT, user_agent=_REFERENCE_UA, locale="en-US")
+                await context.add_init_script(_REFERENCE_INIT_SCRIPT)
+                page = await context.new_page()
+                try:
+                    await page.goto(target, wait_until="domcontentloaded", timeout=_REFERENCE_NAV_TIMEOUT_MS)
+                except Exception as e:  # noqa: BLE001 — partial DOM still screenshots
+                    logger.info("[page-builder] reference nav timed out, capturing anyway: %s", e)
+                # SPA-aware readiness. domcontentloaded fires while a React/Vue
+                # site is still a loading bar (the7cs.co.in captured as a 5 KB
+                # blank), so wait — briefly — for the network to quieten, then
+                # until the document stops growing.
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=_REFERENCE_IDLE_TIMEOUT_MS)
+                except Exception:  # noqa: BLE001 — ad/analytics-heavy sites never go idle
+                    pass
+                await _wait_for_reference_to_settle(page)
+                await _dismiss_consent_banner(page)
+                # Scroll through so IntersectionObserver-gated sections mount,
+                # then return to the top so the fold is the first tile.
+                try:
+                    await page.evaluate(
+                        """async () => {
+                            const step = 700; const max = Math.min(document.body.scrollHeight, 12000);
+                            for (let y = 0; y < max; y += step) { window.scrollTo(0, y); await new Promise(r => setTimeout(r, 120)); }
+                            window.scrollTo(0, 0);
+                        }"""
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+                await page.wait_for_timeout(_REFERENCE_SETTLE_MS)
+                png = await page.screenshot(full_page=True, type="png")
+            finally:
+                await browser.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] reference capture failed for %s: %s", target[:120], e)
+        warnings.append(f"Reference site could not be captured ({type(e).__name__})")
+        return []
+    if not png:
+        warnings.append("Reference site produced no screenshot")
+        return []
+    tiles = _slice_screenshot(png)
+    out: List[str] = []
+    for tile in tiles:
+        payload, ctype = _downscale_for_vision(tile, "image/png")
+        out.append(f"data:{ctype};base64,{base64.b64encode(payload).decode()}")
+    if out:
+        warnings.append(f"Captured the reference site as {len(out)} screenshot tile(s)")
+    return out
+
+
+async def _resolve_inspiration_sources(body: "GeneratePageRequest", warnings: List[str]) -> List[str]:
+    """Admin-uploaded screenshots first (they chose those deliberately), then
+    the captured reference site, within the vision pass's image budget."""
+    urls = [u for u in (body.inspiration_image_urls or []) if isinstance(u, str) and u]
+    if body.reference_url:
+        room = _MAX_INSPIRATION_IMAGES - len(urls)
+        if room <= 0:
+            warnings.append("Reference site skipped: the screenshot budget is already full")
+        else:
+            urls += (await _capture_reference_screenshots(body.reference_url, warnings))[:room]
+    return urls[:_MAX_INSPIRATION_IMAGES]
+
+
 async def _import_site(url: str) -> str:
     """Best-effort fetch of the institute's own site → a compact text corpus
     (title, headings, paragraphs) so the rebuilt page keeps their REAL copy.
@@ -517,20 +707,33 @@ async def _describe_attachments(
         "role": "user",
         "content": (
             "An education-institute admin attached these image(s) to a request to edit their "
-            "website. For EACH image, first classify it as either A) a SCREENSHOT/MOCKUP of a web "
-            "section or page, or B) a PHOTO / logo / graphic meant to be placed on the page.\n"
+            "website. For EACH image, first classify it as A) a SCREENSHOT/MOCKUP of ONE web "
+            "section, B) a PHOTO / logo / graphic meant to be placed on the page, or C) a FULL-PAGE "
+            "DESIGN (a whole landing page mockup, or a TEMPLATE SHEET showing several alternative "
+            "designs side by side).\n"
             "If A: describe the section precisely enough to rebuild it — layout (columns, order), "
             "every piece of visible TEXT verbatim (headings, subheadings, body, badges/chips, "
             "button labels, stats and their labels), and the visual treatment (card style, dark or "
             "light band, icon usage, alignment).\n"
             "If B: one line on what it depicts and where it would fit.\n"
+            "If C: say 'FULL-PAGE DESIGN'. When the sheet shows SEVERAL variants, pick exactly ONE — "
+            "the one labelled recommended/selected/default, otherwise the first — name it, and describe "
+            "ONLY that variant. Then give: (1) PALETTE as hex — if the image carries a colour legend, "
+            "copy its values exactly; primary = the colour of the main BUTTONS/links (never the dark "
+            "header/footer or hero surface — that is a surface colour, report it separately), plus "
+            "the hero band colour, the page background, and any accent; (2) HEADER: nav labels in "
+            "order and the CTA button label; (3) SECTIONS top-to-bottom, one line each: role "
+            "(hero / feature strip / course grid / stats / steps / testimonials / cta / footer), "
+            "layout (split image-right, 4 icon tiles, etc.), whether the band is dark or light, and "
+            "every visible text verbatim (headline, subheading, tile labels, button labels, "
+            "section title and any 'View all' link); (4) FOOTER columns if visible.\n"
             "Be concise but complete. No preamble."
         ),
         "attachments": attachments,
     }]
     try:
         resp = await client.chat_completion(
-            messages, temperature=0.2, max_tokens=1400, institute_id=institute_id, user_id=user_id
+            messages, temperature=0.2, max_tokens=2200, institute_id=institute_id, user_id=user_id
         )
         return _clean_string((resp.get("content") or "").strip())
     except Exception as e:  # noqa: BLE001 — never block the edit on the vision pass
@@ -566,19 +769,32 @@ async def _analyze_inspiration(
     # Inline as data URLs for the same reason the copilot pass does: provider-side
     # fetching of our media URLs is unreliable, and a silently unseen screenshot
     # produces confident nonsense.
-    inlined = await asyncio.gather(*(_inline_image_data_url(u) for u in urls))
+    # A captured reference site arrives already inlined (data: URLs) — only
+    # remote URLs need fetching.
+    async def _as_data_url(u: str) -> tuple[Optional[str], Optional[str]]:
+        if u.startswith("data:image/"):
+            return u, None
+        return await _inline_image_data_url(u)
+
+    inlined = await asyncio.gather(*(_as_data_url(u) for u in urls))
     attachments = [{"type": "image", "url": d} for d, _ in inlined if d] or [
-        {"type": "image", "url": u} for u in urls
+        {"type": "image", "url": u} for u in urls if not u.startswith("data:")
     ]
 
     messages = [{
         "role": "user",
         "content": (
             "These are screenshots of website(s) an education institute wants their new site to look "
-            "like. Reverse-engineer the DESIGN so it can be rebuilt. Return ONLY JSON:\n"
+            "like. Reverse-engineer the DESIGN so it can be rebuilt. Ignore anything that is not part of "
+            "the page's own design: cookie/consent dialogs, 'browser not supported' or announcement "
+            "strips, chat widgets and popups — never list those as sections. Return ONLY JSON:\n"
             "{\n"
+            '  "pickedVariant": "<only when an image is a TEMPLATE SHEET showing several alternative designs: '
+            'the label of the ONE you describe — the variant marked recommended/selected/default, else the '
+            'first; omit for a single design>",\n'
             '  "mood": "<one line: e.g. editorial and calm / bold and high-contrast / warm community>",\n'
-            '  "palette": {"primary": "#rrggbb", "accent": "#rrggbb", "background": "#rrggbb", "ink": "#rrggbb"},\n'
+            '  "palette": {"primary": "#rrggbb", "accent": "#rrggbb", "background": "#rrggbb", "ink": "#rrggbb", '
+            '"surface": "#rrggbb"},\n'
             '  "typography": {"heading": "serif"|"sans"|"display", "body": "serif"|"sans", '
             '"scale": "editorial"|"default"|"compact", "weight": "light"|"regular"|"bold"},\n'
             '  "shape": {"radius": "sharp"|"rounded"|"pill", "density": "airy"|"balanced"|"dense", '
@@ -593,19 +809,30 @@ async def _analyze_inspiration(
             'generous whitespace, tinted card headers>"],\n'
             '  "avoid": ["<treatments that would BREAK this look — e.g. gradients, glassmorphism, drop shadows>"]\n'
             "}\n"
-            "Rules: palette colours MUST be real hex values sampled from the screenshot.\n"
+            "Rules: palette colours MUST be real hex values sampled from the screenshot. If the image "
+            "carries an explicit COLOUR LEGEND / palette strip (swatches with hex codes and roles), copy "
+            "those values exactly and map their roles: 'buttons/headings' → primary, 'icons/highlights' → "
+            "accent, 'background' → background, 'text' → ink, 'header/footer' → surface.\n"
             "  primary = the colour a visitor would name as THIS BRAND'S colour: the most saturated, "
-            "characterful hue, the one carrying decorative shapes, badges, highlights and key buttons. "
+            "characterful hue, the one carrying decorative shapes, badges, highlights and KEY BUTTONS. "
             "Do NOT simply take the nav/link colour — if the links are a muted or near-neutral blue "
             "while the page's character comes from a warmer or brighter hue, the warmer hue is the "
             "primary. (A rebuild that copies the link colour is technically the same blue and looks "
-            "nothing like the original.)\n"
+            "nothing like the original.) A DARK NAVY/BLACK header, hero or footer band is NEVER the "
+            "primary — it is a surface: report it as `surface` and note the dark band in `sections`.\n"
             "  accent = the second most characterful hue.\n"
             "  background = the dominant page surface. Say so precisely when it is an off-white, cream, "
             "or tinted paper rather than pure white — that tint is a deliberate choice and a large part "
             "of how the design feels.\n"
             "  ink = body text.\n"
-            "List `sections` in the order they appear, top to bottom, one entry per visible band. "
+            "  surface = the dark band colour used for the header/hero/footer, if the design has one.\n"
+            "TEMPLATE SHEETS: if an image shows several alternative designs side by side (labelled "
+            "'Template 1', 'Option B', colour variants…), describe exactly ONE — the one marked "
+            "recommended/selected/default, otherwise the first — set `pickedVariant` to its label, and "
+            "ignore the others completely; never blend them.\n"
+            "List `sections` in the order they appear, top to bottom, one entry per visible band, and say "
+            "in `notes` whether the band is dark or light and what it holds (e.g. '4 icon tiles', "
+            "'4 course tiles with a View all link', 'split hero, image right'). "
             "Describe STRUCTURE AND TREATMENT ONLY — do NOT transcribe their headlines, marketing copy, "
             "brand name or logo, and never suggest reusing their images."
         ),
@@ -648,12 +875,15 @@ def _coerce_inspiration_spec(raw: str) -> Dict[str, Any]:
     mood = data.get("mood")
     if isinstance(mood, str) and mood.strip():
         spec["mood"] = _clean_string(mood)[:160]
+    picked = data.get("pickedVariant")
+    if isinstance(picked, str) and picked.strip():
+        spec["pickedVariant"] = _clean_string(picked)[:120]
 
     palette_in = data.get("palette")
     if isinstance(palette_in, dict):
         palette = {
             k: coerce_hex_color(palette_in.get(k))
-            for k in ("primary", "accent", "background", "ink")
+            for k in ("primary", "accent", "background", "ink", "surface")
         }
         palette = {k: v for k, v in palette.items() if v}
         if palette:
@@ -756,6 +986,11 @@ class GeneratePageRequest(BaseModel):
     # The institute's OWN existing website — we extract its real copy so the
     # rebuilt page keeps their actual content ("rebuild my site").
     source_url: Optional[str] = None
+    # SOMEONE ELSE'S website whose LAYOUT the admin wants ("make mine look like
+    # that"). We screenshot it server-side and feed the tiles to the same vision
+    # pass as inspiration_image_urls. Their content is never copied; and with
+    # global_settings pinned, neither are their colours — only the structure.
+    reference_url: Optional[str] = None
     # Compact snapshot of real courses, passed by the admin FE so copy and
     # data-bound components reference real offerings (no new cross-service call).
     courses: List[CourseSnapshotItem] = Field(default_factory=list)
@@ -909,13 +1144,91 @@ _VOCAB_HEADER = (
 )
 
 
-def _inspiration_block(inspiration: Any) -> str:
+# Preset brand colours (learner catalogue-themes.css --primary-500), used to
+# derive a dark band surface when a pinned theme names a preset but no hex.
+_PRESET_PRIMARY_HEX = {
+    "default": "#0EA5E9", "ocean": "#0EA5E9", "forest": "#22C55E", "sunset": "#F97316",
+    "midnight": "#7C3AED", "rose": "#E11D48", "violet": "#8B5CF6", "amber": "#F59E0B", "slate": "#283E70",
+}
+
+
+def _derive_dark_surface(theme: Any) -> str:
+    """The dark band colour a pinned theme implies: its brand hue taken down to
+    a deep shade (L≈14%). A navy brand gives a navy band, a forest brand a deep
+    green — so bands the reference paints dark come out dark in THIS site's
+    colour, not the reference's. Falls back to a neutral near-black."""
+    import colorsys
+
+    theme = theme if isinstance(theme, dict) else {}
+    primary = coerce_hex_color(theme.get("primaryColor")) or _PRESET_PRIMARY_HEX.get(str(theme.get("preset") or "").lower())
+    if not primary:
+        return "#111827"
+    r, g, b = (int(primary[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+    h, l, sat = colorsys.rgb_to_hls(r, g, b)
+    rr, gg, bb = colorsys.hls_to_rgb(h, 0.14, min(sat, 0.55))
+    return "#%02X%02X%02X" % (round(rr * 255), round(gg * 255), round(bb * 255))
+
+
+def _hex_distance(a: str, b: str) -> int:
+    """Manhattan distance in RGB between two #rrggbb strings (0 = identical)."""
+    return sum(abs(int(a[i:i + 2], 16) - int(b[i:i + 2], 16)) for i in (1, 3, 5))
+
+
+def _recolour_reference_palette(node: Any, ref_palette: Dict[str, Any], surface: str, _tol: int = 48) -> int:
+    """Theme-locked builds: scrub every colour prop that is (near) a colour
+    sampled from the reference. A dark background becomes the site's own dark
+    surface; anything else is dropped so the theme tokens take over. Near-white
+    is left alone (it is the canvas, not a brand cue). Mutates; returns the
+    number of props touched."""
+    refs = [h for h in (coerce_hex_color(v) for v in (ref_palette or {}).values()) if h]
+    refs = [h for h in refs if not _is_near_white(h)]
+    if not refs:
+        return 0
+    touched = 0
+
+    def visit(obj: Any) -> None:
+        nonlocal touched
+        if isinstance(obj, dict):
+            for key in list(obj.keys()):
+                val = obj[key]
+                if isinstance(val, (dict, list)):
+                    visit(val)
+                    continue
+                if not (isinstance(key, str) and key.lower().endswith("color")):
+                    continue
+                hexv = coerce_hex_color(val)
+                if not hexv or _is_near_white(hexv) or not any(_hex_distance(hexv, r) <= _tol for r in refs):
+                    continue
+                if key.lower().endswith("backgroundcolor") and is_hex_dark(hexv):
+                    obj[key] = surface
+                else:
+                    del obj[key]
+                touched += 1
+        elif isinstance(obj, list):
+            for item in obj:
+                visit(item)
+
+    visit(node)
+    return touched
+
+
+def _is_near_white(hexv: str) -> bool:
+    r, g, b = (int(hexv[i:i + 2], 16) for i in (1, 3, 5))
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.93
+
+
+def _inspiration_block(inspiration: Any, theme_locked: bool = False, locked_surface: Optional[str] = None) -> str:
     """Render the reverse-engineered reference design as a STRUCTURAL constraint.
 
     The old version pasted mood adjectives under a heading that said "direction
     ONLY", which the model reasonably read as "ignore the layout". The spec is
     now the page's plan: its section list becomes the section list, its palette
-    becomes theme.primaryColor, its typography becomes the font pairing."""
+    becomes theme.primaryColor, its typography becomes the font pairing.
+
+    theme_locked ("make mine look like THAT site, but in MY colours"): the
+    site already has a theme, so every colour and font line is replaced by an
+    explicit instruction to take structure only — the reference's palette must
+    not leak into the page through any prop."""
     if isinstance(inspiration, str):
         text = inspiration.strip()
         return (
@@ -925,8 +1238,13 @@ def _inspiration_block(inspiration: Any) -> str:
     if not isinstance(inspiration, dict) or not inspiration:
         return ""
 
+    if theme_locked:
+        # Strip the sampled colours from what the model sees: a hex in the
+        # spec is a hex it will reach for, whatever the prose says.
+        inspiration = {k: v for k, v in inspiration.items() if k not in ("palette", "typography")}
     lines = [
-        "## REFERENCE DESIGN — MATCH THIS",
+        "## REFERENCE DESIGN — MATCH THIS" if not theme_locked else
+        "## REFERENCE LAYOUT — MATCH ITS STRUCTURE (colours and fonts come from the FIXED SITE THEME below)",
         "The admin gave screenshots of the site they want theirs to look like; a vision pass "
         "reverse-engineered it into the spec below. Treat it as the PLAN for this page, not as vague "
         "inspiration — a visitor should recognise the same design language. The one thing you must NOT "
@@ -935,9 +1253,40 @@ def _inspiration_block(inspiration: Any) -> str:
         json.dumps(inspiration, ensure_ascii=False),
         "HOW TO APPLY IT:",
     ]
+    if inspiration.get("pickedVariant"):
+        lines.append(
+            f"- VARIANT: the reference was a template sheet; build \"{inspiration['pickedVariant']}\" and "
+            "nothing from the other variants."
+        )
     palette = inspiration.get("palette") if isinstance(inspiration.get("palette"), dict) else {}
     primary = palette.get("primary")
-    if primary:
+    surface = palette.get("surface")
+    if theme_locked:
+        band = locked_surface or "#111827"
+        lines.append(
+            "- COLOURS: this site already has a theme. Do NOT set globalSettings.theme.primaryColor, do NOT "
+            "set page.backgroundColor, and do NOT paint any section, card, chip or button with a colour "
+            "taken from the reference — buttons and links pick up the theme's brand colour by themselves. "
+            "Section tints, if the layout alternates them, are the theme's own light tints."
+        )
+        lines.append(
+            f"- DARK BANDS: where the reference paints a band dark (header, hero, CTA, footer), paint it "
+            f"with props.backgroundColor \"{band}\" — this site's own dark surface, derived from its brand "
+            "colour (the renderer switches the band's ink to light). Never the reference's surface colour."
+        )
+        lines.append(
+            "- TYPE: keep the theme's fonts. Copy only the reference's SCALE — an oversized hero headline, "
+            "a small tracked eyebrow, tight card titles — via headingScale and the components' own props."
+        )
+    if surface and not theme_locked:
+        lines.append(
+            f"- DARK BANDS: the reference's header/hero/footer surface is \"{surface}\". Paint those bands "
+            f"with props.backgroundColor \"{surface}\" (the renderer switches their ink to light) — this "
+            "is a SURFACE, never theme.primaryColor."
+        )
+    if theme_locked:
+        pass
+    elif primary:
         lines.append(
             f"- BRAND COLOUR: set globalSettings.theme.primaryColor to \"{primary}\" (the reference's own "
             "brand colour) and choose the preset whose family sits closest to it. This is the single "
@@ -949,6 +1298,8 @@ def _inspiration_block(inspiration: Any) -> str:
             "set theme.primaryColor only if the institute's own brand colour is known."
         )
     background = palette.get("background")
+    if theme_locked:
+        background = None
     if background and background.lower() not in ("#ffffff", "#fefefe"):
         lines.append(
             f"- CANVAS: the reference does NOT sit on white — its page surface is \"{background}\". Set "
@@ -956,19 +1307,19 @@ def _inspiration_block(inspiration: Any) -> str:
             "loses most of its warmth even when every other choice is right, and alternating section "
             "tints should be picked to sit on THAT surface, not on white."
         )
-    if palette.get("ink"):
+    if palette.get("ink") and not theme_locked:
         lines.append(
             f"- INK: body and heading text in the reference reads as \"{palette['ink']}\". Where you set a "
             "textColor explicitly, stay close to it, and keep every text/background pair you author at a "
             "contrast ratio of at least 4.5:1."
         )
-    if palette.get("accent"):
+    if palette.get("accent") and not theme_locked:
         lines.append(
             f"- SECONDARY: \"{palette['accent']}\" is the reference's second colour — use it for ornaments, "
             "chips or a single contrasting band rather than as the brand colour."
         )
     typo = inspiration.get("typography") if isinstance(inspiration.get("typography"), dict) else {}
-    if typo:
+    if typo and not theme_locked:
         head = typo.get("heading")
         want = (
             "a SERIF display face (Playfair Display / Fraunces / DM Serif Display)" if head == "serif"
@@ -1001,7 +1352,9 @@ def _inspiration_block(inspiration: Any) -> str:
             "htmlBlock, gallery→imageGallery, team→teamSection, pricing→pricingTable, contact→contactForm "
             "or leadForm). Honour each entry's `layout`. Drop a section only when this institute has no "
             "content for it, and add one only when the brief needs it — do not silently fall back to the "
-            "default landing-page rhythm."
+            "default landing-page rhythm. PEOPLE ARE NEVER INVENTED: a testimonials/team/logos band is "
+            "built only from names, quotes and partners that appear in the brief or the imported site; "
+            "if there are none, OMIT that band (it will be removed anyway)."
         )
     moves = inspiration.get("signatureMoves") if isinstance(inspiration.get("signatureMoves"), list) else []
     if moves:
@@ -1424,7 +1777,11 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
             "structure, do NOT invent different facts)\n" + site_corpus
         )
     if inspiration:
-        parts.append(_inspiration_block(inspiration))
+        parts.append(_inspiration_block(
+            inspiration,
+            theme_locked=bool(fixed_global),
+            locked_surface=_derive_dark_surface((fixed_global or {}).get("theme")) if fixed_global else None,
+        ))
     if req.direction:
         parts.append(f"## DESIGN DIRECTION\n{req.direction}")
 
@@ -1562,6 +1919,170 @@ def clean_urls(node: Any, allowed_urls: set, warnings: List[str]) -> Any:
     return node
 
 
+# The learner renderer's icon set (FEATURE_ICON_MAP in JsonRenderer.tsx —
+# Phosphor names). featureGrid reads features[].iconName and draws nothing for
+# any other name, silently. (stepsProcess reads steps[].icon instead, and that
+# key is dual-purpose — a library name OR a raw emoji — so it is left alone.)
+# The composer is told this list, but the copilot's edit prompt was not, and a
+# model that has seen more Lucide than Phosphor reaches for "MessageSquare",
+# "Users", "Monitor", "Award" — a whole feature strip then ships iconless
+# (field case: Smart AI Academy, 2026-09-14). Normalise instead of trusting.
+_FEATURE_ICONS = {
+    "GraduationCap", "Rocket", "Target", "UsersThree", "Code", "Brain", "Trophy", "Lightbulb",
+    "ShieldCheck", "ChartLineUp", "Clock", "Star", "BookOpen", "Certificate", "ChatsCircle",
+    "Wrench", "Sparkle", "Medal", "Briefcase", "Globe",
+}
+_FEATURE_ICON_ALIASES = {
+    # Lucide / Heroicons / Font Awesome / Material names the models emit most
+    "messagesquare": "ChatsCircle", "messagecircle": "ChatsCircle", "message": "ChatsCircle",
+    "chat": "ChatsCircle", "chatbubble": "ChatsCircle", "comments": "ChatsCircle", "bot": "ChatsCircle",
+    "users": "UsersThree", "user": "UsersThree", "usercog": "UsersThree", "usercheck": "UsersThree",
+    "group": "UsersThree", "people": "UsersThree", "team": "UsersThree", "usergroup": "UsersThree",
+    "monitor": "Globe", "laptop": "Code", "desktop": "Globe", "computer": "Code", "video": "Globe",
+    "award": "Medal", "badge": "Medal", "badgecheck": "Certificate", "ribbon": "Medal",
+    "certificate": "Certificate", "scroll": "Certificate", "filecheck": "Certificate", "diploma": "Certificate",
+    "book": "BookOpen", "bookmarked": "BookOpen", "library": "BookOpen", "notebook": "BookOpen",
+    "graduation": "GraduationCap", "school": "GraduationCap", "academiccap": "GraduationCap",
+    "cap": "GraduationCap", "mortarboard": "GraduationCap",
+    "zap": "Lightbulb", "bolt": "Lightbulb", "idea": "Lightbulb", "bulb": "Lightbulb", "flash": "Lightbulb",
+    "sparkles": "Sparkle", "wand": "Sparkle", "magic": "Sparkle", "stars": "Sparkle",
+    "cpu": "Brain", "chip": "Brain", "brain": "Brain", "robot": "Brain", "ai": "Brain", "network": "Brain",
+    "shield": "ShieldCheck", "lock": "ShieldCheck", "security": "ShieldCheck", "check": "ShieldCheck",
+    "checkcircle": "ShieldCheck", "circlecheck": "ShieldCheck",
+    "trendingup": "ChartLineUp", "chart": "ChartLineUp", "barchart": "ChartLineUp", "linechart": "ChartLineUp",
+    "growth": "ChartLineUp", "analytics": "ChartLineUp", "presentation": "ChartLineUp",
+    "clock": "Clock", "timer": "Clock", "calendar": "Clock", "schedule": "Clock", "hourglass": "Clock",
+    "settings": "Wrench", "tool": "Wrench", "tools": "Wrench", "cog": "Wrench", "gear": "Wrench",
+    "hammer": "Wrench", "build": "Wrench",
+    "briefcase": "Briefcase", "work": "Briefcase", "business": "Briefcase", "building": "Briefcase",
+    "globe": "Globe", "world": "Globe", "earth": "Globe", "language": "Globe", "wifi": "Globe",
+    "rocket": "Rocket", "launch": "Rocket", "trending": "Rocket",
+    "target": "Target", "crosshair": "Target", "goal": "Target", "focus": "Target",
+    "trophy": "Trophy", "cup": "Trophy", "winner": "Trophy",
+    "star": "Star", "favorite": "Star", "heart": "Star",
+    "code": "Code", "terminal": "Code", "braces": "Code", "coding": "Code",
+    "facebook": "Globe", "instagram": "Globe", "twitter": "Globe", "linkedin": "Globe", "youtube": "Globe",
+    "tiktok": "Globe", "whatsapp": "ChatsCircle", "phone": "ChatsCircle", "mail": "ChatsCircle",
+    "email": "ChatsCircle", "envelope": "ChatsCircle", "handshake": "UsersThree", "partner": "UsersThree",
+}
+# When the name gives nothing away, the card's own title usually does.
+_FEATURE_ICON_KEYWORDS = (
+    (("certif", "diploma", "credential"), "Certificate"),
+    (("teach", "mentor", "expert", "guid", "instructor", "faculty", "coach", "community"), "UsersThree"),
+    (("chat", "gpt", "conversation", "support", "assistant"), "ChatsCircle"),
+    (("prompt", "code", "coding", "develop", "program", "engineer"), "Code"),
+    (("ai", "brain", "intellig", "machine learning", "neural"), "Brain"),
+    (("class", "online", "flexible", "anytime", "pace", "schedule", "time", "hour"), "Clock"),
+    (("practic", "hands-on", "project", "workshop", "tool"), "Wrench"),
+    (("career", "job", "business", "professional", "work"), "Briefcase"),
+    (("grow", "result", "analytic", "data", "progress", "outcome"), "ChartLineUp"),
+    (("secur", "safe", "trust", "responsib", "ethic", "privacy"), "ShieldCheck"),
+    (("student", "learn", "course", "lesson", "study", "curriculum"), "BookOpen"),
+    (("global", "world", "internation", "language", "remote"), "Globe"),
+    (("idea", "innov", "creat", "insight"), "Lightbulb"),
+    (("award", "medal", "recogni", "achieve"), "Medal"),
+    (("win", "top", "rank", "champion", "success"), "Trophy"),
+    (("launch", "start", "fast", "accelerat", "boost"), "Rocket"),
+    (("goal", "target", "focus", "exam", "mission"), "Target"),
+    (("new", "featured", "premium", "special", "magic"), "Sparkle"),
+    (("rating", "review", "quality", "favourite", "favorite"), "Star"),
+    (("school", "academy", "degree", "graduat", "universit", "educat"), "GraduationCap"),
+)
+
+
+def normalize_icon_name(name: Any, title: Any = "") -> Optional[str]:
+    """Map a model-supplied iconName onto the renderer's icon set.
+
+    Exact (case-insensitive) library names pass through; known aliases from
+    other icon libraries are translated; otherwise the card's title picks a
+    fitting icon by keyword; None when nothing fits (the caller drops the key,
+    which renders no icon — honest, and the same thing an unknown name did)."""
+    raw = str(name or "").strip()
+    if raw:
+        for lib in _FEATURE_ICONS:
+            if lib.lower() == raw.lower():
+                return lib
+        key = re.sub(r"[^a-z]", "", raw.lower())
+        for prefix in ("lucide", "phosphor", "heroicons", "heroicon", "mdi"):
+            if key.startswith(prefix) and key[len(prefix):]:
+                key = key[len(prefix):]
+        for suffix in ("icon", "outline", "solid", "fill", "duotone", "bold", "regular", "light", "thin", "rounded"):
+            if key.endswith(suffix) and key[: -len(suffix)]:
+                key = key[: -len(suffix)]
+        if key in _FEATURE_ICON_ALIASES:
+            return _FEATURE_ICON_ALIASES[key]
+        if len(key) >= 4:
+            for alias, lib in _FEATURE_ICON_ALIASES.items():
+                if len(alias) >= 4 and (alias in key or key in alias):
+                    return lib
+    # Title keywords match at a word start only: a bare substring made "ai"
+    # claim "Training" and "art" claim "Smart".
+    hay = f"{raw} {title or ''}".lower()
+    for needles, lib in _FEATURE_ICON_KEYWORDS:
+        if any(re.search(r"\b" + re.escape(n), hay) for n in needles):
+            return lib
+    return None
+
+
+def _normalize_icon_names(ctype: str, props: Dict[str, Any], warnings: List[str]) -> None:
+    """Rewrite featureGrid.features[].iconName in place — the one key the
+    renderer resolves ONLY through the icon library."""
+    key = {"featureGrid": "features"}.get(ctype)
+    if not key or not isinstance(props.get(key), list):
+        return
+    fixed: List[str] = []
+    for item in props[key]:
+        if not isinstance(item, dict) or not item.get("iconName"):
+            continue
+        original = str(item["iconName"])
+        resolved = normalize_icon_name(original, item.get("title"))
+        if resolved == original:
+            continue
+        if resolved is None:
+            item.pop("iconName", None)
+        else:
+            item["iconName"] = resolved
+        fixed.append(f"{original}→{resolved or 'none'}")
+    if fixed:
+        warnings.append(f"Mapped {ctype} icon names onto the icon library: " + ", ".join(fixed[:8]))
+
+
+def is_hex_dark(hex_color: Any) -> bool:
+    """Mirror of the learner renderer's isHexDark (Rec. 601 luminance < 0.55)."""
+    value = coerce_hex_color(hex_color)
+    if not value:
+        return False
+    r, g, b = (int(value[i:i + 2], 16) for i in (1, 3, 5))
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55
+
+
+def _apply_dark_band(ctype: str, props: Dict[str, Any], style: Optional[Dict[str, Any]], warnings: List[str]) -> Optional[Dict[str, Any]]:
+    """A hero on a dark author colour must flip its ink to light.
+
+    heroSection paints its title/description with theme TOKEN classes, which a
+    props.textColor does not override — so a navy hero with textColor #FFFFFF
+    still renders navy-on-navy (field case: Smart AI Academy copilot build).
+    The renderer flips tokens for any wrapper carrying the `dark` class, so
+    mark the band. sectionHeading additionally needs its colour mirrored onto
+    style.backgroundColor or a 56px seam of page colour shows above it."""
+    bg = props.get("backgroundColor")
+    if ctype not in ("heroSection", "sectionHeading") or not isinstance(bg, str) or not coerce_hex_color(bg):
+        return style
+    style = dict(style) if isinstance(style, dict) else {}
+    if not any(style.get(k) for k in ("backgroundColor", "background", "backgroundImage", "backgroundLayers")):
+        style["backgroundColor"] = bg
+    has_bg_image = bool(props.get("backgroundImage")) or any(
+        style.get(k) for k in ("backgroundImage", "backgroundLayers")
+    )
+    if ctype == "heroSection" and is_hex_dark(bg) and not has_bg_image:
+        classes = [c for c in str(style.get("customClass") or "").split() if c]
+        if "dark" not in classes:
+            classes.append("dark")
+            style["customClass"] = " ".join(classes)
+            warnings.append("Marked the dark hero band 'dark' so its headline renders in light ink")
+    return style
+
+
 def sanitize_component(
     comp: Any, allowed_types: set, allow_chrome: bool, seen_ids: set, allowed_urls: set, warnings: List[str]
 ) -> Optional[Dict[str, Any]]:
@@ -1617,14 +2138,41 @@ def sanitize_component(
             if isinstance(slot, list) else []
             for slot in slots
         ]
+    _normalize_icon_names(ctype, cleaned_props, warnings)
+    # The editor template offers hero left.subheading and its preview shows
+    # it, but the LEARNER never renders it — so a model that puts the tagline
+    # there (as the copilot did) ships a hero with no copy under the title.
+    # Fold it into description, the field the live page reads, when that is
+    # empty; when both exist the subheading stays (harmless, preview-only).
+    if ctype == "heroSection":
+        left = cleaned_props.get("left")
+        if isinstance(left, dict):
+            sub = left.get("subheading")
+            desc = left.get("description")
+            if isinstance(sub, str) and sub.strip() and not (isinstance(desc, str) and desc.strip()):
+                left["description"] = sub.strip()  # already cleaned by clean_urls; plain text like every AI-written description
+                left.pop("subheading", None)
+                warnings.append("Moved the hero subheading into description (the live hero renders description, not subheading)")
     cleaned: Dict[str, Any] = {
         "id": cid,
         "type": ctype,
         "enabled": True,
         "props": cleaned_props,
     }
+    # anchorId is a COMPONENT field (the wrapper renders it as the DOM id);
+    # models keep filing it under props, where nothing reads it — so a hero
+    # button targeting '#courses' scrolled nowhere. Hoist it.
+    props_anchor = cleaned_props.pop("anchorId", None)
+    anchor = comp.get("anchorId") or props_anchor
+    if isinstance(anchor, str) and anchor.strip():
+        slug = _anchor_slug(anchor)
+        if slug:
+            cleaned["anchorId"] = slug
     if isinstance(comp.get("style"), dict) and comp["style"]:
         cleaned["style"] = clean_urls(comp["style"], allowed_urls, warnings)
+    dark_style = _apply_dark_band(ctype, cleaned_props, cleaned.get("style"), warnings)
+    if dark_style:
+        cleaned["style"] = dark_style
     # Surface color belongs on the STYLE layer when a section shell is used:
     # props.backgroundColor only paints the inner content column, so a shell
     # section would render as an inset card with page-color gutters. Copy it
@@ -1899,6 +2447,91 @@ async def _repair_page(
     return _apply_ops_to_page(page, ops), warnings, usage or {}
 
 
+_ANCHOR_ROLE_HINTS = {
+    # '#target' → words that identify the section it means, by id/title/type
+    "courses": ("course", "program", "catalog", "catalogue", "offering"),
+    "programs": ("program", "course", "catalog", "catalogue"),
+    "features": ("feature", "offer", "why", "benefit"),
+    "about": ("about", "story", "mission"),
+    "contact": ("contact", "enquir", "inquir", "lead", "form"),
+    "pricing": ("pricing", "plan", "fee"),
+    "faq": ("faq", "question"),
+    "testimonials": ("testimonial", "review", "stories"),
+    "team": ("team", "faculty", "mentor"),
+    "gallery": ("gallery", "photo"),
+}
+
+
+def _anchor_slug(value: Any) -> str:
+    """One spelling for anchors and the '#targets' that point at them. The
+    learner scrolls with document.getElementById (case-sensitive), so both
+    sides must be slugged the same way."""
+    return _SLUG_RE.sub("-", str(value or "").strip().lstrip("#").lower()).strip("-")
+
+
+def resolve_dead_anchors(components: List[Dict[str, Any]], warnings: List[str], stampable: Optional[List[Dict[str, Any]]] = None) -> None:
+    """Give every '#target' button a section to land on.
+
+    The composer writes hero CTAs like {"target": "#courses"} and then never
+    sets anchorId "courses" on anything, so the page's main button scrolls
+    nowhere (a long-standing field bug — see the 7Cs home page). Rather than
+    trusting the model to close that loop, pick the section it evidently
+    meant: an exact id match, then an id/title containing the target word,
+    then a component whose id/title/type matches the target's role hints —
+    and stamp the anchor on it. Existing anchors are never moved. Mutates.
+    `stampable` limits which components may receive an anchor (the copilot
+    can only stamp the sections it is inserting)."""
+    if not components:
+        return
+    anchors = {c.get("anchorId") for c in components if c.get("anchorId")}
+    targets: List[str] = []
+
+    def take(btn: Any, key: str) -> None:
+        # Slug the target the way anchorId is slugged, and write that spelling
+        # back so '#Courses' / '#Top Courses' land on 'courses' / 'top-courses'.
+        if not isinstance(btn, dict):
+            return
+        t = str(btn.get(key) or "").strip()
+        if not (t.startswith("#") and len(t) > 1):
+            return
+        slug = _anchor_slug(t)
+        if not slug:
+            return
+        if t != f"#{slug}":
+            btn[key] = f"#{slug}"
+        targets.append(slug)
+
+    for c in components:
+        left = (c.get("props") or {}).get("left") or {}
+        for b in list(left.get("buttons") or []) + ([left["button"]] if isinstance(left.get("button"), dict) else []):
+            take(b, "target")
+        if c.get("type") in ("ctaBanner", "buttonBlock"):
+            btn = (c.get("props") or {}).get("button")
+            take(btn, "target" if isinstance(btn, dict) and btn.get("target") else "url")
+    for target in dict.fromkeys(targets):
+        if target in anchors:
+            continue
+
+        def text_of(c: Dict[str, Any]) -> str:
+            p = c.get("props") or {}
+            return " ".join(str(x) for x in (c.get("id"), c.get("type"), p.get("title"), p.get("headerText"), p.get("eyebrow"), p.get("heading")) if x).lower()
+
+        pool = stampable if stampable is not None else components
+        candidates = [c for c in pool if c.get("type") != "heroSection" and not c.get("anchorId")]
+        pick = next((c for c in candidates if str(c.get("id", "")).lower() == target), None)
+        if pick is None:
+            pick = next((c for c in candidates if target in text_of(c)), None)
+        if pick is None:
+            hints = _ANCHOR_ROLE_HINTS.get(target, ())
+            pick = next((c for c in candidates if any(h in text_of(c) for h in hints)), None)
+        if pick is None:
+            warnings.append(f"Button target '#{target}' has no matching section on the page")
+            continue
+        pick["anchorId"] = target
+        anchors.add(target)
+        warnings.append(f"Pointed '#{target}' at section '{pick.get('id')}'")
+
+
 def _sanitize_page(
     raw_json: str, req: GeneratePageRequest, catalog: Dict[str, Any], extra_allowed: Optional[set] = None
 ) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str]]:
@@ -1935,6 +2568,7 @@ def _sanitize_page(
 
     if len(components) < 2:
         raise HTTPException(status_code=502, detail="Generation produced too few usable sections — please retry.")
+    resolve_dead_anchors(components, warnings)
 
     slug_source = req.route_slug or page.get("route") or req.page_type or "ai-page"
     route = _SLUG_RE.sub("-", str(slug_source).lower()).strip("-") or "ai-page"
@@ -1972,6 +2606,66 @@ async def estimate_page_generation(
     return preflight_tool_credits(db, tool_key=_TOOL_KEY, tool_params={}, institute_id=institute_id)
 
 
+_PEOPLE_SECTIONS = {"testimonialSection": "testimonials", "teamSection": "members"}
+
+
+# Role words the composer uses AS names when it has none ("Founder",
+# "Team Member", "Student"). They match ordinary prose, so they never count.
+_NAME_STOPWORDS = {
+    "founder", "cofounder", "team", "member", "student", "students", "teacher", "parent", "learner",
+    "director", "ceo", "cto", "head", "principal", "admin", "staff", "user", "customer", "client",
+    "name", "your", "our", "the", "and", "mentor", "trainer", "instructor", "professional", "alumni",
+}
+
+
+def _name_tokens(name: Any) -> List[str]:
+    """Significant words of a person's name ("Aditi R." → ["aditi"]); role
+    words are not names."""
+    return [w for w in re.findall(r"[^\W\d_]{3,}", str(name or "").lower()) if w not in _NAME_STOPWORDS]
+
+
+def strip_fabricated_people(page: Dict[str, Any], evidence: str, warnings: List[str]) -> int:
+    """Drop testimonials and team members whose names appear nowhere in what
+    the admin actually gave us (brief, imported site, institute name).
+
+    The doctrine says never invent a detail; a reference site with a quotes
+    band still makes the composer write "Aditi R., Student — 'I went from…'"
+    (the7cs reference, 2026-09-15). A fabricated review on a live school site
+    is a trust problem, not a design one, so this is enforced, not requested.
+    A section left empty is removed. Returns the number of entries dropped."""
+    if not isinstance(page, dict):
+        return 0
+    corpus = " " + re.sub(r"\s+", " ", str(evidence or "").lower()) + " "
+    dropped = 0
+    kept: List[Dict[str, Any]] = []
+    for comp in page.get("components") or []:
+        key = _PEOPLE_SECTIONS.get(str((comp or {}).get("type") or ""))
+        props = (comp or {}).get("props") if isinstance(comp, dict) else None
+        if not key or not isinstance(props, dict) or not isinstance(props.get(key), list):
+            kept.append(comp)
+            continue
+        real = []
+        for entry in props[key]:
+            tokens = _name_tokens((entry or {}).get("name")) if isinstance(entry, dict) else []
+            # A name is "given" when one of its words occurs in the evidence.
+            if tokens and any(f" {t}" in corpus for t in tokens):
+                real.append(entry)
+            else:
+                dropped += 1
+        props[key] = real
+        if real:
+            kept.append(comp)
+        else:
+            warnings.append(
+                f"Removed the '{comp.get('type')}' section: its {key} were not in your brief. "
+                "Add real ones in the editor if you have them — nothing is invented."
+            )
+    page["components"] = kept
+    if dropped:
+        warnings.append(f"Dropped {dropped} invented name(s) from testimonials/team")
+    return dropped
+
+
 async def _compose_one_page(
     body: GeneratePageRequest, catalog: Dict[str, Any], db, institute_id: str, actor_user_id: Optional[str],
     fixed_global: Optional[Dict[str, Any]] = None,
@@ -1984,11 +2678,12 @@ async def _compose_one_page(
     # A caller composing several pages analyses the screenshots once and passes
     # the spec in — the vision pass is the same for every page of a site.
     inspiration = dict(inspiration or {})
-    if not inspiration and body.inspiration_image_urls:
+    pre_warnings: List[str] = []
+    if not inspiration and (body.inspiration_image_urls or body.reference_url):
         try:
-            inspiration = await _analyze_inspiration(
-                body.inspiration_image_urls, db, institute_id, actor_user_id
-            )
+            sources = await _resolve_inspiration_sources(body, pre_warnings)
+            if sources:
+                inspiration = await _analyze_inspiration(sources, db, institute_id, actor_user_id)
         except Exception as e:  # noqa: BLE001
             logger.warning("[page-builder] inspiration analysis skipped: %s", e)
 
@@ -2023,6 +2718,7 @@ async def _compose_one_page(
             logger.warning("[page-builder] auto-image pass skipped: %s", e)
 
     page, global_settings, warnings = _sanitize_page(raw_json, body, catalog, extra_allowed=generated_urls)
+    warnings[:0] = pre_warnings
     # Backstop for the reference colour: if we sampled a real accent hex from the
     # admin's screenshots and the model still returned a bare preset, apply it.
     # Matching the reference's colour is the cue people judge first, and it is
@@ -2030,6 +2726,19 @@ async def _compose_one_page(
     # remembering one line of the prompt.
     ref_palette = (inspiration.get("palette") or {}) if inspiration else {}
     ref_primary = coerce_hex_color(ref_palette.get("primary"))
+    if fixed_global is not None:
+        # Theme locked: the reference contributes LAYOUT only. Neither backstop
+        # may run, and any reference hex the model still painted is remapped.
+        ref_primary = None
+        ref_palette_locked, ref_palette = ref_palette, {}
+        moved = _recolour_reference_palette(page, ref_palette_locked, _derive_dark_surface(fixed_global.get("theme")))
+        if moved:
+            warnings.append(f"Kept the site's own theme: remapped {moved} reference colour(s) the composer had painted")
+    strip_fabricated_people(
+        page,
+        " ".join(filter(None, [body.brief, site_corpus, body.institute_name, *(i.caption or "" for i in body.images)])),
+        warnings,
+    )
     if ref_primary and isinstance(global_settings, dict):
         theme = global_settings.get("theme")
         if isinstance(theme, dict) and not theme.get("primaryColor"):
@@ -2065,7 +2774,7 @@ async def _compose_one_page(
             )
             # Did it actually adopt the reference? Until now nothing asked, so
             # the only detector was the admin looking at the published page.
-            issues += audit_reference_fidelity(page, global_settings, inspiration)
+            issues += audit_reference_fidelity(page, global_settings, inspiration, theme_locked=fixed_global is not None)
             fixable = [i for i in issues if i["severity"] == "fix"]
             if fixable:
                 logger.info("[page-builder] self-check found %d defect(s): %s",
@@ -2081,7 +2790,7 @@ async def _compose_one_page(
                     page_type=body.page_type or "homepage",
                     info_only=_is_info_only(body.brief),
                     inspiration=inspiration or None,
-                ) + audit_reference_fidelity(page, global_settings, inspiration)
+                ) + audit_reference_fidelity(page, global_settings, inspiration, theme_locked=fixed_global is not None)
             warnings.extend(f"{i['message']} {i['hint']}" for i in issues)
         except Exception as e:  # noqa: BLE001 — a page with defects beats no page
             logger.warning("[page-builder] self-check skipped: %s", e)
@@ -2222,11 +2931,48 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment
               "place it using its URL from PROVIDED IMAGES.\n"
               "MAPPING HINTS for a transcribed card grid: a small category label above each card title "
               "is the card's `chips` (do NOT drop it — it is what makes the grid scannable); a per-card "
-              "link like 'View details' is the card's `link` {text,url}; leave `icon`/`iconName` UNSET "
-              "when the reference shows no icon (an unset icon renders nothing, which is correct — do "
-              "not substitute a decorative emoji); a tinted header band above each card's body means "
-              "featureGrid style 'panel' with headerVariant."
+              "link like 'View details' is the card's `link` {text,url}; when the reference shows an "
+              "icon or pictogram on a tile (most icon strips and course/category tiles do), set "
+              "`iconName` from the ICON LIBRARY — an iconless tile next to iconed ones looks unfinished; "
+              "leave `icon`/`iconName` UNSET only when the reference clearly shows text-only cards (an "
+              "unset icon renders nothing — never substitute a decorative emoji); a tinted header band "
+              "above each card's body means featureGrid style 'panel' with headerVariant.\n"
+              "IF IT IS A FULL-PAGE DESIGN (or the admin asks to make the page 'like this'): REBUILD "
+              "THE WHOLE PAGE from it — this is the one case where a large ops list is right. "
+              "(a) `remove` every placeholder/template component already on the page that the design "
+              "does not have. (b) Emit one `insert` per section IN TOP-TO-BOTTOM ORDER; the first with "
+              "afterId null, every following one with afterId = the id of the section you inserted "
+              "just before it (a new id is a valid anchor). (c) Map sections onto the vocabulary: hero → "
+              "heroSection layout 'split' (right.image \"gen:…\" when the design shows art) with the "
+              "design's headline, subheading and both button labels; an icon strip → featureGrid "
+              "columns 4 style 'cards' with a one-line description per tile (never leave description "
+              "empty); a 'Popular Courses / View All' band → a sectionHeading (eyebrow = the band's "
+              "label, anchorId 'courses') followed by a featureGrid style 'tinted' whose tiles carry "
+              "the course names with a short description and a `link` {text:'View course', url:…}; "
+              "stats → statsHighlights; steps → stepsProcess; final band → ctaBanner. Every tile that "
+              "shows an icon in the design gets an iconName from the ICON LIBRARY (course tiles "
+              "included). A button whose target does not exist on the page (a 'Watch Intro' with no "
+              "video, a '#section' that is not built) is DROPPED, not left pointing nowhere. A "
+              "full-bleed hero keeps styles.roundedEdges false. The attached screenshot is a "
+              "REFERENCE — never set it as right.image or any other image field; leave the field "
+              "empty (or use \"gen:…\" when IMAGE GENERATION is on). (d) COLOURS: a "
+              "dark hero/footer is a SURFACE — put it in that component's props.backgroundColor "
+              "(the renderer switches the ink to light automatically) and NEVER in theme.primaryColor; "
+              "theme.primaryColor is the BUTTON colour from the design's palette (send it with "
+              "updateGlobalSettings, hex only). Give alternating sections a light tint "
+              "(e.g. #F8FAFC) so the bands read like the design. (e) The site header and footer are "
+              "global chrome edited elsewhere — do not insert header/footer components; in `reply`, "
+              "tell the admin which nav labels and footer columns the design shows so they can set "
+              "them under Site chrome."
         )
+    parts.append(
+        "## ICON LIBRARY\nfeatureGrid features[].iconName accepts ONLY these names (Phosphor): "
+        "GraduationCap, Rocket, Target, UsersThree, Code, Brain, Trophy, Lightbulb, ShieldCheck, ChartLineUp, "
+        "Clock, Star, BookOpen, Certificate, ChatsCircle, Wrench, Sparkle, Medal, Briefcase, Globe. Any other "
+        "name (Lucide/Material names like MessageSquare, Users, Monitor, Award) renders NO icon. Pick the "
+        "closest one from this list. stepsProcess uses steps[].icon (same names, or an emoji) and only when "
+        "nodeStyle is 'icon'."
+    )
     if req.history:
         convo = "\n".join(f"{t.role}: {t.content}" for t in req.history[-6:])
         parts.append("## RECENT CONVERSATION\n" + convo)
@@ -2248,7 +2994,7 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY JSON of this shape (no markdown, no commentary):\n"
         '{"reply": "<one friendly sentence summarizing what you changed>", "ops": [\n'
-        '  {"op": "insert", "component": {"id":"<kebab>","type":"<type>","enabled":true,"props":{…},"style":{…}?}, "afterId": "<existing-id or null to prepend>", "note": "<plain-language>"},\n'
+        '  {"op": "insert", "component": {"id":"<kebab>","type":"<type>","enabled":true,"props":{…},"style":{…}?}, "afterId": "<existing-id, the id of an insert earlier in this list, or null to prepend>", "note": "<plain-language>"},\n'
         '  {"op": "update", "id": "<existing-id>", "propsPatch": {…}?, "stylePatch": {…}?, "note": "<plain-language>"},\n'
         '  {"op": "remove", "id": "<existing-id>", "note": "<plain-language>"},\n'
         '  {"op": "move", "id": "<existing-id>", "afterId": "<existing-id or null>", "note": "<plain-language>"},\n'
@@ -2264,7 +3010,30 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment
     return "\n\n".join(parts)
 
 
-def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], extra_allowed: Optional[set] = None) -> tuple[List[Dict[str, Any]], str, List[str]]:
+def _mockup_urls_from_brief(brief: str, image_urls: List[str]) -> set:
+    """Attachment URLs the vision pass classified as a screenshot / mockup /
+    template sheet (class A or C) rather than a photo/logo (class B). With ONE
+    attachment the classification is unambiguous; with several, the brief
+    does not map lines to URLs, so only an all-mockup brief excludes them.
+    Fails SAFE: anything ambiguous (both kinds of words, no class marker)
+    keeps the images usable — a stripped photo the admin meant to place is
+    worse than a mockup that slips through."""
+    text = (brief or "").strip()
+    if not text or not image_urls:
+        return set()
+    head = text[:160].upper()
+    marker = re.match(r"^\s*(?:IMAGE\s*\d+\s*[:\-]\s*)?[\(\[]?([ABC])[\)\]:.\-]", head)
+    cls = marker.group(1) if marker else None
+    mock_words = ("FULL-PAGE DESIGN", "TEMPLATE SHEET", "SCREENSHOT", "MOCKUP", "MOCK-UP", "WIREFRAME")
+    photo_words = ("PHOTO", "LOGO", "GRAPHIC", "ILLUSTRATION", "PICTURE", "PORTRAIT", "HEADSHOT")
+    is_mockup = cls in ("A", "C") or any(w in head for w in mock_words)
+    is_photo = cls == "B" or any(w in head for w in photo_words)
+    if is_mockup and not is_photo:
+        return set(image_urls)
+    return set()
+
+
+def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], extra_allowed: Optional[set] = None, mockup_urls: Optional[set] = None) -> tuple[List[Dict[str, Any]], str, List[str]]:
     warnings: List[str] = []
     try:
         data = json.loads(raw_json)
@@ -2275,7 +3044,10 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
 
     reply = str(data.get("reply") or "").strip()
     allowed_types = {c["type"] for c in catalog["components"]}
-    allowed_urls = {i.url for i in req.images} | (extra_allowed or set())
+    # A screenshot/mockup the admin attached is a REFERENCE, never page art:
+    # with image generation off the model reached for the only URL it had and
+    # put the whole template sheet in the hero. Keep it out of the allowlist.
+    allowed_urls = ({i.url for i in req.images} - (mockup_urls or set())) | (extra_allowed or set())
     # Ids that exist on the page (top-level + slot children) — ops may only
     # reference these (inserts bring their own new id).
     existing_ids: set = set()
@@ -2295,6 +3067,13 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
 
     clean_ops: List[Dict[str, Any]] = []
     seen_ids = set(existing_ids)
+    # Ids created by earlier inserts in THIS batch. The editor applies ops in
+    # order and `afterId: null` means PREPEND, so a page rebuilt as several
+    # inserts that all say null lands in REVERSE order (hero at the bottom —
+    # field case: Smart AI Academy, 2026-09-14). Two fixes: an insert may now
+    # anchor on an id inserted just before it, and a null afterId following
+    # another insert is read as "continue the sequence", not "start over".
+    inserted_ids: List[str] = []
     for op in data["ops"]:
         if not isinstance(op, dict):
             continue
@@ -2305,9 +3084,12 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
             if comp is None:
                 continue
             after = op.get("afterId")
-            if after is not None and after not in existing_ids:
+            if after is not None and after not in existing_ids and after not in inserted_ids:
                 warnings.append("insert.afterId not on page — appended to end")
                 after = None
+            if after is None and inserted_ids:
+                after = inserted_ids[-1]
+            inserted_ids.append(comp["id"])
             clean_ops.append({"op": "insert", "component": comp, "afterId": after, "note": note})
         elif kind == "update":
             oid = op.get("id")
@@ -2355,7 +3137,7 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
                 warnings.append(f"move skipped — unknown id '{oid}'")
                 continue
             after = op.get("afterId")
-            if after is not None and after not in existing_ids:
+            if after is not None and after not in existing_ids and after not in inserted_ids:
                 after = None
             clean_ops.append({"op": "move", "id": oid, "afterId": after, "note": note})
         elif kind == "updateGlobalSettings":
@@ -2375,6 +3157,15 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
             clean_ops.append({"op": "updateGlobalSettings", "patch": safe, "note": note})
         else:
             warnings.append(f"Dropped unknown op '{kind}'")
+
+    # Anchors can only be stamped on components we are inserting (an update op
+    # patches props/style, not the component's anchorId), so resolve against
+    # the page as it will look with the inserts applied and let the resolver
+    # pick among the new sections; existing sections keep their anchors.
+    inserted = [op["component"] for op in clean_ops if op["op"] == "insert"]
+    if inserted:
+        existing = [c for c in (req.page.get("components") or []) if isinstance(c, dict)]
+        resolve_dead_anchors(existing + inserted, warnings, stampable=inserted)
 
     return clean_ops, reply, warnings
 
@@ -2446,7 +3237,10 @@ async def edit_page(
         except Exception as e:  # noqa: BLE001
             logger.warning("[page-copilot] auto-image pass skipped: %s", e)
 
-    ops, reply, warnings = _sanitize_ops(raw_json, body, catalog, extra_allowed=generated_urls)
+    ops, reply, warnings = _sanitize_ops(
+        raw_json, body, catalog, extra_allowed=generated_urls,
+        mockup_urls=_mockup_urls_from_brief(attachment_brief, [i.url for i in body.images]),
+    )
 
     try:
         record_tool_billing(
@@ -3093,7 +3887,13 @@ class GenerateSiteRequest(BaseModel):
     # every page — a per-page vision pass would cost N times as much for an
     # identical answer, and could hand each page a slightly different palette.
     inspiration_image_urls: List[str] = Field(default_factory=list)
+    # A website whose LAYOUT the whole site should follow — captured once,
+    # shared by every page (see GeneratePageRequest.reference_url).
+    reference_url: Optional[str] = None
     design_language: Optional[str] = None
+    # The site's EXISTING theme (theme/fonts/motion). When set, every page is
+    # composed INTO it and the reference contributes structure only.
+    global_settings: Optional[Dict[str, Any]] = None
 
 
 class SitePageOut(BaseModel):
@@ -3153,13 +3953,18 @@ async def generate_site(
     shared_global: Optional[Dict[str, Any]] = None
     model_used = _DEFAULT_MODEL
 
+    # "Keep my theme" for a whole site: the field was accepted and then never
+    # read, so every multi-page build proposed a fresh theme regardless.
+    if body.global_settings:
+        shared_global = _coerce_global_settings(body.global_settings)
+
     # One vision pass for the whole site, reused by every page below.
     shared_inspiration: Dict[str, Any] = {}
-    if body.inspiration_image_urls:
+    if body.inspiration_image_urls or body.reference_url:
         try:
-            shared_inspiration = await _analyze_inspiration(
-                body.inspiration_image_urls, db, institute_id, actor_user_id
-            )
+            sources = await _resolve_inspiration_sources(body, warnings)
+            if sources:
+                shared_inspiration = await _analyze_inspiration(sources, db, institute_id, actor_user_id)
         except Exception as e:  # noqa: BLE001
             logger.warning("[page-builder] site inspiration analysis skipped: %s", e)
 

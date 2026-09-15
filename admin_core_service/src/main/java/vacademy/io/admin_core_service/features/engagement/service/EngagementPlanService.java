@@ -231,6 +231,25 @@ public class EngagementPlanService {
      * seeing all three. Attempts are left untouched: points already earned stay
      * earned and the tracking row stays readable.
      */
+    /**
+     * Windows crossing midnight are rejected rather than supported: a 10 PM - 2 AM
+     * window is not a real use case and would complicate every date resolution.
+     * The DB carries the same CHECK constraint. (Dropped by mistake in the plan-edit
+     * change while its call site stayed, which left main uncompilable.)
+     */
+    private void validateSlot(EngagementSlot slot) {
+        if (!slot.getEndTime().isAfter(slot.getStartTime())) {
+            throw new VacademyException("endTime must be after startTime (windows cannot cross midnight)");
+        }
+        if (slot.getEndDate() != null && slot.getEndDate().isBefore(slot.getStartDate())) {
+            throw new VacademyException("endDate cannot be before startDate");
+        }
+        LocalTime reveal = slot.getRevealTime();
+        if (reveal != null && reveal.isBefore(slot.getStartTime())) {
+            throw new VacademyException("revealTime cannot be before startTime");
+        }
+    }
+
     private void retireItemsNotIn(EngagementSlot slot, Set<String> touchedItemIds) {
         for (EngagementItem existing : itemRepository.findActiveBySlot(slot.getId())) {
             if (touchedItemIds.contains(existing.getId())) continue;

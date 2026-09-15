@@ -30,7 +30,29 @@ public class NotificationService {
     @Value("${notification.server.baseurl}")
     private String notificationServerBaseUrl;
 
+    /**
+     * Same as {@link #sendEmailToUsers} but says whether the notification service
+     * accepted the send, for callers that must raise an alert when mail fails.
+     */
+    public boolean sendEmailToUsersReporting(NotificationDTO dto, String instituteId) {
+        try {
+            sendEmailToUsersOrThrow(dto, instituteId);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to send email via unified API: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
     public void sendEmailToUsers(NotificationDTO dto, String instituteId) {
+        try {
+            sendEmailToUsersOrThrow(dto, instituteId);
+        } catch (Exception e) {
+            log.error("Failed to send email via unified API: {}", e.getMessage(), e);
+        }
+    }
+
+    private void sendEmailToUsersOrThrow(NotificationDTO dto, String instituteId) {
         List<UnifiedSendRequest.Recipient> recipients = new ArrayList<>();
         if (dto.getUsers() != null) {
             for (NotificationToUserDTO user : dto.getUsers()) {
@@ -55,12 +77,12 @@ public class NotificationService {
                         .build())
                 .build();
 
-        try {
-            internalClientUtils.makeHmacRequest(
-                    clientName, HttpMethod.POST.name(),
-                    notificationServerBaseUrl, UNIFIED_SEND, request);
-        } catch (Exception e) {
-            log.error("Failed to send email via unified API: {}", e.getMessage(), e);
+        var response = internalClientUtils.makeHmacRequest(
+                clientName, HttpMethod.POST.name(),
+                notificationServerBaseUrl, UNIFIED_SEND, request);
+        if (response == null || !response.getStatusCode().is2xxSuccessful()) {
+            throw new IllegalStateException("notification service answered "
+                    + (response == null ? "nothing" : response.getStatusCode()));
         }
     }
 

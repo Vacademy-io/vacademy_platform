@@ -72,6 +72,25 @@ class CopyCheckGradeResponse(BaseModel):
     status: str = "PROCESSING"
 
 
+class CopyCheckIdentifyRequest(BaseModel):
+    """Read the student's handwritten identification header off a copy."""
+    pdf_url: str
+    institute_id: Optional[str] = None
+    preferred_model: Optional[str] = None
+
+
+class CopyCheckIdentifyResponse(BaseModel):
+    student_name: Optional[str] = None
+    student_name_latin: Optional[str] = None
+    roll_number: Optional[str] = None
+    class_section: Optional[str] = None
+    other_identifiers: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    name_found: bool = False
+    page_count: int = 0
+    pages_read: int = 0
+
+
 # --------------------------- Annotation shape -------------------------------
 
 class Annotation(BaseModel):

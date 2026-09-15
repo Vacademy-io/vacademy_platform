@@ -1,0 +1,109 @@
+{
+    "dialog": {
+        "title": "Bulk AI check",
+        "intro": "Upload every scanned copy at once. The name written at the top of each sheet is read and matched to a student of this assessment; the copies are then checked one by one in the background. You will get an email and a bell alert when it is done.",
+        "drop": "Drop PDF copies here or click to choose",
+        "dropHint": "One file per student · up to {{max}} files · {{mb}} MB each",
+        "counting": "Counting pages…",
+        "uploading": "Uploading…",
+        "uploadFailed": "Upload failed",
+        "pages_one": "{{count}} page",
+        "pages_other": "{{count}} pages",
+        "remove": "Remove",
+        "costEmpty": "Add copies to see the cost.",
+        "cost": "{{copies}} copies · {{pages}} pages · {{credits}} credits",
+        "balance_one": "Balance: {{count}}",
+        "balance_other": "Balance: {{count}}",
+        "insufficient": "Not enough credits for all these copies. Remove some, or add credits to the institute.",
+        "notifyEmail": "Email me when the check is done",
+        "someFailed_one": "{{count}} file could not be uploaded and was left out.",
+        "someFailed_other": "{{count}} files could not be uploaded and were left out.",
+        "cancel": "Cancel",
+        "start_one": "Check {{count}} copy",
+        "start_other": "Check {{count}} copies",
+        "starting": "Uploading & starting…"
+    },
+    "errors": {
+        "notPdf": "{{name}}: only PDF files can be checked",
+        "tooLarge": "{{name}} is over {{mb}} MB",
+        "tooMany": "At most {{max}} files per batch — split the upload",
+        "nothingUploaded": "None of the files could be uploaded",
+        "startFailed": "Could not start the check",
+        "actionFailed": "That did not work; try again"
+    },
+    "toasts": {
+        "started_one": "{{count}} copy uploaded — reading the name and queuing the check",
+        "started_other": "{{count}} copies uploaded — reading names and queuing the checks",
+        "completed": "AI check finished: {{checked}} of {{total}} copies checked",
+        "needsReview_one": "AI check finished — {{count}} copy needs you to pick the student",
+        "needsReview_other": "AI check finished — {{count}} copies need you to pick the student",
+        "failed": "The bulk check failed",
+        "assigned": "Student assigned — the copy is queued for checking",
+        "skipped": "Copy skipped",
+        "retried": "Copy queued again"
+    },
+    "panel": {
+        "title": "Bulk AI check",
+        "subtitle": "Each uploaded copy, who it was matched to, and where its check is.",
+        "refresh": "Refresh",
+        "close": "Close",
+        "empty": "No bulk checks yet for this assessment.",
+        "startedBy": "Started by {{name}} · {{when}}",
+        "emailFailed": "The completion email could not be sent.",
+        "waitingHint_one": "{{count}} copy could not be matched to a student. Pick the student to check it.",
+        "waitingHint_other": "{{count}} copies could not be matched to a student. Pick the student for each to check them."
+    },
+    "stats": {
+        "total": "Copies",
+        "checked": "Checked",
+        "inProgress": "In progress",
+        "needReview": "Need review",
+        "failed": "Failed"
+    },
+    "batchStatus": {
+        "RUNNING": "Running",
+        "NEEDS_REVIEW": "Needs review",
+        "COMPLETED": "Completed",
+        "FAILED": "Failed"
+    },
+    "itemStatus": {
+        "PENDING": "Waiting",
+        "IDENTIFYING": "Reading name",
+        "MATCHED": "Matched",
+        "AMBIGUOUS": "Which student?",
+        "UNMATCHED": "No match",
+        "QUEUED": "Queued",
+        "EVALUATING": "Checking",
+        "COMPLETED": "Checked",
+        "FAILED": "Failed",
+        "SKIPPED": "Skipped"
+    },
+    "table": {
+        "file": "File",
+        "read": "Read from the sheet",
+        "student": "Student",
+        "status": "Status",
+        "actions": "",
+        "pages_one": "{{count}} page",
+        "pages_other": "{{count}} pages",
+        "roll": "Roll {{roll}}",
+        "reading": "Reading…",
+        "noName": "No name found on the sheet"
+    },
+    "actions": {
+        "pickStudent": "Pick student",
+        "skip": "Skip",
+        "retry": "Retry",
+        "openResult": "Open"
+    },
+    "picker": {
+        "title": "Whose copy is this?",
+        "readAs": "The name on the sheet reads \"{{name}}\".",
+        "nothingRead": "No name could be read on this sheet.",
+        "suggested": "Suggested",
+        "all": "All students",
+        "search": "Search by name, roll number or email",
+        "none": "No student matches that search.",
+        "registered": "Registered participant"
+    }
+}

@@ -38,6 +38,19 @@ export const ASSISTANT_ACTION_CANCEL = (sessionId: string, actionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/cancel`;
 export const ASSISTANT_CAPABILITIES = `${AI_SERVICE_BASE_URL}/assistant/capabilities`;
 
+// Vacademy MCP server (Model Context Protocol). These back the MCP settings tab
+// and the OAuth consent page; all require Authorization + clientId headers
+// except MCP_OAUTH_TXN, which the consent page reads before the user logs in.
+// See ai_service app/mcp/consent.py.
+export const MCP_OAUTH_BASE = `${AI_SERVICE_BASE_URL}/mcp/oauth`;
+export const MCP_CONNECTION_INFO = `${MCP_OAUTH_BASE}/connection-info`;
+export const MCP_OAUTH_CONSENT = `${MCP_OAUTH_BASE}/consent`;
+export const MCP_OAUTH_TXN = (txn: string) => `${MCP_OAUTH_BASE}/txn/${txn}`;
+export const MCP_MANUAL_CLIENT = `${MCP_OAUTH_BASE}/manual-client`;
+export const MCP_MANUAL_CLIENT_DELETE = (clientId: string) =>
+    `${MCP_OAUTH_BASE}/manual-client/${clientId}`;
+export const MCP_CONNECTION_REVOKE = (pairId: string) => `${MCP_OAUTH_BASE}/connection/${pairId}`;
+
 // AI coding-question generation. POST an idea + options, returns a full
 // coding-question config (problem + tests + starter code + reference solution).
 // See ai_service app/routers/coding_question_gen.py.

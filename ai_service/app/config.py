@@ -230,6 +230,32 @@ class Settings(BaseSettings):
     # requests (no implicit fallback).
     internal_service_token: Optional[str] = os.getenv("INTERNAL_SERVICE_TOKEN")
 
+    # ── MCP server (Model Context Protocol) ────────────────────────────────
+    # Global kill switch. Off by default: the endpoint, its OAuth routes and the
+    # discovery documents only exist when this is on. Per-institute enablement is
+    # a separate gate (MCP_SERVER_SETTING), so flipping this on grants nobody
+    # anything until an institute opts in.
+    mcp_server_enabled: bool = os.getenv("MCP_SERVER_ENABLED", "false").lower() == "true"
+    # Public URL of the MCP endpoint. It is BOTH the OAuth issuer and the RFC 8707
+    # resource identifier, so it must be the externally reachable URL and must be
+    # HTTPS (the SDK exempts localhost for local development).
+    mcp_issuer_url: str = os.getenv(
+        "MCP_ISSUER_URL",
+        f"{os.getenv('AI_SERVICE_PUBLIC_URL', 'https://backend-stage.vacademy.io/').rstrip('/')}/ai-service/mcp",
+    )
+    # Where the browser is sent to log in and approve a connection.
+    admin_dashboard_url: str = os.getenv("ADMIN_DASHBOARD_URL", "https://dash.vacademy.io")
+    # Encrypts the platform tokens stored against each grant. REQUIRED when the
+    # MCP server is enabled — startup refuses to mount it otherwise, rather than
+    # persisting credentials in clear.
+    mcp_token_encryption_key: Optional[str] = os.getenv("MCP_TOKEN_ENCRYPTION_KEY")
+    mcp_access_token_ttl_seconds: int = int(os.getenv("MCP_ACCESS_TOKEN_TTL_SECONDS", "3600"))
+    mcp_refresh_token_ttl_seconds: int = int(os.getenv("MCP_REFRESH_TOKEN_TTL_SECONDS", str(30 * 24 * 3600)))
+    # A parked /authorize request: long enough to log in, short enough to matter.
+    mcp_auth_txn_ttl_seconds: int = int(os.getenv("MCP_AUTH_TXN_TTL_SECONDS", "900"))
+    # An issued authorization code. OAuth 2.1 recommends a maximum of 10 minutes.
+    mcp_auth_code_ttl_seconds: int = int(os.getenv("MCP_AUTH_CODE_TTL_SECONDS", "300"))
+
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     def build_sqlalchemy_url(self) -> str:

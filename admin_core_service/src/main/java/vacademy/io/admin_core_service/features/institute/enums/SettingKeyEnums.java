@@ -51,5 +51,14 @@ public enum SettingKeyEnums {
     // NOTE: learner-side visibility is NOT here. It rides on the existing
     // canViewReports permission in STUDENT_DISPLAY_SETTING, which already gates the
     // My Reports section the insights tab lives inside.
-    AI_INSIGHTS_SETTING
+    AI_INSIGHTS_SETTING,
+    // MCP (Model Context Protocol) server: whether an institute's staff may
+    // connect their own AI apps (Claude, ChatGPT, Cursor) to Vacademy, which
+    // roles may do so, and which tools are exposed
+    // ({"enabled": false, "allowed_roles": ["ADMIN"], "enabled_tools": [],
+    //   "role_overrides": {}}). Written here via GenericSettingStrategy; read and
+    // enforced by ai_service (app/mcp/access.py), which owns the MCP server.
+    // Deliberately opt-in: absence of the key means the server is off, and
+    // learner roles are stripped from allowed_roles server-side regardless.
+    MCP_SERVER_SETTING
 }

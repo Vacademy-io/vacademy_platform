@@ -57,6 +57,7 @@ import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activ
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
+import { Route as McpAuthorizeRouteImport } from "./routes/mcp/authorize"
 import { Route as KnowledgeBasePublishRouteImport } from "./routes/knowledge-base/publish"
 import { Route as KnowledgeBaseKbIdRouteImport } from "./routes/knowledge-base/$kbId"
 import { Route as EngagementEnginesEngineIdRouteImport } from "./routes/engagement-engines/$engineId"
@@ -567,6 +568,11 @@ const VimLoginRoute = VimLoginRouteImport.update({
 const VimDashboardRoute = VimDashboardRouteImport.update({
   id: "/vim/dashboard",
   path: "/vim/dashboard",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const McpAuthorizeRoute = McpAuthorizeRouteImport.update({
+  id: "/mcp/authorize",
+  path: "/mcp/authorize",
   getParentRoute: () => rootRouteImport,
 } as any)
 const KnowledgeBasePublishRoute = KnowledgeBasePublishRouteImport.update({
@@ -2073,6 +2079,7 @@ export interface FileRoutesByFullPath {
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
   "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
+  "/mcp/authorize": typeof McpAuthorizeRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2308,6 +2315,7 @@ export interface FileRoutesByTo {
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
   "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
+  "/mcp/authorize": typeof McpAuthorizeRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2545,6 +2553,7 @@ export interface FileRoutesById {
   "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/knowledge-base/$kbId": typeof KnowledgeBaseKbIdRoute
   "/knowledge-base/publish": typeof KnowledgeBasePublishRoute
+  "/mcp/authorize": typeof McpAuthorizeRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2783,6 +2792,7 @@ export interface FileRouteTypes {
     | "/engagement-engines/$engineId"
     | "/knowledge-base/$kbId"
     | "/knowledge-base/publish"
+    | "/mcp/authorize"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -3018,6 +3028,7 @@ export interface FileRouteTypes {
     | "/engagement-engines/$engineId"
     | "/knowledge-base/$kbId"
     | "/knowledge-base/publish"
+    | "/mcp/authorize"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -3254,6 +3265,7 @@ export interface FileRouteTypes {
     | "/engagement-engines/$engineId"
     | "/knowledge-base/$kbId"
     | "/knowledge-base/publish"
+    | "/mcp/authorize"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -3491,6 +3503,7 @@ export interface RootRouteChildren {
   EngagementEnginesEngineIdRoute: typeof EngagementEnginesEngineIdRoute
   KnowledgeBaseKbIdRoute: typeof KnowledgeBaseKbIdRoute
   KnowledgeBasePublishRoute: typeof KnowledgeBasePublishRoute
+  McpAuthorizeRoute: typeof McpAuthorizeRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
@@ -4064,6 +4077,13 @@ declare module "@tanstack/react-router" {
       path: "/vim/dashboard"
       fullPath: "/vim/dashboard"
       preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mcp/authorize": {
+      id: "/mcp/authorize"
+      path: "/mcp/authorize"
+      fullPath: "/mcp/authorize"
+      preLoaderRoute: typeof McpAuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/knowledge-base/publish": {
@@ -5381,6 +5401,7 @@ const rootRouteChildren: RootRouteChildren = {
   EngagementEnginesEngineIdRoute: EngagementEnginesEngineIdRoute,
   KnowledgeBaseKbIdRoute: KnowledgeBaseKbIdRoute,
   KnowledgeBasePublishRoute: KnowledgeBasePublishRoute,
+  McpAuthorizeRoute: McpAuthorizeRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,

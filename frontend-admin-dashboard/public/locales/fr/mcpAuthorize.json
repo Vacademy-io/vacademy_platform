@@ -1,0 +1,25 @@
+{
+    "title": "Connecter une application d'IA",
+    "subtitle": "Cette application souhaite lire les données Vacademy de votre établissement en votre nom.",
+    "loading": "Vérification de la demande…",
+    "unknownApp": "Une application d'IA",
+    "request": "{{app}} demande à se connecter à Vacademy.",
+    "willReturnTo": "Vous serez redirigé vers {{host}} après votre décision.",
+    "instituteLabel": "Établissement auquel accorder l'accès",
+    "grants": {
+        "title": "Si vous approuvez, cette application pourra :",
+        "readOnly": "Lire les informations de l'établissement auxquelles vous avez déjà accès — rien ne peut être modifié.",
+        "sameAsYou": "Voir exactement ce que vous voyez, et rien de plus.",
+        "revocable": "Être déconnectée à tout moment depuis Paramètres → Serveur MCP."
+    },
+    "approve": "Approuver",
+    "approving": "Approbation…",
+    "deny": "Refuser",
+    "denying": "Refus…",
+    "signIn": "Connectez-vous pour continuer",
+    "errors": {
+        "noTxn": "Ce lien est incomplet. Relancez la connexion depuis votre application d'IA.",
+        "expired": "Cette demande a expiré ou a déjà été traitée. Relancez la connexion depuis votre application d'IA.",
+        "generic": "Une erreur est survenue. Veuillez réessayer."
+    }
+}

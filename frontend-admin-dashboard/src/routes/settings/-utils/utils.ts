@@ -38,6 +38,7 @@ import LmsSettings from '../-components/Lms/LmsSettings';
 import AiCallingSettings from '../-components/AiCallingSettings';
 import CrmIntelligenceSettings from '../-components/CrmIntelligenceSettings';
 import AssistantToolsSettings from '../-components/AssistantToolsSettings';
+import MCPServerSettings from '../-components/MCPServerSettings';
 import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSettings';
 import LanguageSettings from '../-components/LanguageSettings';
 import AppearanceSettings from '../-components/Appearance/AppearanceSettings';
@@ -177,6 +178,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.AssistantTools,
             value: 'Vacademy Assistant',
             component: AssistantToolsSettings,
+            domain: 'General',
+            group: 'Platform Configuration',
+        },
+        {
+            tab: SettingsTabs.McpServer,
+            value: 'MCP Server',
+            component: MCPServerSettings,
             domain: 'General',
             group: 'Platform Configuration',
         },

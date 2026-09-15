@@ -229,18 +229,21 @@ export default function AudiencesTab({ pool }: AudiencesTabProps) {
                                             </p>
                                         )}
                                         <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                                            {/* ON = the default (assign the moment a lead arrives); OFF = AI-first.
+                                                Polarity matters: every existing list is ON, so the page reads
+                                                "all normal" rather than "everything switched off". */}
                                             <Switch
-                                                checked={!a.assignOnIntake}
+                                                checked={a.assignOnIntake}
                                                 disabled={updatingAssignment}
                                                 onCheckedChange={(checked) =>
-                                                    handleAssignOnIntakeChange(a.audienceId, !checked)
+                                                    handleAssignOnIntakeChange(a.audienceId, checked)
                                                 }
-                                                aria-label="Assign only after the AI call"
+                                                aria-label="Auto-assign when a lead arrives"
                                             />
                                             <span>
                                                 {a.assignOnIntake
-                                                    ? 'Assigns when a lead arrives'
-                                                    : 'AI-first: assigns only after the AI call qualifies the lead'}
+                                                    ? 'Auto-assigns when a lead arrives'
+                                                    : 'Off — AI-first: assigns only after the AI call qualifies the lead'}
                                             </span>
                                         </label>
                                     </div>

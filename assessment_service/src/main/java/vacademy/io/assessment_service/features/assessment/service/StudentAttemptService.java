@@ -163,6 +163,17 @@ public class StudentAttemptService {
             if (!AssessmentAttemptResultEnum.COMPLETED.name().equals(attempt.getResultStatus())) {
                 attempt.setResultStatus(AssessmentAttemptResultEnum.PENDING.name());
             }
+            // Nothing automatic will ever release a manually-evaluated attempt
+            // (autoRelease is skipped below), so make the hold explicit. Left
+            // NULL, the attempt was invisible on the learner's Reports list —
+            // it filters on report_release_status IN ('RELEASED','PENDING') —
+            // and read "Not available" in the admin's Result Status column;
+            // the PDF-upload submit path already writes PENDING. Only fill the
+            // gap: a RELEASED attempt that comes back through here (a
+            // re-calculation) must stay released.
+            if (attempt.getReportReleaseStatus() == null) {
+                attempt.setReportReleaseStatus(ReleaseResultStatusEnum.PENDING.name());
+            }
         } else {
             attempt.setResultMarks(totalMarks);
             attempt.setResultStatus(AssessmentAttemptResultEnum.COMPLETED.name());

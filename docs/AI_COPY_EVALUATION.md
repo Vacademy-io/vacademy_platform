@@ -136,9 +136,94 @@ Evaluation-criteria templates: `/assessment-service/assessment/evaluation-criter
   teacher can move/edit every mark on the copy itself.
 - **Result release** follows the assessment's result type (auto after
   submission / after assessment end / held / manual). The learner only ever
-  sees a released, fully graded attempt.
+  sees a released, fully graded attempt — see §4.1 for how the AI fits in.
 - **Activity log**: create / edit / delete / bulk-check actions are recorded
   under the acting admin (`BULK_AI_CHECK` etc.).
+
+### 4.1 Release to the student, and the WhatsApp / email that goes with it
+
+**The AI never releases.** A finished check writes `student_attempt.result_status =
+COMPLETED`, the marks and the checked copy (`evaluated_file_id`) — and leaves
+`report_release_status` alone. What each side sees is decided only by that
+column:
+
+| `report_release_status` | Learner: assessment card | Learner: Reports tab | Admin: Result Status column |
+|---|---|---|---|
+| `RELEASED` | result shown | "Released", marks, View evaluated | "Released" |
+| `PENDING` | "Results pending" | "Pending evaluation" row, marks hidden | "Not released" |
+| `NULL` | "Results pending" | **row absent** — the list API filters `IN ('RELEASED','PENDING')` | "Not available" |
+
+(The Reports tab's own row rule is `status !== 'PENDING'`, so a `NULL` row
+*would* count as released if it ever reached the client — it does not with the
+deployed filter, but an older/other client that omits the filter shows it.)
+
+Until 15 Sep 2026 every copy uploaded for a student (single offline entry *and*
+each copy of a bulk intake — both go through
+`AdminOfflineDataEntryManager.createOfflineAttempt`) started with a `NULL`
+status, and a learner's own typed submit on a `MANUAL`-evaluation assessment
+left it `NULL` too (the PDF-upload submit already wrote `PENDING`). So an
+AI-checked copy was in a dead zone: no "pending" row for the student, "Not
+available" for the admin, and nothing telling anyone a release was still due.
+Fixed: both paths now write `PENDING` (`createOfflineAttempt`;
+`StudentAttemptService.updateStudentAttemptWithResultAfterMarksCalculation`
+fills the gap only when the status is `NULL`, so a released attempt that is
+re-calculated stays released). The four AI-checked test attempts already in
+that state (Bhopal-Institute ×3, Newton Coaching ×1) were moved to `PENDING`
+on 15 Sep 2026 (`db_backups/ai_eval_release_gate_20260915/apply.sql`, backup +
+rollback alongside). The learner report endpoints (detail, comparison,
+annotated copy, PDF, option distribution) now also refuse a MANUAL-result
+attempt that is not `RELEASED` server-side
+(`LearnerReportService.validateOwnershipAndAccess`) — the list hands the
+learner their attempt id on the pending row, so the UI's disabled buttons
+alone were not a gate. AUTO result types are not gated there, matching the
+card, which offers "Show report" for them regardless of release status. The 57 older `NULL` rows from June–July were hand-evaluated before
+manual evaluation started setting `RELEASED`; they are deliberately left alone.
+
+**What releases, then:**
+
+- **Release Result** on the Submissions tab — per student (row menu) or bulk
+  (Bulk actions → Release result), also the global "release all" dialog. This is
+  `POST /assessment-service/assessment/admin/participants/release-result`
+  (`AssessmentParticipantsManager.releaseParticipantsResult`). It sets
+  `RELEASED` + `report_last_release_date`, sends the built-in result **email**
+  with the checked copy attached (`sendNotificationToStudent`), and fires the
+  workflow event **`ASSESSMENT_RESULT_RELEASED`** once per learner.
+- A teacher's **manual evaluation submit** and the **bulk marks import** set
+  `RELEASED` themselves (evaluating by hand *is* the release for those).
+- The **auto-release cron** (`AUTO_AFTER_SUBMISSION` / `AUTO_AFTER_ASSESSMENT_END`)
+  matches `NULL` *and* `PENDING`, so the hold does not change auto-release
+  assessments.
+
+**Sending WhatsApp / email / push on release — no code needed.** Admin →
+Automations (workflow builder) → new workflow → trigger
+**"Assessment Result Released"** (`ASSESSMENT_RESULT_RELEASED`, category
+Assessment; scope it to one assessment by event id, or leave it global for the
+institute) → add a `SEND_WHATSAPP` / `SEND_EMAIL` / push node. The context every
+node can read (`#ctx['…']`, SpEL only when the value starts with `#`):
+`studentName studentEmail studentMobile username userId assessmentName
+assessmentId marks totalMarks percentage rank percentile resultStatus
+reportPdfFileId attemptId attemptNumber submitTime packageSessionId
+instituteId evaluationSource processId failedCount lowConfidenceCount`
+(built by `AssessmentTriggerContextBuilder.forResult`). `evaluationSource` is
+how a message can say "checked by AI" vs by hand. **Releasing the same
+attempt again re-sends**: the release endpoint emits for every attempt in the
+request, not only the ones that just flipped, and this event's default
+idempotency is `UUID` (every emit runs — `WorkflowBuilderService.defaultIdempotencyFor`).
+If an institute wants once-per-student, set the trigger's idempotency to
+`CONTEXT_BASED` over `attemptId` when creating it. For a WhatsApp template body param use the same fallback the SN workflows use:
+`#ctx['studentName'] != null && #ctx['studentName'].trim() != '' ? #ctx['studentName'] : 'there'`
+— a blank resolved param is skipped by `SendWhatsAppNodeHandler`.
+
+The staff-side counterpart is **`ASSESSMENT_AI_EVALUATION_COMPLETED`** ("AI Copy
+Check Completed"): fired once per *bulk* intake batch when every copy is graded,
+failed, or waiting for a person, with the counts on the context — wire it to
+"email / WhatsApp the coordinator: review and release". There is no per-copy
+event for a single AI check; the intake batch event and the Submissions tab
+badge are the signals.
+
+So the teacher's loop is: AI check → (review / override / edit on the copy) →
+**Release Result** → student gets the built-in email + whatever the institute's
+`ASSESSMENT_RESULT_RELEASED` workflow sends.
 
 ---
 
@@ -276,6 +361,9 @@ picker default of Gemini 3.1 Pro billed one 10-question copy 133.62 credits
 - A result becomes visible per the result type; Mock/Practice release on
   submission even when set to "after assessment end" (their window never ends).
 - The learner never sees an AI verdict directly — only the released attempt.
+  Since 15 Sep 2026 an uploaded or manually-evaluated attempt is created as
+  `report_release_status = PENDING`, not `NULL` (§4.1) — a `NULL` row is
+  filtered out of the learner Reports list entirely.
 
 ---
 

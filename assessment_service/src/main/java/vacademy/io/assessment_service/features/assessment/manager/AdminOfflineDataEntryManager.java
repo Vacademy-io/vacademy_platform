@@ -120,6 +120,20 @@ public class AdminOfflineDataEntryManager {
             attempt.setMaxTime(assessment.getDuration() != null ? assessment.getDuration() : 0);
             attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
             attempt.setResultStatus(AttemptResultStatusEnum.PENDING.name());
+            // Hold the report explicitly. Every copy uploaded for a student —
+            // the single offline entry and each copy of a bulk AI intake come
+            // through here — used to start with a NULL release status. NULL is
+            // a dead zone: the learner's Reports list filters on
+            // report_release_status IN ('RELEASED','PENDING'), so the copy
+            // simply vanished for the student (no "pending" row) even after the
+            // AI had graded it, the admin's Result Status column read "Not
+            // available", and any client that omits that filter would treat the
+            // row as released. PENDING is the state every other submission path
+            // already uses: it shows "Pending evaluation" to the learner and
+            // "Not released" to the admin until "Release Result" is pressed.
+            // Manual evaluation and the bulk marks import still set RELEASED
+            // themselves, and the auto-release cron matches NULL and PENDING.
+            attempt.setReportReleaseStatus(ReleaseResultStatusEnum.PENDING.name());
             // Seed empty JSON so downstream attempt_data readers/updaters (manual
             // evaluation upload, set assignment) don't trip on a NULL column.
             attempt.setAttemptData("{}");

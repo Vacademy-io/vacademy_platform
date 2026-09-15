@@ -14,6 +14,8 @@
         "botSilent": "The agent never spoke — the caller heard nothing",
         "replyLoop": "The agent kept restarting the same reply",
         "handbackLoop": "The agent had nothing to say and kept asking the caller to talk",
+        "openingReplayed": "The agent said its opening again mid-call",
+        "repeatedLine": "The agent said the same line twice",
         "deadAir": "Long silence during the call",
         "falseReask": "Agent re-asked for answers it had already heard",
         "likelyMachine": "Probably an answering machine, not a person",
@@ -31,6 +33,8 @@
         "botSilent": "Agent silent",
         "replyLoop": "Reply loop",
         "handbackLoop": "Nothing to say",
+        "openingReplayed": "Opening replayed",
+        "repeatedLine": "Repeated line",
         "deadAir": "Dead air",
         "falseReask": "False re-ask",
         "likelyMachine": "Likely machine",
@@ -97,7 +101,12 @@
         "sttReconnect_one": "{{count}} speech-recognition reconnect",
         "sttReconnect_other": "{{count}} speech-recognition reconnects",
         "transferFailed": "transfer requested, never registered with the provider",
-        "promptUnresolved": "unresolved: {{fields}}"
+        "promptUnresolved": "unresolved: {{fields}}",
+        "openingReplayed_one": "opening replayed {{count}} time",
+        "openingReplayed_other": "opening replayed {{count}} times",
+        "repeatedLine_one": "{{count}} line said twice",
+        "repeatedLine_other": "{{count}} lines said twice",
+        "repeatedLineSample": "e.g. “{{text}}”"
     },
     "faultBlock": {
         "unrecognisedCode": "Unrecognised fault code — this call was reported by a newer bot than this dashboard knows about."

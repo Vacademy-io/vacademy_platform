@@ -113,7 +113,9 @@ export const CALL_FAULT_CODES = [
     'BOT_SILENT',
     'STT_DEAF',
     'REPLY_LOOP',
+    'OPENING_REPLAYED',
     'HANDBACK_LOOP',
+    'REPEATED_LINE',
     'TTS_WEDGE',
     'REPLY_UNPLAYED',
     'ANSWER_DELETED',
@@ -190,6 +192,11 @@ export interface CallDiagnostics {
         handbacks?: number | null;
         /** Times a repeat was said anyway rather than hand back twice running. */
         repeatEscalations?: number | null;
+        /** The opening said again after the caller had already spoken (OPENING_REPLAYED). */
+        openingReplays?: number | null;
+        /** 5+-word sentences played twice without the caller asking (REPEATED_LINE). */
+        repeatedLines?: number | null;
+        repeatedLineSamples?: string[] | null;
         /** Operator/voicemail lines filtered out of the agent's context. */
         carrierAnnouncements?: number | null;
         nudges?: number | null;

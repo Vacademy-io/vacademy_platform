@@ -376,7 +376,10 @@ export const PropertyPanel = () => {
                     <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
                         <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{t('pageSettings.seo.heading')}</h4>
                         <div className="space-y-1.5">
-                            <Label className="text-xs">{t('pageSettings.seo.metaTitle')}</Label>
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs">{t('pageSettings.seo.metaTitle')}</Label>
+                                <SeoLengthCounter value={page.seo?.metaTitle || ''} max={60} />
+                            </div>
                             <Input
                                 value={page.seo?.metaTitle || ''}
                                 placeholder={page.title || page.route}
@@ -384,13 +387,30 @@ export const PropertyPanel = () => {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label className="text-xs">{t('pageSettings.seo.metaDescription')}</Label>
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs">{t('pageSettings.seo.metaDescription')}</Label>
+                                <SeoLengthCounter value={page.seo?.metaDescription || ''} max={160} />
+                            </div>
                             <Textarea
                                 rows={2}
                                 value={page.seo?.metaDescription || ''}
                                 placeholder={t('pageSettings.seo.metaDescriptionPlaceholder')}
                                 onChange={(e) => updatePageSeo(page.id, { metaDescription: e.target.value })}
                             />
+                        </div>
+                        {/* How the page reads in a Google result — the copy the admin is
+                            actually writing for. Pure display, from the same three fields. */}
+                        <div className="rounded border bg-white p-3">
+                            <p className="text-caption text-gray-400">{t('pageSettings.seo.previewHeading')}</p>
+                            <p className="mt-1 truncate text-sm text-green-700">
+                                …/{(page.route || '').replace(/^\//, '') || 'home'}
+                            </p>
+                            <p className="truncate text-base text-blue-700">
+                                {page.seo?.metaTitle || page.title || page.route}
+                            </p>
+                            <p className="line-clamp-2 text-xs text-gray-600">
+                                {page.seo?.metaDescription || t('pageSettings.seo.previewNoDescription')}
+                            </p>
                         </div>
                         <ImageUploadField
                             label={t('pageSettings.seo.ogImage')}
@@ -803,6 +823,65 @@ const CourseFinderLevelGroups = ({
                 );
             })}
         </div>
+    );
+};
+
+/** "58/60" next to a meta field — amber once past what Google displays. */
+const SeoLengthCounter = ({ value, max }: { value: string; max: number }) => {
+    const n = value.length;
+    return (
+        <span className={`text-caption ${n > max ? 'text-amber-600' : 'text-gray-400'}`}>
+            {n}/{max}
+        </span>
+    );
+};
+
+/**
+ * A list stored as string[] but edited as free text (comma- or line-separated).
+ * Edits are committed on blur: committing per keystroke would strip the
+ * separator the admin has just typed, making it impossible to add an item.
+ */
+const SeoListField = ({
+    value,
+    separator,
+    placeholder,
+    className,
+    onCommit,
+}: {
+    value: string[];
+    separator: 'comma' | 'line';
+    placeholder?: string;
+    className?: string;
+    onCommit: (list: string[]) => void;
+}) => {
+    const join = separator === 'comma' ? ', ' : '\n';
+    const stored = value.join(join);
+    const [text, setText] = useState(stored);
+    const [lastStored, setLastStored] = useState(stored);
+    // Re-sync when the stored list changes underneath (undo, another editor).
+    // Compared by CONTENT: the parent hands over a fresh `[]` on every render
+    // while the list is empty, and a reference check would reset the admin's
+    // uncommitted typing each time anything else in the panel re-rendered.
+    if (lastStored !== stored) {
+        setLastStored(stored);
+        setText(stored);
+    }
+    const commit = () => {
+        const list = text
+            .split(separator === 'comma' ? /[,\n]/ : /\n/)
+            .map((x) => x.trim())
+            .filter(Boolean);
+        onCommit(list);
+    };
+    return (
+        <Textarea
+            className={className}
+            rows={separator === 'comma' ? 2 : 3}
+            value={text}
+            placeholder={placeholder}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={commit}
+        />
     );
 };
 
@@ -1287,6 +1366,88 @@ const GlobalSettingsEditor = ({
                     <Input className="mt-1" placeholder="GTM-XXXXXXX" value={gs.tracking?.gtmId || ''} onChange={(e) => updateField('tracking.gtmId', e.target.value.trim())} />
                     <p className="mt-1 text-caption text-gray-400">{t('global.tracking.gtmHint')}</p>
                 </div>
+            </div>
+
+            {/* Search engine optimisation. Read by the learner edge middleware
+                for crawlers: keywords/verification → <head>, organization →
+                schema.org JSON-LD. Footer social links join sameAs on their own. */}
+            <div className="space-y-3 border-b pb-4">
+                <h4 className="font-medium text-gray-700">{t('global.seo.heading')}</h4>
+                <p className="text-caption text-gray-400">{t('global.seo.hint')}</p>
+                <div>
+                    <Label className="text-xs">{t('global.seo.keywordsLabel')}</Label>
+                    <SeoListField
+                        className="mt-1"
+                        value={gs.seo?.keywords || []}
+                        separator="comma"
+                        placeholder={t('global.seo.keywordsPlaceholder')}
+                        onCommit={(list) => updateField('seo.keywords', list)}
+                    />
+                    <p className="mt-1 text-caption text-gray-400">{t('global.seo.keywordsHint')}</p>
+                </div>
+                <div>
+                    <Label className="text-xs">{t('global.seo.verificationLabel')}</Label>
+                    <Input
+                        className="mt-1"
+                        placeholder="abc123…"
+                        value={gs.seo?.googleSiteVerification || ''}
+                        onChange={(e) => updateField('seo.googleSiteVerification', e.target.value.trim())}
+                    />
+                    <p className="mt-1 text-caption text-gray-400">{t('global.seo.verificationHint')}</p>
+                </div>
+                <div className="space-y-2 rounded-lg border bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-600">{t('global.seo.organizationHeading')}</p>
+                    <p className="text-caption text-gray-400">{t('global.seo.organizationHint')}</p>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgName')}</Label>
+                        <Input className="mt-1" value={gs.seo?.organization?.name || ''} onChange={(e) => updateField('seo.organization.name', e.target.value)} />
+                    </div>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgDescription')}</Label>
+                        <Textarea className="mt-1" rows={2} value={gs.seo?.organization?.description || ''} onChange={(e) => updateField('seo.organization.description', e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgFounder')}</Label>
+                            <Input className="mt-1" value={gs.seo?.organization?.founder || ''} onChange={(e) => updateField('seo.organization.founder', e.target.value)} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgFoundingDate')}</Label>
+                            <Input className="mt-1" placeholder="2024" value={gs.seo?.organization?.foundingDate || ''} onChange={(e) => updateField('seo.organization.foundingDate', e.target.value.trim())} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgEmail')}</Label>
+                            <Input className="mt-1" type="email" value={gs.seo?.organization?.email || ''} onChange={(e) => updateField('seo.organization.email', e.target.value.trim())} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgTelephone')}</Label>
+                            <Input className="mt-1" placeholder="+91 …" value={gs.seo?.organization?.telephone || ''} onChange={(e) => updateField('seo.organization.telephone', e.target.value.trim())} />
+                        </div>
+                    </div>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgAddress')}</Label>
+                        <Input className="mt-1" value={gs.seo?.organization?.address || ''} onChange={(e) => updateField('seo.organization.address', e.target.value)} />
+                    </div>
+                    <ImageUploadField
+                        label={t('global.seo.orgLogo')}
+                        value={gs.seo?.organization?.logo || ''}
+                        onChange={(url) => updateField('seo.organization.logo', url)}
+                        placeholder="https://…/logo.png"
+                    />
+                    <p className="text-caption text-gray-400">{t('global.seo.orgLogoHint')}</p>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.sameAsLabel')}</Label>
+                        <SeoListField
+                            className="mt-1"
+                            value={gs.seo?.organization?.sameAs || []}
+                            separator="line"
+                            placeholder={'https://www.facebook.com/…\nhttps://www.instagram.com/…'}
+                            onCommit={(list) => updateField('seo.organization.sameAs', list)}
+                        />
+                        <p className="mt-1 text-caption text-gray-400">{t('global.seo.sameAsHint')}</p>
+                    </div>
+                </div>
+                <p className="text-caption text-gray-400">{t('global.seo.sitemapHint')}</p>
             </div>
 
             {/* Lead Collection */}

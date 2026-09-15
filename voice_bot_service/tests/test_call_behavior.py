@@ -4651,9 +4651,50 @@ def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
     assert cs.watchdog_decide(s, 46.0, cfg).kind != cs.ORPHAN_ASK, "third ask must not fire"
 
 
+def test_orphan_ask_covers_a_timeout_closed_unheard_turn():
+    """Call b2f6330a: the caller talked for 18 s to a stalled STT; the VAD only
+    caught 0.3 s blips (below orphan_min_utterance) and the aggregator closed
+    the turn on its 5 s timeout. That close is the evidence — ask anyway."""
+    from app import callstate as cs
+    cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,
+                            stall_recovery_enabled=False, graceful_stop_deadline_secs=10.0,
+                            no_words_timeout_secs=1e9, stall_after_secs=1e9,
+                            orphan_window_secs=(3.5, 10.0), orphan_connect_grace_secs=6.0)
+    s = cs.CallState()
+    s.user_started_t, s.voice_tick_t, s.bot_stopped_t, s.transcript_t = 20.0, 20.3, 10.0, 5.0
+    s.user_stopped_t = 25.3                       # closed by the timeout
+    assert cs.watchdog_decide(s, 26.0, cfg).kind != cs.ORPHAN_ASK, "0.3 s blip alone is not enough"
+    s.unheard_turn_t = 25.3
+    d = cs.watchdog_decide(s, 26.0, cfg)
+    assert d.kind == cs.ORPHAN_ASK, d
+    s.transcript_t = 27.0                          # words arrived after all
+    s.user_started_t, s.voice_tick_t = 30.0, 30.3
+    assert cs.watchdog_decide(s, 36.0, cfg).kind != cs.ORPHAN_ASK, "a later transcript clears the stamp"
+
+
+def test_whatsapp_number_question_is_not_the_link_question():
+    """Call b2f6330a: 'Is this number on WhatsApp?' was dropped twice as a re-ask
+    of 'you send it to all your students on WhatsApp?' and the booking ended on
+    'Okay. Okay. Yes, go ahead.'"""
+    from app.turntake import question_topic as qt
+    assert qt("Is this number on WhatsApp?") == "whatsapp_number"
+    assert qt("क्या ये नंबर WhatsApp पे है?") == "whatsapp_number"
+    assert qt("And you send it to all your students on WhatsApp?") == "quiz_link"
+    assert qt("Is this number on WhatsApp?") != qt("Kya aap link WhatsApp pe bhejte hain?")
+
+
+def test_screener_hold_lines():
+    from app.turntake import is_screener_hold as f
+    for t in ("Thanks Aarushi. Please stay on the line.", ", uh, you're still in.", "One moment please"):
+        assert f(t), t
+    for t in ("Yes, go ahead.", "Hello?", "What is it regarding?"):
+        assert not f(t), t
+
+
 def test_caller_asks_who_shapes():
     from app.turntake import caller_asks_who as f
-    for t in ("आप कौन बोल रहे हैं?", "Aap kaun bol rahi ho", "Who is this?", "who's calling", "आप कहाँ से बोल रहे हैं"):
+    for t in ("आप कौन बोल रहे हैं?", "Aap kaun bol rahi ho", "Who is this?", "who's calling", "आप कहाँ से बोल रहे हैं",
+              "Uh, can I know the name of your"):
         assert f(t), t
     assert not f("Yes, go ahead.") and not f("kaun se class mein hai")
 

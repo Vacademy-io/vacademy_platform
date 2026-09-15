@@ -96,7 +96,8 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        caller_asked_to_repeat, caller_wants_to_end, is_farewell, normalize_spoken,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
-                       is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye)
+                       is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
+                       is_screener_hold)
 
 logger = logging.getLogger(__name__)
 
@@ -362,6 +363,14 @@ class TranscriptCollector(FrameProcessor):
             #
             # Only before the callee has actually said something: after that, a
             # match is far more likely to be the caller quoting us than the network.
+            if self.screener_seen and self._human_turns == 0 and is_screener_hold(text):
+                # The screen is still talking ("Please stay on the line") —
+                # not the person. Keep waiting for their "Hello".
+                self._outcome.transcript.append({"role": "user", "text": text})
+                logger.info("turn-gate: screener hold line %r — waiting for the person", text[:40])
+                self._on_activity(user=True)
+                self._on_transcript(backchannel=True)
+                return
             if self._in_machine_window() and (is_carrier_announcement(text) or joined_carrier):
                 self._outcome.transcript.append({"role": "user", "text": text})
                 if self._diag is not None:
@@ -611,6 +620,17 @@ class TranscriptCollector(FrameProcessor):
                         # below marched the model into the pitch. A "yes" right
                         # after a question the caller HEARD is the answer to it.
                         if self._played_ended_with_question():
+                            if caller_checking_presence(text) and self._last_played_question():
+                                # "Hello?" after our question is not its answer:
+                                # they lost the line. Call b2f6330a: the ANSWER
+                                # cue sent the model into the pitch.
+                                q = self._last_played_question()
+                                logger.info("turn-gate: %r is a line check, not an answer "
+                                            "— re-asking %r", text[:16], q[:40])
+                                await self.push_frame(LLMMessagesAppendFrame(
+                                    messages=[{"role": "user", "content": presence_cue(q)}],
+                                    run_llm=True), direction)
+                                return
                             logger.info("turn-gate: %r answers the question just "
                                         "asked — not a carry-on", text[:20])
                             await self.push_frame(LLMMessagesAppendFrame(
@@ -3539,6 +3559,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             _dur = time.time() - (flags["user_started_t"] or time.time())
             if _dur > diag.longest_user_secs:
                 diag.longest_user_secs = _dur
+            if _dur >= 4.0 and flags["transcript_t"] < flags["user_started_t"]:
+                # The aggregator gave up on this turn (5 s stop timeout) and no
+                # words ever came: they spoke, we heard nothing. Arms the
+                # orphan re-ask even when the VAD only caught blips.
+                flags["unheard_turn_t"] = time.time()
+                logger.info("turn closed after %.1fs with no transcript — orphan re-ask armed "
+                            "corr=%s", _dur, corr)
         flags["user_speaking"] = speaking
         if speaking:
             flags["user_started_t"] = time.time()

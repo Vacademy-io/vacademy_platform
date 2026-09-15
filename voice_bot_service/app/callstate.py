@@ -65,6 +65,11 @@ class CallState:
     # One-shot guards.
     orphan_used: bool = False
     orphan_asks: int = 0
+    # A caller turn the aggregator closed on its 5 s timeout with NO transcript
+    # (call b2f6330a: 18 s of the caller talking to a stalled STT, VAD bursts
+    # too short for orphan_min_utterance). Stamped at the close; a real
+    # transcript supersedes it.
+    unheard_turn_t: float = 0.0
     # Consecutive caller utterances that produced NO transcript. Reset by any real
     # transcript. This is the "we cannot hear them" signal — see HEARING_FAILED.
     deaf_streak: int = 0
@@ -233,7 +238,8 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
             and s.user_started_t > 0 and acoustic_stop > s.user_started_t
             and not s.orphan_used and s.orphan_asks < cfg.max_orphan_asks
             and s.transcript_t < s.user_started_t - cfg.orphan_transcript_lookback_secs
-            and acoustic_stop - s.user_started_t >= cfg.orphan_min_utterance_secs
+            and (acoustic_stop - s.user_started_t >= cfg.orphan_min_utterance_secs
+                 or s.unheard_turn_t > s.transcript_t)
             and lo <= now - acoustic_stop <= hi
             and now - s.bot_stopped_t >= cfg.orphan_bot_quiet_secs
             and now - cfg.connected_at > cfg.orphan_connect_grace_secs):

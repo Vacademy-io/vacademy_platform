@@ -202,6 +202,20 @@ _SCREENER_PHRASES = ("record your name", "name and reason", "see if this person"
                      "ill see if", "person is available")
 
 
+# What Google's call screen relays while the person decides ("Thanks Aarushi.
+# Please stay on the line.", "…you're still in."). After the screener prompt
+# these are the phone talking, not the callee (call b2f6330a: the model said
+# "I will wait for you." and "I am still here." to them, then pitched).
+_SCREENER_HOLD_PHRASES = ("stay on the line", "please hold", "hold on the line", "on hold",
+                          "you're still in", "you are still in", "connecting you",
+                          "one moment please")
+
+
+def is_screener_hold(text: str) -> bool:
+    t = (text or "").casefold()
+    return any(p in t for p in _SCREENER_HOLD_PHRASES)
+
+
 def is_call_screener(text: str) -> bool:
     """A screening prompt: the phone answered, NOT the person. Our opening plays
     into the screener's recorder; the human who then picks up has heard none of
@@ -452,7 +466,10 @@ def is_echo_of_answer(sentence: str, caller_text: str, bot_question: str = "") -
 _WHO_PHRASES = ("who is this", "who's this", "who are you", "who is calling", "who's calling",
                 "who is speaking", "who am i speaking", "kaun bol", "kon bol", "aap kaun",
                 "aap kon", "kaun hai", "kon hai", "kahan se bol", "where are you calling from",
-                "which company", "कौन बोल", "आप कौन", "कहाँ से")
+                "which company", "कौन बोल", "आप कौन", "कहाँ से",
+                # "Uh, can I know the name of your…" (call b2f6330a) — the model
+                # answered with its script line instead.
+                "know the name", "name of your", "your name", "naam kya", "आपका नाम", "aapka naam")
 
 
 def caller_asks_who(text: str) -> bool:
@@ -547,6 +564,12 @@ _QUESTION_TOPICS = (
     ("marks", ("marks", "मार्क्स", "score", "स्कोर", "percent", "परसेंट", "%")),
     ("weak_subject", ("subject", "सब्जेक्ट", "dikkat", "दिक्कत", "weak", "kamzor")),
     ("fees", ("fees", "फीस", "fee", "price", "cost", "kitni hai")),
+    # BEFORE quiz_link: "Is this number on WhatsApp?" shares the word with the
+    # link question, and the topic dedupe dropped it twice as a re-ask of "you
+    # send it to all your students on WhatsApp?" — the booking then ended on
+    # "Okay. Okay. Yes, go ahead." (call b2f6330a, 2026-09-15).
+    ("whatsapp_number", ("this number", "same number", "whatsapp number", "number on whatsapp",
+                         "ये नंबर", "यही नंबर", "yeh number", "yahi number", "isi number")),
     ("quiz_link", ("link", "लिंक", "quiz", "क्विज़", "whatsapp", "व्हाट्सएप")),
     ("counselling", ("counselling", "counseling", "काउंसलिंग", "session", "सेशन",
                      "slot", "book kar")),

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-    CaretDown,
     CaretLeft,
     CaretRight,
     FolderSimple,
@@ -110,6 +109,9 @@ export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () =
                     <div className="flex items-center gap-2">
                         <PlayCircle size={18} className="text-primary-500" />
                         <p className="text-subtitle font-semibold text-neutral-800">{t('title')}</p>
+                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption text-neutral-500">
+                            {all.length}
+                        </span>
                     </div>
                     <div className="relative ml-auto w-full max-w-xs">
                         <MagnifyingGlass
@@ -142,8 +144,19 @@ export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () =
                             backLabel={t('back')}
                         />
                     ) : videos.isPending ? (
-                        <div className="flex flex-1 items-center justify-center">
-                            <div className="size-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                        <div className="flex-1 overflow-hidden p-3">
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                {[0, 1, 2, 3, 4, 5].map((i) => (
+                                    <div
+                                        key={i}
+                                        className="animate-pulse rounded-lg border border-neutral-200 bg-white p-2"
+                                    >
+                                        <div className="aspect-video rounded-md bg-neutral-200" />
+                                        <div className="mt-2 h-3 w-3/4 rounded bg-neutral-200" />
+                                        <div className="mt-1.5 h-3 w-1/2 rounded bg-neutral-100" />
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     ) : videos.isError ? (
                         <p className="flex-1 self-center text-center text-caption text-neutral-500">
@@ -155,7 +168,7 @@ export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () =
                         <EmptyPane title={t('noResults')} description={t('noResultsDescription')} />
                     ) : (
                         <>
-                            <aside className="w-56 shrink-0 overflow-y-auto border-r border-neutral-200 p-2">
+                            <aside className="w-60 shrink-0 overflow-y-auto border-e border-neutral-200 bg-neutral-50/70 p-2">
                                 <button
                                     type="button"
                                     onClick={() => setSelected([])}
@@ -187,27 +200,39 @@ export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () =
                                 </div>
                             </aside>
                             <div className="flex-1 overflow-y-auto p-3">
-                                <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                                     {listed.map((v) => (
                                         <button
                                             key={v.id}
                                             type="button"
                                             onClick={() => setPlaying(v)}
-                                            className="group flex flex-col gap-1 rounded-md border border-neutral-200 p-3 text-start transition-colors hover:border-primary-300 hover:bg-primary-50"
+                                            className="group flex flex-col rounded-lg border border-neutral-200 bg-white p-2 text-start transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md"
                                         >
-                                            <span className="flex items-center gap-2">
-                                                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-500 group-hover:bg-primary-100">
-                                                    <Play size={12} weight="fill" />
-                                                </span>
-                                                <span className="truncate text-caption font-semibold text-neutral-800">
-                                                    {v.title}
+                                            {/* First-frame thumbnail straight from the S3 video — no extra asset pipeline. */}
+                                            <span className="relative block aspect-video overflow-hidden rounded-md bg-neutral-900">
+                                                <video
+                                                    src={`${v.fileUrl}#t=0.1`}
+                                                    preload="metadata"
+                                                    muted
+                                                    playsInline
+                                                    className="size-full object-cover"
+                                                />
+                                                <span className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
+                                                    <span className="flex size-10 items-center justify-center rounded-full bg-white/95 text-primary-600 shadow">
+                                                        <Play size={16} weight="fill" />
+                                                    </span>
                                                 </span>
                                             </span>
-                                            <span className="truncate ps-9 text-caption text-primary-500">
-                                                {v.modulePath.join(' › ')}
+                                            <span className="mt-2 truncate text-caption font-semibold text-neutral-800">
+                                                {v.title}
+                                            </span>
+                                            <span className="mt-1 flex min-w-0">
+                                                <span className="truncate rounded-full bg-primary-50 px-2 py-0.5 text-caption text-primary-600">
+                                                    {v.modulePath.join(' › ')}
+                                                </span>
                                             </span>
                                             {v.description ? (
-                                                <span className="line-clamp-2 ps-9 text-caption leading-snug text-neutral-500">
+                                                <span className="mt-1 line-clamp-2 text-caption leading-snug text-neutral-500">
                                                     {v.description}
                                                 </span>
                                             ) : null}
@@ -264,11 +289,13 @@ function TreeBranch({
                     className="flex min-w-0 flex-1 items-center gap-1 py-1.5 text-start"
                 >
                     {node.children.length ? (
-                        isOpen ? (
-                            <CaretDown size={12} className="shrink-0 text-neutral-400" />
-                        ) : (
-                            <CaretRight size={12} className="shrink-0 text-neutral-400" />
-                        )
+                        <CaretRight
+                            size={12}
+                            className={cn(
+                                'shrink-0 text-neutral-400 transition-transform',
+                                isOpen && 'rotate-90'
+                            )}
+                        />
                     ) : (
                         <span className="w-3 shrink-0" />
                     )}
@@ -326,10 +353,15 @@ function PlayerPane({
                 src={video.fileUrl}
                 controls
                 playsInline
-                className="max-h-96 w-full rounded-md bg-black"
+                className="max-h-96 w-full rounded-lg bg-black ring-1 ring-neutral-200"
             />
-            <p className="mt-3 text-subtitle font-semibold text-neutral-800">{video.title}</p>
-            <p className="mt-0.5 text-caption text-primary-500">{video.modulePath.join(' › ')}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+                <p className="text-subtitle font-semibold text-neutral-800">{video.title}</p>
+                <span className="flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-caption text-primary-600">
+                    <FolderSimple size={11} />
+                    {video.modulePath.join(' › ')}
+                </span>
+            </div>
             {video.description ? (
                 <p className="mt-2 whitespace-pre-wrap text-caption leading-relaxed text-neutral-600">
                     {video.description}

@@ -1,21 +1,4 @@
-"""
-The MCP access gate: may this principal use this institute's MCP server at all?
 
-Two independent legs, both evaluated deny-by-default, and both re-evaluated on
-EVERY request (never cached on the token) so an admin flipping the switch takes
-effect on the next call rather than when some grant expires:
-
-  1. Institute leg — ``MCP_SERVER_SETTING.enabled`` must be true. A missing
-     setting means "never configured", which is DISABLED (opt-in by product
-     decision), not "defaults on".
-  2. Role leg — the caller must hold a role in ``allowed_roles``. Learner roles
-     are stripped from the allow-list server-side, so a learner can never be
-     granted access even by an admin who checks the wrong box or edits the JSON
-     directly.
-
-Per-TOOL gating is a separate concern, handled by the registry's existing
-``is_tool_allowed`` against the same setting blob (see adapter.py).
-"""
 from __future__ import annotations
 
 import logging

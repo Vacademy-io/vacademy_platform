@@ -8,7 +8,6 @@ tool registry, the per-institute tool gate, and platform JWT verification alread
 are. The MCP surface is a narrow adapter over those, not a second implementation.
 
 ---
-
 ## 1. What it exposes
 
 Phase 1 ships exactly **one** tool, read-only:

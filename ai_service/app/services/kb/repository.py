@@ -1299,7 +1299,8 @@ class KbRepository:
         rows = self.db.execute(
             text(
                 f"""
-                SELECT c.id, c.content_text, c.page_start, c.page_end, s.title AS source_title
+                SELECT c.id, c.content_text, c.page_start, c.page_end, s.title AS source_title,
+                       c.source_id
                 FROM kb_chunk c
                 JOIN knowledge_base_source s ON s.id = c.source_id
                 WHERE c.knowledge_base_id = :kb_id
@@ -1319,7 +1320,7 @@ class KbRepository:
         return [
             {
                 "chunk_id": r[0], "content_text": r[1], "page_start": r[2],
-                "page_end": r[3], "source_title": r[4],
+                "page_end": r[3], "source_title": r[4], "source_id": r[5],
             }
             for r in rows
         ]

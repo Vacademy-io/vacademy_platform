@@ -380,7 +380,10 @@ async def ingest_source(
                     from .topics import build_topic_tree
 
                     tree = await build_topic_tree(
-                        db, kb_id=kb_id, institute_id=institute_id
+                        db, kb_id=kb_id, institute_id=institute_id,
+                        # This source is complete but still reads PROCESSING
+                        # until finalize; the authored tree admits it by id.
+                        current_source_id=source_id,
                     )
                 outcome["topics"] = len(tree.topics)
             except Exception as exc:  # noqa: BLE001

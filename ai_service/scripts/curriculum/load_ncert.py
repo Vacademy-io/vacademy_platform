@@ -217,11 +217,17 @@ def _fix_small_caps(title: str) -> str:
 _WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
           "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
           "eighteen", "nineteen", "twenty"]
-_PRINTED_NO = re.compile(r"\b(?:chapter|unit)\s+(\d{1,2}|" + "|".join(_WORDS) + r")\b", re.I)
+# A heading LINE: "CHAPTER 8", "Chapter Eight", "UNIT 3" on a line of its own.
+# Deliberately line-anchored — "In chapter 8, you learnt…" inside a paragraph
+# is a cross-reference, not the chapter number, and matched anywhere it
+# renumbered chapters upward on real NCERT PDFs.
+_PRINTED_NO = re.compile(
+    r"^\s*(?:chapter|unit)\s+(\d{1,2}|" + "|".join(_WORDS) + r")\s*$", re.I | re.M
+)
 
 
-def printed_chapter_no(data: bytes, max_pages: int = 3) -> Optional[int]:
-    """The chapter number the book itself prints on its opening pages, if any."""
+def printed_chapter_no(data: bytes, max_pages: int = 2) -> Optional[int]:
+    """The chapter number the book prints as a heading on its opening pages."""
     import fitz
 
     doc = fitz.open(stream=data, filetype="pdf")
@@ -391,25 +397,32 @@ class Plan:
 
 
 def build_plans(books: Sequence[Book], universe: Optional[Sequence[Book]] = None) -> List[Plan]:
+    universe = list(universe or books)
     by_series: Dict[tuple, List[Book]] = defaultdict(list)
     for b in books:
         by_series[(b.cls, b.subject, b.medium, b.series_key)].append(b)
-    # Naming is decided against the whole inventory (see load_books).
-    all_series = {(b.cls, b.subject, b.medium, b.series_key) for b in (universe or books)}
-    series_per_subject: Counter = Counter((k[0], k[1], k[2]) for k in all_series)
+    # Naming AND chapter numbering are decided against the whole inventory
+    # (see load_books): a --codes keac2 run must still number its chapters
+    # 8 and 9, after the 7 chapters of the Part I it continues.
+    full_parts: Dict[tuple, List[Book]] = defaultdict(list)
+    for b in universe:
+        full_parts[(b.cls, b.subject, b.medium, b.series_key)].append(b)
+    series_per_subject: Counter = Counter((k[0], k[1], k[2]) for k in full_parts)
     plans: List[Plan] = []
-    for (cls, subject, medium, _key), parts in sorted(by_series.items()):
+    for key, parts in sorted(by_series.items()):
+        cls, subject, medium, _ = key
         parts.sort(key=lambda b: b.part_no)
         series_title = parts[0].series_title
         plan = Plan(cls, subject, medium, series_title, parts,
                     multi_book_subject=series_per_subject[(cls, subject, medium)] > 1)
         offset = 0
-        for book in parts:
-            for i in range(1, book.chapters + 1):
-                plan.chapters.append(Chapter(
-                    code=f"{book.code}{i:02d}", chapter_no=offset + i,
-                    part_no=book.part_no, book_code=book.code,
-                ))
+        for book in sorted(full_parts[key], key=lambda b: b.part_no):
+            if book in parts:
+                for i in range(1, book.chapters + 1):
+                    plan.chapters.append(Chapter(
+                        code=f"{book.code}{i:02d}", chapter_no=offset + i,
+                        part_no=book.part_no, book_code=book.code,
+                    ))
             offset += book.chapters
         plans.append(plan)
     return plans
@@ -478,7 +491,10 @@ async def resolve_title(ch: Chapter, overrides: Dict[str, str]) -> str:
         log.warning("Could not read %s for its title: %r", ch.code, exc)
         return f"Chapter {ch.chapter_no}"
     printed = printed_chapter_no(data)
-    if printed and printed != ch.chapter_no and printed >= ch.chapter_no:
+    # Accept the printed number only when it is plausibly THIS chapter: a
+    # continuation of a merged part can be a few ahead of the computed count
+    # (dropped chapters keep their old numbers), never behind and never far.
+    if printed and printed != ch.chapter_no and 0 < printed - ch.chapter_no <= 3:
         log.info("   %s prints Chapter %d (computed %d); using the printed number",
                  ch.code, printed, ch.chapter_no)
         ch.chapter_no = printed
@@ -489,14 +505,27 @@ async def resolve_title(ch: Chapter, overrides: Dict[str, str]) -> str:
     return title or f"Chapter {ch.chapter_no}"
 
 
-async def wait_for_source(api: Api, source_id: str, *, poll: float = 5.0, timeout: float = 1800) -> Dict[str, Any]:
+async def wait_for_source(api: Api, source_id: str, *, poll: float = 5.0, timeout: float = 1800,
+                          ignore_stale: Optional[str] = None, grace: float = 120.0) -> Dict[str, Any]:
+    """Poll until the source reaches a terminal status.
+
+    `ignore_stale`: after POST /reindex the row still reads its OLD terminal
+    status (FAILED) until the background job actually starts — the 202 does
+    not wait for a worker slot. Treat that status as non-terminal for `grace`
+    seconds, or until any other status has been seen."""
     started = time.monotonic()
+    seen_other = False
     while True:
         src = await api.get_source(source_id)
-        if src["status"] in TERMINAL:
+        status = src["status"]
+        if status != ignore_stale:
+            seen_other = True
+        stale = (status == ignore_stale and not seen_other
+                 and time.monotonic() - started < grace)
+        if status in TERMINAL and not stale:
             return src
         if time.monotonic() - started > timeout:
-            raise TimeoutError(f"source {source_id} still {src['status']} after {timeout}s")
+            raise TimeoutError(f"source {source_id} still {status} after {timeout}s")
         await asyncio.sleep(poll)
 
 
@@ -589,7 +618,7 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
             # add_source would leave the FAILED twin behind forever).
             try:
                 await reindex_source(api, src["id"])
-                done = await wait_for_source(api, src["id"])
+                done = await wait_for_source(api, src["id"], ignore_stale="FAILED")
                 if done["status"] == "FAILED":
                     summary["failed"] += 1
                     log.error("   %s still FAILED after re-index: %s", ch.code, done.get("error_message"))
@@ -616,13 +645,13 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
         }
         try:
             res = await api.add_source(kb_id, body)
-        except RuntimeError as exc:
-            if "402" in str(exc):
+        except Exception as exc:  # noqa: BLE001 — one chapter, not the book
+            if isinstance(exc, RuntimeError) and "402" in str(exc):
                 # Stop the whole run: every further chapter would fail the same
                 # way, and half-loaded books must not be published.
                 raise OutOfCredits(f"{plan.kb_name} / {ch.code}: {exc}") from exc
             summary["failed"] += 1
-            log.error("   %s error: %s", ch.code, exc)
+            log.error("   %s error: %r", ch.code, exc)
             continue
         try:
             src = res["source"]

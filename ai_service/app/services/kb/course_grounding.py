@@ -71,6 +71,10 @@ class SlideGrounding:
     # KB's full chunk census to find dropped material. (Their pages come from
     # the existing `pages` property, derived from citations.)
     chunk_ids: List[str] = field(default_factory=list)
+    # Sources the passages came from. In a textbook library every chapter is
+    # its own source restarting at page 1, so the coverage sweep must match
+    # an orphan chunk to a slide of the SAME source before it looks at pages.
+    source_ids: List[str] = field(default_factory=list)
     # False when the knowledge base does not really cover this slide.
     supported: bool = False
     top_similarity: float = 0.0
@@ -500,6 +504,8 @@ async def ground_slide(
         result.citations.append(_cite(hit))
         if hit.get("chunk_id"):
             result.chunk_ids.append(hit["chunk_id"])
+        if hit.get("source_id") and hit["source_id"] not in result.source_ids:
+            result.source_ids.append(hit["source_id"])
         for fig in hit.get("figures") or []:
             result.figures.append(fig)
 
@@ -534,9 +540,12 @@ def assign_uncovered_chunks(
     """Pure assignment logic (offline-testable): uncovered chunk → nearest slide.
 
     Nearness is by page distance to the pages a slide actually retrieved —
-    the one signal that exists regardless of how ingest shaped the tree. A
-    chunk with no page, or a sweep with no paged slides, assigns to the first
-    supported slide rather than being dropped."""
+    the one signal that exists regardless of how ingest shaped the tree —
+    but only among slides that drew on the chunk's OWN source when the
+    chunk names one: chapters of a textbook library each restart at page 1,
+    so "page 4 of Chapter 6" is not near "page 3 of Chapter 5". A chunk with
+    no page, or a sweep with no paged slides, assigns to the first supported
+    slide rather than being dropped."""
     used = {cid for g in groundings.values() for cid in g.chunk_ids}
     supported = [(path, g) for path, g in groundings.items() if g.supported]
     if not supported:
@@ -547,17 +556,22 @@ def assign_uncovered_chunks(
         if chunk["chunk_id"] in used:
             continue
         page = chunk.get("page_start")
+        source = chunk.get("source_id")
+        same_source = [
+            (path, g) for path, g in supported if source and source in g.source_ids
+        ]
+        candidates = same_source or supported
         best_path = None
         if page is not None:
             best_dist = None
-            for path, g in supported:
+            for path, g in candidates:
                 if not g.pages:
                     continue
                 dist = min(abs(page - p) for p in g.pages)
                 if best_dist is None or dist < best_dist:
                     best_dist, best_path = dist, path
         if best_path is None:
-            best_path = supported[0][0]
+            best_path = candidates[0][0]
         assignments.setdefault(best_path, []).append(chunk)
     return assignments
 

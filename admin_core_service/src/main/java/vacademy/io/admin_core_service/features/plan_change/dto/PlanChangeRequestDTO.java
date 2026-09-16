@@ -22,6 +22,13 @@ public class PlanChangeRequestDTO {
      */
     private boolean withAutopay;
 
+    /**
+     * Learner only, with {@code withAutopay}. How the fresh mandate is authorised —
+     * {@code upi} or {@code card}, the same choice the enrol form offers. Omitted: the
+     * method of the learner's existing mandate is reused, defaulting to UPI.
+     */
+    private String mandateMethod;
+
     /** Admin only. Why the plan was moved without a payment. Persisted for audit. */
     private String reason;
 

@@ -7,8 +7,6 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.audience.dto.*;
@@ -135,9 +133,6 @@ public class AudienceService {
 
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
-
-    @Autowired
-    private LeadMoveWorkflowAsyncHelper leadMoveWorkflowAsyncHelper;
 
 
     /** Resolves caller + user-to-user descendants in the leads team. */
@@ -1513,9 +1508,8 @@ public class AudienceService {
      * form webhooks incl. Facebook/Meta) calls, so a new lead channel only has to invoke this
      * one method to get an owner. A manually supplied counsellor wins; otherwise we fall back
      * to the campaign's counselor pool (ROUND_ROBIN / TIME_BASED). Audiences not in any pool,
-     * MANUAL pools, or lists set to on-demand assignment ({@code assign_on_intake=false}, the
-     * AI-first case where the bot must call before anyone owns the lead) leave the lead
-     * unassigned. All failures are swallowed — assignment must never break lead intake.
+     * or MANUAL pools, leave the lead unassigned. All failures are swallowed — assignment must
+     * never break lead intake.
      *
      * NOTE: enquiry / walk-in leads use a SEPARATE assignment system ({@code linkCounsellorToEnquiry}
      * → LinkedUsers + enquiry flag) and must NOT call this, or they'd be double-assigned.
@@ -1542,7 +1536,7 @@ public class AudienceService {
         // Pool auto-assignment. The name lookup mirrors the manual-assign UI so the Counsellor
         // column renders a name (an id without a name shows up as Unassigned).
         try {
-            counselorAssignmentService.assignCounselorOnIntake(savedResponse.getAudienceId())
+            counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
                     .ifPresent(counselorUserId -> {
                         String counselorName = null;
                         try {
@@ -3853,111 +3847,10 @@ public class AudienceService {
         logger.info("Migrated {} lead(s) into audience {} (skipped {}, anchor={}) by user {}",
                 migrated, targetAudienceId, skipped.size(), anchorMode, actor.getUserId());
 
-        // Opt-in: run the target list's event-driven automations on the moved leads, exactly as
-        // if each had just been submitted there. Contexts are built now (inside the transaction,
-        // reads only) but fired only after commit — a workflow that dials or messages must see
-        // the lead already in its new list, and a rollback must fire nothing.
-        if (Boolean.TRUE.equals(request.getRunDestinationAutomations()) && !movable.isEmpty()) {
-            scheduleDestinationAutomations(movable, targetAudience, instituteId);
-        }
-
         return MigrateLeadsResponseDTO.builder()
                 .migrated(migrated)
                 .skipped(skipped)
                 .build();
-    }
-
-    /**
-     * Build one AUDIENCE_LEAD_SUBMISSION context per moved lead and hand the batch to
-     * {@link LeadMoveWorkflowAsyncHelper} once the move commits. Skipped silently when the
-     * target list has no ACTIVE lead-submission trigger — nothing would run, so nothing to build.
-     *
-     * <p>The context mirrors {@link #submitLead}'s so the same workflow nodes work unchanged
-     * (CALL_AI reads responseId / userId / phone; SEND_WHATSAPP reads user + customFields).
-     * Two deliberate differences: {@code leadSource = "LEAD_MOVED"} (+ {@code fromAudienceId})
-     * so a workflow can branch on it, and the respondent/admin email request lists are EMPTY —
-     * the person did not just fill a form, so a "thank you for submitting" email would be wrong.
-     */
-    private void scheduleDestinationAutomations(List<AudienceResponse> moved, Audience targetAudience,
-            String instituteId) {
-        String targetAudienceId = targetAudience.getId();
-        boolean triggerExists = workflowTriggerService
-                .findByInstituteIdEventNameAndEventId(instituteId,
-                        WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(), targetAudienceId)
-                .isPresent();
-        if (!triggerExists) {
-            logger.info("Moved-lead automations requested but audience {} has no active lead-submission trigger — nothing to run",
-                    targetAudienceId);
-            return;
-        }
-
-        // One auth round-trip for every moved lead's user, not one per lead.
-        List<String> userIds = moved.stream()
-                .map(r -> r.getUserId() != null ? r.getUserId() : r.getStudentUserId())
-                .filter(StringUtils::hasText)
-                .distinct()
-                .toList();
-        Map<String, UserDTO> usersById = new HashMap<>();
-        if (!userIds.isEmpty()) {
-            try {
-                for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(userIds)) {
-                    if (u != null && u.getId() != null) usersById.put(u.getId(), u);
-                }
-            } catch (Exception e) {
-                logger.warn("Could not fetch users for moved-lead automations: {}", e.getMessage());
-            }
-        }
-
-        AudienceDTO audienceDTO = AudienceDTO.builder()
-                .id(targetAudience.getId())
-                .campaignName(targetAudience.getCampaignName())
-                .instituteId(targetAudience.getInstituteId())
-                .status(targetAudience.getStatus())
-                .toNotify(targetAudience.getToNotify())
-                .sendRespondentEmail(targetAudience.getSendRespondentEmail())
-                .build();
-        String instituteName = instituteRepository.findById(instituteId)
-                .map(Institute::getInstituteName).orElse("");
-        String submissionTime = java.time.ZonedDateTime.now()
-                .format(java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z"));
-
-        List<Map<String, Object>> contexts = new ArrayList<>();
-        for (AudienceResponse response : moved) {
-            String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
-            Map<String, Object> ctx = new HashMap<>();
-            ctx.put("user", usersById.get(leadUserId));
-            ctx.put("audience", audienceDTO);
-            ctx.put("audienceId", targetAudienceId);
-            ctx.put("instituteId", instituteId);
-            ctx.put("instituteName", instituteName);
-            ctx.put("customFields", buildCustomFieldMapForEmail(response.getId()));
-            ctx.put("submissionTime", submissionTime);
-            ctx.put("responseId", response.getId());
-            ctx.put("userId", leadUserId);
-            ctx.put("leadUserId", leadUserId);
-            ctx.put("phone", response.getParentMobile());
-            ctx.put("parentMobile", response.getParentMobile());
-            ctx.put("campaignName", targetAudience.getCampaignName());
-            ctx.put("sendRespondentEmail", false);
-            ctx.put("respondentEmailRequests", new ArrayList<>());
-            ctx.put("adminEmailRequests", new ArrayList<>());
-            ctx.put("leadSource", "LEAD_MOVED");
-            ctx.put("fromAudienceId", response.getOriginalAudienceId());
-            contexts.add(ctx);
-        }
-
-        Runnable fire = () -> leadMoveWorkflowAsyncHelper
-                .fireDestinationLeadSubmission(targetAudienceId, instituteId, contexts);
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    fire.run();
-                }
-            });
-        } else {
-            fire.run();
-        }
     }
 
     private MigrateLeadsResponseDTO.SkippedLead skip(AudienceResponse response,
@@ -6234,8 +6127,17 @@ public class AudienceService {
             UserDTO userDTO = StringUtils.hasText(resp.getUserId()) ? userMap.get(resp.getUserId()) : null;
             Map<String, String> cfForResp = customFieldMap.getOrDefault(resp.getId(), Collections.emptyMap());
 
-            // Resolve template variables
+            // Resolve template variables. The recipient's own identity is always available
+            // as {{name}} / {{first_name}} / {{email}} without the caller having to map it —
+            // the unified aliases derive first/last name from "name". A send that relied on
+            // an explicit mapping the caller forgot went out reading "Hi {{first_name}},".
             Map<String, String> resolvedVars = new HashMap<>();
+            String builtinName = userDTO != null && StringUtils.hasText(userDTO.getFullName())
+                    ? userDTO.getFullName() : resp.getParentName();
+            String builtinEmail = userDTO != null && StringUtils.hasText(userDTO.getEmail())
+                    ? userDTO.getEmail() : resp.getParentEmail();
+            if (StringUtils.hasText(builtinName)) resolvedVars.put("name", builtinName.trim());
+            if (StringUtils.hasText(builtinEmail)) resolvedVars.put("email", builtinEmail.trim());
             if (variableMapping != null) {
                 for (Map.Entry<String, String> entry : variableMapping.entrySet()) {
                     String templateVar = entry.getKey();

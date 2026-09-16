@@ -75,6 +75,6 @@
         "saveFailed": "Impossible d'enregistrer les paramètres"
     },
     "errors": {
-        "infoUnavailable": "Les détails de connexion sont indisponibles pour le moment. Réessayez dans un instant."
+        "infoUnavailable": "Impossible de charger les détails du serveur MCP. Le serveur n'est peut-être pas encore activé sur ce déploiement, ou ai-service est indisponible. Les options d'outils restent masquées jusqu'au chargement — vos paramètres enregistrés ne sont pas affectés."
     }
 }

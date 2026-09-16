@@ -212,6 +212,13 @@ export default function MCPServerSettings() {
                 </CardHeader>
             </Card>
 
+            {infoError && (
+                <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3">
+                    <WarningCircle size={18} className="mt-0.5 shrink-0 !text-warning-600" />
+                    <p className="text-caption text-warning-700">{t('errors.infoUnavailable')}</p>
+                </div>
+            )}
+
             <Card>
                 <CardHeader>
                     <CardTitle>{t('enable.title')}</CardTitle>
@@ -435,7 +442,9 @@ export default function MCPServerSettings() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {tools.length === 0 ? (
-                        <p className="text-body text-neutral-500">{t('tools.empty')}</p>
+                        <p className="text-body text-neutral-500">
+                            {infoError ? t('errors.infoUnavailable') : t('tools.empty')}
+                        </p>
                     ) : (
                         tools.map((tool) => (
                             <div key={tool.key} className="flex items-start gap-3">
@@ -519,7 +528,15 @@ export default function MCPServerSettings() {
                                         </label>
                                     </div>
 
-                                    {customized && (
+                                    {customized && tools.length === 0 && (
+                                        <p className="border-t border-neutral-100 pt-3 text-caption text-neutral-500">
+                                            {infoError
+                                                ? t('errors.infoUnavailable')
+                                                : t('tools.empty')}
+                                        </p>
+                                    )}
+
+                                    {customized && tools.length > 0 && (
                                         <div className="space-y-2 border-t border-neutral-100 pt-3">
                                             {tools.map((tool) => (
                                                 <label

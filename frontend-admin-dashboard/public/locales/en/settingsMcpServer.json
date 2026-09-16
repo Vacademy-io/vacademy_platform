@@ -75,6 +75,6 @@
         "saveFailed": "Could not save the settings"
     },
     "errors": {
-        "infoUnavailable": "Connection details are unavailable right now. Try again in a moment."
+        "infoUnavailable": "Couldn't load the MCP server details. The server may not be enabled on this deployment yet, or ai-service may be unavailable. Tool options stay hidden until it loads — your saved settings are unaffected."
     }
 }

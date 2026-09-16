@@ -69,7 +69,7 @@ services:
       numWorkers: "1"
       modelSize: ""  # blank = use code default (medium for non-English, base for English)
     mcp:
-      enabled: false
+      enabled: true
       issuerUrl: ""
   # Vacademy AI Agent real-time voice bot (Plivo <Stream> ↔ Pipecat+Sarvam).
   # Env (PUBLIC_BASE, ADMIN_CORE_BASE, VOICE_BOT_CLIENT_NAME/SECRET, SARVAM_API_KEY)

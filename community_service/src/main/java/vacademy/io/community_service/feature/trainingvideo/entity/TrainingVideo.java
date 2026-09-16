@@ -19,21 +19,10 @@ import java.util.Date;
  * placed it under, e.g. ["LMS","Course creation","AI based course"]. The admin popup renders
  * those segments as a collapsible module tree.
  *
- * <p>Dev/k8s-local profiles run {@code ddl-auto=update} and create the table automatically.
- * Prod/stage have no ddl-auto, so apply this DDL manually there:
- * <pre>
- * CREATE TABLE public.training_video (
- *     id          VARCHAR(255) PRIMARY KEY,
- *     title       VARCHAR(500) NOT NULL,
- *     description TEXT,
- *     file_id     VARCHAR(255),
- *     file_url    VARCHAR(2048) NOT NULL,
- *     module_path JSONB NOT NULL,
- *     active      BOOLEAN NOT NULL DEFAULT TRUE,
- *     created_at  TIMESTAMP,
- *     updated_at  TIMESTAMP
- * );
- * </pre>
+ * <p>The table is created by Flyway in assessment_service — community_service shares that
+ * database and does no ddl-auto of its own. See
+ * {@code assessment_service/src/main/resources/db/migration/V47__create_training_video_table.sql};
+ * it runs automatically on every environment when assessment_service deploys.
  */
 @Entity
 @Table(name = "training_video", schema = "public")

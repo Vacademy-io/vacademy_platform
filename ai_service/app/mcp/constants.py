@@ -41,6 +41,27 @@ DEFAULT_ALLOWED_ROLES = ("ADMIN",)
 #: The single OAuth scope this resource server understands.
 MCP_SCOPE_READ = "vacademy.read"
 
+#: Name given to the OAuth client every institute gets automatically.
+AUTO_CLIENT_NAME = "Vacademy"
+
+#: Callback URLs the auto-provisioned client accepts out of the box.
+#:
+#: Most AI apps never need this client at all — Claude, ChatGPT and Cursor all
+#: register themselves via Dynamic Client Registration (RFC 7591) and bring their
+#: own callback. This list exists for apps that ask an admin to paste a client id
+#: instead, and it is pre-seeded with the callbacks of the apps we know so that
+#: an admin does not have to hunt for a URL. Anything not covered can be added
+#: from the settings page.
+#:
+#: OAuth 2.1 requires exact-match redirect validation, which is why these are
+#: literal URLs and not patterns.
+AUTO_CLIENT_REDIRECT_URIS = (
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+    "https://chatgpt.com/connector_platform_oauth_redirect",
+    "https://cursor.com/connector/callback",
+)
+
 #: Denial reasons surfaced to clients (and rendered by the consent page).
 DENY_DISABLED = "mcp_disabled"
 DENY_LEARNER = "learner_not_allowed"
@@ -67,6 +88,8 @@ __all__ = [
     "LEARNER_ROLES",
     "DEFAULT_ALLOWED_ROLES",
     "MCP_SCOPE_READ",
+    "AUTO_CLIENT_NAME",
+    "AUTO_CLIENT_REDIRECT_URIS",
     "DENY_DISABLED",
     "DENY_LEARNER",
     "DENY_ROLE",

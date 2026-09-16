@@ -36,6 +36,7 @@ export default function MCPServerSettings() {
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
     const [newClientName, setNewClientName] = useState('');
     const [newClientRedirects, setNewClientRedirects] = useState('');
+    const [showClientForm, setShowClientForm] = useState(false);
 
     const { data, isLoading } = useQuery({
         queryKey: ['mcp-server-settings'],
@@ -126,7 +127,17 @@ export default function MCPServerSettings() {
     };
 
     const toggleEnabled = (on: boolean) => {
-        setSettings((prev) => ({ ...prev, enabled: on }));
+        setSettings((prev) => {
+            // Turning the server on with nothing ticked produced a connection that
+            // listed zero tools — technically correct, but it reads as broken. An
+            // admin enabling the server means "make this usable", so switch the
+            // read-only catalogue on with it. They can untick individually below.
+            const seedTools =
+                on && prev.enabled_tools.length === 0 && tools.length > 0
+                    ? tools.map((tool) => tool.key)
+                    : prev.enabled_tools;
+            return { ...prev, enabled: on, enabled_tools: seedTools };
+        });
         setHasChanges(true);
     };
 
@@ -326,7 +337,9 @@ export default function MCPServerSettings() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {(info?.manual_clients ?? []).length === 0 ? (
-                        <p className="text-body text-neutral-500">{t('clients.empty')}</p>
+                        <p className="text-body text-neutral-500">
+                            {infoError ? t('errors.infoUnavailable') : t('clients.empty')}
+                        </p>
                     ) : (
                         <div className="space-y-2">
                             {(info?.manual_clients ?? []).map((client) => (
@@ -385,53 +398,63 @@ export default function MCPServerSettings() {
                         </div>
                     )}
 
-                    <div className="grid gap-3 rounded-lg border border-dashed border-neutral-300 p-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                            <Label
-                                htmlFor="mcp-new-client-name"
-                                className="text-caption font-medium text-neutral-600"
-                            >
-                                {t('clients.nameLabel')}
-                            </Label>
-                            <Input
-                                id="mcp-new-client-name"
-                                value={newClientName}
-                                placeholder={t('clients.namePlaceholder')}
-                                onChange={(e) => setNewClientName(e.target.value)}
-                            />
+                    {showClientForm ? (
+                        <div className="grid gap-3 rounded-lg border border-dashed border-neutral-300 p-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label
+                                    htmlFor="mcp-new-client-name"
+                                    className="text-caption font-medium text-neutral-600"
+                                >
+                                    {t('clients.nameLabel')}
+                                </Label>
+                                <Input
+                                    id="mcp-new-client-name"
+                                    value={newClientName}
+                                    placeholder={t('clients.namePlaceholder')}
+                                    onChange={(e) => setNewClientName(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label
+                                    htmlFor="mcp-new-client-redirects"
+                                    className="text-caption font-medium text-neutral-600"
+                                >
+                                    {t('clients.redirectLabel')}
+                                </Label>
+                                <Input
+                                    id="mcp-new-client-redirects"
+                                    value={newClientRedirects}
+                                    placeholder={t('clients.redirectPlaceholder')}
+                                    onChange={(e) => setNewClientRedirects(e.target.value)}
+                                />
+                                <p className="text-caption text-neutral-500">
+                                    {t('clients.redirectHint')}
+                                </p>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="small"
+                                    disable={
+                                        creatingClient ||
+                                        !newClientName.trim() ||
+                                        !newClientRedirects.trim()
+                                    }
+                                    onClick={handleCreateClient}
+                                >
+                                    {creatingClient ? t('clients.creating') : t('clients.create')}
+                                </MyButton>
+                            </div>
                         </div>
-                        <div className="space-y-1.5">
-                            <Label
-                                htmlFor="mcp-new-client-redirects"
-                                className="text-caption font-medium text-neutral-600"
-                            >
-                                {t('clients.redirectLabel')}
-                            </Label>
-                            <Input
-                                id="mcp-new-client-redirects"
-                                value={newClientRedirects}
-                                placeholder={t('clients.redirectPlaceholder')}
-                                onChange={(e) => setNewClientRedirects(e.target.value)}
-                            />
-                            <p className="text-caption text-neutral-500">
-                                {t('clients.redirectHint')}
-                            </p>
-                        </div>
-                        <div className="sm:col-span-2">
-                            <MyButton
-                                buttonType="secondary"
-                                scale="small"
-                                disable={
-                                    creatingClient ||
-                                    !newClientName.trim() ||
-                                    !newClientRedirects.trim()
-                                }
-                                onClick={handleCreateClient}
-                            >
-                                {creatingClient ? t('clients.creating') : t('clients.create')}
-                            </MyButton>
-                        </div>
-                    </div>
+                    ) : (
+                        <MyButton
+                            buttonType="text"
+                            scale="small"
+                            onClick={() => setShowClientForm(true)}
+                        >
+                            {t('clients.addCustom')}
+                        </MyButton>
+                    )}
                 </CardContent>
             </Card>
 

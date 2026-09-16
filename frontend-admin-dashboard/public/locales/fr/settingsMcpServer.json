@@ -24,7 +24,7 @@
     },
     "clients": {
         "title": "Identifiants client OAuth",
-        "description": "La plupart des applications d'IA s'enregistrent automatiquement et n'ont besoin de rien ici. Créez un identifiant client uniquement pour une application qui vous demande d'en coller un.",
+        "description": "La plupart des applications d'IA s'enregistrent elles-mêmes et n'ont besoin de rien ici — seulement l'URL du serveur ci-dessus. L'identifiant client de votre établissement est prêt ci-dessous pour les applications qui en demandent un.",
         "nameLabel": "Nom de l'application",
         "namePlaceholder": "ex. Assistant de l'équipe marketing",
         "redirectLabel": "URL de redirection",
@@ -38,7 +38,8 @@
         "removed": "Identifiant client supprimé",
         "created": "Identifiant client créé",
         "createFailed": "Impossible de créer l'identifiant client",
-        "removeFailed": "Impossible de supprimer l'identifiant client"
+        "removeFailed": "Impossible de supprimer l'identifiant client",
+        "addCustom": "Ajouter un identifiant client pour une autre application"
     },
     "tools": {
         "title": "Ce que les applications d'IA peuvent faire",

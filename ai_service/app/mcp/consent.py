@@ -34,7 +34,12 @@ from ..db import db_dependency
 from ..schemas.auth import PinnedPrincipal
 from .access import check_mcp_access, load_mcp_setting, normalize_role
 from .adapter import tool_catalog
-from .constants import DENIAL_MESSAGES, MCP_SCOPE_READ
+from .constants import (
+    AUTO_CLIENT_NAME,
+    AUTO_CLIENT_REDIRECT_URIS,
+    DENIAL_MESSAGES,
+    MCP_SCOPE_READ,
+)
 from .crypto import TokenCipher
 from .oauth_provider import is_acceptable_redirect_uri, new_authorization_code
 from .repository import McpOAuthRepository
@@ -76,6 +81,35 @@ def _require_can_connect(principal: PinnedPrincipal, db: Session) -> Dict[str, A
             detail={"reason": denial, "message": DENIAL_MESSAGES.get(denial, "Access denied.")},
         )
     return setting
+
+
+def _ensure_auto_client(repo: McpOAuthRepository, principal: PinnedPrincipal) -> None:
+    """
+    Give every institute an OAuth client id without anyone filling in a form.
+
+    Asking an admin to invent an "app name" and look up a redirect URL was
+    friction for no benefit: the name is always the same, and the callbacks are
+    fixed by whichever AI app is connecting, not by the institute. So the first
+    time the settings page is opened we mint one client seeded with the
+    callbacks of the apps we know about, and simply show the id.
+
+    Idempotent, and deliberately additive-only: it never rewrites an existing
+    client's redirect URIs, so an admin who added their own is left alone.
+    """
+    if repo.list_manual_clients(principal.institute_id):
+        return
+
+    repo.save_client(
+        client_id=f"vacademy-{uuid.uuid4().hex}",
+        client_name=AUTO_CLIENT_NAME,
+        redirect_uris=list(AUTO_CLIENT_REDIRECT_URIS),
+        grant_types=["authorization_code", "refresh_token"],
+        scope=MCP_SCOPE_READ,
+        institute_id=principal.institute_id,
+        created_by=principal.user_id,
+        source="manual",
+    )
+    logger.info("Auto-provisioned MCP OAuth client for institute %s", principal.institute_id)
 
 
 # ── consent ──────────────────────────────────────────────────────────────
@@ -238,6 +272,7 @@ async def connection_info(
 ) -> ConnectionInfoResponse:
     _require_institute_admin(principal)
     repo = _repo(db, settings)
+    _ensure_auto_client(repo, principal)
     # Note this is NOT gated on check_mcp_access: the settings page must render
     # (server URL, catalogue) precisely while the server is still switched off.
     return ConnectionInfoResponse(

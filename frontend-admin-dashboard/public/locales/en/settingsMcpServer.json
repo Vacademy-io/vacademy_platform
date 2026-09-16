@@ -24,7 +24,7 @@
     },
     "clients": {
         "title": "OAuth client IDs",
-        "description": "Most AI apps register themselves automatically and need nothing here. Create a client ID only for an app that asks you to paste one.",
+        "description": "Most AI apps register themselves and need nothing here — just the server URL above. Your institute's client ID is ready below for apps that ask for one.",
         "nameLabel": "App name",
         "namePlaceholder": "e.g. Marketing team's assistant",
         "redirectLabel": "Redirect URLs",
@@ -38,7 +38,8 @@
         "removed": "Client ID removed",
         "created": "Client ID created",
         "createFailed": "Could not create the client ID",
-        "removeFailed": "Could not remove the client ID"
+        "removeFailed": "Could not remove the client ID",
+        "addCustom": "Add a client ID for another app"
     },
     "tools": {
         "title": "What AI apps can do",

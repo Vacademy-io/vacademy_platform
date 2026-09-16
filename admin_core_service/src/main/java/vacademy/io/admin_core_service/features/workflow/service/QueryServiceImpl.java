@@ -65,6 +65,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final SessionScheduleRepository sessionScheduleRepository;
     private final LiveSessionParticipantRepository liveSessionParticipantRepository;
     private final LiveSessionRepository liveSessionRepository;
+    private final vacademy.io.admin_core_service.features.live_session.service.AttendanceCriteriaService attendanceCriteriaService;
     private final InstituteSettingService instituteSettingService;
     private final AudienceResponseRepository audienceResponseRepository;
     private final CustomFieldRepository customFieldRepository;
@@ -2468,6 +2469,27 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             } catch (Exception ignored) {}
                         }
 
+                        // Which of this learner's sessions run a minimum-attendance
+                        // rule. For those, the status shown here is provisional until
+                        // the class platform reports the exact joining time — the
+                        // report is often mailed before that callback lands.
+                        java.util.Set<String> ruledSessionIds = new java.util.HashSet<>();
+                        try {
+                            java.util.Set<String> sids = new java.util.HashSet<>();
+                            for (var d : sessionDetails) {
+                                Object sid = d.get("sessionId");
+                                if (sid != null) sids.add(String.valueOf(sid));
+                            }
+                            if (!sids.isEmpty()) {
+                                for (var ls : liveSessionRepository.findAllById(sids)) {
+                                    if (attendanceCriteriaService.resolve(ls).isActive()) {
+                                        ruledSessionIds.add(ls.getId());
+                                    }
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                        boolean anyProvisional = false;
+
                         for (var session : sessionDetails) {
                             String status = String.valueOf(session.getOrDefault("attendanceStatus", "UNMARKED"));
                             // UNMARKED counts as Absent for display purposes — no in-between state shown to students
@@ -2573,6 +2595,16 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             // When a minimum-attendance rule decided this row, say so on the
                             // card. "Absent" next to "Duration: 4 min" reads like a
                             // contradiction unless the learner is told what the bar was.
+                            // A ruled session with no duration yet: the join click set
+                            // this status, and it may change once the platform reports
+                            // how long the learner actually stayed.
+                            String sessionIdStr = String.valueOf(session.get("sessionId"));
+                            boolean provisional = ruledSessionIds.contains(sessionIdStr)
+                                    && (eng == null || !(eng.get("providerTotalDurationMinutes") instanceof Number));
+                            if (provisional) {
+                                anyProvisional = true;
+                            }
+
                             String absenceReason = null;
                             if ("ABSENT".equals(status) && eng != null
                                     && eng.get("attendanceEvaluationJson") != null) {
@@ -2606,8 +2638,16 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             tableHtml.append("<td style=\"padding:0;text-align:right;vertical-align:middle;white-space:nowrap\">")
                                      .append("<span style=\"display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;color:")
                                      .append(statusColor).append(";background:").append(statusBg).append("\">")
-                                     .append(statusLabel).append("</span>")
-                                     .append("</td>");
+                                     .append(statusLabel).append("</span>");
+                            if (provisional) {
+                                // Names the exact card whose status may still change, rather
+                                // than leaving the learner to guess from a blanket footer.
+                                tableHtml.append("&nbsp;<span style=\"display:inline-block;padding:3px 8px;")
+                                         .append("border-radius:999px;font-size:10px;font-weight:600;")
+                                         .append("color:#475569;background:#f1f5f9;border:1px solid #cbd5e1\">")
+                                         .append("Provisional</span>");
+                            }
+                            tableHtml.append("</td>");
                             tableHtml.append("</tr></table>");
 
                             // Body: label/value rows
@@ -2630,11 +2670,20 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             }
                             tableHtml.append("</div>");
                         }
-                        if (anyCriteriaAbsence) {
-                            // Rendered inside {{sessionsTableHtml}} so the institute's
-                            // stored Attendance Report template is not touched.
+                        // Both notes render inside {{sessionsTableHtml}} so the
+                        // institute's stored Attendance Report template is not touched.
+                        if (anyProvisional) {
                             tableHtml.append("<p style=\"margin:14px 0 0 0;font-size:12px;")
                                      .append("color:#64748b;line-height:1.6\">")
+                                     .append("Sessions marked <strong>Provisional</strong> may be updated")
+                                     .append(" once the exact joining time is received from the class")
+                                     .append(" platform.")
+                                     .append("</p>");
+                        }
+                        if (anyCriteriaAbsence) {
+                            tableHtml.append("<p style=\"margin:")
+                                     .append(anyProvisional ? "6px" : "14px")
+                                     .append(" 0 0 0;font-size:12px;color:#64748b;line-height:1.6\">")
                                      .append("If there is any discrepancy, please contact the faculty.")
                                      .append("</p>");
                         }

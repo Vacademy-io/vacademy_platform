@@ -116,6 +116,16 @@ function TryPage() {
               />
             </label>
 
+            {/* A link with ?topic=<key> that is not in the public list is an unlisted lesson
+                built from the visitor's own material. Show that, not ten unrelated topics. */}
+            {topics !== null && search.topic && !topics.some((t) => t.key === search.topic) ? (
+              <div className="mt-5 rounded-xl border border-primary-500 bg-primary-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Your lesson</p>
+                <p className="mt-1 text-sm font-semibold">Built from your chapter — it&apos;s ready.</p>
+                <p className="mt-0.5 text-xs text-neutral-600">Add your name, choose voice or text, and press start.</p>
+              </div>
+            ) : (
+            <>
             <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Pick a topic</p>
             {topics === null ? (
               <p className="mt-2 flex items-center gap-2 text-sm text-neutral-500"><CircleNotch className="size-4 animate-spin" /> Loading topics…</p>
@@ -134,6 +144,8 @@ function TryPage() {
                   </button>
                 ))}
               </div>
+            )}
+            </>
             )}
 
             <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-neutral-500">How do you want to talk?</p>

@@ -483,6 +483,10 @@ public class UnifiedSendService implements SendChannelRouter {
                     subject = subject.replace(placeholder, value);
                     body = body.replace(placeholder, value);
                 }
+                // Safety net: a placeholder nobody resolved must not reach a recipient as
+                // literal "{{first_name}}". Drop it (and a dangling ", " after a greeting).
+                subject = scrubUnresolved(subject);
+                body = scrubUnresolved(body);
 
                 // Check if user has unsubscribed from this email sender.
                 // Only check when we have a valid UUID userId (not null, not an email address).
@@ -691,6 +695,15 @@ public class UnifiedSendService implements SendChannelRouter {
             log.error("Failed to queue batch: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to queue batch: " + e.getMessage());
         }
+    }
+
+    private static final java.util.regex.Pattern UNRESOLVED = java.util.regex.Pattern.compile("\\{\\{\\s*[\\w.\\-]+\\s*\\}\\}");
+
+    /** Remove any {{placeholder}} left after substitution, tidying "Hi {{x}}," → "Hi,". */
+    static String scrubUnresolved(String text) {
+        if (text == null || text.indexOf("{{") < 0) return text;
+        String out = UNRESOLVED.matcher(text).replaceAll("");
+        return out.replaceAll("(?i)(\\b(hi|hello|hey|dear)) ,", "$1,").replaceAll("  +", " ");
     }
 
     public UnifiedSendResponse getBatchStatus(String batchId) {

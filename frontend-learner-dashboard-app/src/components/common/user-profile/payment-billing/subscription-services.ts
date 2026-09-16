@@ -5,6 +5,7 @@ import {
   LEARNER_PLAN_CHANGE_OPTIONS,
   LEARNER_PLAN_CHANGE,
 } from "@/constants/urls";
+import type { MandateMethod } from "@/components/common/subscription/MandateMethodPicker";
 
 /**
  * One subscription (a UserPlan) and its autopay mandate. Mirrors the backend
@@ -156,13 +157,22 @@ export const cancelSubscription = async (
 export const initiateRenewalPayment = async (
   instituteId: string,
   sub: Subscription,
-  withAutopay: boolean
+  withAutopay: boolean,
+  // Only meaningful with withAutopay: how the fresh mandate is authorised (UPI Autopay
+  // or card e-mandate), the same choice the enrol form offers.
+  mandateMethod?: MandateMethod
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> => {
   const response = await authenticatedAxiosInstance.post(
     `${LEARNER_SUBSCRIPTION_LIST}/${sub.user_plan_id}/renew-payment`,
     null,
-    { params: { instituteId, withAutopay } }
+    {
+      params: {
+        instituteId,
+        withAutopay,
+        ...(withAutopay && mandateMethod ? { mandateMethod } : {}),
+      },
+    }
   );
   return response.data;
 };
@@ -192,11 +202,16 @@ export const requestPlanChange = async (
   instituteId: string,
   userPlanId: string,
   targetPlanId: string,
-  withAutopay: boolean
+  withAutopay: boolean,
+  mandateMethod?: MandateMethod
 ): Promise<PlanChangeResult> => {
   const response = await authenticatedAxiosInstance.post(
     LEARNER_PLAN_CHANGE(userPlanId),
-    { target_plan_id: targetPlanId, with_autopay: withAutopay },
+    {
+      target_plan_id: targetPlanId,
+      with_autopay: withAutopay,
+      ...(withAutopay && mandateMethod ? { mandate_method: mandateMethod } : {}),
+    },
     { params: { instituteId } }
   );
   return response.data;

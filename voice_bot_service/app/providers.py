@@ -71,9 +71,124 @@ def _register_saaras_v4() -> bool:
         return False
 
 
+def _smallest_with_finalize_retry(base, retry_secs: float, retries: int,
+                                  hold_below: float = 0.0, hold_secs: float = 0.0):
+    """Subclass that asks Pulse AGAIN when a caller turn produced no transcript.
+
+    pipecat sends `{"type":"finalize"}` the moment our VAD says the caller
+    stopped. Pulse decodes whatever it has; on a one-word answer that is ~0.3 s
+    of audio and it answers ~2.5 s late, or silently drops the utterance (see
+    Settings.smallest_finalize_retry_secs for the measurements and the two
+    alternatives). Re-sending finalize costs nothing on a healthy turn — the
+    flag is already set by then and no message goes out — and recovers the
+    stuck one in ~0.8 s.
+
+    A new VAD onset cancels anything pending: that turn will send its own.
+    """
+    if retry_secs <= 0 or retries <= 0:
+        return base                       # kill switch: plain pipecat
+    import asyncio as _asyncio
+    import json as _json
+    import time as _time
+    from pipecat.frames.frames import (VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+    from pipecat.services.stt_service import WebsocketSTTService
+
+    class _FinalizeRetrySTT(base):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._got_final = True
+            self._retry_task = None
+            self._hold_task = None
+            self._speaking_since = 0.0
+
+        async def _process_response(self, data):
+            # ONLY a real final counts as "it answered". Keepalives and empty
+            # finals are exactly the case we are retrying for.
+            try:
+                if data.get("is_final") and (data.get("transcript") or "").strip():
+                    self._got_final = True
+            except Exception:
+                pass
+            return await super()._process_response(data)
+
+        def _cancel_retry(self):
+            t, self._retry_task = self._retry_task, None
+            if t is not None and not t.done():
+                t.cancel()
+
+        async def _retry_finalize(self):
+            try:
+                for n in range(retries):
+                    await _asyncio.sleep(retry_secs)
+                    if self._got_final:
+                        return
+                    ws = getattr(self, "_websocket", None)
+                    state = getattr(ws, "state", None)
+                    if ws is None or state is None or state.name != "OPEN":
+                        return
+                    await ws.send(_json.dumps({"type": "finalize"}))
+                    logger.info("stt: no transcript %.1fs after the turn closed — "
+                                "asking Pulse again (%d/%d)",
+                                retry_secs * (n + 1), n + 1, retries)
+            except _asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning("stt: finalize retry failed", exc_info=True)
+
+        async def _hold_then_finalize(self, wait: float):
+            """A VAD stop inside the first `hold_below` seconds of a turn is
+            usually a breath ("Uh," … "I think mix"), not the end. Sending
+            finalize there made Pulse return an empty final for the prefix and
+            DROP the rest of the sentence (calls 82c1f95a x2, 91d1541e, 15aadcdb:
+            5-6 s utterances with no transcript at all). Hold it; a new VAD
+            onset inside the hold cancels it and the real stop sends its own."""
+            try:
+                await _asyncio.sleep(wait)
+                ws = getattr(self, "_websocket", None)
+                state = getattr(ws, "state", None)
+                if ws is not None and state is not None and state.name == "OPEN":
+                    await ws.send(_json.dumps({"type": "finalize"}))
+                self._got_final = False
+                self._cancel_retry()
+                self._retry_task = self.create_task(self._retry_finalize())
+            except _asyncio.CancelledError:
+                pass
+
+        async def process_frame(self, frame, direction):
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._cancel_retry()
+                self._cancel_hold()
+                if not self._speaking_since:
+                    self._speaking_since = _time.time()
+            if isinstance(frame, VADUserStoppedSpeakingFrame) and hold_below > 0:
+                spoken = _time.time() - (self._speaking_since or _time.time())
+                if 0 <= spoken < hold_below:
+                    # Everything the base class does EXCEPT the finalize.
+                    await WebsocketSTTService.process_frame(self, frame, direction)
+                    self._cancel_hold()
+                    self._hold_task = self.create_task(self._hold_then_finalize(hold_secs))
+                    return
+            await super().process_frame(frame, direction)
+            if isinstance(frame, VADUserStoppedSpeakingFrame):
+                # super() has just sent the first finalize.
+                self._speaking_since = 0.0
+                self._got_final = False
+                self._cancel_retry()
+                self._retry_task = self.create_task(self._retry_finalize())
+
+        def _cancel_hold(self):
+            t, self._hold_task = getattr(self, "_hold_task", None), None
+            if t is not None and not t.done():
+                t.cancel()
+
+    _FinalizeRetrySTT.__name__ = base.__name__
+    return _FinalizeRetrySTT
+
+
 def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None,
-              mode: str | None = None):
-    """STT factory with an A/B provider switch (STT_PROVIDER=sarvam|google).
+              mode: str | None = None, provider: str | None = None):
+    """STT factory with a provider switch (STT_PROVIDER=sarvam|google|smallest).
 
     Why the switch exists: across the founder's four 2026-08-05 test calls the
     chronic offender was Saaras — interjections the VAD heard but STT never
@@ -90,7 +205,8 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     the POC ships 0.5.
     """
     s = get_settings()
-    if s.stt_provider == "google":
+    provider = (provider or s.stt_provider or "sarvam").strip().lower()
+    if provider == "google":
         from pipecat.services.google.stt import GoogleSTTService
         langs = []
         for t in ((language or s.google_stt_language) or "hi-IN").split(","):
@@ -116,6 +232,27 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
                 # the turn-gate see words sooner than Sarvam ever could.
                 enable_interim_results=True,
             ),
+        )
+    if provider == "smallest":
+        from pipecat.services.smallest.stt import SmallestSTTService
+        stt_cls = _smallest_with_finalize_retry(
+            SmallestSTTService, s.smallest_finalize_retry_secs,
+            s.smallest_finalize_retries,
+            hold_below=s.smallest_hold_below_secs, hold_secs=s.smallest_hold_secs)
+        # Per-agent pins arrive as BCP-47 ("hi-IN"); Pulse wants bare codes and
+        # has no Hinglish code, "hi" IS the code-switching mode. Unknown → default.
+        tag = (language or "").strip().lower()
+        lang = {"hi-in": "hi", "hi": "hi", "hinglish": "hi", "en-in": "en", "en": "en",
+                "en-us": "en", "mr-in": "mr", "gu-in": "gu", "bn-in": "bn", "ta-in": "ta",
+                "te-in": "te", "kn-in": "kn", "ml-in": "ml", "or-in": "or",
+                "multi": "multi"}.get(tag) or s.smallest_stt_language
+        if not s.smallest_api_key:
+            raise RuntimeError("STT_PROVIDER=smallest but SMALLEST_API_KEY is empty")
+        return stt_cls(
+            api_key=s.smallest_api_key,
+            sample_rate=sample_rate,
+            settings=SmallestSTTService.Settings(language=lang),
+            ttfs_p99_latency=s.smallest_ttfs_p99,
         )
     # ── Sarvam (default) ──
     mode = (mode or s.sarvam_stt_mode or "transcribe").strip()
@@ -349,7 +486,7 @@ def build_llm(provider: str | None = None):
     # keeps them in extra_body): the ONLY value that disables hybrid thinking.
     # 0.14s median TTFT from Mumbai with null; 6-14s (or content=None) without.
     return OpenAILLMService(
-        api_key=s.sarvam_api_key,
+        api_key=s.sarvam_llm_api_key,
         base_url=s.sarvam_llm_base_url,
         model=s.sarvam_llm_model,
         params=OpenAILLMService.InputParams(
@@ -357,6 +494,32 @@ def build_llm(provider: str | None = None):
             extra={"extra_body": {"reasoning_effort": None}},
         ),
     )
+
+
+def build_stt_waterfall(sample_rate: int, language: str | None = None, bias: str | None = None,
+                        mode: str | None = None):
+    """(processor, primary, fallback): the STT to put in the pipeline. With
+    STT_FALLBACK_PROVIDER set this is pipecat's ServiceSwitcher over the two
+    vendors — only the active one receives audio (one vendor's cost at a
+    time), a non-fatal ErrorFrame from the active one fails over on its own,
+    and run_bot switches manually when the caller was audibly heard and no
+    transcript came (the orphan re-ask). One way per call: nothing switches
+    back. Without a fallback: the plain service, as before."""
+    s = get_settings()
+    primary = build_stt(sample_rate, language=language, bias=bias, mode=mode)
+    fb = (s.stt_fallback_provider or "").strip().lower()
+    if not fb or fb == (s.stt_provider or "sarvam").strip().lower():
+        return primary, primary, None
+    try:
+        fallback = build_stt(sample_rate, language=language, bias=bias, mode=mode, provider=fb)
+    except Exception:
+        logger.exception("stt: fallback provider %r unavailable — no waterfall this call", fb)
+        return primary, primary, None
+    from pipecat.pipeline.service_switcher import (ServiceSwitcher,
+                                                   ServiceSwitcherStrategyFailover)
+    switcher = ServiceSwitcher([primary, fallback], strategy_type=ServiceSwitcherStrategyFailover)
+    logger.info("stt: waterfall %s → %s", type(primary).__name__, type(fallback).__name__)
+    return switcher, primary, fallback
 
 
 def _tag_engine(svc, slug: str, model: str):
@@ -619,12 +782,43 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
     ), "sarvam", s.sarvam_tts_model)
 
 
+def _letterless_guard(cls):
+    """Subclass `cls` so a sentence with no letter or digit never reaches the
+    vendor. Smallest renders a bare "." as 9 s of hum (measured 2026-09-15:
+    '.' → 9.13 s of audio, no words; call af7e93bd — "नब्बे तीन परसेंट..."
+    became "…परसेंट.." + "." inside pipecat's own text aggregator, downstream
+    of every gate of ours). The skip happens before a context is created, so
+    the sequencer sees nothing to wait for.
+
+    Also the last gate before synthesis for text the CALL decides is stale by
+    the time it gets here: `skip_text_if(text) -> reason | None`, set by
+    run_bot (a bridge line queued behind a long reply, call 28570ec0)."""
+    class _NoLetterless(cls):
+        skip_text_if = None
+
+        async def _push_tts_frames(self, src_frame, *args, **kwargs):
+            text = getattr(src_frame, "text", "") or ""
+            if not any(ch.isalnum() for ch in text):
+                logger.info("tts: letterless sentence %r skipped — the vendor hums on it",
+                            text.strip()[:12])
+                return None
+            why = self.skip_text_if(text) if self.skip_text_if is not None else None
+            if why:
+                logger.info("tts: %r skipped at synthesis — %s", text.strip()[:24], why)
+                return None
+            return await super()._push_tts_frames(src_frame, *args, **kwargs)
+    _NoLetterless.__name__ = cls.__name__
+    _NoLetterless.__qualname__ = cls.__qualname__
+    return _NoLetterless
+
+
 def _build_smallest(cls, s, model: str, voice: str, speed: float,
                     language: str | None = None):
     """Construct Smallest.ai Lightning. Split out so build_tts can wrap it in one
     try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
     which only responds to prose), and its voice palettes are per-model — the API
     hard-rejects a cross-model voice, which is a mute call."""
+    cls = _letterless_guard(cls)
     return cls(
         api_key=s.smallest_api_key,
         sample_rate=s.smallest_sample_rate,

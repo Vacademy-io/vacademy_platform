@@ -66,8 +66,61 @@ class Settings:
     # never does), which Smart Turn and the turn-gate both benefit from. Flip
     # per test call via env; nothing else changes.
     stt_provider: str = field(default_factory=lambda: _env("STT_PROVIDER", "sarvam"))
+    # Waterfall: a second STT vendor that takes over for the rest of the call
+    # when the primary fails — its socket errors (pipecat's failover strategy)
+    # or an audible caller utterance producing no transcript (the orphan
+    # re-ask, our own signal). Empty = no failover. Founder 2026-09-15 after
+    # call 28570ec0 (Smallest deaf for the last 70 s): "sarvam stt and have
+    # waterfall if sarvam fails to smallest".
+    stt_fallback_provider: str = field(default_factory=lambda: _env("STT_FALLBACK_PROVIDER", ""))
     google_stt_language: str = field(
         default_factory=lambda: _env("GOOGLE_STT_LANGUAGE", "hi-IN"))
+    # Smallest Pulse STT (STT_PROVIDER=smallest). Chosen 2026-09-12 from a
+    # three-way bench on 4 real AI-call recordings (63-114 turns) driven through
+    # the pipecat services exactly like a live call: final-after-VAD-stop median
+    # 0.12 s / p90 0.23 s vs Sarvam 0.14 / 1.86 (11 of 67 turns over 1 s, up to
+    # 3.8 s) and Gnani 0.65 / 0.80; word error 0.74 vs Sarvam 0.99; hears the lone
+    # "haan" Sarvam drops every time; clean mixed-script text instead of English
+    # forced into Devanagari; ~₹20/hr vs ₹30. Known: a lone "haan" finalises ~2.5 s
+    # late, two real turns took 5-7 s; 16 kHz was WORSE (median 0.76 s) — stay 8 kHz.
+    # Pulse's "hi" covers Hindi-English code-switching; "multi" auto-detects.
+    smallest_stt_language: str = field(
+        default_factory=lambda: _env("SMALLEST_STT_LANGUAGE", "hi"))
+    # Turn-stop hold for Pulse's final (see sarvam_ttfs_p99): measured p90 0.23 s
+    # on real recordings; 0.5 keeps parity with Sarvam's hold, the slow outliers
+    # are beyond any sane hold and Smart Turn's own cap covers them.
+    smallest_ttfs_p99: float = field(
+        default_factory=lambda: float(_env("SMALLEST_TTFS_P99", "0.5")))
+    # Pulse decodes what it has when our VAD stop sends `finalize`. On a SHORT
+    # answer that is ~0.3 s of audio, and it either answers ~2.5 s late or not
+    # at all — bench: "haan" 2.50 s every run; live call a59696ed (2026-09-13):
+    # the caller's "Yes" produced NO transcript, 5.6 s of silence, they said
+    # "hello" and only that was heard. 2 of 13 closed turns in the day's logs
+    # had no transcript within 2.5 s.
+    # Asking AGAIN when nothing has come back fixes it at no cost to healthy
+    # turns — measured on the same clips:
+    #   finalize once (pipecat)  haan 2.50 s   yes 0.11 s
+    #   hold finalize 0.5 s      haan 0.73 s   yes 0.72 s   <- taxes every turn
+    #   ask again after 0.7 s    haan 0.81 s   yes 0.11 s   <- this
+    # SMALLEST_FINALIZE_RETRY_SECS=0 restores pipecat's behaviour exactly.
+    smallest_finalize_retry_secs: float = field(
+        default_factory=lambda: float(_env("SMALLEST_FINALIZE_RETRY_SECS", "0.7")))
+    smallest_finalize_retries: int = field(
+        default_factory=lambda: int(_env("SMALLEST_FINALIZE_RETRIES", "3")))
+    # A VAD stop inside the first `hold_below` s of a turn is usually a breath
+    # ("Uh," … "I think mix"). Finalizing there made Pulse return an empty final
+    # and drop the REST of the sentence: 5-6 s utterances with no transcript on
+    # calls 82c1f95a (twice), 91d1541e, 15aadcdb. Hold the finalize `hold_secs`;
+    # a new onset inside the hold cancels it. Costs that hold on a genuine
+    # one-word answer only. SMALLEST_HOLD_BELOW_SECS=0 disables.
+    # DEFAULT OFF: on the bench it cost +0.6 s on every one-word answer (yes
+    # 0.11 -> 0.72 s; real-recording p90 0.19 -> 0.74 s) and the drops could
+    # not be reproduced there to prove the benefit. The orphan re-ask is the
+    # live mitigation; set SMALLEST_HOLD_BELOW_SECS=1.5 on the box to trial it.
+    smallest_hold_below_secs: float = field(
+        default_factory=lambda: float(_env("SMALLEST_HOLD_BELOW_SECS", "0")))
+    smallest_hold_secs: float = field(
+        default_factory=lambda: float(_env("SMALLEST_HOLD_SECS", "0.5")))
     # "telephony", NOT "latest_long": measured on the caller channel of real call
     # 31a1acf1 (8 kHz Hindi phone audio), latest_long dropped most of every
     # utterance ("क्या बात कर रहा है?" for a 15-word sentence) while telephony
@@ -155,6 +208,18 @@ class Settings:
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")
     )
+    # Sarvam's OPEN-SOURCE models (gemma4, deepseekv4-flash, glm5.x) live on
+    # /v2 under a SEPARATE sk_… subscription from the account's SARVAM_API_KEY
+    # — and that key also backs the Sarvam TTS fallback, so the LLM gets its
+    # own. Falls back to SARVAM_API_KEY when unset (the /v1 sarvam-m path).
+    # Benched 2026-09-14 from Mumbai on the real 18K-char agent prompt, 45 sim
+    # runs each vs gemini-2.5-flash: gemma4 judge 7.2 vs 6.1, hard-fail runs
+    # 1 vs 4, TTFT median 521 vs 528 ms, p90 639 vs 711 ms. glm5.x always
+    # reason (no parameter turns it off; TTFT 1.7-6.7 s) — unusable for voice.
+    #   LLM_PROVIDER=sarvam SARVAM_LLM_BASE_URL=https://api.sarvam.ai/v2
+    #   SARVAM_LLM_MODEL=gemma4 SARVAM_LLM_API_KEY=sk_…
+    sarvam_llm_api_key: str = field(
+        default_factory=lambda: _env("SARVAM_LLM_API_KEY") or _env("SARVAM_API_KEY"))
     # Sarvam-side fast endpointing: server endpointing (~0.65-0.76s from end of speech)
     # is the measured binding constraint on reply latency — high VAD sensitivity asks
     # Sarvam to finalize sooner. Env-off if it starts clipping slow speakers.
@@ -536,6 +601,17 @@ class Settings:
     # re-delivered the intro on calls 17be14f2/761decff — see bot.RunGuard.
     run_guard_enabled: bool = field(
         default_factory=lambda: _env("RUN_GUARD_ENABLED", "true").lower() == "true")
+    # Short-answer grace (bot.RunGuard): a run whose new caller words are at
+    # most SHORT_ANSWER_MAX_WORDS is held this long, and dropped if the caller's
+    # voice resumes inside it — "Yes." + breath + the real answer must be
+    # answered once, as one turn. 0 = off. Bare yes/haan replies pay the grace
+    # (less the silence already elapsed when their final lands). 0.8 covers a
+    # 0.45 s breath plus the VAD's 0.2 s onset; 0.6 lost the race once in three
+    # real-STT sim runs (2026-09-15).
+    short_answer_grace_secs: float = field(
+        default_factory=lambda: float(_env("SHORT_ANSWER_GRACE_SECS", "0.8")))
+    short_answer_max_words: int = field(
+        default_factory=lambda: int(_env("SHORT_ANSWER_MAX_WORDS", "3")))
     # Cushion questions in context instead of firing them bare ("Do you take live
     # classes?") — founder 2026-09-08, "it's asking questions as if she is my
     # mother... humanize the prompt, inculcate this into AI calling in general".
@@ -550,6 +626,14 @@ class Settings:
     # 3.2 st (+15%). Prompt rule, every agent; kill switch keeps the same shape.
     prosody_hints_enabled: bool = field(
         default_factory=lambda: _env("PROSODY_HINTS_ENABLED", "true").lower() == "true")
+    # Latency lever, 2026-09-12. TTS starts at the first sentence boundary, so the
+    # caller waits for however long the model's FIRST sentence is. Measured on the
+    # simulator with today's soft rule: median 5 words, p90 11 (about 1 s of
+    # generation before audio). This asks for a COMPLETE sentence of at most four
+    # words — real substance, never a filler noise — then the detail. Prompt-only:
+    # no gate, splitter or TTS change. `false` restores the previous rule text.
+    fast_opener_enabled: bool = field(
+        default_factory=lambda: _env("FAST_OPENER_ENABLED", "true").lower() == "true")
     # Voice modulation on the AUDIO (app/prosody.py) — the vendor-agnostic fix
     # for the same complaint: pitch excursions around the voice's median are
     # scaled by this factor. 1.0 = off; 1.6 = conversational. The dashboard's
@@ -597,8 +681,10 @@ class Settings:
         default_factory=lambda: float(_env("STOP_REISSUE_EVERY_SECS", "3.0")))
     orphan_min_utterance_secs: float = field(
         default_factory=lambda: float(_env("ORPHAN_MIN_UTTERANCE_SECS", "0.4")))
+    # 3.5 s: past the p90 of a Smallest final that needed the finalize retry
+    # (2.26 s on 2026-09-15), so a late transcript is not mistaken for a lost one.
     orphan_window_lo_secs: float = field(
-        default_factory=lambda: float(_env("ORPHAN_WINDOW_LO_SECS", "2.5")))
+        default_factory=lambda: float(_env("ORPHAN_WINDOW_LO_SECS", "3.5")))
     orphan_window_hi_secs: float = field(
         default_factory=lambda: float(_env("ORPHAN_WINDOW_HI_SECS", "10.0")))
     orphan_bot_quiet_secs: float = field(

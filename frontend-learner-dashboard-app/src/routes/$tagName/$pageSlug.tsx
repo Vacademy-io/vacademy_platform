@@ -58,7 +58,12 @@ function RouteComponent() {
   if (!domainRouting.instituteId) return <RootNotFoundComponent />;
 
   // "/new/about" on a host where `new` is mounted at the root → "/about".
-  if (RouteMatcher.isRootMounted(resolvedTagName)) {
+  // Not for a page named like an app route ("/new/privacy-policy"): "/privacy-policy"
+  // is the app's own page, so the tagged address IS this page's address.
+  if (
+    RouteMatcher.isRootMounted(resolvedTagName) &&
+    !RouteMatcher.isReservedRootPage(resolvedTagName, resolvedPageSlug)
+  ) {
     return <Navigate to={`/${resolvedPageSlug}` as never} search={true} replace />;
   }
 

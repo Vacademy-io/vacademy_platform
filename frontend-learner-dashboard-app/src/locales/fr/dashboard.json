@@ -251,7 +251,11 @@
         "awardedTooltip": "{{name}} — Décerné par votre établissement",
         "awardedTooltipWithReason": "{{name}} — Décerné par votre établissement : {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} débloqués",
-        "emptyPrompt": "Terminez votre première {{slide}} pour débloquer un badge"
+        "emptyPrompt": "Terminez votre première {{slide}} pour débloquer un badge",
+        "manualLockedHint": "Décerné par votre établissement — ne se débloque pas automatiquement",
+        "manualLockedTooltip": "{{name}} — Décerné par votre établissement, ne se débloque pas automatiquement",
+        "celebrateTitle": "Nouveau badge débloqué !",
+        "celebrateAwardedTitle": "Votre établissement vous a décerné un badge"
     },
     "tnc": {
         "title": "Accepter les conditions générales",
@@ -435,7 +439,7 @@
     },
     "getApp": {
         "title": "Obtenir l’application",
-        "subtitle": "Apprenez où que vous soyez — téléchargez notre application.",
+        "subtitle": "Pour une expérience fluide, téléchargez nos applications.",
         "android": "Application Android",
         "ios": "Application iPhone et iPad",
         "windows": "Application Windows",

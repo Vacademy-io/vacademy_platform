@@ -107,6 +107,7 @@
     "recentLeads": "Recent Leads",
     "regularizations": "Regularizations",
     "reports": "Reports",
+    "utmCampaigns": "Campaigns (UTM)",
     "requests": "Requests",
     "runs": "Runs",
     "salarySetup": "Salary Setup",
@@ -132,5 +133,6 @@
     "websiteBuilder": "Website Builder",
     "whatsappInbox": "WhatsApp Inbox",
     "whatsappTemplates": "WhatsApp Templates",
-    "workflows": "Workflows"
+    "workflows": "Workflows",
+    "dailyEngagement": "Daily Engagement"
 }

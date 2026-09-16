@@ -128,5 +128,11 @@
         "htmlBlockLabel": "HTML ब्लॉक",
         "htmlBlockEmpty": "खाली HTML ब्लॉक",
         "unknownComponent": "अज्ञात कंपोनेंट: {{type}}"
+    },
+    "documentViewer": {
+        "noFile": "अभी कोई PDF नहीं",
+        "addPdf": "दाईं ओर के पैनल में PDF जोड़ें",
+        "openDocument": "दस्तावेज़ खोलें",
+        "download": "PDF डाउनलोड करें"
     }
 }

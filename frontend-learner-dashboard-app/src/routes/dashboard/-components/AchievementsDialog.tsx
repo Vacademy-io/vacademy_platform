@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { PlayBadge, PlayGamificationData } from "@/services/play-gamification";
 import { isLibraryToken } from "@/services/badge-library";
+import { isManualTrigger } from "@/services/badge-config";
 import { BadgeVisual } from "./badge-icons";
 
 const XP_PER_LEVEL = 500;
@@ -42,9 +43,13 @@ export function AchievementsDialog({
   const breakdown = data?.xpBreakdown ?? [];
   const streak = data?.currentStreak ?? 0;
 
-  // Unlocked first, then by closeness to unlocking (so the "almost there" badges bubble up).
+  // Unlocked first, then locked badges by closeness to unlocking (so the "almost
+  // there" badges bubble up); locked staff-awarded badges (no progress to make) last.
   const ordered = [...badges].sort((a, b) => {
     if (a.unlocked !== b.unlocked) return a.unlocked ? -1 : 1;
+    const aManual = isManualTrigger(a.trigger);
+    const bManual = isManualTrigger(b.trigger);
+    if (aManual !== bManual) return aManual ? 1 : -1;
     return pctFor(b) - pctFor(a);
   });
 
@@ -147,9 +152,12 @@ function pctFor(badge: PlayBadge): number {
 }
 
 function BadgeRow({ badge }: { badge: PlayBadge }) {
+  const { t } = useTranslation("dashboard");
   const unlocked = badge.unlocked;
   const isLib = isLibraryToken(badge.icon);
-  const target = badge.threshold ?? 0;
+  const manual = isManualTrigger(badge.trigger);
+  // Staff-awarded badges have no automatic condition — never draw a progress bar.
+  const target = manual ? 0 : badge.threshold ?? 0;
   const current = Math.min(badge.progressCurrent ?? 0, target > 0 ? target : Number.MAX_SAFE_INTEGER);
   const pct = pctFor(badge);
 
@@ -208,6 +216,10 @@ function BadgeRow({ badge }: { badge: PlayBadge }) {
         {unlocked && badge.isAdminAwarded && badge.awardReason ? (
           <p className="truncate text-3xs font-medium text-warning-600">
             ★ {badge.awardReason}
+          </p>
+        ) : !unlocked && manual ? (
+          <p className="mt-0.5 text-3xs font-medium text-muted-foreground">
+            {t("badges.manualLockedHint")}
           </p>
         ) : (
           !unlocked &&

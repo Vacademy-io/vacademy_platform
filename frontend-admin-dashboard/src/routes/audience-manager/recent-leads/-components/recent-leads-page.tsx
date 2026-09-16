@@ -66,6 +66,18 @@ import {
 } from '@/components/shared/leads/call-history-filter';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
+import {
+    hasUtmSelection,
+    toUtmFiltersPayload,
+    utmSelectionKey,
+    utmValueLabel,
+} from '@/components/shared/leads/utm-filter-encoding';
+import {
+    UTM_FILTER_DIMENSIONS,
+    type UtmFilterDimension,
+    type UtmFilterSelection,
+} from '@/services/utm-list-filters';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
 import {
     decodeSelectionToEntries,
@@ -126,6 +138,7 @@ import {
     ALL_DATE_VALUE,
     CUSTOM_DATE_VALUE,
     DEFAULT_RANGE_DAYS,
+    UTM_SEARCH_PARAM,
 } from './recent-leads-search';
 
 type SlaFilter =
@@ -365,6 +378,30 @@ const RecentLeadsContent = () => {
         [customFieldFiltersPayload]
     );
 
+    // Campaign (UTM) filters — one value list per dimension. The controls
+    // render nothing while the institute's UTM setting is off, so the state
+    // simply stays empty on institutes that never use campaign links.
+    const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>(() => {
+        const initial: UtmFilterSelection = {};
+        for (const dimension of UTM_FILTER_DIMENSIONS) {
+            const raw = urlSearch[UTM_SEARCH_PARAM[dimension]];
+            if (raw) initial[dimension] = raw.split(',').filter(Boolean);
+        }
+        return initial;
+    });
+    const { t: tUtm } = useTranslation('utmListFilters');
+    const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) => {
+        setPage(0);
+        setUtmFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[dimension];
+            else next[dimension] = values;
+            return next;
+        });
+    };
+    const utmFiltersPayload = useMemo(() => toUtmFiltersPayload(utmFilters), [utmFilters]);
+    const utmFiltersKey = useMemo(() => utmSelectionKey(utmFilters), [utmFilters]);
+
     // Write the applied filters back to the URL (replace, not push — filter
     // tweaks shouldn't pollute browser history). Arrays are serialised as
     // comma-separated strings; empty arrays are omitted so the bare URL stays clean.
@@ -384,6 +421,16 @@ const RecentLeadsContent = () => {
                 source: sourceFilter || undefined,
                 called: callHistoryFilter || undefined,
                 calledCount: callCountParam ? String(callCountParam) : undefined,
+                utmSource: utmFilters.source?.length ? utmFilters.source.join(',') : undefined,
+                utmMedium: utmFilters.medium?.length ? utmFilters.medium.join(',') : undefined,
+                utmCampaign: utmFilters.campaign?.length
+                    ? utmFilters.campaign.join(',')
+                    : undefined,
+                utmContent: utmFilters.content?.length ? utmFilters.content.join(',') : undefined,
+                utmTerm: utmFilters.term?.length ? utmFilters.term.join(',') : undefined,
+                utmChannel: utmFilters.source_type?.length
+                    ? utmFilters.source_type.join(',')
+                    : undefined,
             },
             replace: true,
         });
@@ -401,6 +448,7 @@ const RecentLeadsContent = () => {
         sourceFilter,
         callHistoryFilter,
         callCountParam,
+        utmFilters,
     ]);
     // Filter options — hierarchy scoped: a manager sees themselves + their
     // counsellor reports; pure admins get the institute-wide roster.
@@ -534,6 +582,7 @@ const RecentLeadsContent = () => {
             callHistoryFilter,
             callCountParam,
             customFieldFiltersKey,
+            utmFiltersKey,
             page,
             pageSize,
             sortBy,
@@ -563,6 +612,7 @@ const RecentLeadsContent = () => {
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
+                utm_filters: utmFiltersPayload,
                 sort_by: sortBy,
                 sort_direction: sortDirection,
                 page,
@@ -729,6 +779,7 @@ const RecentLeadsContent = () => {
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
+                utm_filters: utmFiltersPayload,
                 page: 0,
                 size: totalElements,
             });
@@ -765,6 +816,7 @@ const RecentLeadsContent = () => {
         setCallHistoryFilter('');
         setCallCountValue(DEFAULT_CALL_COUNT);
         setCustomFieldFilters({});
+        setUtmFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
         setCustomTo('');
@@ -828,7 +880,8 @@ const RecentLeadsContent = () => {
         counsellorFilters.length > 0 ||
         !!sourceFilter ||
         !!callHistoryFilter ||
-        customFieldFiltersPayload.length > 0;
+        customFieldFiltersPayload.length > 0 ||
+        hasUtmSelection(utmFilters);
 
     // CSV export (shared by "Export" + "Export selected")
     const [isExporting, setIsExporting] = useState(false);
@@ -1076,6 +1129,7 @@ const RecentLeadsContent = () => {
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
                         : undefined,
+                    utm_filters: utmFiltersPayload,
                     page: pageNo,
                     size: 200,
                 });
@@ -1170,6 +1224,23 @@ const RecentLeadsContent = () => {
                     f.field_id,
                     removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
                 ),
+        });
+    });
+    UTM_FILTER_DIMENSIONS.forEach((dimension) => {
+        (utmFilters[dimension] ?? []).forEach((value) => {
+            chips.push({
+                label: tUtm('chip', {
+                    dimension: tUtm(
+                        `dimensions.${dimension === 'source_type' ? 'sourceType' : dimension}`
+                    ),
+                    value: utmValueLabel(value, tUtm('untagged')),
+                }),
+                onRemove: () =>
+                    setUtmFilter(
+                        dimension,
+                        (utmFilters[dimension] ?? []).filter((v) => v !== value)
+                    ),
+            });
         });
     });
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
@@ -1306,6 +1377,12 @@ const RecentLeadsContent = () => {
                             />
                         )
                     )}
+                    <UtmFilterControls
+                        surface="LEADS"
+                        instituteId={instituteId ?? ''}
+                        selection={utmFilters}
+                        onChange={setUtmFilter}
+                    />
                     <ManageListFiltersLink surface="LEADS" />
                     <Select value={rangeDays} onValueChange={setDateRange}>
                         <SelectTrigger className="h-10 w-40">

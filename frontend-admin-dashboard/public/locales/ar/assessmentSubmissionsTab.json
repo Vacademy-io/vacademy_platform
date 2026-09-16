@@ -32,7 +32,10 @@
     "buttons": {
         "offlineEntry": "إدخال دون اتصال",
         "revaluate": "إعادة التقييم",
-        "aiEvaluations": "تقييمات الذكاء الاصطناعي"
+        "aiEvaluations": "تقييمات الذكاء الاصطناعي",
+        "bulkAiCheck": "فحص AI جماعي",
+        "bulkAiCheckTooltip": "ارفع نسخًا ممسوحة كثيرة؛ تُقرأ الأسماء وتُطابق ويجري الفحص في الخلفية",
+        "bulkAiBatches": "الدفعات"
     },
     "dialogs": {
         "revaluate": {

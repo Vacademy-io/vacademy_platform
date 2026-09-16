@@ -38,7 +38,12 @@ logger = logging.getLogger(__name__)
 MAX_REPAIRS = 2
 MAX_CONCURRENT_SLIDES = 3
 # AI images are the expensive visual; SVG diagrams are free. Cap per slide.
-MAX_GENERATED_IMAGES_PER_SLIDE = 4
+# Raised from 4 once the image pass became concurrent (institutes asked for
+# textbook-style illustration, not walls of text): a picture takes about a
+# minute, so drawing a board's worth of them must not cost a board's worth of
+# minutes.
+MAX_GENERATED_IMAGES_PER_SLIDE = 6
+IMAGE_CONCURRENCY = 3
 COMPILE_MAX_TOKENS = 12_000
 # Flash, not Pro: on this platform's credit pricing a single failed Pro compile
 # (3 × ~7k output tokens) cost 35 credits on 2026-09-03; Flash is an order of
@@ -99,6 +104,14 @@ def _replace_broken_diagrams(draft: TeachingPlanDraft) -> int:
     if replaced:
         logger.info("Tutor compile: %d diagram(s) replaced by auto-layout", replaced)
     return replaced
+
+
+def _image_target(draft: TeachingPlanDraft) -> int:
+    """How many real illustrations a slide of this size should carry. One is
+    never enough for a long slide: institutes asked for a picture where a
+    picture teaches, not a single decorative opener."""
+    topics = len(draft.topics)
+    return 1 if topics <= 2 else 2 if topics <= 4 else 3
 
 
 def _count_image_ops(draft: TeachingPlanDraft) -> int:
@@ -182,13 +195,13 @@ class PlanCompiler:
         except Exception:  # noqa: BLE001
             self.image_model = None
 
-    @staticmethod
-    def _limits(source):
+    def _limits(self, source):
         """Interviews and practice drop the lesson-only engagement rules
         (predict guesses, recap bullets, example callouts)."""
+        base = replace(DEFAULT_LIMITS, expect_images=bool(self.generate_images))
         if getattr(source, "style", "lesson") in ("interview", "practice"):
-            return replace(DEFAULT_LIMITS, engagement_rules=False)
-        return DEFAULT_LIMITS
+            return replace(base, engagement_rules=False)
+        return base
 
     # ── public ───────────────────────────────────────────────────────────
 
@@ -552,7 +565,7 @@ class PlanCompiler:
                         # round asking for pictures where they belong. Not a
                         # failure if it still declines (abstract material).
                         if (self.generate_images and source.kind == "document" and not asked_for_images
-                                and _count_image_ops(candidate) == 0):
+                                and _count_image_ops(candidate) < _image_target(candidate)):
                             asked_for_images = True
                             logger.info("Tutor compile: no image ops with images on for slide %s; asking once", source.slide_id)
                             messages.append({"role": "assistant", "content": last_json[:60000]})
@@ -668,29 +681,47 @@ class PlanCompiler:
         """Fill media-task urls, generate or drop requested images. References
         (annotate / arrow) to a dropped element are pruned across the whole
         topic, since a later concept may point at an earlier concept's image."""
-        images_left = MAX_GENERATED_IMAGES_PER_SLIDE
+        # 1. Media tasks resolve from the slide itself; pick the images to draw
+        #    (the cap applies in document order, so the earliest boards win).
+        wanted: List[Tuple[Any, str]] = []
+        for topic in draft.topics:
+            for concept in topic.concepts:
+                for op in concept.board_ops:
+                    kind = getattr(op, "op", None)
+                    if kind == "media_task":
+                        op.url = source.media_url or op.url
+                        op.file_id = source.media_file_id or op.file_id
+                    elif (kind == "image" and not op.url and self.generate_images
+                          and len(wanted) < MAX_GENERATED_IMAGES_PER_SLIDE):
+                        prompt = getattr(op, "generate", None) or getattr(op, "description", None)
+                        if prompt:
+                            wanted.append((op, prompt))
+
+        # 2. Draw them together. Each picture is ~a minute of vendor time, so
+        #    sequential generation was what kept boards text-heavy.
+        if wanted:
+            sem = asyncio.Semaphore(IMAGE_CONCURRENCY)
+
+            async def _draw(op: Any, prompt: str) -> None:
+                async with sem:
+                    op.url = await self._generate_image(prompt, source.course_name, run)
+
+            await asyncio.gather(*(_draw(op, prompt) for op, prompt in wanted))
+
+        # 3. Anything still without a url is dropped, and every reference to it
+        #    pruned across the topic.
         for topic in draft.topics:
             dropped_ids: set = set()
             for concept in topic.concepts:
                 kept = []
                 for op in concept.board_ops:
                     kind = getattr(op, "op", None)
-                    if kind == "media_task":
-                        op.url = source.media_url or op.url
-                        op.file_id = source.media_file_id or op.file_id
-                        if not (op.url or op.file_id):
-                            dropped_ids.add(op.id)
-                            continue
+                    if kind == "media_task" and not (op.url or op.file_id):
+                        dropped_ids.add(op.id)
+                        continue
                     if kind == "image" and not op.url:
-                        url = None
-                        if self.generate_images and images_left > 0:
-                            url = await self._generate_image(op.generate or op.description, source.course_name, run)
-                            if url:
-                                images_left -= 1
-                        if not url:
-                            dropped_ids.add(op.id)
-                            continue
-                        op.url = url
+                        dropped_ids.add(op.id)
+                        continue
                     kept.append(op)
                 concept.board_ops = kept
             if dropped_ids:

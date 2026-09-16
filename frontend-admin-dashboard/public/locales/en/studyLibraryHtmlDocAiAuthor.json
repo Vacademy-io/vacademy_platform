@@ -19,7 +19,7 @@
     "generate": "Generate",
     "credits_one": "{{count}} credit",
     "credits_other": "{{count}} credits",
-    "authoredByAiHint": "Authored by AI so the page can be freely creative — animations, interactive quizzes and games all run. ⌘/Ctrl + Enter to generate.",
+    "authoredByAiHint": "Authored by AI so the page can be freely creative — animations, interactive quizzes and games all run. Diagrams and textbook illustrations are drawn in (each generated picture costs 2 extra credits). ⌘/Ctrl + Enter to generate.",
     "buildingYourPage": "Building your page…",
     "starting": "Starting…",
     "previousVersion": "Previous version",
@@ -54,5 +54,6 @@
         "quiz": "Quiz",
         "practicalExamples": "Practical examples",
         "interactiveGames": "Interactive games"
-    }
+    },
+    "drawingIllustrations": "Drawing illustrations… ({{completed}}/{{total}})"
 }

@@ -75,6 +75,13 @@ const PAYMENT_STATUS_PILL: Record<string, { label: string; cls: string; dot: str
         cls: 'bg-neutral-100 text-neutral-600',
         dot: 'bg-neutral-400',
     },
+    // A checkout opened and never finished — the gateway order has long expired. Not money in
+    // flight and not money owed; kept visible because it is a warm lead.
+    ABANDONED: {
+        label: 'Abandoned',
+        cls: 'bg-neutral-100 text-neutral-500',
+        dot: 'bg-neutral-400',
+    },
     // A voided invoice. Visible for audit, excluded from every total.
     CANCELLED: {
         label: 'Cancelled',

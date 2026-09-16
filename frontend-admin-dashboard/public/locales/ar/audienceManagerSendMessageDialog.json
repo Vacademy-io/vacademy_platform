@@ -75,7 +75,8 @@
         "previewEmptyState": "اختر قالبًا أو انتقل إلى تحرير HTML لكتابة المحتوى.",
         "bodyPlaceholder": "أدخل نص HTML للبريد الإلكتروني... استخدم {{token}} للمتغيرات",
         "placeholderHintPrefix": "المتغيرات مثل",
-        "placeholderHintSuffix": "يتم استبدالها لكل مستلم عند الإرسال. اربطها في الخطوة التالية."
+        "placeholderHintSuffix": "يتم استبدالها لكل مستلم عند الإرسال. اربطها في الخطوة التالية.",
+        "emailTypeHint": "Sent from this address. Manage senders and their daily limits in Settings → Notifications."
     },
     "pushStep": {
         "titleLabel": "العنوان",

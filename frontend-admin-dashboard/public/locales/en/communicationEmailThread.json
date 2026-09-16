@@ -7,5 +7,28 @@
     "sent": "Sent",
     "received": "Received",
     "selectConversation": "Select an email conversation",
-    "selectConversationHint": "Click any row on the left to view its thread"
+    "selectConversationHint": "Click any row on the left to view its thread",
+    "you": "You",
+    "viaAddress": "via {{address}}",
+    "noSubject": "(no subject)",
+    "openEmail": "Open email",
+    "collapseEmail": "Collapse",
+    "origin": {
+        "CAMPAIGN": "Campaign",
+        "INBOX_REPLY": "Reply from inbox",
+        "OTP": "OTP email",
+        "AUTOMATION": "Automation",
+        "EMAIL": "Email",
+        "REPLY": "Replied to your email",
+        "INCOMING": "New email"
+    },
+    "showQuotedText_one": "Show quoted text ({{count}} line)",
+    "showQuotedText_other": "Show quoted text ({{count}} lines)",
+    "hideQuotedText": "Hide quoted text",
+    "deliveryFailed": "Delivery failed",
+    "deliveryFailedTo": "Could not deliver to {{address}}",
+    "deliveryFailedHint": "Automatic notice from the mail system — the address could not be reached.",
+    "showDetails": "Show details",
+    "hideDetails": "Hide details",
+    "automatedSender": "Automated sender — cannot reply"
 }

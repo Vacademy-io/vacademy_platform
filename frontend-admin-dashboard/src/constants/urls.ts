@@ -38,6 +38,19 @@ export const ASSISTANT_ACTION_CANCEL = (sessionId: string, actionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/cancel`;
 export const ASSISTANT_CAPABILITIES = `${AI_SERVICE_BASE_URL}/assistant/capabilities`;
 
+// Vacademy MCP server (Model Context Protocol). These back the MCP settings tab
+// and the OAuth consent page; all require Authorization + clientId headers
+// except MCP_OAUTH_TXN, which the consent page reads before the user logs in.
+// See ai_service app/mcp/consent.py.
+export const MCP_OAUTH_BASE = `${AI_SERVICE_BASE_URL}/mcp/oauth`;
+export const MCP_CONNECTION_INFO = `${MCP_OAUTH_BASE}/connection-info`;
+export const MCP_OAUTH_CONSENT = `${MCP_OAUTH_BASE}/consent`;
+export const MCP_OAUTH_TXN = (txn: string) => `${MCP_OAUTH_BASE}/txn/${txn}`;
+export const MCP_MANUAL_CLIENT = `${MCP_OAUTH_BASE}/manual-client`;
+export const MCP_MANUAL_CLIENT_DELETE = (clientId: string) =>
+    `${MCP_OAUTH_BASE}/manual-client/${clientId}`;
+export const MCP_CONNECTION_REVOKE = (pairId: string) => `${MCP_OAUTH_BASE}/connection/${pairId}`;
+
 // AI coding-question generation. POST an idea + options, returns a full
 // coding-question config (problem + tests + starter code + reference solution).
 // See ai_service app/routers/coding_question_gen.py.
@@ -366,6 +379,12 @@ export const GET_LEAD_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/a
 // is appended by the caller.
 export const GET_USER_UTM_ATTRIBUTION = `${BASE_URL}/admin-core-service/v1/utm/user`;
 export const GET_UTM_CAMPAIGN_SUMMARY = `${BASE_URL}/admin-core-service/v1/utm/summary`;
+// Distinct values per UTM dimension across the institute's recorded touches —
+// the option lists behind the campaign filter dropdowns on the list pages.
+export const GET_UTM_FILTER_OPTIONS = `${BASE_URL}/admin-core-service/v1/utm/filter-options`;
+// Campaign-attribution dashboard (people / enrolments per source, medium,
+// campaign …, daily trend, campaign matrix) over a date window.
+export const GET_UTM_DASHBOARD = `${BASE_URL}/admin-core-service/v1/utm/dashboard`;
 
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_LEAD_SCORE = (responseId: string) =>
@@ -429,6 +448,8 @@ export const COUNSELOR_POOL_BY_ID = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}`;
 export const COUNSELOR_POOL_AUDIENCE = (poolId: string, audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}`;
+export const COUNSELOR_POOL_AUDIENCE_ASSIGNMENT = (poolId: string, audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}/assignment`;
 export const COUNSELOR_POOL_AUDIENCES = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences`;
 export const COUNSELOR_POOL_AUDIENCE_ORDER = (poolId: string, audienceId: string) =>
@@ -540,6 +561,9 @@ export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-pa
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;
 export const STEP2_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/submit`;
 export const STEP2_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/questions-of-sections`;
+export const STEP2_QUESTIONS_FULL_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/questions-of-sections/full`;
+export const STEP2_EDIT_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/edit-questions`;
+export const COPY_INTAKE_BASE_URL = `${BASE_URL}/assessment-service/assessment/copy-intake/v1`;
 export const STEP3_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-participants/create/v1/submit`;
 export const STEP4_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-access/create/v1/submit`;
 export const GET_ASSESSMENT_INIT_DETAILS = `${BASE_URL}/assessment-service/assessment/admin/assessment-admin-list-init`;

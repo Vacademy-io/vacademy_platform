@@ -108,6 +108,10 @@ public class UserPlanService {
     private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
 
     @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgPartnerOnboardingService subOrgPartnerOnboardingService;
+
+    @Autowired
     private vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationRepository subOrgRegistrationRepository;
 
     @Autowired
@@ -754,6 +758,13 @@ public class UserPlanService {
                     logger.warn("Could not update sub-org registration status after payment: {}",
                             e.getMessage());
                 }
+
+                // Partner onboarding (opt-in per institute): affiliation certificate + welcome
+                // email with credentials. This branch only runs on the FIRST activation (the
+                // method returns early for an already-ACTIVE plan), so a retried webhook cannot
+                // send the welcome twice. Never throws.
+                subOrgPartnerOnboardingService.onPartnerActivated(
+                        enrollInvite.getSubOrgId(), enrollInvite.getInstituteId(), userPlan);
             }
 
             // Send enrollment notifications after successful PAID enrollment

@@ -36,7 +36,9 @@
       "metaDescription": "Meta Description",
       "metaDescriptionPlaceholder": "Brief page description for search engines...",
       "ogImage": "OG Image",
-      "ogImagePlaceholder": "Social share image URL"
+      "ogImagePlaceholder": "Social share image URL",
+      "previewHeading": "Search result preview",
+      "previewNoDescription": "Add a description — search engines will otherwise pick their own text from the page."
     }
   },
   "selectItemToEdit": "Select an item to edit",
@@ -150,6 +152,29 @@
     "enquiry": {
       "heading": "Enquiry",
       "enable": "Enable Enquiry"
+    },
+    "seo": {
+      "heading": "Search engine optimisation (SEO)",
+      "hint": "How search engines and social networks read this site. Each page also has its own title, description and share image under Page settings.",
+      "keywordsLabel": "Keywords",
+      "keywordsPlaceholder": "AI courses, learn AI, AI for teachers",
+      "keywordsHint": "Comma-separated. The terms people would search to find you — lead with your brand name.",
+      "verificationLabel": "Google Search Console verification",
+      "verificationHint": "Paste the \"content\" value from Search Console's HTML-tag method. Then submit your sitemap there.",
+      "organizationHeading": "Organisation details",
+      "organizationHint": "Shown to search engines as structured data — this is what links your name, logo and profiles into one brand result.",
+      "orgName": "Name",
+      "orgDescription": "Short description",
+      "orgFounder": "Founder",
+      "orgFoundingDate": "Founded (year)",
+      "orgEmail": "Email",
+      "orgTelephone": "Telephone",
+      "orgAddress": "Address / location",
+      "orgLogo": "Logo for search results",
+      "orgLogoHint": "A clean logo on a plain background, at least 112×112 px. Leave empty to use the institute logo.",
+      "sameAsLabel": "Social & profile links",
+      "sameAsHint": "One URL per line. Links already in your footer are included automatically.",
+      "sitemapHint": "A sitemap is generated automatically at /<catalogue>/sitemap.xml (and /sitemap.xml when the site is served from your own domain)."
     }
   },
   "options": {
@@ -876,5 +901,31 @@
     "metaPlaceholder": "Meta (e.g. Weeks 1-4)",
     "chipsPlaceholder": "Chips (comma-separated)",
     "highlightThisStep": "Highlight this step"
+  },
+  "documentViewer": {
+    "heading": "Document Viewer Settings",
+    "file": "PDF file",
+    "fileName": "Download file name",
+    "fileNamePlaceholder": "e.g. The7Cs Book Catalogue",
+    "fileNameHelp": "Used when a visitor downloads the PDF. Leave blank to use the uploaded file's name.",
+    "display": "Display",
+    "displayButton": "Button that opens a full-screen reader",
+    "displayInline": "Reader embedded in the page",
+    "displayButtonHelp": "One call-to-action; the PDF opens over the page, like a presentation.",
+    "displayInlineHelp": "The first page shows directly in the page, with a Full screen button.",
+    "buttonText": "Button text",
+    "coverImage": "Cover image (optional)",
+    "frameHeight": "Reader height",
+    "heightShort": "Short (480px)",
+    "heightMedium": "Medium (70% of screen)",
+    "heightTall": "Tall (85% of screen)",
+    "showDownload": "Show Download button",
+    "onlyPdf": "Only PDF files can be uploaded here.",
+    "tooLarge": "That PDF is over {{max}} MB. Compress it first — large files load slowly on phones.",
+    "uploadFailed": "Upload failed. Try again.",
+    "uploading": "Uploading...",
+    "uploadPdf": "Upload PDF",
+    "clear": "Clear",
+    "openFile": "Open"
   }
 }

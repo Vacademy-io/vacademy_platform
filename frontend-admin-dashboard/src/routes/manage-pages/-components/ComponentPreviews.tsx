@@ -12,6 +12,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { renderHtmlPage, renderHtmlSection } from '../-utils/catalogue-html';
+import { isHexDark } from '../-utils/style-engine';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { PRODUCT_PAGE_OPEN_URL, AUDIENCE_CAMPAIGN_OPEN_URL } from '@/constants/urls';
@@ -471,6 +472,10 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
     const surfaceStyle: React.CSSProperties = bgImage
         ? { backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } // design-lint-ignore: page-builder background image
         : { backgroundColor: props.backgroundColor || '#F8FAFC' /* design-lint-ignore: page-builder default color */ };
+    // Mirrors the learner hero: a dark author colour flips the band's tokens
+    // to light ink, so the canvas shows the same legible headline the live
+    // page will — not navy-on-navy that "looks broken" only once published.
+    const darkBand = !bgImage && isHexDark(props.backgroundColor);
 
     const visibleButtons = (props.left?.buttons ?? []).filter((b: any) => b?.text?.trim());
     const visibleChips = (props.statChips ?? []).filter(
@@ -558,7 +563,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
         const imgs = [...collage, '', '', '', '', ''].slice(0, 5);
         return (
             <section
-                className="w-full overflow-hidden"
+                className={`w-full overflow-hidden ${darkBand ? 'dark' : ''}`}
                 style={surfaceStyle}
             >
                 <div className="mx-auto flex max-w-6xl items-stretch gap-6 px-8 py-10">
@@ -597,7 +602,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
 
     return (
         <section
-            className={`w-full py-10 px-8 ${isSplit ? '' : 'text-center'}`}
+            className={`w-full py-10 px-8 ${isSplit ? '' : 'text-center'} ${darkBand ? 'dark' : ''}`}
             style={surfaceStyle}
         >
             <div className={`mx-auto max-w-6xl ${isSplit ? 'grid grid-cols-2 gap-8 items-center' : 'flex flex-col items-center gap-4'}`}>
@@ -897,6 +902,78 @@ const VideoPreview: React.FC<P> = ({ props }) => {
     );
 };
 
+/**
+ * Canvas stand-in for the learner's documentViewer. The editor canvas never
+ * loads pdf.js — a static page frame with the file name is enough to place
+ * and style the section; the real reader shows in the live preview iframe.
+ */
+const DocumentViewerPreview: React.FC<P> = ({ props }) => {
+    const { t } = useTranslation('managePagesComponentPreviews');
+    const rawName = String(props.documentUrl || '').split('?')[0]?.split('/').pop() || '';
+    let decodedName = rawName;
+    try {
+        decodedName = decodeURIComponent(rawName);
+    } catch {
+        // malformed % sequence in an author-pasted URL — never crash the canvas over it
+    }
+    const fileName = (typeof props.fileName === 'string' && props.fileName) || decodedName;
+    const inline = props.display === 'inline';
+    const frame = (
+        <div
+            className="flex flex-col overflow-hidden rounded-xl border border-catalogue-border bg-catalogue-bg-elevated shadow-lg"
+            style={{ height: inline ? 280 : undefined }} // design-lint-ignore: scaled stand-in for the author-set frame height
+        >
+            <div className="flex items-center gap-2 border-b border-catalogue-border px-3 py-1.5 text-xs text-catalogue-text-primary">
+                <span className="rounded bg-red-100 px-1 font-bold text-red-600">PDF</span>
+                <span className="min-w-0 flex-1 truncate">{fileName || t('documentViewer.noFile')}</span>
+                {props.showDownload !== false && <span className="text-catalogue-text-muted">↓</span>}
+                <span className="text-catalogue-text-muted">⛶</span>
+            </div>
+            <div className="flex flex-1 items-center justify-center bg-catalogue-bg-muted p-4">
+                <div className="aspect-[4/3] w-32 rounded-sm bg-white shadow" />
+            </div>
+        </div>
+    );
+    return (
+        <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || undefined }}>{/* design-lint-ignore: author-set section colour */}
+            {props.heading && (
+                <h2 className={`catalogue-h2 text-catalogue-text-primary ${inline ? 'text-center' : ''}`} style={{ color: props.textColor || undefined }}>{/* design-lint-ignore: author-set text colour */}
+                    {props.heading}
+                </h2>
+            )}
+            {props.subheading && (
+                <p className={`mt-2 text-catalogue-text-secondary ${inline ? 'text-center' : ''}`}>{props.subheading}</p>
+            )}
+            {inline ? (
+                <div className="mt-6">
+                    {props.documentUrl ? frame : (
+                        <div className="rounded-xl bg-catalogue-bg-muted py-8 text-center text-sm text-catalogue-text-muted">
+                            {t('documentViewer.addPdf')}
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-6">
+                    <div className="flex items-center gap-3">
+                        <span className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 font-semibold text-white shadow-md">
+                            <span className="text-xs font-bold">PDF</span>
+                            {props.buttonText || t('documentViewer.openDocument')}
+                        </span>
+                        {props.showDownload !== false && (
+                            <span className="text-sm text-catalogue-text-primary">↓ {t('documentViewer.download')}</span>
+                        )}
+                    </div>
+                    {props.coverImage ? (
+                        <img src={props.coverImage} alt="" className="aspect-[4/3] w-48 rounded-xl border border-catalogue-border object-cover shadow-lg" />
+                    ) : !props.documentUrl ? (
+                        <span className="text-xs text-catalogue-text-muted">{t('documentViewer.addPdf')}</span>
+                    ) : null}
+                </div>
+            )}
+        </section>
+    );
+};
+
 const CtaBannerPreview: React.FC<P> = ({ props }) => {
     const { t } = useTranslation('managePagesComponentPreviews');
     return (
@@ -1118,6 +1195,8 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
             return <FaqPreview props={props} />;
         case 'videoEmbed':
             return <VideoPreview props={props} />;
+        case 'documentViewer':
+            return <DocumentViewerPreview props={props} />;
         case 'ctaBanner':
             return <CtaBannerPreview props={props} />;
         case 'pricingTable':

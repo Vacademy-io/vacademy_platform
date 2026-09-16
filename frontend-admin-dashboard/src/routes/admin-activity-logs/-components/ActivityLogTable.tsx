@@ -71,9 +71,12 @@ const RESOURCE_LABELS: Record<string, string> = {
     AUTOMATION: 'Automation',
     COURSE: 'Course',
     LIVE_SESSION: 'Live session',
+    ENROLL_INVITE: 'Invite link',
     LEARNER: 'Learner',
     GUARDIAN_LINK: 'Guardian link',
     INSTITUTE_SETTING: 'Settings',
+    LEARNER_BADGE: 'Learner badge',
+    ASSESSMENT: 'Assessment',
 };
 
 const resourceLabel = (entityType: string): string =>
@@ -117,6 +120,10 @@ const formatRelativeTime = (iso: string | null | undefined) => {
 // settings").
 const NAMED_DESCRIPTION_PATTERNS: RegExp[] = [
     /^((?:created|updated|deleted) course )(.+)$/i,
+    // Assessments (reported by assessment_service).
+    /^((?:created|deleted|published) assessment )(.+)$/i,
+    /^(updated (?:basic details|sections and questions|participants|access control) of assessment )(.+)$/i,
+    /^(edited \d+ questions? of assessment )(.+)$/i,
     /^(created booking )(.+)$/i,
     /^(scheduled live session )(.+)$/i,
 
@@ -181,6 +188,23 @@ const NAMED_DESCRIPTION_PATTERNS: RegExp[] = [
 
     /^(switched WhatsApp provider to )(.+)$/i,
     /^((?:updated|removed) WhatsApp credentials for )(.+)$/i,
+
+    // ── Invite links ─────────────────────────────────────────────────
+    // "made ... the default for <course>" bolds both the invite and the course;
+    // it must precede the plain create/update/delete form for the same reason
+    // as the payment-plan one below. The bulk delete ("deleted 3 invite
+    // link(s)") has no single name and deliberately matches nothing.
+    /^(made invite link )(.+?)( the default for )(.+)$/i,
+    /^(assigned fee plan to invite link )(.+?)( for )(.+)$/i,
+    /^(updated payment plans of invite link )(.+)$/i,
+    /^((?:created|updated|deleted) invite link )(.+)$/i,
+
+    // ── Payment plans ────────────────────────────────────────────────
+    // "made ... the default" must precede the generic create/update/delete
+    // form, which would otherwise swallow the trailing clause into the name.
+    /^(made payment plan )(.+?)( the default)$/i,
+    /^((?:created|updated|deleted|approved) (?:payment|fee) plan )(.+)$/i,
+    /^(updated fee type )(.+)$/i,
 ];
 
 /**

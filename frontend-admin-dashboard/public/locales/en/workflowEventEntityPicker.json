@@ -30,6 +30,10 @@
         "noneFound": "No {{type}}s found",
         "summaryNone": "No selection — the workflow fires for every {{type}} in your institute.",
         "summarySelected_one": "Workflow fires only for the selected {{type}}.",
-        "summarySelected_other": "Workflow fires for {{count}} selected {{type}}(s). One trigger row will be created per selection."
+        "summarySelected_other": "Workflow fires for {{count}} selected {{type}}(s). One trigger row will be created per selection.",
+        "searchPlaceholder": "Search {{type}}s...",
+        "noMatches": "Nothing matches “{{search}}”.",
+        "hiddenBySearch_one": "{{count}} selected item is hidden by the search",
+        "hiddenBySearch_other": "{{count}} selected items are hidden by the search"
     }
 }

@@ -18,7 +18,7 @@ import { INIT_INSTITUTE, AUDIENCE_CAMPAIGNS_LIST, CREATE_MESSAGE_TEMPLATE, MESSA
 import { getMessageTemplates } from '@/services/message-template-service';
 import { getTemplatesByTypeQuery, whatsappTemplateParamKeys, type TemplateItem } from '@/services/workflow-service';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
-import { declaredParamsKey, getTemplatesForTrigger, type UseCaseTemplate, type WizardQuestion } from './use-case-templates';
+import { declaredParamsKey, getTemplatesForTrigger, isQuestionApplicable, type UseCaseTemplate, type WizardQuestion } from './use-case-templates';
 import { buildSampleTemplates } from './sample-email-templates';
 import { getInstituteId } from '@/constants/helper';
 
@@ -582,14 +582,10 @@ export function UseCaseWizardStep({
 
     const canGenerate = selectedTemplate
         ? selectedTemplate.questions
-            // Skip required-but-hidden questions (conditional via showIf) — otherwise
-            // a hidden required question would permanently block the Generate button.
-            .filter((q) => {
-                if (!q.required) return false;
-                if (!q.showIf) return true;
-                const depVal = String(answers[q.showIf.questionId] ?? '');
-                return q.showIf.values.includes(depVal);
-            })
+            // Skip required-but-hidden questions (showIf, or answered by the
+            // trigger) — otherwise a hidden required question would permanently
+            // block the Generate button.
+            .filter((q) => q.required && isQuestionApplicable(q, answers, triggerConfig.eventName || undefined))
             .every((q) => {
                 const val = answers[q.id];
                 if (val === undefined) return false;
@@ -733,11 +729,9 @@ export function UseCaseWizardStep({
     }
 
     // ─── Question wizard view ───
-    const visibleQuestions = selectedTemplate.questions.filter((q) => {
-        if (!q.showIf) return true;
-        const depVal = String(answers[q.showIf.questionId] ?? '');
-        return q.showIf.values.includes(depVal);
-    });
+    const visibleQuestions = selectedTemplate.questions.filter((q) =>
+        isQuestionApplicable(q, answers, triggerConfig.eventName || undefined)
+    );
 
     return (
         <div className="space-y-6">

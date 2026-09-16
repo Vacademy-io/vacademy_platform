@@ -99,6 +99,10 @@ export interface EvaluationProgress {
     };
     completed_questions: QuestionProgress[];
     pending_questions: QuestionProgress[];
+    /** The checked copy THIS run rendered (marks drawn into the PDF), from the
+     *  run's own complete payload — null while in flight, or when the run produced
+     *  no copy. Not the attempt's latest evaluated_file_id. */
+    file_id?: string | null;
     layout_map_url?: string | null;
     rubric_version?: number | null;
     ai_service_job_id?: string | null;

@@ -5,7 +5,8 @@ import {
     ChartTooltip,
     ChartTooltipContent,
 } from '@/components/ui/chart';
-import { DotOutline } from '@phosphor-icons/react';
+import { DotOutline, Warning } from '@phosphor-icons/react';
+import { Card, CardContent } from '@/components/ui/card';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { handleGetOverviewData } from '../-services/assessment-details-services';
 import { Route } from '..';
@@ -92,6 +93,24 @@ export function QuestionsPieChart() {
         unresolvedSubjectIds(instituteDetails?.subjects, [overviewSubjectId])
     );
     if (isLoading) return <DashboardLoader />;
+    // Null overview = the selected institute has no mapping to this homework
+    // (the selection lives in localStorage shared across tabs). Same guard as
+    // the assessment twin: explain, don't crash the app.
+    if (!data.assessment_overview_dto) {
+        return (
+            <Card className="mt-8 border-warning-200 bg-warning-50 shadow-sm">
+                <CardContent className="flex items-start gap-3 p-5">
+                    <Warning className="mt-0.5 size-5 shrink-0 text-warning-600" />
+                    <div className="flex flex-col gap-1">
+                        <p className="text-sm font-semibold text-neutral-700">
+                            {t('unavailable.title')}
+                        </p>
+                        <p className="text-sm text-neutral-600">{t('unavailable.body')}</p>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
     return (
         <div className="mt-8 flex w-full gap-16">
             {/* Assessment Overview Pie Chart Graph */}

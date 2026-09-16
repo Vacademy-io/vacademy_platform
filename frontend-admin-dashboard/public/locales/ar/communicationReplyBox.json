@@ -14,7 +14,8 @@
         "templateSent": "تم إرسال القالب \"{{name}}\"",
         "templateNotSent": "لم يتم إرسال القالب \"{{name}}\"",
         "providerRejectedNoReason": "رفض المزوّد الإرسال دون إبداء سبب.",
-        "couldNotSendTemplate": "تعذر إرسال القالب \"{{name}}\""
+        "couldNotSendTemplate": "تعذر إرسال القالب \"{{name}}\"",
+        "templateHeaderFileMissing": "يحتاج القالب \"{{name}}\" إلى {{kind}} في ترويسته، لكن لا يوجد ملف محفوظ على القالب. افتح WhatsApp Templates وارفع {{kind}} له أولاً."
     },
     "mediaKindPlural": {
         "document": "مستندات",
@@ -57,15 +58,24 @@
     "attachmentsUnavailableTooltip": "تحتاج المرفقات إلى خدمة الإشعارات المحدّثة — لم تُنشر بعد",
     "stopRecordingTooltip": "إيقاف وإرفاق التسجيل",
     "recordVoiceNoteTooltip": "تسجيل ملاحظة صوتية",
-    "templatePrompt": {
-        "header_zero": "القالب \"{{name}}\" لا يحتاج إلى قيم:",
-        "header_one": "القالب \"{{name}}\" يحتاج إلى قيمة واحدة:",
-        "header_two": "القالب \"{{name}}\" يحتاج إلى قيمتين:",
-        "header_few": "القالب \"{{name}}\" يحتاج إلى {{count}} قيم:",
-        "header_many": "القالب \"{{name}}\" يحتاج إلى {{count}} قيمة:",
-        "header_other": "القالب \"{{name}}\" يحتاج إلى {{count}} قيمة:",
-        "footer": "أدخل القيم (مفصولة بفواصل):",
-        "paramFallback": "المعامل {{n}}",
-        "exampleSuffix": " (مثال: {{value}})"
+    "templateDialog": {
+        "heading": "إرسال القالب",
+        "to": "إلى {{phone}}",
+        "valuesLabel": "أدخل القيم",
+        "valueFallback": "القيمة {{n}}",
+        "valuePlaceholder": "مثال: {{value}}",
+        "missingValues_one": "{{count}} قيمة لا تزال فارغة",
+        "missingValues_other": "{{count}} قيم لا تزال فارغة",
+        "headerMissing": "يحتاج هذا القالب إلى {{kind}} في ترويسته، لكن لا يوجد ملف محفوظ عليه. افتح WhatsApp Templates وارفع {{kind}} أولاً.",
+        "note": "هذه هي الرسالة التي سيتلقاها جهة الاتصال بالضبط. لا يمكن تعديل القوالب عند الإرسال.",
+        "emptyBody": "لا يحتوي هذا القالب على نص رسالة.",
+        "media": {
+            "image": "صورة",
+            "video": "فيديو",
+            "document": "مستند"
+        },
+        "cancel": "إلغاء",
+        "send": "إرسال القالب",
+        "sending": "جارٍ الإرسال…"
     }
 }

@@ -14,7 +14,8 @@
         "templateSent": "टेम्पलेट \"{{name}}\" भेजा गया",
         "templateNotSent": "टेम्पलेट \"{{name}}\" नहीं भेजा जा सका",
         "providerRejectedNoReason": "प्रदाता ने बिना कारण बताए भेजना अस्वीकार कर दिया।",
-        "couldNotSendTemplate": "टेम्पलेट \"{{name}}\" नहीं भेजा जा सका"
+        "couldNotSendTemplate": "टेम्पलेट \"{{name}}\" नहीं भेजा जा सका",
+        "templateHeaderFileMissing": "टेम्पलेट \"{{name}}\" के हेडर में {{kind}} चाहिए, लेकिन टेम्पलेट पर कोई सहेजा नहीं है। पहले WhatsApp Templates खोलकर उसके लिए {{kind}} अपलोड करें।"
     },
     "mediaKindPlural": {
         "document": "दस्तावेज़",
@@ -57,11 +58,24 @@
     "attachmentsUnavailableTooltip": "अटैचमेंट के लिए अपडेटेड नोटिफिकेशन सेवा चाहिए — अभी तैनात नहीं हुई",
     "stopRecordingTooltip": "रोकें और रिकॉर्डिंग अटैच करें",
     "recordVoiceNoteTooltip": "वॉइस नोट रिकॉर्ड करें",
-    "templatePrompt": {
-        "header_one": "टेम्पलेट \"{{name}}\" को {{count}} मान चाहिए:",
-        "header_other": "टेम्पलेट \"{{name}}\" को {{count}} मान चाहिए:",
-        "footer": "मान दर्ज करें (कॉमा से अलग करके):",
-        "paramFallback": "पैरामीटर {{n}}",
-        "exampleSuffix": " (जैसे {{value}})"
+    "templateDialog": {
+        "heading": "टेम्पलेट भेजें",
+        "to": "प्राप्तकर्ता {{phone}}",
+        "valuesLabel": "मान भरें",
+        "valueFallback": "मान {{n}}",
+        "valuePlaceholder": "जैसे {{value}}",
+        "missingValues_one": "{{count}} मान अभी खाली है",
+        "missingValues_other": "{{count}} मान अभी खाली हैं",
+        "headerMissing": "इस टेम्पलेट के हेडर में {{kind}} चाहिए, लेकिन इस पर कोई सहेजा नहीं है। पहले WhatsApp Templates खोलकर {{kind}} अपलोड करें।",
+        "note": "संपर्क को ठीक यही संदेश मिलेगा। भेजते समय टेम्पलेट संपादित नहीं किए जा सकते।",
+        "emptyBody": "इस टेम्पलेट में कोई संदेश नहीं है।",
+        "media": {
+            "image": "छवि",
+            "video": "वीडियो",
+            "document": "दस्तावेज़"
+        },
+        "cancel": "रद्द करें",
+        "send": "टेम्पलेट भेजें",
+        "sending": "भेजा जा रहा है…"
     }
 }

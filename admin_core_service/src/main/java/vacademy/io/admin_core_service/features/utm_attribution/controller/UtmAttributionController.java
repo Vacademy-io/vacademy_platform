@@ -7,7 +7,10 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmAttributionResponse;
 import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmCampaignSummaryResponse;
+import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmDashboardResponse;
+import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmFilterOptionsResponse;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
+import vacademy.io.admin_core_service.features.utm_attribution.service.UtmDashboardService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.ForbiddenException;
 
@@ -36,6 +39,9 @@ public class UtmAttributionController {
 
     @Autowired
     private InstituteAccessValidator accessValidator;
+
+    @Autowired
+    private UtmDashboardService dashboardService;
 
     /**
      * Every recorded touch for one learner, oldest first.
@@ -91,6 +97,34 @@ public class UtmAttributionController {
                 .map(a -> a.getAuthority())
                 .filter(a -> a != null)
                 .allMatch(a -> LEARNER_ROLES.contains(a.toUpperCase(Locale.ROOT)));
+    }
+
+    /**
+     * Every distinct value each UTM dimension holds for the institute — the
+     * option lists behind the campaign filter dropdowns on the list pages.
+     */
+    @GetMapping("/filter-options")
+    public ResponseEntity<UtmFilterOptionsResponse> filterOptions(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @RequestParam String instituteId) {
+        requireStaffAccess(user, instituteId);
+        return ResponseEntity.ok(dashboardService.filterOptions(instituteId));
+    }
+
+    /**
+     * The campaign-attribution dashboard: people / enrolments per source,
+     * medium, campaign, content, term and capture surface, a daily trend and
+     * the full campaign matrix, over an inclusive date window in the
+     * institute's timezone (defaults to the last 30 days).
+     */
+    @GetMapping("/dashboard")
+    public ResponseEntity<UtmDashboardResponse> dashboard(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @RequestParam String instituteId,
+            @RequestParam(required = false) String fromDate,
+            @RequestParam(required = false) String toDate) {
+        requireStaffAccess(user, instituteId);
+        return ResponseEntity.ok(dashboardService.dashboard(instituteId, fromDate, toDate));
     }
 
     /** Campaign roll-up over the last {@code days} days. */

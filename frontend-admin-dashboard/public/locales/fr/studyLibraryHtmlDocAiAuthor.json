@@ -20,7 +20,7 @@
     "credits_one": "{{count}} crédit",
     "credits_many": "{{count}} crédits",
     "credits_other": "{{count}} crédits",
-    "authoredByAiHint": "Rédigé par l'IA afin que la page puisse être librement créative — animations, quiz interactifs et jeux, tout fonctionne. ⌘/Ctrl + Entrée pour générer.",
+    "authoredByAiHint": "Rédigé par l'IA afin que la page puisse être librement créative — animations, quiz interactifs et jeux, tout fonctionne. Des schémas et des illustrations de manuel sont également créés (chaque image générée coûte 2 crédits supplémentaires). ⌘/Ctrl + Entrée pour générer.",
     "buildingYourPage": "Création de votre page…",
     "starting": "Démarrage…",
     "previousVersion": "Version précédente",
@@ -56,5 +56,6 @@
         "quiz": "Quiz",
         "practicalExamples": "Exemples pratiques",
         "interactiveGames": "Jeux interactifs"
-    }
+    },
+    "drawingIllustrations": "Création des illustrations… ({{completed}}/{{total}})"
 }

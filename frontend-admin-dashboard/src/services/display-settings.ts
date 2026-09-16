@@ -884,6 +884,13 @@ function mergeDisplayWithDefaults(
     merged.listCustomFieldControls =
         incoming?.listCustomFieldControls ?? defaults.listCustomFieldControls;
 
+    // Campaign (UTM) filter controls per surface (institute-wide). Same
+    // pass-through rule: an absent surface means "follow the UTM setting", and
+    // dropping a saved `enabled: false` here would silently un-hide a list the
+    // admin explicitly hid.
+    merged.listUtmFilterControls =
+        incoming?.listUtmFilterControls ?? defaults.listUtmFilterControls;
+
     // Live class scheduling (role-level overlay on top of institute-level
     // Live Session Settings). Both flags default ON so existing roles aren't
     // suddenly locked out of either flow.

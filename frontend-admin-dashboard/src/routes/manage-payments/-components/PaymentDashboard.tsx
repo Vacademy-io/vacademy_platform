@@ -30,7 +30,7 @@ import {
     type AmountSlice,
     type PaymentAnalytics,
 } from '../-utils/paymentAnalytics';
-import { computeBillingFromEntries, computePaymentSummary } from '../-utils/paymentSummary';
+import { computePaymentSummary } from '../-utils/paymentSummary';
 import {
     formatRangeLabel,
     rangeToLocalIsoWindow,
@@ -213,9 +213,9 @@ export function PaymentDashboard() {
     });
 
     /**
-     * Billed / collected / due, straight from the enrolments — the same figures Manage Payments
-     * shows. Payment records can only report money that was actually raised, so an instalment plan
-     * looks fully collected until this is asked for.
+     * Collected / due / upcoming, straight from the enrolments — the same figures Manage Payments
+     * shows. Payment records can only report money that was actually raised, so an overdue
+     * instalment is invisible until this is asked for.
      */
     const { data: billingSummary } = useQuery({
         queryKey: ['payment-billing-summary-dash', range],
@@ -226,20 +226,20 @@ export function PaymentDashboard() {
         staleTime: 60_000,
         retry: false,
     });
-    // Same fallback as Manage Payments: derive billing from the rows when the endpoint is absent.
-    const entryBilling = useMemo(() => computeBillingFromEntries(entries), [entries]);
+    // Same as Manage Payments: no client-side fallback for the balance cards — pricing the rows
+    // on screen is the model that reported abandoned checkouts as debt.
     const billing = billingSummary
         ? {
-              totalBilled: billingSummary.total_billed,
               collected: billingSummary.collected,
               due: billingSummary.due,
+              upcoming: billingSummary.upcoming,
+              upcomingDays: billingSummary.upcoming_days,
+              learnersOwing: billingSummary.learners_owing,
+              learnersUpcoming: billingSummary.learners_upcoming,
+              activatedWithoutPaymentCount: billingSummary.activated_without_payment_count,
               currency: billingSummary.currency || '',
-              planCount: billingSummary.plan_count,
-              settledPlanCount: billingSummary.settled_plan_count,
           }
-        : entryBilling.planCount > 0
-          ? entryBilling
-          : null;
+        : null;
 
     /**
      * Who the Due figure is made of. Without this the dashboard could report lakhs outstanding and
@@ -308,13 +308,7 @@ export function PaymentDashboard() {
             </div>
 
             {/* KPI row — the same five tiles as Manage Payments, from the same component */}
-            <PaymentKpiCards
-                summary={summary}
-                billing={billing}
-                totalCount={entries.length}
-                isLoading={isLoading}
-                truncated={data?.truncated}
-            />
+            <PaymentKpiCards summary={summary} billing={billing} isLoading={isLoading} />
 
             {isError ? (
                 <Card className="p-10 text-center">

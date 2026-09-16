@@ -228,7 +228,9 @@
     "certificatesTitle": "Certificats",
     "certificate": "Certificat",
     "earnedOn": "Obtenu le {{date}}",
-    "completed": "{{percent}} % terminé"
+    "completed": "{{percent}} % terminé",
+    "awardedByInstitute": "Décerné par l’établissement",
+    "awardReason": "« {{reason}} »"
   },
   "childView": {
     "exiting": "Sortie du mode élève…",

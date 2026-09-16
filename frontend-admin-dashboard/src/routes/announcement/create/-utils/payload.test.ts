@@ -9,14 +9,15 @@ import payloadStrings from '../../../../../public/locales/en/announcementPayload
 
 /** Minimal stand-in for i18next's `t`, resolving dotted keys against the real en catalog and
  * interpolating `{{var}}` placeholders — enough for these tests to assert on real copy. */
-const makeT =
-    (catalog: Record<string, unknown>): TFunction =>
+const makeT = (catalog: Record<string, unknown>): TFunction =>
     ((key: string, vars?: Record<string, unknown>) => {
         const value = key
             .split('.')
             .reduce<unknown>(
                 (node, segment) =>
-                    node && typeof node === 'object' ? (node as Record<string, unknown>)[segment] : undefined,
+                    node && typeof node === 'object'
+                        ? (node as Record<string, unknown>)[segment]
+                        : undefined,
                 catalog
             );
         let text = typeof value === 'string' ? value : key;
@@ -39,8 +40,8 @@ const rule = (patch: Partial<AudienceRule>): AudienceRule => ({
     userIds: [],
     tagIds: [],
     tagScope: 'ALL',
-    campaignId: '',
-    campaignName: '',
+    campaignIds: [],
+    campaignNames: {},
     fieldFilters: [],
     exclusions: [],
     ...patch,

@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.core.security;
 
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -9,6 +10,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -94,6 +96,67 @@ public class InstituteAccessValidator {
         if (!isInstituteAdmin(user)) {
             throw new ForbiddenException("Access denied: institute admin role required");
         }
+    }
+
+    /** Authority names that identify institute staff. */
+    private static final Set<String> STAFF_ROLE_NAMES = Set.of("ADMIN", "TEACHER", "EVALUATOR", "MENTOR");
+
+    /** Authority names that identify a learner-side principal. */
+    private static final Set<String> LEARNER_ROLE_NAMES = Set.of("STUDENT", "PARENT", "GUARDIAN");
+
+    /**
+     * Validates institute membership (see {@link #validateUserAccess}) AND that the caller is
+     * institute STAFF -- for endpoints any staff member may use (award/revoke a learner badge,
+     * read a learner's award list) but a learner or parent must not, even though they also
+     * "belong" to the institute per {@code validateUserAccess} alone.
+     *
+     * <p>Why the ordered test instead of "has any authority": in this service the principal's
+     * authorities list MIXES role names (ADMIN, TEACHER, STUDENT, ...) with permission names
+     * (whatever the institute's role -> authority mapping grants). STUDENT and PARENT roles hold
+     * zero permissions in prod today, so "non-empty authorities" happens to mean staff -- but that
+     * is one admin click away from changing, and a learner carrying a stray permission name must
+     * still be refused. A learner can ALSO carry TEACHER: auth_service's self-signup assigns
+     * {@code [STUDENT, TEACHER]} to every learner when the institute enables
+     * {@code allowLearnersToCreateCourses}, so "has TEACHER" alone does not prove staff either.
+     * So, with A = the caller's authority names uppercased:
+     * <ol>
+     *   <li>root user -> allow (platform superadmin, same bypass as everywhere else);</li>
+     *   <li>membership via {@link #validateUserAccess};</li>
+     *   <li>A contains a learner role (STUDENT/PARENT/GUARDIAN) and NOT ADMIN -> deny, whatever
+     *       else it holds (an admin who is also enrolled as a learner keeps their access);</li>
+     *   <li>A contains a known staff role -> allow;</li>
+     *   <li>else A non-empty -> allow (a custom institute role -- these are staff by construction,
+     *       learners are always enrolled with the built-in STUDENT role);</li>
+     *   <li>else deny (an empty A is already refused by {@code validateUserAccess} for non-root callers).</li>
+     * </ol>
+     */
+    public void requireStaffAccess(CustomUserDetails user, String instituteId) {
+        if (user != null && user.isRootUser()) {
+            return;
+        }
+        validateUserAccess(user, instituteId);
+
+        Set<String> authorities = new HashSet<>();
+        if (user.getAuthorities() != null) {
+            for (GrantedAuthority authority : user.getAuthorities()) {
+                if (authority != null && authority.getAuthority() != null) {
+                    authorities.add(authority.getAuthority().trim().toUpperCase());
+                }
+            }
+        }
+        boolean learner = authorities.stream().anyMatch(LEARNER_ROLE_NAMES::contains);
+        if (learner && !authorities.contains("ADMIN")) {
+            // A learner principal stays a learner even when it also carries TEACHER
+            // (self-signup with allowLearnersToCreateCourses) or stray permission names.
+            throw new ForbiddenException("Access denied: staff role required");
+        }
+        if (authorities.stream().anyMatch(STAFF_ROLE_NAMES::contains)) {
+            return;
+        }
+        if (!authorities.isEmpty()) {
+            return;
+        }
+        throw new ForbiddenException("Access denied: staff role required");
     }
 
     /**

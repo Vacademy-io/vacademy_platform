@@ -103,6 +103,41 @@ word-for-word; ~0.013× realtime on one core.
 If STT ever transcribes the ambience via handset echo, lower `AMBIENCE_VOLUME`
 rather than adding filtering.
 
+## Speech-to-text provider (`STT_PROVIDER`)
+
+`sarvam` (code default) | `google` | `smallest`. The Mumbai box runs **smallest**
+(Pulse) since 2026-09-12, chosen by a three-way bench that drove each engine through
+its pipecat service exactly like a live call (8 kHz, VAD stop at 0.2 s) over four real
+AI-call recordings and seven studio clips:
+
+| | Sarvam saaras:v4 | Smallest Pulse | Gnani hi-IN |
+|---|---|---|---|
+| final after VAD stop, median / p90 | 0.14 / 1.86 s | 0.12 / 0.23 s | 0.65 / 0.80 s |
+| turns slower than 1 s | 11 of 67 | 2 of 63 | 1 of 114 |
+| word error vs reference | 0.99 | 0.74 | 1.06 |
+| hears a lone "haan" | never | yes (~2.5 s late) | yes |
+| English in the transcript | forced into Devanagari | Latin script | Devanagari |
+| price | ₹30/hr | ~₹20/hr | n/a |
+
+Smallest's "TTFT 64 ms" is time to the first *partial* on 16 kHz lab audio; the
+pipeline waits for the *final* after the caller stops, and on 8 kHz line audio the
+first partial arrived ~1.2 s after speech start. Running Pulse at 16 kHz was worse
+(median 0.76 s) — keep the pipeline rate. `SMALLEST_STT_LANGUAGE` (default `hi`,
+Pulse's code-switching mode; agents' `hi-IN`/`en-IN` pins are mapped) and
+`SMALLEST_TTFS_P99` (0.5) are the knobs. Rollback: `STT_PROVIDER=sarvam` in `.env`,
+restart.
+
+## First-sentence latency lever
+
+TTS starts the moment the model's first sentence is complete (NoRepeatGate splits on
+sentence ends), so the first sentence's length IS the caller's wait after the LLM's
+first token. Measured on the conversation simulator with the old soft rule: median 5
+words, p90 11. `FAST_OPENER_ENABLED` (default `true`) makes the prompt ask for a
+COMPLETE sentence of at most four words that carries the answer itself ("Haan, shivir
+mein hi hai." / "No charge at all."), never a filler noise or a greeting, with the
+detail and the one question after it. Prompt-only: no gate, splitter or TTS change;
+`false` restores the previous wording verbatim without a deploy.
+
 ## Ops checklist
 
 - Deploy in **ap-south-1** (Plivo India media anchoring), public **WSS** ingress.
@@ -132,3 +167,51 @@ False)` — auto-hangup MUST stay off or the `<Redirect>` handoff can never fire
   global `AAVTAAR_WEBHOOK_SECRET`) so end-of-call report POSTs are
   authenticated; without one, the receiver accepts unauthenticated reports
   (same open-mode posture as Aavtaar today).
+
+## Conversation simulator (`sim/`) — test calls without TTS or STT
+
+Twelve scripted callers, each one a real caller we failed in the week of
+2026-09-08 (the greeter who says "good morning" back, "cut the call", all-offline,
+the permanent Meet link, the price-pusher, "day after tomorrow", the Hindi switcher,
+wrong number, the bare "Yes", "just WhatsApp me", the busy teacher, the objector),
+are played by a cheap LLM against the **real agent prompt** (`build_system_prompt`
+on a saved call context), the **real production LLM**, and the **real text gates**
+(SentinelGate marker/tool-call handling, NoRepeatGate). TTS and STT are replaced by
+text, so a full run costs LLM tokens only (~₹6). What the caller would have heard is
+graded by hard rules (re-greet, not ending when asked, spoken markup, full name,
+invented price or time, wrong weekday, Hindi not kept, online pitch after "all
+offline"…) plus a judge score for "did it listen".
+
+```
+docker compose exec voice-bot python -m sim.run                     # prod model, all personas
+python -m sim.run --model sarvam:sarvam-105b --reps 3               # any model spec (see sim/llm.py)
+python -m sim.run --agent <ai_agent id>                             # a live agent's real context
+python -m sim.run --ci                                              # exit 1 on a hard fail
+```
+
+It runs in CI after the unit harness (`Run conversation simulator`) and blocks the
+deploy on a hard fail; the JSON report is an artifact. **Run it before any model,
+voice, prompt-rule or turn-taking change** — that is the whole point. Not covered:
+how the voice sounds, real line acoustics, STT mishearings (listen to recordings).
+
+### Timing simulator (`sim/timing.py`) — the real pipeline on a simulated line
+
+The text simulator cannot see barge-in, ducking, a held question tail resuming, a
+goodbye that never closes, or a nudge firing after it. `sim/timing.py` runs the real
+`run_bot` pipeline (every gate, the aggregator with Silero VAD and Smart Turn, the
+watchdog) on a simulated Plivo line: caller turns are real 8 kHz speech clips
+(`sim/fixtures/caller/`, one TTS render each, complete utterances so Smart Turn
+hears a natural ending), STT/LLM/TTS are stubs with vendor-like latency and the
+Smallest service's frame shape, and the output transport paces in real time. Six
+scenarios from this week's calls assert on what the line carried — bot audio
+intervals, played transcript, LLM prompts, diagnostics. No credentials, no cost;
+runs in CI on every push (`Run timing simulator`) and blocks the deploy.
+
+```
+docker compose exec voice-bot python -m sim.timing --verbose
+python -m sim.timing --scenarios yes_over_tail,farewell_without_marker
+```
+
+Its first day found that the "Yes over the question tail" fix relied on DuckGate
+holding audio, which it never does (TTS outruns real time; the tail sits in the
+transport's queue), and reproduced the farewell dead-air hole before its fix.

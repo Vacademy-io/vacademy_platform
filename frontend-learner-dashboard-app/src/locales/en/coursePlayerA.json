@@ -203,7 +203,22 @@
     "button": "Button",
     "newsletterSuccessDefault": "Thank you for subscribing!",
     "enterYourEmail": "Enter your email",
-    "subscribe": "Subscribe"
+    "subscribe": "Subscribe",
+    "documentViewer": {
+      "open": "Open document",
+      "download": "Download PDF",
+      "close": "Close",
+      "fullScreen": "Full screen",
+      "previousPage": "Previous page",
+      "nextPage": "Next page",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "pageOf": "{{current}} / {{total}}",
+      "loading": "Loading document…",
+      "loadFailed": "The document could not be displayed here.",
+      "openInNewTab": "Open in a new tab",
+      "noDocument": "No document configured yet"
+    }
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "Chat with us on WhatsApp"

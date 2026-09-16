@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { GraduationCap, Plus, UsersThree } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
@@ -37,6 +38,8 @@ interface RecipientsStepProps {
     tagReachLoading: boolean;
     errors: FieldErrors;
     showErrors: boolean;
+    /** Replaces the section icon — the email campaign page numbers its sections. */
+    badge?: ReactNode;
 }
 
 export function RecipientsStep(props: RecipientsStepProps) {
@@ -66,6 +69,7 @@ export function RecipientsStep(props: RecipientsStepProps) {
                 title={t('sectionTitle')}
                 description={t('sectionDescription')}
                 Icon={UsersThree}
+                badge={props.badge}
                 invalid={showErrors && Boolean(errors.recipients)}
                 action={
                     <MyButton buttonType="primary" scale="small" onClick={() => onAddRule('ROLE')}>

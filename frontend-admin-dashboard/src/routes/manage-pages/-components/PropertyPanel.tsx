@@ -33,6 +33,7 @@ import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
+import { DocumentUploadField } from './DocumentUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
@@ -375,7 +376,10 @@ export const PropertyPanel = () => {
                     <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
                         <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{t('pageSettings.seo.heading')}</h4>
                         <div className="space-y-1.5">
-                            <Label className="text-xs">{t('pageSettings.seo.metaTitle')}</Label>
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs">{t('pageSettings.seo.metaTitle')}</Label>
+                                <SeoLengthCounter value={page.seo?.metaTitle || ''} max={60} />
+                            </div>
                             <Input
                                 value={page.seo?.metaTitle || ''}
                                 placeholder={page.title || page.route}
@@ -383,13 +387,30 @@ export const PropertyPanel = () => {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label className="text-xs">{t('pageSettings.seo.metaDescription')}</Label>
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs">{t('pageSettings.seo.metaDescription')}</Label>
+                                <SeoLengthCounter value={page.seo?.metaDescription || ''} max={160} />
+                            </div>
                             <Textarea
                                 rows={2}
                                 value={page.seo?.metaDescription || ''}
                                 placeholder={t('pageSettings.seo.metaDescriptionPlaceholder')}
                                 onChange={(e) => updatePageSeo(page.id, { metaDescription: e.target.value })}
                             />
+                        </div>
+                        {/* How the page reads in a Google result — the copy the admin is
+                            actually writing for. Pure display, from the same three fields. */}
+                        <div className="rounded border bg-white p-3">
+                            <p className="text-caption text-gray-400">{t('pageSettings.seo.previewHeading')}</p>
+                            <p className="mt-1 truncate text-sm text-green-700">
+                                …/{(page.route || '').replace(/^\//, '') || 'home'}
+                            </p>
+                            <p className="truncate text-base text-blue-700">
+                                {page.seo?.metaTitle || page.title || page.route}
+                            </p>
+                            <p className="line-clamp-2 text-xs text-gray-600">
+                                {page.seo?.metaDescription || t('pageSettings.seo.previewNoDescription')}
+                            </p>
                         </div>
                         <ImageUploadField
                             label={t('pageSettings.seo.ogImage')}
@@ -802,6 +823,65 @@ const CourseFinderLevelGroups = ({
                 );
             })}
         </div>
+    );
+};
+
+/** "58/60" next to a meta field — amber once past what Google displays. */
+const SeoLengthCounter = ({ value, max }: { value: string; max: number }) => {
+    const n = value.length;
+    return (
+        <span className={`text-caption ${n > max ? 'text-amber-600' : 'text-gray-400'}`}>
+            {n}/{max}
+        </span>
+    );
+};
+
+/**
+ * A list stored as string[] but edited as free text (comma- or line-separated).
+ * Edits are committed on blur: committing per keystroke would strip the
+ * separator the admin has just typed, making it impossible to add an item.
+ */
+const SeoListField = ({
+    value,
+    separator,
+    placeholder,
+    className,
+    onCommit,
+}: {
+    value: string[];
+    separator: 'comma' | 'line';
+    placeholder?: string;
+    className?: string;
+    onCommit: (list: string[]) => void;
+}) => {
+    const join = separator === 'comma' ? ', ' : '\n';
+    const stored = value.join(join);
+    const [text, setText] = useState(stored);
+    const [lastStored, setLastStored] = useState(stored);
+    // Re-sync when the stored list changes underneath (undo, another editor).
+    // Compared by CONTENT: the parent hands over a fresh `[]` on every render
+    // while the list is empty, and a reference check would reset the admin's
+    // uncommitted typing each time anything else in the panel re-rendered.
+    if (lastStored !== stored) {
+        setLastStored(stored);
+        setText(stored);
+    }
+    const commit = () => {
+        const list = text
+            .split(separator === 'comma' ? /[,\n]/ : /\n/)
+            .map((x) => x.trim())
+            .filter(Boolean);
+        onCommit(list);
+    };
+    return (
+        <Textarea
+            className={className}
+            rows={separator === 'comma' ? 2 : 3}
+            value={text}
+            placeholder={placeholder}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={commit}
+        />
     );
 };
 
@@ -1286,6 +1366,88 @@ const GlobalSettingsEditor = ({
                     <Input className="mt-1" placeholder="GTM-XXXXXXX" value={gs.tracking?.gtmId || ''} onChange={(e) => updateField('tracking.gtmId', e.target.value.trim())} />
                     <p className="mt-1 text-caption text-gray-400">{t('global.tracking.gtmHint')}</p>
                 </div>
+            </div>
+
+            {/* Search engine optimisation. Read by the learner edge middleware
+                for crawlers: keywords/verification → <head>, organization →
+                schema.org JSON-LD. Footer social links join sameAs on their own. */}
+            <div className="space-y-3 border-b pb-4">
+                <h4 className="font-medium text-gray-700">{t('global.seo.heading')}</h4>
+                <p className="text-caption text-gray-400">{t('global.seo.hint')}</p>
+                <div>
+                    <Label className="text-xs">{t('global.seo.keywordsLabel')}</Label>
+                    <SeoListField
+                        className="mt-1"
+                        value={gs.seo?.keywords || []}
+                        separator="comma"
+                        placeholder={t('global.seo.keywordsPlaceholder')}
+                        onCommit={(list) => updateField('seo.keywords', list)}
+                    />
+                    <p className="mt-1 text-caption text-gray-400">{t('global.seo.keywordsHint')}</p>
+                </div>
+                <div>
+                    <Label className="text-xs">{t('global.seo.verificationLabel')}</Label>
+                    <Input
+                        className="mt-1"
+                        placeholder="abc123…"
+                        value={gs.seo?.googleSiteVerification || ''}
+                        onChange={(e) => updateField('seo.googleSiteVerification', e.target.value.trim())}
+                    />
+                    <p className="mt-1 text-caption text-gray-400">{t('global.seo.verificationHint')}</p>
+                </div>
+                <div className="space-y-2 rounded-lg border bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-600">{t('global.seo.organizationHeading')}</p>
+                    <p className="text-caption text-gray-400">{t('global.seo.organizationHint')}</p>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgName')}</Label>
+                        <Input className="mt-1" value={gs.seo?.organization?.name || ''} onChange={(e) => updateField('seo.organization.name', e.target.value)} />
+                    </div>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgDescription')}</Label>
+                        <Textarea className="mt-1" rows={2} value={gs.seo?.organization?.description || ''} onChange={(e) => updateField('seo.organization.description', e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgFounder')}</Label>
+                            <Input className="mt-1" value={gs.seo?.organization?.founder || ''} onChange={(e) => updateField('seo.organization.founder', e.target.value)} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgFoundingDate')}</Label>
+                            <Input className="mt-1" placeholder="2024" value={gs.seo?.organization?.foundingDate || ''} onChange={(e) => updateField('seo.organization.foundingDate', e.target.value.trim())} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgEmail')}</Label>
+                            <Input className="mt-1" type="email" value={gs.seo?.organization?.email || ''} onChange={(e) => updateField('seo.organization.email', e.target.value.trim())} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgTelephone')}</Label>
+                            <Input className="mt-1" placeholder="+91 …" value={gs.seo?.organization?.telephone || ''} onChange={(e) => updateField('seo.organization.telephone', e.target.value.trim())} />
+                        </div>
+                    </div>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgAddress')}</Label>
+                        <Input className="mt-1" value={gs.seo?.organization?.address || ''} onChange={(e) => updateField('seo.organization.address', e.target.value)} />
+                    </div>
+                    <ImageUploadField
+                        label={t('global.seo.orgLogo')}
+                        value={gs.seo?.organization?.logo || ''}
+                        onChange={(url) => updateField('seo.organization.logo', url)}
+                        placeholder="https://…/logo.png"
+                    />
+                    <p className="text-caption text-gray-400">{t('global.seo.orgLogoHint')}</p>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.sameAsLabel')}</Label>
+                        <SeoListField
+                            className="mt-1"
+                            value={gs.seo?.organization?.sameAs || []}
+                            separator="line"
+                            placeholder={'https://www.facebook.com/…\nhttps://www.instagram.com/…'}
+                            onCommit={(list) => updateField('seo.organization.sameAs', list)}
+                        />
+                        <p className="mt-1 text-caption text-gray-400">{t('global.seo.sameAsHint')}</p>
+                    </div>
+                </div>
+                <p className="text-caption text-gray-400">{t('global.seo.sitemapHint')}</p>
             </div>
 
             {/* Lead Collection */}
@@ -1779,6 +1941,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <FaqSectionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'videoEmbed':
             return <VideoEmbedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'documentViewer':
+            return <DocumentViewerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'ctaBanner':
             return <CtaBannerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'pricingTable':
@@ -2705,16 +2869,28 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp(sectionKey, { ...section, links });
     };
 
+    // One link row open at a time, keyed "<section>:<index>". The row used to
+    // put the label box, the whole LinkPicker (page search + page list) and
+    // the delete button side by side in the 320px panel: the picker took the
+    // width, the label shrank to a ~26px sliver with its text hidden and the
+    // delete button was pushed off-screen — admins could not rename a link at
+    // all (one typed "h" blind and published it). Same collapsed-row pattern
+    // as the header's navigation links.
+    const [expandedLink, setExpandedLink] = useState<string | null>(null);
+
     const addRightSectionLink = (sectionKey: string) => {
         const section = props[sectionKey] || { title: '', links: [] };
         const links = [...(section.links || []), { label: t('header.defaults.newLink'), route: '/' }];
         updateProp(sectionKey, { ...section, links });
+        // Open the new row so the label box is the next thing the admin sees.
+        setExpandedLink(`${sectionKey}:${links.length - 1}`);
     };
 
     const deleteRightSectionLink = (sectionKey: string, linkIndex: number) => {
         const section = props[sectionKey] || { title: '', links: [] };
         const links = (section.links || []).filter((_: any, i: number) => i !== linkIndex);
         updateProp(sectionKey, { ...section, links });
+        setExpandedLink(null);
     };
 
     const layout = props.layout || 'four-column';
@@ -2850,29 +3026,63 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                                     <Plus className="me-1 size-3" /> {t('actions.add')}
                                 </Button>
                             </div>
-                            {(section.links || []).map((link: any, li: number) => (
-                                <div key={li} className="flex items-center gap-1.5">
-                                    <Input
-                                        className="h-7 text-xs"
-                                        placeholder={t('header.labelPlaceholder')}
-                                        value={link.label || ''}
-                                        onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
-                                    />
-                                    <LinkPicker
-                                        label=""
-                                        value={link.route || ''}
-                                        onChange={(v) => updateRightSectionLink(sectionKey, li, 'route', v)}
-                                    />
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="size-7 shrink-0 p-0 text-red-500"
-                                        onClick={() => deleteRightSectionLink(sectionKey, li)}
-                                    >
-                                        <Trash2 className="size-3" />
-                                    </Button>
-                                </div>
-                            ))}
+                            {(section.links || []).map((link: any, li: number) => {
+                                const rowKey = `${sectionKey}:${li}`;
+                                const isOpen = expandedLink === rowKey;
+                                return (
+                                    <div key={li} className="rounded border bg-white p-2">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => setExpandedLink(isOpen ? null : rowKey)}
+                                                className="flex-1 truncate text-left text-sm font-medium"
+                                                aria-expanded={isOpen}
+                                            >
+                                                {isOpen ? (
+                                                    <ChevronUp className="mr-1 inline size-3" />
+                                                ) : (
+                                                    <ChevronDown className="mr-1 inline size-3" />
+                                                )}
+                                                {link.label || t('header.labelPlaceholder')}
+                                            </button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="size-6 shrink-0 p-0 text-red-500"
+                                                onClick={() => deleteRightSectionLink(sectionKey, li)}
+                                                title={t('actions.delete')}
+                                                aria-label={t('actions.delete')}
+                                            >
+                                                <Trash2 className="size-3" />
+                                            </Button>
+                                        </div>
+                                        {isOpen && (
+                                            <div className="mt-2 space-y-2">
+                                                <Input
+                                                    className="h-8 text-xs"
+                                                    placeholder={t('header.labelPlaceholder')}
+                                                    value={link.label || ''}
+                                                    onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
+                                                />
+                                                <LinkPicker
+                                                    label={t('header.route')}
+                                                    value={link.route || ''}
+                                                    onChange={(v) => updateRightSectionLink(sectionKey, li, 'route', v)}
+                                                />
+                                                {/* The learner footer already honours openInSameTab
+                                                    for external links; the editor never exposed it. */}
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-xs">{t('header.openInSameTab')}</Label>
+                                                    <Switch
+                                                        checked={!!link.openInSameTab}
+                                                        onCheckedChange={(c) => updateRightSectionLink(sectionKey, li, 'openInSameTab', c)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 );
@@ -3787,6 +3997,80 @@ const VideoEmbedEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label>{t('mediaShowcase.autoplay')}</Label>
                 <Switch checked={props.autoplay || false} onCheckedChange={(c) => updateProp('autoplay', c)} />
             </div>
+        </div>
+    );
+};
+
+// Document Viewer Editor
+const DocumentViewerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    const display = props.display || 'button';
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">{t('documentViewer.heading')}</h4>
+            <DocumentUploadField
+                label={t('documentViewer.file')}
+                value={props.documentUrl || ''}
+                onChange={(url) => updateProp('documentUrl', url)}
+            />
+            <div className="space-y-2">
+                <Label>{t('documentViewer.fileName')}</Label>
+                <Input
+                    value={props.fileName || ''}
+                    placeholder={t('documentViewer.fileNamePlaceholder')}
+                    onChange={(e) => updateProp('fileName', e.target.value)}
+                />
+                <p className="text-xs text-gray-500">{t('documentViewer.fileNameHelp')}</p>
+            </div>
+            <div className="space-y-2">
+                <Label>{t('ctaBanner.headingField')}</Label>
+                <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('faq.subheading')}</Label>
+                <Textarea rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('documentViewer.display')}</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={display} onChange={(e) => updateProp('display', e.target.value)}>
+                    <option value="button">{t('documentViewer.displayButton')}</option>
+                    <option value="inline">{t('documentViewer.displayInline')}</option>
+                </select>
+                <p className="text-xs text-gray-500">
+                    {display === 'inline' ? t('documentViewer.displayInlineHelp') : t('documentViewer.displayButtonHelp')}
+                </p>
+            </div>
+            {display === 'button' ? (
+                <>
+                    <div className="space-y-2">
+                        <Label>{t('documentViewer.buttonText')}</Label>
+                        <Input value={props.buttonText || ''} placeholder={t('mediaShowcase.buttonTextPlaceholder')} onChange={(e) => updateProp('buttonText', e.target.value)} />
+                    </div>
+                    <ImageUploadField
+                        label={t('documentViewer.coverImage')}
+                        value={props.coverImage || ''}
+                        onChange={(url) => updateProp('coverImage', url)}
+                    />
+                </>
+            ) : (
+                <div className="space-y-2">
+                    <Label>{t('documentViewer.frameHeight')}</Label>
+                    <select className="w-full rounded border px-3 py-2 text-sm" value={props.height || '70vh'} onChange={(e) => updateProp('height', e.target.value)}>
+                        <option value="480px">{t('documentViewer.heightShort')}</option>
+                        <option value="70vh">{t('documentViewer.heightMedium')}</option>
+                        <option value="85vh">{t('documentViewer.heightTall')}</option>
+                    </select>
+                </div>
+            )}
+            <div className="flex items-center justify-between">
+                <Label>{t('documentViewer.showDownload')}</Label>
+                <Switch checked={props.showDownload !== false} onCheckedChange={(c) => updateProp('showDownload', c)} />
+            </div>
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || ''} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('header.textColor')} value={props.textColor || ''} onChange={(c) => updateProp('textColor', c)} />
         </div>
     );
 };

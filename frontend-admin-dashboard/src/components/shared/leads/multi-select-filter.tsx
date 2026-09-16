@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { CaretDown, Check } from '@phosphor-icons/react';
+import { CaretDown, Check, PlusCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { ChipsWrapper } from '@/components/design-system/chips';
+import { useCompactMode } from '@/hooks/use-compact-mode';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
     Command,
@@ -48,6 +51,14 @@ interface MultiSelectFilterProps {
      * the self-captioning toolbar pill Recent Leads uses.
      */
     showSelectedLabel?: boolean;
+    /**
+     * Trigger look. 'button' (default) matches the leads filter bars' outline
+     * chips. 'pill' matches Manage Students' rounded FilterChips pill (see
+     * design-system/chips.tsx) so this combobox blends in next to that page's
+     * other filter chips — the same split CustomFieldMultiSelectFilter makes.
+     * Styling only; behaviour is identical.
+     */
+    variant?: 'button' | 'pill';
 }
 
 /**
@@ -64,8 +75,10 @@ export function MultiSelectFilter({
     placeholder = 'Search…',
     widthClass = 'w-44',
     showSelectedLabel = false,
+    variant = 'button',
 }: MultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
+    const { isCompact } = useCompactMode();
 
     const toggle = (value: string, clearAll: boolean | undefined) => {
         if (clearAll) {
@@ -94,25 +107,73 @@ export function MultiSelectFilter({
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    role="combobox"
-                    aria-expanded={open}
-                    aria-label={`Filter by ${label.toLowerCase()}`}
-                    className={cn(
-                        'h-10 justify-between',
-                        widthClass,
-                        count > 0 && 'border-primary-300 bg-primary-50'
-                    )}
-                >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                        {icon}
-                        <span className="truncate text-sm font-normal">{triggerLabel}</span>
-                    </span>
-                    <CaretDown className="size-4 shrink-0 text-neutral-400" />
-                </Button>
+                {variant === 'pill' ? (
+                    <button
+                        type="button"
+                        role="combobox"
+                        aria-expanded={open}
+                        aria-label={`Filter by ${label.toLowerCase()}`}
+                    >
+                        <ChipsWrapper
+                            className={cn(
+                                count > 0
+                                    ? 'border-primary-500 bg-primary-100'
+                                    : 'hover:border-primary-500 hover:bg-primary-50'
+                            )}
+                        >
+                            <div className="flex items-center gap-2">
+                                {icon ?? (
+                                    <PlusCircle
+                                        className={cn(
+                                            isCompact ? 'size-3.5' : 'size-4',
+                                            'text-neutral-600'
+                                        )}
+                                    />
+                                )}
+                                <div
+                                    className={cn(
+                                        'flex items-center',
+                                        isCompact ? 'text-xs' : 'text-body',
+                                        'text-neutral-600'
+                                    )}
+                                >
+                                    {label}
+                                </div>
+                                {count > 0 && (
+                                    <div className="flex items-center gap-2">
+                                        <Separator
+                                            orientation="vertical"
+                                            className="mx-2 h-4 bg-neutral-500"
+                                        />
+                                        <div className="inline-flex items-center rounded-md bg-primary-200 px-2.5 py-0.5 text-caption font-normal">
+                                            {count} selected
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </ChipsWrapper>
+                    </button>
+                ) : (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        role="combobox"
+                        aria-expanded={open}
+                        aria-label={`Filter by ${label.toLowerCase()}`}
+                        className={cn(
+                            'h-10 justify-between',
+                            widthClass,
+                            count > 0 && 'border-primary-300 bg-primary-50'
+                        )}
+                    >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                            {icon}
+                            <span className="truncate text-sm font-normal">{triggerLabel}</span>
+                        </span>
+                        <CaretDown className="size-4 shrink-0 text-neutral-400" />
+                    </Button>
+                )}
             </PopoverTrigger>
             {/* Only the two-line (sublabel) variant needs the extra width; every
                 existing call site keeps the width it had. */}

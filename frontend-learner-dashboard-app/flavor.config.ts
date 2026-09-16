@@ -251,4 +251,25 @@ export const flavorConfig: FlavorConfigs = {
     domain: "agilore.com",
     subdomain: "learner",
   },
+
+  // Oui Académie iOS app
+  "com.ouiacademie.app": {
+    appName: "Oui Académie",
+    domain: "oui-academie.com",
+    subdomain: "student",
+  },
+
+  // Agilore Global Android app
+  "com.agilore.app": {
+    appName: "Agilore Global",
+    domain: "agilore.com",
+    subdomain: "learner",
+  },
+
+  // Oui Académie Android app
+  "com.ouiacademie.io": {
+    appName: "Oui Académie",
+    domain: "oui-academie.com",
+    subdomain: "student",
+  },
 };

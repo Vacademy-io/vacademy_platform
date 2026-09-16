@@ -171,6 +171,8 @@ export interface SubOrgListItem {
     suborg_id?: string | null;
     name?: string | null;
     status?: string | null;
+    /** auth user id of the root admin — the recipient of the row's "Share credentials" action. */
+    admin_user_id?: string | null;
     admin_name?: string | null;
     admin_email?: string | null;
     admin_phone?: string | null;
@@ -437,6 +439,35 @@ export const resyncSubOrgInvites = async (
 }> => {
     const parentInstituteId = getCurrentInstituteId();
     const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/resync-invites`;
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url,
+        params: { parentInstituteId },
+    });
+    return response.data;
+};
+
+/** What the backend reports after re-sending a sub-org admin's login details. */
+export interface ResendSubOrgAdminCredentialsResult {
+    sub_org_id: string;
+    user_id: string;
+    /** 1 when the notification service accepted the email, else 0. */
+    sent: number;
+    failed: number;
+    /** Backend's own explanation — surfaced verbatim when nothing was sent. */
+    message?: string | null;
+}
+
+/**
+ * Re-send the sub-org admin's current login details by email (Manage VLEs → row menu →
+ * "Share credentials"). The mail is branded for the parent institute and links to its admin
+ * portal. Read-only on the admin's account: nothing is rotated or re-enrolled.
+ */
+export const resendSubOrgAdminCredentials = async (
+    subOrgId: string
+): Promise<ResendSubOrgAdminCredentialsResult> => {
+    const parentInstituteId = getCurrentInstituteId();
+    const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/resend-admin-credentials`;
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url,

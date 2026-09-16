@@ -10,6 +10,7 @@ import { useEnrollRequestsDialogStore } from '@/routes/manage-students/enroll-re
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { toast } from 'sonner';
+import { BulkAwardBadgeDialog } from './bulk-award-badge-dialog';
 
 // Internal action-type constants used for dispatch logic. These must never be
 // swapped for translated display text — handleMenuOptionsChange switches on
@@ -25,6 +26,7 @@ const MENU_ACTION = {
     SEND_WHATSAPP_MESSAGE: 'SEND_WHATSAPP_MESSAGE',
     SEND_EMAIL: 'SEND_EMAIL',
     CREATE_CERTIFICATE: 'CREATE_CERTIFICATE',
+    AWARD_BADGE: 'AWARD_BADGE',
 } as const;
 
 /**
@@ -61,6 +63,8 @@ const buildBulkActionDropdownList = (t: TFunction): DropdownItem[] => [
     { label: t('menu.sendWhatsappMessage'), value: MENU_ACTION.SEND_WHATSAPP_MESSAGE },
     { label: t('menu.sendEmail'), value: MENU_ACTION.SEND_EMAIL },
     { label: t('menu.createCertificate'), value: MENU_ACTION.CREATE_CERTIFICATE },
+    // Person-scoped (needs only user_id) — deliberately NOT in BATCH_SCOPED_ACTIONS.
+    { label: t('menu.awardBadge'), value: MENU_ACTION.AWARD_BADGE },
 ];
 
 interface BulkActionsMenuProps {
@@ -90,6 +94,7 @@ export const BulkActionsMenu = ({
         openBulkShareCredentialsDialog,
         openBulkSendMessageDialog,
         openBulkSendEmailDialog,
+        openBulkAwardBadgeDialog,
     } = useDialogStore();
     // The Accept flow is owned by the enroll-requests dialog store (the same store the
     // row-level "Accept Request" menu uses); its AcceptRequestDialog is already mounted
@@ -163,6 +168,9 @@ export const BulkActionsMenu = ({
             case MENU_ACTION.SEND_EMAIL:
                 openBulkSendEmailDialog(bulkActionInfo);
                 break;
+            case MENU_ACTION.AWARD_BADGE:
+                openBulkAwardBadgeDialog(bulkActionInfo);
+                break;
             case MENU_ACTION.CREATE_CERTIFICATE:
                 // Navigate to certificate generation with selected students
                 router.navigate({
@@ -178,8 +186,16 @@ export const BulkActionsMenu = ({
     };
 
     return (
-        <MyDropdown dropdownList={dropdownList} onSelect={handleMenuOptionsChange}>
-            {trigger}
-        </MyDropdown>
+        <>
+            <MyDropdown dropdownList={dropdownList} onSelect={handleMenuOptionsChange}>
+                {trigger}
+            </MyDropdown>
+            {/* Mounted here, next to the menu, rather than in students-list-section or MyTable:
+                the same menu is reused by the course-details student list and the live-session
+                learner tab, where the section-level dialogs are NOT mounted (their Share
+                Credentials item flips a store flag and nothing opens). Rendering the dialog as a
+                sibling of the dropdown means "Award badge" works on every list that shows it. */}
+            <BulkAwardBadgeDialog />
+        </>
     );
 };

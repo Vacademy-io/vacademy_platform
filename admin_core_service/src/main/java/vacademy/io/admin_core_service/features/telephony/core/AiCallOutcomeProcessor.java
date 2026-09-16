@@ -394,13 +394,18 @@ public class AiCallOutcomeProcessor {
             effectiveDisposition = "Incomplete";
         }
 
+        // callerWordCount is the bot's MEASURED count of what the caller said. It lets
+        // the classifier hand an engaged-but-unjudged call to a human rather than
+        // re-dial it — including the RED-degraded case just above, which is precisely
+        // where a long real conversation used to be thrown to the retry loop.
         AiCallDecision decision = classifier.classify(
                 r.getStatus(), r.getDurationSeconds(), effectiveDisposition, priorAttempts, settings,
-                agentDispositions);
+                agentDispositions, r.getCallerWordCount());
         boolean connected = isConnected(r, settings);
 
-        log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",
-                r.getId(), lead.userId(), effectiveDisposition, r.getStatus(), decision.action(), decision.reason());
+        log.info("ai-call outcome: result={} lead={} disposition={} status={} callerWords={} -> {} ({})",
+                r.getId(), lead.userId(), effectiveDisposition, r.getStatus(), r.getCallerWordCount(),
+                decision.action(), decision.reason());
 
         applyDecision(decision, lead, r, connected);
 

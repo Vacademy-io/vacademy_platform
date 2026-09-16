@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import asyncio
 from typing import AsyncGenerator, Optional
 from uuid import uuid4
@@ -26,6 +27,11 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Illustrations per generated DOCUMENT slide. Lower than the module default
+# (which serves the single-page HTML Document author) because a course run fans
+# out across every slide at once. Override: COURSE_SLIDE_MAX_IMAGES.
+_COURSE_SLIDE_MAX_IMAGES = int(os.getenv("COURSE_SLIDE_MAX_IMAGES") or 3)
 
 
 class ContentGenerationService:
@@ -80,11 +86,11 @@ class ContentGenerationService:
         self._content_model = "google/gemini-2.5-flash"
         # DOCUMENT slides are now creative, self-contained HTML (rendered in an
         # iframe) and benefit from a strong front-end model — same as the manual
-        # "AI document" authoring. gemini-2.5-flash produced visibly lower-craft
-        # pages. Overridable per-slide via todo.metadata.model. Env override:
-        # HTML_DOC_MODEL.
-        import os
-        self._html_doc_model = os.getenv("HTML_DOC_MODEL") or "anthropic/claude-sonnet-5"
+        # "AI document" authoring (keep this in step with _DEFAULT_MODEL in
+        # routers/html_document.py). gemini-2.5-flash produced visibly
+        # lower-craft pages. Overridable per-slide via todo.metadata.model. Env
+        # override: HTML_DOC_MODEL.
+        self._html_doc_model = os.getenv("HTML_DOC_MODEL") or "z-ai/glm-5.3-flash"
         # The model the user picked when creating the course. Set per run and
         # used by EVERY content leg; the hardcoded models above are only the
         # fallback when the user left it on "auto". Kept separate from
@@ -229,8 +235,9 @@ class ContentGenerationService:
 
             language = (todo.metadata or {}).get("language", "English")
             # Honor an explicitly-injected model (e.g. the wizard's pick); else
-            # default DOCUMENT slides to the strong HTML model (claude-sonnet-5),
-            # matching the manual "AI document" craft — NOT the fast content model.
+            # default DOCUMENT slides to the dedicated HTML model (see
+            # _html_doc_model), matching the manual "AI document" craft — NOT
+            # the fast content model.
             model = self._model_for(todo, default=self._html_doc_model)
 
             if is_homework_questions:
@@ -296,8 +303,11 @@ class ContentGenerationService:
             # generate any requested illustrations. All best-effort.
             generated_content = strip_wrapping_fence(generated_content)
             generated_content = normalize_code_blocks(generated_content)
+            # Bulk course generation fans out over every slide, so it keeps a
+            # tighter picture budget than the single-page HTML Document author
+            # (which is one deliberate page at a time, billed per image).
             generated_content, image_count = await illustrate_document(
-                generated_content, slide_path=todo.path
+                generated_content, slide_path=todo.path, max_images=_COURSE_SLIDE_MAX_IMAGES
             )
             if image_count and self._db_session:
                 try:

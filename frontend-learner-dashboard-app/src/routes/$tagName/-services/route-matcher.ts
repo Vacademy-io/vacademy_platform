@@ -1,5 +1,6 @@
 import { CourseCatalogueData, Page } from "../-types/course-catalogue-types";
 import { getCachedRootCatalogueTag } from "@/services/domain-routing";
+import { isReservedAppRoute } from "@/services/reserved-app-routes";
 
 /**
  * Route matcher utility for handling dynamic page routing
@@ -56,7 +57,24 @@ export class RouteMatcher {
     // route like "Toddler-Reset" into a link to a page that reports not found.
     const clean = (route || "").trim().replace(/^\/+/, "").replace(/\/+$/, "");
     if (this.normalizeRoute(clean) === "home" || clean === "") return base || "/";
+    // Root-mounted, but the page is named like one of the app's own routes
+    // ("privacy-policy", "courses", "login"...): "/<page>" would open the
+    // app's page, not the catalogue's. Keep the tagged address, which the
+    // root-mounted host still serves (see isReservedRootPage).
+    if (!base && tagName && this.isReservedRootPage(tagName, clean)) {
+      return `/${tagName}/${clean}`;
+    }
     return `${base}/${clean}`;
+  }
+
+  /**
+   * A page of the root-mounted catalogue that cannot live at "/<page>"
+   * because the learner app answers that path itself. Such a page is
+   * addressed as "/<tag>/<page>" instead, and the "/<tag>/..." →
+   * "/<page>" canonical redirect must leave it alone.
+   */
+  static isReservedRootPage(tagName: string, pageSlug: string): boolean {
+    return this.isRootMounted(tagName) && isReservedAppRoute(pageSlug);
   }
 
   /**

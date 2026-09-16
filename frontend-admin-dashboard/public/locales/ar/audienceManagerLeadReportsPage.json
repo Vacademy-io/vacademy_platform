@@ -28,7 +28,8 @@
         "revenue": "الإيرادات",
         "cohort": "الفوج",
         "forecast": "التوقعات",
-        "custom": "المُنشئ"
+        "custom": "المُنشئ",
+        "utm": "الحملات (UTM)"
     },
     "counsellorPicker": {
         "ariaLabel": "تصفية حسب المستشار",

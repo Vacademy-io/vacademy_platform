@@ -2,6 +2,7 @@ package vacademy.io.notification_service.features.email_inbox.controller;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.notification_service.features.email_inbox.dto.EmailConversationDTO;
@@ -60,9 +61,17 @@ public class EmailInboxController {
                 instituteId, q, offset, limit, instituteAddress, direction));
     }
 
+    /**
+     * 200 when the reply was accepted for dispatch; 202 when it was queued behind the sender's
+     * daily cap (deliveryStatus=DEFERRED — it will appear in the thread once it goes out);
+     * 422 when the recipient cannot be mailed (blocklisted / unsubscribed); 502 on a provider
+     * failure. The service raises the error statuses.
+     */
     @PostMapping("/reply")
     public ResponseEntity<EmailMessageDTO> sendReply(@RequestBody EmailReplyRequest request) {
-        return ResponseEntity.ok(emailInboxService.sendReply(request));
+        EmailMessageDTO sent = emailInboxService.sendReply(request);
+        HttpStatus status = "DEFERRED".equals(sent.getDeliveryStatus()) ? HttpStatus.ACCEPTED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(sent);
     }
 
     /**

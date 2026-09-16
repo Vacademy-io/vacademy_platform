@@ -9,6 +9,9 @@ export const SUPPORT_BASE_URL = `${BASE_URL}/community-service/support/v1`;
 export const INSTITUTE_WIDGET_BASE_URL = `${BASE_URL}/community-service/dashboard-widget/v1`;
 // Read-only product roadmap shown in the Assist Dock (community-service feature/roadmap).
 export const ROADMAP_BASE_URL = `${BASE_URL}/community-service/roadmap/v1`;
+// LMS training videos played in the Assist Dock "Training" popup (community-service
+// feature/trainingvideo). Super admins publish them from the health-check dashboard.
+export const TRAINING_VIDEOS_BASE_URL = `${BASE_URL}/community-service/training/v1/videos`;
 // Local admin-core override — kept for ad-hoc dev testing. Production callers
 // must use BASE_URL; flip specific URL constants to this only while testing locally.
 export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';

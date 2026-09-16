@@ -1,0 +1,12 @@
+{
+    "title": "Formation",
+    "searchPlaceholder": "Rechercher une vidéo par nom, description ou module…",
+    "allVideos": "Toutes les vidéos",
+    "back": "Retour aux vidéos",
+    "closeAriaLabel": "Fermer la formation",
+    "error": "Impossible de charger les vidéos de formation. Réessayez plus tard.",
+    "noVideos": "Aucune vidéo de formation pour le moment",
+    "noVideosDescription": "L'équipe Vacademy n'a pas encore publié de vidéos de formation.",
+    "noResults": "Aucune vidéo ne correspond à votre recherche",
+    "noResultsDescription": "Essayez un autre mot-clé ou effacez la recherche."
+}

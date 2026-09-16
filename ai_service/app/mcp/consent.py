@@ -45,7 +45,7 @@ router = APIRouter(prefix="/ai-service/mcp/oauth", tags=["mcp"])
 
 
 def _repo(db: Session, settings: Settings) -> McpOAuthRepository:
-    return McpOAuthRepository(db, TokenCipher(settings.mcp_token_encryption_key))
+    return McpOAuthRepository(db, TokenCipher(settings.resolve_mcp_encryption_key()))
 
 
 def _require_institute_admin(principal: PinnedPrincipal) -> None:

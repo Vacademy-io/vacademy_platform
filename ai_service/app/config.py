@@ -246,11 +246,14 @@ class Settings(BaseSettings):
     internal_service_token: Optional[str] = os.getenv("INTERNAL_SERVICE_TOKEN")
 
     # ── MCP server (Model Context Protocol) ────────────────────────────────
-    # Global kill switch. Off by default: the endpoint, its OAuth routes and the
-    # discovery documents only exist when this is on. Per-institute enablement is
-    # a separate gate (MCP_SERVER_SETTING), so flipping this on grants nobody
-    # anything until an institute opts in.
-    mcp_server_enabled: bool = os.getenv("MCP_SERVER_ENABLED", "false").lower() == "true"
+    # ON by default. The real access control is per-institute
+    # (MCP_SERVER_SETTING: enabled + role allow-list, learners never) and is
+    # re-checked on every request, so the endpoint merely existing grants nobody
+    # anything: an un-opted-in institute is refused, and an unauthenticated
+    # caller gets a 401. A global switch on top of that bought no safety and only
+    # made the server depend on a deploy-time variable, so it defaults on and
+    # exists purely as an emergency kill switch (set MCP_SERVER_ENABLED=false).
+    mcp_server_enabled: bool = os.getenv("MCP_SERVER_ENABLED", "true").lower() == "true"
     # Public URL of the MCP endpoint. It is BOTH the OAuth issuer and the RFC 8707
     # resource identifier, so it must be the externally reachable URL and must be
     # HTTPS (the SDK exempts localhost for local development).
@@ -260,9 +263,10 @@ class Settings(BaseSettings):
     )
     # Where the browser is sent to log in and approve a connection.
     admin_dashboard_url: str = os.getenv("ADMIN_DASHBOARD_URL", "https://dash.vacademy.io")
-    # Encrypts the platform tokens stored against each grant. REQUIRED when the
-    # MCP server is enabled — startup refuses to mount it otherwise, rather than
-    # persisting credentials in clear.
+    # Encrypts the platform tokens stored against each grant. Prefer a dedicated
+    # key (generate: Fernet.generate_key()). Falls back to another server-side
+    # secret so the MCP server does not need a deploy-time variable to come up —
+    # see resolve_mcp_encryption_key(), which is what the code actually uses.
     mcp_token_encryption_key: Optional[str] = os.getenv("MCP_TOKEN_ENCRYPTION_KEY")
     mcp_access_token_ttl_seconds: int = int(os.getenv("MCP_ACCESS_TOKEN_TTL_SECONDS", "3600"))
     mcp_refresh_token_ttl_seconds: int = int(os.getenv("MCP_REFRESH_TOKEN_TTL_SECONDS", str(30 * 24 * 3600)))
@@ -272,6 +276,29 @@ class Settings(BaseSettings):
     mcp_auth_code_ttl_seconds: int = int(os.getenv("MCP_AUTH_CODE_TTL_SECONDS", "300"))
 
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
+
+    def resolve_mcp_encryption_key(self) -> str:
+        """
+        The secret used to encrypt stored platform tokens.
+
+        Prefers a dedicated MCP_TOKEN_ENCRYPTION_KEY. When none is set, falls
+        back to another secret this service already holds, so the MCP server
+        comes up without a deploy-time variable — the alternative was refusing
+        to mount, which made the feature depend on config that not every deploy
+        path can set.
+
+        The fallbacks are deliberately server-side secrets that are always
+        present and never leave the cluster. TokenCipher stretches whatever it
+        gets through SHA-256, so a passphrase-shaped value is fine. Key
+        separation is still better practice: set MCP_TOKEN_ENCRYPTION_KEY in
+        production so rotating the JWT secret does not also invalidate every
+        stored MCP grant.
+        """
+        for candidate in (self.mcp_token_encryption_key, self.internal_service_token, self.jwt_secret_key):
+            if candidate:
+                return candidate
+        # Unreachable in practice: jwt_secret_key carries a default.
+        raise ValueError("No secret available to encrypt MCP platform tokens.")
 
     def build_sqlalchemy_url(self) -> str:
         """

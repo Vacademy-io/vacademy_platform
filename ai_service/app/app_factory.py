@@ -365,11 +365,10 @@ def _mount_mcp(app: FastAPI, settings) -> None:
         return
 
     if not settings.mcp_token_encryption_key:
-        logger.error(
-            "MCP_SERVER_ENABLED is true but MCP_TOKEN_ENCRYPTION_KEY is not set — "
-            "refusing to mount the MCP server."
+        logger.warning(
+            "MCP_TOKEN_ENCRYPTION_KEY is not set; falling back to another server-side "
+            "secret to encrypt stored platform tokens. Set a dedicated key in production."
         )
-        return
 
     try:
         mcp_server = build_mcp_server()

@@ -22,17 +22,21 @@ adding Assistant tools never widens this surface by accident.
 
 ## 2. Who can reach it
 
-Four gates, all deny-by-default, all re-evaluated on **every** request:
+Three gates, all deny-by-default, all re-evaluated on **every** request:
 
-1. **Service** — `MCP_SERVER_ENABLED=true`. Otherwise the endpoint does not exist.
-2. **OAuth 2.1** — the caller holds an access token this server issued to one
+1. **OAuth 2.1** — the caller holds an access token this server issued to one
    Vacademy user for one institute.
-3. **Institute + role** — that institute enabled the server (`MCP_SERVER_SETTING`)
+2. **Institute + role** — that institute enabled the server (`MCP_SERVER_SETTING`)
    and allow-listed the user's role. Learner roles (`STUDENT`, `LEARNER`,
    `PARENT`) are refused unconditionally and are stripped from the allow-list
    server-side, so they cannot be granted even by editing the setting directly.
-4. **Per-tool** — the institute enabled that specific tool, institute-wide or for
+3. **Per-tool** — the institute enabled that specific tool, institute-wide or for
    the caller's role.
+
+The endpoint itself is always mounted (`MCP_SERVER_ENABLED=false` is an emergency
+kill switch, not the access control): an institute that has not opted in is
+refused, and an unauthenticated caller gets a 401, so the endpoint existing
+grants nobody anything.
 
 Because nothing is cached on the token, switching the server off, removing a role,
 or untoggling a tool takes effect on the caller's **next** request — existing
@@ -66,10 +70,10 @@ do more than the person who approved it.
 
 | Variable | Required | Notes |
 | :--- | :--- | :--- |
-| `MCP_SERVER_ENABLED` | – | `false` by default. |
+| `MCP_SERVER_ENABLED` | – | **`true` by default** — emergency kill switch only. Real access control is per-institute. |
 | `MCP_ISSUER_URL` | – | Public URL of the endpoint; doubles as OAuth issuer and RFC 8707 resource id. Must be HTTPS (localhost exempt). Defaults to `<AI_SERVICE_PUBLIC_URL>/ai-service/mcp`. |
 | `ADMIN_DASHBOARD_URL` | – | Where the browser is sent to approve. |
-| `MCP_TOKEN_ENCRYPTION_KEY` | **yes, when enabled** | Encrypts stored platform tokens. Without it the server refuses to mount rather than storing credentials in clear. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `MCP_TOKEN_ENCRYPTION_KEY` | recommended | Encrypts stored platform tokens. Falls back to another server-side secret when unset, so the server needs no deploy-time config. Set a dedicated key in production so rotating the JWT secret does not invalidate every stored grant. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `MCP_ACCESS_TOKEN_TTL_SECONDS` | – | 3600 |
 | `MCP_REFRESH_TOKEN_TTL_SECONDS` | – | 2592000 (30d) |
 | `MCP_AUTH_TXN_TTL_SECONDS` | – | 900 |

@@ -68,6 +68,11 @@ services:
       cpuThreads: "2"
       numWorkers: "1"
       modelSize: ""  # blank = use code default (medium for non-English, base for English)
+    # MCP server (Model Context Protocol). On by default, matching the service's
+    # own default — the real access control is per-institute (each institute opts
+    # in from its own settings, learners never), so exposing the endpoint grants
+    # nobody anything. Set false only as an emergency kill switch. issuerUrl
+    # defaults to <env.aiServicePublicUrl>/ai-service/mcp.
     mcp:
       enabled: true
       issuerUrl: ""

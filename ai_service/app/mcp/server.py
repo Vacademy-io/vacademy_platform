@@ -103,7 +103,7 @@ async def _authorize(db: Session, settings: Settings) -> Tuple[PinnedPrincipal, 
     if token is None or not isinstance(token, VacademyAccessToken):
         raise McpAuthError("unauthorized", "This request is not authenticated.")
 
-    repo = McpOAuthRepository(db, TokenCipher(settings.mcp_token_encryption_key))
+    repo = McpOAuthRepository(db, TokenCipher(settings.resolve_mcp_encryption_key()))
     platform_token = await _resolve_platform_token(token, repo, settings)
 
     try:
@@ -167,7 +167,7 @@ async def _on_call_tool(ctx, params: CallToolRequestParams) -> CallToolResult:
                 is_error=True,
             )
 
-        repo = McpOAuthRepository(db, TokenCipher(settings_obj.mcp_token_encryption_key))
+        repo = McpOAuthRepository(db, TokenCipher(settings_obj.resolve_mcp_encryption_key()))
         client = repo.get_client(token.client_id)
 
         return await adapter.call_tool(
@@ -208,7 +208,7 @@ def build_mcp_asgi_app(settings: Settings, server: Server) -> Starlette:
     OAuth routes land next to it: /authorize, /token, /register, /revoke and
     /.well-known/oauth-authorization-server.
     """
-    provider = VacademyOAuthProvider(settings, TokenCipher(settings.mcp_token_encryption_key))
+    provider = VacademyOAuthProvider(settings, TokenCipher(settings.resolve_mcp_encryption_key()))
     issuer = AnyHttpUrl(settings.mcp_issuer_url)
 
     return server.streamable_http_app(

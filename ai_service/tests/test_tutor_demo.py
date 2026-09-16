@@ -59,6 +59,21 @@ def test_public_topics_requires_everything(monkeypatch):
     assert demo.slide_id_for("k") == "demo:k" and demo.is_demo_slide("demo:k") and not demo.is_demo_slide("abc")
 
 
+def test_unlisted_topics_start_by_link_but_stay_out_of_the_picker(monkeypatch):
+    from app.services.tutor import demo
+    monkeypatch.setattr(demo, "config", lambda db=None: {"enabled": True, "institute_id": "i", "minutes": 3})
+    monkeypatch.setattr(demo, "list_topics", lambda db, active_only=False, with_source=False: [
+        {"key": "pub", "title": "Public", "ready": True, "sort_order": 10},
+        {"key": "prospect", "title": "A prospect's chapter", "ready": True, "sort_order": demo.UNLISTED_SORT_ORDER},
+        {"key": "draft", "title": "Not compiled", "ready": False, "sort_order": 10},
+    ])
+    listed = [t["key"] for t in demo.public_topics(object())["topics"]]
+    startable = [t["key"] for t in demo.startable_topics(object())]
+    assert listed == ["pub"], "the picker must not show a prospect's material"
+    assert startable == ["pub", "prospect"], "but a direct link to it must still work"
+    assert demo.topic_by_key(demo.startable_topics(object()), "prospect")["unlisted"] is True
+
+
 def test_demo_source_and_topic_listing_imports_resolve(monkeypatch):
     """The compiler and the topics list import sibling modules lazily; a wrong
     relative import only fails at runtime, so exercise both paths here."""

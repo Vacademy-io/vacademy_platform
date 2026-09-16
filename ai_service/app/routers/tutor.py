@@ -622,7 +622,9 @@ def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depend
     pub = demo.public_topics(db)
     if not pub["enabled"]:
         raise HTTPException(status_code=503, detail="The free lesson is not available right now. Book a demo instead.")
-    topic = demo.topic_by_key(pub["topics"], payload.topic_key)
+    # Look up among every startable topic, not just the listed ones: an unlisted topic
+    # (a prospect's own chapter) is reachable only by its direct link.
+    topic = demo.topic_by_key(demo.startable_topics(db), payload.topic_key)
     if not topic:
         raise HTTPException(status_code=404, detail="Unknown topic")
     topic = {**topic, "slide_id": demo.slide_id_for(topic["key"])}

@@ -178,13 +178,25 @@ def demo_title(db: Session, slide_id: str) -> Optional[str]:
     return r[0] if r else None
 
 
+# Topics at or above this sort_order are "unlisted": startable by a direct link
+# (?topic=<key>) but absent from the public picker. Used for lessons compiled
+# from a prospect's own material, which must not become a public sample.
+UNLISTED_SORT_ORDER = 1000
+
+
+def startable_topics(db: Session) -> List[Dict[str, Any]]:
+    """Every active, compiled topic — listed or unlisted — in picker shape."""
+    return [{"key": t["key"], "title": t["title"], "emoji": t.get("emoji") or "", "language": t.get("language") or "en",
+             "unlisted": int(t.get("sort_order") or 0) >= UNLISTED_SORT_ORDER}
+            for t in list_topics(db, active_only=True) if t["ready"]]
+
+
 def public_topics(db: Optional[Session] = None) -> Dict[str, Any]:
     c = config(db)
     topics: List[Dict[str, Any]] = []
     if db is not None:
         try:
-            topics = [{"key": t["key"], "title": t["title"], "emoji": t.get("emoji") or "", "language": t.get("language") or "en"}
-                      for t in list_topics(db, active_only=True) if t["ready"]]
+            topics = [{k: v for k, v in t.items() if k != "unlisted"} for t in startable_topics(db) if not t["unlisted"]]
         except Exception:  # noqa: BLE001
             logger.warning("demo topics unreadable", exc_info=True)
     ready = bool(c["enabled"] and c["institute_id"] and topics)

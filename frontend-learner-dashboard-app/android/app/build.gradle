@@ -123,8 +123,8 @@ android {
 		stemx {
 			dimension "client"
 			applicationId "com.stemx.app"
-			versionCode 6
-			versionName "1.0.5"
+			versionCode 7
+			versionName "1.0.6"
 			resValue "string", "app_name", "STEMx Education"
 			manifestPlaceholders.DEEP_LINK_HOST = "learn.stemxindia.com"
 		}
@@ -208,6 +208,15 @@ android {
 			versionName "1.0.0"
 			resValue "string", "app_name", "Smart AI Academy"
 			manifestPlaceholders.DEEP_LINK_HOST = "student.smartaiacademy.co.in"
+		}
+		sreedhar {
+			dimension "client"
+			applicationId "com.sreedhar.app"
+			versionCode 1
+			versionName "1.0.0"
+			// Apostrophe must stay escaped or AAPT rejects the generated string resource.
+			resValue "string", "app_name", "Sreedhar\\'s TTS"
+			manifestPlaceholders.DEEP_LINK_HOST = "learn.ttsedu.co.in"
 		}
 	}
 }

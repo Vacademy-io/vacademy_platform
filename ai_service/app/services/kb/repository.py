@@ -228,11 +228,16 @@ class KbRepository:
                       )
                 {status_clause}
                 ORDER BY (kb.owner_type = 'PLATFORM'),
-                         (l.collection = '{CURRICULUM_COLLECTION}'),
-                         l.board,
-                         -- class as a number, so 9 sorts before 10 and 'UG' last
-                         CASE WHEN l.level ~ '^[0-9]+$' THEN CAST(l.level AS INTEGER) ELSE 99 END,
-                         l.subject, l.title,
+                         -- curriculum last (NULL collection must read as FALSE,
+                         -- not sort after TRUE), then board → class → subject
+                         -- → book; every other row keeps the old updated_at order
+                         COALESCE(l.collection = '{CURRICULUM_COLLECTION}', FALSE),
+                         CASE WHEN l.collection = '{CURRICULUM_COLLECTION}' THEN l.board END,
+                         CASE WHEN l.collection = '{CURRICULUM_COLLECTION}' AND l.level ~ '^[0-9]+$'
+                              THEN CAST(l.level AS INTEGER)
+                              WHEN l.collection = '{CURRICULUM_COLLECTION}' THEN 99 END,
+                         CASE WHEN l.collection = '{CURRICULUM_COLLECTION}' THEN l.subject END,
+                         CASE WHEN l.collection = '{CURRICULUM_COLLECTION}' THEN l.title END,
                          kb.updated_at DESC
                 """
             ),
@@ -761,16 +766,20 @@ class KbRepository:
                 text(
                     """
                     INSERT INTO knowledge_base_node
-                        (knowledge_base_id, source_id, institute_id, parent_id, level,
+                        (id, knowledge_base_id, source_id, institute_id, parent_id, level,
                          title, summary, keywords, page_start, page_end, ordinal)
                     VALUES
-                        (:kb_id, :source_id, :institute_id, NULL, 'topic',
+                        (COALESCE(CAST(:id AS VARCHAR), CAST(gen_random_uuid() AS VARCHAR)),
+                         :kb_id, :source_id, :institute_id, NULL, 'topic',
                          :title, :summary, :keywords, :page_start, :page_end, :ordinal)
                     RETURNING id
                     """
                 ),
                 {
                     "kb_id": kb_id, "institute_id": institute_id, "title": topic.title,
+                    # AUTHORED trees mint deterministic ids so a rebuild keeps
+                    # the ids a saved blueprint / course plan already holds.
+                    "id": getattr(topic, "id", None),
                     "source_id": getattr(topic, "source_id", None),
                     "summary": topic.summary, "keywords": topic.keywords,
                     "page_start": topic.page_start, "page_end": topic.page_end,
@@ -784,15 +793,17 @@ class KbRepository:
                     text(
                         """
                         INSERT INTO knowledge_base_node
-                            (knowledge_base_id, source_id, institute_id, parent_id, level,
+                            (id, knowledge_base_id, source_id, institute_id, parent_id, level,
                              title, summary, keywords, page_start, page_end, ordinal)
                         VALUES
-                            (:kb_id, :source_id, :institute_id, :parent_id, 'subtopic',
+                            (COALESCE(CAST(:id AS VARCHAR), CAST(gen_random_uuid() AS VARCHAR)),
+                             :kb_id, :source_id, :institute_id, :parent_id, 'subtopic',
                              :title, :summary, :keywords, :page_start, :page_end, :ordinal)
                         """
                     ),
                     {
                         "kb_id": kb_id, "institute_id": institute_id, "parent_id": topic_id,
+                        "id": getattr(sub, "id", None),
                         "source_id": getattr(sub, "source_id", None)
                         or getattr(topic, "source_id", None),
                         "title": sub.title, "summary": sub.summary, "keywords": sub.keywords,
@@ -841,6 +852,34 @@ class KbRepository:
         for topic in ordered:
             topic["subtopics"].sort(key=lambda s: s["ordinal"])
         return ordered
+
+    def sources_with_chunks(self, kb_id: str) -> List[str]:
+        """Sources that have at least one embedded chunk, whatever their status.
+
+        The authored tree is rebuilt at the END of an ingest while the source
+        row still reads PROCESSING (status flips to READY/PARTIAL only in the
+        finalize step), so "has chunks" — not status — is the test for
+        "belongs in the tree". A source mid-parse has no chunks yet and is
+        left out until its own rebuild."""
+        rows = self.db.execute(
+            text(
+                "SELECT DISTINCT source_id FROM kb_chunk "
+                "WHERE knowledge_base_id = :kb_id AND source_id IS NOT NULL"
+            ),
+            {"kb_id": kb_id},
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    def clear_source_headings_cache(self, source_id: str) -> None:
+        """Drop the cached verbatim headings so a re-index re-reads the text."""
+        self.db.execute(
+            text(
+                "UPDATE knowledge_base_source SET meta_json = meta_json - 'headings' "
+                "WHERE id = :source_id"
+            ),
+            {"source_id": source_id},
+        )
+        self.db.commit()
 
     def get_node_source_ids(self, kb_id: str, node_ids: Sequence[str]) -> List[str]:
         """Sources the given topic-tree nodes belong to (distinct, order-free).
@@ -1192,17 +1231,23 @@ class KbRepository:
         return out
 
     def get_chunks_for_pages(
-        self, *, kb_id: str, institute_id: str, page_start: int, page_end: int, limit: int = 40
+        self, *, kb_id: str, institute_id: str, page_start: int, page_end: int, limit: int = 40,
+        source_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Every chunk within a page span, in source order.
 
         The generation-time bridge for KBs whose chunks were linked to nodes no
         slide uses (section-only linkage shipped twice): a deterministic slide
         knows its section's PAGE SPAN even when node_id retrieval comes back
-        empty, and pages are the one join both trees share."""
+        empty, and pages are the one join both trees share.
+
+        `source_id` pins the span to one source: in a textbook library every
+        chapter restarts at page 1, so an unscoped "pages 3-7" would return
+        page 3-7 of every chapter."""
+        source_clause = "AND c.source_id = :source_id" if source_id else ""
         rows = self.db.execute(
             text(
-                """
+                f"""
                 SELECT c.id, c.content_text, c.page_start, c.page_end, c.figure_ids,
                        c.lang, c.meta_data, c.source_id, s.title AS source_title
                 FROM kb_chunk c
@@ -1212,12 +1257,13 @@ class KbRepository:
                   AND c.page_start IS NOT NULL
                   AND c.page_start BETWEEN :ps AND :pe
                   AND s.is_active = TRUE
+                  {source_clause}
                 ORDER BY c.page_start, c.chunk_index
                 LIMIT :limit
                 """
             ),
             {"kb_id": kb_id, "institute_id": institute_id,
-             "ps": page_start, "pe": page_end, "limit": limit},
+             "ps": page_start, "pe": page_end, "limit": limit, "source_id": source_id},
         ).fetchall()
         return [
             {
@@ -1231,7 +1277,7 @@ class KbRepository:
 
     def get_all_chunk_summaries(
         self, *, kb_id: str, institute_id: str, limit: int = 400,
-        source_id: Optional[str] = None,
+        source_id: Optional[str] = None, source_ids: Optional[Sequence[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Every active chunk of a KB, page-ordered — the coverage-sweep census.
 
@@ -1243,12 +1289,18 @@ class KbRepository:
         slides actually retrieved.
 
         `source_id` restricts the census to one source (the authored topic
-        tree reads one chapter at a time)."""
-        source_clause = "AND c.source_id = :source_id" if source_id else ""
+        tree reads one chapter at a time); `source_ids` to a set of them (the
+        coverage sweep of a course built from a few chapters of a textbook)."""
+        source_clause = ""
+        if source_id:
+            source_clause = "AND c.source_id = :source_id"
+        elif source_ids:
+            source_clause = "AND c.source_id = ANY(CAST(:source_ids AS TEXT[]))"
         rows = self.db.execute(
             text(
                 f"""
-                SELECT c.id, c.content_text, c.page_start, c.page_end, s.title AS source_title
+                SELECT c.id, c.content_text, c.page_start, c.page_end, s.title AS source_title,
+                       c.source_id
                 FROM kb_chunk c
                 JOIN knowledge_base_source s ON s.id = c.source_id
                 WHERE c.knowledge_base_id = :kb_id
@@ -1262,12 +1314,13 @@ class KbRepository:
             {
                 "kb_id": kb_id, "institute_id": institute_id, "limit": limit,
                 "source_id": source_id,
+                "source_ids": [str(x) for x in (source_ids or [])],
             },
         ).fetchall()
         return [
             {
                 "chunk_id": r[0], "content_text": r[1], "page_start": r[2],
-                "page_end": r[3], "source_title": r[4],
+                "page_end": r[3], "source_title": r[4], "source_id": r[5],
             }
             for r in rows
         ]

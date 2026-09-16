@@ -42,7 +42,7 @@ import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import httpx
 
@@ -78,6 +78,13 @@ _PART_RE = re.compile(
     re.I,
 )
 
+# Part pairs the title rule cannot see. Class 11 Accountancy is "Financial
+# Accounting-I" + "Accountancy-II" (chapters 8-9 continue Part I's numbering).
+MERGE_INTO = {"keac2": "keac1"}
+# Part pairs that must NOT merge: Class 12 Accountancy Part II prints its own
+# Chapter 1-6, so it is a book in its own right.
+NO_MERGE = {"leac1", "leac2"}
+
 log = logging.getLogger("load_ncert")
 
 
@@ -95,8 +102,20 @@ class Book:
     medium: str
 
     @property
+    def series_key(self) -> str:
+        """Which KB this book belongs to: its own code, or the code of the Part I
+        it continues."""
+        if self.code in NO_MERGE or self.code in MERGE_INTO.values():
+            return self.code
+        if self.code in MERGE_INTO:
+            return MERGE_INTO[self.code]
+        return "series:" + _PART_RE.sub("", self.title).strip(" -–:").lower()
+
+    @property
     def series_title(self) -> str:
         """Title with the 'Part I' suffix removed — the KB the book belongs to."""
+        if self.code in NO_MERGE:
+            return self.title
         return _PART_RE.sub("", self.title).strip(" -–:") or self.title
 
     @property
@@ -140,7 +159,13 @@ def refresh_inventory() -> List[Dict[str, Any]]:
     return rows
 
 
-def load_books(args: argparse.Namespace) -> List[Book]:
+def load_books(args: argparse.Namespace) -> Tuple[List[Book], List[Book]]:
+    """(books to load this run, every book of the inventory in this medium).
+
+    The full list matters for NAMING: whether "Class 11 Economics" needs the
+    book title in its KB name depends on how many Economics books the class
+    has in the inventory — not on how many this run happens to include. A
+    --codes run must land in the same KB a full run would."""
     if args.refresh_inventory or not INVENTORY.exists():
         rows = refresh_inventory()
         INVENTORY.write_text(json.dumps(rows, indent=1, ensure_ascii=False))
@@ -148,13 +173,13 @@ def load_books(args: argparse.Namespace) -> List[Book]:
     rows = json.loads(INVENTORY.read_text())
     classes = _parse_classes(args.classes)
     subjects = set(s.strip() for s in args.subjects.split(",")) if args.subjects else CORE_SUBJECTS
+    universe = [Book(**r) for r in rows if r["medium"] == args.medium]
     books = [
-        Book(**r) for r in rows
-        if r["cls"] in classes and r["medium"] == args.medium and r["subject"] in subjects
-        and (not args.codes or r["code"] in args.codes)
+        b for b in universe
+        if b.cls in classes and b.subject in subjects and (not args.codes or b.code in args.codes)
     ]
     books.sort(key=lambda b: (b.cls, b.subject, b.series_title, b.part_no))
-    return books
+    return books, universe
 
 
 def _parse_classes(spec: str) -> set:
@@ -187,6 +212,34 @@ def _fix_small_caps(title: str) -> str:
     if re.fullmatch(r"(?:[A-Z] [A-Za-z]+\s*)+", title):
         return re.sub(r"\b([A-Z]) ([A-Za-z]+)", lambda m: m.group(1) + m.group(2).lower(), title)
     return title
+
+
+_WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+          "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+          "eighteen", "nineteen", "twenty"]
+# A heading LINE: "CHAPTER 8", "Chapter Eight", "UNIT 3" on a line of its own.
+# Deliberately line-anchored — "In chapter 8, you learnt…" inside a paragraph
+# is a cross-reference, not the chapter number, and matched anywhere it
+# renumbered chapters upward on real NCERT PDFs.
+_PRINTED_NO = re.compile(
+    r"^\s*(?:chapter|unit)\s+(\d{1,2}|" + "|".join(_WORDS) + r")\s*$", re.I | re.M
+)
+
+
+def printed_chapter_no(data: bytes, max_pages: int = 2) -> Optional[int]:
+    """The chapter number the book prints as a heading on its opening pages."""
+    import fitz
+
+    doc = fitz.open(stream=data, filetype="pdf")
+    try:
+        for pno in range(min(max_pages, len(doc))):
+            m = _PRINTED_NO.search(doc[pno].get_text())
+            if m:
+                g = m.group(1).lower()
+                return int(g) if g.isdigit() else _WORDS.index(g) + 1
+    finally:
+        doc.close()
+    return None
 
 
 def chapter_title_from_pdf(data: bytes, max_pages: int = 4) -> Optional[str]:
@@ -343,23 +396,33 @@ class Plan:
         return self.series_title if self.multi_book_subject else f"Class {self.cls} {self.subject}"
 
 
-def build_plans(books: Sequence[Book]) -> List[Plan]:
+def build_plans(books: Sequence[Book], universe: Optional[Sequence[Book]] = None) -> List[Plan]:
+    universe = list(universe or books)
     by_series: Dict[tuple, List[Book]] = defaultdict(list)
     for b in books:
-        by_series[(b.cls, b.subject, b.medium, b.series_title)].append(b)
-    series_per_subject: Counter = Counter((k[0], k[1], k[2]) for k in by_series)
+        by_series[(b.cls, b.subject, b.medium, b.series_key)].append(b)
+    # Naming AND chapter numbering are decided against the whole inventory
+    # (see load_books): a --codes keac2 run must still number its chapters
+    # 8 and 9, after the 7 chapters of the Part I it continues.
+    full_parts: Dict[tuple, List[Book]] = defaultdict(list)
+    for b in universe:
+        full_parts[(b.cls, b.subject, b.medium, b.series_key)].append(b)
+    series_per_subject: Counter = Counter((k[0], k[1], k[2]) for k in full_parts)
     plans: List[Plan] = []
-    for (cls, subject, medium, series_title), parts in sorted(by_series.items()):
+    for key, parts in sorted(by_series.items()):
+        cls, subject, medium, _ = key
         parts.sort(key=lambda b: b.part_no)
+        series_title = parts[0].series_title
         plan = Plan(cls, subject, medium, series_title, parts,
                     multi_book_subject=series_per_subject[(cls, subject, medium)] > 1)
         offset = 0
-        for book in parts:
-            for i in range(1, book.chapters + 1):
-                plan.chapters.append(Chapter(
-                    code=f"{book.code}{i:02d}", chapter_no=offset + i,
-                    part_no=book.part_no, book_code=book.code,
-                ))
+        for book in sorted(full_parts[key], key=lambda b: b.part_no):
+            if book in parts:
+                for i in range(1, book.chapters + 1):
+                    plan.chapters.append(Chapter(
+                        code=f"{book.code}{i:02d}", chapter_no=offset + i,
+                        part_no=book.part_no, book_code=book.code,
+                    ))
             offset += book.chapters
         plans.append(plan)
     return plans
@@ -417,33 +480,87 @@ def normalise_title(title: str) -> str:
 
 
 async def resolve_title(ch: Chapter, overrides: Dict[str, str]) -> str:
+    """Chapter title from overrides or the PDF. Also corrects ch.chapter_no to
+    the number the book prints when that number is plausible (Part II of
+    Class 11 Accountancy prints 8, 9 — not 1, 2)."""
     if ch.code in overrides:
         return overrides[ch.code]
     try:
-        title = chapter_title_from_pdf(await _download(ch.code))
+        data = await _download(ch.code)
     except Exception as exc:  # noqa: BLE001
         log.warning("Could not read %s for its title: %r", ch.code, exc)
-        title = None
+        return f"Chapter {ch.chapter_no}"
+    printed = printed_chapter_no(data)
+    # Accept the printed number only when it is plausibly THIS chapter: a
+    # continuation of a merged part can be a few ahead of the computed count
+    # (dropped chapters keep their old numbers), never behind and never far.
+    if printed and printed != ch.chapter_no and 0 < printed - ch.chapter_no <= 3:
+        log.info("   %s prints Chapter %d (computed %d); using the printed number",
+                 ch.code, printed, ch.chapter_no)
+        ch.chapter_no = printed
+    title = chapter_title_from_pdf(data)
     if not title:
         log.warning("   %s: no title found on the opening pages — add it to %s",
                     ch.code, OVERRIDES.name)
     return title or f"Chapter {ch.chapter_no}"
 
 
-async def wait_for_source(api: Api, source_id: str, *, poll: float = 5.0, timeout: float = 1800) -> Dict[str, Any]:
+async def wait_for_source(api: Api, source_id: str, *, poll: float = 5.0, timeout: float = 1800,
+                          ignore_stale: Optional[str] = None, grace: float = 120.0) -> Dict[str, Any]:
+    """Poll until the source reaches a terminal status.
+
+    `ignore_stale`: after POST /reindex the row still reads its OLD terminal
+    status (FAILED) until the background job actually starts — the 202 does
+    not wait for a worker slot. Treat that status as non-terminal for `grace`
+    seconds, or until any other status has been seen."""
     started = time.monotonic()
+    seen_other = False
     while True:
         src = await api.get_source(source_id)
-        if src["status"] in TERMINAL:
+        status = src["status"]
+        if status != ignore_stale:
+            seen_other = True
+        stale = (status == ignore_stale and not seen_other
+                 and time.monotonic() - started < grace)
+        if status in TERMINAL and not stale:
             return src
         if time.monotonic() - started > timeout:
-            raise TimeoutError(f"source {source_id} still {src['status']} after {timeout}s")
+            raise TimeoutError(f"source {source_id} still {status} after {timeout}s")
         await asyncio.sleep(poll)
 
 
-async def load_plan(api: Api, plan: Plan, *, sem: asyncio.Semaphore, overrides: Dict[str, str],
+class OutOfCredits(RuntimeError):
+    """The publisher wallet cannot cover the next chapter (HTTP 402)."""
+
+
+async def reindex_source(api: Api, source_id: str) -> Dict[str, Any]:
+    r = await api.http.post(f"/knowledge-base/v1/sources/{source_id}/reindex", params=api._q())
+    if r.status_code >= 400:
+        raise RuntimeError(f"reindex {r.status_code}: {r.text[:300]}")
+    return r.json()
+
+
+def _pick_present(sources: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """ncert_code → the row that represents that chapter. A READY/PARTIAL row
+    beats a FAILED one for the same code (an earlier attempt left behind)."""
+    rank = {"READY": 0, "PARTIAL": 0, "PROCESSING": 1, "PENDING": 1, "FAILED": 2}
+    out: Dict[str, Dict[str, Any]] = {}
+    for src in sources:
+        code = (src.get("meta") or {}).get("ncert_code")
+        if not code:
+            continue
+        if code not in out or rank.get(src["status"], 3) < rank.get(out[code]["status"], 3):
+            out[code] = src
+    return out
+
+
+async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
                     dry_run: bool, publish: bool, retitle: bool = False) -> Dict[str, Any]:
-    summary = {"kb": plan.kb_name, "added": 0, "skipped": 0, "failed": 0, "chapters": len(plan.chapters)}
+    """Load one knowledge base (one book). Chapters run SEQUENTIALLY on purpose:
+    the server rebuilds the book's topic tree after every chapter, and two
+    rebuilds of the same tree racing each other would duplicate its nodes."""
+    summary = {"kb": plan.kb_name, "added": 0, "skipped": 0, "failed": 0,
+               "chapters": len(plan.chapters), "published": False}
     log.info("== %s (%d chapters from %s)", plan.kb_name, len(plan.chapters),
              ", ".join(b.code for b in plan.books))
 
@@ -461,7 +578,8 @@ async def load_plan(api: Api, plan: Plan, *, sem: asyncio.Semaphore, overrides: 
     }
     if dry_run:
         for ch in plan.chapters:
-            log.info("   would add %s  (chapter %d)", ch.code, ch.chapter_no)
+            log.info("   would add %s  (chapter %d)%s", ch.code, ch.chapter_no,
+                     "" if not kb else "  [kb exists]")
         return summary
     if not kb:
         kb = await api.create_kb({
@@ -475,15 +593,14 @@ async def load_plan(api: Api, plan: Plan, *, sem: asyncio.Semaphore, overrides: 
         log.info("   created knowledge base %s", kb["id"])
     kb_id = kb["id"]
 
-    # 2. Chapters — one source each, in order, skipping any already present
+    # 2. Chapters — one source each, in order
     detail = await api.get_kb(kb_id)
-    present = {
-        (s.get("meta") or {}).get("ncert_code"): s for s in detail.get("sources") or []
-    }
+    present = _pick_present(detail.get("sources") or [])
     for ch in plan.chapters:
-        if ch.code in present and present[ch.code]["status"] in ("READY", "PARTIAL", "PROCESSING", "PENDING"):
+        src = present.get(ch.code)
+
+        if src and src["status"] in ("READY", "PARTIAL", "PROCESSING", "PENDING"):
             if retitle:
-                src = present[ch.code]
                 title = await resolve_title(ch, overrides)
                 wanted = f"Chapter {ch.chapter_no}: {title}" if not title.lower().startswith("chapter") else title
                 if src["title"] != wanted:
@@ -494,67 +611,108 @@ async def load_plan(api: Api, plan: Plan, *, sem: asyncio.Semaphore, overrides: 
                     log.info("   %s retitled → '%s'", ch.code, wanted)
             summary["skipped"] += 1
             continue
-        async with sem:
-            title = await resolve_title(ch, overrides)
-            body = {
-                "source_kind": "PDF",
-                "title": f"Chapter {ch.chapter_no}: {title}" if not title.lower().startswith("chapter") else title,
-                "source_url": NCERT_PDF.format(code=ch.code),
-                "meta": {
-                    "chapter_no": ch.chapter_no, "chapter_title": title,
-                    "ncert_code": ch.code, "book_code": ch.book_code, "part_no": ch.part_no,
-                    "board": BOARD, "class": str(plan.cls), "subject": plan.subject,
-                    "session": SESSION,
-                },
-            }
+
+        if src and src["status"] == "FAILED":
+            # Re-run the existing row rather than inserting a second one (the
+            # server's byte-dedup only matches READY/PARTIAL rows, so a plain
+            # add_source would leave the FAILED twin behind forever).
             try:
-                res = await api.add_source(kb_id, body)
-                src = res["source"]
-                if res.get("deduplicated"):
-                    # Same bytes already in this KB (e.g. re-run after a rename):
-                    # make sure the chapter metadata is on it.
-                    await api.patch_source(src["id"], {"meta": body["meta"]})
-                    summary["skipped"] += 1
-                    log.info("   %s already present (dedup) → %s", ch.code, src["id"])
-                    continue
-                src = await wait_for_source(api, src["id"])
-                if src["status"] == "FAILED":
+                await reindex_source(api, src["id"])
+                done = await wait_for_source(api, src["id"], ignore_stale="FAILED")
+                if done["status"] == "FAILED":
                     summary["failed"] += 1
-                    log.error("   %s FAILED: %s", ch.code, src.get("error_message"))
+                    log.error("   %s still FAILED after re-index: %s", ch.code, done.get("error_message"))
                 else:
                     summary["added"] += 1
-                    log.info("   %s → %s  %s  pages=%s chunks=%s  '%s'", ch.code, src["status"],
-                             src["id"], src["page_count"], src["chunk_count"], title)
+                    log.info("   %s re-indexed → %s  pages=%s chunks=%s", ch.code, done["status"],
+                             done["page_count"], done["chunk_count"])
             except Exception as exc:  # noqa: BLE001
                 summary["failed"] += 1
-                log.error("   %s error: %s", ch.code, exc)
+                log.error("   %s re-index error: %s", ch.code, exc)
+            continue
+
+        title = await resolve_title(ch, overrides)
+        body = {
+            "source_kind": "PDF",
+            "title": f"Chapter {ch.chapter_no}: {title}" if not title.lower().startswith("chapter") else title,
+            "source_url": NCERT_PDF.format(code=ch.code),
+            "meta": {
+                "chapter_no": ch.chapter_no, "chapter_title": title,
+                "ncert_code": ch.code, "book_code": ch.book_code, "part_no": ch.part_no,
+                "board": BOARD, "class": str(plan.cls), "subject": plan.subject,
+                "session": SESSION,
+            },
+        }
+        try:
+            res = await api.add_source(kb_id, body)
+        except Exception as exc:  # noqa: BLE001 — one chapter, not the book
+            if isinstance(exc, RuntimeError) and "402" in str(exc):
+                # Stop the whole run: every further chapter would fail the same
+                # way, and half-loaded books must not be published.
+                raise OutOfCredits(f"{plan.kb_name} / {ch.code}: {exc}") from exc
+            summary["failed"] += 1
+            log.error("   %s error: %r", ch.code, exc)
+            continue
+        try:
+            src = res["source"]
+            if res.get("deduplicated"):
+                # Same bytes already in this KB (e.g. re-run after a rename):
+                # make sure the chapter metadata is on it.
+                await api.patch_source(src["id"], {"meta": body["meta"]})
+                summary["skipped"] += 1
+                log.info("   %s already present (dedup) → %s", ch.code, src["id"])
+                continue
+            src = await wait_for_source(api, src["id"])
+            if src["status"] == "FAILED":
+                summary["failed"] += 1
+                log.error("   %s FAILED: %s", ch.code, src.get("error_message"))
+            else:
+                summary["added"] += 1
+                log.info("   %s → %s  %s  pages=%s chunks=%s  '%s'", ch.code, src["status"],
+                         src["id"], src["page_count"], src["chunk_count"], title)
+        except Exception as exc:  # noqa: BLE001
+            summary["failed"] += 1
+            log.error("   %s error: %s", ch.code, exc)
 
     # 3. Topic tree — ingest rebuilds it after every chapter; one final pass
-    #    guarantees the tree reflects the complete book.
-    await api.rebuild_topics(kb_id)
+    #    makes sure titles patched by --retitle are reflected. Best effort.
+    try:
+        await api.rebuild_topics(kb_id)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("   topic rebuild failed (tree from the last ingest stays): %s", exc)
 
-    # 4. Listing + publish (idempotent)
-    await api.upsert_listing(kb_id, {
-        "title": plan.listing_title,
-        "summary": f"{BOARD} Class {plan.cls} {plan.subject}, {plan.medium} medium, {SESSION}: "
-                   f"{len(plan.chapters)} chapters, each searchable and citable by page.",
-        "description": ", ".join(b.title for b in plan.books),
-        "subject": plan.subject,
-        "level": str(plan.cls),
-        "board": BOARD,
-        "language": plan.medium,
-        "tags": ["curriculum", BOARD, f"class-{plan.cls}", plan.subject.lower()],
-        "collection": "CURRICULUM",
-    })
-    if publish:
+    # 4. Listing (idempotent) + publish ONLY when the book is complete. A
+    #    half-loaded book must not appear in every institute's picker.
+    try:
+        await api.upsert_listing(kb_id, {
+            "title": plan.listing_title,
+            "summary": f"{BOARD} Class {plan.cls} {plan.subject}, {plan.medium} medium, {SESSION}: "
+                       f"{len(plan.chapters)} chapters, each searchable and citable by page.",
+            "description": ", ".join(b.title for b in plan.books),
+            "subject": plan.subject,
+            "level": str(plan.cls),
+            "board": BOARD,
+            "language": plan.medium,
+            "tags": ["curriculum", BOARD, f"class-{plan.cls}", plan.subject.lower()],
+            "collection": "CURRICULUM",
+        })
+    except Exception as exc:  # noqa: BLE001
+        log.error("   listing upsert failed: %s", exc)
+        summary["failed"] += 1
+        return summary
+    complete = summary["failed"] == 0 and (summary["added"] + summary["skipped"]) == len(plan.chapters)
+    if publish and complete:
         await api.publish(kb_id)
+        summary["published"] = True
         log.info("   published")
+    elif publish:
+        log.warning("   NOT published: %d chapter(s) failed — fix and re-run", summary["failed"])
     return summary
 
 
 async def main_async(args: argparse.Namespace) -> int:
-    books = load_books(args)
-    plans = build_plans(books)
+    books, universe = load_books(args)
+    plans = build_plans(books, universe)
     if args.limit_books:
         plans = plans[: args.limit_books]
     log.info("%d book(s) → %d knowledge base(s), %d chapters",
@@ -563,23 +721,47 @@ async def main_async(args: argparse.Namespace) -> int:
 
     api = Api(args.base_url, jwt=args.jwt, internal_token=args.internal_token,
               institute_id=args.institute_id, client_id=args.client_id)
-    sem = asyncio.Semaphore(args.concurrency)
-    results = []
+    # --concurrency = BOOKS in flight. Chapters inside one book stay sequential
+    # (see load_plan); different books have different topic trees and can run
+    # side by side without racing each other.
+    sem = asyncio.Semaphore(max(1, args.concurrency))
+    stop = asyncio.Event()
+
+    async def run_one(plan: Plan) -> Optional[Dict[str, Any]]:
+        if stop.is_set():
+            return None
+        async with sem:
+            if stop.is_set():
+                return None
+            try:
+                return await load_plan(
+                    api, plan, overrides=overrides,
+                    dry_run=args.dry_run, publish=not args.no_publish, retitle=args.retitle,
+                )
+            except OutOfCredits as exc:
+                log.error("OUT OF CREDITS — stopping: %s", exc)
+                stop.set()
+                return {"kb": plan.kb_name, "added": 0, "skipped": 0, "failed": len(plan.chapters),
+                        "chapters": len(plan.chapters), "published": False}
+            except Exception as exc:  # noqa: BLE001
+                log.error("%s: aborted — %s", plan.kb_name, exc)
+                return {"kb": plan.kb_name, "added": 0, "skipped": 0, "failed": len(plan.chapters),
+                        "chapters": len(plan.chapters), "published": False}
+
     try:
-        # KBs sequentially (each is a handful of chapters); chapters within a KB
-        # bounded by --concurrency so the server's ingest workers are not flooded.
-        for plan in plans:
-            results.append(await load_plan(
-                api, plan, sem=sem, overrides=overrides,
-                dry_run=args.dry_run, publish=not args.no_publish, retitle=args.retitle,
-            ))
+        results = [r for r in await asyncio.gather(*(run_one(p) for p in plans)) if r]
     finally:
         await api.http.aclose()
 
     log.info("---- summary ----")
     for r in results:
-        log.info("%-60s added=%d skipped=%d failed=%d / %d",
-                 r["kb"], r["added"], r["skipped"], r["failed"], r["chapters"])
+        log.info("%-60s added=%d skipped=%d failed=%d / %d  %s",
+                 r["kb"], r["added"], r["skipped"], r["failed"], r["chapters"],
+                 "PUBLISHED" if r.get("published") else "")
+    if stop.is_set():
+        log.error("Run stopped early: the publisher institute is out of credits. "
+                  "Grant credits and re-run — loaded chapters are skipped automatically.")
+        return 2
     return 1 if any(r["failed"] for r in results) else 0
 
 
@@ -595,7 +777,7 @@ def main() -> None:
     ap.add_argument("--subjects", help="comma-separated; default = core academic subjects")
     ap.add_argument("--medium", default="English", choices=["English", "Hindi", "Urdu"])
     ap.add_argument("--codes", nargs="*", help="restrict to these book codes, e.g. kech1 kech2")
-    ap.add_argument("--concurrency", type=int, default=2, help="chapters ingesting at once")
+    ap.add_argument("--concurrency", type=int, default=2, help="books loading at once (chapters within a book are sequential)")
     ap.add_argument("--limit-books", type=int, help="stop after N knowledge bases (testing)")
     ap.add_argument("--no-publish", action="store_true", help="create + ingest but leave the listing DRAFT")
     ap.add_argument("--retitle", action="store_true", help="re-resolve titles of chapters already loaded")

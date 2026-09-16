@@ -72,47 +72,67 @@ def _ledger_charge(db, idempotency_key: str) -> float:
 
 
 DOWNLOAD_ATTEMPTS = 3
+MAX_REDIRECTS = 5
 
 
-async def _download(url: str) -> bytes:
+async def _download(url: str, *, public_only: bool = False) -> bytes:
     """Stream a source file down, refusing anything over the size ceiling.
 
-    Transport errors are retried: external publishers' servers (ncert.nic.in
-    in particular) drop connections now and then, and a dropped connection is
-    not a reason to mark a 30-page chapter FAILED.
+    Transport errors and 5xx are retried: external publishers' servers
+    (ncert.nic.in in particular) drop connections now and then, and a dropped
+    connection is not a reason to mark a 30-page chapter FAILED. 4xx is final.
+
+    `public_only` (URL-sourced PDFs) re-runs the SSRF check on EVERY redirect
+    hop, so a public URL cannot bounce the fetch onto an internal host.
+    media_service URLs are ours and skip that.
     """
     last: Optional[Exception] = None
     for attempt in range(DOWNLOAD_ATTEMPTS):
         try:
             async with httpx.AsyncClient(
-                timeout=180.0, follow_redirects=True,
+                timeout=180.0, follow_redirects=not public_only,
                 headers={"User-Agent": "Mozilla/5.0 (compatible; VacademyKB/1.0)"},
             ) as client:
-                async with client.stream("GET", url) as resp:
-                    resp.raise_for_status()
-                    declared = resp.headers.get("content-length")
-                    if declared and int(declared) > MAX_SOURCE_BYTES:
-                        raise ValueError(
-                            f"File is {int(declared) // (1024 * 1024)}MB; the limit is "
-                            f"{MAX_SOURCE_BYTES // (1024 * 1024)}MB"
-                        )
-                    buf = bytearray()
-                    async for piece in resp.aiter_bytes():
-                        buf.extend(piece)
-                        if len(buf) > MAX_SOURCE_BYTES:
+                target = url
+                for _hop in range(MAX_REDIRECTS + 1):
+                    if public_only:
+                        parsing.assert_public_http_url(target)
+                    async with client.stream("GET", target) as resp:
+                        if public_only and resp.is_redirect:
+                            location = resp.headers.get("location")
+                            if not location:
+                                raise ValueError("Redirect without a Location header")
+                            target = str(resp.url.join(location))
+                            continue
+                        resp.raise_for_status()
+                        declared = resp.headers.get("content-length")
+                        if declared and int(declared) > MAX_SOURCE_BYTES:
                             raise ValueError(
-                                f"File exceeds the {MAX_SOURCE_BYTES // (1024 * 1024)}MB limit"
+                                f"File is {int(declared) // (1024 * 1024)}MB; the limit is "
+                                f"{MAX_SOURCE_BYTES // (1024 * 1024)}MB"
                             )
-                    return bytes(buf)
-        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+                        buf = bytearray()
+                        async for piece in resp.aiter_bytes():
+                            buf.extend(piece)
+                            if len(buf) > MAX_SOURCE_BYTES:
+                                raise ValueError(
+                                    f"File exceeds the {MAX_SOURCE_BYTES // (1024 * 1024)}MB limit"
+                                )
+                        return bytes(buf)
+                raise ValueError(f"Too many redirects (>{MAX_REDIRECTS})")
+        except httpx.HTTPStatusError as exc:
             last = exc
-            if attempt < DOWNLOAD_ATTEMPTS - 1:
-                await asyncio.sleep(2 * (attempt + 1))
-    raise ValueError(f"Could not download the file after {DOWNLOAD_ATTEMPTS} attempts: {last}")
+            if exc.response.status_code < 500:
+                break  # a 404 / 403 will not improve on the second try
+        except httpx.TransportError as exc:
+            last = exc
+        if attempt < DOWNLOAD_ATTEMPTS - 1:
+            await asyncio.sleep(2 * (attempt + 1))
+    raise ValueError(f"Could not download the file: {last}")
 
 
-async def _pdf_url(source: Dict[str, Any]) -> str:
-    """Where a PDF source's bytes live.
+async def _pdf_url(source: Dict[str, Any]) -> tuple[str, bool]:
+    """Where a PDF source's bytes live, and whether they are an outside URL.
 
     Uploaded documents carry a media_service file_id. Curriculum sources
     (V517) point straight at the publisher's own URL instead — NCERT serves
@@ -127,12 +147,12 @@ async def _pdf_url(source: Dict[str, Any]) -> str:
         url = await get_file_url(file_id)
         if not url:
             raise ValueError("Could not resolve the uploaded file")
-        return url
+        return url, False
     url = (source.get("source_url") or "").strip()
     if not url:
         raise ValueError("This PDF source has no file attached")
     parsing.assert_public_http_url(url)
-    return url
+    return url, True
 
 
 async def _parse_source(source: Dict[str, Any]) -> parsing.ParsedDocument:
@@ -141,7 +161,8 @@ async def _parse_source(source: Dict[str, Any]) -> parsing.ParsedDocument:
     kind = source["source_kind"]
 
     if kind == "PDF":
-        return await parsing.parse_pdf(await _download(await _pdf_url(source)))
+        url, public_only = await _pdf_url(source)
+        return await parsing.parse_pdf(await _download(url, public_only=public_only))
 
     if kind == "URL":
         return await parsing.parse_url(source["source_url"])
@@ -182,6 +203,9 @@ async def ingest_source(
         # A retry must not stack a second set of pages/figures/chunks on top of
         # the first attempt's partial output.
         repo.clear_source_derivatives(source_id)
+        # The cached verbatim headings describe the PREVIOUS parse; a re-index
+        # (new edition at the same URL, a better OCR) must re-read them.
+        repo.clear_source_headings_cache(source_id)
         repo.update_source_progress(
             source_id, status="PROCESSING", progress=5, stage="parsing", error_message=""
         )
@@ -356,7 +380,10 @@ async def ingest_source(
                     from .topics import build_topic_tree
 
                     tree = await build_topic_tree(
-                        db, kb_id=kb_id, institute_id=institute_id
+                        db, kb_id=kb_id, institute_id=institute_id,
+                        # This source is complete but still reads PROCESSING
+                        # until finalize; the authored tree admits it by id.
+                        current_source_id=source_id,
                     )
                 outcome["topics"] = len(tree.topics)
             except Exception as exc:  # noqa: BLE001
@@ -453,8 +480,8 @@ async def probe_pdf(
     open() of a large PDF on the event loop stalls every other request the
     worker is serving.
     """
-    url = await _pdf_url({"file_id": file_id, "source_url": source_url})
-    data = await _download(url)
+    url, public_only = await _pdf_url({"file_id": file_id, "source_url": source_url})
+    data = await _download(url, public_only=public_only)
 
     def _count(payload: bytes) -> int:
         import fitz

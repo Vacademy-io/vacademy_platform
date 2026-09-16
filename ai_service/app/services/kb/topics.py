@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -61,6 +62,10 @@ class TopicNode:
     # Page spans are only meaningful relative to a source, and every chapter
     # PDF starts at page 1.
     source_id: Optional[str] = None
+    # AUTHORED trees mint deterministic ids (uuid5 of source + heading) so a
+    # rebuild after the next chapter lands does not invalidate the node ids a
+    # saved blueprint, a course plan or a question's provenance already holds.
+    id: Optional[str] = None
 
 
 # Knowledge bases whose topic tree is WRITTEN, not derived. Set in
@@ -379,14 +384,30 @@ async def _chapter_headings(
     return headings
 
 
+def _node_id(*parts: str) -> str:
+    """Deterministic node id: the same chapter/heading always gets the same id."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "vacademy-kb-node:" + "|".join(parts)))
+
+
 async def build_authored_tree(
-    db: Session, repo: KbRepository, kb: Dict[str, Any]
+    db: Session, repo: KbRepository, kb: Dict[str, Any], *,
+    current_source_id: Optional[str] = None,
 ) -> List[TopicNode]:
-    """Topic = chapter source, subtopic = its printed headings. Deterministic."""
+    """Topic = chapter source, subtopic = its printed headings. Deterministic.
+
+    Membership: finished chapters (READY/PARTIAL) plus `current_source_id`,
+    the chapter whose ingest is rebuilding the tree right now — its chunks
+    are all in, but its status flips only in the finalize step that follows.
+    A SIBLING chapter still mid-embedding is deliberately left out: it has
+    some chunks already, and quoting headings from a half-embedded corpus
+    would cache a truncated heading list against it.
+    """
+    with_chunks = set(repo.sources_with_chunks(kb["id"]))
     sources = sorted(
         (
             s for s in repo.list_sources(kb["id"])
-            if s.get("is_active") and s.get("status") in ("READY", "PARTIAL")
+            if s.get("is_active") and s["id"] in with_chunks
+            and (s.get("status") in ("READY", "PARTIAL") or s["id"] == current_source_id)
         ),
         key=_chapter_sort_key,
     )
@@ -403,6 +424,7 @@ async def build_authored_tree(
         )
         page_count = int(source.get("page_count") or 0) or None
         topic = TopicNode(
+            id=_node_id(kb["id"], source["id"], "chapter"),
             title=title[:300],
             summary=meta.get("chapter_summary"),
             keywords=[str(k) for k in (meta.get("keywords") or [])][:20],
@@ -414,12 +436,20 @@ async def build_authored_tree(
         # Only major headings become subtopics: NCERT's "1.2 Nature of Matter"
         # is the unit a teacher sets questions on; its "1.2.1 States" is not.
         majors = [h for h in headings if h.get("level") == 1] or headings
-        for h in majors[:MAX_SUBTOPICS_PER_TOPIC * 2]:
+        majors = [h for h in majors if h.get("page")][:MAX_SUBTOPICS_PER_TOPIC * 2]
+        # Spans are recomputed HERE, over the merged list: a major section runs
+        # to the next MAJOR heading (not to its own first sub-heading, and not
+        # to the end of the page window the quoter happened to read it in),
+        # and the last one runs to the end of the chapter.
+        for i, h in enumerate(majors):
+            nxt = next((m["page"] for m in majors[i + 1:] if m.get("page")), None)
+            end = max(int(h["page"]), int(nxt) if nxt else (page_count or int(h["page"])))
             topic.subtopics.append(
                 TopicNode(
+                    id=_node_id(kb["id"], source["id"], str(i), str(h.get("title") or "")),
                     title=str(h.get("title") or "")[:300],
-                    page_start=h.get("page"),
-                    page_end=h.get("page_end") or page_count,
+                    page_start=int(h["page"]),
+                    page_end=end,
                     source_id=source["id"],
                 )
             )
@@ -446,6 +476,7 @@ async def build_topic_tree(
     *,
     kb_id: str,
     institute_id: str,
+    current_source_id: Optional[str] = None,
 ) -> TopicTreeResult:
     """Derive and PERSIST the topic tree for one knowledge base.
 
@@ -462,7 +493,7 @@ async def build_topic_tree(
     # Curriculum libraries: the tree IS the table of contents. No model ever
     # decides the structure; see build_authored_tree.
     if (kb.get("meta") or {}).get("topic_tree_mode") == TOPIC_TREE_MODE_AUTHORED:
-        authored = await build_authored_tree(db, repo, kb)
+        authored = await build_authored_tree(db, repo, kb, current_source_id=current_source_id)
         if authored:
             repo.replace_topic_tree(kb_id, institute_id, authored)
             _relink_chunks(repo, kb_id)

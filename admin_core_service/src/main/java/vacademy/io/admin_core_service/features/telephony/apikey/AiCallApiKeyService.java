@@ -22,11 +22,9 @@ import org.springframework.web.server.ResponseStatusException;
  * leaked
  * key can be spotted in logs/scanners, and 192 bits of SecureRandom entropy.
  *
- * Only the SHA-256 hash is stored. {@link #verify} hashes the presented key and
- * looks the hash up directly (unique index), so key comparison is a single
- * indexed lookup — no secret is ever kept in memory beyond the request, and a
- * timing side channel on string comparison is not applicable (the lookup is on
- * a hash, not the secret).
+ * Keys are retained for authorized operator sharing. {@link #verify} uses the
+ * unique database index on the complete key instead of loading every active key
+ * into application memory.
  */
 @Service
 @Slf4j
@@ -105,9 +103,9 @@ public class AiCallApiKeyService {
     public AiCallApiKey verify(String presentedKey) {
         if (presentedKey == null || presentedKey.isBlank())
             throw unauthorized("API key required");
-        AiCallApiKey key = repository.findByStatus(AiCallApiKey.STATUS_ACTIVE).stream()
-                .filter(k -> presentedKey.trim().equals(k.getApiKey()))
-                .findFirst().orElseThrow(() -> unauthorized("Invalid API key"));
+        AiCallApiKey key = repository
+                .findByApiKeyAndStatus(presentedKey.trim(), AiCallApiKey.STATUS_ACTIVE)
+                .orElseThrow(() -> unauthorized("Invalid API key"));
         if (!key.isActive())
             throw unauthorized("API key has been revoked");
         // Best-effort stamp (own tx — a failure here must not fail the call).

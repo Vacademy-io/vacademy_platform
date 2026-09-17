@@ -4,17 +4,14 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.sql.Timestamp;
 import java.time.Instant;
 
 /**
  * One issued external API key for the AI-Calling API.
  *
- * The PLAINTEXT key is never stored — {@code api_key_hash} is the SHA-256 of
- * the
- * full {@code vak_live_…} string, and {@code key_prefix} keeps just the visible
- * head so the portal can show which key is which. An issued key can be revoked
- * but never read back; a lost key means re-issue.
+ * The complete key is retained for authorized operator sharing, while
+ * {@code key_prefix} provides safe display metadata. An issued key can be
+ * revoked at any time.
  *
  * Institute binding is the tenancy wall: the public API resolves the caller's
  * institute FROM this row, never from the request body, so a client cannot dial

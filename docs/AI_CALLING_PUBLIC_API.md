@@ -4,7 +4,7 @@ Use the API key issued by a Vacademy administrator in the `X-API-Key` header.
 
 ## Start a call
 
-`POST /api/v1/ai-calls`
+`POST /admin-core-service/open/ai-calling/v1`
 
 ```json
 {
@@ -25,7 +25,7 @@ Response:
 
 ## Get call status
 
-`GET /api/v1/ai-calls/{callLogId}`
+`GET /admin-core-service/open/ai-calling/v1/{callLogId}`
 
 The response includes the normalized call status, provider call ID, duration, start/end timestamps, and `recordingUrl`. `recordingUrl` is `null` until the provider recording callback has been processed.
 

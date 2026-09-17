@@ -12,8 +12,8 @@ import java.util.Optional;
 
 public interface AiCallApiKeyRepository extends JpaRepository<AiCallApiKey, String> {
 
-    /** The auth path: the presented plaintext is hashed and looked up by hash. */
-    List<AiCallApiKey> findByStatus(String status);
+    /** Indexed authentication lookup for a presented API key. */
+    Optional<AiCallApiKey> findByApiKeyAndStatus(String apiKey, String status);
 
     List<AiCallApiKey> findByInstituteIdOrderByCreatedAtDesc(String instituteId);
 

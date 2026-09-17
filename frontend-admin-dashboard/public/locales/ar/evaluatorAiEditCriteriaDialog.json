@@ -1,0 +1,14 @@
+{
+    "edit": "تعديل",
+    "markingCriteria": "معايير التقييم",
+    "totalMarks": "إجمالي الدرجات:",
+    "criteriaLabel": "المعايير:",
+    "criteriaColumn": "المعيار",
+    "marksColumn": "الدرجات",
+    "actionColumn": "إجراء",
+    "emptyCriteria": "لا توجد معايير. أضف واحدًا أدناه.",
+    "addNewCriteria": "إضافة معيار جديد:",
+    "criteriaDescriptionPlaceholder": "أدخل وصف المعيار",
+    "cancel": "إلغاء",
+    "save": "حفظ"
+}

@@ -67,3 +67,50 @@ describe('the enrolled-course list', () => {
         expect(html).not.toContain('Per Subject');
     });
 });
+
+/**
+ * "Redirect Path" in the product page's Post Enrollment Configuration. The
+ * setting has been offered in the admin UI ("the user will be instantly
+ * redirected to this path after successful enrollment") while the learner app
+ * only read it into a variable it never used, so every institute that set one
+ * still got the built-in receipt.
+ */
+describe('the after-payment redirect', () => {
+    const render = (afterPaymentRedirectUrl: string) => {
+        const pageData = {
+            settings_json: JSON.stringify({ afterPaymentRedirectUrl }),
+            currency: 'INR',
+            mappings: [
+                {
+                    ps_invite_payment_option_id: 'o0',
+                    package_name: 'UnlockX Scholarship Test',
+                    level_name: 'Class 10',
+                    session_name: '2026-27',
+                    payment_plan: { name: 'Registration', actual_price: 349, currency: 'INR' },
+                },
+            ],
+        };
+        return renderToStaticMarkup(
+            React.createElement(ProductPageSuccess, { pageData: pageData as never }),
+        );
+    };
+
+    it('hands the buyer over to the configured page instead of the receipt', () => {
+        const html = render('https://shikshanation.com/thank-you');
+        expect(html).toContain('href="https://shikshanation.com/thank-you"');
+        expect(html).toContain('success.redirecting');
+        // The receipt is skipped — it would only flash past before the handover.
+        expect(html).not.toContain('success.goToMyCourses');
+    });
+
+    it('keeps the receipt when the configured value is not a usable destination', () => {
+        // A `javascript:` URL, and a bare host the browser would resolve as a
+        // relative path off /product-pages/ — both are institute typos, and
+        // neither may replace a working receipt with a dead end.
+        for (const bad of ['javascript:alert(1)', 'shikshanation.com/thank-you', '']) {
+            const html = render(bad);
+            expect(html).toContain('success.goToMyCourses');
+            expect(html).not.toContain('success.redirecting');
+        }
+    });
+});

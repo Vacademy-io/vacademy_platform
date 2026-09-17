@@ -1,0 +1,58 @@
+{
+    "header": {
+        "back": "← Back",
+        "title": "Evaluation Summary",
+        "exportReport": "Export Report",
+        "sendReport": "Send Report"
+    },
+    "sendDialog": {
+        "title": "Send Evaluation Report",
+        "recipientEmailPlaceholder": "Recipient Email",
+        "subjectPlaceholder": "Subject (optional)",
+        "remarksPlaceholder": "Remarks (optional)",
+        "sendButton": "Send"
+    },
+    "sections": {
+        "studentInformation": "Student Information",
+        "evaluationDetails": "Evaluation Details",
+        "performanceBreakdown": "Performance Breakdown",
+        "questionWiseMarking": "Question-wise Marking"
+    },
+    "fields": {
+        "name": "Name:",
+        "learnerId": "LEARNER ID:",
+        "assessment": "Assessment:",
+        "summary": "Summary:",
+        "totalMarks": "Total Marks:"
+    },
+    "table": {
+        "questionNo": "Q No.",
+        "question": "Question",
+        "answer": "Answer",
+        "marks": "Marks",
+        "feedback": "Feedback",
+        "description": "Description",
+        "viewMore": "View More"
+    },
+    "previewDialog": {
+        "heading": "View Question",
+        "questionLabel": "Question",
+        "extractedAnswerLabel": "Extracted Answer"
+    },
+    "loading": {
+        "generatingPdf": "Generating Pdf...",
+        "sendingMail": "Sending Mail...",
+        "pleaseWait": "This might take a while, please wait."
+    },
+    "toast": {
+        "emailSent": "Email sent successfully",
+        "emailFailed": "Error sending mail"
+    },
+    "validation": {
+        "invalidEmail": "Invalid email address"
+    },
+    "email": {
+        "defaultSubject": "Evaluation Report",
+        "defaultStudentName": "Student"
+    }
+}

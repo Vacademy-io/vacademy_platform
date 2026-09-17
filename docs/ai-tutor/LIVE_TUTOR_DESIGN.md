@@ -202,10 +202,20 @@ types the compiler does not handle at all.
 }
 ```
 
-Rules the compiler must obey (enforced by validation, not by trust):
+Rules the compiler must obey (enforced by validation, not by trust) — in **two tiers**, since
+2026-09-09. A rule is either *structural* (the runtime cannot serve the plan without it, so it is
+fatal and the model must fix it) or *quality* (pedagogy: asked for once, then let go and recorded
+on the plan as `quality_notes`). A structurally sound plan is never discarded for a quality
+preference: that would leave the slide unteachable with the compile already paid for. Structural =
+valid ops, unique ids, a check with an expected answer or rubric, non-empty `say`, `say_i18n`,
+resolved media urls. Quality = the word budget, one heading per concept, one diagram per concept,
+"the board shows something to look at" (a `formula` or a comparison `table` counts — a derivation
+is visual), and the engagement rules (recap, example, predict, quick-check mix).
 
-- Board fragments are small. A concept adds at most one heading, one diagram or image, and
-  about 40 words of text. A topic's cumulative board must fit one screen.
+
+- Board fragments are small (quality). A concept adds at most one heading, one diagram or image,
+  and about 40 words of text — formulas and diagram labels do not count toward the budget. A
+  topic's cumulative board must fit one screen.
 - Every concept has a `say` of 2 to 4 sentences and a `check`, except the first concept of a
   topic, which may have `check.type = "none"`.
 - `say` is compiled in the course language and, in phase 1, also in the other supported

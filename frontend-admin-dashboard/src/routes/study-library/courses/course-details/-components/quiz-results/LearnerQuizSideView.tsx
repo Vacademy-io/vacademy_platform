@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CaretDown, CheckCircle, Circle, Info, XCircle } from '@phosphor-icons/react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { MyButton } from '@/components/design-system/button';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -42,6 +44,7 @@ export default function LearnerQuizSideView({
     userId: string | null;
     onClose: () => void;
 }) {
+    const { t } = useTranslation('studyLibraryLearnerQuizSideView');
     const { data, isLoading, error, refetch } = useQuery(
         learnerQuizDetailQueryOptions(batchId, userId)
     );
@@ -62,14 +65,14 @@ export default function LearnerQuizSideView({
                     <div className="p-6">
                         <QuizResultsMessage
                             tone="danger"
-                            title="Could not load this learner's results"
+                            title={t('errors.couldNotLoad')}
                             action={
                                 <MyButton
                                     buttonType="secondary"
                                     scale="medium"
                                     onClick={() => refetch()}
                                 >
-                                    Retry
+                                    {t('actions.retry')}
                                 </MyButton>
                             }
                         />
@@ -88,7 +91,7 @@ export default function LearnerQuizSideView({
                                 </span>
                                 <div className="min-w-0">
                                     <h2 className="truncate text-title font-semibold text-neutral-700">
-                                        {data.learner.fullName || 'Unnamed learner'}
+                                        {data.learner.fullName || t('unnamedLearner')}
                                     </h2>
                                     <p className="truncate text-caption text-neutral-400">
                                         {data.learner.email || data.learner.mobileNumber || ''}
@@ -98,26 +101,31 @@ export default function LearnerQuizSideView({
 
                             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                                 <HeaderStat
-                                    label="Quizzes done"
+                                    label={t('header.quizzesDone')}
                                     value={`${data.learner.quizzesAttempted} / ${data.learner.quizzesInCourse}`}
                                 />
                                 <HeaderStat
-                                    label="Average"
+                                    label={t('header.average')}
                                     value={formatPercent(data.learner.avgScorePercent)}
                                 />
                                 <HeaderStat
-                                    label="Marks so far"
+                                    label={t('header.marksSoFar')}
                                     value={`${data.learner.marksObtained ?? 0} / ${
                                         data.learner.attemptedMaxMarks ?? 0
                                     }`}
-                                    hint={`Out of ${data.learner.courseMaxMarks ?? 0} across all quizzes`}
+                                    hint={t('header.outOfAcrossAllQuizzes', {
+                                        total: data.learner.courseMaxMarks ?? 0,
+                                    })}
                                 />
                                 <HeaderStat
-                                    label="Attempts"
+                                    label={t('header.attempts')}
                                     value={String(data.learner.totalAttempts)}
                                     hint={
                                         data.learner.quizzesWithPassMark > 0
-                                            ? `${data.learner.passedQuizzes}/${data.learner.quizzesWithPassMark} passed`
+                                            ? t('header.passedFraction', {
+                                                  passed: data.learner.passedQuizzes,
+                                                  total: data.learner.quizzesWithPassMark,
+                                              })
                                             : undefined
                                     }
                                 />
@@ -127,8 +135,8 @@ export default function LearnerQuizSideView({
                         <div className="flex-1 overflow-y-auto px-5 py-4">
                             {data.quizzes.length === 0 ? (
                                 <QuizResultsMessage
-                                    title="This course has no quizzes yet"
-                                    subtitle="Add a quiz slide to a chapter and this learner's results will appear here."
+                                    title={t('empty.noQuizzesTitle')}
+                                    subtitle={t('empty.noQuizzesSubtitle')}
                                 />
                             ) : (
                                 <ol className="flex flex-col gap-2">
@@ -138,6 +146,7 @@ export default function LearnerQuizSideView({
                                             quiz={quiz}
                                             batchId={batchId}
                                             userId={userId as string}
+                                            t={t}
                                         />
                                     ))}
                                 </ol>
@@ -169,10 +178,12 @@ function QuizRow({
     quiz,
     batchId,
     userId,
+    t,
 }: {
     quiz: LearnerQuizDetailRow;
     batchId: string;
     userId: string;
+    t: TFunction;
 }) {
     const [open, setOpen] = useState(false);
     const attempted = quiz.status !== 'NOT_ATTEMPTED';
@@ -185,18 +196,18 @@ function QuizRow({
                 aria-expanded={open}
                 disabled={!attempted}
                 className={cn(
-                    'flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200',
+                    'flex w-full items-center gap-3 px-3 py-2.5 text-start transition-colors duration-200',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300',
                     attempted ? 'cursor-pointer hover:bg-neutral-50' : 'cursor-default'
                 )}
             >
                 <div className="min-w-0 flex-1">
                     <p className="truncate text-body font-medium text-neutral-700">
-                        {quiz.title || 'Untitled quiz'}
+                        {quiz.title || t('untitledQuiz')}
                     </p>
                     <p className="truncate text-caption text-neutral-400">
                         {[quiz.moduleName, quiz.chapterName].filter(Boolean).join(' › ') ||
-                            'Not mapped to a chapter'}
+                            t('notMappedToChapter')}
                     </p>
                 </div>
 
@@ -209,8 +220,8 @@ function QuizRow({
                         />
                     </div>
                 ) : (
-                    <span className="w-28 shrink-0 text-right text-caption text-neutral-400">
-                        Not attempted
+                    <span className="w-28 shrink-0 text-end text-caption text-neutral-400">
+                        {t('notAttempted')}
                     </span>
                 )}
 
@@ -218,10 +229,8 @@ function QuizRow({
                     <LearnerStatusChip status={quiz.status} />
                 </div>
 
-                <span className="w-16 shrink-0 text-right text-caption tabular-nums text-neutral-500">
-                    {attempted
-                        ? `${quiz.attemptCount} ${quiz.attemptCount === 1 ? 'try' : 'tries'}`
-                        : '—'}
+                <span className="w-16 shrink-0 text-end text-caption tabular-nums text-neutral-500">
+                    {attempted ? t('tries', { count: quiz.attemptCount }) : '—'}
                 </span>
 
                 <CaretDown
@@ -235,7 +244,7 @@ function QuizRow({
             </button>
 
             {open && attempted && (
-                <QuizAttempts batchId={batchId} slideId={quiz.slideId} userId={userId} />
+                <QuizAttempts batchId={batchId} slideId={quiz.slideId} userId={userId} t={t} />
             )}
         </li>
     );
@@ -246,10 +255,12 @@ function QuizAttempts({
     batchId,
     slideId,
     userId,
+    t,
 }: {
     batchId: string;
     slideId: string;
     userId: string;
+    t: TFunction;
 }) {
     const { data, isLoading, error } = useQuery(
         learnerQuizAnswersQueryOptions(batchId, slideId, userId)
@@ -266,7 +277,7 @@ function QuizAttempts({
     if (error || !data) {
         return (
             <p className="border-t border-neutral-100 p-3 text-caption text-danger-600">
-                Could not load this learner&apos;s answers.
+                {t('couldNotLoadAnswers')}
             </p>
         );
     }
@@ -277,7 +288,7 @@ function QuizAttempts({
     return (
         <div className="border-t border-neutral-100 bg-neutral-50 px-3 py-2">
             {attempts.length === 0 ? (
-                <p className="py-2 text-caption text-neutral-500">No recorded attempts.</p>
+                <p className="py-2 text-caption text-neutral-500">{t('noRecordedAttempts')}</p>
             ) : (
                 <ul className="flex flex-col gap-1.5">
                     {attempts.map((attempt) => (
@@ -294,6 +305,7 @@ function QuizAttempts({
                                         : attempt.attemptNumber
                                 )
                             }
+                            t={t}
                         />
                     ))}
                 </ul>
@@ -308,12 +320,14 @@ function AttemptRow({
     totalMarks,
     open,
     onToggle,
+    t,
 }: {
     attempt: LearnerQuizAttempt;
     totalAttempts: number;
     totalMarks: number | null;
     open: boolean;
     onToggle: () => void;
+    t: TFunction;
 }) {
     return (
         <li className="overflow-hidden rounded-md border border-neutral-200 bg-white">
@@ -321,18 +335,21 @@ function AttemptRow({
                 type="button"
                 onClick={onToggle}
                 aria-expanded={open}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors duration-200 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-start transition-colors duration-200 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
             >
                 <span className="shrink-0 text-caption font-semibold text-neutral-700">
-                    Attempt {attempt.attemptNumber}
-                    <span className="font-regular text-neutral-400"> of {totalAttempts}</span>
+                    {t('attemptNumber', { number: attempt.attemptNumber })}
+                    <span className="font-regular text-neutral-400">
+                        {' '}
+                        {t('ofTotal', { total: totalAttempts })}
+                    </span>
                 </span>
                 {attempt.latest && (
                     <span
                         className="shrink-0 rounded-sm border border-info-200 bg-info-50 px-1.5 text-caption text-info-600"
-                        title="This is the attempt their score is taken from"
+                        title={t('countsAsScoreTitle')}
                     >
-                        counts as their score
+                        {t('countsAsScore')}
                     </span>
                 )}
                 <span className="min-w-0 flex-1 truncate text-caption text-neutral-400">
@@ -344,7 +361,7 @@ function AttemptRow({
                 <span className="shrink-0 text-caption tabular-nums text-neutral-600">
                     {attempt.marksObtained ?? 0}/{totalMarks ?? 0}
                 </span>
-                <span className="w-12 shrink-0 text-right text-body font-semibold tabular-nums text-neutral-700">
+                <span className="w-12 shrink-0 text-end text-body font-semibold tabular-nums text-neutral-700">
                     {formatPercent(attempt.scorePercent)}
                 </span>
                 <CaretDown
@@ -359,28 +376,34 @@ function AttemptRow({
             {open && (
                 <div className="border-t border-neutral-100 px-3 py-2">
                     <p className="mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-caption tabular-nums">
-                        <span className="text-success-700">{attempt.correctCount} correct</span>
+                        <span className="text-success-700">
+                            {t('correctCount', { count: attempt.correctCount })}
+                        </span>
                         {attempt.wrongCount > 0 && (
-                            <span className="text-danger-600">{attempt.wrongCount} wrong</span>
+                            <span className="text-danger-600">
+                                {t('wrongCount', { count: attempt.wrongCount })}
+                            </span>
                         )}
                         {attempt.skippedCount > 0 && (
-                            <span className="text-neutral-500">{attempt.skippedCount} skipped</span>
+                            <span className="text-neutral-500">
+                                {t('skippedCount', { count: attempt.skippedCount })}
+                            </span>
                         )}
                         {attempt.unansweredCount > 0 && (
                             <span className="text-neutral-400">
-                                {attempt.unansweredCount} not answered
+                                {t('notAnsweredCount', { count: attempt.unansweredCount })}
                             </span>
                         )}
                         {attempt.ungradedCount > 0 && (
                             <span className="inline-flex items-center gap-1 text-neutral-400">
                                 <Info className="size-3.5" aria-hidden="true" />
-                                {attempt.ungradedCount} need manual marking
+                                {t('needManualMarkingCount', { count: attempt.ungradedCount })}
                             </span>
                         )}
                     </p>
                     <ol className="flex flex-col gap-2">
                         {attempt.answers.map((answer) => (
-                            <AnswerRow key={answer.questionId} answer={answer} />
+                            <AnswerRow key={answer.questionId} answer={answer} t={t} />
                         ))}
                     </ol>
                 </div>
@@ -389,12 +412,12 @@ function AttemptRow({
     );
 }
 
-const VERDICT_LABEL: Record<AnswerVerdict, string> = {
-    CORRECT: 'Correct',
-    WRONG: 'Wrong',
-    SKIPPED: 'Skipped',
-    UNGRADED: 'Needs marking',
-    NOT_ANSWERED: 'Not answered',
+const verdictLabelKey: Record<AnswerVerdict, string> = {
+    CORRECT: 'verdict.correct',
+    WRONG: 'verdict.wrong',
+    SKIPPED: 'verdict.skipped',
+    UNGRADED: 'verdict.needsMarking',
+    NOT_ANSWERED: 'verdict.notAnswered',
 };
 
 const VERDICT_CLASS: Record<AnswerVerdict, string> = {
@@ -406,13 +429,15 @@ const VERDICT_CLASS: Record<AnswerVerdict, string> = {
 };
 
 /** One question on one attempt: what they picked, what was right, what it earned. */
-function AnswerRow({ answer }: { answer: LearnerAnswer }) {
+function AnswerRow({ answer, t }: { answer: LearnerAnswer; t: TFunction }) {
     return (
         <li className="rounded-md border border-neutral-200 bg-white p-2.5">
             <div className="flex items-start justify-between gap-2">
                 <p className="min-w-0 flex-1 text-caption text-neutral-700">
-                    <span className="mr-1.5 font-semibold text-neutral-500">Q{answer.order}.</span>
-                    {answer.questionText || 'Untitled question'}
+                    <span className="me-1.5 font-semibold text-neutral-500">
+                        {t('questionNumber', { number: answer.order })}
+                    </span>
+                    {answer.questionText || t('untitledQuestion')}
                 </p>
                 <div className="flex shrink-0 items-center gap-2">
                     <span
@@ -421,7 +446,7 @@ function AnswerRow({ answer }: { answer: LearnerAnswer }) {
                             VERDICT_CLASS[answer.verdict] ?? VERDICT_CLASS.NOT_ANSWERED
                         )}
                     >
-                        {VERDICT_LABEL[answer.verdict] ?? answer.verdict}
+                        {t(verdictLabelKey[answer.verdict] ?? verdictLabelKey.NOT_ANSWERED)}
                     </span>
                     <span className="text-caption tabular-nums text-neutral-500">
                         {answer.marksAwarded}/{answer.marks}
@@ -437,13 +462,13 @@ function AnswerRow({ answer }: { answer: LearnerAnswer }) {
                                 <CheckCircle
                                     className="size-4 shrink-0 text-success-600"
                                     weight="fill"
-                                    aria-label="Correct answer"
+                                    aria-label={t('correctAnswerAriaLabel')}
                                 />
                             ) : option.selected ? (
                                 <XCircle
                                     className="size-4 shrink-0 text-danger-600"
                                     weight="fill"
-                                    aria-label="Learner's answer"
+                                    aria-label={t('learnerAnswerAriaLabel')}
                                 />
                             ) : (
                                 <Circle
@@ -461,11 +486,11 @@ function AnswerRow({ answer }: { answer: LearnerAnswer }) {
                                           : 'text-neutral-600'
                                 )}
                             >
-                                {option.text || 'Untitled option'}
+                                {option.text || t('untitledOption')}
                             </span>
                             {option.selected && (
                                 <span className="shrink-0 rounded-sm bg-neutral-100 px-1.5 text-caption text-neutral-600">
-                                    their answer
+                                    {t('theirAnswer')}
                                 </span>
                             )}
                         </li>
@@ -475,12 +500,12 @@ function AnswerRow({ answer }: { answer: LearnerAnswer }) {
                 /* Free-text / numeric questions have no options to tick. */
                 <div className="mt-2 flex flex-col gap-0.5 text-caption">
                     <span className="text-neutral-600">
-                        <span className="text-neutral-400">Answered: </span>
+                        <span className="text-neutral-400">{t('answeredLabel')} </span>
                         {answer.learnerAnswer || '—'}
                     </span>
                     {answer.correctAnswer && (
                         <span className="text-success-700">
-                            <span className="text-neutral-400">Expected: </span>
+                            <span className="text-neutral-400">{t('expectedLabel')} </span>
                             {answer.correctAnswer}
                         </span>
                     )}

@@ -17,16 +17,35 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..schemas.question_paper import AutoQuestionPaperResponse
-from ..utils.json_extract import extract_and_sanitize_json
+from ..utils.json_extract import extract_and_sanitize_json, restore_math_control_chars
 
 logger = logging.getLogger(__name__)
 
-_ESCAPES = {'"': '"', "\\": "\\", "n": "\n", "t": "\t", "r": "\r", "/": "/", "'": "'"}
+# Escapes that can never begin a LaTeX command, so collapsing them is always safe.
+_PLAIN_ESCAPES = {'"': '"', "/": "/", "'": "'"}
+# Escapes whose letter ALSO starts common LaTeX commands:
+#   \n → \nu, \nabla, \neq      \r → \right, \rho, \rangle
+#   \t → \theta, \times, \to, \text
+_CONTROL_ESCAPES = {"n": "\n", "t": "\t", "r": "\r"}
 
 
 def unescape(s: Optional[str]) -> Optional[str]:
-    """Port of ExternalAIApiService.unescapeString — collapse surviving
-    backslash escapes (\\", \\\\, \\n, \\t, \\r, \\/) char-by-char."""
+    r"""Collapse surviving backslash escapes, WITHOUT eating LaTeX commands.
+
+    Port of ExternalAIApiService.unescapeString, with the bug that port carried
+    over fixed. The input here has already been through json.loads, so `\theta`
+    in the value is a literal backslash + "theta" — a LaTeX command. Collapsing
+    it as the JSON escape `\t` produced TAB + "heta", which is why generated
+    papers rendered "(d, heta)" for `(d,\theta)` and "X imes Y" for `X \times Y`.
+    Same for `\right)` → CR + "ight)" and `\nu` → NEWLINE + "u".
+
+    The discriminator is the character AFTER the escape letter, the same one
+    json_extract.repair_invalid_escapes uses: `\n"` / `\t,` end the token and are
+    real control escapes, while `\nu` / `\theta` continue into letters and are
+    LaTeX. `\\` is left alone before a non-letter because that is LaTeX's line
+    break; before a letter it is a doubly-escaped command (`\\theta`) and folds
+    back to one backslash.
+    """
     if s is None:
         return None
     out: List[str] = []
@@ -34,13 +53,42 @@ def unescape(s: Optional[str]) -> Optional[str]:
     n = len(s)
     while i < n:
         c = s[i]
-        if c == "\\" and i + 1 < n and s[i + 1] in _ESCAPES:
-            out.append(_ESCAPES[s[i + 1]])
+        if c != "\\" or i + 1 >= n:
+            out.append(c)
+            i += 1
+            continue
+
+        nxt = s[i + 1]
+        after = s[i + 2] if i + 2 < n else ""
+
+        if nxt == "\\":
+            # `\\theta` — doubly escaped command; `\\` alone — LaTeX line break.
+            out.append("\\" if after.isalpha() else "\\\\")
+            i += 2
+        elif nxt in _CONTROL_ESCAPES:
+            if after.isalpha():
+                out.append(c)  # `\theta`, `\times`, `\nu`, `\right` — keep verbatim
+                out.append(nxt)
+            else:
+                out.append(_CONTROL_ESCAPES[nxt])
+            i += 2
+        elif nxt in _PLAIN_ESCAPES:
+            out.append(_PLAIN_ESCAPES[nxt])
             i += 2
         else:
             out.append(c)
             i += 1
     return "".join(out)
+
+
+def clean_text(s: Optional[str]) -> Optional[str]:
+    r"""unescape + repair LaTeX the model itself lost to JSON control escapes.
+
+    Two independent losses, so both passes are needed: unescape stops US from
+    eating commands, restore_math_control_chars undoes the ones the MODEL ate by
+    writing `"$\right)$"` with a single backslash (valid JSON — it parses to CR +
+    "ight)" with no error anywhere)."""
+    return restore_math_control_chars(unescape(s)) if s is not None else None
 
 
 def _rich(content: Optional[str], rtype: str = "HTML") -> Dict[str, Any]:
@@ -148,7 +196,7 @@ def _build_options(q: Dict[str, Any]) -> tuple[List[Dict[str, Any]], List[str]]:
             continue
         pid = opt.get("preview_id") or str(i + 1)
         preview_ids.append(pid)
-        options_out.append({"preview_id": pid, "text": _rich(unescape(opt.get("content")))})
+        options_out.append({"preview_id": pid, "text": _rich(clean_text(opt.get("content")))})
     return options_out, preview_ids
 
 
@@ -254,8 +302,12 @@ def format_questions(questions: Optional[List[Dict[str, Any]]]) -> List[Dict[str
             if not content.get("content") or not str(content.get("content")).strip() or not qtype:
                 logger.warning("Skipping question at index %d: missing required fields", index)
                 continue
-            # unescape question content once (matches formatQuestions)
-            content["content"] = unescape(content.get("content"))
+            # Clean question content once (matches formatQuestions), and the
+            # explanation with it — `exp` carries the same LaTeX and was never
+            # cleaned at all.
+            content["content"] = clean_text(content.get("content"))
+            if q.get("exp") is not None:
+                q["exp"] = clean_text(q.get("exp"))
             qt = str(qtype).upper()
             if qt == "MCQS":
                 out.append(_handle_mcq(q, "MCQS"))

@@ -33,6 +33,7 @@ import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
+import { DocumentUploadField } from './DocumentUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
@@ -375,7 +376,10 @@ export const PropertyPanel = () => {
                     <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
                         <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{t('pageSettings.seo.heading')}</h4>
                         <div className="space-y-1.5">
-                            <Label className="text-xs">{t('pageSettings.seo.metaTitle')}</Label>
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs">{t('pageSettings.seo.metaTitle')}</Label>
+                                <SeoLengthCounter value={page.seo?.metaTitle || ''} max={60} />
+                            </div>
                             <Input
                                 value={page.seo?.metaTitle || ''}
                                 placeholder={page.title || page.route}
@@ -383,13 +387,30 @@ export const PropertyPanel = () => {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label className="text-xs">{t('pageSettings.seo.metaDescription')}</Label>
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs">{t('pageSettings.seo.metaDescription')}</Label>
+                                <SeoLengthCounter value={page.seo?.metaDescription || ''} max={160} />
+                            </div>
                             <Textarea
                                 rows={2}
                                 value={page.seo?.metaDescription || ''}
                                 placeholder={t('pageSettings.seo.metaDescriptionPlaceholder')}
                                 onChange={(e) => updatePageSeo(page.id, { metaDescription: e.target.value })}
                             />
+                        </div>
+                        {/* How the page reads in a Google result — the copy the admin is
+                            actually writing for. Pure display, from the same three fields. */}
+                        <div className="rounded border bg-white p-3">
+                            <p className="text-caption text-gray-400">{t('pageSettings.seo.previewHeading')}</p>
+                            <p className="mt-1 truncate text-sm text-green-700">
+                                …/{(page.route || '').replace(/^\//, '') || 'home'}
+                            </p>
+                            <p className="truncate text-base text-blue-700">
+                                {page.seo?.metaTitle || page.title || page.route}
+                            </p>
+                            <p className="line-clamp-2 text-xs text-gray-600">
+                                {page.seo?.metaDescription || t('pageSettings.seo.previewNoDescription')}
+                            </p>
                         </div>
                         <ImageUploadField
                             label={t('pageSettings.seo.ogImage')}
@@ -802,6 +823,65 @@ const CourseFinderLevelGroups = ({
                 );
             })}
         </div>
+    );
+};
+
+/** "58/60" next to a meta field — amber once past what Google displays. */
+const SeoLengthCounter = ({ value, max }: { value: string; max: number }) => {
+    const n = value.length;
+    return (
+        <span className={`text-caption ${n > max ? 'text-amber-600' : 'text-gray-400'}`}>
+            {n}/{max}
+        </span>
+    );
+};
+
+/**
+ * A list stored as string[] but edited as free text (comma- or line-separated).
+ * Edits are committed on blur: committing per keystroke would strip the
+ * separator the admin has just typed, making it impossible to add an item.
+ */
+const SeoListField = ({
+    value,
+    separator,
+    placeholder,
+    className,
+    onCommit,
+}: {
+    value: string[];
+    separator: 'comma' | 'line';
+    placeholder?: string;
+    className?: string;
+    onCommit: (list: string[]) => void;
+}) => {
+    const join = separator === 'comma' ? ', ' : '\n';
+    const stored = value.join(join);
+    const [text, setText] = useState(stored);
+    const [lastStored, setLastStored] = useState(stored);
+    // Re-sync when the stored list changes underneath (undo, another editor).
+    // Compared by CONTENT: the parent hands over a fresh `[]` on every render
+    // while the list is empty, and a reference check would reset the admin's
+    // uncommitted typing each time anything else in the panel re-rendered.
+    if (lastStored !== stored) {
+        setLastStored(stored);
+        setText(stored);
+    }
+    const commit = () => {
+        const list = text
+            .split(separator === 'comma' ? /[,\n]/ : /\n/)
+            .map((x) => x.trim())
+            .filter(Boolean);
+        onCommit(list);
+    };
+    return (
+        <Textarea
+            className={className}
+            rows={separator === 'comma' ? 2 : 3}
+            value={text}
+            placeholder={placeholder}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={commit}
+        />
     );
 };
 
@@ -1286,6 +1366,88 @@ const GlobalSettingsEditor = ({
                     <Input className="mt-1" placeholder="GTM-XXXXXXX" value={gs.tracking?.gtmId || ''} onChange={(e) => updateField('tracking.gtmId', e.target.value.trim())} />
                     <p className="mt-1 text-caption text-gray-400">{t('global.tracking.gtmHint')}</p>
                 </div>
+            </div>
+
+            {/* Search engine optimisation. Read by the learner edge middleware
+                for crawlers: keywords/verification → <head>, organization →
+                schema.org JSON-LD. Footer social links join sameAs on their own. */}
+            <div className="space-y-3 border-b pb-4">
+                <h4 className="font-medium text-gray-700">{t('global.seo.heading')}</h4>
+                <p className="text-caption text-gray-400">{t('global.seo.hint')}</p>
+                <div>
+                    <Label className="text-xs">{t('global.seo.keywordsLabel')}</Label>
+                    <SeoListField
+                        className="mt-1"
+                        value={gs.seo?.keywords || []}
+                        separator="comma"
+                        placeholder={t('global.seo.keywordsPlaceholder')}
+                        onCommit={(list) => updateField('seo.keywords', list)}
+                    />
+                    <p className="mt-1 text-caption text-gray-400">{t('global.seo.keywordsHint')}</p>
+                </div>
+                <div>
+                    <Label className="text-xs">{t('global.seo.verificationLabel')}</Label>
+                    <Input
+                        className="mt-1"
+                        placeholder="abc123…"
+                        value={gs.seo?.googleSiteVerification || ''}
+                        onChange={(e) => updateField('seo.googleSiteVerification', e.target.value.trim())}
+                    />
+                    <p className="mt-1 text-caption text-gray-400">{t('global.seo.verificationHint')}</p>
+                </div>
+                <div className="space-y-2 rounded-lg border bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-600">{t('global.seo.organizationHeading')}</p>
+                    <p className="text-caption text-gray-400">{t('global.seo.organizationHint')}</p>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgName')}</Label>
+                        <Input className="mt-1" value={gs.seo?.organization?.name || ''} onChange={(e) => updateField('seo.organization.name', e.target.value)} />
+                    </div>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgDescription')}</Label>
+                        <Textarea className="mt-1" rows={2} value={gs.seo?.organization?.description || ''} onChange={(e) => updateField('seo.organization.description', e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgFounder')}</Label>
+                            <Input className="mt-1" value={gs.seo?.organization?.founder || ''} onChange={(e) => updateField('seo.organization.founder', e.target.value)} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgFoundingDate')}</Label>
+                            <Input className="mt-1" placeholder="2024" value={gs.seo?.organization?.foundingDate || ''} onChange={(e) => updateField('seo.organization.foundingDate', e.target.value.trim())} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgEmail')}</Label>
+                            <Input className="mt-1" type="email" value={gs.seo?.organization?.email || ''} onChange={(e) => updateField('seo.organization.email', e.target.value.trim())} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('global.seo.orgTelephone')}</Label>
+                            <Input className="mt-1" placeholder="+91 …" value={gs.seo?.organization?.telephone || ''} onChange={(e) => updateField('seo.organization.telephone', e.target.value.trim())} />
+                        </div>
+                    </div>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.orgAddress')}</Label>
+                        <Input className="mt-1" value={gs.seo?.organization?.address || ''} onChange={(e) => updateField('seo.organization.address', e.target.value)} />
+                    </div>
+                    <ImageUploadField
+                        label={t('global.seo.orgLogo')}
+                        value={gs.seo?.organization?.logo || ''}
+                        onChange={(url) => updateField('seo.organization.logo', url)}
+                        placeholder="https://…/logo.png"
+                    />
+                    <p className="text-caption text-gray-400">{t('global.seo.orgLogoHint')}</p>
+                    <div>
+                        <Label className="text-xs">{t('global.seo.sameAsLabel')}</Label>
+                        <SeoListField
+                            className="mt-1"
+                            value={gs.seo?.organization?.sameAs || []}
+                            separator="line"
+                            placeholder={'https://www.facebook.com/…\nhttps://www.instagram.com/…'}
+                            onCommit={(list) => updateField('seo.organization.sameAs', list)}
+                        />
+                        <p className="mt-1 text-caption text-gray-400">{t('global.seo.sameAsHint')}</p>
+                    </div>
+                </div>
+                <p className="text-caption text-gray-400">{t('global.seo.sitemapHint')}</p>
             </div>
 
             {/* Lead Collection */}
@@ -1779,6 +1941,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <FaqSectionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'videoEmbed':
             return <VideoEmbedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'documentViewer':
+            return <DocumentViewerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'ctaBanner':
             return <CtaBannerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'pricingTable':
@@ -1811,6 +1975,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <LeadFormEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productCourseGrid':
             return <ProductCourseGridEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'courseShowcase':
+            return <CourseShowcaseEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
             return <TabsAccordionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'logoCloud':
@@ -2703,16 +2869,28 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp(sectionKey, { ...section, links });
     };
 
+    // One link row open at a time, keyed "<section>:<index>". The row used to
+    // put the label box, the whole LinkPicker (page search + page list) and
+    // the delete button side by side in the 320px panel: the picker took the
+    // width, the label shrank to a ~26px sliver with its text hidden and the
+    // delete button was pushed off-screen — admins could not rename a link at
+    // all (one typed "h" blind and published it). Same collapsed-row pattern
+    // as the header's navigation links.
+    const [expandedLink, setExpandedLink] = useState<string | null>(null);
+
     const addRightSectionLink = (sectionKey: string) => {
         const section = props[sectionKey] || { title: '', links: [] };
         const links = [...(section.links || []), { label: t('header.defaults.newLink'), route: '/' }];
         updateProp(sectionKey, { ...section, links });
+        // Open the new row so the label box is the next thing the admin sees.
+        setExpandedLink(`${sectionKey}:${links.length - 1}`);
     };
 
     const deleteRightSectionLink = (sectionKey: string, linkIndex: number) => {
         const section = props[sectionKey] || { title: '', links: [] };
         const links = (section.links || []).filter((_: any, i: number) => i !== linkIndex);
         updateProp(sectionKey, { ...section, links });
+        setExpandedLink(null);
     };
 
     const layout = props.layout || 'four-column';
@@ -2848,29 +3026,63 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                                     <Plus className="me-1 size-3" /> {t('actions.add')}
                                 </Button>
                             </div>
-                            {(section.links || []).map((link: any, li: number) => (
-                                <div key={li} className="flex items-center gap-1.5">
-                                    <Input
-                                        className="h-7 text-xs"
-                                        placeholder={t('header.labelPlaceholder')}
-                                        value={link.label || ''}
-                                        onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
-                                    />
-                                    <LinkPicker
-                                        label=""
-                                        value={link.route || ''}
-                                        onChange={(v) => updateRightSectionLink(sectionKey, li, 'route', v)}
-                                    />
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="size-7 shrink-0 p-0 text-red-500"
-                                        onClick={() => deleteRightSectionLink(sectionKey, li)}
-                                    >
-                                        <Trash2 className="size-3" />
-                                    </Button>
-                                </div>
-                            ))}
+                            {(section.links || []).map((link: any, li: number) => {
+                                const rowKey = `${sectionKey}:${li}`;
+                                const isOpen = expandedLink === rowKey;
+                                return (
+                                    <div key={li} className="rounded border bg-white p-2">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => setExpandedLink(isOpen ? null : rowKey)}
+                                                className="flex-1 truncate text-left text-sm font-medium"
+                                                aria-expanded={isOpen}
+                                            >
+                                                {isOpen ? (
+                                                    <ChevronUp className="mr-1 inline size-3" />
+                                                ) : (
+                                                    <ChevronDown className="mr-1 inline size-3" />
+                                                )}
+                                                {link.label || t('header.labelPlaceholder')}
+                                            </button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="size-6 shrink-0 p-0 text-red-500"
+                                                onClick={() => deleteRightSectionLink(sectionKey, li)}
+                                                title={t('actions.delete')}
+                                                aria-label={t('actions.delete')}
+                                            >
+                                                <Trash2 className="size-3" />
+                                            </Button>
+                                        </div>
+                                        {isOpen && (
+                                            <div className="mt-2 space-y-2">
+                                                <Input
+                                                    className="h-8 text-xs"
+                                                    placeholder={t('header.labelPlaceholder')}
+                                                    value={link.label || ''}
+                                                    onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
+                                                />
+                                                <LinkPicker
+                                                    label={t('header.route')}
+                                                    value={link.route || ''}
+                                                    onChange={(v) => updateRightSectionLink(sectionKey, li, 'route', v)}
+                                                />
+                                                {/* The learner footer already honours openInSameTab
+                                                    for external links; the editor never exposed it. */}
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-xs">{t('header.openInSameTab')}</Label>
+                                                    <Switch
+                                                        checked={!!link.openInSameTab}
+                                                        onCheckedChange={(c) => updateRightSectionLink(sectionKey, li, 'openInSameTab', c)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 );
@@ -3785,6 +3997,80 @@ const VideoEmbedEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label>{t('mediaShowcase.autoplay')}</Label>
                 <Switch checked={props.autoplay || false} onCheckedChange={(c) => updateProp('autoplay', c)} />
             </div>
+        </div>
+    );
+};
+
+// Document Viewer Editor
+const DocumentViewerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    const display = props.display || 'button';
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">{t('documentViewer.heading')}</h4>
+            <DocumentUploadField
+                label={t('documentViewer.file')}
+                value={props.documentUrl || ''}
+                onChange={(url) => updateProp('documentUrl', url)}
+            />
+            <div className="space-y-2">
+                <Label>{t('documentViewer.fileName')}</Label>
+                <Input
+                    value={props.fileName || ''}
+                    placeholder={t('documentViewer.fileNamePlaceholder')}
+                    onChange={(e) => updateProp('fileName', e.target.value)}
+                />
+                <p className="text-xs text-gray-500">{t('documentViewer.fileNameHelp')}</p>
+            </div>
+            <div className="space-y-2">
+                <Label>{t('ctaBanner.headingField')}</Label>
+                <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('faq.subheading')}</Label>
+                <Textarea rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('documentViewer.display')}</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={display} onChange={(e) => updateProp('display', e.target.value)}>
+                    <option value="button">{t('documentViewer.displayButton')}</option>
+                    <option value="inline">{t('documentViewer.displayInline')}</option>
+                </select>
+                <p className="text-xs text-gray-500">
+                    {display === 'inline' ? t('documentViewer.displayInlineHelp') : t('documentViewer.displayButtonHelp')}
+                </p>
+            </div>
+            {display === 'button' ? (
+                <>
+                    <div className="space-y-2">
+                        <Label>{t('documentViewer.buttonText')}</Label>
+                        <Input value={props.buttonText || ''} placeholder={t('mediaShowcase.buttonTextPlaceholder')} onChange={(e) => updateProp('buttonText', e.target.value)} />
+                    </div>
+                    <ImageUploadField
+                        label={t('documentViewer.coverImage')}
+                        value={props.coverImage || ''}
+                        onChange={(url) => updateProp('coverImage', url)}
+                    />
+                </>
+            ) : (
+                <div className="space-y-2">
+                    <Label>{t('documentViewer.frameHeight')}</Label>
+                    <select className="w-full rounded border px-3 py-2 text-sm" value={props.height || '70vh'} onChange={(e) => updateProp('height', e.target.value)}>
+                        <option value="480px">{t('documentViewer.heightShort')}</option>
+                        <option value="70vh">{t('documentViewer.heightMedium')}</option>
+                        <option value="85vh">{t('documentViewer.heightTall')}</option>
+                    </select>
+                </div>
+            )}
+            <div className="flex items-center justify-between">
+                <Label>{t('documentViewer.showDownload')}</Label>
+                <Switch checked={props.showDownload !== false} onCheckedChange={(c) => updateProp('showDownload', c)} />
+            </div>
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || ''} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('header.textColor')} value={props.textColor || ''} onChange={(c) => updateProp('textColor', c)} />
         </div>
     );
 };
@@ -5253,6 +5539,206 @@ const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
                     placeholder=".my-band { background: var(--primary-50); }"
                 />
             </div>
+        </div>
+    );
+};
+
+/**
+ * Curated course strip. `productCourseGrid` always renders the WHOLE catalogue
+ * with filters; this one shows a chosen few, so the only real decisions are
+ * where the courses come from and how many.
+ */
+const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const SOURCES: Array<{ id: string; label: string; hint: string }> = [
+        { id: 'newest', label: 'Newest', hint: 'The most recently created courses.' },
+        { id: 'onSale', label: 'On sale', hint: 'Only courses with a discount (a struck-through price).' },
+        { id: 'tag', label: 'By tag', hint: 'Courses carrying the tag you type below.' },
+        { id: 'picked', label: 'Hand-picked', hint: 'Exactly the course IDs you list, in that order.' },
+    ];
+    const source = props.source || 'newest';
+
+    return (
+        <div className="space-y-4">
+            <div className="space-y-2">
+                <Label className="text-xs">Title</Label>
+                <Input value={props.title || ''} placeholder="Hot right now"
+                    onChange={(e) => updateProp('title', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label className="text-xs">Subtitle</Label>
+                <Input value={props.subtitle || ''} placeholder="Optional line under the title"
+                    onChange={(e) => updateProp('subtitle', e.target.value)} />
+            </div>
+
+            <div>
+                <Label className="text-xs">Which courses</Label>
+                <div className="mt-1 flex flex-wrap gap-1">
+                    {SOURCES.map((s) => (
+                        <button key={s.id} onClick={() => updateProp('source', s.id)}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${source === s.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                            {s.label}
+                        </button>
+                    ))}
+                </div>
+                <p className="mt-1 text-caption text-gray-400">
+                    {SOURCES.find((s) => s.id === source)?.hint}
+                </p>
+            </div>
+
+            {source === 'tag' && (
+                <div className="space-y-2">
+                    <Label className="text-xs">Tag</Label>
+                    <Input value={props.tag || ''} placeholder="e.g. 2 year old"
+                        onChange={(e) => updateProp('tag', e.target.value)} />
+                    <p className="text-caption text-gray-400">
+                        Must match the course&apos;s tag exactly (capitalisation is ignored).
+                    </p>
+                </div>
+            )}
+
+            {source === 'picked' && (
+                <div className="space-y-2">
+                    <Label className="text-xs">Courses</Label>
+                    {(props.courseIds || []).map((id: string, i: number) => {
+                        const badges = props.courseBadges || {};
+                        const setId = (next: string) => {
+                            const ids = [...(props.courseIds || [])];
+                            const prevId = ids[i];
+                            ids[i] = next;
+                            const nextBadges = { ...badges };
+                            if (prevId && prevId !== next && nextBadges[prevId]) {
+                                nextBadges[next] = nextBadges[prevId];
+                                delete nextBadges[prevId];
+                            }
+                            updateComponent(pageId, component.id, {
+                                props: { ...props, courseIds: ids, courseBadges: nextBadges },
+                            });
+                        };
+                        const setBadge = (patch: Record<string, unknown>) =>
+                            updateComponent(pageId, component.id, {
+                                props: { ...props, courseBadges: { ...badges, [id]: { ...(badges[id] || {}), ...patch } } },
+                            });
+                        return (
+                            <div key={i} className="space-y-1 rounded border border-gray-100 p-2">
+                                <div className="flex gap-1">
+                                    <Input value={id} placeholder="course id"
+                                        onChange={(e) => setId(e.target.value.trim())} />
+                                    <button
+                                        onClick={() => {
+                                            const ids = (props.courseIds || []).filter((_: string, j: number) => j !== i);
+                                            const nextBadges = { ...badges };
+                                            delete nextBadges[id];
+                                            updateComponent(pageId, component.id, {
+                                                props: { ...props, courseIds: ids, courseBadges: nextBadges },
+                                            });
+                                        }}
+                                        className="rounded px-2 text-caption text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                                        Remove
+                                    </button>
+                                </div>
+                                <div className="flex gap-1">
+                                    <Input value={badges[id]?.text || ''} placeholder="ribbon for this course (optional)"
+                                        onChange={(e) => setBadge({ text: e.target.value })} />
+                                    <select value={badges[id]?.tone || 'hot'}
+                                        onChange={(e) => setBadge({ tone: e.target.value })}
+                                        className="rounded border border-gray-200 px-1 text-caption text-gray-600">
+                                        <option value="hot">Red</option>
+                                        <option value="new">Green</option>
+                                        <option value="limited">Amber</option>
+                                        <option value="neutral">Dark</option>
+                                    </select>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    <Button size="sm" variant="outline"
+                        onClick={() => updateProp('courseIds', [...(props.courseIds || []), ''])}>
+                        Add a course
+                    </Button>
+                    <p className="text-caption text-gray-400">
+                        Shown in this order. A per-course ribbon overrides the section ribbon below.
+                    </p>
+                </div>
+            )}
+
+            <div>
+                <Label className="text-xs">How many to show</Label>
+                <div className="mt-1 flex flex-wrap gap-1">
+                    {[2, 3, 4, 6, 8].map((n) => (
+                        <button key={n} onClick={() => updateProp('limit', n)}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${(props.limit || 3) === n ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{n}</button>
+                    ))}
+                </div>
+            </div>
+
+            <div>
+                <Label className="text-xs">Layout</Label>
+                <div className="mt-1 flex flex-wrap gap-1">
+                    {[{ id: 'row', label: '3 across' }, { id: 'grid', label: '4 across' }].map((l) => (
+                        <button key={l.id} onClick={() => updateProp('layout', l.id)}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${(props.layout || 'row') === l.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{l.label}</button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-4">
+                <Label className="text-xs">Ribbon (optional)</Label>
+                <p className="mt-0.5 text-caption text-gray-400">
+                    Shown on the top-right of every card, opposite the discount badge.
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                    {[
+                        { text: 'Hot', tone: 'hot' },
+                        { text: 'Latest', tone: 'new' },
+                        { text: 'Limited', tone: 'limited' },
+                        { text: 'Fast-track', tone: 'neutral' },
+                    ].map((preset) => (
+                        <button key={preset.text}
+                            onClick={() => updateComponent(pageId, component.id, {
+                                props: { ...props, badgeText: preset.text, badgeTone: preset.tone },
+                            })}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${props.badgeText === preset.text ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                            {preset.text}
+                        </button>
+                    ))}
+                    {props.badgeText ? (
+                        <button onClick={() => updateProp('badgeText', '')}
+                            className="rounded px-2.5 py-1 text-caption font-medium text-gray-500 hover:bg-gray-100">
+                            Clear
+                        </button>
+                    ) : null}
+                </div>
+                <Input className="mt-2" value={props.badgeText || ''}
+                    placeholder="Or type your own — e.g. Only 5 seats"
+                    onChange={(e) => updateProp('badgeText', e.target.value)} />
+                {props.badgeText ? (
+                    <div className="mt-2">
+                        <Label className="text-xs">Ribbon colour</Label>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                            {[
+                                { id: 'hot', label: 'Red' },
+                                { id: 'new', label: 'Green' },
+                                { id: 'limited', label: 'Amber' },
+                                { id: 'neutral', label: 'Dark' },
+                            ].map((tone) => (
+                                <button key={tone.id} onClick={() => updateProp('badgeTone', tone.id)}
+                                    className={`rounded px-2.5 py-1 text-caption font-medium ${(props.badgeTone || 'hot') === tone.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                                    {tone.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+
+            <p className="rounded bg-gray-50 px-2 py-1.5 text-caption text-gray-500">
+                Prices, discount badges and images come live from the course catalogue —
+                nothing to keep in sync here. An empty result hides the whole section.
+            </p>
         </div>
     );
 };

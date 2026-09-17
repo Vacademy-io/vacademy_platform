@@ -28,7 +28,8 @@
         "revenue": "Revenus",
         "cohort": "Cohorte",
         "forecast": "Prévisions",
-        "custom": "Générateur"
+        "custom": "Générateur",
+        "utm": "Campagnes (UTM)"
     },
     "counsellorPicker": {
         "ariaLabel": "Filtrer par conseiller",

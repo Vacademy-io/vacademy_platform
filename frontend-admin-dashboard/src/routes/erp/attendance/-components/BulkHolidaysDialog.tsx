@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Info, Plus, Trash } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
@@ -37,6 +38,7 @@ interface BulkHolidaysDialogProps {
  * type or a description are edited afterwards.
  */
 export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDialogProps) => {
+    const { t } = useTranslation('erpBulkHolidaysDialog');
     const mutation = useBulkCreateHolidays(year);
     const [rows, setRows] = useState<DraftRow[]>(emptyRows);
     const [error, setError] = useState<string | null>(null);
@@ -62,11 +64,11 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
         const filled = rows.filter((row) => row.name.trim() || row.date);
         const incomplete = filled.filter((row) => !row.name.trim() || !row.date);
         if (filled.length === 0) {
-            setError('Add at least one holiday — a name and a date.');
+            setError(t('validation.atLeastOne'));
             return;
         }
         if (incomplete.length > 0) {
-            setError('Every row needs both a name and a date. Remove the rows you don’t want.');
+            setError(t('validation.incompleteRow'));
             return;
         }
         setError(null);
@@ -81,14 +83,14 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
             const message = await mutation.mutateAsync(payload);
             // The backend reports how many it skipped as already present — that count is
             // the whole answer to "did my import work", so it is shown, not replaced.
-            toast.success(message || `${payload.length} holidays imported`);
+            toast.success(message || t('toast.imported', { count: payload.length }));
             onOpenChange(false);
         } catch (importError) {
             setError(
                 reportApiError(importError, {
                     feature: 'erp-attendance',
                     tags: { action: 'bulk-create-holidays' },
-                    fallbackMessage: 'Could not import the holidays.',
+                    fallbackMessage: t('errors.importFailed'),
                 })
             );
         }
@@ -96,7 +98,7 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
 
     return (
         <MyDialog
-            heading="Add several holidays"
+            heading={t('heading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-2xl"
@@ -108,16 +110,16 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('actions.cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={onSubmit}
-                        loadingText="Importing…"
+                        loadingText={t('actions.importing')}
                     >
-                        Import holidays
+                        {t('actions.importHolidays')}
                     </MyButton>
                 </div>
             }
@@ -125,10 +127,7 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
             <div className="flex flex-col gap-4">
                 <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                     <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
-                    <span>
-                        A date already on the calendar is skipped rather than duplicated — the
-                        result message tells you how many. Blank rows are ignored.
-                    </span>
+                    <span>{t('skipNotice')}</span>
                 </div>
 
                 <div className="flex flex-col gap-3">
@@ -136,7 +135,9 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
                         <div key={row.key} className="flex items-end gap-2">
                             <div className="flex flex-1 flex-col gap-1.5">
                                 {index === 0 && (
-                                    <span className="text-caption text-muted-foreground">Name</span>
+                                    <span className="text-caption text-muted-foreground">
+                                        {t('fields.name')}
+                                    </span>
                                 )}
                                 <MyInput
                                     inputType="text"
@@ -144,13 +145,15 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
                                     onChangeFunction={(event) =>
                                         updateRow(row.key, { name: event.target.value })
                                     }
-                                    inputPlaceholder="Republic Day"
+                                    inputPlaceholder={t('fields.namePlaceholder')}
                                     className="w-full sm:w-full"
                                 />
                             </div>
                             <div className="flex w-44 flex-col gap-1.5">
                                 {index === 0 && (
-                                    <span className="text-caption text-muted-foreground">Date</span>
+                                    <span className="text-caption text-muted-foreground">
+                                        {t('fields.date')}
+                                    </span>
                                 )}
                                 <MyInput
                                     inputType="date"
@@ -167,7 +170,7 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
                                 buttonType="text"
                                 scale="small"
                                 layoutVariant="icon"
-                                aria-label="Remove this row"
+                                aria-label={t('actions.removeRow')}
                                 disable={rows.length === 1}
                                 onClick={() => removeRow(row.key)}
                             >
@@ -179,7 +182,7 @@ export const BulkHolidaysDialog = ({ open, onOpenChange, year }: BulkHolidaysDia
 
                 <div>
                     <MyButton type="button" buttonType="text" scale="small" onClick={addRow}>
-                        <Plus size={15} /> Add another row
+                        <Plus size={15} /> {t('actions.addRow')}
                     </MyButton>
                 </div>
 

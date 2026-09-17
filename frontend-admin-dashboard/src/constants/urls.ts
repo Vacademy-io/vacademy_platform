@@ -9,6 +9,9 @@ export const SUPPORT_BASE_URL = `${BASE_URL}/community-service/support/v1`;
 export const INSTITUTE_WIDGET_BASE_URL = `${BASE_URL}/community-service/dashboard-widget/v1`;
 // Read-only product roadmap shown in the Assist Dock (community-service feature/roadmap).
 export const ROADMAP_BASE_URL = `${BASE_URL}/community-service/roadmap/v1`;
+// LMS training videos played in the Assist Dock "Training" popup (community-service
+// feature/trainingvideo). Super admins publish them from the health-check dashboard.
+export const TRAINING_VIDEOS_BASE_URL = `${BASE_URL}/community-service/training/v1/videos`;
 // Local admin-core override — kept for ad-hoc dev testing. Production callers
 // must use BASE_URL; flip specific URL constants to this only while testing locally.
 export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
@@ -37,6 +40,19 @@ export const ASSISTANT_ACTION_CONFIRM = (sessionId: string, actionId: string) =>
 export const ASSISTANT_ACTION_CANCEL = (sessionId: string, actionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/cancel`;
 export const ASSISTANT_CAPABILITIES = `${AI_SERVICE_BASE_URL}/assistant/capabilities`;
+
+// Vacademy MCP server (Model Context Protocol). These back the MCP settings tab
+// and the OAuth consent page; all require Authorization + clientId headers
+// except MCP_OAUTH_TXN, which the consent page reads before the user logs in.
+// See ai_service app/mcp/consent.py.
+export const MCP_OAUTH_BASE = `${AI_SERVICE_BASE_URL}/mcp/oauth`;
+export const MCP_CONNECTION_INFO = `${MCP_OAUTH_BASE}/connection-info`;
+export const MCP_OAUTH_CONSENT = `${MCP_OAUTH_BASE}/consent`;
+export const MCP_OAUTH_TXN = (txn: string) => `${MCP_OAUTH_BASE}/txn/${txn}`;
+export const MCP_MANUAL_CLIENT = `${MCP_OAUTH_BASE}/manual-client`;
+export const MCP_MANUAL_CLIENT_DELETE = (clientId: string) =>
+    `${MCP_OAUTH_BASE}/manual-client/${clientId}`;
+export const MCP_CONNECTION_REVOKE = (pairId: string) => `${MCP_OAUTH_BASE}/connection/${pairId}`;
 
 // AI coding-question generation. POST an idea + options, returns a full
 // coding-question config (problem + tests + starter code + reference solution).
@@ -214,6 +230,11 @@ export const TELEPHONY_AI_CALL_CAMPAIGN = (audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/ai-call/campaign/${audienceId}`;
 // Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
 // picker on the Call button when an institute has multiple ExoPhones.
+// "Can this person call, and if not why" — always 200, unlike CALL_OPTIONS which
+// throws when the institute has calling off. Used to decide whether a Call button
+// renders at all, on pages that are not about calling.
+export const TELEPHONY_CALL_AVAILABILITY = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/calls/availability?instituteId=${encodeURIComponent(instituteId)}`;
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/options?instituteId=${encodeURIComponent(instituteId)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`;
 // userId + instituteId are both required — the backend rejects cross-institute lookups.
@@ -299,6 +320,11 @@ export const TELEPHONY_COUNSELLOR_ENDPOINTS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}`;
 export const TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${encodeURIComponent(id)}`;
+// Who may be given an extension: this institute's counsellors AND admins.
+// Deliberately not the lead-counsellor picker — an extension is a phone-system
+// fact, so an admin who never touches the CRM still needs one to call a learner.
+export const TELEPHONY_ENDPOINT_ELIGIBLE_USERS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}/eligible-users`;
 export const TELEPHONY_NUMBERS = `${BASE_URL}/admin-core-service/v1/telephony/numbers`;
 export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/numbers/${id}`;
@@ -337,6 +363,11 @@ export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/repo
 export const DELETE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/delete`;
 /** Restore soft-deleted leads (ADMIN only). Same body shape as DELETE_AUDIENCE_LEADS. */
 export const RESTORE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/restore`;
+/**
+ * Move leads to another lead list (ADMIN only). Partial success — the response reports how many
+ * moved and which were skipped, with a reason each.
+ */
+export const MIGRATE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/migrate`;
 export const UPDATE_LEAD_PROFILE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
 
@@ -346,6 +377,18 @@ export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiri
 // Distinct values a custom field holds across the institute's leads — searchable
 // + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
 export const GET_LEAD_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/custom-field-values`;
+// Campaign attribution recorded against a learner (utm_source/medium/campaign),
+// written by the learner app on a successful submission. Base path, the userId
+// is appended by the caller.
+export const GET_USER_UTM_ATTRIBUTION = `${BASE_URL}/admin-core-service/v1/utm/user`;
+export const GET_UTM_CAMPAIGN_SUMMARY = `${BASE_URL}/admin-core-service/v1/utm/summary`;
+// Distinct values per UTM dimension across the institute's recorded touches —
+// the option lists behind the campaign filter dropdowns on the list pages.
+export const GET_UTM_FILTER_OPTIONS = `${BASE_URL}/admin-core-service/v1/utm/filter-options`;
+// Campaign-attribution dashboard (people / enrolments per source, medium,
+// campaign …, daily trend, campaign matrix) over a date window.
+export const GET_UTM_DASHBOARD = `${BASE_URL}/admin-core-service/v1/utm/dashboard`;
+
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
@@ -408,6 +451,8 @@ export const COUNSELOR_POOL_BY_ID = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}`;
 export const COUNSELOR_POOL_AUDIENCE = (poolId: string, audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}`;
+export const COUNSELOR_POOL_AUDIENCE_ASSIGNMENT = (poolId: string, audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}/assignment`;
 export const COUNSELOR_POOL_AUDIENCES = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences`;
 export const COUNSELOR_POOL_AUDIENCE_ORDER = (poolId: string, audienceId: string) =>
@@ -519,6 +564,9 @@ export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-pa
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;
 export const STEP2_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/submit`;
 export const STEP2_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/questions-of-sections`;
+export const STEP2_QUESTIONS_FULL_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/questions-of-sections/full`;
+export const STEP2_EDIT_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/edit-questions`;
+export const COPY_INTAKE_BASE_URL = `${BASE_URL}/assessment-service/assessment/copy-intake/v1`;
 export const STEP3_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-participants/create/v1/submit`;
 export const STEP4_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-access/create/v1/submit`;
 export const GET_ASSESSMENT_INIT_DETAILS = `${BASE_URL}/assessment-service/assessment/admin/assessment-admin-list-init`;
@@ -998,6 +1046,12 @@ export const NOTIFICATION_SERVICE_BASE = `${BASE_URL}/notification-service/v1`;
 
 // Chatbot Flow Builder
 export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;
+
+// AI credits consumed by those flows' AI_RESPONSE nodes. Lives in admin-core, not
+// notification-service: credit_transactions is in the admin-core database, and the
+// flow id travels on the transaction as batch_id so the rollup needs no join.
+export const CHATBOT_FLOW_AI_USAGE = `${BASE_URL}/admin-core-service/ai-usage/v1/chatbot-flows/usage`;
+export const CHATBOT_FLOW_AI_USAGE_LOGS = `${BASE_URL}/admin-core-service/ai-usage/v1/chatbot-flows/logs`;
 
 // WhatsApp Inbox
 export const WHATSAPP_INBOX_BASE = `${NOTIFICATION_SERVICE_BASE}/inbox`;

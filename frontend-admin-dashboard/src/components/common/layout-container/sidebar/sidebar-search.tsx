@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     CommandDialog,
     CommandInput,
@@ -50,6 +51,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
     sidebarCategories,
 }) => {
     const navigate = useNavigate();
+    const { t } = useTranslation('sidebarSearch');
 
     // ⌘K keyboard shortcut
     useEffect(() => {
@@ -150,9 +152,9 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
     );
 
     const categoryLabels: Record<string, string> = {
-        CRM: 'CRM',
-        LMS: 'Learning',
-        AI: 'AI Tools',
+        CRM: t('categoryCrm'),
+        LMS: t('categoryLearning'),
+        AI: t('categoryAiTools'),
     };
 
     const renderItem = (item: SidebarItemsType) => {
@@ -176,7 +178,9 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                     )}
                     <span className="flex-1 truncate">{item.title}</span>
                     {item.locked && (
-                        <span className="text-2xs font-medium text-neutral-400">Locked</span>
+                        <span className="text-2xs font-medium text-neutral-400">
+                            {t('locked')}
+                        </span>
                     )}
                 </CommandItem>
             );
@@ -224,13 +228,13 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
 
     return (
         <CommandDialog open={open} onOpenChange={onOpenChange}>
-            <CommandInput placeholder="Search tabs, features..." />
+            <CommandInput placeholder={t('searchPlaceholder')} />
             <CommandList>
                 <CommandEmpty>
                     <div className="flex flex-col items-center gap-1 py-4">
-                        <span className="text-sm text-neutral-500">No results found</span>
+                        <span className="text-sm text-neutral-500">{t('noResultsFound')}</span>
                         <span className="text-xs text-neutral-400">
-                            Try a different search term
+                            {t('tryDifferentSearchTerm')}
                         </span>
                     </div>
                 </CommandEmpty>
@@ -266,7 +270,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                                 <CommandGroup
                                     heading={
                                         <span className="font-semibold text-neutral-500">
-                                            Settings · {domain}
+                                            {t('settingsDomainHeading', { domain })}
                                         </span>
                                     }
                                 >

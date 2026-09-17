@@ -248,5 +248,10 @@
         "cartCtaLabel": "Ajouter au panier",
         "checkoutCtaLabel": "Passer à la caisse",
         "viewCourseLabel": "Voir le cours"
+    },
+    "documentViewer": {
+        "heading": "Parcourez notre catalogue",
+        "subheading": "Feuilletez chaque page directement ici.",
+        "buttonText": "Ouvrir le catalogue"
     }
 }

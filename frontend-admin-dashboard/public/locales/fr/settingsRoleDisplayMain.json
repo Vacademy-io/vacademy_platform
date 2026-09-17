@@ -32,5 +32,33 @@
         "roleCreated": "Rôle créé avec succès",
         "roleCreateFailed": "Échec de la création du rôle",
         "roleNameRequired": "Le nom du rôle est requis"
+    },
+    "copyToRoles": {
+        "button": "Copier vers d'autres rôles",
+        "disabled": {
+            "noRoleSelected": "Sélectionnez d'abord un rôle personnalisé",
+            "unsavedChanges": "Enregistrez vos modifications avant de copier"
+        },
+        "dialog": {
+            "title": "Copier les paramètres d'affichage",
+            "description": "Appliquer les paramètres d'affichage de {{role}} aux rôles sélectionnés ci-dessous.",
+            "allRoles": "Tous les rôles",
+            "roleCount": "{{count}} rôle",
+            "roleCount_other": "{{count}} rôles",
+            "noTargets": "Il n'y a pas encore d'autres rôles vers lesquels copier.",
+            "overwriteWarning": "Cela remplace les paramètres d'affichage de {{count}} rôle. Sa configuration actuelle sera perdue.",
+            "overwriteWarning_other": "Cela remplace les paramètres d'affichage de {{count}} rôles. Leur configuration actuelle sera perdue.",
+            "cancel": "Annuler",
+            "copying": "Copie en cours…",
+            "confirm": "Copier vers {{count}} rôle",
+            "confirm_other": "Copier vers {{count}} rôles"
+        },
+        "toast": {
+            "success": "Paramètres d'affichage copiés vers {{count}} rôle",
+            "success_other": "Paramètres d'affichage copiés vers {{count}} rôles",
+            "partial": "Copié vers {{succeeded}} rôle(s). Échec : {{failedRoles}}",
+            "allFailed": "Impossible de copier les paramètres d'affichage. {{message}}",
+            "readFailed": "Impossible de lire les paramètres d'affichage actuels. {{message}}"
+        }
     }
 }

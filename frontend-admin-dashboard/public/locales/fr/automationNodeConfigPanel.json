@@ -1,0 +1,209 @@
+{
+    "panel": {
+        "selectNode": "Sélectionnez un nœud à configurer",
+        "nodeNamePlaceholder": "Nom du nœud"
+    },
+    "common": {
+        "variableMappings": "Mappages de variables",
+        "filename": "Nom du fichier",
+        "filenamePlaceholder": "brochure.pdf"
+    },
+    "trigger": {
+        "sectionLabel": "Paramètres du déclencheur",
+        "typeLabel": "Type de déclencheur",
+        "type": {
+            "keywordMatch": "Correspondance de mot-clé",
+            "firstContact": "Premier contact (nouvel utilisateur)",
+            "buttonReply": "Réponse par bouton"
+        },
+        "keywordsLabel": "Mots-clés (séparés par des virgules)",
+        "keywordsPlaceholder": "hello, hi, start",
+        "matchTypeLabel": "Type de correspondance",
+        "matchType": {
+            "exact": "Correspondance exacte",
+            "contains": "Contient",
+            "regex": "Motif regex"
+        },
+        "priorityLabel": "Priorité (plus élevé = vérifié en premier)"
+    },
+    "sendMessage": {
+        "sectionLabel": "Message de session",
+        "noTemplateNotice": "Aucun modèle requis — envoyé directement dans la fenêtre de session de 24 h.",
+        "typeLabel": "Type de message",
+        "type": {
+            "text": "Message texte",
+            "image": "Image",
+            "video": "Vidéo",
+            "document": "Document (PDF, etc.)",
+            "audio": "Audio"
+        },
+        "textLabel": "Texte du message",
+        "textPlaceholder": "Bonjour {{example}} ! 👋\n\nBienvenue dans notre service. Comment puis-je vous aider aujourd'hui ?",
+        "formattingHint": "Mise en forme WhatsApp prise en charge : *gras*, _italique_, ~barré~, ```code```",
+        "variableHint": {
+            "prefix": "Utilisez",
+            "suffix": "pour des valeurs dynamiques :"
+        },
+        "mediaUrlLabel": "URL du média",
+        "mediaUrlPlaceholder": "https://example.com/image.jpg",
+        "mediaUrlHint": {
+            "prefix": "Doit être une URL HTTPS publiquement accessible. Utilisez",
+            "suffix": "pour des URL dynamiques."
+        },
+        "captionLabel": "Légende (facultatif)",
+        "captionPlaceholder": "Découvrez cette image !",
+        "variableMappingsHint": {
+            "prefix": "Mappez les",
+            "suffix": "utilisés ci-dessus à des champs système ou personnalisés avec des valeurs de repli."
+        }
+    },
+    "sendTemplate": {
+        "sectionLabel": "Modèle",
+        "searchLabel": "Rechercher et sélectionner un modèle",
+        "searchPlaceholder": "Rechercher des modèles...",
+        "loading": "Chargement des modèles...",
+        "noResults": "Aucun modèle trouvé. Saisissez le nom manuellement ci-dessous.",
+        "nameLabel": "Nom du modèle",
+        "namePlaceholder": "welcome_message",
+        "languageLabel": "Langue",
+        "languagePlaceholder": "fr",
+        "previewLabel": "Aperçu",
+        "previewHeader": "En-tête : [{{type}}]",
+        "headerSectionLabel": "En-tête ({{type}})",
+        "headerUrlLabelDocument": "URL du document",
+        "headerUrlLabelGeneric": "URL {{type}}",
+        "headerUrlPlaceholder": "https://...",
+        "bodyParamsLabel": "Paramètres du corps",
+        "bodyParamsHint": {
+            "prefix": "Utilisez la syntaxe",
+            "suffix": "ou saisissez des valeurs statiques"
+        },
+        "bodyParamPlaceholder": "{{example}} ou texte statique",
+        "addParameter": "Ajouter un paramètre",
+        "buttonParamsLabel": "Paramètres des boutons",
+        "buttonFallbackLabel": "Bouton {{index}}",
+        "urlSuffixLabel": "Suffixe d'URL",
+        "payloadLabel": "Charge utile",
+        "variableMappingsHint": {
+            "prefix": "Mappez les",
+            "suffix": "utilisés dans les paramètres du corps, l'URL d'en-tête ou le suffixe d'URL du bouton à des champs utilisateur ou personnalisés avec des valeurs de repli."
+        }
+    },
+    "sendInteractive": {
+        "sectionLabel": "Message interactif",
+        "sessionNotice": "Nécessite une fenêtre de session de 24 h. Configurez un modèle de repli ci-dessous.",
+        "typeLabel": "Type",
+        "type": {
+            "button": "Boutons de réponse (max 3)",
+            "list": "Menu de liste"
+        },
+        "bodyLabel": "Texte du corps",
+        "bodyPlaceholder": "Veuillez sélectionner une option...",
+        "footerLabel": "Pied de page (facultatif)",
+        "footerPlaceholder": "Propulsé par...",
+        "buttonsLabel": "Boutons",
+        "buttonTitlePlaceholder": "Titre du bouton",
+        "addButton": "Ajouter un bouton",
+        "listButtonLabel": "Texte du bouton de menu",
+        "listButtonPlaceholder": "Voir les options",
+        "sectionsLabel": "Sections",
+        "sectionTitlePlaceholder": "Titre de la section",
+        "rowTitlePlaceholder": "Titre de la ligne",
+        "rowIdPlaceholder": "ID de ligne (pour les conditions)",
+        "rowDescriptionPlaceholder": "Description (facultatif)",
+        "addRow": "Ajouter une ligne",
+        "addSection": "Ajouter une section",
+        "fallbackTemplateLabel": "Modèle de repli (si la fenêtre de 24 h a expiré)"
+    },
+    "condition": {
+        "sectionLabel": "Branches de condition",
+        "hint": "Chaque branche crée une arête sortante. Connectez-les aux nœuds suivants sur le canevas.",
+        "typeLabel": "Type de condition",
+        "type": {
+            "userResponse": "Réponse texte de l'utilisateur",
+            "buttonReply": "Réponse par bouton interactif",
+            "listReply": "Réponse par sélection de liste"
+        },
+        "importButton_one": "Importer {{count}} option depuis le nœud interactif connecté",
+        "importButton_many": "Importer {{count}} d'options depuis le nœud interactif connecté",
+        "importButton_other": "Importer {{count}} options depuis le nœud interactif connecté",
+        "defaultBranchLabel": "Par défaut",
+        "branchLabelPlaceholder": "Libellé de la branche",
+        "defaultCheckboxLabel": "Par défaut (repli)",
+        "matchType": {
+            "exact": "Exact",
+            "contains": "Contient",
+            "regex": "Regex",
+            "buttonId": "ID du bouton",
+            "listId": "ID de ligne de liste",
+            "payload": "Charge utile"
+        },
+        "matchValuePlaceholder": "Valeur de correspondance...",
+        "addBranch": "Ajouter une branche"
+    },
+    "delay": {
+        "sectionLabel": "Paramètres de délai",
+        "durationLabel": "Durée",
+        "unit": {
+            "seconds": "Secondes",
+            "minutes": "Minutes",
+            "hours": "Heures",
+            "days": "Jours"
+        }
+    },
+    "workflow": {
+        "sectionLabel": "Action de workflow",
+        "idLabel": "ID du workflow",
+        "contextHint": "Le workflow recevra phone, instituteId, userId et messageText comme contexte."
+    },
+    "webhook": {
+        "sectionLabel": "Webhook HTTP",
+        "urlLabel": "URL",
+        "methodLabel": "Méthode",
+        "resultVariableLabel": "Nom de la variable de résultat",
+        "resultHint": {
+            "prefix": "Réponse stockée sous",
+            "suffix": "pour une utilisation dans les nœuds suivants."
+        }
+    },
+    "aiCredits": {
+        "outOfCreditsTitle": "Crédits IA épuisés.",
+        "outOfCreditsBody": "Cette étape n'appellera pas le modèle — les conversations qui l'atteignent sont confiées à un humain dans la boîte de réception WhatsApp jusqu'à ce que l'institut recharge ses crédits.",
+        "spendNotice": "Chaque réponse consomme des crédits IA",
+        "balance": "· solde {{balance}}"
+    },
+    "aiResponse": {
+        "sectionLabel": "Conversation IA",
+        "modelLabel": "Modèle",
+        "model": {
+            "gemini20Flash": "Gemini 2.0 Flash (rapide)",
+            "gemini25Flash": "Gemini 2.5 Flash",
+            "gemini25Pro": "Gemini 2.5 Pro",
+            "claude35Sonnet": "Claude 3.5 Sonnet",
+            "gpt4oMini": "GPT-4o Mini",
+            "deepseekV32": "DeepSeek V3.2"
+        },
+        "systemPromptLabel": "Invite système",
+        "systemPromptPlaceholder": "Vous êtes un assistant utile pour {{example}}. Répondez aux questions sur les cours et les inscriptions...",
+        "maxTokensLabel": "Jetons max",
+        "maxTurnsLabel": "Tours max",
+        "temperatureLabel": "Température",
+        "exitKeywordsLabel": "Mots-clés de sortie (séparés par des virgules)",
+        "fallbackMessageLabel": "Message de repli (en cas d'erreur/tours max)",
+        "fallbackMessagePlaceholder": "Laissez-moi vous mettre en relation avec un agent humain.",
+        "unsureSectionLabel": "Quand l'IA ne sait pas",
+        "escalateCheckboxLabel": "Transmettre à un administrateur plutôt que de deviner",
+        "handoverMessageLabel": "Message de transfert",
+        "handoverMessagePlaceholder": "Je n'ai pas cette information sous la main pour le moment. Laissez-moi vérifier avec notre équipe et revenir vers vous rapidement.",
+        "escalationNotice": {
+            "prefix": "Lorsque la réponse ne se trouve pas dans le contexte de l'IA, elle envoie ce message au lieu d'en inventer un. La conversation est alors marquée",
+            "unanswered": "Sans réponse",
+            "middle": "dans la boîte de réception WhatsApp, et les personnes listées dans",
+            "flowSettings": "Paramètres du flux",
+            "suffix": "sont informées par e-mail et/ou WhatsApp qu'un apprenant attend. Répondre depuis la boîte de réception résout ce statut."
+        },
+        "interactiveSectionLabel": "Réponses interactives",
+        "interactiveCheckboxLabel": "Autoriser l'IA à envoyer des boutons de réponse et des menus de liste",
+        "interactiveNotice": "L'IA peut désormais inclure des boutons de réponse (max 3) ou des menus de liste lors de la présentation de choix. Revient au texte simple si le format n'est pas valide ou si la session de 24 h a expiré."
+    }
+}

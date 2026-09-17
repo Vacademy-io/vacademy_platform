@@ -31,7 +31,7 @@ from ...models.tutor_tts_cache import TutorTtsCache
 from ..ai_billing import record_tool_billing
 from ..provider_rates import tts_cost_usd
 from .runtime import prompts
-from .runtime.speech import cache_key, effective_pace, tutor_segments
+from .runtime.speech import spoken_form, cache_key, effective_pace, tutor_segments
 
 logger = logging.getLogger(__name__)
 
@@ -213,9 +213,10 @@ async def warm_plan(
         todo: List[Tuple[str, str, str]] = []
         for seg in dict.fromkeys(segments):
             pace = str(effective_pace(base_pace, "normal", seg))
-            key = cache_key(provider, v, stt_lang.get(lang, "en-IN"), pace, seg)
+            spoken = spoken_form(seg, lang)
+            key = cache_key(provider, v, stt_lang.get(lang, "en-IN"), pace, spoken)
             if lookup(key) is None:
-                todo.append((key, seg, pace))
+                todo.append((key, spoken, pace))
         synthesized = 0
         chars = 0
         sem = asyncio.Semaphore(WARM_CONCURRENCY)

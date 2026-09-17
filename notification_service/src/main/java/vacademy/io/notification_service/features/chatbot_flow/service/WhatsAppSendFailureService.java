@@ -53,9 +53,23 @@ public class WhatsAppSendFailureService {
      */
     public void logFailure(String instituteId, String phone, String businessChannelId, String userId,
                            String attemptedType, String body, String source, String error) {
+        logFailure(instituteId, phone, businessChannelId, userId, attemptedType, body, source, error, null);
+    }
+
+    /**
+     * As above, plus caller-supplied fields merged into the stored payload.
+     * <p>
+     * A refused media send uses this to keep {@code mediaType} / {@code mediaUrl} on the row, so the
+     * failed bubble can still show which image the admin tried to send instead of an empty box.
+     * The failure markers win on a key clash — the reason a row exists must not be overwritable.
+     */
+    public void logFailure(String instituteId, String phone, String businessChannelId, String userId,
+                           String attemptedType, String body, String source, String error,
+                           Map<String, Object> extraPayload) {
         if (phone == null || phone.isBlank()) return;
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
+            if (extraPayload != null) payload.putAll(extraPayload);
             payload.put("deliveryStatus", FAILED_STATUS);
             payload.put("error", truncate(error, 1000));
             payload.put("attemptedType", attemptedType != null ? attemptedType : "text");

@@ -44,6 +44,8 @@ export interface TutorPlanStatusItem {
     source_kind?: string | null;
     /** What the newest plan was compiled from: script | captions | transcript | pdf | null */
     text_kind?: string | null;
+    /** Board-quality advice the compiler let go; the plan is READY and teachable. */
+    quality_notes?: string[];
 }
 
 export interface TutorPackagePlans {
@@ -85,6 +87,7 @@ export interface TutorPlanView {
     key_terms: Array<{ term: string; meaning: string }>;
     source_description: string | null;
     error: string | null;
+    quality_notes?: string[];
     topics: TutorTopicView[];
     media: Array<Record<string, unknown>>;
 }

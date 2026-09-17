@@ -244,6 +244,8 @@ export interface ProductPageSettings {
     courseFinder?: CourseFinderSettings;
     offers?: OffersSettings;
     afterPaymentRedirectUrl?: string;
+    /** Seconds the success screen stays up before the redirect fires. */
+    afterPaymentRedirectDelaySeconds?: number;
     showLoginButton?: boolean;
     successPageContent?: string;
 }
@@ -257,6 +259,7 @@ export const DEFAULT_PRODUCT_PAGE_SETTINGS: ProductPageSettings = {
     disableBackNavigation: false,
     coupon: { enabled: false },
     afterPaymentRedirectUrl: '',
+    afterPaymentRedirectDelaySeconds: 3,
     showLoginButton: true,
     successPageContent: '',
 };

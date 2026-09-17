@@ -34,6 +34,8 @@ __all__ = [
     "needs_ready_kick",
     "apply_ready_kick",
     "is_fully_seekable",
+    "dash_bomb_targets",
+    "defuse_dash_bombs",
 ]
 
 # Appended to a shot whose tweens are registered in a load handler. Runs at
@@ -128,3 +130,88 @@ def apply_ready_kick(html: str) -> str:
 
 def is_fully_seekable(html: str) -> bool:
     return not unseekable_techniques(apply_ready_kick(html))
+
+
+# ---------------------------------------------------------------------------
+# Dash-array bombs
+#
+# `gsap.from(el, {strokeDasharray: 2000, ...})` animates TOWARD the element's
+# natural value. For a path that declares no stroke-dasharray that value is 0,
+# so the dash array sweeps 2000 → 0 and, near the end, the browser is asked to
+# draw an unbounded number of dashes along the path. The rasteriser stops
+# responding and the renderer's screenshot call times out, which fails the whole
+# job — not just the shot.
+#
+# It is intermittent in the worst way: the frame stepper samples every 1/30s, so
+# whether a sample lands inside the pathological window depends on the shot's
+# start time. A film rendered fine for weeks, then a 0.28s shift upstream moved a
+# sample into the window and every render died at that frame.
+#
+# The repair keeps the dash array constant and animates only the offset, which is
+# the standard line-draw and looks identical.
+# ---------------------------------------------------------------------------
+
+_DASH_TWEEN = re.compile(
+    r"\.from\(\s*'(#[\w-]+)'\s*,\s*\{([^{}]*?strokeDasharray\s*:\s*([\d.]+)[^{}]*?)\}\s*,\s*([\d.]+)\s*\)"
+)
+_TWEEN_CONFIG_KEYS = ("duration", "ease", "delay", "repeat", "yoyo", "stagger")
+
+
+def _declares_dasharray(html: str, element_id: str) -> bool:
+    # Either quote style: LLM output is not consistent about it, and guessing wrong
+    # means either rewriting a correct animation or leaving a bomb armed.
+    tag = re.search(r"""<[^>]*\bid\s*=\s*["']%s["'][^>]*>""" % re.escape(element_id), html)
+    return bool(tag and "stroke-dasharray" in tag.group(0))
+
+
+def _split_tween_vars(vars_text: str):
+    """(strokeDashoffset value, [config fragments]) from a tween object body."""
+    offset = None
+    config: List[str] = []
+    for part in (p.strip() for p in re.split(r",(?![^()]*\))", vars_text) if p.strip()):
+        key = part.split(":", 1)[0].strip().strip("\"'")
+        if key == "strokeDashoffset":
+            offset = part.split(":", 1)[1].strip()
+        elif key in _TWEEN_CONFIG_KEYS:
+            config.append(part)
+    return offset, config
+
+
+def dash_bomb_targets(html: str) -> List[str]:
+    """Element ids whose dash array is animated toward zero."""
+    if not html:
+        return []
+    return [
+        m.group(1)
+        for m in _DASH_TWEEN.finditer(html)
+        if not _declares_dasharray(html, m.group(1)[1:])
+    ]
+
+
+def defuse_dash_bombs(html: str) -> str:
+    """Hold the dash array constant and animate only the offset. Idempotent."""
+    if not html:
+        return html
+    out: List[str] = []
+    last = 0
+    changed = False
+    for m in _DASH_TWEEN.finditer(html):
+        selector, vars_text, dash, position = m.group(1), m.group(2), m.group(3), m.group(4)
+        if _declares_dasharray(html, selector[1:]):
+            continue
+        offset, config = _split_tween_vars(vars_text)
+        if offset is None:
+            offset = dash
+        tail = (", " + ", ".join(config)) if config else ""
+        out.append(html[last:m.start()])
+        out.append(
+            ".fromTo('%s', {strokeDasharray:%s, strokeDashoffset:%s}, "
+            "{strokeDasharray:%s, strokeDashoffset:0%s}, %s)"
+            % (selector, dash, offset, dash, tail, position)
+        )
+        last = m.end()
+        changed = True
+    if not changed:
+        return html
+    out.append(html[last:])
+    return "".join(out)

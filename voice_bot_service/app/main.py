@@ -30,6 +30,7 @@ from fastapi import APIRouter, FastAPI, Query, Request, Response, WebSocket
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from . import admin_core
+from .ambience import build_ambience_mixer
 from .bot import CallOutcome, run_bot
 from . import ttscache, ttswarm
 from .config import get_settings
@@ -1096,6 +1097,9 @@ async def ws_endpoint(websocket: WebSocket):
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
+                # Room tone under every call — started by the transport on its
+                # StartFrame, i.e. before the greeting (app/ambience.py).
+                audio_out_mixer=build_ambience_mixer(s),
                 # pipecat 1.4: NO vad_analyzer here — the VAD (with the telephony
                 # min_volume=0.35 tuning from live call 8e1e00ad) lives on the
                 # user aggregator in bot.run_bot, alongside Smart Turn v3.

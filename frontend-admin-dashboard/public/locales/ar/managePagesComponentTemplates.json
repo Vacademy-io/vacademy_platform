@@ -248,5 +248,10 @@
         "cartCtaLabel": "أضف إلى السلة",
         "checkoutCtaLabel": "المتابعة إلى الدفع",
         "viewCourseLabel": "عرض الدورة"
+    },
+    "documentViewer": {
+        "heading": "تصفّح الكتالوج",
+        "subheading": "تصفّح كل صفحة هنا مباشرة.",
+        "buttonText": "فتح الكتالوج"
     }
 }

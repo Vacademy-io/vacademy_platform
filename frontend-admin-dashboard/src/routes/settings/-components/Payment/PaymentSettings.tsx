@@ -553,11 +553,23 @@ const PaymentSettings = () => {
                 // Add new plan to the list
                 const savedPlan = savedPaymentOption?.payment_plans?.[0];
                 if (savedPlan) {
-                    const transformedPlan = transformApiPlanToLocalFormat(savedPlan);
+                    // The plan row carries no type or metadata of its own — both live on
+                    // the option (loadPaymentOptions stitches them the same way). Without
+                    // them the transform throws on `type.toUpperCase()` and a successful
+                    // save surfaces as an error toast.
+                    const transformedPlan = transformApiPlanToLocalFormat({
+                        ...savedPlan,
+                        type: savedPaymentOption.type,
+                        payment_option_metadata_json:
+                            savedPaymentOption.payment_option_metadata_json,
+                    });
                     setPaymentPlans((plans) => [
                         ...plans,
                         {
                             ...transformedPlan,
+                            // Option id, not plan id — every list action keys on it.
+                            id: savedPaymentOption.id,
+                            name: savedPaymentOption.name,
                             tag:
                                 transformedPlan.type === PaymentPlans.FREE
                                     ? 'free'

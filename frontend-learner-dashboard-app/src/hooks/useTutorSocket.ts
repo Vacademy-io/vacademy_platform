@@ -97,6 +97,8 @@ interface Callbacks {
   /** The server closed the session on its own (idle, time limit). */
   onEnded?: (reason: string) => void;
   onClose?: () => void;
+  /** Guest lessons: the token to authenticate with instead of the signed-in user's. */
+  getToken?: () => string | null | undefined;
 }
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
@@ -158,7 +160,7 @@ export function useTutorSocket(callbacks: Callbacks) {
       const ws = new WebSocket(wsUrl(socketPath));
       wsRef.current = ws;
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "auth", token: readToken() }));
+        ws.send(JSON.stringify({ type: "auth", token: cbRef.current.getToken?.() || readToken() }));
         setConnectionState("connected");
         pingRef.current = setInterval(() => send({ type: "ping" }), 25000);
       };

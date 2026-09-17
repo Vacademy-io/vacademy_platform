@@ -8,6 +8,7 @@ import iconBadges from "@/assets/cleaner-play/icon-badges.webp";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { BadgeVisual } from "../badge-icons";
+import { isManualTrigger } from "@/services/badge-config";
 
 const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
   const { t } = useTranslation("dashboard");
@@ -20,7 +21,9 @@ const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
           reason: badge.awardReason,
         })
       : t("badges.awardedTooltip", { name: badge.name })
-    : t("badges.tooltip", { name: badge.name, description: badge.description });
+    : !unlocked && isManualTrigger(badge.trigger)
+      ? t("badges.manualLockedTooltip", { name: badge.name })
+      : t("badges.tooltip", { name: badge.name, description: badge.description });
   return (
     <div className="flex w-16 flex-col items-center gap-1" title={tooltip}>
       <div

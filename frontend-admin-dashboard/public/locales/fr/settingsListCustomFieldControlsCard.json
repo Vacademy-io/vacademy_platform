@@ -23,5 +23,12 @@
     "columns": {
         "filter": "Filtre",
         "sort": "Tri"
+    },
+    "utm": {
+        "title": "Filtres de campagne (UTM)",
+        "description": "Filtrez cette liste selon la campagne, la source, le support et le canal qui ont amené chaque personne. S'active automatiquement dès que les liens de campagne (UTM) sont activés dans les paramètres ; désactivez-le ici pour les listes qui n'en ont pas besoin.",
+        "disabledHint": "Les liens de campagne (UTM) sont désactivés pour cet établissement ; aucun filtre de campagne ne peut être affiché.",
+        "openSettings": "Ouvrir les paramètres des liens de campagne",
+        "autoHint": "(auto — affiché dès qu'il y a des données)"
     }
 }

@@ -14,6 +14,14 @@ T = {
         "en": "Hi {name}! I'm {teacher}, and I'll be teaching you today. We're starting with {slide}. Let's begin.",
         "hi": "नमस्ते {name}! मैं {teacher} हूँ और आज मैं आपको पढ़ाऊँगी। हम {slide} से शुरू कर रहे हैं। चलिए शुरू करते हैं।",
     },
+    "greet_interview": {
+        "en": "Hi {name}, I'm {teacher}, and I'll be your interviewer today. Think aloud, take your time, and I'll give you feedback after each answer. Ready?",
+        "hi": "नमस्ते {name}, मैं {teacher} हूँ, और आज मैं आपका interviewer हूँ। सोचते हुए बोलिए, समय लीजिए, और हर जवाब के बाद मैं feedback दूँगी। तैयार?",
+    },
+    "greet_practice": {
+        "en": "Hi {name}, I'm {teacher}. This is a practice session: I'll set up a situation, you try it, and we improve it together. Let's start.",
+        "hi": "नमस्ते {name}, मैं {teacher} हूँ। यह एक practice session है: मैं situation दूँगी, आप try करेंगे, और हम साथ में बेहतर करेंगे। शुरू करते हैं।",
+    },
     "resume": {
         "en": "Welcome back, {name}! Last time we were in {slide}. {summary} Let's pick up from where we left off.",
         "hi": "वापस स्वागत है, {name}! पिछली बार हम {slide} पर थे। {summary} चलिए वहीं से आगे बढ़ते हैं।",
@@ -170,18 +178,43 @@ that repeats the teacher's own hint or words nearly verbatim is NOT understandin
 time, use action "wait" to ask for it in their own words or for the reason why. No markdown."""
 
 
-def system_prompt(teacher: str, lang: str, strictness: str) -> str:
+LIVE_PERSONA = {
+    "lesson": "You are {teacher}, a one-to-one teacher speaking to a learner over a shared whiteboard.",
+    "interview": ("You are {teacher}, a professional interviewer running a mock interview over a shared whiteboard. "
+                  "You are evaluating a CANDIDATE, not teaching a student: react like an interviewer (brief, fair, "
+                  "specific), give the model answer and the method only after their attempt, never say 'let's learn' "
+                  "or 'look at the board again' as a lesson would, and move to the next question cleanly."),
+    "practice": ("You are {teacher}, a coach running a practice session over a shared whiteboard. The learner "
+                 "attempts, you give short concrete feedback and a better version, then the next attempt."),
+}
+
+
+def greet_key(style: str) -> str:
+    return {"interview": "greet_interview", "practice": "greet_practice"}.get(style or "lesson", "greet")
+
+
+def system_prompt(teacher: str, lang: str, strictness: str, style: str = "lesson") -> str:
     tone = {
         "gentle": "Very encouraging; accept partial answers generously; never make the learner feel wrong.",
         "strict": "Precise; award credit only for correct, complete answers; correct terminology firmly but kindly.",
     }.get(strictness, "Warm and clear; give credit for the right idea in the learner's own words.")
+    persona = LIVE_PERSONA.get(style or "lesson", LIVE_PERSONA["lesson"]).format(teacher=teacher)
     return (
-        f"You are {teacher}, a one-to-one teacher speaking to a learner over a shared whiteboard. "
+        f"{persona} "
         f"Session language: {LANG_NAMES.get(lang, lang)}. {tone}\n"
         "You evaluate the learner's answer to the check for the CURRENT concept using its rubric and the listed "
         "misconceptions, and decide what happens next. Keep every spoken line short; the learner is listening, not reading.\n\n"
         + DECISION_SCHEMA
     )
+
+
+_TRAILING_Q = re.compile(r"[?？]\s*[\"'”’)]*\s*$")
+
+
+def narration_asks(say: str) -> bool:
+    """The narration already ended on a question: speaking the check prompt
+    too would ask the learner twice (older plans; new ones are validated)."""
+    return bool(_TRAILING_Q.search((say or "").strip()))
 
 
 def _ops_as_text(ops: List[Dict[str, Any]]) -> str:

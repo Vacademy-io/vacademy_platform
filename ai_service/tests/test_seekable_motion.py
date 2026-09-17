@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app", "ai-vide
 from seekable_motion import (  # noqa: E402
     READY_KICK,
     apply_ready_kick,
+    dash_bomb_targets,
+    defuse_dash_bombs,
     is_fully_seekable,
     needs_ready_kick,
     unseekable_techniques,
@@ -124,6 +126,50 @@ def test_css_animation_survives_the_repair_and_is_still_reported():
     fixed = apply_ready_kick(html)
     assert "css-animation" in unseekable_techniques(fixed)
     assert not is_fully_seekable(html)
+
+
+def test_a_dash_array_animated_to_zero_is_found_and_defused():
+    """`.from({strokeDasharray: N})` on a path that declares none animates the dash
+    array to 0, and the browser then draws an unbounded number of dashes. The
+    rasteriser stops responding and the screenshot times out, failing the ENTIRE
+    render job. Measured: a shipped film rendered fine until an upstream 0.28s
+    shift moved a sampled frame into the window, after which every render died."""
+    html = PREAMBLE + (
+        "<div id='shot-root'><svg><path id='funnel-bg' d='M0,0 L1500,0' stroke='#fff'/></svg>"
+        "<script>tl.from('#funnel-bg', { strokeDasharray: 2000, strokeDashoffset: 2000, "
+        "duration: 2.0, ease: 'power2.inOut' }, 0.5);</script></div>"
+    )
+    assert dash_bomb_targets(html) == ["#funnel-bg"]
+
+    fixed = defuse_dash_bombs(html)
+    assert dash_bomb_targets(fixed) == []
+    # the dash array is held constant; only the offset moves
+    assert "strokeDasharray:2000, strokeDashoffset:0" in fixed
+    # and the tween's own configuration survives
+    assert "duration: 2.0" in fixed and "ease: 'power2.inOut'" in fixed
+    assert fixed.rstrip().endswith("</div>")
+    assert defuse_dash_bombs(fixed) == fixed          # idempotent
+
+
+def test_a_path_that_declares_its_own_dash_array_is_left_alone():
+    """Animating back to a real declared value never reaches zero, so rewriting it
+    would change a correct animation for no reason."""
+    html = PREAMBLE + (
+        "<div id='shot-root'><svg><path id='core' stroke-dasharray='8 8' d='M0,0 L10,0'/></svg>"
+        "<script>tl.from('#core', { strokeDasharray: 400, duration: 1 }, 0);</script></div>"
+    )
+    assert dash_bomb_targets(html) == []
+    assert defuse_dash_bombs(html) == html
+
+
+def test_the_pipeline_defuses_rather_than_only_reporting():
+    """Reporting is not enough here: unlike unseekable motion, which degrades one
+    shot, this failure aborts the whole render job."""
+    pipe = open(
+        os.path.join(os.path.dirname(__file__), "..", "app", "ai-video-gen-main", "automation_pipeline.py")
+    ).read()
+    assert "defuse_dash_bombs" in pipe
+    assert "dash_bomb_targets" in pipe
 
 
 def test_every_prompt_path_teaches_the_constraint():

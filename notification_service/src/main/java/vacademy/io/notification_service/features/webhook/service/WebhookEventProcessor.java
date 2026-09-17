@@ -160,6 +160,22 @@ public class WebhookEventProcessor {
                     .ifPresent(m -> notificationLog.setInstituteId(m.getInstituteId()));
         }
 
+        // Record the verdict this event carried on the row itself. Without it the status lives
+        // only inside the raw payload, in a different shape per vendor, so nothing can later ask
+        // "what did the provider say about this message" — which is exactly what a send row that
+        // was written AFTER its own status webhook needs to ask. See
+        // NotificationLogRepository#backfillDeliveryStatusFromRecordedEvents.
+        switch (event.getEventType()) {
+            case SENT, DELIVERED, READ, FAILED -> {
+                notificationLog.setDeliveryStatus(event.getEventType().name());
+                notificationLog.setDeliveryErrorCode(truncate(event.getErrorCode(), 50));
+                notificationLog.setDeliveryErrorMessage(truncate(event.getErrorMessage(), 500));
+                notificationLog.setDeliveryUpdatedAt(
+                        event.getTimestamp() != null ? event.getTimestamp() : Instant.now());
+            }
+            default -> { /* replies and verification responses are not delivery statuses */ }
+        }
+
         // Store raw payload as JSON
         try {
             if (event.getRawPayload() != null) {
@@ -497,5 +513,14 @@ public class WebhookEventProcessor {
         if (text == null)
             return null;
         return text.length() <= maxLength ? text : text.substring(0, maxLength) + "...";
+    }
+
+    /**
+     * Hard cut to a column's width — no ellipsis, unlike {@link #truncateText}. A value that
+     * overflowed delivery_error_code/message would abort the insert and lose the whole event.
+     */
+    private static String truncate(String value, int maxLength) {
+        if (value == null) return null;
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 }

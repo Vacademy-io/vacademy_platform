@@ -13,6 +13,12 @@ export interface InboxConversation {
     lastMessage?: string;
     lastMessageType?: string;
     lastMessageTime?: string;
+    /**
+     * What WhatsApp said about the last message when it was outgoing: SENT | DELIVERED | READ |
+     * FAILED. Absent when nothing has been reported yet (or when the last message was incoming),
+     * which the row draws as a single tick — sent, nothing more known.
+     */
+    lastMessageStatus?: string;
     unreadCount?: number;
 
     /** The chatbot couldn't answer and nobody has replied yet — shown as "Unanswered". */
@@ -70,6 +76,31 @@ export interface InboxMessage {
     headerMediaUrl?: string;
     /** On a failed non-template send: what we tried to send. */
     attemptedType?: string;
+
+    // Free-form media (an attachment sent from the Inbox, not a template header).
+    /** image | video | audio | document. Absent on a plain text message. */
+    mediaType?: WhatsAppMediaKind;
+    /** Public URL of the attachment, for inline rendering. */
+    mediaUrl?: string;
+    /** Original filename — what a document bubble shows. */
+    mediaFilename?: string;
+}
+
+/** The media kinds WhatsApp accepts as a free-form message. */
+export type WhatsAppMediaKind = 'image' | 'video' | 'audio' | 'document';
+
+/**
+ * Whether Meta's 24-hour customer service window is still open on a conversation. Free-form
+ * replies (text and attachments) are only allowed while it is; after that only an approved
+ * template can re-open the conversation.
+ */
+export interface SessionWindow {
+    open: boolean;
+    lastInboundAt?: string;
+    expiresAt?: string;
+    minutesRemaining?: number;
+    /** No inbound message on record, so the state is unknown rather than closed. */
+    unknown: boolean;
 }
 
 export async function getConversations(
@@ -116,19 +147,77 @@ export async function searchConversations(
  * Send a reply. This also resolves any open escalation on the conversation server-side — the
  * reply IS the answer the learner was waiting for, so the "Unanswered" badge clears on refresh.
  */
+export interface SendReplyOptions {
+    repliedBy?: string;
+    /** Attach an image/video/audio/document. `text` then travels as the caption. */
+    mediaType?: WhatsAppMediaKind;
+    /** Public URL WhatsApp can download the file from. */
+    mediaUrl?: string;
+    filename?: string;
+    /** Send even though our record says the 24h window has closed. */
+    force?: boolean;
+}
+
 export async function sendReply(
     phone: string,
     text: string,
     instituteId: string,
-    repliedBy?: string
+    options: SendReplyOptions = {}
 ): Promise<InboxMessage> {
+    const { repliedBy, mediaType, mediaUrl, filename, force } = options;
     const { data } = await authenticatedAxiosInstance.post(`${WHATSAPP_INBOX_BASE}/send`, {
         phone,
         text,
         instituteId,
         ...(repliedBy ? { repliedBy } : {}),
+        ...(mediaType && mediaUrl ? { mediaType, mediaUrl } : {}),
+        ...(filename ? { filename } : {}),
+        ...(force ? { force } : {}),
     });
     return data;
+}
+
+/**
+ * Remaining life of the 24-hour reply window.
+ *
+ * Returns null when the backend does not expose the endpoint yet — the deployed build may predate
+ * it, and an inbox that still sends fine must not show an error banner because of a missing
+ * nice-to-have. The result is remembered so a backend without it is probed once, not once per
+ * conversation.
+ */
+let backendSupport: 'unknown' | 'yes' | 'no' = 'unknown';
+
+export async function getSessionWindow(
+    phone: string,
+    instituteId: string
+): Promise<SessionWindow | null> {
+    if (backendSupport === 'no') return null;
+    try {
+        const { data } = await authenticatedAxiosInstance.get(
+            `${WHATSAPP_INBOX_BASE}/conversations/${encodeURIComponent(phone)}/session-window`,
+            { params: { instituteId } }
+        );
+        backendSupport = 'yes';
+        return data;
+    } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        // 403 is what this backend returns for an unknown route (404 forwards to a secured /error).
+        if (status === 403 || status === 404) backendSupport = 'no';
+        return null;
+    }
+}
+
+/**
+ * Whether the backend understands attachments — 'unknown' until the first probe answers.
+ *
+ * This matters more than a missing banner: `/inbox/send` ignores JSON fields it does not know, so
+ * an older backend would accept a media send and quietly deliver the caption as a plain text
+ * message, with the attachment dropped and nobody told. The session-window endpoint ships in the
+ * same change as media support, so its presence is a reliable proxy, and the composer disables
+ * attaching until it answers.
+ */
+export function getInboxMediaSupport(): 'unknown' | 'yes' | 'no' {
+    return backendSupport;
 }
 
 /** Conversations the chatbot handed over. Defaults to the open ones — that is the work list. */

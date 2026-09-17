@@ -88,6 +88,13 @@
         "renewPromptNoDate": "Pay once and your membership carries on.",
         "reactivatePrompt": "Reactivate this membership — same plan, same courses, no re-enrollment needed.",
         "alsoEnableAutopay": "Also turn auto-pay back on — one approval pays now and sets up future renewals.",
+        "mandateMethod": {
+            "heading": "How should auto-pay be set up?",
+            "upiLabel": "UPI Autopay",
+            "upiHint": "GPay, PhonePe, Paytm",
+            "cardLabel": "Card",
+            "cardHint": "Debit / credit card"
+        },
         "payToContinue": "Pay {{amount}} to continue",
         "startingPayment": "Starting payment...",
         "unavailable": "Membership details are unavailable right now.",
@@ -242,7 +249,11 @@
         "awardedTooltip": "{{name}} — Awarded by your institute",
         "awardedTooltipWithReason": "{{name}} — Awarded by your institute: {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} unlocked",
-        "emptyPrompt": "Complete your first {{slide}} to unlock a badge"
+        "emptyPrompt": "Complete your first {{slide}} to unlock a badge",
+        "manualLockedHint": "Awarded by your institute — not unlocked automatically",
+        "manualLockedTooltip": "{{name}} — Awarded by your institute, not unlocked automatically",
+        "celebrateTitle": "New badge unlocked!",
+        "celebrateAwardedTitle": "Your institute awarded you a badge"
     },
     "tnc": {
         "title": "Accept Terms & Conditions",
@@ -421,5 +432,14 @@
             "viewAllClassesButton": "View All Classes",
             "dateAtTime": "{{date}} at {{time}}"
         }
+    },
+    "getApp": {
+        "title": "Get the app",
+        "subtitle": "For a seamless experience, download our apps.",
+        "android": "Android app",
+        "ios": "iPhone & iPad app",
+        "windows": "Windows app",
+        "mac": "Mac app",
+        "webPortal": "Web portal"
     }
 }

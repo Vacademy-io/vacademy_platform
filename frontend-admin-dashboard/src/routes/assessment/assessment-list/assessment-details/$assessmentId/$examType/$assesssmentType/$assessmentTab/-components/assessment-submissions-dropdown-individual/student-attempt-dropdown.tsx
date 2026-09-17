@@ -37,7 +37,10 @@ import {
     storeEvaluationDataInStorage,
     triggerAIEvaluation,
 } from '../../-services/ai-evaluation-services';
-import { buildModelDisplayNames } from '@/routes/ai-center/-types/ai-models';
+import {
+    DEFAULT_EVALUATION_MODEL,
+    buildModelDisplayNames,
+} from '@/routes/ai-center/-types/ai-models';
 import {
     Select,
     SelectContent,
@@ -268,7 +271,11 @@ const StudentEvaluateWithAIComponent = ({
     const { assessmentId } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
-    const [selectedModel, setSelectedModel] = useState<string>('google/gemini-3.1-pro-preview');
+    // Must stay DEFAULT_EVALUATION_MODEL: this picker always sends
+    // preferred_model, so whatever it defaults to silently overrides the
+    // grading pipeline's own default. An ultra-tier default here billed one
+    // copy 133.62 credits against a 10-credit estimate.
+    const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_EVALUATION_MODEL);
     const modelDisplayNames = buildModelDisplayNames(t);
 
     // Credit cost preview for this evaluation (per graded question).

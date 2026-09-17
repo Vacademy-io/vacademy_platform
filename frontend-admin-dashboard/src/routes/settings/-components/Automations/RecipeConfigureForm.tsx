@@ -12,7 +12,7 @@
  * English throughout.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sparkle } from '@phosphor-icons/react';
 import { Trans, useTranslation } from 'react-i18next';
@@ -28,7 +28,10 @@ import { getMessageTemplates } from '@/services/message-template-service';
 import { createWorkflow } from '@/services/workflow-service';
 import { getInstituteId } from '@/constants/helper';
 import { getUserId } from '@/utils/userDetails';
-import { SAMPLE_TEMPLATES } from '@/routes/workflow/create/-components/sample-email-templates';
+import {
+    buildSampleTemplates,
+    type SampleEmailTemplate,
+} from '@/routes/workflow/create/-components/sample-email-templates';
 import type { AutomationRecipe } from './automation-recipes';
 import { buildRecipeWorkflow, type RecipeFormAnswers, type ScheduleFrequency } from './buildRecipeWorkflow';
 
@@ -75,8 +78,11 @@ function useEmailTemplateOptions() {
  * returns its name so the dropdown can auto-select it. Mirrors
  * use-case-wizard-step.tsx:216-309.
  */
-async function ensureSampleTemplate(sampleKey: string): Promise<string | null> {
-    const sample = SAMPLE_TEMPLATES[sampleKey];
+async function ensureSampleTemplate(
+    sampleKey: string,
+    sampleTemplates: Record<string, SampleEmailTemplate>
+): Promise<string | null> {
+    const sample = sampleTemplates[sampleKey];
     if (!sample) return null;
     const instId = getInstituteId();
     let alreadyExists = false;
@@ -157,6 +163,11 @@ function buildHourOptions(t: TFunction): Array<{ value: string; label: string }>
 
 export function RecipeConfigureForm({ recipe, onCancel, onSaved }: Props) {
     const { t } = useTranslation('settingsRecipeConfigureForm');
+    const { t: tSampleTemplate } = useTranslation('workflowSampleEmailTemplates');
+    const sampleTemplates = useMemo(
+        () => buildSampleTemplates(tSampleTemplate),
+        [tSampleTemplate]
+    );
     const queryClient = useQueryClient();
     const dayOptions = buildDayOptions(t);
     const hourOptions = buildHourOptions(t);
@@ -184,7 +195,7 @@ export function RecipeConfigureForm({ recipe, onCancel, onSaved }: Props) {
     const handleUseSample = async (sampleKey: string, target: 'primary' | string) => {
         setCreatingSampleKey(target);
         try {
-            const name = await ensureSampleTemplate(sampleKey);
+            const name = await ensureSampleTemplate(sampleKey, sampleTemplates);
             await queryClient.invalidateQueries({ queryKey: ['wizard-email-templates'] });
             if (!name) {
                 toast.error(t('toasts.noSampleTemplate'));
@@ -255,7 +266,7 @@ export function RecipeConfigureForm({ recipe, onCancel, onSaved }: Props) {
         sampleKey: string | undefined,
         targetKey: 'primary' | string,
     ) => {
-        const hasSample = !!(sampleKey && SAMPLE_TEMPLATES[sampleKey]);
+        const hasSample = !!(sampleKey && sampleTemplates[sampleKey]);
         const isEmpty = !templateLoading && !templateError && templateOptions.length === 0;
 
         return (
@@ -321,8 +332,8 @@ export function RecipeConfigureForm({ recipe, onCancel, onSaved }: Props) {
                                 {creatingSampleKey === targetKey
                                     ? t('templateDropdown.sample.adding')
                                     : isEmpty
-                                        ? t('templateDropdown.sample.addWhenEmpty', { name: SAMPLE_TEMPLATES[sampleKey!]!.name })
-                                        : t('templateDropdown.sample.addWhenExists', { name: SAMPLE_TEMPLATES[sampleKey!]!.name })}
+                                        ? t('templateDropdown.sample.addWhenEmpty', { name: sampleTemplates[sampleKey!]!.name })
+                                        : t('templateDropdown.sample.addWhenExists', { name: sampleTemplates[sampleKey!]!.name })}
                             </div>
                             <div className="mt-0.5 text-2xs text-primary-400">
                                 {t('templateDropdown.sample.hint')}

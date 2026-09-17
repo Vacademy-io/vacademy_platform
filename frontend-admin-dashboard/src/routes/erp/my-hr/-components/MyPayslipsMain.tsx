@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { DownloadSimple, FileText } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
@@ -48,6 +49,7 @@ const payslipYears = (): number[] => {
  * to be fetched with the session's token before they can be saved.
  */
 export const MyPayslipsMain = () => {
+    const { t } = useTranslation('erpMyPayslipsMain');
     const { employeeId, isProfileLoading, hasNoProfile } = useMyHrIdentity();
     const [year, setYear] = useState<number>(() => new Date().getFullYear());
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -75,12 +77,12 @@ export const MyPayslipsMain = () => {
                 payslip.id,
                 `payslip_${payslip.year ?? year}_${String(payslip.month ?? '').padStart(2, '0')}.pdf`
             );
-            toast.success('Payslip downloaded');
+            toast.success(t('toasts.downloaded'));
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-my-hr',
                 tags: { action: 'download-my-payslip' },
-                fallbackMessage: 'Could not download this payslip.',
+                fallbackMessage: t('errors.downloadFailed'),
             });
         } finally {
             setDownloadingId(null);
@@ -92,14 +94,10 @@ export const MyPayslipsMain = () => {
 
     return (
         <div className="flex flex-col gap-5">
-            <p className="max-w-3xl text-body text-muted-foreground">
-                Every payslip issued to you, newest first. Each one is a PDF signed off by your
-                institute — download it whenever you need it for a landlord, a loan or your own
-                records.
-            </p>
+            <p className="max-w-3xl text-body text-muted-foreground">{t('intro')}</p>
 
             <div className="flex flex-wrap items-center gap-3">
-                <span className="text-caption text-muted-foreground">Year</span>
+                <span className="text-caption text-muted-foreground">{t('yearLabel')}</span>
                 <MyDropdown
                     currentValue={String(year)}
                     dropdownList={payslipYears().map(String)}
@@ -107,7 +105,7 @@ export const MyPayslipsMain = () => {
                 />
                 {!query.isLoading && !query.isError && payslips.length > 0 && (
                     <span className="text-caption text-muted-foreground">
-                        {payslips.length} payslip{payslips.length === 1 ? '' : 's'}
+                        {t('payslipCount', { count: payslips.length })}
                     </span>
                 )}
             </div>
@@ -115,15 +113,12 @@ export const MyPayslipsMain = () => {
             {query.isLoading ? (
                 <HrLoadingRows rows={4} />
             ) : query.isError ? (
-                <HrErrorState
-                    message="Couldn't load your payslips."
-                    onRetry={() => void query.refetch()}
-                />
+                <HrErrorState message={t('errors.loadFailed')} onRetry={() => void query.refetch()} />
             ) : payslips.length === 0 ? (
                 <HrEmptyState
                     icon={<FileText size={40} className="text-muted-foreground" />}
-                    title={`No payslips for ${year}`}
-                    description="A payslip only appears once your institute has run payroll for that month and generated the slips. If a month you were paid for is missing, ask your HR team."
+                    title={t('emptyState.title', { year })}
+                    description={t('emptyState.description')}
                 />
             ) : (
                 <div className="flex flex-col gap-2">
@@ -141,8 +136,8 @@ export const MyPayslipsMain = () => {
                                 </span>
                                 <span className="text-caption text-muted-foreground">
                                     {payslip.generated_at
-                                        ? `Issued ${formatDate(payslip.generated_at)}`
-                                        : 'Issue date not recorded'}
+                                        ? t('issuedOn', { date: formatDate(payslip.generated_at) })
+                                        : t('issueDateUnknown')}
                                 </span>
                             </div>
 
@@ -150,7 +145,7 @@ export const MyPayslipsMain = () => {
                                 {showNetPay && (
                                     <div className="flex flex-col gap-0.5">
                                         <span className="text-caption text-muted-foreground">
-                                            Net pay
+                                            {t('netPay')}
                                         </span>
                                         <MoneyCell
                                             value={netPayOf(payslip) ?? null}
@@ -161,7 +156,7 @@ export const MyPayslipsMain = () => {
                                 )}
                                 <div className="flex flex-col gap-0.5">
                                     <span className="text-caption text-muted-foreground">
-                                        Emailed to you
+                                        {t('emailedToYou')}
                                     </span>
                                     <MyHrStatusChip status={payslip.email_status} />
                                 </div>
@@ -171,9 +166,9 @@ export const MyPayslipsMain = () => {
                                     type="button"
                                     disable={downloadingId === payslip.id}
                                     onAsyncClick={() => download(payslip)}
-                                    loadingText="Downloading…"
+                                    loadingText={t('downloading')}
                                 >
-                                    <DownloadSimple size={16} /> Download
+                                    <DownloadSimple size={16} /> {t('download')}
                                 </MyButton>
                             </div>
                         </Card>

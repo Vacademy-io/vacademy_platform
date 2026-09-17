@@ -124,6 +124,9 @@ class LessonPlan:
     slide_title: str = ""
     # {"knowledge_base_id", "mode"} when the plan was compiled from a KB.
     kb: Optional[Dict[str, Any]] = None
+    # lesson | interview | practice — set at compile time; drives the greeting
+    # and the live persona.
+    style: str = "lesson"
 
     def concept_at(self, p: "Pointer") -> Optional[Concept]:
         if 0 <= p.topic < len(self.topics):
@@ -197,6 +200,7 @@ def from_plan_view(view: Dict[str, Any]) -> LessonPlan:
         language=view.get("language") or "en", objectives=list(view.get("objectives") or []), topics=topics,
         slide_title=str(view.get("slide_title") or ""),
         kb=view.get("kb") if isinstance(view.get("kb"), dict) and view["kb"].get("knowledge_base_id") else None,
+        style=str(view.get("style") or "lesson"),
     )
 
 

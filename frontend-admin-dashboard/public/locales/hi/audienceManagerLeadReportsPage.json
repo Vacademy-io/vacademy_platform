@@ -28,7 +28,8 @@
         "revenue": "राजस्व",
         "cohort": "कोहॉर्ट",
         "forecast": "पूर्वानुमान",
-        "custom": "बिल्डर"
+        "custom": "बिल्डर",
+        "utm": "अभियान (UTM)"
     },
     "counsellorPicker": {
         "ariaLabel": "काउंसलर के अनुसार फ़िल्टर करें",

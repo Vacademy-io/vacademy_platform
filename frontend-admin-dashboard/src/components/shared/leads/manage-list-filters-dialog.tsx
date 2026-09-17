@@ -10,6 +10,7 @@ import {
     type DisplaySettingsData,
     type ListCustomFieldControls,
     type ListCustomFieldSurface,
+    type ListUtmFilterControls,
 } from '@/types/display-settings';
 
 interface ManageListFiltersDialogProps {
@@ -36,6 +37,7 @@ export function ManageListFiltersDialog({
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [controls, setControls] = useState<ListCustomFieldControls | undefined>(undefined);
+    const [utmControls, setUtmControls] = useState<ListUtmFilterControls | undefined>(undefined);
     const [dirty, setDirty] = useState(false);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -52,6 +54,7 @@ export function ManageListFiltersDialog({
                 if (cancelled) return;
                 setSettings(s);
                 setControls(s.listCustomFieldControls);
+                setUtmControls(s.listUtmFilterControls);
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -68,6 +71,7 @@ export function ManageListFiltersDialog({
             await saveDisplaySettings(ADMIN_DISPLAY_SETTINGS_KEY, {
                 ...settings,
                 listCustomFieldControls: controls,
+                listUtmFilterControls: utmControls,
             });
             // Refresh any currently-open list page's filter bar in place.
             await queryClient.invalidateQueries({
@@ -119,6 +123,11 @@ export function ManageListFiltersDialog({
                     hideHeading
                     onChange={(next) => {
                         setControls(next);
+                        setDirty(true);
+                    }}
+                    utmValue={utmControls}
+                    onUtmChange={(next) => {
+                        setUtmControls(next);
                         setDirty(true);
                     }}
                 />

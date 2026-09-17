@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,6 +46,7 @@ export const PnlKpiCards = ({
     snapshot: NormalizedPnl | undefined;
     isLoading: boolean;
 }) => {
+    const { t } = useTranslation('erpPnlKpiCards');
     if (isLoading || !snapshot) {
         return (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -66,7 +68,7 @@ export const PnlKpiCards = ({
 
     return (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Tile label="Collected revenue" hint="Fee payments received this month — cash in, not billed">
+            <Tile label={t('tiles.revenue.label')} hint={t('tiles.revenue.hint')}>
                 {revenue === undefined ? (
                     <Absent />
                 ) : (
@@ -74,7 +76,7 @@ export const PnlKpiCards = ({
                 )}
             </Tile>
 
-            <Tile label="Payroll cost" hint="Total employer cost: net pay plus employer contributions">
+            <Tile label={t('tiles.payrollCost.label')} hint={t('tiles.payrollCost.hint')}>
                 {employerCost === undefined ? (
                     <Absent />
                 ) : (
@@ -83,11 +85,11 @@ export const PnlKpiCards = ({
             </Tile>
 
             <Tile
-                label="Margin"
+                label={t('tiles.margin.label')}
                 hint={
                     snapshot.marginComputed
-                        ? 'Collected revenue minus payroll cost'
-                        : 'Reported by the finance service for this period'
+                        ? t('tiles.margin.hintComputed')
+                        : t('tiles.margin.hintReported')
                 }
             >
                 {margin === undefined ? (
@@ -105,11 +107,11 @@ export const PnlKpiCards = ({
             </Tile>
 
             <Tile
-                label="Cost to revenue"
+                label={t('tiles.costToRevenue.label')}
                 hint={
                     costToRevenuePct === undefined
-                        ? 'Needs both collected revenue and payroll cost for the month'
-                        : 'Share of collected revenue spent on payroll'
+                        ? t('tiles.costToRevenue.hintMissing')
+                        : t('tiles.costToRevenue.hintPresent')
                 }
             >
                 <span

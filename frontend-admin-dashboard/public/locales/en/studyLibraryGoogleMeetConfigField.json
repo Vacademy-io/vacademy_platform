@@ -1,0 +1,13 @@
+{
+    "loadingGoogleAccounts": "Loading Google accounts…",
+    "notSetUpMessage": "Google Meet integration isn't set up for this institute. Connect a Google Workspace account under <strong>Settings → Live Session → Google Meet Integration</strong>, or paste a meeting link in the Live Class Link field below.",
+    "googleMeetSettings": "Google Meet Settings",
+    "googleAccountOrganizer": "Google account (organizer)",
+    "defaultSuffix": "(default)",
+    "linkCreatedOnAccount": "A Google Meet link is created on this account.",
+    "anyoneWithLinkJoins": "Anyone with the link joins (no knocking) — best for learners.",
+    "guestsMustKnock": "Guests must knock and the host admits each one.",
+    "autoRecordingOn": "Auto-recording is ON — a teacher signed into the institute’s Workspace must be present.",
+    "autoRecordingOff": "Auto-recording is OFF.",
+    "manageJoinAccessAndRecording": "Manage join-access and recording per account under Settings → Live Session → Google Meet Integration."
+}

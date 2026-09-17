@@ -24,6 +24,7 @@ import { plugins, TOOLS, MARKS } from '@/constants/study-library/yoopta-editor-p
 import { useRouter, useBlocker } from '@tanstack/react-router';
 import { getPublicUrl } from '@/services/upload_file';
 import DeckPlayer from './deck-player';
+import { PlanComposerDialog } from '@/routes/engagement/-components/PlanComposerDialog';
 import { PublishDialog } from './publish-slide-dialog';
 import { UnpublishDialog } from './unpublish-slide-dialog';
 import {
@@ -266,6 +267,7 @@ export const SlideMaterial = ({
     customSaveFunction?: (slide: Slide) => Promise<void>;
 }) => {
     const { t } = useTranslation('slideEditor');
+    const { t: tPublish } = useTranslation('studyLibraryHandlePublishSlide');
     // Role display settings for toggles like Manage Doubts visibility
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
@@ -535,6 +537,8 @@ export const SlideMaterial = ({
         searchParams;
 
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+    // "Assign as task": opens the engagement composer preloaded with this slide.
+    const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
     // Bumped after a version-history restore to force loadContent to re-run (and
     // re-deserialize) even when the slide's id/status didn't change — the effect's
     // deps intentionally exclude document_slide.data for DOC slides.
@@ -4587,6 +4591,21 @@ export const SlideMaterial = ({
                                     </MyButton>
                                 )}
 
+                                {/* Assign this slide as a daily-engagement task. Offered only for a
+                                    PUBLISHED slide: a draft is invisible to learners, so scheduling
+                                    one would create a task nobody could open. */}
+                                {!hidePublishButtons && activeItem.status === 'PUBLISHED' && (
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="medium"
+                                        layoutVariant="default"
+                                        onClick={() => setIsAssignTaskOpen(true)}
+                                    >
+                                        <span className="hidden md:inline">Assign as task</span>
+                                        <span className="md:hidden">Task</span>
+                                    </MyButton>
+                                )}
+
                                 {/* Publish/Unpublish — shown to ALL roles (no auto-publish anymore).
                                     The confirm step is a compact popover anchored to this button
                                     (no full-screen modal); the button below is its anchor. */}
@@ -4755,7 +4774,8 @@ export const SlideMaterial = ({
                                                     SaveDraft,
                                                     playerRef,
                                                     addUpdateAssessmentSlide,
-                                                    () => clearLocalDraft(activeItem?.id)
+                                                    () => clearLocalDraft(activeItem?.id),
+                                                    tPublish
                                                 );
                                             }
                                         }}
@@ -4911,6 +4931,27 @@ export const SlideMaterial = ({
 
             {/* ✅ Doubt Sidebar (mounted only if allowed) */}
             {showManageDoubts && <DoubtResolutionSidebar />}
+
+            {/* Schedule this slide as a daily-engagement task. Opens preloaded with the
+                slide, so the teacher only chooses batches and a time window. */}
+            {isAssignTaskOpen && activeItem?.id && (
+                <PlanComposerDialog
+                    open={isAssignTaskOpen}
+                    onOpenChange={setIsAssignTaskOpen}
+                    onCreated={() => setIsAssignTaskOpen(false)}
+                    presetSlide={{
+                        slideId: activeItem.id,
+                        slideTitle: activeItem.title ?? 'Lesson',
+                        slideType: activeItem.source_type ?? undefined,
+                        courseId: courseId ?? undefined,
+                        sessionId: sessionId ?? undefined,
+                        levelId: levelId ?? undefined,
+                        subjectId: subjectId ?? '',
+                        moduleId: moduleId ?? '',
+                        chapterId: chapterId ?? '',
+                    }}
+                />
+            )}
         </div>
     );
 };

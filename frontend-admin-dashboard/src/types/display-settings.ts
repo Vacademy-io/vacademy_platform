@@ -494,6 +494,36 @@ export type ListCustomFieldControls = Partial<
     Record<ListCustomFieldSurface, ListCustomFieldSurfaceControls>
 >;
 
+// Campaign (UTM) attribution filters on the same list surfaces. Which
+// dimensions can be offered lives in services/utm-list-filters
+// (UTM_FILTER_DIMENSIONS); this is the per-surface admin override.
+export type ListUtmFilterDimension =
+    | 'source'
+    | 'medium'
+    | 'campaign'
+    | 'content'
+    | 'term'
+    | 'source_type';
+
+export interface ListUtmFilterSurfaceControls {
+    // Explicit on/off for this surface. ABSENT = follow the institute's
+    // campaign-link (UTM) setting: the filters appear the moment that is
+    // switched on and vanish when it is switched off, with nothing to
+    // configure here. `false` hides them even while UTM is on (a role that
+    // never needs them); `true` still requires UTM to be on — without it
+    // there is nothing to filter by.
+    enabled?: boolean;
+    // Dimensions rendered as dropdowns. ABSENT = automatic: source, medium and
+    // campaign always; content, term and channel only once the institute's
+    // data actually holds a value for them. An explicit list pins exactly
+    // these (a dimension with no data still renders, empty).
+    dimensions?: ListUtmFilterDimension[];
+}
+
+export type ListUtmFilterControls = Partial<
+    Record<ListCustomFieldSurface, ListUtmFilterSurfaceControls>
+>;
+
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
     sidebar: SidebarTabConfig[];
@@ -655,6 +685,13 @@ export interface DisplaySettingsData {
     //        STUDENTS → legacy auto-expose (all TEXT + dropdown fields)
     //        CONTACTS → none
     listCustomFieldControls?: ListCustomFieldControls;
+
+    // 12e) Campaign (UTM) attribution filters per list surface — the same
+    //      surfaces as 12d. Institute-wide, stored on the ADMIN blob. Absent
+    //      surface entry = follow the UTM setting (see
+    //      ListUtmFilterSurfaceControls). Edited from the same "Manage
+    //      filters" popup / Display Settings card as the custom-field filters.
+    listUtmFilterControls?: ListUtmFilterControls;
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;

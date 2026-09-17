@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Bank, DownloadSimple, Info, Prohibit, UserMinus, Warning } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
@@ -21,31 +23,33 @@ import { useBankExport } from '@/routes/erp/payroll/-hooks/use-bank-export';
  * The one-liners matter more than the labels: picking the wrong template here
  * produces a file the bank silently rejects at 4pm on payday.
  */
-const FORMATS: Array<{ value: BankExportFormat; label: string; note: string }> = [
+const buildFormats = (
+    t: TFunction
+): Array<{ value: BankExportFormat; label: string; note: string }> => [
     {
         value: 'CSV',
-        label: 'CSV',
-        note: 'Generic comma-separated file — for a spreadsheet, or any portal that accepts a custom upload.',
+        label: t('formats.csv.label'),
+        note: t('formats.csv.note'),
     },
     {
         value: 'XLSX',
-        label: 'Excel (XLSX)',
-        note: 'The same columns as CSV in a formatted workbook — easiest to eyeball before uploading.',
+        label: t('formats.xlsx.label'),
+        note: t('formats.xlsx.note'),
     },
     {
         value: 'HDFC',
-        label: 'HDFC NEFT',
-        note: 'First-version NEFT text template. Verify one file against the HDFC portal before a live upload.',
+        label: t('formats.hdfc.label'),
+        note: t('formats.hdfc.note'),
     },
     {
         value: 'ICICI',
-        label: 'ICICI NEFT',
-        note: 'First-version NEFT text template. Verify one file against the ICICI portal before a live upload.',
+        label: t('formats.icici.label'),
+        note: t('formats.icici.note'),
     },
     {
         value: 'SBI',
-        label: 'SBI NEFT',
-        note: 'First-version NEFT text template. Verify one file against the SBI portal before a live upload.',
+        label: t('formats.sbi.label'),
+        note: t('formats.sbi.note'),
     },
 ];
 
@@ -65,6 +69,7 @@ interface BankFileTabProps {
  * fetched again any time, but an unnoticed exclusion is a missed salary.
  */
 export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
+    const { t } = useTranslation('erpBankFileTab');
     const {
         history,
         isHistoryLoading,
@@ -78,6 +83,7 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
     } = useBankExport({ runId, run });
 
     const [format, setFormat] = useState<BankExportFormat>('CSV');
+    const formats = useMemo(() => buildFormats(t), [t]);
 
     const runGenerate = async () => {
         const generated = await generate(format);
@@ -85,8 +91,8 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
         const records = generated.export.total_records ?? 0;
         toast.success(
             generated.skipped_count > 0
-                ? `Bank file ready: ${records} paid, ${generated.skipped_count} excluded.`
-                : `Bank file ready with ${records} record${records === 1 ? '' : 's'}.`
+                ? t('toast.readyWithExcluded', { records, excluded: generated.skipped_count })
+                : t('toast.ready', { count: records })
         );
     };
 
@@ -98,7 +104,7 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
         () => [
             {
                 id: 'employee_code',
-                header: 'Employee',
+                header: t('columns.employee'),
                 cell: ({ row }) => (
                     <div className="flex flex-col">
                         <span className="text-body font-semibold text-neutral-700">
@@ -114,20 +120,20 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
             },
             {
                 id: 'reason',
-                header: 'Why they were excluded',
+                header: t('columns.whyExcluded'),
                 cell: ({ row }) => (
                     <span className="text-body text-danger-600">{row.original.reason ?? '—'}</span>
                 ),
             },
         ],
-        []
+        [t]
     );
 
     const historyColumns = useMemo<ColumnDef<BankExportDTO>[]>(() => {
         const base: ColumnDef<BankExportDTO>[] = [
             {
                 id: 'file_name',
-                header: 'File',
+                header: t('columns.file'),
                 cell: ({ row }) => (
                     <div className="flex flex-col">
                         <span className="truncate text-body text-neutral-700">
@@ -141,7 +147,7 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
             },
             {
                 id: 'total_records',
-                header: 'Records',
+                header: t('columns.records'),
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-neutral-600">
                         {row.original.total_records ?? '—'}
@@ -150,7 +156,7 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
             },
             {
                 id: 'total_amount',
-                header: 'Total',
+                header: t('columns.total'),
                 cell: ({ row }) => (
                     <MoneyCell
                         value={row.original.total_amount}
@@ -161,7 +167,7 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
             },
             {
                 id: 'generated_at',
-                header: 'Generated',
+                header: t('columns.generated'),
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-600">
                         {row.original.generated_at ? formatDateTime(row.original.generated_at) : '—'}
@@ -183,10 +189,10 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
                             buttonType="text"
                             scale="small"
                             onAsyncClick={() => runDownload(row.original)}
-                            loadingText="Preparing…"
+                            loadingText={t('preparing')}
                         >
                             <DownloadSimple size={14} />
-                            Download
+                            {t('download')}
                         </MyButton>
                     </div>
                 ),
@@ -194,14 +200,14 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
         ];
         // `runDownload` closes over `download`, which the hook keeps referentially stable.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isHrAdmin]);
+    }, [isHrAdmin, t]);
 
     // ── The run isn't approved, so the backend has nothing it will pay out ──
     if (blockedReason) {
         return (
             <HrEmptyState
                 icon={<Prohibit size={32} className="text-neutral-300" />}
-                title="No bank file for this run yet"
+                title={t('noBankFileYet')}
                 description={blockedReason}
             />
         );
@@ -220,22 +226,14 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
         <div className="flex flex-col gap-6">
             <div className="flex items-start gap-2 rounded-md border border-border bg-muted p-3">
                 <Info size={18} className="mt-1 shrink-0 text-neutral-400" />
-                <p className="text-caption text-muted-foreground">
-                    The bank file lists each employee&apos;s account number, IFSC and net pay for
-                    this run — it is what you upload to the bank to actually move the money. It
-                    contains plaintext account details, so only HR admins can generate or download
-                    it.
-                </p>
+                <p className="text-caption text-muted-foreground">{t('bankFileInfo')}</p>
             </div>
 
             {isHrAdmin ? (
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-1">
-                        <h3 className="text-title text-neutral-700">Choose a format</h3>
-                        <p className="text-caption text-neutral-500">
-                            Pick what your bank&apos;s portal accepts. The figures are identical in
-                            every format — only the layout differs.
-                        </p>
+                        <h3 className="text-title text-neutral-700">{t('chooseFormat')}</h3>
+                        <p className="text-caption text-neutral-500">{t('chooseFormatHint')}</p>
                     </div>
 
                     <RadioGroup
@@ -243,7 +241,7 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
                         onValueChange={(value) => setFormat(value as BankExportFormat)}
                         className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
                     >
-                        {FORMATS.map((option) => (
+                        {formats.map((option) => (
                             <label
                                 key={option.value}
                                 htmlFor={`bank-format-${option.value}`}
@@ -277,23 +275,18 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
                             scale="medium"
                             disable={!canGenerate}
                             onAsyncClick={runGenerate}
-                            loadingText="Generating…"
+                            loadingText={t('generating')}
                         >
                             <Bank size={16} />
-                            Generate bank file
+                            {t('generateBankFile')}
                         </MyButton>
-                        <p className="text-caption text-neutral-500">
-                            Held employees are never included — their pay is on hold by design.
-                        </p>
+                        <p className="text-caption text-neutral-500">{t('heldEmployeesNote')}</p>
                     </div>
                 </div>
             ) : (
                 <div className="flex items-start gap-2 rounded-md border border-border bg-muted p-3">
                     <Info size={18} className="mt-1 shrink-0 text-neutral-400" />
-                    <p className="text-caption text-muted-foreground">
-                        Generating and downloading bank files is limited to HR admins. You can see
-                        which files were produced below.
-                    </p>
+                    <p className="text-caption text-muted-foreground">{t('adminOnlyNote')}</p>
                 </div>
             )}
 
@@ -303,13 +296,13 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="flex flex-col gap-1">
                             <h3 className="text-title text-neutral-700">
-                                {result.export.file_name ?? 'Bank file'}
+                                {result.export.file_name ?? t('bankFileFallback')}
                             </h3>
                             <p className="text-caption text-neutral-500">
                                 {(result.export.format ?? format).toUpperCase()} ·{' '}
                                 {result.export.generated_at
                                     ? formatDateTime(result.export.generated_at)
-                                    : 'just now'}
+                                    : t('justNow')}
                             </p>
                         </div>
                         {isHrAdmin && result.export.id && (
@@ -317,23 +310,27 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
                                 buttonType="primary"
                                 scale="small"
                                 onAsyncClick={() => runDownload(result.export)}
-                                loadingText="Preparing…"
+                                loadingText={t('preparing')}
                             >
                                 <DownloadSimple size={14} />
-                                Download file
+                                {t('downloadFile')}
                             </MyButton>
                         )}
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-3">
                         <div className="flex flex-col gap-1 rounded-md border border-border p-3">
-                            <span className="text-caption text-neutral-500">Employees paid</span>
+                            <span className="text-caption text-neutral-500">
+                                {t('employeesPaid')}
+                            </span>
                             <span className="text-title font-semibold tabular-nums text-neutral-700">
                                 {result.export.total_records ?? 0}
                             </span>
                         </div>
                         <div className="flex flex-col gap-1 rounded-md border border-border p-3">
-                            <span className="text-caption text-neutral-500">Total amount</span>
+                            <span className="text-caption text-neutral-500">
+                                {t('totalAmount')}
+                            </span>
                             <MoneyCell
                                 value={result.export.total_amount}
                                 currency={result.export.currency}
@@ -342,7 +339,7 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
                             />
                         </div>
                         <div className="flex flex-col gap-1 rounded-md border border-border p-3">
-                            <span className="text-caption text-neutral-500">Excluded</span>
+                            <span className="text-caption text-neutral-500">{t('excluded')}</span>
                             <span
                                 className={cn(
                                     'text-title font-semibold tabular-nums',
@@ -373,15 +370,10 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
                                 <UserMinus size={18} className="mt-1 shrink-0 text-danger-600" />
                                 <div className="flex flex-col gap-1">
                                     <p className="text-body font-semibold text-danger-600">
-                                        {result.skipped.length} employee
-                                        {result.skipped.length === 1 ? '' : 's'} excluded — fix
-                                        their bank details and regenerate
+                                        {t('excludedCount', { count: result.skipped.length })}
                                     </p>
                                     <p className="text-caption text-neutral-500">
-                                        They are not in this file, so uploading it as-is pays
-                                        everyone else and leaves them unpaid. Add the missing
-                                        account details under ERP → People, then generate the file
-                                        again.
+                                        {t('excludedHint')}
                                     </p>
                                 </div>
                             </div>
@@ -402,10 +394,7 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
                             />
                         </div>
                     ) : (
-                        <p className="text-body text-success-600">
-                            Everyone on this run is in the file — nobody was excluded for missing
-                            bank details.
-                        </p>
+                        <p className="text-body text-success-600">{t('noneExcluded')}</p>
                     )}
                 </div>
             )}
@@ -413,24 +402,24 @@ export const BankFileTab = ({ runId, run, isHrAdmin }: BankFileTabProps) => {
             {/* ── Files produced earlier ── */}
             <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1">
-                    <h3 className="text-title text-neutral-700">Files generated for this run</h3>
+                    <h3 className="text-title text-neutral-700">{t('filesGeneratedTitle')}</h3>
                     <p className="text-caption text-neutral-500">
-                        Every bank file built for {run?.month && run?.year ? 'this month' : 'this run'}{' '}
-                        is kept, so you can prove later exactly what was uploaded. The excluded list
-                        is only shown for the file you just generated — regenerate to see it again.
+                        {t('filesGeneratedHint', {
+                            scope: run?.month && run?.year ? t('scopeMonth') : t('scopeRun'),
+                        })}
                     </p>
                 </div>
 
                 {isHistoryError ? (
                     <HrErrorState
-                        message="Could not load the bank files generated for this run."
+                        message={t('errors.loadHistory')}
                         onRetry={() => void refetchHistory()}
                     />
                 ) : !isHistoryLoading && history.length === 0 ? (
                     <HrEmptyState
                         icon={<Bank size={32} className="text-neutral-300" />}
-                        title="No bank file generated yet"
-                        description="Once you generate one it is listed here with its record count and total, and can be downloaded again."
+                        title={t('noBankFileGenerated')}
+                        description={t('noBankFileGeneratedDescription')}
                     />
                 ) : (
                     <MyTable<BankExportDTO>

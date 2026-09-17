@@ -189,3 +189,31 @@ def test_neutralize_name_keeps_the_sentence():
     assert neutralize_name("Look, {student_name}, at the arrow on the left.") == "Look at the arrow on the left."
     assert neutralize_name("नमस्ते {student_name}, force एक push है।") == "Force एक push है।"
     assert neutralize_name("No name here.") == "No name here."
+
+
+def test_spoken_form_reads_maths_not_dates():
+    from app.services.tutor.runtime.speech import spoken_form
+    assert spoken_form("The answer is 3/16, not 9/16.") == "The answer is 3 by 16, not 9 by 16."
+    assert spoken_form("9:3:3:1 ratio") == "9 is to 3 is to 3 is to 1 ratio"
+    assert "8:30" in spoken_form("Children arrive at 8:30")              # a time is left alone
+    assert spoken_form("a = F ÷ m, so 2 × 3 = 6") == "a equals F divided by m, so 2 into 3 equals 6"
+    assert spoken_form("x^2 + 2x, 5 m/s²") == "x squared plus 2x, 5 metres per second squared"
+    assert spoken_form("Profit 5%") == "Profit 5 percent"
+    assert spoken_form("D = (k - 4)(k + 1)") == "D equals (k minus 4)(k plus 1)"
+    assert spoken_form("a well-known rule") == "a well-known rule"                       # hyphenated words untouched
+    assert spoken_form("12/09/2026") == "12/09/2026"                                    # dates untouched
+    assert spoken_form("3/16", "hi") == "3 बटा 16"
+
+
+def test_spoken_form_reads_titles_and_acronyms_like_a_person():
+    from app.services.tutor.runtime.speech import spoken_form
+    # A title's spaced hyphen is a pause, not subtraction; JEE is spelled out.
+    assert spoken_form("Last time we were in JEE Main 2026 - Maths Question.") == "Last time we were in J E E Main 2026, Maths Question."
+    # Real subtraction still reads as minus.
+    assert spoken_form("D = (k - 4)(k + 1)") == "D equals (k minus 4)(k plus 1)"
+    assert spoken_form("x - 4 = 0") == "x minus 4 equals 0"
+    assert spoken_form("10 - 3 = 7") == "10 minus 3 equals 7"
+    # Acronyms said as words, roman numerals, hyphenated words.
+    assert spoken_form("NEET aspirants in Class XII - a well-known trap") == "NEET aspirants in Class 12, a well-known trap"
+    assert spoken_form("an MCQ from the CBSE board") == "an M C Q from the C B S E board"
+    assert spoken_form("HR training with SBI feedback", "hi") == "H R training with S B I feedback"

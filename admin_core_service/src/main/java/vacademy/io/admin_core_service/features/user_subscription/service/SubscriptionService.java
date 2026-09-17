@@ -43,6 +43,7 @@ public class SubscriptionService {
     private final vacademy.io.admin_core_service.features.payments.service.PaymentService paymentService;
     private final vacademy.io.admin_core_service.features.auth_service.service.AuthService authService;
     private final PlanChangeService planChangeService;
+    private final vacademy.io.admin_core_service.features.payments.service.MandateRequestDefaults mandateRequestDefaults;
 
     private static final List<String> VISIBLE_STATUSES = List.of(
             UserPlanStatusEnum.ACTIVE.name(),
@@ -165,7 +166,11 @@ public class SubscriptionService {
         try {
             return planChangeService.summarise(plan, instituteId, packageSessionIds);
         } catch (Exception e) {
-            log.warn("Could not resolve plan-change eligibility for plan {}: {}", plan.getId(), e.getMessage());
+            // ERROR with the stack trace, deliberately: degrading to "no switching offered"
+            // makes a genuine failure look identical to "correctly not eligible", and that
+            // ambiguity has already cost a debugging session. The card still renders.
+            log.error("Could not resolve plan-change eligibility for plan {} (institute {}) — "
+                    + "reporting not-eligible", plan.getId(), instituteId, e);
             return new PlanChangeService.PlanChangeSummary(false, null);
         }
     }
@@ -194,7 +199,7 @@ public class SubscriptionService {
      */
     public vacademy.io.common.payment.dto.PaymentResponseDTO initiateRenewalPayment(
             vacademy.io.common.auth.model.CustomUserDetails userDetails,
-            String instituteId, String userPlanId, boolean withAutopay) {
+            String instituteId, String userPlanId, boolean withAutopay, String mandateMethod) {
         UserPlan plan = userPlanRepository.findById(userPlanId)
                 .orElseThrow(() -> new VacademyException("Subscription not found: " + userPlanId));
         if (!userDetails.getUserId().equals(plan.getUserId())) {
@@ -239,7 +244,13 @@ public class SubscriptionService {
         request.setRazorpayRequest(razorpayRequest);
 
         if (withAutopay) {
-            // Mandate-mode checkout: charge + register a fresh recurring mandate.
+            // Mandate-mode checkout: charge + register a fresh recurring mandate. The
+            // mandate fields must be filled here just as enrolment fills them — an empty
+            // RazorpayRequestDTO makes the gateway fall back to a CARD e-mandate with no
+            // ceiling, which is wrong for a learner who authorised UPI Autopay.
+            mandateRequestDefaults.applyMaxAmountAndFrequency(request, invite, payablePlan);
+            mandateRequestDefaults.applyMethod(request, mandateMethod,
+                    plan.getUserId(), instituteId, invite.getVendor());
             return paymentService.handleMandatePayment(user, instituteId, invite, plan, request);
         }
         return paymentService.handleUserPlanPayment(request, instituteId, userDetails, userPlanId);

@@ -26,15 +26,22 @@ import {
     useLinkedAssessmentSlides,
 } from '@/components/common/assessment/assessment-slide-cascade';
 import { handleDeleteAssessment } from '../-services/assessment-services';
+import { UtmLinkMenuItem } from '@/components/common/utm/utm-link-menu-item';
+import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
+import { getAssessmentJoinLink } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 export function ScheduleTestDetailsDropdownLive({
     scheduleTestContent,
     handleRefetchData,
     selectedTab,
+    onGenerateUtmLink,
 }: {
     scheduleTestContent: TestContent;
     handleRefetchData: () => void;
     selectedTab: string;
+    /** Undefined when this assessment has no public join link to tag. */
+    onGenerateUtmLink?: () => void;
 }) {
     const { t } = useTranslation('assessmentScheduleTestDetailsDropdownMenu');
     const [isRemiderAlertDialogOpen, setIsRemiderAlertDialogOpen] = useState(false);
@@ -106,6 +113,10 @@ export function ScheduleTestDetailsDropdownLive({
                     >
                         {t('menu.viewDetails')}
                     </DropdownMenuItem>
+                    <UtmLinkMenuItem
+                        hidden={!onGenerateUtmLink}
+                        onSelect={() => onGenerateUtmLink?.()}
+                    />
                     {/* <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleSendReminderClick(scheduleTestContent.assessment_id)}
@@ -212,10 +223,13 @@ export function ScheduleTestDetailsDropdownUpcoming({
     scheduleTestContent,
     handleRefetchData,
     selectedTab,
+    onGenerateUtmLink,
 }: {
     scheduleTestContent: TestContent;
     handleRefetchData: () => void;
     selectedTab: string;
+    /** Undefined when this assessment has no public join link to tag. */
+    onGenerateUtmLink?: () => void;
 }) {
     const { t } = useTranslation('assessmentScheduleTestDetailsDropdownMenu');
     const [isDeleteAssessmentDialog, setIsDeleteAssessmentDialog] = useState(false);
@@ -266,6 +280,10 @@ export function ScheduleTestDetailsDropdownUpcoming({
                     >
                         {t('menu.viewDetails')}
                     </DropdownMenuItem>
+                    <UtmLinkMenuItem
+                        hidden={!onGenerateUtmLink}
+                        onSelect={() => onGenerateUtmLink?.()}
+                    />
                     {/* <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() =>
@@ -308,10 +326,13 @@ export function ScheduleTestDetailsDropdownPrevious({
     scheduleTestContent,
     handleRefetchData,
     selectedTab,
+    onGenerateUtmLink,
 }: {
     scheduleTestContent: TestContent;
     handleRefetchData: () => void;
     selectedTab: string;
+    /** Undefined when this assessment has no public join link to tag. */
+    onGenerateUtmLink?: () => void;
 }) {
     const { t } = useTranslation('assessmentScheduleTestDetailsDropdownMenu');
     const [isDeleteAssessmentDialog, setIsDeleteAssessmentDialog] = useState(false);
@@ -368,6 +389,10 @@ export function ScheduleTestDetailsDropdownPrevious({
                     >
                         {t('menu.viewDetails')}
                     </DropdownMenuItem>
+                    <UtmLinkMenuItem
+                        hidden={!onGenerateUtmLink}
+                        onSelect={() => onGenerateUtmLink?.()}
+                    />
                     {/* <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() =>
@@ -496,42 +521,80 @@ export function ScheduleTestMainDropdownComponent({
     selectedTab: string;
     handleRefetchData: () => void;
 }) {
-    switch (selectedTab) {
-        case 'liveTests':
-            return (
-                <ScheduleTestDetailsDropdownLive
-                    scheduleTestContent={scheduleTestContent}
-                    handleRefetchData={handleRefetchData}
-                    selectedTab={selectedTab}
-                />
-            );
-        case 'upcomingTests':
-            return (
-                <ScheduleTestDetailsDropdownUpcoming
-                    scheduleTestContent={scheduleTestContent}
-                    handleRefetchData={handleRefetchData}
-                    selectedTab={selectedTab}
-                />
-            );
-        case 'previousTests':
-            return (
-                <ScheduleTestDetailsDropdownPrevious
-                    scheduleTestContent={scheduleTestContent}
-                    handleRefetchData={handleRefetchData}
-                    selectedTab={selectedTab}
-                />
-            );
-        case 'draftTests':
-            return (
-                <ScheduleTestDetailsDropdowDrafts
-                    scheduleTestContent={scheduleTestContent}
-                    handleRefetchData={handleRefetchData}
-                    selectedTab={selectedTab}
-                />
-            );
-        default:
-            return null;
-    }
+    const { instituteDetails } = useInstituteDetailsStore();
+    const [openUtmDialog, setOpenUtmDialog] = useState(false);
+
+    // A PRIVATE assessment is reachable only by an already-enrolled learner, so
+    // there is no campaign traffic to attribute; and without a join code the
+    // /register URL resolves to nothing. Either case means no builder.
+    const joinLink =
+        scheduleTestContent.assessment_visibility === 'PUBLIC' && scheduleTestContent.join_link
+            ? getAssessmentJoinLink(
+                  instituteDetails?.learner_portal_base_url,
+                  scheduleTestContent.join_link
+              )
+            : '';
+    const onGenerateUtmLink = joinLink ? () => setOpenUtmDialog(true) : undefined;
+
+    const dropdown = (() => {
+        switch (selectedTab) {
+            case 'liveTests':
+                return (
+                    <ScheduleTestDetailsDropdownLive
+                        scheduleTestContent={scheduleTestContent}
+                        handleRefetchData={handleRefetchData}
+                        selectedTab={selectedTab}
+                        onGenerateUtmLink={onGenerateUtmLink}
+                    />
+                );
+            case 'upcomingTests':
+                return (
+                    <ScheduleTestDetailsDropdownUpcoming
+                        scheduleTestContent={scheduleTestContent}
+                        handleRefetchData={handleRefetchData}
+                        selectedTab={selectedTab}
+                        onGenerateUtmLink={onGenerateUtmLink}
+                    />
+                );
+            case 'previousTests':
+                return (
+                    <ScheduleTestDetailsDropdownPrevious
+                        scheduleTestContent={scheduleTestContent}
+                        handleRefetchData={handleRefetchData}
+                        selectedTab={selectedTab}
+                        onGenerateUtmLink={onGenerateUtmLink}
+                    />
+                );
+            case 'draftTests':
+                return (
+                    <ScheduleTestDetailsDropdowDrafts
+                        scheduleTestContent={scheduleTestContent}
+                        handleRefetchData={handleRefetchData}
+                        selectedTab={selectedTab}
+                    />
+                );
+            default:
+                return null;
+        }
+    })();
+
+    if (!dropdown) return null;
+
+    return (
+        <>
+            {dropdown}
+            {/* Rendered as a SIBLING of the dropdown, not inside it: Radix
+                unmounts DropdownMenuContent on close, which would take the
+                dialog down with it the moment the item is chosen. */}
+            <UtmBuilderDialog
+                open={openUtmDialog}
+                onOpenChange={setOpenUtmDialog}
+                baseUrl={joinLink}
+                sourceType="ASSESSMENT"
+                entityName={scheduleTestContent.name}
+            />
+        </>
+    );
 }
 
 const ScheduleTestReminderDialog = ({ onClose }: { onClose: () => void }) => {

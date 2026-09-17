@@ -22,6 +22,8 @@
  *     downgrade the outcome, and no rescue draft is written over it.
  */
 
+import i18next from 'i18next';
+
 export type EvaluationSubmitStage =
     /** Flattening the annotations into a PDF. */
     | 'building'
@@ -55,8 +57,12 @@ export interface EvaluationSubmitDeps {
     onStage: (stage: EvaluationSubmitStage) => void;
 }
 
-export const UPLOAD_FAILED_MESSAGE = "The annotated answer sheet couldn't be uploaded.";
-export const UNKNOWN_FAILURE_MESSAGE = 'Something went wrong while submitting.';
+export const UPLOAD_FAILED_MESSAGE = i18next.t(
+    'evaluationSubmitEvaluation:uploadFailedMessage'
+);
+export const UNKNOWN_FAILURE_MESSAGE = i18next.t(
+    'evaluationSubmitEvaluation:unknownFailureMessage'
+);
 
 /** Readable reason for a toast, whatever was actually thrown. */
 const describeFailure = (error: unknown): string => {

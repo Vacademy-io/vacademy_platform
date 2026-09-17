@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
@@ -474,7 +475,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   useEffect(() => {
     if (!customCoursePageRoute) return;
     navigate({
-      to: `/${tagName}/${customCoursePageRoute}`,
+      to: `${RouteMatcher.basePath(tagName)}/${customCoursePageRoute}`,
       search: { enrollInviteId, packageSessionId, bannerImage, level },
       replace: true,
     });
@@ -1108,7 +1109,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             })}
           </p>
           <button
-            onClick={() => navigate({ to: `/${tagName}` })}
+            onClick={() => navigate({ to: RouteMatcher.pagePath(tagName) })}
             className="px-4 py-2 bg-primary-500 text-white rounded-catalogue-sm hover:bg-primary-400 transition-colors"
           >
             {t("courseDetails.backToCatalog")}

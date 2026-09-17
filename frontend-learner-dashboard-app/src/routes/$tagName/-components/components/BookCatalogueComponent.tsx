@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate, useLocation } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -492,7 +493,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
     if (book.available_slots !== undefined) searchParams.set("available_slots", book.available_slots.toString());
 
     navigate({
-      to: `/${tagName}/${book.id}`,
+      to: `${RouteMatcher.basePath(tagName)}/${book.id}`,
       search: searchParams.toString() ? Object.fromEntries(searchParams) : {},
     });
   };
@@ -836,7 +837,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                       {/* Go to Cart button */}
                                       <Button
                                         className="h-7 px-2 bg-primary-400 hover:bg-primary-500 text-white text-caption font-semibold rounded-catalogue-md shadow-md flex items-center gap-1 flex-shrink-0 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                                        onClick={() => navigate({ to: `/${tagName}/cart` })}
+                                        onClick={() => navigate({ to: `${RouteMatcher.basePath(tagName)}/cart` })}
                                       >
                                         <ShoppingBag className="h-3 w-3" />
                                         {t("bookCatalogue.cart")}
@@ -863,7 +864,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                     </Button>
                                     <Button
                                       className="h-8 px-2 bg-primary-400 hover:bg-primary-500 text-white text-caption font-semibold rounded-catalogue-md shadow-md flex items-center gap-1 flex-shrink-0 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                                      onClick={() => navigate({ to: `/${tagName}/cart` })}
+                                      onClick={() => navigate({ to: `${RouteMatcher.basePath(tagName)}/cart` })}
                                     >
                                       <ShoppingBag className="h-3 w-3" />
                                       Cart

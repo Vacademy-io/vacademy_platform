@@ -51,4 +51,6 @@ public class DomainRoutingResolveResponse {
     private Integer logoHeightPx;
     private Boolean stackNameBelowLogo;
     private NamingOverridesDto namingOverrides;
+    /** Catalogue served at this host's root (clean URLs). Null = classic /<tag> routing. */
+    private String rootCatalogueTag;
 }

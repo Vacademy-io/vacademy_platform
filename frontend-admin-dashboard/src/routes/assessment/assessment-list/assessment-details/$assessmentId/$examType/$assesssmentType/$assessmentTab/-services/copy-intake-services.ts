@@ -1,0 +1,176 @@
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { COPY_INTAKE_BASE_URL } from '@/constants/urls';
+
+/**
+ * Bulk AI copy-check: many scanned copies uploaded at once, the student's
+ * name read off each sheet, matched to the assessment's students, and the
+ * checks queued. Copies the reader could not place wait for a person here.
+ */
+
+export type CopyIntakeBatchStatus = 'RUNNING' | 'NEEDS_REVIEW' | 'COMPLETED' | 'FAILED';
+export type CopyIntakeItemStatus =
+    | 'PENDING'
+    | 'IDENTIFYING'
+    | 'MATCHED'
+    | 'AMBIGUOUS'
+    | 'UNMATCHED'
+    | 'QUEUED'
+    | 'EVALUATING'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'SKIPPED';
+
+export interface CopyIntakeCandidate {
+    user_id: string | null;
+    registration_id: string | null;
+    name: string | null;
+    roll_number: string | null;
+    email: string | null;
+    batch_id: string | null;
+    score: number | null;
+}
+
+export interface CopyIntakeItem {
+    id: string;
+    file_id: string;
+    file_name: string | null;
+    page_count: number | null;
+    status: CopyIntakeItemStatus;
+    extracted_name: string | null;
+    extracted_roll: string | null;
+    extracted_class: string | null;
+    extract_confidence: number | null;
+    match_score: number | null;
+    matched_user_id: string | null;
+    matched_name: string | null;
+    registration_id: string | null;
+    attempt_id: string | null;
+    process_id: string | null;
+    error_message: string | null;
+    candidates: CopyIntakeCandidate[];
+    updated_at: string | null;
+}
+
+export interface CopyIntakeBatch {
+    id: string;
+    assessment_id: string;
+    status: CopyIntakeBatchStatus;
+    total_items: number;
+    /** Copies whose header has been read. */
+    identified: number;
+    matched: number;
+    ambiguous: number;
+    unmatched: number;
+    /** Waiting for a slot with the AI service. */
+    queued: number;
+    /** With the AI service right now. */
+    evaluating: number;
+    evaluated: number;
+    failed: number;
+    skipped: number;
+    /** Still moving on its own (read, match, queue, check). */
+    in_progress: number;
+    created_by: string | null;
+    created_by_name: string | null;
+    email_status: string | null;
+    created_at: string;
+    completed_at: string | null;
+    error_message: string | null;
+    items?: CopyIntakeItem[];
+}
+
+export interface CopyIntakeUploadedFile {
+    file_id: string;
+    file_name: string;
+    page_count?: number;
+}
+
+export const startCopyIntake = async (
+    assessmentId: string,
+    instituteId: string,
+    files: CopyIntakeUploadedFile[],
+    preferredModel?: string,
+    notifyEmail = true
+): Promise<CopyIntakeBatch> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${COPY_INTAKE_BASE_URL}/start`,
+        params: { assessmentId, instituteId },
+        data: { files, preferred_model: preferredModel, notify_email: notifyEmail },
+    });
+    return response.data;
+};
+
+export const listCopyIntakeBatches = async (
+    assessmentId: string,
+    instituteId: string
+): Promise<CopyIntakeBatch[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: `${COPY_INTAKE_BASE_URL}/batches`,
+        params: { assessmentId, instituteId },
+    });
+    return response.data ?? [];
+};
+
+// Every batch / item call carries instituteId: the server binds the upload to
+// the caller's institute the way the single copy-check endpoints do.
+export const getCopyIntakeBatch = async (
+    batchId: string,
+    instituteId: string
+): Promise<CopyIntakeBatch> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: `${COPY_INTAKE_BASE_URL}/batch/${batchId}`,
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+export const resolveCopyIntakeItem = async (
+    itemId: string,
+    instituteId: string,
+    pick: {
+        registration_id?: string | null;
+        user_id?: string | null;
+        full_name?: string | null;
+        email?: string | null;
+        batch_id?: string | null;
+    }
+): Promise<CopyIntakeItem> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${COPY_INTAKE_BASE_URL}/item/${itemId}/resolve`,
+        params: { instituteId },
+        data: pick,
+    });
+    return response.data;
+};
+
+export const skipCopyIntakeItem = async (
+    itemId: string,
+    instituteId: string
+): Promise<CopyIntakeItem> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${COPY_INTAKE_BASE_URL}/item/${itemId}/skip`,
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+export const retryCopyIntakeItem = async (
+    itemId: string,
+    instituteId: string
+): Promise<CopyIntakeItem> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${COPY_INTAKE_BASE_URL}/item/${itemId}/retry`,
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+/** Nothing in the batch moves on its own any more. */
+export const isCopyIntakeSettled = (status: CopyIntakeBatchStatus) =>
+    status === 'COMPLETED' || status === 'NEEDS_REVIEW' || status === 'FAILED';

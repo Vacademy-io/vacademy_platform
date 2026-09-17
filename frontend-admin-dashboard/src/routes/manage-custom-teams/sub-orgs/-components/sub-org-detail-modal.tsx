@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MemberHistoryDrawer } from './member-history-drawer';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import {
@@ -50,6 +51,7 @@ interface SubOrgDetailModalProps {
 }
 
 export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModalProps) {
+    const { t } = useTranslation('manageCustomTeamsSubOrgDetailModal');
     const subOrgId =
         org?.sub_org_id || org?.suborgId || org?.subOrgId || org?.suborg_id || org?.id;
     const name =
@@ -77,7 +79,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
 
     const copyToClipboard = (text: string, label: string) => {
         navigator.clipboard.writeText(text);
-        toast.success(`${label} copied`);
+        toast.success(t('inviteLink.copiedToast', { label }));
     };
 
     const isLoading = isLoadingStatus || isLoadingInvites;
@@ -87,9 +89,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
             <DialogContent className="flex max-h-[90vh] w-[95vw] flex-col overflow-hidden sm:max-w-[700px]">
                 <DialogHeader className="shrink-0">
                     <DialogTitle>{name}</DialogTitle>
-                    <DialogDescription>
-                        Sub-organization details, invite link, courses, and admins.
-                    </DialogDescription>
+                    <DialogDescription>{t('dialog.description')}</DialogDescription>
                 </DialogHeader>
 
                 {isLoading ? (
@@ -103,13 +103,13 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                             <div className="space-y-2">
                                 <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                                     <Link2 className="h-4 w-4" />
-                                    Invite Link
+                                    {t('inviteLink.heading')}
                                 </h3>
                                 {subscriptionStatus?.invite_code ? (
                                     <div className="space-y-2 rounded-md border bg-muted/50 p-3">
                                         <div className="flex items-center justify-between">
                                             <span className="text-xs font-medium text-muted-foreground">
-                                                Invite Link
+                                                {t('inviteLink.label')}
                                             </span>
                                             {subscriptionStatus.org_user_plan_status && (
                                                 <Badge
@@ -139,12 +139,12 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                                     copyToClipboard(
                                                         subscriptionStatus.short_url ||
                                                             createInviteLink(subscriptionStatus.invite_code),
-                                                        'Invite link'
+                                                        t('inviteLink.copyLinkLabel')
                                                     )
                                                 }
                                             >
                                                 <Copy className="h-3 w-3" />
-                                                Copy
+                                                {t('inviteLink.copy')}
                                             </Button>
                                             <Button
                                                 type="button"
@@ -160,12 +160,12 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                                 }
                                             >
                                                 <ExternalLink className="h-3 w-3" />
-                                                Open
+                                                {t('inviteLink.open')}
                                             </Button>
                                         </div>
                                         {/* Invite code (secondary) */}
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <span>Code:</span>
+                                            <span>{t('inviteLink.codeLabel')}</span>
                                             <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs">
                                                 {subscriptionStatus.invite_code}
                                             </code>
@@ -177,7 +177,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                                 onClick={() =>
                                                     copyToClipboard(
                                                         subscriptionStatus.invite_code,
-                                                        'Invite code'
+                                                        t('inviteLink.copyCodeLabel')
                                                     )
                                                 }
                                             >
@@ -187,8 +187,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                     </div>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">
-                                        No invite link configured. Create a subscription to
-                                        generate one.
+                                        {t('inviteLink.empty')}
                                     </p>
                                 )}
                             </div>
@@ -215,7 +214,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                     <div className="space-y-2">
                                         <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                                             <BookOpen className="h-4 w-4" />
-                                            Courses ({psList.length})
+                                            {t('courses.heading', { count: psList.length })}
                                         </h3>
                                         {psList.length > 0 ? (
                                             <div className="space-y-2">
@@ -228,14 +227,14 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                                             {ps.label}
                                                         </p>
                                                         <Badge variant="outline" className="text-[10px]">
-                                                            PS
+                                                            {t('courses.psBadge')}
                                                         </Badge>
                                                     </div>
                                                 ))}
                                             </div>
                                         ) : (
                                             <p className="text-sm text-muted-foreground">
-                                                No courses assigned yet.
+                                                {t('courses.empty')}
                                             </p>
                                         )}
                                     </div>
@@ -247,7 +246,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                 subscriptionStatus.seat_usages.length > 0 && (
                                     <div className="space-y-2">
                                         <h3 className="text-sm font-semibold text-gray-700">
-                                            Seat Usage
+                                            {t('seatUsage.heading')}
                                         </h3>
                                         <div className="space-y-2">
                                             {subscriptionStatus.seat_usages.map((su) => (
@@ -260,7 +259,11 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                                             su.package_session_id}
                                                     </span>
                                                     <span className="text-sm font-medium">
-                                                        {su.used_seats} / {su.total_seats} seats
+                                                        {t('seatUsage.usedOfTotal', {
+                                                            used: su.used_seats,
+                                                            total: su.total_seats,
+                                                            count: su.total_seats,
+                                                        })}
                                                     </span>
                                                 </div>
                                             ))}
@@ -305,6 +308,7 @@ export function AddUserToSubOrgSection({
     instituteId: string;
     scopedInvites: any[];
 }) {
+    const { t } = useTranslation('manageCustomTeamsSubOrgDetailModal');
     const queryClient = useQueryClient();
     const [showForm, setShowForm] = useState(false);
     const [fullName, setFullName] = useState('');
@@ -466,9 +470,9 @@ export function AddUserToSubOrgSection({
     const mutation = useMutation({
         mutationFn: addSubOrgMember,
         onSuccess: (data) => {
-            const parts: string[] = [data.message || 'User added to sub-organization'];
-            if (data.payment_log_id) parts.push('payment recorded');
-            if (data.invoice_id) parts.push('invoice generated');
+            const parts: string[] = [data.message || t('addUser.addSuccessDefault')];
+            if (data.payment_log_id) parts.push(t('addUser.paymentRecorded'));
+            if (data.invoice_id) parts.push(t('addUser.invoiceGenerated'));
             toast.success(parts.join(' · '));
             queryClient.invalidateQueries({ queryKey: ['sub-org-admins-detail', subOrgId] });
             queryClient.invalidateQueries({
@@ -478,7 +482,7 @@ export function AddUserToSubOrgSection({
             resetForm();
         },
         onError: (error: any) => {
-            toast.error(error?.response?.data?.message || 'Failed to add user');
+            toast.error(error?.response?.data?.message || t('addUser.addError'));
         },
     });
 
@@ -509,20 +513,23 @@ export function AddUserToSubOrgSection({
 
     const handleSubmit = () => {
         if (!fullName.trim()) {
-            toast.error('Full name is required');
+            toast.error(t('addUser.fullNameRequired'));
             return;
         }
         if (!email.trim()) {
-            toast.error('Email is required');
+            toast.error(t('addUser.emailRequired'));
             return;
         }
+        // Note: validatePhoneField is a shared, non-i18n-aware utility (out of
+        // scope for this file) — its 'Mobile number' label arg feeds an
+        // English-only wrapper message, so it isn't translated here.
         const mobileError = validatePhoneField(mobileNumber, { label: 'Mobile number' });
         if (mobileError) {
             toast.error(mobileError);
             return;
         }
         if (adminPsList.length === 0) {
-            toast.error('Sub-org has no package sessions configured');
+            toast.error(t('addUser.noPackageSessions'));
             return;
         }
 
@@ -531,7 +538,7 @@ export function AddUserToSubOrgSection({
         if (paymentMode === 'OFFLINE') {
             amountNum = Number(offlineAmount);
             if (!offlineAmount.trim() || Number.isNaN(amountNum) || amountNum <= 0) {
-                toast.error('Enter a positive amount for the offline payment');
+                toast.error(t('addUser.offlineAmountInvalid'));
                 return;
             }
         }
@@ -617,7 +624,7 @@ export function AddUserToSubOrgSection({
         <div className="space-y-3 border-t pt-4">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                 <UserPlus className="h-4 w-4" />
-                Add User
+                {t('addUser.heading')}
             </h3>
             {!showForm && (
                 <Button
@@ -627,7 +634,7 @@ export function AddUserToSubOrgSection({
                     onClick={() => setShowForm(true)}
                 >
                     <UserPlus className="mr-1 h-3 w-3" />
-                    Add User
+                    {t('addUser.toggleButton')}
                 </Button>
             )}
 
@@ -635,29 +642,29 @@ export function AddUserToSubOrgSection({
                 <div className="space-y-3 rounded-md border bg-muted/30 p-3">
                     <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-1">
-                            <Label className="text-xs">Full Name *</Label>
+                            <Label className="text-xs">{t('addUser.fullNameLabel')}</Label>
                             <Input
                                 value={fullName}
                                 onChange={(e) => setFullName(e.target.value)}
-                                placeholder="John Doe"
+                                placeholder={t('addUser.fullNamePlaceholder')}
                             />
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-xs">Email *</Label>
+                            <Label className="text-xs">{t('addUser.emailLabel')}</Label>
                             <Input
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                placeholder="john@example.com"
+                                placeholder={t('addUser.emailPlaceholder')}
                             />
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-xs">Phone</Label>
+                            <Label className="text-xs">{t('addUser.phoneLabel')}</Label>
                             <PhoneInput
                                 country={phoneDefaultCountry}
                                 preferredCountries={phonePreferredCountries}
                                 enableSearch
-                                placeholder="123 456 7890"
+                                placeholder={t('addUser.phonePlaceholder')}
                                 value={mobileNumber}
                                 onChange={(value) => setMobileNumber(value)}
                                 inputClass="!w-full h-8"
@@ -670,15 +677,15 @@ export function AddUserToSubOrgSection({
                         can verify what's being granted. */}
                     <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs">
                         <p className="font-medium text-muted-foreground">
-                            Inherited from sub-org
+                            {t('addUser.inheritedHeading')}
                         </p>
                         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                            <span className="text-muted-foreground">Role:</span>
+                            <span className="text-muted-foreground">{t('addUser.roleLabel')}</span>
                             <Badge variant="outline">{derivedRoleName}</Badge>
                         </div>
                         <div>
                             <p className="text-muted-foreground">
-                                Courses ({adminPsList.length}):
+                                {t('addUser.coursesLabel', { count: adminPsList.length })}
                             </p>
                             <ul className="ml-3 mt-1 list-disc space-y-0.5">
                                 {adminPsList.map((p) => (
@@ -694,7 +701,7 @@ export function AddUserToSubOrgSection({
                         <div className="flex items-center gap-2">
                             <Wallet className="h-4 w-4 text-muted-foreground" />
                             <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                Admin payment
+                                {t('addUser.adminPaymentLabel')}
                             </Label>
                         </div>
                         <Select
@@ -702,21 +709,20 @@ export function AddUserToSubOrgSection({
                             onValueChange={setSelectedPaymentOptionId}
                         >
                             <SelectTrigger>
-                                <SelectValue placeholder="Pick a plan" />
+                                <SelectValue placeholder={t('addUser.pickPlanPlaceholder')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="FREE">FREE (no charge)</SelectItem>
+                                <SelectItem value="FREE">{t('addUser.freeOption')}</SelectItem>
                                 {cpoList.map((c) => (
                                     <SelectItem key={c.id} value={c.id}>
-                                        {c.name} (CPO)
+                                        {t('addUser.cpoOption', { name: c.name })}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                         {selectedPaymentOptionId !== 'FREE' && (
                             <p className="text-[10px] text-muted-foreground">
-                                Installments + discount apply to this admin. Different
-                                sub-orgs can carry different CPOs / discounts.
+                                {t('addUser.cpoHelper')}
                             </p>
                         )}
                     </div>
@@ -727,15 +733,15 @@ export function AddUserToSubOrgSection({
                     {selectedPaymentOptionId !== 'FREE' && (
                         <div className="space-y-3 rounded-md border bg-white p-3">
                             <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                Installments
+                                {t('addUser.installmentsLabel')}
                             </Label>
                             {isLoadingCpoTemplate ? (
                                 <p className="text-xs text-muted-foreground">
-                                    Loading installment template…
+                                    {t('addUser.loadingTemplate')}
                                 </p>
                             ) : installmentRows.length === 0 ? (
                                 <p className="text-xs text-muted-foreground">
-                                    This fee structure has no installments configured.
+                                    {t('addUser.noInstallments')}
                                 </p>
                             ) : (
                                 <div className="space-y-2">
@@ -752,11 +758,14 @@ export function AddUserToSubOrgSection({
                                                 className="space-y-1 rounded border bg-muted/20 p-2 text-xs"
                                             >
                                                 <p className="font-medium">
-                                                    #{row.installmentNumber} · {row.feeTypeName}
+                                                    {t('addUser.installmentRowTitle', {
+                                                        number: row.installmentNumber,
+                                                        feeType: row.feeTypeName,
+                                                    })}
                                                 </p>
                                                 <div className="grid gap-2 sm:grid-cols-3">
                                                     <div>
-                                                        <Label className="text-[10px]">Amount</Label>
+                                                        <Label className="text-[10px]">{t('addUser.amountLabel')}</Label>
                                                         <Input
                                                             type="number"
                                                             step="0.01"
@@ -769,7 +778,7 @@ export function AddUserToSubOrgSection({
                                                         />
                                                     </div>
                                                     <div>
-                                                        <Label className="text-[10px]">Due date</Label>
+                                                        <Label className="text-[10px]">{t('addUser.dueDateLabel')}</Label>
                                                         <Input
                                                             type="date"
                                                             value={edit.dueDate ?? ''}
@@ -781,7 +790,7 @@ export function AddUserToSubOrgSection({
                                                     </div>
                                                     <div className="flex gap-1">
                                                         <div className="flex-1">
-                                                            <Label className="text-[10px]">Discount</Label>
+                                                            <Label className="text-[10px]">{t('addUser.discountLabel')}</Label>
                                                             <Input
                                                                 type="number"
                                                                 step="0.01"
@@ -796,7 +805,7 @@ export function AddUserToSubOrgSection({
                                                             />
                                                         </div>
                                                         <div className="w-[80px]">
-                                                            <Label className="text-[10px]">Type</Label>
+                                                            <Label className="text-[10px]">{t('addUser.typeLabel')}</Label>
                                                             <Select
                                                                 value={edit.discountType || 'PERCENTAGE'}
                                                                 onValueChange={(v) =>
@@ -824,7 +833,9 @@ export function AddUserToSubOrgSection({
                                                 </div>
                                                 {row.defaultDueDate && (
                                                     <p className="text-[10px] text-muted-foreground">
-                                                        Default due {row.defaultDueDate}
+                                                        {t('addUser.defaultDue', {
+                                                            date: row.defaultDueDate,
+                                                        })}
                                                     </p>
                                                 )}
                                             </div>
@@ -833,9 +844,9 @@ export function AddUserToSubOrgSection({
 
                                     {/* CPO-level discount applied proportionally across all installments */}
                                     <div className="space-y-1 rounded border bg-muted/10 p-2 text-xs">
-                                        <p className="font-medium">CPO-level discount</p>
+                                        <p className="font-medium">{t('addUser.cpoDiscountHeading')}</p>
                                         <p className="text-[10px] text-muted-foreground">
-                                            Applied across all installments proportionally.
+                                            {t('addUser.cpoDiscountHelper')}
                                         </p>
                                         <div className="flex gap-2">
                                             <Input
@@ -875,7 +886,7 @@ export function AddUserToSubOrgSection({
                         <div className="flex items-center gap-2">
                             <Wallet className="h-4 w-4 text-muted-foreground" />
                             <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                Record initial payment (optional)
+                                {t('addUser.recordPaymentHeading')}
                             </Label>
                         </div>
                         <div className="flex gap-2">
@@ -887,7 +898,7 @@ export function AddUserToSubOrgSection({
                                 disabled={mutation.isPending}
                                 className="flex-1"
                             >
-                                Skip
+                                {t('addUser.skip')}
                             </Button>
                             <Button
                                 type="button"
@@ -897,13 +908,13 @@ export function AddUserToSubOrgSection({
                                 disabled={mutation.isPending}
                                 className="flex-1"
                             >
-                                Record offline payment
+                                {t('addUser.recordOfflinePayment')}
                             </Button>
                         </div>
                         {paymentMode === 'OFFLINE' && (
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Amount *</Label>
+                                    <Label className="text-xs">{t('addUser.amountRequiredLabel')}</Label>
                                     <Input
                                         type="number"
                                         step="0.01"
@@ -914,7 +925,7 @@ export function AddUserToSubOrgSection({
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Currency</Label>
+                                    <Label className="text-xs">{t('addUser.currencyLabel')}</Label>
                                     <Select
                                         value={offlineCurrency}
                                         onValueChange={setOfflineCurrency}
@@ -930,7 +941,7 @@ export function AddUserToSubOrgSection({
                                     </Select>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Payment date</Label>
+                                    <Label className="text-xs">{t('addUser.paymentDateLabel')}</Label>
                                     <Input
                                         type="date"
                                         value={offlineDate}
@@ -938,11 +949,11 @@ export function AddUserToSubOrgSection({
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Reference (cheque #, UPI ref)</Label>
+                                    <Label className="text-xs">{t('addUser.referenceLabel')}</Label>
                                     <Input
                                         value={offlineReference}
                                         onChange={(e) => setOfflineReference(e.target.value)}
-                                        placeholder="optional"
+                                        placeholder={t('addUser.referencePlaceholder')}
                                     />
                                 </div>
                                 <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">
@@ -953,7 +964,7 @@ export function AddUserToSubOrgSection({
                                         className="h-4 w-4"
                                     />
                                     <span className="text-xs">
-                                        Generate invoice after payment
+                                        {t('addUser.generateInvoiceLabel')}
                                     </span>
                                 </label>
                             </div>
@@ -968,7 +979,7 @@ export function AddUserToSubOrgSection({
                             onClick={resetForm}
                             disabled={mutation.isPending}
                         >
-                            Cancel
+                            {t('common.cancel')}
                         </Button>
                         <Button
                             type="button"
@@ -979,7 +990,7 @@ export function AddUserToSubOrgSection({
                             {mutation.isPending && (
                                 <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                             )}
-                            Add User
+                            {t('addUser.submitButton')}
                         </Button>
                     </div>
                 </div>
@@ -989,6 +1000,7 @@ export function AddUserToSubOrgSection({
 }
 
 function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
+    const { t } = useTranslation('manageCustomTeamsSubOrgDetailModal');
     const instituteId = getCurrentInstituteId();
     const { data, isLoading, isError } = useQuery<SubOrgFinanceDetail>({
         queryKey: ['sub-org-finance-detail', subOrgId],
@@ -1009,9 +1021,9 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
             <div className="space-y-2">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <Wallet className="h-4 w-4" />
-                    Finance
+                    {t('finance.heading')}
                 </h3>
-                <p className="text-sm text-muted-foreground">Loading finance details...</p>
+                <p className="text-sm text-muted-foreground">{t('finance.loading')}</p>
             </div>
         );
     }
@@ -1021,10 +1033,10 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
             <div className="space-y-2">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <Wallet className="h-4 w-4" />
-                    Finance
+                    {t('finance.heading')}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                    Couldn&apos;t load finance details.
+                    {t('finance.loadError')}
                 </p>
             </div>
         );
@@ -1039,12 +1051,14 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
             <div className="flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <Wallet className="h-4 w-4" />
-                    Finance
+                    {t('finance.heading')}
                 </h3>
                 {totals && (
                     <span className="text-xs text-muted-foreground">
-                        {totals.learner_count} learner{totals.learner_count === 1 ? '' : 's'} ·
-                        outstanding {fmtMoney(totals.total_outstanding)}
+                        {t('finance.summary', {
+                            count: totals.learner_count,
+                            outstanding: fmtMoney(totals.total_outstanding),
+                        })}
                     </span>
                 )}
             </div>
@@ -1058,7 +1072,7 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
                         setDrawer({
                             userId: admin.user_id!,
                             name: admin.full_name || admin.user_id,
-                            subtitle: 'Sub-org admin',
+                            subtitle: t('finance.subOrgAdmin'),
                         })
                     }
                     onKeyDown={(e) => {
@@ -1067,49 +1081,55 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
                             setDrawer({
                                 userId: admin.user_id!,
                                 name: admin.full_name || admin.user_id,
-                                subtitle: 'Sub-org admin',
+                                subtitle: t('finance.subOrgAdmin'),
                             });
                         }
                     }}
                     className="cursor-pointer space-y-2 rounded-md border bg-muted/30 p-3 transition-colors hover:bg-muted/50"
-                    title="View installments & invoices"
+                    title={t('finance.viewInstallmentsTitle')}
                 >
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium">
-                                Admin: {admin.full_name || admin.user_id}
+                                {t('finance.adminLabel', {
+                                    name: admin.full_name || admin.user_id,
+                                })}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                                {admin.payment_type || 'unknown'}
+                                {admin.payment_type || t('finance.unknownPaymentType')}
                                 {admin.user_plan_status ? ` · ${admin.user_plan_status}` : ''}
                             </p>
                         </div>
                         {admin.payment_type === 'CPO' && (
                             <Badge variant="secondary">
-                                {admin.pending_installments_count ?? 0} pending
+                                {t('finance.pendingBadge', {
+                                    count: admin.pending_installments_count ?? 0,
+                                })}
                             </Badge>
                         )}
                     </div>
                     {admin.payment_type === 'CPO' && (
                         <>
                             <div className="grid grid-cols-3 gap-2 text-xs">
-                                <Metric label="Total" value={fmtMoney(admin.total_amount)} />
-                                <Metric label="Paid" value={fmtMoney(admin.paid_amount)} />
+                                <Metric label={t('finance.metricTotal')} value={fmtMoney(admin.total_amount)} />
+                                <Metric label={t('finance.metricPaid')} value={fmtMoney(admin.paid_amount)} />
                                 <Metric
-                                    label="Outstanding"
+                                    label={t('finance.metricOutstanding')}
                                     value={fmtMoney(admin.outstanding_amount)}
                                 />
                             </div>
                             {admin.next_due && (
                                 <div className="rounded bg-white p-2 text-xs">
-                                    <span className="text-muted-foreground">Next due: </span>
+                                    <span className="text-muted-foreground">{t('finance.nextDue')} </span>
                                     <span className="font-medium">
                                         {fmtMoney(admin.next_due.amount_expected)}
                                     </span>
                                     {admin.next_due.due_date && (
                                         <span className="text-muted-foreground">
                                             {' '}
-                                            on {fmtDate(admin.next_due.due_date)}
+                                            {t('finance.onDate', {
+                                                date: fmtDate(admin.next_due.due_date),
+                                            })}
                                         </span>
                                     )}
                                     <span className="text-muted-foreground">
@@ -1124,7 +1144,9 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">
-                                        View full ledger ({admin.installments.length})
+                                        {t('finance.viewFullLedger', {
+                                            count: admin.installments.length,
+                                        })}
                                     </summary>
                                     <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded bg-white p-2">
                                         {admin.installments.map((inst, idx) => (
@@ -1161,7 +1183,7 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
                 </div>
             ) : (
                 <p className="text-xs text-muted-foreground">
-                    No admin payment yet — admin will be linked when they accept the invite.
+                    {t('finance.noAdminPayment')}
                 </p>
             )}
 
@@ -1169,10 +1191,10 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
             <div className="space-y-2">
                 <h4 className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                     <GraduationCap className="h-3.5 w-3.5" />
-                    Learners ({learners.length})
+                    {t('finance.learnersHeading', { count: learners.length })}
                 </h4>
                 {learners.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No learners enrolled yet.</p>
+                    <p className="text-xs text-muted-foreground">{t('finance.noLearners')}</p>
                 ) : (
                     <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border">
                         {learners.map((l) => {
@@ -1187,9 +1209,7 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
                                         setDrawer({
                                             userId: l.user_id,
                                             name: l.full_name || l.user_id,
-                                            subtitle: l.package_session_id
-                                                ? 'Learner'
-                                                : 'Learner',
+                                            subtitle: t('finance.learnerSubtitle'),
                                         })
                                     }
                                     className="flex w-full items-center justify-between border-b border-muted px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/40"
@@ -1200,7 +1220,9 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
                                         </p>
                                         {l.enrolled_date && (
                                             <p className="text-[10px] text-muted-foreground">
-                                                Enrolled {fmtDate(l.enrolled_date)}
+                                                {t('finance.enrolled', {
+                                                    date: fmtDate(l.enrolled_date),
+                                                })}
                                             </p>
                                         )}
                                     </div>
@@ -1209,8 +1231,10 @@ function SubOrgFinanceSection({ subOrgId }: { subOrgId: string }) {
                                             <span className="font-medium text-amber-700">
                                                 {fmtMoney(l.outstanding_amount)}
                                             </span>
-                                            <span className="ml-1 text-muted-foreground">
-                                                ({l.pending_installments_count} due)
+                                            <span className="ms-1 text-muted-foreground">
+                                                {t('finance.dueCount', {
+                                                    count: l.pending_installments_count,
+                                                })}
                                             </span>
                                         </div>
                                     ) : (
@@ -1263,6 +1287,7 @@ function AllowedTeamRolesSection({
     subOrgId: string;
     scopedInvites: any[];
 }) {
+    const { t } = useTranslation('manageCustomTeamsSubOrgDetailModal');
     const queryClient = useQueryClient();
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState<string[]>([]);
@@ -1286,13 +1311,13 @@ function AllowedTeamRolesSection({
     const mutation = useMutation({
         mutationFn: (roles: string[]) => updateSubOrgTeamRoles(subOrgId, roles),
         onSuccess: () => {
-            toast.success('Allowed team roles updated');
+            toast.success(t('allowedTeamRoles.updateSuccess'));
             queryClient.invalidateQueries({ queryKey: ['sub-org-scoped-invites', subOrgId] });
             queryClient.invalidateQueries({ queryKey: ['sub-org-scoped-invites-for-roles', subOrgId] });
             setIsEditing(false);
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.message || err?.message || 'Failed to update');
+            toast.error(err?.response?.data?.message || err?.message || t('allowedTeamRoles.updateError'));
         },
     });
 
@@ -1301,7 +1326,7 @@ function AllowedTeamRolesSection({
             <div className="flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <ShieldCheck className="h-4 w-4" />
-                    Allowed team roles
+                    {t('allowedTeamRoles.heading')}
                     {persistedRoles.length > 0 && (
                         <Badge variant="secondary">{persistedRoles.length}</Badge>
                     )}
@@ -1316,7 +1341,7 @@ function AllowedTeamRolesSection({
                             setIsEditing(true);
                         }}
                     >
-                        Edit
+                        {t('common.edit')}
                     </Button>
                 )}
             </div>
@@ -1324,7 +1349,7 @@ function AllowedTeamRolesSection({
             {!isEditing && (
                 persistedRoles.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                        No restriction — sub-org admin can assign any custom role.
+                        {t('allowedTeamRoles.noRestriction')}
                     </p>
                 ) : (
                     <div className="flex flex-wrap gap-1.5">
@@ -1340,8 +1365,7 @@ function AllowedTeamRolesSection({
             {isEditing && (
                 <div className="space-y-2 rounded-md border bg-muted/30 p-3">
                     <p className="text-xs text-muted-foreground">
-                        Tick the custom roles the sub-org admin may pick on
-                        /manage-suborg-teams. Leave all unticked to allow any role.
+                        {t('allowedTeamRoles.helper')}
                     </p>
                     <div className="flex flex-wrap gap-2 rounded-md border bg-white p-2">
                         {rolesList.map((role) => (
@@ -1366,7 +1390,7 @@ function AllowedTeamRolesSection({
                         ))}
                         {rolesList.length === 0 && (
                             <span className="text-xs text-muted-foreground">
-                                Loading roles...
+                                {t('allowedTeamRoles.loadingRoles')}
                             </span>
                         )}
                     </div>
@@ -1378,7 +1402,7 @@ function AllowedTeamRolesSection({
                             onClick={() => setIsEditing(false)}
                             disabled={mutation.isPending}
                         >
-                            Cancel
+                            {t('common.cancel')}
                         </Button>
                         <Button
                             type="button"
@@ -1389,7 +1413,7 @@ function AllowedTeamRolesSection({
                             {mutation.isPending && (
                                 <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                             )}
-                            Save
+                            {t('common.save')}
                         </Button>
                     </div>
                 </div>
@@ -1399,6 +1423,7 @@ function AllowedTeamRolesSection({
 }
 
 function SubOrgAdminsSection({ subOrgId }: { subOrgId: string }) {
+    const { t } = useTranslation('manageCustomTeamsSubOrgDetailModal');
     const { data: adminsData, isLoading } = useQuery<{
         admins: { user_id: string; name: string; role: string }[];
     }>({
@@ -1418,10 +1443,10 @@ function SubOrgAdminsSection({ subOrgId }: { subOrgId: string }) {
         <div className="space-y-2">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                 <ShieldCheck className="h-4 w-4" />
-                Admins ({admins.length})
+                {t('admins.heading', { count: admins.length })}
             </h3>
             {isLoading ? (
-                <p className="text-sm text-muted-foreground">Loading admins...</p>
+                <p className="text-sm text-muted-foreground">{t('admins.loading')}</p>
             ) : admins.length > 0 ? (
                 <div className="space-y-2">
                     {admins.map((admin, idx) => (
@@ -1438,8 +1463,7 @@ function SubOrgAdminsSection({ subOrgId }: { subOrgId: string }) {
                 </div>
             ) : (
                 <p className="text-sm text-muted-foreground">
-                    No admins assigned yet. Admins are added when they pay via the invite
-                    link.
+                    {t('admins.empty')}
                 </p>
             )}
         </div>

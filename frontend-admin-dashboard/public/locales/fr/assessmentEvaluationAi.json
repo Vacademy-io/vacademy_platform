@@ -16,7 +16,7 @@
         "loading": "Chargement..."
     },
     "nav": {
-        "heading": "Progression de l'évaluation"
+        "heading": "Évaluation par IA"
     },
     "error": {
         "title": "Erreur lors du chargement de la progression",
@@ -51,12 +51,14 @@
     "filters": {
         "all": "Tout",
         "completed": "Terminé",
-        "pending": "En attente"
+        "pending": "En attente",
+        "ariaLabel": "Filtrer les questions"
     },
     "answerSheet": {
         "loading": "Chargement...",
         "button": "Copie",
-        "panelTitle": "Copie de l'élève"
+        "panelTitle": "Copie de l'élève",
+        "close": "Fermer"
     },
     "banners": {
         "aiDrafted": "L'IA a rédigé cette évaluation. Vérifiez chaque question, ajustez les notes ou les commentaires si nécessaire, puis publiez le résultat.",

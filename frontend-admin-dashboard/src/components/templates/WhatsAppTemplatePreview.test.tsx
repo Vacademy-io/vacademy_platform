@@ -94,3 +94,29 @@ describe('WhatsAppTemplatePreview', () => {
         expect(screen.getByText('No message body.')).toBeInTheDocument();
     });
 });
+
+describe('WhatsAppTemplatePreview document header', () => {
+    const brochure =
+        'https://cdn.example.com/ADMIN_PUBLIC_UPLOAD/63a5262b-f5e4-4de6-990e-d3296ca5012b-HCCA_Updated_Brochure_1.pdf';
+
+    it('names the file that goes out and links to it', () => {
+        render(
+            <WhatsAppTemplatePreview
+                template={{ ...template, headerType: 'DOCUMENT', headerSampleUrl: brochure }}
+            />
+        );
+        const link = screen.getByText('HCCA_Updated_Brochure_1.pdf').closest('a');
+        expect(link).toHaveAttribute('href', brochure);
+        expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('falls back to the generic tile when no file is on record', () => {
+        render(
+            <WhatsAppTemplatePreview
+                template={{ ...template, headerType: 'DOCUMENT', headerSampleUrl: '' }}
+            />
+        );
+        expect(screen.getByText('Document')).toBeInTheDocument();
+        expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    });
+});

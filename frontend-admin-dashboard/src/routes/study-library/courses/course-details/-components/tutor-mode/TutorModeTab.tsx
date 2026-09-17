@@ -49,6 +49,7 @@ import { TutorCompileEstimateDialog } from './TutorCompileEstimateDialog';
 import { TutorInsightsCard } from '@/components/common/tutor/TutorInsightsCard';
 import { TeacherPresenceField } from '@/components/common/tutor/TeacherPresenceField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
+import { useTranslation } from 'react-i18next';
 
 interface TutorModeTabProps {
     packageId: string;
@@ -91,30 +92,42 @@ const PLATFORM_DEFAULTS: Required<
 /** Radix Select cannot carry an empty value: this sentinel means "inherit". */
 const INHERIT = '__inherit__';
 
-const STATUS_LABEL: Record<string, { label: string; tone: string }> = {
-    READY: { label: 'Ready', tone: 'bg-success-50 text-success-700 border-success-200' },
-    COMPILING: { label: 'Compiling', tone: 'bg-primary-50 text-primary-600 border-primary-200' },
-    NEEDS_DETAILS: {
-        label: 'Needs details',
-        tone: 'bg-warning-50 text-warning-700 border-warning-200',
-    },
-    STALE: {
-        label: 'Stale (still teachable)',
-        tone: 'bg-warning-50 text-warning-700 border-warning-200',
-    },
-    FAILED: { label: 'Failed', tone: 'bg-danger-50 text-danger-700 border-danger-200' },
-    NOT_COMPILED: {
-        label: 'Not prepared',
-        tone: 'bg-neutral-100 text-neutral-600 border-neutral-200',
-    },
-    UNSUPPORTED: {
-        label: 'Not supported',
-        tone: 'bg-neutral-100 text-neutral-500 border-neutral-200',
-    },
-    DELETED: { label: 'Deleted', tone: 'bg-neutral-100 text-neutral-500 border-neutral-200' },
-};
-
 const StatusBadge: React.FC<{ status: TutorPlanStatus | string }> = ({ status }) => {
+    const { t } = useTranslation('studyLibraryTutorModeTab');
+    const STATUS_LABEL: Record<string, { label: string; tone: string }> = {
+        READY: {
+            label: t('statusLabel.ready'),
+            tone: 'bg-success-50 text-success-700 border-success-200',
+        },
+        COMPILING: {
+            label: t('statusLabel.compiling'),
+            tone: 'bg-primary-50 text-primary-600 border-primary-200',
+        },
+        NEEDS_DETAILS: {
+            label: t('statusLabel.needsDetails'),
+            tone: 'bg-warning-50 text-warning-700 border-warning-200',
+        },
+        STALE: {
+            label: t('statusLabel.stale'),
+            tone: 'bg-warning-50 text-warning-700 border-warning-200',
+        },
+        FAILED: {
+            label: t('statusLabel.failed'),
+            tone: 'bg-danger-50 text-danger-700 border-danger-200',
+        },
+        NOT_COMPILED: {
+            label: t('statusLabel.notCompiled'),
+            tone: 'bg-neutral-100 text-neutral-600 border-neutral-200',
+        },
+        UNSUPPORTED: {
+            label: t('statusLabel.unsupported'),
+            tone: 'bg-neutral-100 text-neutral-500 border-neutral-200',
+        },
+        DELETED: {
+            label: t('statusLabel.deleted'),
+            tone: 'bg-neutral-100 text-neutral-500 border-neutral-200',
+        },
+    };
     const s = STATUS_LABEL[status] ?? {
         label: status,
         tone: 'bg-neutral-100 text-neutral-600 border-neutral-200',
@@ -127,24 +140,6 @@ const StatusBadge: React.FC<{ status: TutorPlanStatus | string }> = ({ status })
 };
 
 const isMediaSlide = (t: string | null) => t === 'VIDEO' || t === 'HTML_VIDEO' || t === 'DOCUMENT';
-
-const SOURCE_KIND_LABEL: Record<string, string> = {
-    document: 'Document',
-    pdf: 'PDF',
-    quiz: 'Quiz',
-    ai_video: 'AI video',
-    youtube: 'YouTube video',
-    video_upload: 'Uploaded video',
-    video_link: 'Video link',
-    other: 'Not supported',
-};
-
-const TEXT_KIND_LABEL: Record<string, string> = {
-    script: 'narration script',
-    captions: 'captions',
-    transcript: 'transcript',
-    pdf: 'PDF text',
-};
 
 /** Drop empty strings / undefined so the saved object only carries real overrides. */
 const stripEmpty = (s: TutorModeSetting): Record<string, unknown> => {
@@ -169,6 +164,29 @@ const stripEmpty = (s: TutorModeSetting): Record<string, unknown> => {
  * read-only preview of any compiled plan.
  */
 export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
+    const { t } = useTranslation('studyLibraryTutorModeTab');
+    const SOURCE_KIND_LABEL: Record<string, string> = useMemo(
+        () => ({
+            document: t('sourceKindLabel.document'),
+            pdf: t('sourceKindLabel.pdf'),
+            quiz: t('sourceKindLabel.quiz'),
+            ai_video: t('sourceKindLabel.aiVideo'),
+            youtube: t('sourceKindLabel.youtube'),
+            video_upload: t('sourceKindLabel.videoUpload'),
+            video_link: t('sourceKindLabel.videoLink'),
+            other: t('sourceKindLabel.other'),
+        }),
+        [t]
+    );
+    const TEXT_KIND_LABEL: Record<string, string> = useMemo(
+        () => ({
+            script: t('textKindLabel.script'),
+            captions: t('textKindLabel.captions'),
+            transcript: t('textKindLabel.transcript'),
+            pdf: t('textKindLabel.pdf'),
+        }),
+        [t]
+    );
     // ── settings ──
     const [setting, setSetting] = useState<TutorModeSetting>(EMPTY_SETTING);
     const [institute, setInstitute] = useState<TutorModeSetting | null>(null);
@@ -234,7 +252,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
         try {
             setPlans(await getTutorPlans(packageId));
         } catch (e: unknown) {
-            toast.error(e instanceof Error ? e.message : 'Could not load teaching plans');
+            toast.error(e instanceof Error ? e.message : t('toast.loadPlansFailed'));
         } finally {
             setPlansLoading(false);
         }
@@ -266,9 +284,9 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                 'Tutor Mode'
             );
             setDirty(false);
-            toast.success('Tutor mode settings saved');
+            toast.success(t('toast.settingsSaved'));
         } catch (e: unknown) {
-            toast.error(e instanceof Error ? e.message : 'Could not save settings');
+            toast.error(e instanceof Error ? e.message : t('toast.saveSettingsFailed'));
         } finally {
             setSettingSaving(false);
         }
@@ -276,7 +294,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
 
     const onEvent = useCallback((ev: TutorCompileEvent) => {
         if (ev.slide_id) setProgress((p) => ({ ...p, [ev.slide_id as string]: ev }));
-        if (ev.type === 'ERROR') toast.error(ev.message || 'Compile error');
+        if (ev.type === 'ERROR') toast.error(ev.message || t('toast.compileError'));
     }, []);
 
     // Show what the compile will cost (per slide) before spending credits.
@@ -303,7 +321,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
 
     const runCompile = async (slideIds?: string[]) => {
         if (compiling) {
-            toast.info('A compile is already running; wait for it to finish.');
+            toast.info(t('toast.compileAlreadyRunning'));
             return;
         }
         setCompiling(true);
@@ -322,12 +340,12 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                     controller.signal
                 );
             }
-            toast.success('Teaching plans updated');
+            toast.success(t('toast.plansUpdated'));
         } catch (e: unknown) {
             if (e instanceof DOMException && e.name === 'AbortError') {
-                toast.info('Stopped watching; slides already compiling finish in the background.');
+                toast.info(t('toast.stoppedWatching'));
             } else {
-                toast.error(e instanceof Error ? e.message : 'Compile failed');
+                toast.error(e instanceof Error ? e.message : t('toast.compileFailed'));
             }
         } finally {
             setCompiling(false);
@@ -353,13 +371,13 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
         setDetailsSaving(true);
         try {
             await putTutorSourceDescription(detailsFor.slide_id, detailsText.trim());
-            toast.success('Saved. Compiling this slide…');
+            toast.success(t('toast.detailsSaved'));
             const id = detailsFor.slide_id;
             setDetailsFor(null);
             setDetailsText('');
             await runCompile([id]);
         } catch (e: unknown) {
-            toast.error(e instanceof Error ? e.message : 'Could not save details');
+            toast.error(e instanceof Error ? e.message : t('toast.saveDetailsFailed'));
         } finally {
             setDetailsSaving(false);
         }
@@ -388,15 +406,13 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                 <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-base">
                         <ChalkboardTeacher className="size-5 text-primary-500" />
-                        AI teacher for this course
+                        {t('settingsCard.title')}
                         {settingLoading && (
                             <CircleNotch className="size-4 animate-spin text-neutral-400" />
                         )}
                     </CardTitle>
                     <p className="text-sm text-neutral-500">
-                        Learners are taught one-to-one from the compiled teaching plans below.
-                        Fields left blank use the institute defaults from Settings → Course settings
-                        (shown as placeholders).
+                        {t('settingsCard.description')}
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -406,7 +422,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 checked={!!setting.enabled}
                                 onCheckedChange={(v) => update('enabled', v)}
                             />
-                            Tutor mode enabled
+                            {t('settingsCard.tutorEnabled')}
                         </label>
                         <label className="flex items-center gap-2 text-sm">
                             <Switch
@@ -414,27 +430,27 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 disabled={!setting.enabled}
                                 onCheckedChange={(v) => update('defaultOn', v)}
                             />
-                            Start learners in teaching mode
+                            {t('settingsCard.startInTeachingMode')}
                         </label>
                         <label
                             className="flex items-center gap-2 text-sm"
-                            title="AI-generated pictures on the whiteboard where a photo teaches better than a diagram. About 1 credit each, at most 4 per slide."
+                            title={t('settingsCard.aiImagesTooltip')}
                         >
                             <Switch
                                 checked={effectiveImages}
                                 onCheckedChange={(v) => update('generateImages', v)}
                             />
-                            AI images on boards
+                            {t('settingsCard.aiImagesLabel')}
                             {setting.generateImages === undefined && (
                                 <span className="text-xs text-neutral-400">
-                                    (institute default)
+                                    {t('settingsCard.instituteDefaultTag')}
                                 </span>
                             )}
                         </label>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                         <div className="space-y-1">
-                            <Label>Teacher name</Label>
+                            <Label>{t('settingsCard.teacherNameLabel')}</Label>
                             <Input
                                 value={setting.teacherName ?? ''}
                                 maxLength={60}
@@ -443,7 +459,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             />
                         </div>
                         <div className="space-y-1">
-                            <Label>Course language</Label>
+                            <Label>{t('settingsCard.courseLanguageLabel')}</Label>
                             <Select
                                 value={selectValue(setting.languages?.[0])}
                                 onValueChange={(v) => {
@@ -459,16 +475,24 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value={INHERIT}>
-                                        Institute default (
-                                        {inherited.languages[0] === 'hi' ? 'Hindi' : 'English'})
+                                        {t('settingsCard.instituteDefaultWithValue', {
+                                            value:
+                                                inherited.languages[0] === 'hi'
+                                                    ? t('settingsCard.languageHindi')
+                                                    : t('settingsCard.languageEnglish'),
+                                        })}
                                     </SelectItem>
-                                    <SelectItem value="en">English</SelectItem>
-                                    <SelectItem value="hi">Hindi</SelectItem>
+                                    <SelectItem value="en">
+                                        {t('settingsCard.languageEnglish')}
+                                    </SelectItem>
+                                    <SelectItem value="hi">
+                                        {t('settingsCard.languageHindi')}
+                                    </SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-1">
-                            <Label>Session language</Label>
+                            <Label>{t('settingsCard.sessionLanguageLabel')}</Label>
                             <Select
                                 value={selectValue(setting.sessionLanguage)}
                                 onValueChange={(v) =>
@@ -483,23 +507,24 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value={INHERIT}>
-                                        Institute default (
-                                        {inherited.sessionLanguage === 'learner'
-                                            ? "learner's preference"
-                                            : 'course language'}
-                                        )
+                                        {t('settingsCard.instituteDefaultWithValue', {
+                                            value:
+                                                inherited.sessionLanguage === 'learner'
+                                                    ? t('settingsCard.sessionLanguageLearnerPref')
+                                                    : t('settingsCard.sessionLanguageCourse'),
+                                        })}
                                     </SelectItem>
                                     <SelectItem value="course">
-                                        Course language (learner may switch)
+                                        {t('settingsCard.sessionLanguageCourseOption')}
                                     </SelectItem>
                                     <SelectItem value="learner">
-                                        Learner&apos;s preference
+                                        {t('settingsCard.sessionLanguageLearnerOption')}
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-1">
-                            <Label>Voice provider</Label>
+                            <Label>{t('settingsCard.voiceProviderLabel')}</Label>
                             <Select
                                 value={selectValue(setting.ttsProvider)}
                                 onValueChange={(v) =>
@@ -514,11 +539,12 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value={INHERIT}>
-                                        Institute default (
-                                        {TUTOR_TTS_PROVIDERS.find(
-                                            (p) => p.value === inherited.ttsProvider
-                                        )?.label.split(' (')[0] ?? inherited.ttsProvider}
-                                        )
+                                        {t('settingsCard.instituteDefaultWithValue', {
+                                            value:
+                                                TUTOR_TTS_PROVIDERS.find(
+                                                    (p) => p.value === inherited.ttsProvider
+                                                )?.label.split(' (')[0] ?? inherited.ttsProvider,
+                                        })}
                                     </SelectItem>
                                     {TUTOR_TTS_PROVIDERS.map((p) => (
                                         <SelectItem key={p.value} value={p.value}>
@@ -529,7 +555,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             </Select>
                         </div>
                         <div className="space-y-1">
-                            <Label>Voice</Label>
+                            <Label>{t('settingsCard.voiceLabel')}</Label>
                             <VoicePicker
                                 value={setting.ttsVoice || undefined}
                                 onChange={(v) => update('ttsVoice', v ?? '')}
@@ -541,13 +567,15 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 }
                                 inheritLabel={
                                     inherited.ttsVoice
-                                        ? `Institute default (${inherited.ttsVoice})`
-                                        : 'Institute default (provider female voice)'
+                                        ? t('settingsCard.instituteDefaultWithValue', {
+                                              value: inherited.ttsVoice,
+                                          })
+                                        : t('settingsCard.instituteDefaultVoiceFallback')
                                 }
                             />
                         </div>
                         <div className="space-y-1">
-                            <Label>Strictness</Label>
+                            <Label>{t('settingsCard.strictnessLabel')}</Label>
                             <Select
                                 value={selectValue(setting.strictness)}
                                 onValueChange={(v) =>
@@ -562,16 +590,24 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value={INHERIT}>
-                                        Institute default ({inherited.strictness})
+                                        {t('settingsCard.instituteDefaultWithValue', {
+                                            value: inherited.strictness,
+                                        })}
                                     </SelectItem>
-                                    <SelectItem value="gentle">Gentle</SelectItem>
-                                    <SelectItem value="normal">Normal</SelectItem>
-                                    <SelectItem value="strict">Strict</SelectItem>
+                                    <SelectItem value="gentle">
+                                        {t('settingsCard.strictnessGentle')}
+                                    </SelectItem>
+                                    <SelectItem value="normal">
+                                        {t('settingsCard.strictnessNormal')}
+                                    </SelectItem>
+                                    <SelectItem value="strict">
+                                        {t('settingsCard.strictnessStrict')}
+                                    </SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-1">
-                            <Label>Voice pace</Label>
+                            <Label>{t('settingsCard.voicePaceLabel')}</Label>
                             <Select
                                 value={
                                     typeof setting.voicePace === 'number'
@@ -587,11 +623,15 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value={INHERIT}>
-                                        Institute default (
-                                        {TUTOR_VOICE_PACES.find(
-                                            (p) => p.value === inherited.voicePace
-                                        )?.label ?? `${inherited.voicePace}×`}
-                                        )
+                                        {t('settingsCard.instituteDefaultWithValue', {
+                                            value:
+                                                TUTOR_VOICE_PACES.find(
+                                                    (p) => p.value === inherited.voicePace
+                                                )?.label ??
+                                                t('settingsCard.paceValue', {
+                                                    value: inherited.voicePace,
+                                                }),
+                                        })}
                                     </SelectItem>
                                     {TUTOR_VOICE_PACES.map((p) => (
                                         <SelectItem key={p.value} value={String(p.value)}>
@@ -602,28 +642,32 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             </Select>
                         </div>
                         <div className="space-y-1">
-                            <Label>Live model (LLM)</Label>
+                            <Label>{t('settingsCard.liveModelLabel')}</Label>
                             <ModelPicker
                                 value={setting.llmModel || undefined}
                                 onChange={(v) => update('llmModel', v ?? '')}
                                 models={options?.models ?? []}
                                 inheritLabel={
                                     inherited.llmModel
-                                        ? `Institute default (${inherited.llmModel})`
-                                        : 'Institute / platform default'
+                                        ? t('settingsCard.instituteDefaultWithValue', {
+                                              value: inherited.llmModel,
+                                          })
+                                        : t('settingsCard.instituteOrPlatformDefault')
                                 }
                             />
                         </div>
                         <div className="space-y-1">
-                            <Label>Compile model</Label>
+                            <Label>{t('settingsCard.compileModelLabel')}</Label>
                             <ModelPicker
                                 value={setting.compileModel || undefined}
                                 onChange={(v) => update('compileModel', v ?? '')}
                                 models={options?.models ?? []}
                                 inheritLabel={
                                     inherited.compileModel
-                                        ? `Institute default (${inherited.compileModel})`
-                                        : 'Institute / platform default'
+                                        ? t('settingsCard.instituteDefaultWithValue', {
+                                              value: inherited.compileModel,
+                                          })
+                                        : t('settingsCard.instituteOrPlatformDefault')
                                 }
                             />
                         </div>
@@ -645,8 +689,10 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                     />
                     {setting.kbGrounding?.knowledge_base_id && (
                         <p className="text-xs text-neutral-500">
-                            Grounded on knowledge base {setting.kbGrounding.knowledge_base_id} (
-                            {setting.kbGrounding.mode ?? 'STRICT'}); recompiles use it too.
+                            {t('settingsCard.kbGroundedNote', {
+                                id: setting.kbGrounding.knowledge_base_id,
+                                mode: setting.kbGrounding.mode ?? 'STRICT',
+                            })}
                         </p>
                     )}
                     <div className="flex justify-end">
@@ -662,7 +708,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             ) : (
                                 <FloppyDisk className="size-4" />
                             )}
-                            Save settings
+                            {t('settingsCard.saveSettings')}
                         </MyButton>
                     </div>
                 </CardContent>
@@ -673,7 +719,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                 <CardHeader className="pb-2">
                     <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                         <Sparkle className="size-5 text-primary-500" />
-                        Teaching plans
+                        {t('plansCard.title')}
                         {plansLoading && (
                             <CircleNotch className="size-4 animate-spin text-neutral-400" />
                         )}
@@ -686,11 +732,11 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                         </span>
                     </CardTitle>
                     <p className="text-sm text-neutral-500">
-                        {ready} of {supported.length} teachable slides are ready.{' '}
+                        {t('plansCard.readySummary', { ready, total: supported.length })}
                         {pending > 0 &&
-                            `${pending} still need preparing (stale slides keep teaching the old plan until then). `}
+                            t('plansCard.pendingSummary', { count: pending })}
                         {needsDetails.length > 0 &&
-                            `${needsDetails.length} video/PDF slide(s) need a short description of what they teach.`}
+                            t('plansCard.needsDetailsSummary', { count: needsDetails.length })}
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -707,7 +753,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             ) : (
                                 <Sparkle className="size-4" />
                             )}
-                            {compiling ? 'Preparing…' : 'Prepare for teaching'}
+                            {compiling ? t('plansCard.preparing') : t('plansCard.prepareForTeaching')}
                         </MyButton>
                         <MyButton
                             buttonType="secondary"
@@ -716,7 +762,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             disable={compiling || plansLoading}
                             onClick={() => void loadPlans()}
                         >
-                            <ArrowsClockwise className="size-4" /> Refresh
+                            <ArrowsClockwise className="size-4" /> {t('plansCard.refresh')}
                         </MyButton>
                         {compiling && (
                             <MyButton
@@ -725,29 +771,26 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 layoutVariant="default"
                                 onClick={() => abortRef.current?.abort()}
                             >
-                                Stop watching
+                                {t('plansCard.stopWatching')}
                             </MyButton>
                         )}
                         <span className="text-xs text-neutral-500">
-                            Documents, PDFs, YouTube and AI videos prepare from their own text;
-                            uploaded videos are transcribed and scanned PDFs read with OCR first.
-                            You see the credits before anything is spent; quizzes are free and
-                            prepared slides are skipped.
+                            {t('plansCard.prepareHelpText')}
                         </span>
                     </div>
 
                     {detailsFor && (
                         <div className="space-y-2 rounded-md border border-warning-200 bg-warning-50 p-3">
                             <Label className="text-sm font-medium">
-                                What does “{detailsFor.slide_title}” teach?
+                                {t('detailsPanel.questionTitle', {
+                                    title: detailsFor.slide_title,
+                                })}
                                 {detailsLoading && (
                                     <CircleNotch className="ms-2 inline size-3 animate-spin" />
                                 )}
                             </Label>
                             <p className="text-xs text-neutral-600">
-                                The AI teacher cannot read a video or PDF. Describe the points it
-                                covers (3–10 sentences); the teacher will ask the learner to watch
-                                or read it, then check those points.
+                                {t('detailsPanel.helpText')}
                             </p>
                             <Textarea
                                 value={detailsText}
@@ -772,7 +815,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                     {detailsSaving ? (
                                         <CircleNotch className="size-4 animate-spin" />
                                     ) : null}
-                                    Save and prepare
+                                    {t('detailsPanel.saveAndPrepare')}
                                 </MyButton>
                                 <MyButton
                                     buttonType="secondary"
@@ -780,11 +823,11 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                     layoutVariant="default"
                                     onClick={() => setDetailsFor(null)}
                                 >
-                                    Cancel
+                                    {t('detailsPanel.cancel')}
                                 </MyButton>
                                 {compiling && (
                                     <span className="text-xs text-neutral-500">
-                                        Wait for the running compile to finish.
+                                        {t('detailsPanel.waitForCompile')}
                                     </span>
                                 )}
                             </div>
@@ -795,12 +838,12 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-neutral-200 text-start text-xs uppercase tracking-wide text-neutral-500">
-                                    <th className="py-2 pe-3">Chapter</th>
-                                    <th className="py-2 pe-3">Slide</th>
-                                    <th className="py-2 pe-3">Type</th>
-                                    <th className="py-2 pe-3">Status</th>
-                                    <th className="py-2 pe-3">Plan</th>
-                                    <th className="py-2 pe-3 text-end">Actions</th>
+                                    <th className="py-2 pe-3">{t('plansCard.table.chapter')}</th>
+                                    <th className="py-2 pe-3">{t('plansCard.table.slide')}</th>
+                                    <th className="py-2 pe-3">{t('plansCard.table.type')}</th>
+                                    <th className="py-2 pe-3">{t('plansCard.table.status')}</th>
+                                    <th className="py-2 pe-3">{t('plansCard.table.plan')}</th>
+                                    <th className="py-2 pe-3 text-end">{t('plansCard.table.actions')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -835,6 +878,20 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                                         {live?.error ?? s.error}
                                                     </p>
                                                 )}
+                                                {!s.error && !live?.error && !!s.quality_notes?.length && (
+                                                    <p className="mt-0.5 flex items-start gap-1 text-xs font-normal text-warning-700">
+                                                        <WarningCircle className="mt-0.5 size-3 shrink-0" />
+                                                        <span>
+                                                            {t('plans.qualityNotes', {
+                                                                defaultValue: 'Teachable, with notes:',
+                                                            })}{' '}
+                                                            {s.quality_notes.slice(0, 2).join(' · ')}
+                                                            {s.quality_notes.length > 2
+                                                                ? ` · +${s.quality_notes.length - 2}`
+                                                                : ''}
+                                                        </span>
+                                                    </p>
+                                                )}
                                                 {live?.reason && compiling && (
                                                     <p className="mt-0.5 text-xs font-normal text-neutral-500">
                                                         {live.reason}
@@ -851,7 +908,11 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                             </td>
                                             <td className="py-2 pe-3 text-neutral-600">
                                                 {s.topics > 0
-                                                    ? `${s.topics} boards · ${s.concepts} concepts`
+                                                    ? `${t('plansCard.boardsCount', {
+                                                          count: s.topics,
+                                                      })} · ${t('plansCard.conceptsCount', {
+                                                          count: s.concepts,
+                                                      })}`
                                                     : '—'}
                                                 {s.version ? (
                                                     <span className="text-neutral-400">
@@ -861,9 +922,11 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                                 ) : null}
                                                 {s.text_kind ? (
                                                     <span className="block text-xs text-neutral-400">
-                                                        from{' '}
-                                                        {TEXT_KIND_LABEL[s.text_kind] ??
-                                                            s.text_kind}
+                                                        {t('plansCard.fromTextKind', {
+                                                            kind:
+                                                                TEXT_KIND_LABEL[s.text_kind] ??
+                                                                s.text_kind,
+                                                        })}
                                                     </span>
                                                 ) : null}
                                             </td>
@@ -873,7 +936,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                                         <button
                                                             type="button"
                                                             className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100 hover:text-primary-600"
-                                                            title="Preview teaching plan"
+                                                            title={t('plansCard.previewPlanTitle')}
                                                             onClick={() => setPreviewSlide(s)}
                                                         >
                                                             <Eye className="size-4" />
@@ -888,15 +951,15 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                                             onClick={() => openDetails(s)}
                                                         >
                                                             {s.status === 'NEEDS_DETAILS'
-                                                                ? 'Add details'
-                                                                : 'Edit details'}
+                                                                ? t('plansCard.addDetails')
+                                                                : t('plansCard.editDetails')}
                                                         </button>
                                                     )}
                                                     {s.status !== 'UNSUPPORTED' && (
                                                         <button
                                                             type="button"
                                                             className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100 hover:text-primary-600 disabled:opacity-50"
-                                                            title="Recompile this slide"
+                                                            title={t('plansCard.recompileSlideTitle')}
                                                             disabled={compiling}
                                                             onClick={() =>
                                                                 setEstimateFor({
@@ -918,7 +981,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                             colSpan={6}
                                             className="py-6 text-center text-neutral-500"
                                         >
-                                            This course has no published slides yet.
+                                            {t('plansCard.noSlidesYet')}
                                         </td>
                                     </tr>
                                 )}

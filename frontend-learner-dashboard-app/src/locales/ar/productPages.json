@@ -252,6 +252,8 @@
             "days_many": "الوصول لمدة {{count}} يومًا",
             "days_other": "الوصول لمدة {{count}} يوم"
         },
-        "goToMyCourses": "اذهب إلى {{courses}} الخاصة بي"
+        "goToMyCourses": "اذهب إلى {{courses}} الخاصة بي",
+        "redirecting": "جارٍ نقلك إلى الصفحة التالية…",
+        "redirectNow": "المتابعة الآن"
     }
 }

@@ -1,15 +1,24 @@
-"""Rules the plan schema cannot express. Returns an error list the compiler
-feeds back to the model for a repair pass (design §4.3 / §4.6).
+"""Rules the plan schema cannot express (design §4.3 / §4.6).
 
-Limits are deliberately a little looser than the design's prose ("about 40
-words") so a good plan is not bounced for a two-word overrun; the point is to
-stop wall-of-text boards, not to count words for their own sake.
+TWO TIERS, deliberately:
+
+* `validate_plan` is STRUCTURAL and fatal — malformed ops, duplicate ids,
+  a check with no answer, missing media urls, narration in one language only:
+  things the runtime cannot serve. The model gets these back and must fix them.
+
+* `board_quality_errors` (fed to the model through `soft_errors`) is PEDAGOGY —
+  a board's word budget, one heading per concept, something to look at on every
+  board. These are asked for once and then let go: a dense derivation that will
+  not fit 60 words is still a teachable board, and a structurally sound plan
+  must never be thrown away (leaving the slide unteachable and the compile
+  credits spent) over a quality preference. What remains is stored on the plan
+  as `quality_notes` and shown to the admin.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 from ...schemas.tutor import TeachingPlanDraft, VISUAL_OPS
 from .board_ops import iter_element_ops, op_words, ops_to_dicts, validate_ops
@@ -27,6 +36,9 @@ class Limits:
     # Whiteboards teach with pictures: every board must carry at least one
     # svg / image / video (media tasks count). Off for quizzes.
     require_visual_per_topic: bool = True
+    # Images are on for this course, so a slide is expected to carry real
+    # illustrations, not only shapes. Advice only, like the rest of this block.
+    expect_images: bool = False
     # Engagement rules (soft: one repair round, never a failed plan): a recap
     # board + spoken recap per topic, an example per topic, a mix of quick
     # checks, a hint per check, short open questions. Off for quizzes.
@@ -54,6 +66,11 @@ def is_hinglish(text: str) -> bool:
     dev = len(_DEVANAGARI.findall(text or ""))
     total = dev + len(_LATIN.findall(text or ""))
     return total == 0 or dev / total >= MIN_DEVANAGARI_SHARE
+
+# What counts as "this board has something to look at". A derivation board's
+# formula and a comparison table are visual on a whiteboard; demanding an SVG
+# on an algebra board only produces decoration.
+BOARD_VISUAL_OPS = VISUAL_OPS | {"formula", "table"}
 
 MAX_WORDS_PER_CONCEPT = DEFAULT_LIMITS.words_per_concept
 MAX_HEADINGS_PER_CONCEPT = DEFAULT_LIMITS.headings_per_concept
@@ -110,7 +127,6 @@ def validate_plan(
         seen_ids.add(topic.id)
 
         board_ids: Set[str] = set()
-        topic_words = 0
         for ci, concept in enumerate(topic.concepts):
             cloc = f"{tloc}.concepts[{ci}]('{concept.title[:30]}')"
             if concept.id in seen_ids:
@@ -131,25 +147,14 @@ def validate_plan(
                 elif oid:
                     seen_ids.add(oid)
 
-            words = sum(op_words(op) for op in ops)
-            topic_words += words
-            if words > limits.words_per_concept:
-                errors.append(f"{cloc}: board adds {words} words; keep a concept under {limits.words_per_concept}")
-            headings = sum(1 for op in elems if op.get("op") == "heading")
-            if headings > limits.headings_per_concept:
-                errors.append(f"{cloc}: {headings} headings; at most {limits.headings_per_concept} per concept")
-            visuals = sum(1 for op in elems if op.get("op") in VISUAL_OPS)
-            if visuals > limits.visuals_per_concept:
-                errors.append(f"{cloc}: {visuals} visuals; at most {limits.visuals_per_concept} per concept")
             if any(op.get("op") == "clear" for op in ops):
                 errors.append(f"{cloc}: 'clear' belongs to topic boundaries, not concepts")
             for op in elems:
                 if op.get("op") in VISUAL_OPS and len((op.get("description") or "").strip()) < MIN_DESCRIPTION_CHARS:
                     errors.append(f"{cloc}: {op.get('op')} '{op.get('id')}' needs a real description")
 
-            n = sentence_count(concept.say)
-            if n < limits.min_say_sentences or n > limits.max_say_sentences:
-                errors.append(f"{cloc}: say has {n} sentences; use {limits.min_say_sentences}-{limits.max_say_sentences}")
+            if not (concept.say or "").strip():
+                errors.append(f"{cloc}: say is empty — the teacher must have something to say about this board")
             if not (concept.say_i18n or {}).get(other_lang, "").strip():
                 errors.append(f"{cloc}: say_i18n['{other_lang}'] is missing (narration must be compiled in both languages)")
 
@@ -166,12 +171,6 @@ def validate_plan(
                 if not (0.3 <= chk.pass_threshold <= 1.0):
                     errors.append(f"{cloc}: pass_threshold must be between 0.3 and 1.0")
 
-        if limits.require_visual_per_topic and not any(
-            op.get("op") in VISUAL_OPS for c in topic.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))
-        ):
-            errors.append(f"{tloc}: this board has no visual — add an svg diagram (or an image) to one of its concepts")
-        if topic_words > limits.board_words_per_topic:
-            errors.append(f"{tloc}: the topic's whole board is {topic_words} words; a board must fit one screen (<= {limits.board_words_per_topic})")
         s_errors, _ = validate_ops(ops_to_dicts(topic.summary_ops), set(board_ids), where=f"{tloc}.summary_",
                                    require_media_urls=require_media_urls)
         errors.extend(s_errors)
@@ -184,8 +183,117 @@ def validate_plan(
 # (with broken diagrams replaced by an auto-layout), so quality asks never
 # turn into a failed compile.
 
-def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS) -> List[str]:
+_TRAILING_Q = re.compile(r"[?？]\s*[\"'”’)]*\s*$")
+_REVEAL_CUES = re.compile(r"\b(before I reveal|try it first|what do you think|can you tell me|tell me)\b", re.IGNORECASE)
+
+
+def narration_asks(say: str) -> bool:
+    """Does the narration end by asking something? (Then the check prompt
+    would be a second, different question — the learner hears two.)"""
+    t = (say or "").strip()
+    if not t:
+        return False
+    return bool(_TRAILING_Q.search(t)) or bool(_REVEAL_CUES.search(t[-160:]))
+
+
+def board_quality_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS) -> List[str]:
+    """Board hygiene: how much a board may hold and whether it shows anything.
+    Never fatal — see the module docstring."""
     errors: List[str] = []
+    for ti, topic in enumerate(plan.topics):
+        tloc = f"topics[{ti}]('{topic.title[:30]}')"
+        topic_words = 0
+        for ci, concept in enumerate(topic.concepts):
+            cloc = f"{tloc}.concepts[{ci}]('{concept.title[:30]}')"
+            ops = ops_to_dicts(concept.board_ops)
+            elems = list(iter_element_ops(ops))
+            words = sum(op_words(op) for op in ops)
+            topic_words += words
+            if words > limits.words_per_concept:
+                errors.append(f"{cloc}: board adds {words} words of text; keep a concept under {limits.words_per_concept} "
+                              f"(formulas and diagrams do not count — move explanation into the narration)")
+            headings = sum(1 for op in elems if op.get("op") == "heading")
+            if headings > limits.headings_per_concept:
+                errors.append(f"{cloc}: {headings} headings; at most {limits.headings_per_concept} per concept")
+            visuals = sum(1 for op in elems if op.get("op") in VISUAL_OPS)
+            if visuals > limits.visuals_per_concept:
+                errors.append(f"{cloc}: {visuals} diagrams/images; at most {limits.visuals_per_concept} per concept")
+            n = sentence_count(concept.say)
+            if n > limits.max_say_sentences:
+                errors.append(f"{cloc}: say has {n} sentences; use {limits.min_say_sentences}-{limits.max_say_sentences}")
+        if limits.require_visual_per_topic and not any(
+            op.get("op") in BOARD_VISUAL_OPS for c in topic.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))
+        ):
+            errors.append(f"{tloc}: this board shows nothing to look at — add an svg diagram, an image, a formula or a "
+                          f"comparison table to one of its concepts")
+        if topic_words > limits.board_words_per_topic:
+            errors.append(f"{tloc}: the topic's whole board is {topic_words} words; a board should fit one screen "
+                          f"(<= {limits.board_words_per_topic})")
+    if limits.expect_images:
+        images = sum(1 for t in plan.topics for c in t.concepts
+                     for op in iter_element_ops(ops_to_dicts(c.board_ops)) if op.get("op") == "image")
+        want = 1 if len(plan.topics) <= 2 else 2 if len(plan.topics) <= 4 else 3
+        if images < want:
+            errors.append(
+                f"plan: only {images} real illustration(s) for {len(plan.topics)} board(s); aim for about {want}. "
+                f"Students learn from pictures: add an `image` op where a picture teaches better than shapes "
+                f"(a real scene, an object, an organism, an apparatus, a labelled textbook illustration)")
+    return errors
+
+
+# ── question coverage: a problem slide's first board must carry the ask ─────
+_OPTION_LINE = re.compile(r"(?m)^\s*\(?([A-Da-d])[).:]\s*(.+?)\s*$")
+_ASK_CUE = re.compile(r"\b(find|determine|evaluate|calculate|what is|which of|the value of|equals?)\b", re.IGNORECASE)
+_DISPLAY_MATH = re.compile(r"\\\[(.+?)\\\]|\$\$(.+?)\$\$", re.S)
+
+
+def _norm_math(s: str) -> str:
+    return re.sub(r"[\s{}]|\\left|\\right|\\,|\\;|\\!", "", s or "").lower()
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"[\s.,:;()\-–—]", "", s or "").lower()
+
+
+def question_coverage_errors(plan: TeachingPlanDraft, source_text: Optional[str]) -> List[str]:
+    """When the source reads like a problem (an ask, maybe options), the first
+    topic's boards must show the ask and the options. Advice, not fatal."""
+    if not source_text or not plan.topics:
+        return []
+    text = source_text
+    options = [_norm_text(v) for _l, v in _OPTION_LINE.findall(text) if len(v.strip()) <= 60]
+    if len(options) < 3:
+        options = []
+    # The display-math block that follows an ask cue is "what is asked".
+    asked: List[str] = []
+    for m in _DISPLAY_MATH.finditer(text):
+        before = text[max(0, m.start() - 160):m.start()]
+        if _ASK_CUE.search(before):
+            asked.append(_norm_math(m.group(1) or m.group(2) or ""))
+    if not options and not asked:
+        return []
+    first = plan.topics[0]
+    board_text = " ".join(
+        str(v) for c in first.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))
+        for v in ([op.get("text")] + list(op.get("items") or []) + [cell for row in (op.get("rows") or []) for cell in row])
+        if isinstance(v, str)
+    )
+    board_latex = " ".join(str(op.get("latex") or "") for c in first.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))
+                           if op.get("op") == "formula")
+    errors: List[str] = []
+    if asked and not any(a and a[:24] in _norm_math(board_latex) for a in asked):
+        errors.append(f"topics[0]('{first.title[:30]}'): the question's ask is missing — the first board must show, as a "
+                      f"formula op, exactly what the problem asks for (the source says: \\[ {asked[0][:80]} \\])")
+    if options:
+        shown = sum(1 for o in options if o and o in _norm_text(board_text))
+        if shown < max(2, len(options) - 1):
+            errors.append(f"topics[0]('{first.title[:30]}'): the answer options are missing from the first board — "
+                          f"list all {len(options)} options (a bullet op) so the learner sees the full question")
+    return errors
+
+
+def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS, source_text: Optional[str] = None) -> List[str]:
+    errors: List[str] = board_quality_errors(plan, limits=limits) + question_coverage_errors(plan, source_text)
     if not plan.topics:
         return errors
     total_checks = 0
@@ -212,6 +320,8 @@ def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS) -> 
             if concept.check.type != "none":
                 _needs(cloc, "check.prompt", concept.check.prompt or "", concept.check.prompt_i18n)
                 _needs(cloc, "check.hint", concept.check.hint or "", concept.check.hint_i18n)
+                if narration_asks(concept.say or ""):
+                    errors.append(f"{cloc}: `say` must not ask the question — it ends with '?' but the check prompt is the only question, spoken right after; end `say` with a statement")
             ops = ops_to_dicts(concept.board_ops)
             for op in iter_element_ops(ops):
                 if op.get("op") == "svg":

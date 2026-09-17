@@ -32,5 +32,33 @@
         "roleCreated": "تم إنشاء الدور بنجاح",
         "roleCreateFailed": "فشل إنشاء الدور",
         "roleNameRequired": "اسم الدور مطلوب"
+    },
+    "copyToRoles": {
+        "button": "نسخ إلى أدوار أخرى",
+        "disabled": {
+            "noRoleSelected": "اختر دورًا مخصصًا أولاً",
+            "unsavedChanges": "احفظ تغييراتك قبل النسخ"
+        },
+        "dialog": {
+            "title": "نسخ إعدادات العرض",
+            "description": "تطبيق إعدادات عرض {{role}} على الأدوار المحددة أدناه.",
+            "allRoles": "كل الأدوار",
+            "roleCount": "{{count}} دور",
+            "roleCount_other": "{{count}} أدوار",
+            "noTargets": "لا توجد أدوار أخرى للنسخ إليها بعد.",
+            "overwriteWarning": "سيؤدي هذا إلى استبدال إعدادات العرض لـ {{count}} دور. سيتم فقدان إعداداته الحالية.",
+            "overwriteWarning_other": "سيؤدي هذا إلى استبدال إعدادات العرض لـ {{count}} أدوار. سيتم فقدان إعداداتها الحالية.",
+            "cancel": "إلغاء",
+            "copying": "جارٍ النسخ…",
+            "confirm": "نسخ إلى {{count}} دور",
+            "confirm_other": "نسخ إلى {{count}} أدوار"
+        },
+        "toast": {
+            "success": "تم نسخ إعدادات العرض إلى {{count}} دور",
+            "success_other": "تم نسخ إعدادات العرض إلى {{count}} أدوار",
+            "partial": "تم النسخ إلى {{succeeded}} دور. فشل: {{failedRoles}}",
+            "allFailed": "تعذّر نسخ إعدادات العرض. {{message}}",
+            "readFailed": "تعذّرت قراءة إعدادات العرض الحالية. {{message}}"
+        }
     }
 }

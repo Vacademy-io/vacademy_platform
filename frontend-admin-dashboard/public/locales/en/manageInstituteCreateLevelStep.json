@@ -1,0 +1,17 @@
+{
+    "form": {
+        "levelSelectionLabel": "{{term}} Selection",
+        "selectExisting": "Select existing {{term}}",
+        "createNew": "Create new {{term}}",
+        "selectALevelPlaceholder": "Select a {{term}}",
+        "durationDays_one": "Duration: {{count}} day",
+        "durationDays_other": "Duration: {{count}} days",
+        "duplicateFromPreExisting": "Duplicate study materials from a pre-existing {{term}}",
+        "duplicateFrom": "Duplicate from {{term}}",
+        "selectForDuplication": "Select {{term}} for duplication"
+    },
+    "validation": {
+        "pleaseSelectLevel": "Please select a level",
+        "pleaseSelectSessionToDuplicate": "Please select a session to duplicate from"
+    }
+}

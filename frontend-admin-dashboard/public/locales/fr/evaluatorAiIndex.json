@@ -1,0 +1,13 @@
+{
+    "dashboardHeading": "Tableau de bord",
+    "dashboardDescription": "Cette page affiche le tableau de bord de l'établissement.",
+    "greetingHello": "Bonjour",
+    "greetingName": "Évaluateur !",
+    "enrollStudentsTitle": "Inscrire des étudiants",
+    "enroll": "Inscrire",
+    "assessmentCreatedLabel": "Évaluations créées",
+    "createAssessmentTitle": "Créer une évaluation à corriger",
+    "create": "Créer",
+    "evaluateStudentsTitle": "Évaluer les réponses des étudiants pour une évaluation",
+    "evaluate": "Évaluer"
+}

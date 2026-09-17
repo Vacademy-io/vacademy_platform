@@ -88,6 +88,13 @@
         "renewPromptNoDate": "एक बार भुगतान करें और आपकी सदस्यता चलती रहेगी।",
         "reactivatePrompt": "इस सदस्यता को फिर से सक्रिय करें — वही प्लान, वही कोर्स, दोबारा नामांकन की ज़रूरत नहीं।",
         "alsoEnableAutopay": "भविष्य के नवीनीकरण के लिए ऑटो-पे फिर से चालू करें — एक ही मंज़ूरी से अभी भुगतान होगा और आगे के लिए सेट हो जाएगा।",
+        "mandateMethod": {
+            "heading": "ऑटो-पे कैसे सेट करें?",
+            "upiLabel": "UPI ऑटोपे",
+            "upiHint": "GPay, PhonePe, Paytm",
+            "cardLabel": "कार्ड",
+            "cardHint": "डेबिट / क्रेडिट कार्ड"
+        },
         "payToContinue": "जारी रखने के लिए {{amount}} भुगतान करें",
         "startingPayment": "भुगतान शुरू हो रहा है...",
         "unavailable": "सदस्यता की जानकारी अभी उपलब्ध नहीं है।",
@@ -242,7 +249,11 @@
         "awardedTooltip": "{{name}} — आपके संस्थान द्वारा प्रदान किया गया",
         "awardedTooltipWithReason": "{{name}} — आपके संस्थान द्वारा प्रदान किया गया: {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} अनलॉक",
-        "emptyPrompt": "बैज अनलॉक करने के लिए अपना पहला {{slide}} पूरा करें"
+        "emptyPrompt": "बैज अनलॉक करने के लिए अपना पहला {{slide}} पूरा करें",
+        "manualLockedHint": "आपके संस्थान द्वारा प्रदान किया जाता है — अपने आप अनलॉक नहीं होता",
+        "manualLockedTooltip": "{{name}} — आपके संस्थान द्वारा प्रदान किया जाता है, अपने आप अनलॉक नहीं होता",
+        "celebrateTitle": "नया बैज अनलॉक हुआ!",
+        "celebrateAwardedTitle": "आपके संस्थान ने आपको एक बैज प्रदान किया"
     },
     "tnc": {
         "title": "नियम और शर्तें स्वीकार करें",
@@ -421,5 +432,14 @@
             "viewAllClassesButton": "सभी कक्षाएं देखें",
             "dateAtTime": "{{date}} को {{time}} बजे"
         }
+    },
+    "getApp": {
+        "title": "ऐप डाउनलोड करें",
+        "subtitle": "सहज अनुभव के लिए हमारे ऐप्स डाउनलोड करें।",
+        "android": "एंड्रॉइड ऐप",
+        "ios": "iPhone और iPad ऐप",
+        "windows": "विंडोज ऐप",
+        "mac": "मैक ऐप",
+        "webPortal": "वेब पोर्टल"
     }
 }

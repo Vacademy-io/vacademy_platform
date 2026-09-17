@@ -324,8 +324,12 @@ def load_lesson(db: Session, slide_id: str) -> Optional[LessonPlan]:
     if plan is None:
         return None
     view = plan_store.plan_view(db, plan)
-    row = db.execute(text("SELECT title FROM slide WHERE id = :s"), {"s": slide_id}).first()
-    view["slide_title"] = (row[0] if row else None) or ""
+    if slide_id.startswith("demo:"):
+        from ..demo import demo_title
+        view["slide_title"] = demo_title(db, slide_id) or ""
+    else:
+        row = db.execute(text("SELECT title FROM slide WHERE id = :s"), {"s": slide_id}).first()
+        view["slide_title"] = (row[0] if row else None) or ""
     return from_plan_view(view)
 
 
@@ -511,11 +515,13 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
             "language": ts.language, "started_slide_id": ts.started_slide_id,
             "settings": settings, "lesson": lesson, "state": state, "pointer": pointer,
             "previous_slide": previous,
-            "learner_name": learner_name(db, ts.user_id),
+            "learner_name": (ts.summary_json or {}).get("learner_name") or learner_name(db, ts.user_id),
             # What the teacher says about last time (model-written summary).
             "resume_line": prompts.resume_line(st.rolling_summary),
             "tts_provider": tts_provider, "tts_voice": tts_voice, "live_model": live_model,
-            "max_seconds": session_max_seconds(db),
+            "max_seconds": (int((ts.summary_json or {}).get("max_minutes") or 0) * 60) or session_max_seconds(db),
+            # Public demo: unbilled, short, no premium avatar.
+            "demo": bool((ts.summary_json or {}).get("demo")),
         }
 
 
@@ -552,17 +558,17 @@ def record_media_usage(*, kind: str, institute_id: str, user_id: str, session_id
 
 def start_session(
     *, user_id: str, institute_id: str, package_session_id: str, slide_id: Optional[str], mode: str,
-    language: Optional[str],
+    language: Optional[str], guest: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create the tutor session (+ its chat session for the transcript) and
     return everything the socket needs to open: settings, lesson, pointer."""
     with db_session() as db:
         pkg = package_of_session(db, package_session_id)
-        if not pkg:
+        if not pkg and not guest:
             raise ValueError("Batch not found")
-        package_id, package_name = pkg
+        package_id, package_name = pkg if pkg else ("", "Tutezy demo")
         settings = resolve_settings(db, package_id=package_id, institute_id=institute_id)
-        if not settings.enabled:
+        if not settings.enabled and not guest:
             raise PermissionError("Tutor mode is not enabled for this course")
         st = get_or_create_state(db, user_id=user_id, package_session_id=package_session_id, institute_id=institute_id)
         target_slide = slide_id or st.current_slide_id
@@ -570,7 +576,7 @@ def start_session(
             raise ValueError("No slide to teach: pass slide_id")
         # The session teaches only what this batch exposes: a slide id from
         # another course (or an unpublished one) is not a plan lookup.
-        if not slide_in_package_session(db, target_slide, package_session_id):
+        if not (guest and target_slide.startswith("demo:")) and not slide_in_package_session(db, target_slide, package_session_id):
             if slide_id:
                 raise LookupError("This slide is not part of this batch")
             raise ValueError("No slide to teach: pass slide_id")
@@ -591,13 +597,15 @@ def start_session(
         ts = TutorSession(
             id=str(uuid4()), user_id=user_id, institute_id=institute_id, package_session_id=package_session_id,
             chat_session_id=chat.id, mode=mode, tts_provider=settings.tts_provider, tts_voice=settings.tts_voice,
-            language=lang, started_slide_id=target_slide, status="ACTIVE", summary_json={"turns": 0},
+            language=lang, started_slide_id=target_slide, status="ACTIVE",
+            # A public demo carries its own name, length and no-billing flag.
+            summary_json={"turns": 0, **({"demo": True, "learner_name": guest.get("name"), "max_minutes": guest.get("minutes")} if guest else {})},
         )
         db.add(ts)
         st.current_slide_id = target_slide
         st.updated_at = datetime.utcnow()
         db.commit()
-        name = learner_name(db, user_id)
+        name = (guest or {}).get("name") or learner_name(db, user_id)
         return {
             "tutor_session_id": ts.id, "chat_session_id": chat.id, "package_id": package_id,
             "package_name": package_name, "settings": settings, "lesson": lesson, "pointer": pointer,

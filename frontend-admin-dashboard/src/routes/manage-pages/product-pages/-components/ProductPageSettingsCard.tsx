@@ -17,8 +17,16 @@ import {
     Trash as Trash2,
     ArrowSquareOut as ExternalLink,
     MagicWand,
+    Warning,
 } from '@phosphor-icons/react';
 import type { MappingRow, ProductPageSettings } from '../-types/product-page-types';
+import {
+    MAX_REDIRECT_DELAY_SECONDS,
+    REDIRECT_DELAY_PRESETS,
+    clampRedirectDelay,
+    redirectDelayLabel,
+    resolveRedirectTarget,
+} from '../-utils/redirect-settings';
 import { BasketPricingEditor } from './BasketPricingEditor';
 import { CourseFinderEditor } from './CourseFinderEditor';
 import { OffersEditor } from './OffersEditor';
@@ -153,6 +161,16 @@ export const ProductPageSettingsCard = ({
 }: ProductPageSettingsCardProps) => {
     const update = (patch: Partial<ProductPageSettings>) => onChange({ ...settings, ...patch });
     const selectedStepIndex = STEPS.findIndex((s) => s.id === settings.defaultStep);
+
+    // Post-enrollment redirect, resolved exactly as the checkout resolves it.
+    const redirectRaw = settings.afterPaymentRedirectUrl ?? '';
+    const redirectTarget = resolveRedirectTarget(redirectRaw);
+    const isAbsoluteRedirect = redirectTarget !== null && !redirectTarget.startsWith('/');
+    const delaySeconds = clampRedirectDelay(settings.afterPaymentRedirectDelaySeconds);
+    const redirectSummaryPrefix =
+        delaySeconds > 0
+            ? `Learners see the success screen for ${redirectDelayLabel(delaySeconds)}, then go to `
+            : 'Learners go straight to ';
 
     return (
         <div className="space-y-5">
@@ -515,23 +533,128 @@ export const ProductPageSettingsCard = ({
                     <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Post Enrollment Configuration</p>
                 </div>
 
-                {/* Redirect Path */}
-                <div className="px-5 py-4 space-y-2">
-                    <p className="text-sm font-semibold text-neutral-800">Redirect Path <span className="font-normal text-neutral-400">(Optional)</span></p>
+                {/* Redirect after enrollment */}
+                <div className="space-y-3 px-5 py-4">
+                    <div>
+                        <p className="text-sm font-semibold text-neutral-800">
+                            Redirect After Enrollment{' '}
+                            <span className="font-normal text-neutral-400">(Optional)</span>
+                        </p>
+                        <p className="mt-0.5 text-caption text-neutral-400">
+                            Hand the learner over to your own thank-you page once the enrollment is
+                            through. Leave empty to keep the built-in success page.
+                        </p>
+                    </div>
+
                     <Input
-                        placeholder="/dashboard or https://example.com"
-                        value={settings.afterPaymentRedirectUrl ?? ''}
+                        placeholder="https://example.com/thank-you or /dashboard"
+                        value={redirectRaw}
                         onChange={(e) => update({ afterPaymentRedirectUrl: e.target.value })}
-                        className="text-sm border-neutral-200 bg-neutral-50 focus:border-blue-400 focus:ring-blue-300"
+                        className="border-neutral-200 bg-neutral-50 text-sm focus:border-blue-400 focus:ring-blue-300"
                     />
-                    <p className="text-[11px] text-neutral-400">If set, the user will be instantly redirected to this path after successful enrollment, skipping the success page.</p>
+
+                    {/* What will actually happen, spelled out. A redirect can only
+                        be checked by enrolling, so the settings screen has to say
+                        where the learner lands and after how long — a typo that
+                        silently keeps the success page is otherwise invisible. */}
+                    {redirectRaw.trim() === '' ? (
+                        <p className="text-caption text-neutral-400">
+                            No redirect — learners stay on the success page.
+                        </p>
+                    ) : redirectTarget ? (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2">
+                            <CheckCircle2 className="size-4 shrink-0 text-success-600" />
+                            <p className="min-w-0 flex-1 text-caption text-success-700">
+                                {redirectSummaryPrefix}
+                                <span className="break-all font-semibold">{redirectTarget}</span>
+                            </p>
+                            {isAbsoluteRedirect && (
+                                <a
+                                    href={redirectTarget}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex shrink-0 items-center gap-1 text-caption font-semibold text-success-700 underline underline-offset-2"
+                                >
+                                    Test <ExternalLink className="size-3" />
+                                </a>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-2">
+                            <Warning className="mt-0.5 size-4 shrink-0 text-warning-600" />
+                            <p className="text-caption text-warning-700">
+                                This isn&apos;t a destination a browser can open, so it will be
+                                ignored and learners will stay on the success page. Use a full
+                                address starting with{' '}
+                                <span className="font-semibold">https://</span> or a path on this
+                                site starting with <span className="font-semibold">/</span>.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Delay — only meaningful once there is somewhere to go. */}
+                    {redirectTarget && (
+                        <div className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                            <div>
+                                <p className="text-sm font-semibold text-neutral-800">
+                                    Wait Before Redirecting
+                                </p>
+                                <p className="mt-0.5 text-caption text-neutral-400">
+                                    How long the &quot;You&apos;re enrolled!&quot; screen stays up
+                                    first. Keep a moment so the learner sees the enrollment went
+                                    through — and so any conversion tag on this page has time to
+                                    fire before the browser leaves.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {REDIRECT_DELAY_PRESETS.map((preset) => (
+                                    <button
+                                        key={preset}
+                                        type="button"
+                                        onClick={() =>
+                                            update({ afterPaymentRedirectDelaySeconds: preset })
+                                        }
+                                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                                            delaySeconds === preset
+                                                ? 'border-primary-300 bg-primary-50 text-primary-500'
+                                                : 'border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300'
+                                        }`}
+                                    >
+                                        {preset === 0 ? 'Instant' : `${preset}s`}
+                                    </button>
+                                ))}
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={MAX_REDIRECT_DELAY_SECONDS}
+                                        step={1}
+                                        value={delaySeconds}
+                                        onChange={(e) =>
+                                            update({
+                                                afterPaymentRedirectDelaySeconds:
+                                                    clampRedirectDelay(Number(e.target.value)),
+                                            })
+                                        }
+                                        className="w-20 border-neutral-200 bg-white text-sm focus:border-blue-400 focus:ring-blue-300"
+                                    />
+                                    <span className="text-caption text-neutral-500">
+                                        seconds (max {MAX_REDIRECT_DELAY_SECONDS})
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Show Login Button toggle */}
                 <div className="flex items-center gap-4 border-t border-neutral-100 px-5 py-4">
                     <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-neutral-800">Show Login Button</p>
-                        <p className="text-xs text-neutral-400">Display the login button on the success page if not redirecting immediately.</p>
+                        <p className="text-xs text-neutral-400">
+                            Display the login button on the success page. Ignored while a redirect
+                            is set — the learner is on their way out.
+                        </p>
                     </div>
                     <Toggle
                         checked={settings.showLoginButton ?? true}

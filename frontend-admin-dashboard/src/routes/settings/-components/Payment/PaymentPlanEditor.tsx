@@ -108,6 +108,11 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                         ) || [],
                 },
                 upfront: {
+                    // Spread first: this block rebuilds config.upfront field-by-field, so
+                    // anything not named here is dropped. planId was — and losing it makes
+                    // the save look like a NEW plan, so editing a one-time option retired
+                    // its plan and minted a duplicate, orphaning every user_plan on it.
+                    ...(editingPlan.config?.upfront || {}),
                     fullPrice: editingPlan.config?.upfront?.fullPrice || '',
                     // transformApiPlanToLocalFormat derives these from validity_in_days,
                     // so an existing plan re-opens on the option it was saved with.

@@ -37,7 +37,7 @@ export const AssessmentBasicInfoTab = () => {
                 <div className="flex flex-col gap-6">
                     <h1 className="text-sm font-semibold">
                         {t('fields.homeworkName.label')}{' '}
-                        <span className="font-thin">{assessmentDetails[0]?.saved_data.name}</span>
+                        <span className="font-thin">{assessmentDetails[0]?.saved_data?.name}</span>
                     </h1>
                     <h1 className="text-sm font-semibold">
                         {t('fields.subject.label')}{' '}
@@ -56,7 +56,7 @@ export const AssessmentBasicInfoTab = () => {
                         <div
                             dangerouslySetInnerHTML={{
                                 __html:
-                                    assessmentDetails[0]?.saved_data?.instructions.content || '',
+                                    assessmentDetails[0]?.saved_data?.instructions?.content || '',
                             }}
                         />
                     </div>

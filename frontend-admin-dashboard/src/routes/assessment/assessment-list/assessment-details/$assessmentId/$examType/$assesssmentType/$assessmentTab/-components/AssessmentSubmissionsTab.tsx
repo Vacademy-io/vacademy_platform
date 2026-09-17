@@ -25,7 +25,7 @@ import {
     ASSESSMENT_STATUS_STUDENT_PENDING_CONTACT_COLUMNS_WIDTH,
 } from '@/components/design-system/utils/constants/table-layout';
 import { Route } from '..';
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getInstituteId } from '@/constants/helper';
@@ -64,6 +64,8 @@ import { SubmissionsSummaryStrip } from './SubmissionsSummaryStrip';
 import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDialog';
 import { AiAssessmentReportDialog } from './AiAssessmentReportDialog';
 import { AssessmentExportCsvDialog } from './AssessmentExportCsvDialog';
+import { BulkAiCheckDialog } from './copy-intake/BulkAiCheckDialog';
+import { CopyIntakeBatchPanel } from './copy-intake/CopyIntakeBatchPanel';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
 import { AssessmentGlobalLevelRevaluateQuestionWise } from './assessment-global-level-revaluate/assessment-global-level-revaluate-question-wise';
@@ -72,7 +74,11 @@ import { useRef } from 'react';
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
 import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/open-student-side-view';
 import { useNavigate } from '@tanstack/react-router';
-import { getAssessmentSettingsFromCache } from '@/services/assessment-settings';
+import {
+    getAssessmentSettings,
+    getAssessmentSettingsFromCache,
+} from '@/services/assessment-settings';
+import { DEFAULT_ASSESSMENT_SETTINGS } from '@/types/assessment-settings';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -181,7 +187,18 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const { BatchesFilterData } = useFilterDataForAssesment(initData);
     const instituteId = getInstituteId();
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
-    const assessmentSettings = getAssessmentSettingsFromCache();
+    // Offline Entry is gated on an institute-level setting. Fetch it rather than
+    // reading the localStorage cache directly: that cache is only ever written by
+    // Settings -> Assessment, so an admin who has never opened that page — or is on a
+    // second browser, or whose 24h cache lapsed — would silently fall back to the
+    // `enabled: false` default and lose the button while a colleague still sees it.
+    // The cached value is the placeholder so the button still paints instantly.
+    const { data: assessmentSettings = DEFAULT_ASSESSMENT_SETTINGS } = useQuery({
+        queryKey: ['ASSESSMENT_SETTINGS', instituteId],
+        queryFn: () => getAssessmentSettings(),
+        placeholderData: getAssessmentSettingsFromCache,
+        staleTime: 5 * 60 * 1000,
+    });
     const isOfflineEntryEnabled = assessmentSettings.offlineEntry.enabled;
     const queryClient = useQueryClient();
     // MANUAL evaluation assessments get an extra "Submission" column showing
@@ -190,8 +207,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const { data: assessmentDetailsData } = useSuspenseQuery(
         getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' })
     );
-    const isManualEvaluation =
-        assessmentDetailsData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
+    const isManualEvaluation = assessmentDetailsData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
 
     // How this assessment was actually handed out. An assessment created against batches
     // has no individually pre-registered learners, so "Individual Selection" could only
@@ -253,6 +269,27 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     // its own trigger, scoped to the checked rows).
     const [bulkReportZipOpen, setBulkReportZipOpen] = useState(false);
     const [aiReportOpen, setAiReportOpen] = useState(false);
+    // Bulk AI check of uploaded copies. The email a finished batch sends links
+    // here with ?intake=<batchId>, which opens the panel on that batch.
+    const initialIntakeId = useMemo(() => {
+        try {
+            return new URLSearchParams(window.location.search).get('intake');
+        } catch {
+            return null;
+        }
+    }, []);
+    const [bulkCheckOpen, setBulkCheckOpen] = useState(false);
+    const [intakePanelOpen, setIntakePanelOpen] = useState(Boolean(initialIntakeId));
+    const [intakeBatchId, setIntakeBatchId] = useState<string | null>(initialIntakeId);
+    // Linked batches live on step 3 (index 2) of the details payload, same as
+    // the Participants tab and offline entry read them.
+    const assessmentBatchIds: string[] = useMemo(
+        () =>
+            (assessmentDetailsData?.[2]?.saved_data?.pre_batch_registrations ?? [])
+                .map((b) => b.batchId)
+                .filter(Boolean),
+        [assessmentDetailsData]
+    );
     const currentPageSelection = rowSelections[page] || {};
     const totalSelectedCount = Object.values(rowSelections).reduce(
         (count, pageSelection) => count + Object.keys(pageSelection).length,
@@ -1224,6 +1261,28 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                 onValueChange={handleAttemptedTab}
                 className="flex w-full flex-col gap-3"
             >
+                <BulkAiCheckDialog
+                    open={bulkCheckOpen}
+                    onOpenChange={setBulkCheckOpen}
+                    assessmentId={assessmentId}
+                    instituteId={instituteId}
+                    onStarted={(batch) => {
+                        setIntakeBatchId(batch.id);
+                        setIntakePanelOpen(true);
+                    }}
+                />
+                {intakePanelOpen && (
+                    <div className="px-4">
+                        <CopyIntakeBatchPanel
+                            assessmentId={assessmentId}
+                            instituteId={instituteId}
+                            examType={examType}
+                            packageSessionIds={assessmentBatchIds}
+                            initialBatchId={intakeBatchId}
+                            onClose={() => setIntakePanelOpen(false)}
+                        />
+                    </div>
+                )}
                 {/* Sub-tab row: which slice of participants on the left, the actions that
                     operate on that slice on the right. */}
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4">
@@ -1331,6 +1390,32 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                         {t('buttons.aiEvaluationsTooltip')}
                                     </TooltipContent>
                                 </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <MyButton
+                                            type="button"
+                                            scale="small"
+                                            buttonType="primary"
+                                            className="gap-1.5 font-medium"
+                                            onClick={() => setBulkCheckOpen(true)}
+                                        >
+                                            <Sparkle size={16} weight="fill" />
+                                            {t('buttons.bulkAiCheck')}
+                                        </MyButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                        {t('buttons.bulkAiCheckTooltip')}
+                                    </TooltipContent>
+                                </Tooltip>
+                                <MyButton
+                                    type="button"
+                                    scale="small"
+                                    buttonType="secondary"
+                                    className="font-medium"
+                                    onClick={() => setIntakePanelOpen((v) => !v)}
+                                >
+                                    {t('buttons.bulkAiBatches')}
+                                </MyButton>
                             </>
                         )}
                         <Tooltip>
@@ -1516,9 +1601,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                 <AiAssessmentReportDialog
                                     assessmentId={assessmentId}
                                     instituteId={instituteId}
-                                    assessmentName={
-                                        assessmentDetailsData?.[0]?.saved_data?.name
-                                    }
+                                    assessmentName={assessmentDetailsData?.[0]?.saved_data?.name}
                                     onClose={() => setAiReportOpen(false)}
                                 />
                             )}
@@ -1560,7 +1643,11 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     )}
                     <TabsContent value={selectedTab} ref={tableRef}>
                         <SidebarProvider
-                            style={{ ['--sidebar-width' as string]: '565px' } /* dynamic CSS custom property, cannot use Tailwind token */}
+                            style={
+                                {
+                                    ['--sidebar-width' as string]: '565px',
+                                } /* dynamic CSS custom property, cannot use Tailwind token */
+                            }
                             defaultOpen={false}
                             open={isSidebarOpen}
                             onOpenChange={setIsSidebarOpen}

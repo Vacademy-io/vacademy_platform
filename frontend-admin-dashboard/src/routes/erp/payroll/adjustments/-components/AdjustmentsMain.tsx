@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Lock, Plus, Trash, Warning } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -61,6 +62,7 @@ const NAME_MAP_PAGE_SIZE = 200;
  * restricted, and repeating the card three times would let one tab drift.
  */
 export const AdjustmentsMain = () => {
+    const { t } = useTranslation('erpAdjustmentsMain');
     const { isHrStaff } = useHrRole();
 
     if (!isHrStaff) {
@@ -70,11 +72,10 @@ export const AdjustmentsMain = () => {
                     <span className="flex size-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
                         <Lock size={20} />
                     </span>
-                    <CardTitle className="text-title">Variable pay is restricted</CardTitle>
+                    <CardTitle className="text-title">{t('restricted.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-body text-neutral-600">
-                    One-off earnings and deductions are visible to HR roles only. Ask an
-                    administrator to grant you HR Manager or HR Admin access in this institute.
+                    {t('restricted.description')}
                 </CardContent>
             </Card>
         );
@@ -83,9 +84,9 @@ export const AdjustmentsMain = () => {
     return (
         <Tabs defaultValue="adjustments" className="flex flex-col gap-4">
             <TabsList className="w-fit">
-                <TabsTrigger value="adjustments">Adjustments</TabsTrigger>
-                <TabsTrigger value="teaching">Teaching Pay</TabsTrigger>
-                <TabsTrigger value="incentives">Incentives</TabsTrigger>
+                <TabsTrigger value="adjustments">{t('tabs.adjustments')}</TabsTrigger>
+                <TabsTrigger value="teaching">{t('tabs.teachingPay')}</TabsTrigger>
+                <TabsTrigger value="incentives">{t('tabs.incentives')}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="adjustments" className="mt-0">
@@ -102,6 +103,7 @@ export const AdjustmentsMain = () => {
 };
 
 const AdjustmentsTab = () => {
+    const { t } = useTranslation('erpAdjustmentsMain');
     const { isHrAdmin, isHrStaff } = useHrRole();
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
@@ -136,7 +138,7 @@ const AdjustmentsTab = () => {
             queryClient.invalidateQueries({
                 queryKey: hrKeys.adjustments(month.year, month.month),
             });
-            toast.success('Adjustment removed');
+            toast.success(t('toast.removed'));
             setPendingDelete(null);
         },
         onError: (error) => {
@@ -145,8 +147,7 @@ const AdjustmentsTab = () => {
             reportApiError(error, {
                 feature: 'erp-adjustments',
                 tags: { action: 'delete-adjustment' },
-                fallbackMessage:
-                    'Could not remove this adjustment. If a payroll run has already picked it up, reject that run first.',
+                fallbackMessage: t('errors.deleteFailed'),
             });
             setPendingDelete(null);
         },
@@ -158,7 +159,7 @@ const AdjustmentsTab = () => {
         () => [
             {
                 id: 'employee',
-                header: 'Employee',
+                header: t('columns.employee'),
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-700">
                         {employeeLabels.get(row.original.employee_id ?? '') ??
@@ -169,12 +170,12 @@ const AdjustmentsTab = () => {
             },
             {
                 id: 'type',
-                header: 'Type',
+                header: t('columns.type'),
                 cell: ({ row }) => <AdjustmentTypeChip type={row.original.type} />,
             },
             {
                 id: 'code',
-                header: 'Code',
+                header: t('columns.code'),
                 cell: ({ row }) => (
                     <span className="font-mono text-caption text-neutral-600">
                         {row.original.code ?? '—'}
@@ -183,7 +184,7 @@ const AdjustmentsTab = () => {
             },
             {
                 id: 'label',
-                header: 'Label',
+                header: t('columns.label'),
                 cell: ({ row }) => (
                     <div className="flex flex-col">
                         <span className="text-body text-neutral-700">
@@ -199,7 +200,7 @@ const AdjustmentsTab = () => {
             },
             {
                 id: 'amount',
-                header: 'Amount',
+                header: t('columns.amount'),
                 cell: ({ row }) => (
                     <MoneyCell
                         value={row.original.amount}
@@ -214,32 +215,32 @@ const AdjustmentsTab = () => {
             },
             {
                 id: 'run_scope',
-                header: 'Run scope',
+                header: t('columns.runScope'),
                 cell: ({ row }) => <RunScopeChip scope={row.original.run_scope} />,
             },
             {
                 id: 'source',
-                header: 'Source',
+                header: t('columns.source'),
                 cell: ({ row }) => (
                     <span className="text-caption text-neutral-500">
-                        {row.original.source ?? 'MANUAL'}
+                        {row.original.source ?? t('manualSource')}
                     </span>
                 ),
             },
             {
                 id: 'consumed',
-                header: 'Picked up',
+                header: t('columns.pickedUp'),
                 cell: ({ row }) =>
                     row.original.payroll_entry_id ? (
                         <StatusChip
-                            text="In payroll"
+                            text={t('inPayroll')}
                             textSize="text-caption"
                             status="SUCCESS"
                             showIcon={false}
                         />
                     ) : (
                         <StatusChip
-                            text="Pending"
+                            text={t('pending')}
                             textSize="text-caption"
                             status="INFO"
                             showIcon={false}
@@ -253,13 +254,17 @@ const AdjustmentsTab = () => {
                           header: '',
                           cell: ({ row }) =>
                               row.original.payroll_entry_id ? (
-                                  <span className="text-caption text-neutral-400">Locked</span>
+                                  <span className="text-caption text-neutral-400">
+                                      {t('locked')}
+                                  </span>
                               ) : (
                                   <MyButton
                                       buttonType="text"
                                       scale="small"
                                       layoutVariant="icon"
-                                      aria-label={`Remove ${row.original.label ?? 'adjustment'}`}
+                                      aria-label={t('removeAdjustment', {
+                                          label: row.original.label ?? t('adjustmentNoun'),
+                                      })}
                                       onClick={() => setPendingDelete(row.original)}
                                   >
                                       <Trash size={16} className="text-danger-600" />
@@ -269,7 +274,7 @@ const AdjustmentsTab = () => {
                   ]
                 : []),
         ],
-        [employeeLabels, isHrAdmin]
+        [employeeLabels, isHrAdmin, t]
     );
 
     const tableData: TableData<PayrollAdjustmentDTO> = {
@@ -283,14 +288,10 @@ const AdjustmentsTab = () => {
 
     return (
         <div className="flex flex-col gap-4">
-            <p className="max-w-3xl text-body text-neutral-600">
-                One-off earnings and deductions for a single month — an incentive, an arrear, a
-                recovery. Each one waits here until a payroll run for its month and scope picks it
-                up; once a run has, it is locked and can only be undone by rejecting that run.
-            </p>
+            <p className="max-w-3xl text-body text-neutral-600">{t('intro')}</p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <MonthPicker label="Month" value={month} onChange={setMonth} />
+                <MonthPicker label={t('monthLabel')} value={month} onChange={setMonth} />
                 {isHrAdmin && (
                     <MyButton
                         buttonType="primary"
@@ -298,7 +299,7 @@ const AdjustmentsTab = () => {
                         onClick={() => setDialogOpen(true)}
                     >
                         <Plus size={16} />
-                        Add adjustment
+                        {t('addAdjustment')}
                     </MyButton>
                 )}
             </div>
@@ -308,7 +309,7 @@ const AdjustmentsTab = () => {
                     <CardContent className="flex flex-col items-start gap-3 p-6">
                         <div className="flex items-center gap-2 text-body text-danger-600">
                             <Warning size={18} />
-                            Could not load adjustments for this month.
+                            {t('errors.loadFailed')}
                         </div>
                         <MyButton
                             buttonType="secondary"
@@ -316,19 +317,18 @@ const AdjustmentsTab = () => {
                             onAsyncClick={async () => {
                                 await adjustmentsQuery.refetch();
                             }}
-                            loadingText="Retrying…"
+                            loadingText={t('retrying')}
                         >
-                            Retry
+                            {t('retry')}
                         </MyButton>
                     </CardContent>
                 </Card>
             ) : !adjustmentsQuery.isLoading && rows.length === 0 ? (
                 <Card>
                     <CardContent className="flex flex-col items-start gap-3 p-6">
-                        <p className="text-subtitle text-neutral-700">Nothing extra this month</p>
+                        <p className="text-subtitle text-neutral-700">{t('emptyState.title')}</p>
                         <p className="max-w-xl text-body text-neutral-600">
-                            No adjustments recorded for the selected month. Anything you add here
-                            will be picked up by the next matching payroll run.
+                            {t('emptyState.description')}
                         </p>
                         {isHrAdmin && (
                             <MyButton
@@ -337,7 +337,7 @@ const AdjustmentsTab = () => {
                                 onClick={() => setDialogOpen(true)}
                             >
                                 <Plus size={16} />
-                                Add adjustment
+                                {t('addAdjustment')}
                             </MyButton>
                         )}
                     </CardContent>
@@ -363,22 +363,24 @@ const AdjustmentsTab = () => {
             >
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Remove this adjustment?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('removeDialog.title')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            {pendingDelete?.label ?? 'This adjustment'} will no longer be applied to
-                            the next payroll run for {month.month}/{month.year}. This cannot be
-                            undone — you would have to add it again.
+                            {t('removeDialog.description', {
+                                label: pendingDelete?.label ?? t('thisAdjustment'),
+                                month: month.month,
+                                year: month.year,
+                            })}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Keep it</AlertDialogCancel>
+                        <AlertDialogCancel>{t('keepIt')}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={(event) => {
                                 event.preventDefault();
                                 if (pendingDelete?.id) deleteMutation.mutate(pendingDelete.id);
                             }}
                         >
-                            {deleteMutation.isPending ? 'Removing…' : 'Remove'}
+                            {deleteMutation.isPending ? t('removing') : t('remove')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

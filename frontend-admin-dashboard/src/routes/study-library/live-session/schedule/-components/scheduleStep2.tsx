@@ -194,6 +194,17 @@ export default function ScheduleStep2() {
      */
     const hasInitialisedEditState = useRef(false);
 
+    /**
+     * Batches this class was already linked to when the admin opened it for
+     * editing — and ONLY the ones we could resolve against
+     * `batches_for_sessions`. Submit diffs the current selection against this to
+     * work out what to unlink. Unresolvable ids are deliberately excluded: they
+     * never make it into `selectedLevels`, so treating them as "removed" would
+     * silently delete a live row the admin never touched (a batch from another
+     * institute, or one that has since been archived).
+     */
+    const originallyLinkedBatchIds = useRef<string[]>([]);
+
     useEffect(() => {
         // Allow either a single sessionId (normal flow) or a list of bulk
         // sessionIds. Without either we can't link participants to anything.
@@ -264,6 +275,13 @@ export default function ScheduleStep2() {
                     sessionId: string;
                     levelId: string;
                 }[];
+
+                // Remember what was linked on open, restricted to the ids that
+                // actually resolved above — see `originallyLinkedBatchIds`.
+                originallyLinkedBatchIds.current =
+                    sessionDetails.schedule.package_session_ids.filter((pkgId: string) =>
+                        instituteDetails.batches_for_sessions.some((b) => b.id === pkgId)
+                    );
 
                 if (selectedLevelsFromPackages.length) {
                     form.setValue('selectedLevels', selectedLevelsFromPackages);
@@ -923,6 +941,21 @@ export default function ScheduleStep2() {
                 return matchingBatch?.id || '';
             });
 
+            // Batches that were linked when this class was opened but are no
+            // longer selected. Without this the backend never unlinks anything
+            // (it only deletes ids named here), so a deselected batch kept
+            // showing under "linked batches" after every save.
+            //
+            // Scoped to batch mode on purpose: in individual-learner mode the
+            // payload sends no batches at all, and treating that as "remove them
+            // all" would detach every batch the moment an admin switched tabs.
+            const deletedPackageSessionIds =
+                data.batchSelectionType === 'batch'
+                    ? originallyLinkedBatchIds.current.filter(
+                          (id) => !packageSessionIds.includes(id)
+                      )
+                    : [];
+
             // In bulk flow we fan out the same access/notification payload to
             // every session created in step 1. Failures are tolerated per row
             // so the user gets partial success feedback.
@@ -941,7 +974,8 @@ export default function ScheduleStep2() {
                         data,
                         targetId,
                         packageSessionIds,
-                        previousSchedule
+                        previousSchedule,
+                        deletedPackageSessionIds
                     );
                     await createLiveSessionStep2(body);
                     fanOutResults.push({ id: targetId, ok: true });
@@ -1546,40 +1580,45 @@ export default function ScheduleStep2() {
                         </div>
                     </SectionCard>
 
-                    {/* Public classes have open registration — assigning classes/batches
-                        is meaningless noise there, so the picker is private-only. */}
-                    {accessType === AccessType.PRIVATE && (
-                        <SectionCard
-                            icon={<UsersThree size={18} />}
-                            title="Select Participants"
-                            description="Pick a session, then choose batches or individual learners to enroll."
-                        >
-                            <div className="flex flex-col gap-4">
-                                <div className="w-full sm:max-w-72">
-                                    <MyDropdown
-                                        currentValue={currentSession ?? undefined}
-                                        dropdownList={sessionList}
-                                        placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
-                                        handleChange={handleSessionChange}
-                                    />
-                                </div>
-                                <LiveSessionParticipantsTab
-                                    form={form}
-                                    courses={courses}
-                                    currentSession={currentSession}
+                    {/* A public class can ALSO be assigned to batches. The open
+                        registration link and batch enrolment coexist: the backend sets
+                        access_level and writes participant rows independently, and no
+                        learner query filters on access_level. Batches stay optional for
+                        public (required only for private, enforced below). */}
+                    <SectionCard
+                        icon={<UsersThree size={18} />}
+                        title="Select Participants"
+                        description={
+                            accessType === AccessType.PUBLIC
+                                ? 'Optional for a public class — anyone can still join via the shared link. Assign batches to also show this class inside the learner app for those batches.'
+                                : 'Pick a session, then choose batches or individual learners to enroll.'
+                        }
+                    >
+                        <div className="flex flex-col gap-4">
+                            <div className="w-full sm:max-w-72">
+                                <MyDropdown
+                                    currentValue={currentSession ?? undefined}
+                                    dropdownList={sessionList}
+                                    placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
+                                    handleChange={handleSessionChange}
                                 />
-                                {attemptedPrivateCreate &&
-                                    !isEditState &&
-                                    (previewSelectedLevels?.length ?? 0) === 0 &&
-                                    (watch('selectedLearners')?.length ?? 0) === 0 && (
-                                        <p className="text-sm text-danger-600">
-                                            Assign at least one batch (or individual learner) to a
-                                            private live class.
-                                        </p>
-                                    )}
                             </div>
-                        </SectionCard>
-                    )}
+                            <LiveSessionParticipantsTab
+                                form={form}
+                                courses={courses}
+                                currentSession={currentSession}
+                            />
+                            {attemptedPrivateCreate &&
+                                !isEditState &&
+                                (previewSelectedLevels?.length ?? 0) === 0 &&
+                                (watch('selectedLearners')?.length ?? 0) === 0 && (
+                                    <p className="text-sm text-danger-600">
+                                        Assign at least one batch (or individual learner) to a
+                                        private live class.
+                                    </p>
+                                )}
+                        </div>
+                    </SectionCard>
 
                     {/* Auto-add recordings to course — batch mode only. Gated behind the
                         institute-wide "Auto-upload recordings to course" setting (see

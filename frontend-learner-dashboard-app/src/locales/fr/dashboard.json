@@ -92,6 +92,13 @@
         "renewPromptNoDate": "Payez une fois et votre abonnement se poursuit.",
         "reactivatePrompt": "Réactivez cet abonnement — même forfait, mêmes cours, sans nouvelle inscription.",
         "alsoEnableAutopay": "Réactivez aussi le paiement automatique — une seule approbation paie maintenant et configure les renouvellements futurs.",
+        "mandateMethod": {
+            "heading": "Comment configurer le paiement automatique ?",
+            "upiLabel": "UPI Autopay",
+            "upiHint": "GPay, PhonePe, Paytm",
+            "cardLabel": "Carte",
+            "cardHint": "Carte de débit / crédit"
+        },
         "payToContinue": "Payer {{amount}} pour continuer",
         "startingPayment": "Démarrage du paiement...",
         "unavailable": "Les informations d'abonnement sont indisponibles pour le moment.",
@@ -251,7 +258,11 @@
         "awardedTooltip": "{{name}} — Décerné par votre établissement",
         "awardedTooltipWithReason": "{{name}} — Décerné par votre établissement : {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} débloqués",
-        "emptyPrompt": "Terminez votre première {{slide}} pour débloquer un badge"
+        "emptyPrompt": "Terminez votre première {{slide}} pour débloquer un badge",
+        "manualLockedHint": "Décerné par votre établissement — ne se débloque pas automatiquement",
+        "manualLockedTooltip": "{{name}} — Décerné par votre établissement, ne se débloque pas automatiquement",
+        "celebrateTitle": "Nouveau badge débloqué !",
+        "celebrateAwardedTitle": "Votre établissement vous a décerné un badge"
     },
     "tnc": {
         "title": "Accepter les conditions générales",
@@ -432,5 +443,14 @@
             "viewAllClassesButton": "Voir tous les cours",
             "dateAtTime": "{{date}} à {{time}}"
         }
+    },
+    "getApp": {
+        "title": "Obtenir l’application",
+        "subtitle": "Pour une expérience fluide, téléchargez nos applications.",
+        "android": "Application Android",
+        "ios": "Application iPhone et iPad",
+        "windows": "Application Windows",
+        "mac": "Application Mac",
+        "webPortal": "Portail web"
     }
 }

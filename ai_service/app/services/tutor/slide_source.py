@@ -64,6 +64,10 @@ class SlideSource:
     course_name: Optional[str] = None
     package_id: Optional[str] = None
     content_hash: str = ""
+    # How the session runs: "lesson" (teach), "interview" (the teacher is the
+    # interviewer), "practice" (role-play / drill). Shapes the compile persona,
+    # the greeting and the live decision persona.
+    style: str = "lesson"
 
 
 # ── HTML → teaching text ─────────────────────────────────────────────────────

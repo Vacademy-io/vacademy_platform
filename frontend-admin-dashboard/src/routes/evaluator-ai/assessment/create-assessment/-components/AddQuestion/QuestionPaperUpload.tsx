@@ -23,6 +23,7 @@ import useDialogStore from '@/routes/assessment/question-papers/-global-states/q
 import sectionDetailsSchema from '../../-utils/section-details-sechma';
 import { zodResolver } from '@hookform/resolvers/zod';
 import ConvertToHTML from '@/routes/assessment/question-papers/-images/convertToHTML.png';
+import { useTranslation } from 'react-i18next';
 
 export type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 export type UploadQuestionPaperFormType = z.infer<typeof uploadQuestionPaperFormSchema>;
@@ -41,6 +42,7 @@ export const QuestionPaperUpload = ({
     currentQuestionIndex,
     setCurrentQuestionIndex,
 }: QuestionPaperUploadProps) => {
+    const { t } = useTranslation('evaluatorAiQuestionPaperUpload');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const form = useForm<UploadQuestionPaperFormType>({
         resolver: zodResolver(uploadQuestionPaperFormSchema),
@@ -88,7 +90,7 @@ export const QuestionPaperUpload = ({
                 parentRichText: question.parentRichTextContent,
             }));
             sectionsForm?.setValue(`section.${index}.adaptive_marking_for_each_question`, ques);
-            toast.success('Question Paper added successfully', {
+            toast.success(t('toast.questionPaperAdded'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -101,14 +103,14 @@ export const QuestionPaperUpload = ({
         if (index !== undefined) {
             sectionsForm?.setValue(`section.${index}`, {
                 ...sectionsForm?.getValues(`section.${index}`), // Keep other section data intact
-                sectionName: 'Section 1',
+                sectionName: t('defaults.sectionName'),
             });
         }
     }
 
     const onInvalid = (err: unknown) => {
         console.error(err);
-        toast.error('some of your questions are incomplete or needs attentions!', {
+        toast.error(t('toast.questionsIncomplete'), {
             className: 'error-toast',
             duration: 3000,
         });
@@ -204,7 +206,7 @@ export const QuestionPaperUpload = ({
                         <>
                             <div className="ml-4 flex flex-col gap-4">
                                 <SelectField
-                                    label="Questions"
+                                    label={t('form.questionsLabel')}
                                     name="questionsType"
                                     options={QUESTION_LABELS.map((option, index) => ({
                                         value: option,
@@ -215,7 +217,7 @@ export const QuestionPaperUpload = ({
                                     required
                                 />
                                 <SelectField
-                                    label="Options"
+                                    label={t('form.optionsLabel')}
                                     name="optionsType"
                                     options={OPTIONS_LABELS.map((option, index) => ({
                                         value: option,
@@ -226,7 +228,7 @@ export const QuestionPaperUpload = ({
                                     required
                                 />
                                 <SelectField
-                                    label="Answers"
+                                    label={t('form.answersLabel')}
                                     name="answersType"
                                     options={ANSWER_LABELS.map((option, index) => ({
                                         value: option,
@@ -237,7 +239,7 @@ export const QuestionPaperUpload = ({
                                     required
                                 />
                                 <SelectField
-                                    label="Explanations"
+                                    label={t('form.explanationsLabel')}
                                     name="explanationsType"
                                     options={EXPLANATION_LABELS.map((option, index) => ({
                                         value: option,
@@ -263,30 +265,29 @@ export const QuestionPaperUpload = ({
                                     />
                                 </div>
                                 <h1 className="-mt-4 text-xs text-red-500">
-                                    If you are having a problem while uploading docx file then
-                                    please convert your file in html{' '}
+                                    {t('form.docxHelp.before')}{' '}
                                     <a
                                         href="https://wordtohtml.net/convert/docx-to-html"
                                         target="_blank"
                                         className="text-blue-500"
                                         rel="noreferrer"
                                     >
-                                        here
+                                        {t('form.docxHelp.linkText')}
                                     </a>{' '}
-                                    and try to re-upload.
+                                    {t('form.docxHelp.after')}
                                 </h1>
                             </div>
                             <div className="flex flex-col gap-6">
                                 <h1 className="-mt-4 text-xs text-red-500">
-                                    Step 1 - Go to this website
+                                    {t('form.docxHelp.step1')}
                                 </h1>
                                 <h1 className="-mt-4 text-xs text-red-500">
-                                    Step 2 - Enable embed image
+                                    {t('form.docxHelp.step2')}
                                 </h1>
                                 <h1 className="-mt-4 text-xs text-red-500">
-                                    Step 3 - Download your html file after converting
+                                    {t('form.docxHelp.step3')}
                                 </h1>
-                                <img src={ConvertToHTML} alt="logo" />
+                                <img src={ConvertToHTML} alt={t('form.docxHelp.imageAlt')} />
                             </div>
                             {getValues('fileUpload') && (
                                 <div className="flex w-full items-center gap-2 rounded-md bg-neutral-100 p-2">
@@ -311,18 +312,18 @@ export const QuestionPaperUpload = ({
                                         </div>
 
                                         <p className="my-1 whitespace-normal text-xs">
-                                            {(
-                                                (((getValues('fileUpload')?.size || 0) /
-                                                    (1024 * 1024)) *
-                                                    uploadProgress) /
-                                                100
-                                            ).toFixed(2)}{' '}
-                                            MB /{' '}
-                                            {(
-                                                (getValues('fileUpload')?.size || 0) /
-                                                (1024 * 1024)
-                                            ).toFixed(2)}
-                                            &nbsp;MB
+                                            {t('form.fileSizeProgress', {
+                                                uploaded: (
+                                                    (((getValues('fileUpload')?.size || 0) /
+                                                        (1024 * 1024)) *
+                                                        uploadProgress) /
+                                                    100
+                                                ).toFixed(2),
+                                                total: (
+                                                    (getValues('fileUpload')?.size || 0) /
+                                                    (1024 * 1024)
+                                                ).toFixed(2),
+                                            })}
                                         </p>
 
                                         <div className="flex items-center gap-2">
@@ -341,7 +342,7 @@ export const QuestionPaperUpload = ({
                     <div className="flex justify-between">
                         {isProgress ? (
                             <Button type="button" variant="outline" className="w-52 border-2">
-                                Loading...
+                                {t('common.loading')}
                             </Button>
                         ) : (
                             !isManualCreated &&
@@ -350,7 +351,7 @@ export const QuestionPaperUpload = ({
                                     form={form}
                                     questionPaperId={questionPaperId}
                                     isViewMode={false}
-                                    buttonText="Preview"
+                                    buttonText={t('common.preview')}
                                     currentQuestionIndex={currentQuestionIndex}
                                     setCurrentQuestionIndex={setCurrentQuestionIndex}
                                 />
@@ -362,7 +363,7 @@ export const QuestionPaperUpload = ({
                                 questionPaperId={questionPaperId}
                                 isViewMode={false}
                                 isManualCreated={isManualCreated}
-                                buttonText="Add Questions"
+                                buttonText={t('common.addQuestions')}
                                 currentQuestionIndex={currentQuestionIndex}
                                 setCurrentQuestionIndex={setCurrentQuestionIndex}
                             />
@@ -371,9 +372,9 @@ export const QuestionPaperUpload = ({
                             <Button
                                 disabled={!!fileUpload}
                                 type="submit"
-                                className="ml-[1.8rem] w-56 bg-primary-500 text-white"
+                                className="ms-[1.8rem] w-56 bg-primary-500 text-white"
                             >
-                                Done
+                                {t('common.done')}
                             </Button>
                         )}
                         {!fileUpload && !isManualCreated && (
@@ -382,7 +383,7 @@ export const QuestionPaperUpload = ({
                                 type="submit"
                                 className={`w-56 bg-primary-500 text-white`}
                             >
-                                Done
+                                {t('common.done')}
                             </Button>
                         )}
                         {!fileUpload && isManualCreated && (
@@ -393,7 +394,7 @@ export const QuestionPaperUpload = ({
                                     questions.length > 0 ? 'block' : 'hidden'
                                 }`}
                             >
-                                Done
+                                {t('common.done')}
                             </Button>
                         )}
                     </div>

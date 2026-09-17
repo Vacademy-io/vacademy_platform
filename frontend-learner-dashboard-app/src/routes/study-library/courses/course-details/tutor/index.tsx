@@ -16,12 +16,14 @@ import {
   endTutorSession,
   getTutorAvatarToken,
   getTutorChapterSlides,
+  getTutorDemoAvatarToken,
   startTutorSession,
   type TutorChapterSlide,
   type TutorStartResponse,
 } from "@/services/tutor-api";
 import { markSlideCompletion } from "@/services/study-library/tracking-api/mark-slide-completion";
 import { submitTutorQuizActivity } from "@/services/tutor-api";
+import { readTutorGuest, writeTutorGuest } from "@/lib/tutorGuest";
 
 interface TutorSearch {
   courseId: string;
@@ -31,6 +33,8 @@ interface TutorSearch {
   subjectId?: string;
   moduleId?: string;
   mode?: "text" | "voice";
+  /** "1": the public guest lesson — session and token come from sessionStorage, nothing is written back. */
+  demo?: string;
 }
 
 export const Route = createFileRoute("/study-library/courses/course-details/tutor/")({
@@ -43,6 +47,7 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
     subjectId: search.subjectId ? String(search.subjectId) : undefined,
     moduleId: search.moduleId ? String(search.moduleId) : undefined,
     mode: search.mode === "voice" ? "voice" : "text",
+    demo: search.demo === "1" ? "1" : undefined,
   }),
 });
 
@@ -112,6 +117,34 @@ function TutorPage() {
   const [stats, setStats] = useState<LessonStats>({ asked: 0, correct: 0, streak: 0, best: 0 });
   // Phones: the outline lives in a bottom sheet instead of a left rail.
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // Phones: one pane at a time — the board, or the teacher's conversation.
+  // A question or a nudge flips to the teacher so nothing is missed.
+  const [phoneView, setPhoneView] = useState<"board" | "teacher">("board");
+  // The open question (spoken + shown in the card); appended to the transcript with the answer.
+  const pendingAskRef = useRef<TranscriptLine | null>(null);
+  const flushAsk = (answer: string) => {
+    const ask = pendingAskRef.current;
+    pendingAskRef.current = null;
+    setTranscript((prev) => [...prev, ...(ask ? [ask] : []), { role: "learner" as const, text: answer }]);
+  };
+  // Desktop: the outline folds to a thin strip so the board and the teacher get the width.
+  const [outlineCollapsed, setOutlineCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("tutor.outlineCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleOutline = () => {
+    setOutlineCollapsed((v) => {
+      try {
+        localStorage.setItem("tutor.outlineCollapsed", v ? "0" : "1");
+      } catch {
+        /* private mode */
+      }
+      return !v;
+    });
+  };
   const currentSlideRef = useRef<string | null>(null);
   const sessionRef = useRef<string | null>(null);
   const boardCounter = useRef(0);
@@ -339,7 +372,9 @@ function TutorPage() {
 
   // ── socket ──
   const socket = useTutorSocket({
+    getToken: () => guestRef.current?.token,
     onReady: (ev) => {
+      if (guestRef.current) setDemoLeft((v) => (v === null ? (guestRef.current?.minutes ?? 3) * 60 : v));
       setDisconnected(null);
       setPhase("idle");
       if (typeof ev.pace === "string") setPace(ev.pace as TutorPace);
@@ -388,6 +423,13 @@ function TutorPage() {
       turnTextRef.current.set(turn, text);
       if (turnTextRef.current.size > 20) turnTextRef.current.delete(turnTextRef.current.keys().next().value as number);
       const line: TranscriptLine = { role: "teacher", text: voiceMode && speakOn ? "" : text, kind: meta.kind, score: meta.score ?? null, cleared: meta.cleared, turn };
+      // The question is shown ONCE: while it is open it lives in the check
+      // card (with its options); it joins the transcript when the learner
+      // answers, so the history still reads as a conversation.
+      if (meta.kind === "ask" || meta.kind === "revisit_ask" || meta.kind === "predict") {
+        pendingAskRef.current = { ...line, text };
+        return;
+      }
       // The bubble fills sentence by sentence as the audio plays (voice mode).
       setTranscript((prev) => [...prev, line]);
       if (!(voiceMode && speakOn)) setPhase("idle");
@@ -448,6 +490,7 @@ function TutorPage() {
       }
     },
     onCheck: (ev) => {
+      setPhoneView("teacher");
       settleBoard();
       setCheck(ev);
       setAwaiting("answer");
@@ -467,7 +510,7 @@ function TutorPage() {
       else applyPhase("idle");
     },
     onTranscriptFinal: (text) => {
-      if (text) setTranscript((prev) => [...prev, { role: "learner", text }]);
+      if (text) flushAsk(text);
       setPhase("thinking");
     },
     onSlideDone: async (ev) => {
@@ -485,12 +528,13 @@ function TutorPage() {
         if (slideType === "QUIZ" || (ev.quiz_results?.length ?? 0) > 0) {
           // A quiz is completed through its activity log (the tracking
           // service rejects a manual mark); the server graded each answer.
+          if (isDemo) return;
           await submitTutorQuizActivity({
             slideId: ev.slide_id, packageSessionId: search.packageSessionId, ...ids,
             results: ev.quiz_results ?? [],
           });
         } else {
-          await markSlideCompletion({
+          if (!isDemo) await markSlideCompletion({
             slideId: ev.slide_id,
             slideType,
             ...ids,
@@ -611,6 +655,17 @@ function TutorPage() {
   }, [voiceMode, awaiting, phase, micOn, disconnected]);
 
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
+  const isDemo = search.demo === "1";
+  const guestRef = useRef(isDemo ? readTutorGuest() : null);
+  // Public demo: a visible clock, counted from the moment the lesson opens.
+  const [demoLeft, setDemoLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (demoLeft === null || demoLeft <= 0) return;
+    const t = setInterval(() => setDemoLeft((v) => (v === null ? v : Math.max(0, v - 1))), 1000);
+    return () => clearInterval(t);
+  }, [demoLeft !== null && demoLeft > 0]);
+  const demoClock = demoLeft === null ? undefined : `${Math.floor(demoLeft / 60)}:${String(demoLeft % 60).padStart(2, "0")}`;
+
   const bootSession = useCallback(async () => {
     const seq = ++bootSeq.current;
     setFatal(null);
@@ -618,8 +673,10 @@ function TutorPage() {
     setPhase("connecting");
     try {
       const [b, slides] = await Promise.all([
-        startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
-        search.chapterId ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
+        isDemo
+          ? (guestRef.current ? Promise.resolve(guestRef.current.boot) : Promise.reject(new Error("Your free lesson has expired. Start again from tutezy.ai.")))
+          : startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
+        search.chapterId && !isDemo ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
       ]);
       if (seq !== bootSeq.current) {
         // The page moved on while the request was in flight: close what we opened.
@@ -639,7 +696,9 @@ function TutorPage() {
         avatarBootedRef.current = true;
         void (async () => {
           try {
-            const tok = await getTutorAvatarToken(b.tutor_session_id);
+            const tok = guestRef.current
+              ? await getTutorDemoAvatarToken(b.tutor_session_id, guestRef.current.token)
+              : await getTutorAvatarToken(b.tutor_session_id);
             const container = avatarContainerRef.current;
             if (!container) return;
             await avatar.mount({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token }, container);
@@ -708,6 +767,11 @@ function TutorPage() {
     stopAudio();
     socket.sendEndSession();
     setTimeout(() => {
+      if (isDemo) {
+        writeTutorGuest(null);
+        navigate({ to: "/try", search: { done: "1" } as never });
+        return;
+      }
       navigate({ to: "/study-library/courses/course-details", search: { courseId: search.courseId, packageSessionId: search.packageSessionId } as never });
     }, 400);
   };
@@ -747,26 +811,43 @@ function TutorPage() {
         setOutlineOpen(false);
         goToSlide(id);
       }}
+      onBack={endAndLeave}
     />
   );
 
   return (
-    <LayoutContainer fillViewport enableChatbotPanel={false}>
-      {/* Phones: a compact teacher strip on top (name, status, outline, end). */}
-      <div className="mb-2 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 lg:hidden">
-        <TeacherAvatar fileId={boot?.teacher_avatar_file_id} name={boot?.teacher_name} speaking={phase === "speaking"} className="size-9" />
+    <LayoutContainer immersive enableChatbotPanel={false}>
+      {/* Phones: a slim strip (teacher, status, outline) and a Board / Teacher switch. */}
+      <div className="mb-2 flex items-center gap-2 lg:hidden">
+        <TeacherAvatar fileId={boot?.teacher_avatar_file_id} name={boot?.teacher_name} speaking={phase === "speaking"} className="size-8" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-neutral-900">{boot?.teacher_name || "Teacher"}</p>
-          <p className="truncate text-xs text-neutral-500">
-            {title} · {progress.done}/{progress.total}
-          </p>
+          <p className="truncate text-xs font-semibold text-neutral-900">{boot?.teacher_name || "Teacher"}<span className="ms-1 font-normal text-neutral-500">· {progress.done}/{progress.total}</span></p>
+        </div>
+        {demoClock && <span className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{demoClock}</span>}
+        <div className="flex rounded-full bg-neutral-100 p-0.5" role="tablist" aria-label="View">
+          {(["board", "teacher"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={phoneView === v}
+              onClick={() => setPhoneView(v)}
+              className={`relative rounded-full px-3 py-1 text-xs font-semibold ${phoneView === v ? "bg-white text-primary-500 shadow-sm" : "text-neutral-600"}`}
+            >
+              {v === "board" ? "Board" : "Teacher"}
+              {v === "teacher" && phoneView === "board" && awaiting === "answer" && (
+                <span className="absolute -end-0.5 -top-0.5 size-2 rounded-full bg-danger-500" aria-label="Your turn" />
+              )}
+            </button>
+          ))}
         </div>
         <button
           type="button"
           onClick={() => setOutlineOpen(true)}
-          className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700"
+          className="rounded-full border border-neutral-200 p-1.5 text-neutral-700"
+          aria-label="Outline"
         >
-          <ListBullets className="size-4" /> Outline
+          <ListBullets className="size-4" />
         </button>
       </div>
       <Sheet open={outlineOpen} onOpenChange={setOutlineOpen}>
@@ -778,12 +859,55 @@ function TutorPage() {
         </SheetContent>
       </Sheet>
 
-      <div className="flex h-full min-h-0 flex-col gap-2 lg:grid lg:grid-cols-12 lg:gap-3">
-        <div className="hidden min-h-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
-          {outline}
+      {isDemo && (
+        <div className="mb-2 flex items-center gap-x-3 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm sm:px-4 sm:py-2">
+          <span className="font-semibold text-neutral-900">Tutezy demo</span>
+          <span className="hidden text-neutral-600 md:inline">A 3-minute taste. Your students would get the whole chapter, in your teacher&apos;s voice.</span>
+          {demoClock && <span className="hidden rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700 lg:inline">{demoClock} left</span>}
+          <a href="https://tutezy.ai/#demo" className="ms-auto shrink-0 rounded-full bg-primary-500 px-3 py-1 text-xs font-semibold text-white">Book a demo</a>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col lg:col-span-6 lg:min-h-0">
-          {disconnected && (
+      )}
+      <div className="flex h-full min-h-0 flex-col gap-2 lg:flex-row lg:gap-3">
+        <div className={`hidden min-h-0 shrink-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white transition-[width] lg:block ${outlineCollapsed ? "w-12 p-1" : "w-60 p-3"}`}>
+          {outlineCollapsed ? (
+            <TutorSidebar
+              slideTitle={title}
+              topics={topics}
+              activeTopicId={state?.topic_id ?? null}
+              progressPercent={progress.percent}
+              done={progress.done}
+              total={progress.total}
+              nextSlides={nextSlides}
+              onPickSlide={goToSlide}
+              onBack={endAndLeave}
+              collapsed
+              onToggleCollapse={toggleOutline}
+            />
+          ) : (
+            <TutorSidebar
+              slideTitle={title}
+              topics={topics}
+              activeTopicId={state?.topic_id ?? null}
+              progressPercent={progress.percent}
+              done={progress.done}
+              total={progress.total}
+              nextSlides={nextSlides}
+              onPickSlide={goToSlide}
+              onBack={endAndLeave}
+              onToggleCollapse={toggleOutline}
+            />
+          )}
+        </div>
+        <div className={`min-h-0 min-w-0 flex-1 flex-col lg:flex lg:min-h-0 ${phoneView === "board" ? "flex" : "hidden"}`}>
+          {disconnected && isDemo && (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-neutral-800">
+              <span className="font-semibold">{disconnected.reason === "limit" ? "That was your free lesson." : "The lesson ended."}</span>
+              <span>Every student of yours could learn like this, on your own content.</span>
+              <a href="https://tutezy.ai/#demo" className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">Book a demo</a>
+              <button type="button" onClick={endAndLeave} className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-700">Done</button>
+            </div>
+          )}
+          {disconnected && !isDemo && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
               <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
               {disconnected.reason !== "credits" && (
@@ -827,7 +951,7 @@ function TutorPage() {
             </div>
           )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:min-h-0">
+        <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:flex lg:w-80 lg:flex-none xl:w-96 ${phoneView === "teacher" ? "flex" : "hidden"}`}>
           <TeacherPanel
             compact
             teacherName={boot?.teacher_name || "Teacher"}
@@ -835,6 +959,8 @@ function TutorPage() {
             phase={phase}
             transcript={transcript}
             check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type, revisit: !!check.revisit, predict: !!check.predict } : null}
+            locked={isDemo}
+            countdown={demoClock}
             pace={pace}
             onPace={(p) => {
               setPace(p);
@@ -849,7 +975,9 @@ function TutorPage() {
             onRetryAvatar={async () => {
               if (!sessionRef.current) return;
               try {
-                const tok = await getTutorAvatarToken(sessionRef.current);
+                const tok = guestRef.current
+                  ? await getTutorDemoAvatarToken(sessionRef.current, guestRef.current.token)
+                  : await getTutorAvatarToken(sessionRef.current);
                 await avatar.retry({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token });
                 setAvatarOn(true);
               } catch {
@@ -872,7 +1000,7 @@ function TutorPage() {
             notice={notice}
             disabled={!!disconnected || phase === "connecting"}
             onSendText={(t) => {
-              setTranscript((prev) => [...prev, { role: "learner", text: t }]);
+              flushAsk(t);
               setPhase("thinking");
               setAwaiting(null);
               socket.sendAnswer(t);

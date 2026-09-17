@@ -58,6 +58,8 @@ const buildStatusLabel =
         const s = (status || '').toUpperCase();
         if (s === 'PAID') return t('status.success');
         if (s === 'PAYMENT_PENDING' || s === 'NOT_INITIATED') return t('status.pending');
+        // A stale, unfinished checkout — neither pending nor failed. Neutral tone, plain label.
+        if (s === 'ABANDONED') return 'Abandoned';
         if (s === 'FAILED') return t('status.failed');
         if (s === 'CANCELLED') return t('status.cancelled');
         return status || '—';
@@ -133,7 +135,8 @@ export default function RecentTransactionsWidget({ instituteId }: RecentTransact
                             const log = entry.payment_log;
                             const user = entry.user;
                             const status = entry.current_payment_status || log.payment_status;
-                            const fullName = user?.full_name || user?.username || t('fallback.unknownUser');
+                            const fullName =
+                                user?.full_name || user?.username || t('fallback.unknownUser');
                             return (
                                 <li key={log.id}>
                                     <button
@@ -149,7 +152,10 @@ export default function RecentTransactionsWidget({ instituteId }: RecentTransact
                                                 {fullName}
                                             </span>
                                             <span className="line-clamp-1 text-2xs text-neutral-500">
-                                                {(log.vendor || t('fallback.manualVendor')).replace(/_/g, ' ')}
+                                                {(log.vendor || t('fallback.manualVendor')).replace(
+                                                    /_/g,
+                                                    ' '
+                                                )}
                                                 {/* created_at is a real instant and carries the
                                                     payment's clock time; `date` is a DATE column
                                                     (UTC midnight) with no usable time. */}

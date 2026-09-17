@@ -104,6 +104,13 @@
         "renewPromptNoDate": "ادفع مرة واحدة وتستمر عضويتك.",
         "reactivatePrompt": "أعد تفعيل هذه العضوية — نفس الخطة ونفس الدورات، دون إعادة تسجيل.",
         "alsoEnableAutopay": "أعد تفعيل الدفع التلقائي أيضًا — موافقة واحدة تدفع الآن وتهيّئ التجديدات القادمة.",
+        "mandateMethod": {
+            "heading": "كيف تريد إعداد الدفع التلقائي؟",
+            "upiLabel": "UPI Autopay",
+            "upiHint": "GPay, PhonePe, Paytm",
+            "cardLabel": "بطاقة",
+            "cardHint": "بطاقة خصم / ائتمان"
+        },
         "payToContinue": "ادفع {{amount}} للمتابعة",
         "startingPayment": "جارٍ بدء الدفع...",
         "unavailable": "تفاصيل العضوية غير متاحة حاليًا.",
@@ -278,7 +285,11 @@
         "awardedTooltip": "{{name}} — ممنوحة من مؤسستك",
         "awardedTooltipWithReason": "{{name}} — ممنوحة من مؤسستك: {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} مفتوحة",
-        "emptyPrompt": "أكمل أول {{slide}} لفتح شارة"
+        "emptyPrompt": "أكمل أول {{slide}} لفتح شارة",
+        "manualLockedHint": "تُمنح من مؤسستك — لا تُفتح تلقائيًا",
+        "manualLockedTooltip": "{{name}} — تُمنح من مؤسستك، ولا تُفتح تلقائيًا",
+        "celebrateTitle": "تم فتح شارة جديدة!",
+        "celebrateAwardedTitle": "منحتك مؤسستك شارة"
     },
     "tnc": {
         "title": "قبول الشروط والأحكام",
@@ -465,5 +476,14 @@
             "viewAllClassesButton": "عرض كل الحصص",
             "dateAtTime": "{{date}} في {{time}}"
         }
+    },
+    "getApp": {
+        "title": "حمّل التطبيق",
+        "subtitle": "لتجربة سلسة، حمّل تطبيقاتنا.",
+        "android": "تطبيق أندرويد",
+        "ios": "تطبيق iPhone و iPad",
+        "windows": "تطبيق Windows",
+        "mac": "تطبيق Mac",
+        "webPortal": "بوابة الويب"
     }
 }

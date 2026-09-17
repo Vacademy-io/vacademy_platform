@@ -144,6 +144,7 @@ def store_draft(
     raw: Optional[Dict[str, Any]],
     compile_inputs: Optional[Dict[str, Any]] = None,
     compiled_with_description: Optional[str] = None,
+    quality_notes: Optional[List[str]] = None,
 ) -> TeachingPlan:
     """Write topics/concepts/media from a validated draft and mark READY.
 
@@ -219,7 +220,8 @@ def store_draft(
         "predict": [[(c.predict or "").strip() or None for c in t.concepts] for t in draft.topics],
         "predict_i18n": [[dict(c.predict_i18n or {}) for c in t.concepts] for t in draft.topics],
     }
-    plan.raw_plan_json = {"draft": raw, "compile_inputs": compile_inputs or {}, "extras": extras}
+    plan.raw_plan_json = {"draft": raw, "compile_inputs": compile_inputs or {}, "extras": extras,
+                          "quality_notes": list(quality_notes or [])}
     plan.model = model
     # plan.language is the REQUESTED language (set at start_plan); the model's
     # echo of it is not trusted (it may be missing, "Hindi", or anything).
@@ -266,6 +268,12 @@ def set_source_description(
     return plan
 
 
+def quality_notes_of(plan: TeachingPlan) -> List[str]:
+    raw = plan.raw_plan_json if isinstance(plan.raw_plan_json, dict) else {}
+    notes = raw.get("quality_notes")
+    return [str(n) for n in notes] if isinstance(notes, list) else []
+
+
 def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
     topics = (
         db.query(TeachingTopic).filter(TeachingTopic.plan_id == plan.id)
@@ -305,6 +313,10 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
         # slides): the live tutor pulls passages from it on doubt turns.
         "kb": ((plan.raw_plan_json or {}).get("compile_inputs") or {}).get("kb")
         if isinstance(plan.raw_plan_json, dict) else None,
+        "style": (((plan.raw_plan_json or {}).get("compile_inputs") or {}).get("style") or "lesson")
+        if isinstance(plan.raw_plan_json, dict) else "lesson",
+        # Board-quality asks the compiler let go (the plan is served anyway).
+        "quality_notes": quality_notes_of(plan),
         "topics": [
             {
                 "id": t.id, "order": t.topic_order, "title": t.title,

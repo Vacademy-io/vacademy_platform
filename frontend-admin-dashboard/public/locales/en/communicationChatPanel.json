@@ -1,0 +1,34 @@
+{
+    "emptyState": {
+        "title": "Select a conversation",
+        "subtitle": "Choose a contact from the left to view messages"
+    },
+    "backToConversations": "Back to conversations",
+    "idLabel": "ID: {{id}}",
+    "escalation": {
+        "title": "Waiting for your reply",
+        "reason": {
+            "maxTurns": "The conversation reached its automated reply limit.",
+            "aiError": "The assistant could not generate a reply.",
+            "manual": "Handed over by an admin.",
+            "default": "The assistant didn't have the information to answer, so it said it would check with the team."
+        },
+        "askedQuote": "They asked: “{{message}}”"
+    },
+    "loadError": {
+        "retrying": "Retrying…",
+        "tryAgain": "Try again"
+    },
+    "loadOlder": {
+        "loading": "Loading...",
+        "cta": "Load older messages"
+    },
+    "noMessages": "No messages in this conversation yet",
+    "bot": "Bot",
+    "viaTemplate": "via template “{{name}}”",
+    "notDelivered": "Not delivered",
+    "accountLevelFailure": "This affects every WhatsApp message from this number, not only this chat.",
+    "errorCode": "WhatsApp error code {{code}}",
+    "viewDocument": "View document",
+    "attachmentAlt": "attachment"
+}

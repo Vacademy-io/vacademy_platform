@@ -119,6 +119,19 @@ export const useDomainRouting = () => {
             : null,
       });
 
+      // Hand the app/portal links to the sidebar directly as well. The cache
+      // write above is not enough on its own: the sidebar fills itself from the
+      // navbar's institute-details query, which can resolve before this one and
+      // does not look again afterwards.
+      try {
+        const { default: useSidebarStore } = await import(
+          "@/components/common/layout-container/sidebar/useSidebar"
+        );
+        useSidebarStore.getState().setAppLinks(data as unknown as Record<string, unknown>);
+      } catch {
+        // Best-effort: the cache write above still covers the common ordering.
+      }
+
       // Store per-institute learner settings for quick access
       // Key: LEARNER_<instituteId>, Values: privacyPolicyUrl, termsAndConditionUrl
       const learnerKey = `LEARNER_${data.instituteId}`;

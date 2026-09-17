@@ -240,6 +240,8 @@
             "days_one": "{{count}} दिन की एक्सेस",
             "days_other": "{{count}} दिन की एक्सेस"
         },
-        "goToMyCourses": "{{courses}} पर जाएँ"
+        "goToMyCourses": "{{courses}} पर जाएँ",
+        "redirecting": "आपको अगले पेज पर ले जा रहे हैं…",
+        "redirectNow": "अभी जारी रखें"
     }
 }

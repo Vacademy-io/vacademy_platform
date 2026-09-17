@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
@@ -41,19 +43,20 @@ import {
 import { HrTextField } from '@/routes/erp/people/-components/HrFormFields';
 import { FY_QUARTERS, financialYearOf, recentFinancialYears } from './compliance-shared';
 
-const schema = z.object({
-    financialYear: z.string().regex(/^\d{4}-\d{2}$/, 'Use the form 2025-26'),
-    quarter: z.enum(['Q1', 'Q2', 'Q3', 'Q4']),
-    depositDate: z.string().min(1, 'Deposit date is required'),
-    amount: z.coerce.number().positive('Amount must be more than zero'),
-    bsrCode: z.string().optional(),
-    challanSerial: z.string().optional(),
-    interest: z.coerce.number().min(0).optional(),
-    fee: z.coerce.number().min(0).optional(),
-    notes: z.string().optional(),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        financialYear: z.string().regex(/^\d{4}-\d{2}$/, t('validation.financialYearFormat')),
+        quarter: z.enum(['Q1', 'Q2', 'Q3', 'Q4']),
+        depositDate: z.string().min(1, t('validation.depositDateRequired')),
+        amount: z.coerce.number().positive(t('validation.amountPositive')),
+        bsrCode: z.string().optional(),
+        challanSerial: z.string().optional(),
+        interest: z.coerce.number().min(0).optional(),
+        fee: z.coerce.number().min(0).optional(),
+        notes: z.string().optional(),
+    });
 
-type ChallanForm = z.infer<typeof schema>;
+type ChallanForm = z.infer<ReturnType<typeof buildSchema>>;
 
 /**
  * The TDS challan register.
@@ -63,6 +66,7 @@ type ChallanForm = z.infer<typeof schema>;
  * this screen exists separately from the filing itself.
  */
 export const ChallansMain = () => {
+    const { t } = useTranslation('erpChallansMain');
     const { isHrAdmin } = useHrRole();
     const queryClient = useQueryClient();
     const [financialYear, setFinancialYear] = useState(() => financialYearOf());
@@ -81,6 +85,8 @@ export const ChallansMain = () => {
         () => challans.reduce((sum, c) => sum + Number(c.amount ?? 0), 0),
         [challans]
     );
+
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const form = useForm<ChallanForm>({
         resolver: zodResolver(schema),
@@ -109,7 +115,7 @@ export const ChallansMain = () => {
                 notes: values.notes || undefined,
             }),
         onSuccess: () => {
-            toast.success('Challan recorded');
+            toast.success(t('toast.recorded'));
             setDialogOpen(false);
             form.reset({ ...form.getValues(), amount: 0, depositDate: '', challanSerial: '' });
             void queryClient.invalidateQueries({ queryKey: hrKeys.challans(financialYear, quarter) });
@@ -117,21 +123,21 @@ export const ChallansMain = () => {
         onError: (error) =>
             reportApiError(error, {
                 feature: 'erp-compliance',
-                fallbackMessage: 'Could not record the challan.',
+                fallbackMessage: t('errors.record'),
             }),
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id: string) => deleteChallan(id),
         onSuccess: () => {
-            toast.success('Challan removed');
+            toast.success(t('toast.removed'));
             setPendingDelete(null);
             void queryClient.invalidateQueries({ queryKey: hrKeys.challans(financialYear, quarter) });
         },
         onError: (error) =>
             reportApiError(error, {
                 feature: 'erp-compliance',
-                fallbackMessage: 'Could not remove the challan.',
+                fallbackMessage: t('errors.remove'),
             }),
     });
 
@@ -139,10 +145,7 @@ export const ChallansMain = () => {
 
     return (
         <div className="flex flex-col gap-5">
-            <p className="text-body text-neutral-500">
-                TDS deposits made against salary withholding. Form 24Q reconciles each quarter
-                against these, so a deposit missing here shows up there as a mismatch.
-            </p>
+            <p className="text-body text-neutral-500">{t('description')}</p>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
@@ -176,33 +179,38 @@ export const ChallansMain = () => {
                     }}
                 >
                     <Plus size={16} />
-                    Record challan
+                    {t('recordChallan')}
                 </MyButton>
             </div>
 
             {query.isLoading ? (
                 <HrLoadingRows rows={4} />
             ) : query.isError ? (
-                <HrErrorState
-                    message="Could not load the challan register."
-                    onRetry={() => void query.refetch()}
-                />
+                <HrErrorState message={t('errors.load')} onRetry={() => void query.refetch()} />
             ) : challans.length === 0 ? (
                 <HrEmptyState
-                    title="No challans recorded"
-                    description={`Nothing deposited for ${financialYear} ${quarter} yet.`}
+                    title={t('empty.title')}
+                    description={t('empty.description', { financialYear, quarter })}
                 />
             ) : (
                 <Card className="overflow-x-auto p-0">
                     <table className="w-full text-body">
                         <thead>
                             <tr className="border-b border-neutral-200 bg-neutral-50 text-caption uppercase text-neutral-500">
-                                <th className="px-4 py-2 text-start font-medium">Deposit date</th>
-                                <th className="px-4 py-2 text-start font-medium">BSR code</th>
-                                <th className="px-4 py-2 text-start font-medium">Serial</th>
-                                <th className="px-4 py-2 text-end font-medium">Amount</th>
-                                <th className="px-4 py-2 text-end font-medium">Interest</th>
-                                <th className="px-4 py-2 text-end font-medium">Fee</th>
+                                <th className="px-4 py-2 text-start font-medium">
+                                    {t('table.depositDate')}
+                                </th>
+                                <th className="px-4 py-2 text-start font-medium">
+                                    {t('table.bsrCode')}
+                                </th>
+                                <th className="px-4 py-2 text-start font-medium">
+                                    {t('table.serial')}
+                                </th>
+                                <th className="px-4 py-2 text-end font-medium">{t('table.amount')}</th>
+                                <th className="px-4 py-2 text-end font-medium">
+                                    {t('table.interest')}
+                                </th>
+                                <th className="px-4 py-2 text-end font-medium">{t('table.fee')}</th>
                                 <th className="px-4 py-2 text-end font-medium" />
                             </tr>
                         </thead>
@@ -233,7 +241,7 @@ export const ChallansMain = () => {
                                             scale="small"
                                             layoutVariant="icon"
                                             onClick={() => setPendingDelete(c)}
-                                            aria-label="Remove challan"
+                                            aria-label={t('removeChallanAria')}
                                         >
                                             <Trash size={15} className="text-danger-600" />
                                         </MyButton>
@@ -244,7 +252,7 @@ export const ChallansMain = () => {
                         <tfoot>
                             <tr className="border-t border-neutral-200 font-medium">
                                 <td className="px-4 py-2.5 text-neutral-700" colSpan={3}>
-                                    Total deposited · {financialYear} {quarter}
+                                    {t('totalDeposited', { financialYear, quarter })}
                                 </td>
                                 <td className="px-4 py-2.5">
                                     <MoneyCell value={total} />
@@ -257,23 +265,23 @@ export const ChallansMain = () => {
             )}
 
             <MyDialog
-                heading="Record a TDS challan"
+                heading={t('dialog.heading')}
                 open={dialogOpen}
                 onOpenChange={setDialogOpen}
                 dialogWidth="max-w-xl"
                 footer={
                     <div className="flex justify-end gap-2">
                         <MyButton buttonType="secondary" onClick={() => setDialogOpen(false)}>
-                            Cancel
+                            {t('dialog.cancel')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
                             onAsyncClick={form.handleSubmit(async (values) => {
                                 await createMutation.mutateAsync(values);
                             })}
-                            loadingText="Saving…"
+                            loadingText={t('dialog.saving')}
                         >
-                            Save challan
+                            {t('dialog.save')}
                         </MyButton>
                     </div>
                 }
@@ -284,11 +292,13 @@ export const ChallansMain = () => {
                             <HrTextField
                                 control={form.control}
                                 name="financialYear"
-                                label="Financial year"
-                                placeholder="2025-26"
+                                label={t('fields.financialYear')}
+                                placeholder={t('fields.financialYearPlaceholder')}
                             />
                             <div className="flex flex-col gap-1.5">
-                                <span className="text-caption text-neutral-600">Quarter</span>
+                                <span className="text-caption text-neutral-600">
+                                    {t('fields.quarter')}
+                                </span>
                                 <MyDropdown
                                     currentValue={
                                         FY_QUARTERS.find((q) => q.value === form.watch('quarter'))
@@ -307,35 +317,40 @@ export const ChallansMain = () => {
                             <HrTextField
                                 control={form.control}
                                 name="depositDate"
-                                label="Deposit date"
+                                label={t('fields.depositDate')}
                                 inputType="date"
                             />
                             <HrTextField
                                 control={form.control}
                                 name="amount"
-                                label="Amount deposited"
+                                label={t('fields.amountDeposited')}
                                 inputType="number"
                             />
                             <HrTextField
                                 control={form.control}
                                 name="bsrCode"
-                                label="BSR code"
-                                placeholder="Bank branch code"
+                                label={t('fields.bsrCode')}
+                                placeholder={t('fields.bsrCodePlaceholder')}
                             />
                             <HrTextField
                                 control={form.control}
                                 name="challanSerial"
-                                label="Challan serial"
+                                label={t('fields.challanSerial')}
                             />
                             <HrTextField
                                 control={form.control}
                                 name="interest"
-                                label="Interest"
+                                label={t('fields.interest')}
                                 inputType="number"
                             />
-                            <HrTextField control={form.control} name="fee" label="Fee" inputType="number" />
+                            <HrTextField
+                                control={form.control}
+                                name="fee"
+                                label={t('fields.fee')}
+                                inputType="number"
+                            />
                         </div>
-                        <HrTextField control={form.control} name="notes" label="Notes" />
+                        <HrTextField control={form.control} name="notes" label={t('fields.notes')} />
                     </form>
                 </Form>
             </MyDialog>
@@ -346,23 +361,24 @@ export const ChallansMain = () => {
             >
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Remove this challan?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('deleteDialog.title')}</AlertDialogTitle>
                         <AlertDialogDescription>
                             {pendingDelete
-                                ? `${formatMoney(pendingDelete.amount ?? 0)} deposited on ${
-                                      pendingDelete.depositDate
+                                ? t('deleteDialog.description', {
+                                      amount: formatMoney(pendingDelete.amount ?? 0),
+                                      date: pendingDelete.depositDate
                                           ? formatDate(pendingDelete.depositDate)
-                                          : 'an unknown date'
-                                  } will no longer count towards the Form 24Q reconciliation.`
+                                          : t('deleteDialog.unknownDate'),
+                                  })
                                 : ''}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Keep it</AlertDialogCancel>
+                        <AlertDialogCancel>{t('deleteDialog.keepIt')}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={() => pendingDelete?.id && deleteMutation.mutate(pendingDelete.id)}
                         >
-                            Remove
+                            {t('deleteDialog.remove')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

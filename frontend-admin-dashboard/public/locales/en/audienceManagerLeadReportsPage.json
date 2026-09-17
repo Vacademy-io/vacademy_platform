@@ -28,7 +28,8 @@
         "revenue": "Revenue",
         "cohort": "Cohort",
         "forecast": "Forecast",
-        "custom": "Builder"
+        "custom": "Builder",
+        "utm": "Campaigns (UTM)"
     },
     "counsellorPicker": {
         "ariaLabel": "Filter by counsellor",

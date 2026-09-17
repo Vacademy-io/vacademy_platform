@@ -55,6 +55,8 @@ import { useShortLink } from '@/hooks/use-short-link';
 import { useAudienceShortLinksEnabled } from '@/hooks/use-audience-short-links-enabled';
 import { SHORT_LINK_SOURCE } from '@/services/short-link';
 import { copyTextToClipboard } from '@/lib/clipboard';
+import { UtmLinkMenuItem } from '@/components/common/utm/utm-link-menu-item';
+import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -81,6 +83,7 @@ export const AudienceCampaignCardMenuOptions = ({
     const [openConfigureWorkflowDialog, setOpenConfigureWorkflowDialog] = useState(false);
     const [openBookingSettingsDialog, setOpenBookingSettingsDialog] = useState(false);
     const [copyShortLinkRequested, setCopyShortLinkRequested] = useState(false);
+    const [openUtmDialog, setOpenUtmDialog] = useState(false);
     const { enabled: shortLinksEnabled, isResolved: shortLinksResolved } =
         useAudienceShortLinksEnabled();
     const { instituteDetails } = useInstituteDetailsStore();
@@ -334,6 +337,11 @@ export const AudienceCampaignCardMenuOptions = ({
                             {t('menu.copyShortLink')}
                         </DropdownMenuItem>
                     )}
+                    <UtmLinkMenuItem
+                        hidden={!campaignFormUrl}
+                        onSelect={() => setOpenUtmDialog(true)}
+                        className="cursor-pointer"
+                    />
                     <DropdownMenuItem onClick={() => setOpenApiDialog(true)}>
                         <Code className="mr-2 size-4" />
                         {t('menu.apiIntegration')}
@@ -450,6 +458,14 @@ export const AudienceCampaignCardMenuOptions = ({
                     instituteId={instituteId}
                 />
             )}
+
+            <UtmBuilderDialog
+                open={openUtmDialog}
+                onOpenChange={setOpenUtmDialog}
+                baseUrl={campaignFormUrl}
+                sourceType="AUDIENCE"
+                entityName={campaign.campaign_name}
+            />
 
             {campaignId && instituteId && (
                 <ConfigureAudienceWorkflowDialog

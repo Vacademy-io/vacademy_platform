@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CircleNotch, Coins, Sparkle, WarningCircle } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
@@ -9,27 +10,28 @@ import {
     type TutorCompileEstimate,
     type TutorCompileOptions,
 } from '@/services/tutor';
+import type { TFunction } from 'i18next';
 
-const KIND_LABEL: Record<string, string> = {
-    document: 'Document',
-    pdf: 'PDF',
-    quiz: 'Quiz',
-    ai_video: 'AI video',
-    youtube: 'YouTube video',
-    video_upload: 'Uploaded video',
-    video_link: 'Video link',
-    other: 'Not supported',
-};
+const buildKindLabel = (t: TFunction): Record<string, string> => ({
+    document: t('kindLabel.document'),
+    pdf: t('kindLabel.pdf'),
+    quiz: t('kindLabel.quiz'),
+    ai_video: t('kindLabel.aiVideo'),
+    youtube: t('kindLabel.youtube'),
+    video_upload: t('kindLabel.videoUpload'),
+    video_link: t('kindLabel.videoLink'),
+    other: t('kindLabel.notSupported'),
+});
 
-const ACTION_LABEL: Record<string, string> = {
-    compile: 'Will prepare',
-    up_to_date: 'Already prepared',
-    needs_details: 'Needs details',
-    free: 'Free',
-    skip: 'Skipped',
-    unsupported: 'Not supported',
-    unpublished: 'Not published',
-};
+const buildActionLabel = (t: TFunction): Record<string, string> => ({
+    compile: t('actionLabel.willPrepare'),
+    up_to_date: t('actionLabel.alreadyPrepared'),
+    needs_details: t('actionLabel.needsDetails'),
+    free: t('actionLabel.free'),
+    skip: t('actionLabel.skipped'),
+    unsupported: t('actionLabel.notSupported'),
+    unpublished: t('actionLabel.notPublished'),
+});
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
@@ -63,6 +65,9 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
     onClose,
     onConfirm,
 }) => {
+    const { t } = useTranslation('studyLibraryTutorCompileEstimateDialog');
+    const KIND_LABEL = buildKindLabel(t);
+    const ACTION_LABEL = buildActionLabel(t);
     const [estimate, setEstimate] = useState<TutorCompileEstimate | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -85,7 +90,7 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
             })
             .catch((e: unknown) => {
                 if (!cancelled)
-                    setError(e instanceof Error ? e.message : 'Could not estimate the cost');
+                    setError(e instanceof Error ? e.message : t('couldNotEstimate'));
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -95,13 +100,13 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
         };
         // options is rebuilt on every render; the inputs that matter are listed.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, packageId, slideIds?.join(','), transcribeVideos, ocrPdfs, single]);
+    }, [open, packageId, slideIds?.join(','), transcribeVideos, ocrPdfs, single, t]);
 
-    const t = estimate?.totals;
+    const totals = estimate?.totals;
     const rows = (estimate?.slides ?? []).filter((r) => r.action !== 'up_to_date' || single);
     const upToDate = estimate?.slides.filter((r) => r.action === 'up_to_date').length ?? 0;
     const insufficient = estimate?.sufficient === false;
-    const nothing = !!t && t.to_compile === 0;
+    const nothing = !!totals && totals.to_compile === 0;
 
     return (
         <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -109,19 +114,14 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Coins className="size-5 text-primary-500" />
-                        {single ? 'Prepare this slide' : 'Prepare for teaching'}
+                        {single ? t('prepareThisSlide') : t('prepareForTeaching')}
                         {loading && (
                             <CircleNotch className="size-4 animate-spin text-neutral-400" />
                         )}
                     </DialogTitle>
                 </DialogHeader>
 
-                <p className="text-sm text-neutral-600">
-                    Documents, PDFs, YouTube videos and AI videos are prepared from their own text
-                    for free apart from the compile. Uploaded videos are transcribed first
-                    (speech-to-text, charged per minute) and scanned PDFs are read with OCR (charged
-                    per page). Nothing is charged until you confirm.
-                </p>
+                <p className="text-sm text-neutral-600">{t('intro')}</p>
 
                 {estimate?.transcription_available && (
                     <div className="flex items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
@@ -131,10 +131,10 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                             onCheckedChange={onTranscribeVideosChange}
                         />
                         <Label htmlFor="tutor-transcribe" className="text-sm">
-                            Transcribe uploaded videos (
-                            {fmt(estimate.prices.transcription_per_minute)} credits per minute,
-                            minimum {fmt(estimate.prices.transcription_minimum)}
-                            ). Off: they need a written description instead.
+                            {t('transcribeSwitchLabel', {
+                                perMinute: fmt(estimate.prices.transcription_per_minute),
+                                minimum: fmt(estimate.prices.transcription_minimum),
+                            })}
                         </Label>
                     </div>
                 )}
@@ -146,8 +146,7 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                             onCheckedChange={onOcrPdfsChange}
                         />
                         <Label htmlFor="tutor-ocr" className="text-sm">
-                            Read scanned PDFs with OCR ({fmt(estimate.prices.ocr_per_page)} credits
-                            per page). Off: they need a written description instead.
+                            {t('ocrSwitchLabel', { perPage: fmt(estimate.prices.ocr_per_page) })}
                         </Label>
                     </div>
                 )}
@@ -163,10 +162,12 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-neutral-200 text-xs uppercase tracking-wide text-neutral-500">
-                                    <th className="py-2 pe-3 text-start">Slide</th>
-                                    <th className="py-2 pe-3 text-start">Kind</th>
-                                    <th className="py-2 pe-3 text-start">What happens</th>
-                                    <th className="py-2 pe-3 text-end">Credits</th>
+                                    <th className="py-2 pe-3 text-start">{t('table.slide')}</th>
+                                    <th className="py-2 pe-3 text-start">{t('table.kind')}</th>
+                                    <th className="py-2 pe-3 text-start">
+                                        {t('table.whatHappens')}
+                                    </th>
+                                    <th className="py-2 pe-3 text-end">{t('table.credits')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -194,11 +195,19 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                                             {r.note && (
                                                 <span className="block text-xs text-neutral-500">
                                                     {r.note}
-                                                    {r.minutes > 0 ? ` · ${r.minutes} min` : ''}
-                                                    {r.ocr > 0
-                                                        ? ` · ${fmt(r.ocr)} credits OCR`
+                                                    {r.minutes > 0
+                                                        ? t('row.minutesSuffix', {
+                                                              count: r.minutes,
+                                                          })
                                                         : ''}
-                                                    {r.voice > 0 ? ` · ${fmt(r.voice)} voice` : ''}
+                                                    {r.ocr > 0
+                                                        ? t('row.ocrSuffix', { credits: fmt(r.ocr) })
+                                                        : ''}
+                                                    {r.voice > 0
+                                                        ? t('row.voiceSuffix', {
+                                                              credits: fmt(r.voice),
+                                                          })
+                                                        : ''}
                                                 </span>
                                             )}
                                         </td>
@@ -206,7 +215,7 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                                             {r.total > 0 ? fmt(r.total) : '—'}
                                             {r.images_max > 0 && (
                                                 <span className="block text-xs text-neutral-400">
-                                                    + up to {r.images_max} images
+                                                    {t('row.upToImages', { count: r.images_max })}
                                                 </span>
                                             )}
                                         </td>
@@ -218,7 +227,7 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                                             colSpan={4}
                                             className="py-4 text-center text-neutral-500"
                                         >
-                                            Nothing to prepare.
+                                            {t('nothingToPrepare')}
                                         </td>
                                     </tr>
                                 )}
@@ -227,40 +236,59 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                     </div>
                 )}
 
-                {t && (
+                {totals && (
                     <div className="space-y-1 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
                         <p className="flex justify-between">
                             <span>
-                                {t.to_compile} slide(s) to prepare
-                                {upToDate > 0 && !single ? `, ${upToDate} already prepared` : ''}
-                                {t.needs_details > 0 ? `, ${t.needs_details} need details` : ''}
+                                {t('summary.slidesToPrepare', { count: totals.to_compile })}
+                                {upToDate > 0 && !single
+                                    ? t('summary.alreadyPreparedSuffix', { count: upToDate })
+                                    : ''}
+                                {totals.needs_details > 0
+                                    ? t('summary.needDetailsSuffix', {
+                                          count: totals.needs_details,
+                                      })
+                                    : ''}
                             </span>
                             <span className="font-semibold text-neutral-900">
-                                ≈ {fmt(t.required)} credits
+                                {t('summary.approxCredits', { credits: fmt(totals.required) })}
                             </span>
                         </p>
                         <p className="text-xs text-neutral-500">
-                            {fmt(t.compile_credits)} to compile
-                            {t.transcription_minutes > 0
-                                ? ` + ${fmt(t.transcription_credits)} for ${t.transcription_minutes} min of transcription`
+                            {t('summary.toCompile', { credits: fmt(totals.compile_credits) })}
+                            {totals.transcription_minutes > 0
+                                ? t('summary.transcriptionSuffix', {
+                                      credits: fmt(totals.transcription_credits),
+                                      count: totals.transcription_minutes,
+                                  })
                                 : ''}
-                            {t.ocr_pages > 0
-                                ? ` + ${fmt(t.ocr_credits)} for OCR of ${t.ocr_pages} page(s)`
+                            {totals.ocr_pages > 0
+                                ? t('summary.ocrSuffix', {
+                                      credits: fmt(totals.ocr_credits),
+                                      count: totals.ocr_pages,
+                                  })
                                 : ''}
-                            {t.voice_credits > 0
-                                ? ` + ${fmt(t.voice_credits)} to prepare the teacher's voice once (${t.voice_languages} language${t.voice_languages > 1 ? 's' : ''}; lessons then play it without per-minute voice cost)`
+                            {totals.voice_credits > 0
+                                ? t('summary.voiceSuffix', {
+                                      credits: fmt(totals.voice_credits),
+                                      count: totals.voice_languages,
+                                  })
                                 : ''}
-                            {t.images_max > 0
-                                ? ` + up to ${fmt(t.images_max_credits)} for AI images (charged per image made)`
+                            {totals.images_max > 0
+                                ? t('summary.imagesSuffix', {
+                                      credits: fmt(totals.images_max_credits),
+                                  })
                                 : ''}
-                            . Compiling a slide costs {fmt(estimate!.prices.compile_slide)} credits.
+                            {t('summary.compileCost', {
+                                credits: fmt(estimate!.prices.compile_slide),
+                            })}
                         </p>
                         {estimate?.balance !== null && estimate?.balance !== undefined && (
                             <p
                                 className={`text-xs ${insufficient ? 'text-danger-600' : 'text-neutral-500'}`}
                             >
-                                Balance: {fmt(estimate.balance)} credits
-                                {insufficient ? ' — not enough for this compile.' : ''}
+                                {t('summary.balance', { credits: fmt(estimate.balance) })}
+                                {insufficient ? t('summary.insufficientSuffix') : ''}
                             </p>
                         )}
                     </div>
@@ -273,7 +301,7 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                         layoutVariant="default"
                         onClick={onClose}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -283,7 +311,9 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                         onClick={onConfirm}
                     >
                         <Sparkle className="size-4" />
-                        {t ? `Prepare (≈ ${fmt(t.required)} credits)` : 'Prepare'}
+                        {totals
+                            ? t('prepareWithCredits', { credits: fmt(totals.required) })
+                            : t('prepare')}
                     </MyButton>
                 </div>
             </DialogContent>

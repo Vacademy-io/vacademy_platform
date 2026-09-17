@@ -60,6 +60,8 @@ class SettingSpec:
     # Bounds for "number" settings.
     min_value: Optional[float] = None
     max_value: Optional[float] = None
+    # Longest accepted "string" value (JSON-valued settings need more room).
+    max_length: int = 200
 
 
 def _env_bool(name: str, fallback: bool) -> bool:
@@ -246,6 +248,74 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             type="number",
             default=lambda: 5,
             min_value=0, max_value=60,
+        ),
+        SettingSpec(
+            key="tutor.demo.enabled",
+            group="tutor",
+            label="Public 3-minute demo lesson (tutezy.ai)",
+            description="Lets unauthenticated visitors take one short lesson on the demo batch, unbilled. Needs the institute, batch and topics below.",
+            type="bool",
+            default=lambda: False,
+        ),
+        SettingSpec(
+            key="tutor.demo.institute_id",
+            group="tutor",
+            label="Demo lesson: institute id",
+            description="The institute whose settings (teacher name, voice, avatar) the public demo teaches with.",
+            type="string",
+            default=lambda: "",
+        ),
+        SettingSpec(
+            key="tutor.demo.package_session_id",
+            group="tutor",
+            label="Demo lesson: batch (package session) id",
+            description="The batch that holds the demo slides. Every topic's slide must belong to it.",
+            type="string",
+            default=lambda: "",
+        ),
+        SettingSpec(
+            key="tutor.demo.topics",
+            group="tutor",
+            label="Demo lesson: topics (JSON)",
+            description='A list like [{"key":"force","title":"What is a force?","emoji":"🚀","slide_id":"…","language":"en"}]. Slides must be compiled.',
+            type="string",
+            default=lambda: "[]",
+            max_length=6000,
+        ),
+        SettingSpec(
+            key="tutor.demo.teacher_name",
+            group="tutor",
+            label="Demo lesson: teacher name shown to visitors",
+            description="Blank = the demo institute's own teacher name.",
+            type="string",
+            default=lambda: "",
+        ),
+        SettingSpec(
+            key="tutor.demo.minutes",
+            group="tutor",
+            label="Demo lesson: length (minutes)",
+            description="The public lesson ends politely at this length.",
+            type="number",
+            default=lambda: 3,
+            min_value=1, max_value=10,
+        ),
+        SettingSpec(
+            key="tutor.demo.per_ip_per_day",
+            group="tutor",
+            label="Demo lesson: sessions per visitor (IP) per day",
+            description="0 disables the per-visitor limit (not recommended).",
+            type="number",
+            default=lambda: 1,
+            min_value=0, max_value=20,
+        ),
+        SettingSpec(
+            key="tutor.demo.daily_cap",
+            group="tutor",
+            label="Demo lesson: total sessions per day",
+            description="A global ceiling on free lessons across all visitors; 0 = no cap.",
+            type="number",
+            default=lambda: 200,
+            min_value=0, max_value=10000,
         ),
         SettingSpec(
             key="tutor.live.max_minutes",
@@ -461,8 +531,8 @@ def _coerce(spec: SettingSpec, value: Any) -> Any:
 
     if spec.type in ("model", "string"):
         v = str(value).strip()
-        if len(v) > 200:
-            raise ValueError(f"{spec.key} is too long")
+        if len(v) > spec.max_length:
+            raise ValueError(f"{spec.key} is too long (max {spec.max_length} characters)")
         return v
 
     if spec.type == "number":

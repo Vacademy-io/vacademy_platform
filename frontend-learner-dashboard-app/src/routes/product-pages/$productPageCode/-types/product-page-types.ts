@@ -186,6 +186,8 @@ export interface ProductPageSettings {
         showNudge?: boolean;
     };
     afterPaymentRedirectUrl?: string;
+    /** Seconds the success screen stays up before the redirect fires. */
+    afterPaymentRedirectDelaySeconds?: number;
     showLoginButton?: boolean;
     successPageContent?: string;
     courseFinder?: ProductPageCourseFinder;

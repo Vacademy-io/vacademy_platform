@@ -15,6 +15,8 @@ import {
 } from '@phosphor-icons/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { MyTable } from '@/components/design-system/table';
@@ -41,12 +43,12 @@ import type { MenteeDTO, MentorDTO } from '../-types/mentorship-types';
 
 export type MentorDetailTab = 'overview' | 'students' | 'availability' | 'sessions' | 'feedback';
 
-const TABS: { key: MentorDetailTab; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'students', label: 'Students' },
-    { key: 'availability', label: 'Availability' },
-    { key: 'sessions', label: 'Sessions' },
-    { key: 'feedback', label: 'Feedback' },
+const buildTabs = (t: TFunction): { key: MentorDetailTab; label: string }[] => [
+    { key: 'overview', label: t('tabs.overview') },
+    { key: 'students', label: t('tabs.students') },
+    { key: 'availability', label: t('tabs.availability') },
+    { key: 'sessions', label: t('tabs.sessions') },
+    { key: 'feedback', label: t('tabs.feedback') },
 ];
 
 /**
@@ -69,6 +71,7 @@ export function MentorDetailView({
     tab: MentorDetailTab;
     onTabChange: (tab: MentorDetailTab) => void;
 }) {
+    const { t } = useTranslation('mentorshipMentorDetailView');
     const { data, isLoading, isError, refetch } = useMentorDashboard(instituteId);
     const mentor = (data?.mentors ?? []).find((m) => m.id === mentorId) ?? null;
 
@@ -77,6 +80,7 @@ export function MentorDetailView({
     const feedback = useMentorFeedback(tab === 'feedback' ? mentor?.id : undefined, instituteId);
 
     const setTab = onTabChange;
+    const TABS = useMemo(() => buildTabs(t), [t]);
 
     if (isLoading) {
         return (
@@ -91,14 +95,12 @@ export function MentorDetailView({
     if (isError || !mentor) {
         return (
             <div className="flex flex-col gap-4 p-6">
-                <Breadcrumb name={null} />
+                <Breadcrumb name={null} t={t} />
                 <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
                     <div className="flex items-center gap-2">
                         <WarningCircle size={18} weight="fill" className="text-danger-600" />
                         <p className="text-body text-danger-600">
-                            {isError
-                                ? "Couldn't load this mentor."
-                                : 'That mentor is no longer on your team.'}
+                            {isError ? t('errorLoad') : t('errorGone')}
                         </p>
                     </div>
                     {isError ? (
@@ -108,12 +110,12 @@ export function MentorDetailView({
                             scale="small"
                             onClick={() => refetch()}
                         >
-                            Retry
+                            {t('retry')}
                         </MyButton>
                     ) : (
                         <Link to="/mentorship/mentors">
                             <MyButton type="button" buttonType="secondary" scale="small">
-                                Back to mentors
+                                {t('backToMentors')}
                             </MyButton>
                         </Link>
                     )}
@@ -124,13 +126,13 @@ export function MentorDetailView({
 
     const assigned = mentor.assigned_student_count ?? 0;
     const cap = mentor.max_mentees ?? null;
-    const name = mentor.display_name || mentor.name || 'Mentor';
+    const name = mentor.display_name || mentor.name || t('mentorFallback');
     const menteeCount = mentees.data?.length ?? assigned;
     const feedbackCount = mentor.rating_count ?? 0;
 
     return (
         <div className="flex flex-col gap-5 p-6">
-            <Breadcrumb name={name} />
+            <Breadcrumb name={name} t={t} />
 
             <div className="flex flex-wrap items-center gap-3">
                 <MentorAvatar
@@ -151,7 +153,9 @@ export function MentorDetailView({
                             {(mentor.status || 'ACTIVE').toLowerCase()}
                         </StatusChips>
                     </span>
-                    <span className="text-body text-neutral-500">{mentor.title || 'Mentor'}</span>
+                    <span className="text-body text-neutral-500">
+                        {mentor.title || t('roleFallback')}
+                    </span>
                     {mentor.email && (
                         <span className="flex items-center gap-1 text-caption text-neutral-400">
                             <EnvelopeSimple size={12} /> {mentor.email}
@@ -162,7 +166,7 @@ export function MentorDetailView({
 
             <nav
                 className="flex flex-wrap gap-1 border-b border-neutral-200"
-                aria-label="Mentor detail"
+                aria-label={t('navAriaLabel')}
             >
                 {TABS.map((t) => {
                     const count =
@@ -193,11 +197,11 @@ export function MentorDetailView({
                 <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
                     <Card className="flex h-full flex-col gap-3 bg-white p-4 shadow-sm">
                         <span className="text-body font-semibold text-neutral-700">
-                            Mentor information
+                            {t('mentorInformationHeading')}
                         </span>
                         <dl className="flex flex-col gap-2">
                             <Fact
-                                label="Expertise"
+                                label={t('factExpertise')}
                                 value={
                                     (mentor.expertise_tags?.length ?? 0) > 0
                                         ? mentor.expertise_tags?.join(', ')
@@ -205,20 +209,25 @@ export function MentorDetailView({
                                 }
                             />
                             <Fact
-                                label="Session duration"
+                                label={t('factSessionDuration')}
                                 value={
                                     availability.data?.duration_minutes
-                                        ? `${availability.data.duration_minutes} minutes`
+                                        ? t('sessionMinutes', {
+                                              count: availability.data.duration_minutes,
+                                          })
                                         : null
                                 }
                             />
-                            <Fact label="Maximum capacity" value={cap ? `${cap}` : 'Unlimited'} />
                             <Fact
-                                label="Discoverable"
+                                label={t('factMaximumCapacity')}
+                                value={cap ? `${cap}` : t('unlimited')}
+                            />
+                            <Fact
+                                label={t('factDiscoverable')}
                                 value={
                                     mentor.is_discoverable
-                                        ? 'Yes — learners can find and request them'
-                                        : 'No — assigned by admins only'
+                                        ? t('discoverableYes')
+                                        : t('discoverableNo')
                                 }
                             />
                         </dl>
@@ -231,15 +240,12 @@ export function MentorDetailView({
 
                     <Card className="flex h-full flex-col gap-3 bg-white p-4 shadow-sm">
                         <span className="flex items-center gap-1.5 text-body font-semibold text-neutral-700">
-                            <Clock size={15} /> Availability this week
+                            <Clock size={15} /> {t('availabilityThisWeekHeading')}
                         </span>
                         {availability.isLoading ? (
                             <Skeleton className="h-16 w-full rounded-md" />
                         ) : availability.isError ? (
-                            <p className="text-caption text-neutral-400">
-                                This mentor hasn&apos;t set up booking yet, so learners can&apos;t
-                                book time with them.
-                            </p>
+                            <p className="text-caption text-neutral-400">{t('noBookingSetup')}</p>
                         ) : (
                             <AvailabilitySummary page={availability.data} />
                         )}
@@ -248,36 +254,41 @@ export function MentorDetailView({
                             onClick={() => setTab('availability')}
                             className="mt-auto flex items-center justify-center gap-1 border-t border-neutral-100 pt-3 text-caption font-medium text-primary-600 hover:text-primary-700"
                         >
-                            View full availability
+                            {t('viewFullAvailability')}
                             <CaretRight size={12} weight="bold" />
                         </button>
                     </Card>
 
                     <Card className="flex h-full flex-col gap-3 bg-white p-4 shadow-sm">
-                        <span className="text-body font-semibold text-neutral-700">Stats</span>
+                        <span className="text-body font-semibold text-neutral-700">
+                            {t('statsHeading')}
+                        </span>
                         <div className="grid grid-cols-2 gap-3">
-                            <Stat label="Assigned students" value={assigned} />
+                            <Stat label={t('statAssignedStudents')} value={assigned} />
                             <Stat
-                                label="Rated sessions"
+                                label={t('statRatedSessions')}
                                 value={feedbackCount}
                                 icon={feedbackCount > 0}
                             />
                             <Stat
-                                label="Average rating"
+                                label={t('statAverageRating')}
                                 value={
                                     mentor.average_rating != null && feedbackCount > 0
                                         ? mentor.average_rating.toFixed(1)
                                         : '—'
                                 }
                             />
-                            <Stat label="Capacity" value={cap ? `${assigned}/${cap}` : '∞'} />
+                            <Stat
+                                label={t('statCapacity')}
+                                value={cap ? `${assigned}/${cap}` : '∞'}
+                            />
                         </div>
                         <button
                             type="button"
                             onClick={() => setTab('sessions')}
                             className="mt-auto flex items-center justify-center gap-1 border-t border-neutral-100 pt-3 text-caption font-medium text-primary-600 hover:text-primary-700"
                         >
-                            View all sessions
+                            {t('viewAllSessions')}
                             <CaretRight size={12} weight="bold" />
                         </button>
                     </Card>
@@ -298,12 +309,9 @@ export function MentorDetailView({
                     {availability.isLoading ? (
                         <Skeleton className="h-24 w-full rounded-md" />
                     ) : availability.isError ? (
-                        <p className="text-caption text-neutral-400">
-                            This mentor hasn&apos;t set up booking yet, so learners can&apos;t book
-                            time with them.
-                        </p>
+                        <p className="text-caption text-neutral-400">{t('noBookingSetup')}</p>
                     ) : (
-                        <FullAvailability page={availability.data} />
+                        <FullAvailability page={availability.data} t={t} />
                     )}
                 </Card>
             )}
@@ -319,9 +327,7 @@ export function MentorDetailView({
                     {feedback.isLoading ? (
                         <Skeleton className="h-24 w-full rounded-md" />
                     ) : (feedback.data?.length ?? 0) === 0 ? (
-                        <p className="text-caption text-neutral-400">
-                            No learner has rated a session with this mentor yet.
-                        </p>
+                        <p className="text-caption text-neutral-400">{t('noFeedbackYet')}</p>
                     ) : (
                         (feedback.data ?? []).map((f) => (
                             <div
@@ -377,6 +383,7 @@ function MentorStudentsTab({
     mentees: MenteeDTO[];
     isLoading: boolean;
 }) {
+    const { t } = useTranslation('mentorshipMentorDetailView');
     const [search, setSearch] = useState('');
     const [assignOpen, setAssignOpen] = useState(false);
     const [openMentee, setOpenMentee] = useState<MenteeDTO | null>(null);
@@ -416,10 +423,7 @@ function MentorStudentsTab({
                 extra: { studentUserId: mentee.student_user_id },
                 // A 403 here is permanent (chat off, or a role pair the institute
                 // forbids) — "try again" would be a lie.
-                fallbackMessage: describeDirectChatError(
-                    error,
-                    "Couldn't open the chat. Please try again."
-                ),
+                fallbackMessage: describeDirectChatError(error, t('chatErrorFallback')),
             });
         } finally {
             setMessagingId(null);
@@ -430,7 +434,7 @@ function MentorStudentsTab({
         () => [
             {
                 id: 'student',
-                header: 'Student',
+                header: t('columnStudent'),
                 size: 250,
                 cell: ({ row }) => {
                     const m = row.original;
@@ -446,7 +450,7 @@ function MentorStudentsTab({
                                     type="button"
                                     onClick={() => setOpenMentee(m)}
                                     className="truncate text-left text-body font-medium text-neutral-700 hover:text-primary-600 hover:underline"
-                                    title="Open this student's profile"
+                                    title={t('openStudentProfileTitle')}
                                 >
                                     {m.name || m.student_user_id}
                                 </button>
@@ -462,7 +466,7 @@ function MentorStudentsTab({
             },
             {
                 id: 'phone',
-                header: 'Phone',
+                header: t('columnPhone'),
                 size: 140,
                 cell: ({ row }) => (
                     <span className="text-body tabular-nums text-neutral-600">
@@ -472,23 +476,23 @@ function MentorStudentsTab({
             },
             {
                 id: 'method',
-                header: 'Assigned',
+                header: t('columnAssigned'),
                 size: 130,
                 cell: ({ row }) => (
                     <span className="text-caption text-neutral-500">
                         {row.original.assignment_method === 'ROUND_ROBIN'
-                            ? 'Auto-assigned'
-                            : 'Assigned'}
+                            ? t('assignmentAutoAssigned')
+                            : t('assignmentAssigned')}
                     </span>
                 ),
             },
             {
                 id: 'actions',
-                header: 'Actions',
+                header: t('columnActions'),
                 size: 150,
                 cell: ({ row }) => {
                     const m = row.original;
-                    const label = m.name || 'this student';
+                    const label = m.name || t('defaultStudentLabel');
                     return (
                         <div className="flex items-center gap-1">
                             <MyButton
@@ -497,8 +501,8 @@ function MentorStudentsTab({
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => setOpenMentee(m)}
-                                aria-label={`View ${label}`}
-                                title="Learning progress, notes and scheduled calls"
+                                aria-label={t('viewStudentAriaLabel', { name: label })}
+                                title={t('viewStudentTitle')}
                             >
                                 <Eye size={18} />
                             </MyButton>
@@ -508,8 +512,8 @@ function MentorStudentsTab({
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => setScheduleFor(m)}
-                                aria-label={`Schedule a 1:1 with ${label}`}
-                                title="Book a 1:1 with this mentor — the student does nothing"
+                                aria-label={t('scheduleSessionAriaLabel', { name: label })}
+                                title={t('scheduleSessionTitle')}
                             >
                                 <CalendarPlus size={18} />
                             </MyButton>
@@ -520,7 +524,7 @@ function MentorStudentsTab({
                                 layoutVariant="icon"
                                 onClick={() => message(m)}
                                 disable={!chat.enabled || messagingId === m.student_user_id}
-                                aria-label={`Message ${label}`}
+                                aria-label={t('messageStudentAriaLabel', { name: label })}
                                 title={messageActionTitle(chat.enabled)}
                             >
                                 <ChatCircle size={18} />
@@ -531,7 +535,7 @@ function MentorStudentsTab({
             },
         ],
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [messagingId, chat.enabled]
+        [messagingId, chat.enabled, t]
     );
 
     if (isLoading) return <Skeleton className="h-24 w-full rounded-md" />;
@@ -552,10 +556,10 @@ function MentorStudentsTab({
         return (
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                 <UsersThree size={32} className="text-neutral-300" />
-                <p className="text-body font-medium text-neutral-700">No students assigned yet</p>
-                <p className="text-caption text-neutral-500">
-                    Pick a whole batch, or search for individual students.
+                <p className="text-body font-medium text-neutral-700">
+                    {t('emptyStudentsHeading')}
                 </p>
+                <p className="text-caption text-neutral-500">{t('emptyStudentsSubheading')}</p>
                 <MyButton
                     type="button"
                     buttonType="primary"
@@ -563,7 +567,7 @@ function MentorStudentsTab({
                     onClick={() => setAssignOpen(true)}
                     disable={!instituteId}
                 >
-                    <UserPlus size={16} /> Assign students
+                    <UserPlus size={16} /> {t('assignStudentsButton')}
                 </MyButton>
                 {assignDialog}
             </div>
@@ -584,15 +588,15 @@ function MentorStudentsTab({
                             setSearch(e.target.value)
                         }
                         inputType="text"
-                        inputPlaceholder="Search by name, email or phone"
+                        inputPlaceholder={t('searchPlaceholder')}
                         className="pl-9 sm:w-full"
                     />
                 </div>
                 <div className="flex items-center gap-3">
                     <span className="text-caption text-neutral-500">
                         {query
-                            ? `${visible.length} of ${mentees.length} match`
-                            : `${mentees.length} students`}
+                            ? t('matchCount', { visible: visible.length, count: mentees.length })
+                            : t('studentCount', { count: mentees.length })}
                     </span>
                     <MyButton
                         type="button"
@@ -601,7 +605,7 @@ function MentorStudentsTab({
                         onClick={() => setAssignOpen(true)}
                         disable={!instituteId}
                     >
-                        <UserPlus size={16} /> Assign students
+                        <UserPlus size={16} /> {t('assignStudentsButton')}
                     </MyButton>
                 </div>
             </div>
@@ -610,7 +614,7 @@ function MentorStudentsTab({
                 <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <MagnifyingGlass size={32} className="text-neutral-300" />
                     <p className="text-body font-medium text-neutral-700">
-                        No students match &ldquo;{search.trim()}&rdquo;
+                        {t('noSearchMatch', { search: search.trim() })}
                     </p>
                     <MyButton
                         type="button"
@@ -618,7 +622,7 @@ function MentorStudentsTab({
                         scale="small"
                         onClick={() => setSearch('')}
                     >
-                        Clear search
+                        {t('clearSearchButton')}
                     </MyButton>
                 </div>
             ) : (
@@ -670,14 +674,14 @@ function MentorStudentsTab({
     );
 }
 
-function Breadcrumb({ name }: { name: string | null }) {
+function Breadcrumb({ name, t }: { name: string | null; t: TFunction }) {
     return (
         <nav className="flex items-center gap-1.5 text-caption text-neutral-400">
             <Link to="/mentorship/mentors" className="hover:text-primary-600">
-                Mentors
+                {t('breadcrumbMentorsLink')}
             </Link>
             <CaretRight size={11} weight="bold" />
-            <span className="text-neutral-600">{name ?? 'Mentor'}</span>
+            <span className="text-neutral-600">{name ?? t('breadcrumbDefaultLabel')}</span>
         </nav>
     );
 }
@@ -705,9 +709,20 @@ function Stat({ label, value, icon }: { label: string; value: number | string; i
     );
 }
 
+const DAY_LABEL_KEYS: Record<string, string> = {
+    MONDAY: 'dayMonday',
+    TUESDAY: 'dayTuesday',
+    WEDNESDAY: 'dayWednesday',
+    THURSDAY: 'dayThursday',
+    FRIDAY: 'dayFriday',
+    SATURDAY: 'daySaturday',
+    SUNDAY: 'daySunday',
+};
+
 /** Every configured day, including the ones with no hours — the gaps are the point. */
 function FullAvailability({
     page,
+    t,
 }: {
     page?: {
         availability?: {
@@ -716,6 +731,7 @@ function FullAvailability({
         duration_minutes?: number | null;
         timezone?: string | null;
     } | null;
+    t: TFunction;
 }) {
     const windows = page?.availability?.weekly_windows ?? [];
 
@@ -729,11 +745,11 @@ function FullAvailability({
                         className="flex items-center justify-between gap-3 border-b border-neutral-100 pb-2 last:border-0"
                     >
                         <span className="w-28 shrink-0 text-body capitalize text-neutral-600">
-                            {day.toLowerCase()}
+                            {t(DAY_LABEL_KEYS[day] ?? day)}
                         </span>
                         {ranges.length === 0 ? (
                             <span className="flex-1 text-caption text-neutral-300">
-                                Unavailable
+                                {t('unavailableLabel')}
                             </span>
                         ) : (
                             <span className="flex-1 text-caption text-neutral-700">
@@ -747,7 +763,7 @@ function FullAvailability({
                                     : 'bg-success-50 text-success-600'
                             }`}
                         >
-                            {ranges.length === 0 ? 'Unavailable' : 'Available'}
+                            {ranges.length === 0 ? t('unavailableLabel') : t('availableLabel')}
                         </span>
                     </div>
                 );
@@ -755,8 +771,8 @@ function FullAvailability({
             <span className="flex items-center gap-1.5 pt-1 text-caption text-neutral-400">
                 <CalendarCheck size={12} />
                 {page?.duration_minutes
-                    ? `${page.duration_minutes}-minute sessions`
-                    : 'Default length'}
+                    ? t('sessionsLengthMinutes', { count: page.duration_minutes })
+                    : t('defaultLength')}
                 {page?.timezone ? ` · ${page.timezone}` : ''}
             </span>
         </div>

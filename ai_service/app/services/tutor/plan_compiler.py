@@ -26,7 +26,7 @@ from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ..platform_settings_service import get_platform_setting
 from . import compile_prompts as prompts
-from . import plan_store
+from . import demo, plan_store
 from .plan_validator import DEFAULT_LIMITS, QUIZ_LIMITS, soft_errors, validate_plan
 from .svg_check import auto_layout_svg, structural_svg_errors
 from .quiz_compiler import compile_quiz
@@ -38,7 +38,12 @@ logger = logging.getLogger(__name__)
 MAX_REPAIRS = 2
 MAX_CONCURRENT_SLIDES = 3
 # AI images are the expensive visual; SVG diagrams are free. Cap per slide.
-MAX_GENERATED_IMAGES_PER_SLIDE = 4
+# Raised from 4 once the image pass became concurrent (institutes asked for
+# textbook-style illustration, not walls of text): a picture takes about a
+# minute, so drawing a board's worth of them must not cost a board's worth of
+# minutes.
+MAX_GENERATED_IMAGES_PER_SLIDE = 6
+IMAGE_CONCURRENCY = 3
 COMPILE_MAX_TOKENS = 12_000
 # Flash, not Pro: on this platform's credit pricing a single failed Pro compile
 # (3 × ~7k output tokens) cost 35 credits on 2026-09-03; Flash is an order of
@@ -101,6 +106,14 @@ def _replace_broken_diagrams(draft: TeachingPlanDraft) -> int:
     return replaced
 
 
+def _image_target(draft: TeachingPlanDraft) -> int:
+    """How many real illustrations a slide of this size should carry. One is
+    never enough for a long slide: institutes asked for a picture where a
+    picture teaches, not a single decorative opener."""
+    topics = len(draft.topics)
+    return 1 if topics <= 2 else 2 if topics <= 4 else 3
+
+
 def _count_image_ops(draft: TeachingPlanDraft) -> int:
     return sum(1 for t in draft.topics for c in t.concepts for op in c.board_ops if getattr(op, "op", None) == "image")
 
@@ -132,6 +145,8 @@ class _Run:
     # Uploaded video transcribed / scanned PDF OCR'd for this compile (billed inside source_text).
     transcription_minutes: int = 0
     ocr_pages: int = 0
+    # Board-quality asks the model did not satisfy; stored with the plan.
+    quality_notes: List[str] = field(default_factory=list)
 
 
 # Voice warm-ups outlive the compile that started them.
@@ -180,6 +195,14 @@ class PlanCompiler:
         except Exception:  # noqa: BLE001
             self.image_model = None
 
+    def _limits(self, source):
+        """Interviews and practice drop the lesson-only engagement rules
+        (predict guesses, recap bullets, example callouts)."""
+        base = replace(DEFAULT_LIMITS, expect_images=bool(self.generate_images))
+        if getattr(source, "style", "lesson") in ("interview", "practice"):
+            return replace(base, engagement_rules=False)
+        return base
+
     # ── public ───────────────────────────────────────────────────────────
 
     async def compile_many(self, slide_ids: List[str]) -> AsyncIterator[Dict[str, Any]]:
@@ -222,11 +245,17 @@ class PlanCompiler:
     async def compile_slide(self, slide_id: str) -> Dict[str, Any]:
         # 1. Load + gate
         with db_session() as db:
-            if not slide_belongs_to_institute(db, slide_id, self.institute_id):
-                return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found in this institute"}
-            source = load_slide_source(db, slide_id)
-            if source is None:
-                return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found or not published"}
+            if demo.is_demo_slide(slide_id):
+                # Public demo topics: authored text in tutor_demo_topic, no course behind it.
+                source = demo.load_demo_source(db, slide_id)
+                if source is None:
+                    return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Demo topic not found"}
+            else:
+                if not slide_belongs_to_institute(db, slide_id, self.institute_id):
+                    return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found in this institute"}
+                source = load_slide_source(db, slide_id)
+                if source is None:
+                    return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found or not published"}
             db.commit()
 
         # Video / PDF: the material's own words (script, captions, cached
@@ -330,10 +359,12 @@ class PlanCompiler:
                     return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "plan row vanished"}
                 plan_store.store_draft(
                     db, plan, draft, model=run.model_used, raw=raw,
+                    quality_notes=run.quality_notes,
                     compile_inputs={
                         "kb": self.kb_grounding.model_dump() if self.kb_grounding else None,
                         "teacher_name": self.teacher_name, "language": self.language,
                         "generate_images": self.generate_images, "kind": source.kind,
+                        "style": getattr(source, "style", "lesson"),
                         "compile_run_id": self.compile_run_id,
                         "source_description": description,
                         "text_kind": source.text_kind, "text_chars": len(source.text or ""),
@@ -472,7 +503,8 @@ class PlanCompiler:
                     raise RuntimeError(f"OCR failed ({str(exc)[:160]}); add what this PDF teaches instead") from exc
                 logger.warning("OCR failed for slide %s; compiling from the description: %s", source.slide_id, exc)
         kb_block = await self._kb_block(source)
-        system = prompts.system_prompt(self.teacher_name, self.language, images_enabled=self.generate_images)
+        system = prompts.system_prompt(self.teacher_name, self.language, images_enabled=self.generate_images,
+                                       style=getattr(source, "style", "lesson"))
         if source.kind in ("video", "pdf") and source.text and not (source.media_url or source.media_file_id):
             # An AI video (HTML animation, no file to embed): teach its
             # narration on the board like a document.
@@ -524,7 +556,7 @@ class PlanCompiler:
                 try:
                     candidate = TeachingPlanDraft.model_validate(data)
                     # Media urls are filled by the system after this loop.
-                    errors = validate_plan(candidate, self.language, limits=DEFAULT_LIMITS,
+                    errors = validate_plan(candidate, self.language, limits=self._limits(source),
                                            require_media_urls=False)
                     if not errors:
                         draft = candidate
@@ -533,7 +565,7 @@ class PlanCompiler:
                         # round asking for pictures where they belong. Not a
                         # failure if it still declines (abstract material).
                         if (self.generate_images and source.kind == "document" and not asked_for_images
-                                and _count_image_ops(candidate) == 0):
+                                and _count_image_ops(candidate) < _image_target(candidate)):
                             asked_for_images = True
                             logger.info("Tutor compile: no image ops with images on for slide %s; asking once", source.slide_id)
                             messages.append({"role": "assistant", "content": last_json[:60000]})
@@ -541,7 +573,7 @@ class PlanCompiler:
                             continue
                         # Engagement and diagram quality: one round, never a
                         # failure — a plan that still misses them is kept.
-                        soft = soft_errors(candidate, limits=DEFAULT_LIMITS)
+                        soft = soft_errors(candidate, limits=self._limits(source), source_text=source.text)
                         if soft and not asked_for_quality:
                             asked_for_quality = True
                             logger.info("Tutor compile: %d quality ask(s) for slide %s: %s", len(soft), source.slide_id, "; ".join(soft[:3])[:400])
@@ -572,10 +604,16 @@ class PlanCompiler:
         # An image the system could not fill (images off, per-slide cap, a
         # generation error) is dropped, not fatal: the board keeps its text
         # and the plan is still delivered.
-        errors = validate_plan(draft, self.language, limits=replace(DEFAULT_LIMITS, require_visual_per_topic=False),
-                               require_media_urls=True)
+        errors = validate_plan(draft, self.language, limits=self._limits(source), require_media_urls=True)
         if errors:
             raise RuntimeError("plan invalid after media stage: " + "; ".join(errors[:6]))
+        # What the quality round did not manage (a derivation that will not fit
+        # the word budget, an abstract board with no diagram): kept with the
+        # plan and shown to the admin, never a failed compile.
+        run.quality_notes = soft_errors(draft, limits=self._limits(source), source_text=source.text)
+        if run.quality_notes:
+            logger.info("Tutor compile: slide %s kept with %d quality note(s): %s",
+                        source.slide_id, len(run.quality_notes), "; ".join(run.quality_notes[:3])[:400])
         return draft, raw
 
     async def _chat(self, messages: List[Dict[str, Any]], run: _Run) -> Tuple[str, Optional[str]]:
@@ -643,29 +681,47 @@ class PlanCompiler:
         """Fill media-task urls, generate or drop requested images. References
         (annotate / arrow) to a dropped element are pruned across the whole
         topic, since a later concept may point at an earlier concept's image."""
-        images_left = MAX_GENERATED_IMAGES_PER_SLIDE
+        # 1. Media tasks resolve from the slide itself; pick the images to draw
+        #    (the cap applies in document order, so the earliest boards win).
+        wanted: List[Tuple[Any, str]] = []
+        for topic in draft.topics:
+            for concept in topic.concepts:
+                for op in concept.board_ops:
+                    kind = getattr(op, "op", None)
+                    if kind == "media_task":
+                        op.url = source.media_url or op.url
+                        op.file_id = source.media_file_id or op.file_id
+                    elif (kind == "image" and not op.url and self.generate_images
+                          and len(wanted) < MAX_GENERATED_IMAGES_PER_SLIDE):
+                        prompt = getattr(op, "generate", None) or getattr(op, "description", None)
+                        if prompt:
+                            wanted.append((op, prompt))
+
+        # 2. Draw them together. Each picture is ~a minute of vendor time, so
+        #    sequential generation was what kept boards text-heavy.
+        if wanted:
+            sem = asyncio.Semaphore(IMAGE_CONCURRENCY)
+
+            async def _draw(op: Any, prompt: str) -> None:
+                async with sem:
+                    op.url = await self._generate_image(prompt, source.course_name, run)
+
+            await asyncio.gather(*(_draw(op, prompt) for op, prompt in wanted))
+
+        # 3. Anything still without a url is dropped, and every reference to it
+        #    pruned across the topic.
         for topic in draft.topics:
             dropped_ids: set = set()
             for concept in topic.concepts:
                 kept = []
                 for op in concept.board_ops:
                     kind = getattr(op, "op", None)
-                    if kind == "media_task":
-                        op.url = source.media_url or op.url
-                        op.file_id = source.media_file_id or op.file_id
-                        if not (op.url or op.file_id):
-                            dropped_ids.add(op.id)
-                            continue
+                    if kind == "media_task" and not (op.url or op.file_id):
+                        dropped_ids.add(op.id)
+                        continue
                     if kind == "image" and not op.url:
-                        url = None
-                        if self.generate_images and images_left > 0:
-                            url = await self._generate_image(op.generate or op.description, source.course_name, run)
-                            if url:
-                                images_left -= 1
-                        if not url:
-                            dropped_ids.add(op.id)
-                            continue
-                        op.url = url
+                        dropped_ids.add(op.id)
+                        continue
                     kept.append(op)
                 concept.board_ops = kept
             if dropped_ids:

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowsClockwise } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,22 +19,23 @@ export function EmployeeEmploymentTab({
     employee: EmployeeProfileDTO;
     canEdit: boolean;
 }) {
+    const { t } = useTranslation('erpEmployeeEmploymentTab');
     const [statusOpen, setStatusOpen] = useState(false);
     const exited = isExitStatus(employee.employment_status);
 
     const milestones: Array<{ label: string; value?: string }> = [
-        { label: 'Joined', value: employee.join_date },
-        { label: 'Probation ends', value: employee.probation_end_date },
-        { label: 'Confirmed', value: employee.confirmation_date },
-        { label: 'Resigned', value: employee.resignation_date },
-        { label: 'Last working day', value: employee.last_working_date },
+        { label: t('milestones.joined'), value: employee.join_date },
+        { label: t('milestones.probationEnds'), value: employee.probation_end_date },
+        { label: t('milestones.confirmed'), value: employee.confirmation_date },
+        { label: t('milestones.resigned'), value: employee.resignation_date },
+        { label: t('milestones.lastWorkingDay'), value: employee.last_working_date },
     ];
 
     return (
         <div className="flex flex-col gap-6">
             <Card>
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-2">
-                    <CardTitle className="text-title">Employment</CardTitle>
+                    <CardTitle className="text-title">{t('title')}</CardTitle>
                     {canEdit && (
                         <MyButton
                             type="button"
@@ -41,27 +43,27 @@ export function EmployeeEmploymentTab({
                             scale="medium"
                             onClick={() => setStatusOpen(true)}
                         >
-                            <ArrowsClockwise size={16} /> Change status
+                            <ArrowsClockwise size={16} /> {t('changeStatus')}
                         </MyButton>
                     )}
                 </CardHeader>
                 <CardContent className="flex flex-col gap-6">
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         <DetailField
-                            label="Current status"
+                            label={t('fields.currentStatus')}
                             value={<EmploymentStatusChip status={employee.employment_status} />}
                         />
                         <DetailField
-                            label="Employment type"
+                            label={t('fields.employmentType')}
                             value={humanizeToken(employee.employment_type)}
                         />
                         <DetailField
-                            label="Notice period"
+                            label={t('fields.noticePeriod')}
                             value={
                                 employee.notice_period_days === undefined ||
                                 employee.notice_period_days === null
                                     ? ''
-                                    : `${employee.notice_period_days} days`
+                                    : t('noticePeriodDays', { count: employee.notice_period_days })
                             }
                         />
                     </div>
@@ -73,7 +75,7 @@ export function EmployeeEmploymentTab({
                                     {milestone.label}
                                 </span>
                                 <span className="text-body text-foreground">
-                                    {milestone.value ? formatDate(milestone.value) : 'Not recorded'}
+                                    {milestone.value ? formatDate(milestone.value) : t('notRecorded')}
                                 </span>
                             </li>
                         ))}
@@ -82,13 +84,15 @@ export function EmployeeEmploymentTab({
                     {exited && (
                         <div className="flex flex-col gap-2 rounded-lg border border-danger-200 bg-danger-50 p-4">
                             <span className="text-caption text-danger-700">
-                                Employment ended · {humanizeToken(employee.employment_status)}
+                                {t('employmentEnded', {
+                                    status: humanizeToken(employee.employment_status),
+                                })}
                             </span>
                             <span className="text-body text-danger-600">
-                                {employee.exit_reason || 'No exit reason recorded.'}
+                                {employee.exit_reason || t('noExitReason')}
                             </span>
                             <span className="text-caption text-danger-700">
-                                Prepare their full &amp; final settlement from ERP → Payroll.
+                                {t('settlementHint')}
                             </span>
                         </div>
                     )}

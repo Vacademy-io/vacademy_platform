@@ -15,6 +15,7 @@ import { useGetPackageSessionIdFromCourseInit } from '@/utils/helpers/study-libr
 // import { StudyLibraryIntroKey } from '@/constants/storage/introKey';
 // import { studyLibrarySteps } from '@/constants/intro/steps';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { EngagementTab } from './engagement/EngagementTab';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
@@ -71,7 +72,7 @@ import { ChapterWithSlides as ChapterWithSlidesStore } from '@/stores/study-libr
 import { ChapterWithSlides } from '../../-services/getAllSlides';
 import {
     TabType,
-    tabs,
+    buildTabs,
     DEFAULT_HIDDEN_COURSE_DETAILS_TABS,
 } from '../subjects/-constants/constant';
 import { useDeleteModule } from '../subjects/modules/-services/delete-module';
@@ -569,7 +570,7 @@ export const CourseStructureDetails = ({
             // Only fall back to it when chat is actually enabled — otherwise the
             // chat-enabled effect below bounces straight off it and the two effects flip
             // selectedTab forever.
-            const firstVisible = tabs.find(
+            const firstVisible = buildTabs(t).find(
                 (t) =>
                     (t.value !== TabType.DISCUSSION || isChatEnabled) &&
                     visibilityMap.get(t.value) !== false
@@ -5144,6 +5145,11 @@ export const CourseStructureDetails = ({
                 <Activity packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
+        [TabType.ENGAGEMENT]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <EngagementTab packageSessionId={batchPackageSessionId ?? ''} />
+            </div>
+        ),
         [TabType.PULSE]: (
             <div className="rounded-md bg-white p-3 shadow-sm">
                 <PulseTab packageSessionId={batchPackageSessionId ?? ''} />
@@ -5200,7 +5206,7 @@ export const CourseStructureDetails = ({
     // Discussion is handled separately (gated on chat-enabled) and conditionally
     // appended after the role/settings reorder pipeline below.
     const finalTabs = (() => {
-        let reorderedTabs = tabs.filter((tab) => tab.value !== TabType.DISCUSSION);
+        let reorderedTabs = buildTabs(t).filter((tab) => tab.value !== TabType.DISCUSSION);
 
         // Offline access off (confirmed) → the Downloads tab is meaningless; hide it
         // regardless of role config. When on, it stays in the pipeline and the
@@ -5263,7 +5269,7 @@ export const CourseStructureDetails = ({
 
         // Append the Discussion tab last, only when chat is enabled for the institute.
         if (isChatEnabled) {
-            const discussionTab = tabs.find((tab) => tab.value === TabType.DISCUSSION);
+            const discussionTab = buildTabs(t).find((tab) => tab.value === TabType.DISCUSSION);
             if (discussionTab) reorderedTabs = [...reorderedTabs, discussionTab];
         }
 

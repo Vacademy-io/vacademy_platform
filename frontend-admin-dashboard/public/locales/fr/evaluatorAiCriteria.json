@@ -1,0 +1,57 @@
+{
+    "marking10": {
+        "criterion1": "réponse complète incluant introduction, définition, explication, exemples, conclusion, avec une structure/présentation claire et une grammaire/langue correcte, comptant 200–250 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion2": "réponse incluant introduction, définition, explication, exemples, conclusion, sans structure/présentation claire et avec une grammaire/langue incorrecte, comptant 200–250 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion3": "réponse incluant introduction, définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 150-200 mots et sans contenu hors sujet/non pertinent",
+        "criterion4": "réponse incluant définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 100-150 mots et sans contenu hors sujet/non pertinent",
+        "criterion5": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 80-100 mots et avec un peu de contenu hors sujet/non pertinent"
+    },
+    "marking1": {
+        "criterion1": "réponse complète incluant définition, explication, exemples, avec une structure/présentation claire et une grammaire/langue correcte, comptant 20-40 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion2": "réponse incluant définition, explication, exemples, sans structure/présentation claire et avec une grammaire/langue incorrecte, comptant 20-40 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion3": "réponse incluant définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 10-20 mots et sans contenu hors sujet/non pertinent",
+        "criterion4": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 20 mots et avec un peu de contenu hors sujet/non pertinent",
+        "criterion5": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 20 mots et avec un contenu entièrement hors sujet/non pertinent"
+    },
+    "marking2": {
+        "criterion1": "réponse complète incluant définition, explication, exemples, avec une structure/présentation claire et une grammaire/langue correcte, comptant 40-60 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion2": "réponse incluant définition, explication, exemples, sans structure/présentation claire et avec une grammaire/langue incorrecte, comptant 40-60 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion3": "réponse incluant définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 30-40 mots et sans contenu hors sujet/non pertinent",
+        "criterion4": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 30-40 mots et avec un peu de contenu hors sujet/non pertinent",
+        "criterion5": "réponse incluant définition, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 20-30 mots et sans contenu hors sujet/non pertinent",
+        "criterion6": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 20 mots et avec un contenu entièrement hors sujet/non pertinent"
+    },
+    "marking8": {
+        "criterion1": "réponse complète incluant introduction, définition, explication, exemples, conclusion, avec une structure/présentation claire et une grammaire/langue correcte, comptant 150-200 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion2": "réponse incluant introduction, définition, explication, exemples, conclusion, sans structure/présentation claire et avec une grammaire/langue incorrecte, comptant 150-200 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion3": "réponse incluant introduction, définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 120-150 mots et sans contenu hors sujet/non pertinent",
+        "criterion4": "réponse incluant définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 100-150 mots et avec un peu de contenu hors sujet/non pertinent",
+        "criterion5": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 50-100 mots et sans contenu hors sujet/non pertinent",
+        "criterion6": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 50-100 mots et avec un peu de contenu hors sujet/non pertinent",
+        "criterion7": "réponse incluant définition et exemple, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 50-100 mots et sans contenu hors sujet/non pertinent",
+        "criterion8": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 50 mots et sans contenu hors sujet/non pertinent",
+        "criterion9": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 50 mots et avec une partie ou la totalité du contenu hors sujet/non pertinent"
+    },
+    "marking5": {
+        "criterion1": "réponse complète incluant introduction, définition, explication, exemples, conclusion, avec une structure/présentation claire et une grammaire/langue correcte, comptant 100-150 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion2": "réponse incluant introduction, définition, explication, exemples, conclusion, sans structure/présentation claire et avec une grammaire/langue incorrecte, comptant 100-150 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion3": "réponse incluant introduction, définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 80-100 mots et sans contenu hors sujet/non pertinent",
+        "criterion4": "réponse incluant définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 80-100 mots et avec un peu de contenu hors sujet/non pertinent",
+        "criterion5": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 50-80 mots et sans contenu hors sujet/non pertinent",
+        "criterion6": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 50-80 mots et avec un peu de contenu hors sujet/non pertinent",
+        "criterion7": "réponse incluant définition et exemple, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 30-50 mots et sans contenu hors sujet/non pertinent",
+        "criterion8": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 20-50 mots et sans contenu hors sujet/non pertinent",
+        "criterion9": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 30 mots et avec une partie ou la totalité du contenu hors sujet/non pertinent"
+    },
+    "marking4": {
+        "criterion1": "réponse complète incluant introduction, définition, explication, exemples, conclusion, avec une structure/présentation claire et une grammaire/langue correcte, comptant 80-100 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion2": "réponse incluant introduction, définition, explication, exemples, conclusion, sans structure/présentation claire et avec une grammaire/langue incorrecte, comptant 80-100 mots ou plus et sans contenu hors sujet/non pertinent",
+        "criterion3": "réponse incluant introduction, définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 60-80 mots et sans contenu hors sujet/non pertinent",
+        "criterion4": "réponse incluant définition, explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 60-80 mots et avec un peu de contenu hors sujet/non pertinent",
+        "criterion5": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 40-60 mots et sans contenu hors sujet/non pertinent",
+        "criterion6": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 40-60 mots et avec un peu de contenu hors sujet/non pertinent",
+        "criterion7": "réponse incluant définition et exemple, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant 20-40 mots et sans contenu hors sujet/non pertinent",
+        "criterion8": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 20-40 mots et sans contenu hors sujet/non pertinent",
+        "criterion9": "réponse incluant explication, avec ou sans structure/présentation claire et avec une grammaire/langue correcte, comptant moins de 20 mots et avec une partie ou la totalité du contenu hors sujet/non pertinent"
+    }
+}

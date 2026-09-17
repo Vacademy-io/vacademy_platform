@@ -16,8 +16,6 @@
    play-theme.css used to hardcode — and so an explicitly-chosen axis beats
    a skin's house defaults on the specificity tie (both are 0,1,1). */
 @import './styles/ui-axes.css';
-/* Flaticon Uicons - Rounded bubbly icons for play theme */
-@import '@flaticon/flaticon-uicons/css/all/all';
 
 @tailwind base;
 @tailwind components;

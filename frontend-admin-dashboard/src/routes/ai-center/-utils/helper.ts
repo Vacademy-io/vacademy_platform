@@ -3,6 +3,9 @@ import { AIAssessmentCompleteQuestion } from '@/types/ai/generate-assessment/gen
 import { MyQuestion } from '@/types/assessments/question-paper-form';
 import { FilePdf } from '@phosphor-icons/react';
 import { FileAudio, FileDoc } from '@phosphor-icons/react';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+import { renderLatexDelimiters } from '@/lib/latex-delimiters';
 
 // Namespace: aiCenterHelper. `t` is threaded through (rather than a fixed
 // Record) so the strings baked into the returned question HTML/labels are
@@ -72,8 +75,9 @@ export const transformQuestionsToGenerateAssessmentAI = (
             validAnswers: [],
             decimals,
             numericType,
-            parentRichTextContent: item.parent_rich_text?.content || null,
-            subjectiveAnswerText,
+            parentRichTextContent: renderLatexDelimiters(item.parent_rich_text?.content) || null,
+            subjectiveAnswerText:
+                renderLatexDelimiters(subjectiveAnswerText) || subjectiveAnswerText,
         };
 
         if (item.question_type === 'MCQS') {
@@ -114,8 +118,6 @@ export const transformQuestionsToGenerateAssessmentAI = (
 export function convertSVGsToBase64(htmlString: string, t: TFunction) {
     if (!htmlString) return '';
 
-    console.log('🔄 convertSVGsToBase64 INPUT:', htmlString.substring(0, 100) + '...');
-
     let processedString = htmlString;
 
     // 1. Replace known typo/bad chars variants
@@ -124,46 +126,64 @@ export function convertSVGsToBase64(htmlString: string, t: TFunction) {
         .replace(/›/g, '>')
         .replace(/xmIns/g, 'xmlns');
 
-    // 2. Recursive Unescape (up to 3 levels)
-    const txt = document.createElement('textarea');
-    let levels = 0;
-    while (levels < 3) {
-        const prev = processedString;
-        if (!prev.includes('&')) break;
-        txt.innerHTML = prev;
-        processedString = txt.value;
-        if (processedString === prev) break;
-        levels++;
+    // 2. Un-escape content that arrived HTML-encoded (`&lt;p&gt;Hello&lt;/p&gt;`),
+    // up to 3 levels.
+    //
+    // ONLY when the string carries no real markup of its own. This used to run on
+    // anything containing an `&`, and routing already-marked-up content through a
+    // <textarea> strips every element: `<p>Salt <b>A</b> &amp; base <i>B</i></p>`
+    // came back as the bare text "Salt A & base B", losing all formatting (and any
+    // maths markup with it). A string that already has tags needs no decoding —
+    // the browser resolves its entities when it renders.
+    const hasRealTags = /<[a-zA-Z][^>]*>/.test(processedString);
+    const hasEscapedTags = /&lt;[a-zA-Z]/.test(processedString);
+    if (!hasRealTags && hasEscapedTags) {
+        const txt = document.createElement('textarea');
+        let levels = 0;
+        while (levels < 3) {
+            const prev = processedString;
+            if (!prev.includes('&')) break;
+            txt.innerHTML = prev;
+            processedString = txt.value;
+            if (processedString === prev) break;
+            levels++;
+        }
     }
 
-    // 2.5 Convert raw LaTeX delimiters to TipTap HTML format
-    // Block math $$...$$
-    processedString = processedString.replace(
-        /\$\$([^$]+)\$\$/g,
-        (_, tex) => `<div class="math-block" data-latex="${tex.replace(/"/g, '&quot;')}"></div>`
-    );
-    // Inline math $...$
-    processedString = processedString.replace(
-        /\$([^$]+)\$/g,
-        (_, tex) => `<span class="math-inline" data-latex="${tex.replace(/"/g, '&quot;')}"></span>`
-    );
+    // 2.5 Convert raw LaTeX delimiters to editor math nodes.
+    // This used to be two hand-rolled `$…$` / `$$…$$` regexes, which missed the
+    // `\(…\)` and `\[…\]` delimiters the question generator actually emits — so
+    // topic-generated papers showed `\(\{(2,1),(2,2)\}\)` verbatim — and turned
+    // prose like "$5 and $10" into maths. renderLatexDelimiters covers all four
+    // delimiters, guards on whether the body looks like maths, balances stray
+    // braces, and pre-renders KaTeX inside the node so consumers that just dump
+    // the HTML (the question sidebar, the PDF export) show real maths too.
+    processedString = renderLatexDelimiters(processedString);
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(processedString, 'text/html');
 
-    // 3. UNCONDITIONALLY CLEAN ALL .math-inline elements
-    // This is the nuclear fix - clear any inner content and keep only data-latex attribute
-    const mathInlineElements = doc.querySelectorAll('.math-inline');
-    mathInlineElements.forEach((el) => {
+    // 3. Re-render every math node from its `data-latex`.
+    // Content that has been round-tripped through the editor can arrive with the
+    // KaTeX markup escaped into visible text (`<span class="katex">…` shown
+    // literally). `data-latex` is the source of truth, so anything carrying it is
+    // rebuilt from scratch; a node with no latex is dropped rather than left as an
+    // empty formula. Previously this wiped the markup and left the raw LaTeX as
+    // text, which is why exported papers printed the delimiters instead of maths.
+    doc.querySelectorAll('.math-inline, .math-block').forEach((el) => {
         const latex = el.getAttribute('data-latex') || '';
-        console.log('🧹 Cleaning .math-inline element, latex:', latex);
-
-        // Completely wipe inner content
-        el.innerHTML = '';
-
-        // If latex is empty, just leave a space as placeholder
-        // If latex exists, set it as text (will be rendered by TipTap's math node)
-        el.textContent = latex || '';
+        if (!latex.trim()) {
+            el.remove();
+            return;
+        }
+        try {
+            el.innerHTML = katex.renderToString(latex, {
+                throwOnError: false,
+                displayMode: el.classList.contains('math-block'),
+            });
+        } catch {
+            el.textContent = latex;
+        }
     });
 
     // 4. Convert SVGs to base64 images
@@ -208,9 +228,7 @@ export function convertSVGsToBase64(htmlString: string, t: TFunction) {
         img.replaceWith(replacement);
     });
 
-    const result = doc.body.innerHTML;
-    console.log('🔄 convertSVGsToBase64 OUTPUT:', result.substring(0, 100) + '...');
-    return result;
+    return doc.body.innerHTML;
 }
 
 export function getPerformanceLabel(score: number): string {

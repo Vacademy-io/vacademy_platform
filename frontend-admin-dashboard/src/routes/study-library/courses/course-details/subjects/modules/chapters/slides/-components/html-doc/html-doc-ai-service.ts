@@ -1,3 +1,5 @@
+import i18next from 'i18next';
+import type { TFunction } from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GENERATE_HTML_DOCUMENT_URL } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
@@ -27,14 +29,16 @@ function requestBody(p: GenerateHtmlParams) {
 }
 
 /** Content sections the page can include, in order. */
-export const HTML_CONTENT_TYPES = [
-    { key: 'notes', label: 'Short notes' },
-    { key: 'summary', label: 'Summary' },
-    { key: 'flashcards', label: 'Flashcards' },
-    { key: 'quiz', label: 'Quiz' },
-    { key: 'practical_examples', label: 'Practical examples' },
-    { key: 'interactive_games', label: 'Interactive games' },
-] as const;
+export function buildHtmlContentTypes(t: TFunction) {
+    return [
+        { key: 'notes', label: t('contentTypes.notes') },
+        { key: 'summary', label: t('contentTypes.summary') },
+        { key: 'flashcards', label: t('contentTypes.flashcards') },
+        { key: 'quiz', label: t('contentTypes.quiz') },
+        { key: 'practical_examples', label: t('contentTypes.practicalExamples') },
+        { key: 'interactive_games', label: t('contentTypes.interactiveGames') },
+    ] as const;
+}
 
 export type BrandKit = {
     primaryColor?: string;
@@ -82,13 +86,20 @@ export async function generateHtmlDocument({
         { timeout: 180000 }
     );
     const html = res.data?.html || '';
-    if (!html.trim()) throw new Error('The AI returned an empty document. Try rephrasing your prompt.');
+    if (!html.trim())
+        throw new Error(i18next.t('studyLibraryHtmlDocAiService:errors.emptyDocument'));
     return html;
 }
 
 export type StreamHandlers = {
     /** Called with the accumulated HTML so far as tokens arrive. */
     onDelta?: (accumulated: string) => void;
+    /**
+     * Progress of the illustration pass that runs after the text is written
+     * (the page's textbook images are generated, then patched into the final
+     * document). `completed` of `total` pictures are done.
+     */
+    onImageProgress?: (completed: number, total: number) => void;
     /** Abort to cancel generation. */
     signal?: AbortSignal;
 };
@@ -99,7 +110,7 @@ export type StreamHandlers = {
  */
 export async function generateHtmlDocumentStream(
     params: GenerateHtmlParams,
-    { onDelta, signal }: StreamHandlers = {}
+    { onDelta, onImageProgress, signal }: StreamHandlers = {}
 ): Promise<string> {
     // NOTE: this uses raw fetch (SSE), so it must replicate what
     // authenticatedAxiosInstance injects — crucially the `clientId` header:
@@ -119,7 +130,9 @@ export async function generateHtmlDocumentStream(
         signal,
     });
     if (!res.ok || !res.body) {
-        let detail = `Request failed (${res.status})`;
+        let detail = i18next.t('studyLibraryHtmlDocAiService:errors.requestFailed', {
+            status: res.status,
+        });
         try {
             const j = await res.json();
             detail = j?.detail || detail;
@@ -145,7 +158,15 @@ export async function generateHtmlDocumentStream(
         for (const evt of events) {
             const line = evt.split('\n').find((l) => l.startsWith('data:'));
             if (!line) continue;
-            let obj: { delta?: string; done?: boolean; html?: string; error?: string };
+            let obj: {
+                delta?: string;
+                done?: boolean;
+                html?: string;
+                error?: string;
+                status?: string;
+                completed?: number;
+                total?: number;
+            };
             try {
                 obj = JSON.parse(line.slice(5).trim());
             } catch {
@@ -154,6 +175,8 @@ export async function generateHtmlDocumentStream(
             if (obj.delta) {
                 acc += obj.delta;
                 onDelta?.(acc);
+            } else if (obj.status === 'images') {
+                onImageProgress?.(obj.completed ?? 0, obj.total ?? 0);
             } else if (obj.done) {
                 finalHtml = obj.html || acc;
             } else if (obj.error) {
@@ -164,6 +187,7 @@ export async function generateHtmlDocumentStream(
 
     if (errorDetail) throw new Error(errorDetail);
     const html = finalHtml || acc;
-    if (!html.trim()) throw new Error('The AI returned an empty document. Try rephrasing your prompt.');
+    if (!html.trim())
+        throw new Error(i18next.t('studyLibraryHtmlDocAiService:errors.emptyDocument'));
     return html;
 }

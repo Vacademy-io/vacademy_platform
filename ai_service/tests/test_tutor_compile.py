@@ -111,7 +111,10 @@ def test_valid_plan_passes():
     assert validate_plan(_plan(), "en") == []
 
 
-def test_validator_catches_missing_translation_check_and_word_bloat():
+def test_validator_catches_missing_translation_and_check():
+    """Structural gaps stay fatal; a bloated board is quality advice instead
+    (a plan is never thrown away for wordiness — see plan_validator's docstring)."""
+    from app.services.tutor.plan_validator import board_quality_errors
     p = _plan()
     p.topics[0].concepts[1].say_i18n = {}
     p.topics[0].concepts[1].check.type = "none"
@@ -120,7 +123,8 @@ def test_validator_catches_missing_translation_check_and_word_bloat():
     errors = " | ".join(validate_plan(p, "en"))
     assert "say_i18n['hi'] is missing" in errors
     assert "every concept after the first of a board needs a check" in errors
-    assert "keep a concept under" in errors
+    assert "keep a concept under" not in errors
+    assert "keep a concept under" in " | ".join(board_quality_errors(p))
 
 
 def test_validator_rejects_ids_reused_across_concepts():
@@ -303,9 +307,10 @@ def test_missing_check_on_first_concept_is_allowed_and_empty_checks_normalize_to
     assert "every concept after the first of a board needs a check" in joined   # still required later
 
 
-def test_board_without_visual_is_rejected_except_for_quizzes():
+def test_board_without_anything_to_look_at_is_advice_not_a_failure():
+    from app.services.tutor.plan_validator import board_quality_errors
     p = _plan()
     p.topics[0].concepts[0].board_ops = [op for op in p.topics[0].concepts[0].board_ops if getattr(op, "op", "") != "svg"]
-    errors = " | ".join(validate_plan(p, "en"))
-    assert "this board has no visual" in errors
-    assert "this board has no visual" not in " | ".join(validate_plan(p, "en", limits=QUIZ_LIMITS))
+    assert validate_plan(p, "en") == []                                   # still servable
+    assert "nothing to look at" in " | ".join(board_quality_errors(p))     # but flagged once
+    assert "nothing to look at" not in " | ".join(board_quality_errors(p, limits=QUIZ_LIMITS))

@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Info } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -13,17 +15,18 @@ import { HrTextField, HrTextareaField } from '@/routes/erp/people/-components/Hr
 import { useAdjustLeaveBalance } from '@/routes/erp/leave/-hooks/use-leave';
 import { employeeLabel, formatDays, toNumber } from './leave-meta';
 
-const schema = z.object({
-    adjustment: z
-        .string()
-        .trim()
-        .min(1, 'Enter the correction, e.g. 1.5 or -2')
-        .regex(/^-?\d+(\.\d+)?$/, 'Numbers only — use a leading minus to take days away')
-        .refine((value) => Number(value) !== 0, 'Zero would not change anything'),
-    reason: z.string().trim().max(500, 'Keep the reason under 500 characters'),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        adjustment: z
+            .string()
+            .trim()
+            .min(1, t('errors.correctionRequired'))
+            .regex(/^-?\d+(\.\d+)?$/, t('errors.numbersOnly'))
+            .refine((value) => Number(value) !== 0, t('errors.notZero')),
+        reason: z.string().trim().max(500, t('errors.reasonLength')),
+    });
 
-type AdjustFormValues = z.infer<typeof schema>;
+type AdjustFormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 interface BalanceAdjustDialogProps {
     /** `null` closes the dialog; a balance row opens it for that employee + leave type. */
@@ -40,10 +43,11 @@ interface BalanceAdjustDialogProps {
  * common mistake of typing the number the admin wants to end up with.
  */
 export const BalanceAdjustDialog = ({ balance, onOpenChange }: BalanceAdjustDialogProps) => {
+    const { t } = useTranslation('erpBalanceAdjustDialog');
     const mutation = useAdjustLeaveBalance();
 
     const form = useForm<AdjustFormValues>({
-        resolver: zodResolver(schema),
+        resolver: zodResolver(buildSchema(t)),
         defaultValues: { adjustment: '', reason: '' },
         mode: 'onBlur',
     });
@@ -65,20 +69,20 @@ export const BalanceAdjustDialog = ({ balance, onOpenChange }: BalanceAdjustDial
                 adjustment: Number(values.adjustment),
                 reason: values.reason || undefined,
             });
-            toast.success('Balance adjusted');
+            toast.success(t('toasts.adjusted'));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-leave',
                 tags: { action: 'adjust-leave-balance' },
-                fallbackMessage: 'Could not adjust this balance.',
+                fallbackMessage: t('errors.adjustFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading="Adjust leave balance"
+            heading={t('heading')}
             open={!!balance}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-lg"
@@ -90,16 +94,16 @@ export const BalanceAdjustDialog = ({ balance, onOpenChange }: BalanceAdjustDial
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         type="button"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Adjusting…"
+                        loadingText={t('adjusting')}
                     >
-                        Apply adjustment
+                        {t('applyAdjustment')}
                     </MyButton>
                 </div>
             }
@@ -112,44 +116,44 @@ export const BalanceAdjustDialog = ({ balance, onOpenChange }: BalanceAdjustDial
                                 {employeeLabel(balance.employee_name, balance.employee_code)}
                             </span>
                             <span className="text-caption text-muted-foreground">
-                                {balance.leave_type_name || 'Leave'} · {balance.year ?? '—'} ·
-                                closing balance{' '}
-                                <span className="tabular-nums text-foreground">
-                                    {formatDays(balance.closing_balance)}
-                                </span>{' '}
-                                days
+                                {balance.leave_type_name || t('leave')} · {balance.year ?? '—'} ·{' '}
+                                {t('closingBalance', {
+                                    value: formatDays(balance.closing_balance),
+                                })}
                             </span>
                         </div>
 
                         <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                             <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
                             <span>
-                                An adjustment is an absolute correction added to the balance — not
-                                the balance you want to end up with. Enter <b>1.5</b> to grant a day
-                                and a half, <b>-2</b> to take two days away.
+                                {t('adjustmentExplainer.before')} <b>1.5</b>{' '}
+                                {t('adjustmentExplainer.middle')} <b>-2</b>{' '}
+                                {t('adjustmentExplainer.after')}
                             </span>
                         </div>
 
                         <HrTextField
                             control={form.control}
                             name="adjustment"
-                            label="Adjustment in days"
+                            label={t('fields.adjustmentLabel')}
                             placeholder="-2"
                             required
                             description={
                                 projected === null
-                                    ? 'Decimals allowed — 0.5 is half a day.'
-                                    : `Closing balance becomes ${formatDays(projected)} days.`
+                                    ? t('fields.adjustmentHelpDefault')
+                                    : t('fields.adjustmentHelpProjected', {
+                                          value: formatDays(projected),
+                                      })
                             }
                         />
 
                         <HrTextareaField
                             control={form.control}
                             name="reason"
-                            label="Reason"
+                            label={t('fields.reasonLabel')}
                             rows={3}
-                            placeholder="Why the balance is being corrected"
-                            description="Kept on the record so the next admin can see why the number moved."
+                            placeholder={t('fields.reasonPlaceholder')}
+                            description={t('fields.reasonHelp')}
                         />
                     </form>
                 </Form>

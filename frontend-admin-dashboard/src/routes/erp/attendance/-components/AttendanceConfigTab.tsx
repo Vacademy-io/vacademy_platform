@@ -1,9 +1,11 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { useForm, type Control } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Info } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MultiSelect } from '@/components/design-system/multi-select';
 import { Card } from '@/components/ui/card';
@@ -26,24 +28,25 @@ import type { AttendanceMode } from '@/routes/erp/-shared/hr-types';
 import { useAttendanceConfig, useSaveAttendanceConfig } from '../-hooks/use-attendance';
 import { WEEKDAYS, toBackendTime, toTimeInput } from './attendance-meta';
 
-const schema = z.object({
-    mode: z.enum(['TIME_TRACKING', 'DAY_LEVEL']),
-    timezone: z.string().trim().min(1, 'A timezone is required'),
-    weekend_days: z.array(z.string()),
-    half_day_threshold_min: z.string().regex(/^\d*$/, 'Whole minutes only'),
-    overtime_enabled: z.boolean(),
-    overtime_threshold_min: z.string().regex(/^\d*$/, 'Whole minutes only'),
-    auto_checkout_enabled: z.boolean(),
-    auto_checkout_time: z.string(),
-    geo_fence_enabled: z.boolean(),
-    geo_fence_lat: z.string(),
-    geo_fence_lng: z.string(),
-    geo_fence_radius_m: z.string().regex(/^\d*$/, 'Whole metres only'),
-    ip_restriction_enabled: z.boolean(),
-    allowed_ips: z.string(),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        mode: z.enum(['TIME_TRACKING', 'DAY_LEVEL']),
+        timezone: z.string().trim().min(1, t('timezoneRequired')),
+        weekend_days: z.array(z.string()),
+        half_day_threshold_min: z.string().regex(/^\d*$/, t('wholeMinutesOnly')),
+        overtime_enabled: z.boolean(),
+        overtime_threshold_min: z.string().regex(/^\d*$/, t('wholeMinutesOnly')),
+        auto_checkout_enabled: z.boolean(),
+        auto_checkout_time: z.string(),
+        geo_fence_enabled: z.boolean(),
+        geo_fence_lat: z.string(),
+        geo_fence_lng: z.string(),
+        geo_fence_radius_m: z.string().regex(/^\d*$/, t('wholeMetresOnly')),
+        ip_restriction_enabled: z.boolean(),
+        allowed_ips: z.string(),
+    });
 
-type ConfigForm = z.infer<typeof schema>;
+type ConfigForm = z.infer<ReturnType<typeof buildSchema>>;
 
 /**
  * The browser's own zone as the starting suggestion for an institute that has
@@ -129,8 +132,11 @@ const ToggleRow = ({
  * whether half of the rest applies at all.
  */
 export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
+    const { t } = useTranslation('erpAttendanceConfigTab');
     const query = useAttendanceConfig();
     const mutation = useSaveAttendanceConfig();
+
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const form = useForm<ConfigForm>({
         resolver: zodResolver(schema),
@@ -213,12 +219,12 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                     .map((entry) => entry.trim())
                     .filter(Boolean),
             });
-            toast.success('Attendance configuration saved');
+            toast.success(t('saveSuccess'));
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-attendance',
                 tags: { action: 'save-attendance-config' },
-                fallbackMessage: 'Could not save the attendance configuration.',
+                fallbackMessage: t('saveError'),
             });
         }
     };
@@ -226,10 +232,7 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
     if (query.isLoading) return <HrLoadingRows rows={4} />;
     if (query.isError) {
         return (
-            <HrErrorState
-                message="Couldn't load the attendance configuration."
-                onRetry={() => void query.refetch()}
-            />
+            <HrErrorState message={t('loadError')} onRetry={() => void query.refetch()} />
         );
     }
 
@@ -241,17 +244,11 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                 {!config && (
                     <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                         <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
-                        <span>
-                            This institute has never configured attendance. The values below are
-                            sensible starting points — save them to make them real.
-                        </span>
+                        <span>{t('noConfigInfo')}</span>
                     </div>
                 )}
 
-                <Section
-                    title="Mode"
-                    description="How a day's attendance comes into existence. Everything else follows from this."
-                >
+                <Section title={t('modeSectionTitle')} description={t('modeSectionDescription')}>
                     <FormField
                         control={form.control}
                         name="mode"
@@ -271,12 +268,10 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                             />
                                             <span className="flex flex-col gap-1">
                                                 <span className="text-body font-semibold text-foreground">
-                                                    Time tracking
+                                                    {t('timeTrackingLabel')}
                                                 </span>
                                                 <span className="text-caption text-muted-foreground">
-                                                    Employees check in and check out. Hours worked
-                                                    decide whether the day is full, half or absent,
-                                                    measured against their shift.
+                                                    {t('timeTrackingDescription')}
                                                 </span>
                                             </span>
                                         </label>
@@ -284,12 +279,10 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                             <RadioGroupItem value="DAY_LEVEL" className="mt-1" />
                                             <span className="flex flex-col gap-1">
                                                 <span className="text-body font-semibold text-foreground">
-                                                    Day level
+                                                    {t('dayLevelLabel')}
                                                 </span>
                                                 <span className="text-caption text-muted-foreground">
-                                                    No check in or out. An admin marks each person
-                                                    present, absent, half day or on leave from the
-                                                    daily board.
+                                                    {t('dayLevelDescription')}
                                                 </span>
                                             </span>
                                         </label>
@@ -302,23 +295,23 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                 </Section>
 
                 <Section
-                    title="Timezone"
-                    description="Which day a check-in belongs to. Payroll buckets attendance by this zone, so a stamp at 00:30 lands on a different day — and a different month — depending on what is set here."
+                    title={t('timezoneSectionTitle')}
+                    description={t('timezoneSectionDescription')}
                 >
                     <HrTextField
                         control={form.control}
                         name="timezone"
-                        label="IANA timezone"
+                        label={t('timezoneLabel')}
                         required
                         disabled={!isHrAdmin}
                         placeholder="Asia/Dubai"
-                        description="An IANA zone name, e.g. Asia/Dubai, Europe/London, America/New_York."
+                        description={t('timezoneDescription')}
                     />
                 </Section>
 
                 <Section
-                    title="Weekend days"
-                    description="Days the institute is closed every week. These are marked WEEKEND automatically and never count as absent."
+                    title={t('weekendSectionTitle')}
+                    description={t('weekendSectionDescription')}
                 >
                     <FormField
                         control={form.control}
@@ -326,7 +319,7 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                         render={({ field }) => (
                             <FormItem className="flex flex-col gap-1.5">
                                 <FormLabel className="text-body font-regular text-foreground">
-                                    Weekend
+                                    {t('weekendLabel')}
                                 </FormLabel>
                                 <FormControl>
                                     <MultiSelect
@@ -337,11 +330,11 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                                         selected={field.value ?? []}
                                         onChange={field.onChange}
                                         disabled={!isHrAdmin}
-                                        placeholder="Select the weekend days"
+                                        placeholder={t('weekendPlaceholder')}
                                     />
                                 </FormControl>
                                 <FormDescription className="text-caption text-muted-foreground">
-                                    A Sunday–Thursday institute picks Friday and Saturday here.
+                                    {t('weekendDescription')}
                                 </FormDescription>
                                 <FormMessage />
                             </FormItem>
@@ -350,50 +343,50 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                 </Section>
 
                 <Section
-                    title="Thresholds"
-                    description="The minute counts that turn hours worked into a verdict on the day."
+                    title={t('thresholdsSectionTitle')}
+                    description={t('thresholdsSectionDescription')}
                 >
                     <div className="grid gap-4 sm:grid-cols-2">
                         <HrTextField
                             control={form.control}
                             name="half_day_threshold_min"
-                            label="Half-day threshold (minutes)"
+                            label={t('halfDayThresholdLabel')}
                             inputType="number"
                             disabled={!isHrAdmin}
-                            description="Below this, the day is absent rather than a half day."
+                            description={t('halfDayThresholdDescription')}
                         />
                         <HrTextField
                             control={form.control}
                             name="overtime_threshold_min"
-                            label="Overtime threshold (minutes)"
+                            label={t('overtimeThresholdLabel')}
                             inputType="number"
                             disabled={!isHrAdmin || !form.watch('overtime_enabled')}
-                            description="Minutes beyond the shift before overtime starts accruing."
+                            description={t('overtimeThresholdDescription')}
                         />
                     </div>
                     <ToggleRow
                         control={form.control}
                         name="overtime_enabled"
-                        label="Track overtime"
-                        description="Records hours past the threshold as overtime on the attendance record. Off means extra hours are simply not counted."
+                        label={t('trackOvertimeLabel')}
+                        description={t('trackOvertimeDescription')}
                     />
                 </Section>
 
                 {isTimeTracking && (
                     <Section
-                        title="Auto checkout"
-                        description="A safety net for people who forget to check out — without it their day never closes and the hours never resolve."
+                        title={t('autoCheckoutSectionTitle')}
+                        description={t('autoCheckoutSectionDescription')}
                     >
                         <ToggleRow
                             control={form.control}
                             name="auto_checkout_enabled"
-                            label="Close open days automatically"
-                            description="Any check-in still open at the time below is checked out at that time."
+                            label={t('closeOpenDaysLabel')}
+                            description={t('closeOpenDaysDescription')}
                         />
                         <HrTextField
                             control={form.control}
                             name="auto_checkout_time"
-                            label="Auto-checkout time"
+                            label={t('autoCheckoutTimeLabel')}
                             inputType="time"
                             disabled={!isHrAdmin || !form.watch('auto_checkout_enabled')}
                         />
@@ -402,34 +395,34 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
 
                 {isTimeTracking && (
                     <Section
-                        title="Geo-fence"
-                        description="Restrict check-ins to a radius around the campus. Employees outside it can't record attendance."
+                        title={t('geoFenceSectionTitle')}
+                        description={t('geoFenceSectionDescription')}
                     >
                         <ToggleRow
                             control={form.control}
                             name="geo_fence_enabled"
-                            label="Restrict check-ins by location"
-                            description="Needs location permission on the employee's device — a device that refuses it cannot check in."
+                            label={t('restrictByLocationLabel')}
+                            description={t('restrictByLocationDescription')}
                         />
                         <div className="grid gap-4 sm:grid-cols-3">
                             <HrTextField
                                 control={form.control}
                                 name="geo_fence_lat"
-                                label="Latitude"
+                                label={t('latitudeLabel')}
                                 disabled={!isHrAdmin || !form.watch('geo_fence_enabled')}
                                 placeholder="25.2048"
                             />
                             <HrTextField
                                 control={form.control}
                                 name="geo_fence_lng"
-                                label="Longitude"
+                                label={t('longitudeLabel')}
                                 disabled={!isHrAdmin || !form.watch('geo_fence_enabled')}
                                 placeholder="55.2708"
                             />
                             <HrTextField
                                 control={form.control}
                                 name="geo_fence_radius_m"
-                                label="Radius (metres)"
+                                label={t('radiusLabel')}
                                 inputType="number"
                                 disabled={!isHrAdmin || !form.watch('geo_fence_enabled')}
                                 placeholder="200"
@@ -440,33 +433,29 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
 
                 {isTimeTracking && (
                     <Section
-                        title="IP restriction"
-                        description="Restrict check-ins to the institute's own network — the usual alternative to a geo-fence for a desk-based team."
+                        title={t('ipRestrictionSectionTitle')}
+                        description={t('ipRestrictionSectionDescription')}
                     >
                         <ToggleRow
                             control={form.control}
                             name="ip_restriction_enabled"
-                            label="Restrict check-ins by network"
-                            description="Only the addresses below may record attendance. Leaving the list empty with this on blocks everyone."
+                            label={t('restrictByNetworkLabel')}
+                            description={t('restrictByNetworkDescription')}
                         />
                         <HrTextareaField
                             control={form.control}
                             name="allowed_ips"
-                            label="Allowed IPs"
+                            label={t('allowedIpsLabel')}
                             rows={5}
                             disabled={!isHrAdmin || !form.watch('ip_restriction_enabled')}
                             placeholder={'203.0.113.7\n198.51.100.0/24'}
-                            description="One per line. Exact addresses or CIDR blocks — 198.51.100.0/24 covers the whole range."
+                            description={t('allowedIpsDescription')}
                         />
                     </Section>
                 )}
 
                 {!isTimeTracking && (
-                    <p className="text-caption text-muted-foreground">
-                        Auto-checkout, geo-fence and IP restriction only constrain check-ins, so
-                        they are hidden in day-level mode. Any values already saved are kept —
-                        switch back to time tracking to see them.
-                    </p>
+                    <p className="text-caption text-muted-foreground">{t('dayLevelHiddenNote')}</p>
                 )}
 
                 {isHrAdmin ? (
@@ -476,15 +465,13 @@ export const AttendanceConfigTab = ({ isHrAdmin }: { isHrAdmin: boolean }) => {
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={form.handleSubmit(onSubmit)}
-                            loadingText="Saving…"
+                            loadingText={t('savingLoading')}
                         >
-                            Save configuration
+                            {t('saveButton')}
                         </MyButton>
                     </div>
                 ) : (
-                    <p className="text-caption text-muted-foreground">
-                        Changing attendance configuration needs an HR Admin role in this institute.
-                    </p>
+                    <p className="text-caption text-muted-foreground">{t('needsAdminNote')}</p>
                 )}
             </form>
         </Form>

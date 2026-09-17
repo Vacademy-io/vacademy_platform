@@ -142,7 +142,10 @@
         "configuring": "Configuring…",
         "updateButton": "Update White-Label Setup",
         "applyButton": "Apply White-Label Setup",
-        "preservedHint": "Existing entries are preserved. Only listed domains are created/updated."
+        "preservedHint": "Existing entries are preserved. Only listed domains are created/updated.",
+        "draftRestored": "Restored the domains you were adding before you left this tab. Nothing is live until you apply the setup.",
+        "discardDraft": "Discard and reload saved domains",
+        "unsavedChanges": "Unsaved changes — click Apply to save them."
     },
     "toast": {
         "noInstituteSelected": "No institute selected",
@@ -208,7 +211,9 @@
         "label": "Sub-organization",
         "none": "Parent institute",
         "untitled": "Untitled sub-organization",
-        "badgeTooltip": "This portal is branded for, and restricted to, this sub-organization"
+        "badgeTooltip": "This portal is branded for, and restricted to, this sub-organization",
+        "searchPlaceholder": "Search sub-organizations…",
+        "searchEmpty": "No sub-organization matches that name."
     },
     "shortLinkDns": {
         "title": "Short Link Domain",

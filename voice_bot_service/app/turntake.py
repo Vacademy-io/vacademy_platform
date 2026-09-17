@@ -26,6 +26,8 @@ are reviewable as data.
 """
 from __future__ import annotations
 
+import re
+
 ABSORB = "absorb"
 INTERRUPT = "interrupt"
 
@@ -80,7 +82,10 @@ _NEGATION_WORDS = frozenset({
 
 # Punctuation stripped before matching — includes the Devanagari danda, which
 # Sarvam appends to almost every final ("हाँ।").
-_STRIP = "।॥.,!…\"'`~()[]{}:;-–—"
+# '?' included since 2026-09-15: without it "hello?" tokenised as "hello?" and
+# matched NOTHING — is_audio_check never counted a hello, so the two-hello
+# escalation ("Can you hear me?", then stop) could never fire in production.
+_STRIP = "।॥.,!?？…\"'`~()[]{}:;-–—"
 
 
 def _words(text: str) -> list:
@@ -104,6 +109,14 @@ def mid_reply_action(text: str, extra_backchannels: frozenset = frozenset(),
     t = (text or "").strip()
     if not t:
         return ABSORB          # nothing was said; nothing to interrupt for
+    # "Hello?" mid-reply is a line check, not a question about the content.
+    # Smallest puts the '?' on it, which used to route it to INTERRUPT: each
+    # hello killed the re-ask that answered the previous hello, so the caller
+    # only ever heard "Yes, I'm here." (campaign 2026-09-15, calls b1c4fe4f
+    # and 2cfc4732: five hellos each). Absorbing lets the held reply finish —
+    # and the second absorbed hello triggers "Can you hear me?" and stops.
+    if caller_checking_presence(t):
+        return ABSORB
     if "?" in t or "？" in t:
         return INTERRUPT       # a question mid-reply means they didn't follow
     ws = _words(t)
@@ -162,6 +175,19 @@ _CARRIER_PHRASES = (
     # "name and reason." on call 2fc70065 — the tail is three words, so the 1-2
     # word scrap filter cannot reach it, and no human answering a phone says it.
     "name and reason", "your name and", "and reason",
+    # Call screening (Google/Pixel style): "If you record your name and reason
+    # for calling, I'll see if this person is available." The SECOND fragment
+    # matched nothing on calls 612f5e37 / 91d1541e (2026-09-14/15): it cut our
+    # opening at 6 of 221 chars and the model replied to the screener.
+    "see if this person", "this person is available", "if this person",
+    "i'll see if", "ill see if", "person is available",
+    # Call-connect bridges. JustDial plays "You are getting connected by Just
+    # Dial" to the callee (transcribed as Josh/Job/Jove Dial on 2026-09-15);
+    # it counted as the callee speaking first, our opening was SKIPPED on every
+    # call of the campaign, and it became the caller's first message in the
+    # model's context. The person picked up to silence and said "Hello?" x5.
+    "getting connected", "being connected", "connected by", "connecting you",
+    "connecting your call", "call is being connected", "just dial", "justdial",
     "the tone", "the beep", "voicemail", "voice mail", "record your message",
     "record your messages", "recording", "hang up", "leave a message",
     "leave your message", "not available", "unavailable", "please try again",
@@ -169,6 +195,33 @@ _CARRIER_PHRASES = (
     "आप जिस नंबर", "डायल किया गया नंबर", "उपलब्ध नहीं", "स्विच ऑफ",
     "थोड़ी देर बाद", "व्यस्त है", "संपर्क क्षेत्र", "कृपया बाद में",
 )
+
+
+_SCREENER_PHRASES = ("record your name", "name and reason", "see if this person",
+                     "this person is available", "if this person", "i'll see if",
+                     "ill see if", "person is available")
+
+
+# What Google's call screen relays while the person decides ("Thanks Aarushi.
+# Please stay on the line.", "…you're still in."). After the screener prompt
+# these are the phone talking, not the callee (call b2f6330a: the model said
+# "I will wait for you." and "I am still here." to them, then pitched).
+_SCREENER_HOLD_PHRASES = ("stay on the line", "please hold", "hold on the line", "on hold",
+                          "you're still in", "you are still in", "connecting you",
+                          "one moment please")
+
+
+def is_screener_hold(text: str) -> bool:
+    t = (text or "").casefold()
+    return any(p in t for p in _SCREENER_HOLD_PHRASES)
+
+
+def is_call_screener(text: str) -> bool:
+    """A screening prompt: the phone answered, NOT the person. Our opening plays
+    into the screener's recorder; the human who then picks up has heard none of
+    it, so their first "Hello" must get the opening again."""
+    t = (text or "").casefold()
+    return any(p in t for p in _SCREENER_PHRASES)
 
 
 def is_carrier_announcement(text: str) -> bool:
@@ -243,11 +296,219 @@ _ASK_AGAIN_WORDS = frozenset({
 })
 
 
+_END_PHRASES = (
+    "cut the call", "end the call", "hang up", "don't call", "dont call", "do not call",
+    "stop calling", "not interested", "no interest", "don't need", "dont need", "do not need",
+    "wrong number", "galat number", "not required", "remove my number", "unsubscribe",
+    "phone rakh", "call rakh", "rakhti hoon", "rakhta hoon", "band karo", "zaroorat nahi",
+    "jarurat nahi", "nahi chahiye", "interest nahi", "mat karo call", "call mat",
+)
+_BYE_WORDS = frozenset({"bye", "goodbye", "byebye", "bbye", "tata", "alvida"})
+
+
+_FAREWELL_RE = re.compile(
+    r"(namaste|namaskar|good ?bye|bye|take care|have a (good|great|nice) (day|evening|one)|"
+    r"shubh din|alvida|dhanyavaad|dhanyawad|नमस्ते|नमस्कार|अलविदा|शुभ दिन|धन्यवाद)", re.I)
+
+
+def is_farewell(response_text: str) -> bool:
+    """Does the bot's response END on a goodbye? PURE.
+
+    Recordings 4acc56a6 / 6fa15c09 (2026-09-09/10): the model said
+    "आपके समय के लिए धन्यवाद, नमस्ते" WITHOUT <<END_CALL>>, so nothing closed the
+    line; eight seconds later the idle clock nudged "Hello, can you hear me?"
+    after the goodbye. A goodbye is a goodbye whether or not the marker came.
+    Narrow on purpose: last sentence only, short, no question, and it must
+    carry a farewell word — "जी सर, धन्यवाद। क्या मैं…" mid-call is not one."""
+    t = " ".join((response_text or "").split())
+    if not t or "?" in t or "？" in t:
+        return False
+    parts = [p for p in re.split(r"(?<=[.!।])\s+", t) if p.strip()]
+    last = parts[-1] if parts else t
+    if len(last.split()) > 14:
+        return False
+    return bool(_FAREWELL_RE.search(last))
+
+
+def caller_wants_to_end(text: str) -> bool:
+    """Did the caller just ask us to stop — end the call, don't call, not
+    interested, wrong number, or a goodbye? PURE.
+
+    Calls ada2e60c and the simulator (2026-09-12): to "I don't need your
+    assistance, cut the call" the model replied "Just to clarify…" — twice on
+    Gemini even with a prompt rule saying not to. A prompt rule is a request;
+    this is the enforcement: the turn-gate cues a one-line goodbye and the
+    sentinel ends the call whatever the model writes. Deliberately narrow —
+    "not now" / "busy" / "later" are NOT here (those want a call-back)."""
+    t = " ".join((text or "").casefold().split())
+    if not t:
+        return False
+    if any(p in t for p in _END_PHRASES):
+        return True
+    ws = _words(t)
+    return bool(ws) and (ws[-1] in _BYE_WORDS or (len(ws) <= 4 and bool(set(ws) & _BYE_WORDS)))
+
+
+_PRESENCE_WORDS = frozenset({"hello", "hallo", "helo", "hullo", "hi", "haan", "ji", "yes", "yeah"})
+_PRESENCE_PHRASES = ("are you there", "you there", "still there", "can you hear", "sun rahe",
+                     "sun rahi", "sun pa rahe", "awaaz aa rahi", "aawaz aa rahi", "hai kya", "koi hai")
+
+
+def caller_checking_presence(text: str) -> bool:
+    """"Hello? Hello, hello?" / "Are you there?" — the caller lost the thread
+    and is checking the line, not answering. Call f08f5712 (2026-09-12): after
+    the bot's question the caller said "Hello?" and got "Yes, I'm here." with
+    the question never repeated; they said hello four more times and hung up."""
+    t = (text or "").casefold()
+    if t.startswith("["):
+        return False                       # a synthetic cue, not speech
+    if any(p in t for p in _PRESENCE_PHRASES):
+        return True
+    ws = re.findall(r"[a-z\u0900-\u097f']+", t)   # _words keeps the '?' on 'hello?'
+    return 1 <= len(ws) <= 6 and all(w in _PRESENCE_WORDS for w in ws) and "hello" in ws
+
+
+def presence_cue(question: str) -> str:
+    """The turn-gate's cue when the caller is checking the line: confirm, then
+    put the question they lost back on it. Shared with the text simulator."""
+    return ("[The caller is checking whether you are still on the line — they did not "
+            "hear or lost your question. Reply in ONE breath: confirm in two or three "
+            "words, then ask this again in the same words: \"" + question + "\" Nothing else.]")
+
+
+def last_question_in(text: str) -> str:
+    """The last question sentence in a block of bot speech, skipping the bot's
+    own line checks ("Hello? Are you still there?"), or ''."""
+    sents = [x.strip() for x in re.split(r"(?<=[.!?।])\s+", text or "") if x.strip()]
+    qs = [x for x in sents if x.endswith(("?", "？")) and not caller_checking_presence(x)]
+    return qs[-1] if qs else ""
+
+
+_TERMINAL = (".", "?", "!", "।", "？", "…")
+
+
+def is_fragment_continuation(prev: str, text: str, dt: float, window: float = 1.0) -> bool:
+    """Smallest finalizes the decoded PREFIX at our VAD stop and the remainder
+    arrives as its own final 0.3-0.9 s later: "…say somet" + "hing", "frie" +
+    "nd", "? It makes" + "some" (call 31763255, 2026-09-12). The second piece is
+    the same utterance, not a new one — it must never count as a barge-in."""
+    if not prev or not text or dt < 0 or dt > window:
+        return False
+    t = text.strip()
+    if t.startswith("["):
+        return False
+    if caller_checking_presence(t) or caller_wants_to_end(t):
+        return False                      # "Hello." / "cut the call" are never a tail
+    if prev.rstrip().endswith(_TERMINAL):
+        return False                      # the previous piece was a finished sentence
+    first = t[0]
+    if first.islower() and first.isascii():
+        return True                       # "hing", "nd", "some", "me?" — the engine
+                                          # only capitalises a sentence START
+    if not first.isascii() and first.isalpha() and len(t.split()) <= 4:
+        # Devanagari has no case to read. "आप कौन बोल रहे" + "हैं?", "…पिता बोल
+        # रहा" + "हूँ।" (calls 91d1541e, 612f5e37): the tail carries the sentence
+        # end, which is exactly why it is the tail.
+        return True
+    # Neither piece is punctuated as a sentence and the tail is short: one breath.
+    return not t.endswith(_TERMINAL) and len(t.split()) <= 4
+
+
+# Words that carry no content of their own in a restatement: function words,
+# acknowledgments, and the generic verbs/time words a confirmation is built from.
+_ECHO_STOP = frozenset({
+    "so", "okay", "ok", "alright", "right", "now", "then", "all", "just", "currently",
+    "at", "the", "moment", "it", "its", "it's", "is", "are", "was", "were", "be", "being",
+    "you", "you're", "your", "youre", "we", "they", "they're", "not", "no", "any", "do",
+    "does", "doing", "done", "did", "run", "runs", "running", "take", "takes", "taking",
+    "have", "has", "having", "only", "and", "or", "of", "a", "an", "in", "on", "for", "to",
+    "that", "this", "these", "those", "there", "mostly", "basically", "means", "mean",
+    "means", "yes", "yeah", "great", "got", "understood", "i", "see", "as", "with", "by",
+    "ji", "haan", "toh", "achha", "theek", "hai", "hain", "aap", "aapka", "aapki", "ka",
+    "ki", "ke", "mein", "me", "abhi", "bilkul", "matlab", "sir", "ma'am", "maam", "madam",
+})
+
+
+def _stem(w: str) -> str:
+    return w[:5]
+
+
+def is_echo_of_answer(sentence: str, caller_text: str, bot_question: str = "") -> bool:
+    """Is this whole sentence just the caller's answer said back — every content
+    word already in what they said or in the question we asked? Calls 15aadcdb
+    ("It is offline." → "Okay, so it's all offline right now." / "So no online
+    classes at all then?"), 859c20ee ("we maintain Excel sheet" → "You're
+    maintaining an Excel sheet."), 08df7128 ("Okay, so they do UPI."). Not when
+    the caller asked something (then the sentence is an answer), and never for
+    a sentence that brings a new content word."""
+    if not sentence or not (caller_text or "").strip():
+        return False
+    # A question by the caller makes the sentence an answer, not an echo. The
+    # loose cue-anywhere test would call "they can do UPI" a question; a '?' or
+    # a leading question word is the honest signal on a punctuating engine.
+    ct = caller_text.strip()
+    cw = _words(ct)
+    if "?" in ct or "？" in ct or (cw and cw[0] in _QUESTION_CUES):
+        return False
+    def _toks(t: str) -> list:
+        # _words keeps '?' on the last token ("then?"); strip sentence marks.
+        return [w.strip("?？.!,") for w in _words(t) if w.strip("?？.!,")]
+    ws = _toks(sentence)
+    if not ws or len(ws) > 12:
+        return False
+    content = [w for w in ws if w not in _ECHO_STOP and w not in _BACKCHANNEL_WORDS]
+    if not content:
+        return False                      # content-free, handled elsewhere
+    ref = {_stem(w) for w in _toks(caller_text)} | {_stem(w) for w in _toks(bot_question)}
+    return all(_stem(w) in ref for w in content)
+
+
+_WHO_PHRASES = ("who is this", "who's this", "who are you", "who is calling", "who's calling",
+                "who is speaking", "who am i speaking", "kaun bol", "kon bol", "aap kaun",
+                "aap kon", "kaun hai", "kon hai", "kahan se bol", "where are you calling from",
+                "which company", "कौन बोल", "आप कौन", "कहाँ से",
+                # "Uh, can I know the name of your…" (call b2f6330a) — the model
+                # answered with its script line instead.
+                "know the name", "name of your", "your name", "naam kya", "आपका नाम", "aapka naam")
+
+
+def caller_asks_who(text: str) -> bool:
+    """"Who is calling?" in any of the ways callers say it."""
+    t = (text or "").casefold()
+    return any(p in t for p in _WHO_PHRASES)
+
+
+_GOODBYE_WORDS = frozenset({
+    "thank", "thanks", "thankyou", "you", "ok", "okay", "bye", "goodbye", "namaste",
+    "namaskar", "dhanyavaad", "dhanyawad", "shukriya", "theek", "hai", "sure", "great",
+    "fine", "alright", "welcome", "ji", "sir", "ma'am", "maam", "madam", "haan", "yes",
+    "धन्यवाद", "नमस्ते", "ठीक", "है", "जी", "शुक्रिया", "ओके",
+})
+
+
+def caller_says_goodbye(text: str) -> bool:
+    """After OUR goodbye: "Thank you." / "Okay, bye." / "Theek hai ji" is theirs."""
+    if caller_wants_to_end(text):
+        return True
+    ws = _words(text)
+    return 0 < len(ws) <= 5 and all(w in _GOODBYE_WORDS for w in ws)
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))
     if not ws:
         return False
+    t = (text or "").casefold()
+    # "Who is this?" after the opening IS a request to hear the intro again —
+    # the gate dropped "I'm Aarushi, from Vacademy." as already-said and asked
+    # the model for a "next step" twice (call 180504b7, 2026-09-15).
+    if caller_asks_who(t):
+        return True
+    if "again" in ws and ws & {"say", "come", "tell", "sorry"}:
+        return True                       # "say that again", "come again?", "sorry, again?"
+    if "sorry" in ws and len(ws) <= 2:
+        return True                       # "Sorry?" — they missed it
     return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
         len(ws) <= 5 and bool(ws & {"phir", "फिर", "samajh", "समझ", "sunai", "सुनाई"}))
 
@@ -291,6 +552,18 @@ def normalize_spoken(sentence: str) -> str:
     return " ".join((sentence or "").split()).casefold()
 
 
+def spoken_key(text: str) -> str:
+    """Letters, digits and combining marks only, casefolded, no spaces — for
+    "was this sentence in what played?" The played transcript is rebuilt from
+    the vendor's per-word timestamps, which do not carry our punctuation ("—",
+    "50+", "।"), so a plain substring test failed on exactly those sentences
+    and the gate un-recorded lines the caller had heard for 27 s (call
+    f28888b2, 2026-09-15) — then said them again."""
+    import unicodedata
+    return "".join(ch for ch in (text or "").casefold()
+                   if unicodedata.category(ch)[0] in ("L", "N", "M"))
+
+
 # ── asking the same QUESTION twice, in different words ─────────────────────
 # Sentence similarity catches a re-rendered sentence but not a paraphrase. Live
 # call 597aeb3f asked for the class twice — "Aur wo abhi kis class mein hai?"
@@ -307,6 +580,12 @@ _QUESTION_TOPICS = (
     ("marks", ("marks", "मार्क्स", "score", "स्कोर", "percent", "परसेंट", "%")),
     ("weak_subject", ("subject", "सब्जेक्ट", "dikkat", "दिक्कत", "weak", "kamzor")),
     ("fees", ("fees", "फीस", "fee", "price", "cost", "kitni hai")),
+    # BEFORE quiz_link: "Is this number on WhatsApp?" shares the word with the
+    # link question, and the topic dedupe dropped it twice as a re-ask of "you
+    # send it to all your students on WhatsApp?" — the booking then ended on
+    # "Okay. Okay. Yes, go ahead." (call b2f6330a, 2026-09-15).
+    ("whatsapp_number", ("this number", "same number", "whatsapp number", "number on whatsapp",
+                         "ये नंबर", "यही नंबर", "yeh number", "yahi number", "isi number")),
     ("quiz_link", ("link", "लिंक", "quiz", "क्विज़", "whatsapp", "व्हाट्सएप")),
     ("counselling", ("counselling", "counseling", "काउंसलिंग", "session", "सेशन",
                      "slot", "book kar")),
@@ -418,6 +697,8 @@ def strip_echo_opener(sentence: str, caller_text: str, bot_question: str = "",
     dropped = 0
     while dropped < max_clauses and len(clauses) - dropped >= 2:
         clause = clauses[dropped]
+        if "?" in clause or "？" in clause:
+            break                       # a question is never a parroted answer
         ws = _words(clause)
         if not ws:
             dropped += 1

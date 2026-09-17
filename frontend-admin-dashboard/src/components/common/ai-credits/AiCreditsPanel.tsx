@@ -9,7 +9,14 @@ import {
 import { getUserId } from '@/utils/userDetails';
 import { parseUtcDate } from '@/utils/dateUtils';
 import { isIOS } from '@/native';
+import { toast } from 'sonner';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { TopUpModal } from './TopUpModal';
+import {
+    usePlatformInvoicesQuery,
+    downloadInvoicePdf,
+    type PlatformInvoiceSummary,
+} from '@/services/ai-credits/credit-pack-services';
 import type {
     CreditTransaction,
     UsageByRequestType,
@@ -31,10 +38,12 @@ import {
     Sparkle,
     TrendUp,
     Receipt,
+    DownloadSimple,
+    FileText,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
-type TabId = 'overview' | 'transactions' | 'analytics';
+type TabId = 'overview' | 'transactions' | 'analytics' | 'billing';
 
 // ─── Badge (Trigger) ───────────────────────────────
 interface AiCreditsBadgeProps {
@@ -544,11 +553,142 @@ function DailyUsageChart({ data }: { data: { date: string; total_credits: number
     );
 }
 
+// ─── Billing Tab (AI credit purchase invoices) ─────
+function BillingTab() {
+    const instituteId = getCurrentInstituteId();
+    const { data, isLoading, isError } = usePlatformInvoicesQuery(instituteId);
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+    const handleDownload = async (inv: PlatformInvoiceSummary) => {
+        setDownloadingId(inv.invoice_id);
+        try {
+            await downloadInvoicePdf(inv.invoice_id, `${inv.invoice_number}.pdf`);
+        } catch {
+            toast.error('Could not download the invoice', {
+                description: 'Please try again in a moment.',
+            });
+        } finally {
+            setDownloadingId(null);
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <div className="space-y-2">
+                {[...Array(4)].map((_, i) => (
+                    <Skeleton key={i} className="h-14 w-full rounded-lg" />
+                ))}
+            </div>
+        );
+    }
+
+    if (isError) {
+        return (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                Could not load invoices. Please try again later.
+            </div>
+        );
+    }
+
+    const invoices = data ?? [];
+
+    if (invoices.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center py-8 text-center text-xs text-neutral-400">
+                <FileText className="mb-2 size-8 text-neutral-300" />
+                No purchases yet
+                <span className="mt-1 text-2xs text-neutral-400">
+                    GST tax invoices for credit top-ups will appear here.
+                </span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-1.5">
+            {invoices.map((inv) => {
+                const refunded = inv.payment_status !== 'PAID';
+                const busy = downloadingId === inv.invoice_id;
+                return (
+                    <div
+                        key={inv.invoice_id}
+                        className="flex items-center gap-2.5 rounded-lg border bg-white px-2.5 py-2 transition-colors hover:bg-neutral-50"
+                    >
+                        <div className="rounded-lg bg-purple-50 p-1.5">
+                            <FileText className="size-3 text-purple-600" weight="bold" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                                <span className="truncate text-xs font-medium text-neutral-800">
+                                    {inv.pack_name} · {Number(inv.credits).toLocaleString('en-IN')}{' '}
+                                    credits
+                                </span>
+                                {refunded && (
+                                    <span className="rounded bg-amber-50 px-1 py-0.5 text-2xs font-semibold uppercase tracking-wide text-amber-600">
+                                        {inv.payment_status === 'REFUNDED'
+                                            ? 'Refunded'
+                                            : 'Partly refunded'}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-2 text-2xs text-neutral-400">
+                                <span className="truncate font-mono">{inv.invoice_number}</span>
+                                <span>
+                                    {parseUtcDate(inv.issued_at).toLocaleDateString('en-IN', {
+                                        day: 'numeric',
+                                        month: 'short',
+                                        year: 'numeric',
+                                    })}
+                                </span>
+                                {inv.buyer_gstin && (
+                                    <span className="rounded bg-emerald-50 px-1 py-0.5 text-2xs font-semibold text-emerald-600">
+                                        B2B
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="text-end">
+                            <div className="text-xs font-bold text-neutral-800">
+                                {inv.display_total_major}
+                            </div>
+                            <div className="text-2xs text-neutral-400">
+                                {inv.is_export
+                                    ? 'GST 0% (export)'
+                                    : `incl. GST ${(inv.tax_amount_minor / 100).toLocaleString(
+                                          'en-IN',
+                                          {
+                                              minimumFractionDigits: 2,
+                                              maximumFractionDigits: 2,
+                                          }
+                                      )}`}
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => handleDownload(inv)}
+                            disabled={busy}
+                            title="Download GST tax invoice (PDF)"
+                            aria-label={`Download invoice ${inv.invoice_number}`}
+                            className="ms-1 rounded-md border border-neutral-200 p-1.5 text-neutral-500 transition-colors hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700 disabled:opacity-50"
+                        >
+                            <DownloadSimple
+                                className={cn('size-3.5', busy && 'animate-pulse')}
+                                weight="bold"
+                            />
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 // ─── Tab buttons ───────────────────────────────────
 const tabs: { id: TabId; label: string; icon: typeof ChartBar }[] = [
     { id: 'overview', label: 'Overview', icon: ChartBar },
     { id: 'transactions', label: 'History', icon: Clock },
     { id: 'analytics', label: 'Analytics', icon: Lightning },
+    { id: 'billing', label: 'Billing', icon: Receipt },
 ];
 
 // ─── Main Component ────────────────────────────────
@@ -651,6 +791,8 @@ export function AiCreditsPanel({
                 {/* Tab bar */}
                 <div className="flex gap-0.5 border-b bg-white px-2 pt-1.5">
                     {tabs.map((tab) => {
+                        // Billing (purchase invoices) only makes sense where top-ups do.
+                        if (tab.id === 'billing' && hideTopUp) return null;
                         const Icon = tab.icon;
                         return (
                             <button
@@ -679,6 +821,7 @@ export function AiCreditsPanel({
                         {activeTab === 'overview' && <OverviewTab />}
                         {activeTab === 'transactions' && <TransactionsTab />}
                         {activeTab === 'analytics' && <AnalyticsTab />}
+                        {activeTab === 'billing' && <BillingTab />}
                     </div>
                 </div>
 

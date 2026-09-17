@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import { fetchSessionDetails, SessionDetailsResponse } from '../-hooks/useSessionDetails';
@@ -27,15 +27,17 @@ import { useSessionDetailsStore } from '../-store/useSessionDetailsStore';
 import { DraftSession, getSessionBySessionId } from '../-services/utils';
 import { LiveSessionReport } from '../-services/utils';
 import {
-    registrationColumns,
+    buildRegistrationColumns,
     REGISTRATION_WIDTH,
-    reportColumns,
+    buildReportColumns,
     REPORT_WIDTH,
 } from '../-constants/reportTable';
 import { MyTable } from '@/components/design-system/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import DeleteSessionDialog from './delete-session-dialog';
 import { getSessionJoinLink } from '../-utils/live-sesstions';
+import { UtmLinkMenuItem } from '@/components/common/utm/utm-link-menu-item';
+import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
@@ -49,8 +51,15 @@ interface LiveSessionCardProps {
 
 export default function LiveSessionCard({ session, isDraft = false }: LiveSessionCardProps) {
     const { t: tHelper } = useTranslation('homeworkCreationCreateAssessmentHelper');
+    const { t: tReportTable } = useTranslation('studyLibraryLiveSessionReportTable');
+    const reportColumns = useMemo(() => buildReportColumns(tReportTable), [tReportTable]);
+    const registrationColumns = useMemo(
+        () => buildRegistrationColumns(tReportTable),
+        [tReportTable]
+    );
     const [openDialog, setOpenDialog] = useState<boolean>(false);
     const [openDeleteDialog, setOpenDeleteDialog] = useState<boolean>(false);
+    const [openUtmDialog, setOpenUtmDialog] = useState<boolean>(false);
     const [selectedTab, setSelectedTab] = useState<string>('Registration');
     const [isRegistrationExporting, setIsRegistrationExporting] = useState<boolean>(false);
     const [isAttendanceExporting, setIsAttendanceExporting] = useState<boolean>(false);
@@ -346,6 +355,15 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                                 >
                                     Edit Live Session
                                 </DropdownMenuItem>
+                                {/* Private sessions hand out an embed link that
+                                    only an already-enrolled learner can open —
+                                    there is no campaign traffic to attribute, so
+                                    the builder is offered on public registration
+                                    links only. */}
+                                <UtmLinkMenuItem
+                                    hidden={session.access_level === 'private' || !joinLink}
+                                    onSelect={() => setOpenUtmDialog(true)}
+                                />
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
@@ -602,6 +620,13 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                     </div>
                 </div>
             </MyDialog>
+            <UtmBuilderDialog
+                open={openUtmDialog}
+                onOpenChange={setOpenUtmDialog}
+                baseUrl={joinLink}
+                sourceType="LIVE_SESSION"
+                entityName={session.title}
+            />
             <DeleteSessionDialog
                 open={openDeleteDialog}
                 onOpenChange={setOpenDeleteDialog}

@@ -19,11 +19,13 @@ import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui
 import { WhatsappLogo, EnvelopeSimple } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
+import { useTranslation } from 'react-i18next';
 
 export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.ReactNode }) => {
     const { state }: SidebarStateType = useSidebar();
     const navigate = useNavigate();
     const { instituteLogo } = useInstituteLogoStore();
+    const { t } = useTranslation('evaluatorAiSidebar');
 
     return (
         <Sidebar collapsible="icon" className="z-20">
@@ -39,7 +41,11 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                         }`}
                     >
                         {instituteLogo ? (
-                            <img src={instituteLogo} alt="logo" className="size-12 rounded-full" />
+                            <img
+                                src={instituteLogo}
+                                alt={t('logoAlt')}
+                                className="size-12 rounded-full"
+                            />
                         ) : null}
 
                         <SidebarGroup
@@ -50,8 +56,8 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                                 });
                             }}
                         >
-                            Vacademy
-                            <span className="text-xs">Evaluation AI</span>
+                            {t('brandName')}
+                            <span className="text-xs">{t('productName')}</span>
                         </SidebarGroup>
                     </div>
                 </SidebarHeader>
@@ -87,6 +93,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
 };
 
 function SupportOptions() {
+    const { t } = useTranslation('evaluatorAiSidebar');
     const [open, setOpen] = useState(false);
     const [hover, setHover] = useState<boolean>(false);
     const toggleHover = () => {
@@ -109,7 +116,7 @@ function SupportOptions() {
                             hover ? 'text-primary-500' : 'text-neutral-600'
                         } text-body font-regular text-neutral-600 group-data-[collapsible=icon]:hidden`}
                     >
-                        {'Support'}
+                        {t('support')}
                     </div>
                 </div>
             </PopoverTrigger>
@@ -124,7 +131,7 @@ function SupportOptions() {
                                     onClick={goToWhatsappSupport}
                                 >
                                     <WhatsappLogo />
-                                    WhatsApp
+                                    {t('whatsapp')}
                                 </div>
                             </CommandItem>
                             <CommandItem>
@@ -134,7 +141,7 @@ function SupportOptions() {
                                     onClick={goToMailSupport}
                                 >
                                     <EnvelopeSimple />
-                                    Mail us
+                                    {t('mailUs')}
                                 </div>
                             </CommandItem>
                         </CommandGroup>

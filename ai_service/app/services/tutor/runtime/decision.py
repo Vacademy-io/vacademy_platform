@@ -157,7 +157,7 @@ async def run_turn(
     except Exception:  # noqa: BLE001
         logger.warning("Tutor turn prompt failed for session %s", tutor_session_id, exc_info=True)
         return fallback_decision(kind=kind, lang=lang, concept=concept, remediation_no=pointer.remediations), usage
-    messages = [{"role": "system", "content": prompts.system_prompt(teacher, lang, strictness)},
+    messages = [{"role": "system", "content": prompts.system_prompt(teacher, lang, strictness, getattr(lesson, "style", "lesson"))},
                 {"role": "user", "content": user}]
     try:
         with db_session() as db:

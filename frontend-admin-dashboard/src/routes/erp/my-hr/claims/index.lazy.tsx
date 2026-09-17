@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
+import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { MyClaimsMain } from '@/routes/erp/my-hr/-components/MyClaimsMain';
@@ -14,20 +15,18 @@ export const Route = createLazyFileRoute('/erp/my-hr/claims/')({
 });
 
 function MyClaimsPage() {
+    const { t } = useTranslation('erpMyHrClaimsIndex');
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">My Claims</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('title')}</h1>);
+    }, [setNavHeading, t]);
 
     return (
         <>
             <Helmet>
-                <title>My Claims</title>
-                <meta
-                    name="description"
-                    content="Your expense claims and any loan or advance you are repaying through salary."
-                />
+                <title>{t('title')}</title>
+                <meta name="description" content={t('description')} />
             </Helmet>
             <MyClaimsMain />
         </>

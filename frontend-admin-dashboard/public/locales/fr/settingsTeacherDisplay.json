@@ -94,7 +94,7 @@
             "showSettings": "Afficher les paramètres",
             "showSettingsHint": "Masque l'icône des paramètres dans la barre latérale. Les paramètres restent accessibles directement à /settings.",
             "showAssistDock": "Afficher le panneau latéral droit",
-            "showAssistDockHint": "Guides, Assistance, Problèmes, Nouveautés, Explorer & Application Admin. Masqué par défaut pour ce rôle."
+            "showAssistDockHint": "Guides, Formation, Assistance, Problèmes, Nouveautés, Explorer & Application Admin. Masqué par défaut pour ce rôle."
         },
         "sidebarCategories": {
             "title": "Catégories de la barre latérale",

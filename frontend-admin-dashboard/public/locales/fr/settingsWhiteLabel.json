@@ -142,7 +142,10 @@
         "configuring": "Configuration en cours…",
         "updateButton": "Mettre à jour la configuration en marque blanche",
         "applyButton": "Appliquer la configuration en marque blanche",
-        "preservedHint": "Les entrées existantes sont conservées. Seuls les domaines listés sont créés/mis à jour."
+        "preservedHint": "Les entrées existantes sont conservées. Seuls les domaines listés sont créés/mis à jour.",
+        "draftRestored": "Les domaines que vous ajoutiez avant de quitter cet onglet ont été restaurés. Rien n'est actif tant que la configuration n'est pas appliquée.",
+        "discardDraft": "Abandonner et recharger les domaines enregistrés",
+        "unsavedChanges": "Modifications non enregistrées — cliquez sur Appliquer pour les enregistrer."
     },
     "toast": {
         "noInstituteSelected": "Aucun établissement sélectionné",
@@ -208,7 +211,9 @@
         "label": "Sous-organisation",
         "none": "Établissement parent",
         "untitled": "Sous-organisation sans nom",
-        "badgeTooltip": "Ce portail est aux couleurs de cette sous-organisation et lui est réservé"
+        "badgeTooltip": "Ce portail est aux couleurs de cette sous-organisation et lui est réservé",
+        "searchPlaceholder": "Rechercher une sous-organisation…",
+        "searchEmpty": "Aucune sous-organisation ne correspond à ce nom."
     },
     "shortLinkDns": {
         "title": "Domaine des liens courts",

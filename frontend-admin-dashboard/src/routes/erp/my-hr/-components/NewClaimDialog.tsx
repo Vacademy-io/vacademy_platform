@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Info, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -14,20 +16,21 @@ import { humanizeToken } from '@/routes/erp/leave/-components/leave-meta';
 import { useSubmitReimbursement } from '@/routes/erp/my-hr/-hooks/use-my-hr';
 import { REIMBURSEMENT_TYPES } from './my-hr-shared';
 
-const schema = z.object({
-    type: z.string().min(1, 'Pick what this expense was for'),
-    amount: z
-        .string()
-        .trim()
-        .min(1, 'Enter the amount you spent')
-        .refine((value) => Number.isFinite(Number(value)) && Number(value) > 0, {
-            message: 'Enter an amount greater than zero',
-        }),
-    expense_date: z.string().min(1, 'When did you spend it?'),
-    description: z.string().trim().max(500, 'Keep it under 500 characters'),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        type: z.string().min(1, t('errors.type')),
+        amount: z
+            .string()
+            .trim()
+            .min(1, t('errors.amountRequired'))
+            .refine((value) => Number.isFinite(Number(value)) && Number(value) > 0, {
+                message: t('errors.amountPositive'),
+            }),
+        expense_date: z.string().min(1, t('errors.date')),
+        description: z.string().trim().max(500, t('errors.descriptionLength')),
+    });
 
-type ClaimValues = z.infer<typeof schema>;
+type ClaimValues = z.infer<ReturnType<typeof buildSchema>>;
 
 const emptyValues: ClaimValues = {
     type: 'TRAVEL',
@@ -36,11 +39,12 @@ const emptyValues: ClaimValues = {
     description: '',
 };
 
-const TYPE_OPTIONS = REIMBURSEMENT_TYPES.map((value) => ({
-    _id: value,
-    value,
-    label: humanizeToken(value),
-}));
+const buildTypeOptions = () =>
+    REIMBURSEMENT_TYPES.map((value) => ({
+        _id: value,
+        value,
+        label: humanizeToken(value),
+    }));
 
 interface NewClaimDialogProps {
     open: boolean;
@@ -58,8 +62,11 @@ interface NewClaimDialogProps {
  * receipt to HR.
  */
 export const NewClaimDialog = ({ open, onOpenChange, employeeId }: NewClaimDialogProps) => {
+    const { t } = useTranslation('erpNewClaimDialog');
     const mutation = useSubmitReimbursement(employeeId);
     const [refusal, setRefusal] = useState<string | null>(null);
+    const schema = buildSchema(t);
+    const TYPE_OPTIONS = buildTypeOptions();
 
     const form = useForm<ClaimValues>({
         resolver: zodResolver(schema),
@@ -83,14 +90,14 @@ export const NewClaimDialog = ({ open, onOpenChange, employeeId }: NewClaimDialo
                 expense_date: values.expense_date,
                 ...(values.description.trim() ? { description: values.description.trim() } : {}),
             });
-            toast.success('Claim submitted');
+            toast.success(t('toasts.submitted'));
             onOpenChange(false);
         } catch (error) {
             setRefusal(
                 reportApiError(error, {
                     feature: 'erp-my-hr',
                     tags: { action: 'submit-reimbursement' },
-                    fallbackMessage: 'Could not submit your claim.',
+                    fallbackMessage: t('errors.submitFailed'),
                     showToast: false,
                 })
             );
@@ -99,7 +106,7 @@ export const NewClaimDialog = ({ open, onOpenChange, employeeId }: NewClaimDialo
 
     return (
         <MyDialog
-            heading="New claim"
+            heading={t('heading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-xl"
@@ -111,16 +118,16 @@ export const NewClaimDialog = ({ open, onOpenChange, employeeId }: NewClaimDialo
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         type="button"
                         onAsyncClick={submit}
-                        loadingText="Submitting…"
+                        loadingText={t('submitting')}
                     >
-                        Submit claim
+                        {t('submit')}
                     </MyButton>
                 </div>
             }
@@ -130,7 +137,7 @@ export const NewClaimDialog = ({ open, onOpenChange, employeeId }: NewClaimDialo
                     <SelectField
                         control={form.control}
                         name="type"
-                        label="What was it for?"
+                        label={t('fields.typeLabel')}
                         required
                         className="w-full sm:w-full"
                         options={TYPE_OPTIONS}
@@ -139,7 +146,7 @@ export const NewClaimDialog = ({ open, onOpenChange, employeeId }: NewClaimDialo
                         <HrTextField
                             control={form.control}
                             name="amount"
-                            label="Amount you spent"
+                            label={t('fields.amountLabel')}
                             inputType="number"
                             placeholder="0"
                             required
@@ -147,7 +154,7 @@ export const NewClaimDialog = ({ open, onOpenChange, employeeId }: NewClaimDialo
                         <HrTextField
                             control={form.control}
                             name="expense_date"
-                            label="Date of the expense"
+                            label={t('fields.dateLabel')}
                             inputType="date"
                             required
                         />
@@ -155,18 +162,15 @@ export const NewClaimDialog = ({ open, onOpenChange, employeeId }: NewClaimDialo
                     <HrTextareaField
                         control={form.control}
                         name="description"
-                        label="What was it?"
+                        label={t('fields.descriptionLabel')}
                         rows={3}
-                        placeholder="Cab from the airport to the campus"
-                        description="Optional, but it saves your HR team asking."
+                        placeholder={t('fields.descriptionPlaceholder')}
+                        description={t('fields.descriptionHelp')}
                     />
 
                     <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                         <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
-                        <span>
-                            Your claim goes to HR as Pending. Once approved, it is paid out with a
-                            future month&apos;s salary. Keep the receipt — you may be asked for it.
-                        </span>
+                        <span>{t('pendingNotice')}</span>
                     </div>
 
                     {refusal && (

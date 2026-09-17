@@ -240,6 +240,8 @@
             "days_one": "{{count}} day access",
             "days_other": "{{count}} days access"
         },
-        "goToMyCourses": "Go to My {{courses}}"
+        "goToMyCourses": "Go to My {{courses}}",
+        "redirecting": "Taking you to the next page…",
+        "redirectNow": "Continue now"
     }
 }

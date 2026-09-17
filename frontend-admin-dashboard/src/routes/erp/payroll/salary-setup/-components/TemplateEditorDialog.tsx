@@ -4,6 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Info, Plus, Trash, Warning } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -45,81 +47,78 @@ const CALCULATION_TYPES = [
     'FORMULA',
 ] as const;
 
-const numericString = (label: string) =>
-    z
-        .string()
-        .refine(
-            (value) => value === '' || Number.isFinite(Number(value)),
-            `${label} must be a number`
-        );
+const numericString = (message: string) =>
+    z.string().refine((value) => value === '' || Number.isFinite(Number(value)), message);
 
-const rowSchema = z
-    .object({
-        row_id: z.string(),
-        component_id: z.string().min(1, 'Pick a component'),
-        calculation_type: z.enum(CALCULATION_TYPES),
-        fixed_value: numericString('Amount'),
-        percentage_value: numericString('Percentage'),
-        formula: z.string(),
-        min_value: numericString('Minimum'),
-        max_value: numericString('Maximum'),
-        display_order: z.string().regex(/^\d*$/, 'Whole numbers only'),
-    })
-    .superRefine((row, ctx) => {
-        const field = valueFieldFor(row.calculation_type);
-        if (field === 'fixed_value' && row.fixed_value === '') {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['fixed_value'],
-                message: 'Enter the monthly amount',
-            });
-        }
-        if (field === 'percentage_value') {
-            if (row.percentage_value === '') {
+const buildRowSchema = (t: TFunction) =>
+    z
+        .object({
+            row_id: z.string(),
+            component_id: z.string().min(1, t('validation.componentRequired')),
+            calculation_type: z.enum(CALCULATION_TYPES),
+            fixed_value: numericString(t('validation.amountNumber')),
+            percentage_value: numericString(t('validation.percentageNumber')),
+            formula: z.string(),
+            min_value: numericString(t('validation.minNumber')),
+            max_value: numericString(t('validation.maxNumber')),
+            display_order: z.string().regex(/^\d*$/, t('validation.wholeNumbers')),
+        })
+        .superRefine((row, ctx) => {
+            const field = valueFieldFor(row.calculation_type);
+            if (field === 'fixed_value' && row.fixed_value === '') {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
-                    path: ['percentage_value'],
-                    message: 'Enter a percentage',
+                    path: ['fixed_value'],
+                    message: t('validation.enterAmount'),
                 });
-            } else {
-                const numeric = Number(row.percentage_value);
-                if (numeric <= 0 || numeric > 100) {
+            }
+            if (field === 'percentage_value') {
+                if (row.percentage_value === '') {
                     ctx.addIssue({
                         code: z.ZodIssueCode.custom,
                         path: ['percentage_value'],
-                        message: 'Percentages run from 0 to 100',
+                        message: t('validation.enterPercentage'),
                     });
+                } else {
+                    const numeric = Number(row.percentage_value);
+                    if (numeric <= 0 || numeric > 100) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ['percentage_value'],
+                            message: t('validation.percentageRange'),
+                        });
+                    }
                 }
             }
-        }
-        if (field === 'formula' && row.formula.trim() === '') {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['formula'],
-                message: 'Enter a formula',
-            });
-        }
-        if (
-            row.min_value !== '' &&
-            row.max_value !== '' &&
-            Number(row.min_value) > Number(row.max_value)
-        ) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['max_value'],
-                message: 'Maximum must be at least the minimum',
-            });
-        }
+            if (field === 'formula' && row.formula.trim() === '') {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['formula'],
+                    message: t('validation.enterFormula'),
+                });
+            }
+            if (
+                row.min_value !== '' &&
+                row.max_value !== '' &&
+                Number(row.min_value) > Number(row.max_value)
+            ) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['max_value'],
+                    message: t('validation.maxAtLeastMin'),
+                });
+            }
+        });
+
+const buildSchema = (t: TFunction) =>
+    z.object({
+        name: z.string().trim().min(1, t('validation.nameRequired')),
+        description: z.string().trim().max(500, t('validation.descriptionMax')),
+        is_default: z.boolean(),
+        components: z.array(buildRowSchema(t)).min(1, t('validation.componentsMin')),
     });
 
-const schema = z.object({
-    name: z.string().trim().min(1, 'Give the template a name'),
-    description: z.string().trim().max(500, 'Keep the description under 500 characters'),
-    is_default: z.boolean(),
-    components: z.array(rowSchema).min(1, 'A template needs at least one component'),
-});
-
-type TemplateFormValues = z.infer<typeof schema>;
+type TemplateFormValues = z.infer<ReturnType<typeof buildSchema>>;
 type TemplateRowValues = TemplateFormValues['components'][number];
 
 const emptyRow = (order: number): TemplateRowValues => ({
@@ -163,9 +162,11 @@ export const TemplateEditorDialog = ({
     templateId,
     isHrAdmin,
 }: TemplateEditorDialogProps) => {
+    const { t } = useTranslation('erpTemplateEditorDialog');
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
     const isEdit = !!templateId;
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const templateQuery = useQuery({
         queryKey: hrKeys.salaryTemplate(templateId ?? 'new'),
@@ -249,14 +250,14 @@ export const TemplateEditorDialog = ({
             if (templateId) {
                 queryClient.invalidateQueries({ queryKey: hrKeys.salaryTemplate(templateId) });
             }
-            toast.success(isEdit ? 'Template updated' : 'Template created');
+            toast.success(isEdit ? t('toast.updated') : t('toast.created'));
             onOpenChange(false);
         },
         onError: (error) => {
             reportApiError(error, {
                 feature: 'erp-salary',
                 tags: { action: isEdit ? 'update-template' : 'create-template' },
-                fallbackMessage: 'Could not save the salary template.',
+                fallbackMessage: t('toast.saveError'),
             });
         },
     });
@@ -293,7 +294,7 @@ export const TemplateEditorDialog = ({
 
     return (
         <MyDialog
-            heading={isEdit ? 'Salary template' : 'New salary template'}
+            heading={isEdit ? t('dialog.headingEdit') : t('dialog.headingNew')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-6xl"
@@ -305,16 +306,16 @@ export const TemplateEditorDialog = ({
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        {readOnly ? 'Close' : 'Cancel'}
+                        {readOnly ? t('dialog.close') : t('dialog.cancel')}
                     </MyButton>
                     {!readOnly && (
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={form.handleSubmit(onSubmit)}
-                            loadingText="Saving…"
+                            loadingText={t('dialog.saving')}
                         >
-                            {isEdit ? 'Save template' : 'Create template'}
+                            {isEdit ? t('dialog.saveTemplate') : t('dialog.createTemplate')}
                         </MyButton>
                     )}
                 </>
@@ -326,7 +327,7 @@ export const TemplateEditorDialog = ({
                 <div className="flex flex-col items-start gap-3">
                     <div className="flex items-center gap-2 text-body text-danger-600">
                         <Warning size={18} />
-                        Could not load this template.
+                        {t('dialog.loadError')}
                     </div>
                     <MyButton
                         buttonType="secondary"
@@ -334,9 +335,9 @@ export const TemplateEditorDialog = ({
                         onAsyncClick={async () => {
                             await templateQuery.refetch();
                         }}
-                        loadingText="Retrying…"
+                        loadingText={t('dialog.retrying')}
                     >
-                        Retry
+                        {t('dialog.retry')}
                     </MyButton>
                 </div>
             ) : (
@@ -349,12 +350,14 @@ export const TemplateEditorDialog = ({
                         <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                             <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
                             <span>
-                                These components need not add up to the employee&apos;s CTC —
-                                payroll adds a balancing{' '}
-                                <span className="font-semibold">Special Allowance</span> for
-                                whatever is left over. A template whose components{' '}
-                                <span className="font-semibold">exceed</span> the CTC is rejected,
-                                so keep the fixed amounts and percentages inside it.
+                                <Trans
+                                    t={t}
+                                    i18nKey="info"
+                                    components={{
+                                        bold1: <span className="font-semibold" />,
+                                        bold2: <span className="font-semibold" />,
+                                    }}
+                                />
                             </span>
                         </div>
 
@@ -364,11 +367,11 @@ export const TemplateEditorDialog = ({
                                 name="name"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Template name</FormLabel>
+                                        <FormLabel>{t('form.nameLabel')}</FormLabel>
                                         <FormControl>
                                             <MyInput
                                                 inputType="text"
-                                                inputPlaceholder="Standard staff structure"
+                                                inputPlaceholder={t('form.namePlaceholder')}
                                                 className="w-full sm:w-full"
                                                 required
                                                 disabled={readOnly}
@@ -390,12 +393,12 @@ export const TemplateEditorDialog = ({
                                 name="description"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Description</FormLabel>
+                                        <FormLabel>{t('form.descriptionLabel')}</FormLabel>
                                         <FormControl>
                                             <Textarea
                                                 {...field}
                                                 disabled={readOnly}
-                                                placeholder="Who this template is for."
+                                                placeholder={t('form.descriptionPlaceholder')}
                                                 className="text-body"
                                             />
                                         </FormControl>
@@ -420,7 +423,7 @@ export const TemplateEditorDialog = ({
                                         />
                                     </FormControl>
                                     <FormLabel className="!mt-0 text-body text-neutral-600">
-                                        Use as the default template for new assignments
+                                        {t('form.defaultLabel')}
                                     </FormLabel>
                                 </FormItem>
                             )}
@@ -428,9 +431,11 @@ export const TemplateEditorDialog = ({
 
                         <div className="flex flex-col gap-3">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-subtitle text-neutral-700">Components</h3>
+                                <h3 className="text-subtitle text-neutral-700">
+                                    {t('components.heading')}
+                                </h3>
                                 <span className="text-caption text-neutral-500">
-                                    {fields.length} row{fields.length === 1 ? '' : 's'}
+                                    {t('components.rowCount', { count: fields.length })}
                                 </span>
                             </div>
 
@@ -445,6 +450,7 @@ export const TemplateEditorDialog = ({
                                     key={row.row_key}
                                     index={index}
                                     form={form}
+                                    t={t}
                                     componentOptions={componentOptions}
                                     componentsLoading={componentsQuery.isLoading}
                                     componentType={
@@ -466,7 +472,7 @@ export const TemplateEditorDialog = ({
                                     onClick={() => append(emptyRow(fields.length + 1))}
                                 >
                                     <Plus size={16} />
-                                    Add component row
+                                    {t('components.addRow')}
                                 </MyButton>
                             )}
                         </div>
@@ -483,6 +489,7 @@ interface TemplateComponentRowProps {
     // UseFormReturn generic through a row component buys nothing here.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     form: any;
+    t: TFunction;
     componentOptions: { label: string; value: string }[];
     componentsLoading: boolean;
     componentType?: string;
@@ -491,12 +498,10 @@ interface TemplateComponentRowProps {
     onRemove: () => void;
 }
 
-const FORMULA_HELP =
-    'Available variables: #CTC (annual), #CTC_MONTHLY, #BASIC, #GROSS, and #<COMPONENT_CODE> for any component in this template. The result is the MONTHLY amount.';
-
 const TemplateComponentRow = ({
     index,
     form,
+    t,
     componentOptions,
     componentsLoading,
     componentType,
@@ -513,7 +518,9 @@ const TemplateComponentRow = ({
         <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 p-4">
             <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-2">
-                    <span className="text-caption text-neutral-500">Row {index + 1}</span>
+                    <span className="text-caption text-neutral-500">
+                        {t('components.row', { number: index + 1 })}
+                    </span>
                     {componentType && <ComponentTypeChip type={componentType} />}
                 </div>
                 {!readOnly && canRemove && (
@@ -522,7 +529,7 @@ const TemplateComponentRow = ({
                         scale="small"
                         layoutVariant="icon"
                         type="button"
-                        aria-label={`Remove row ${index + 1}`}
+                        aria-label={t('components.removeRow', { number: index + 1 })}
                         onClick={onRemove}
                     >
                         <Trash size={16} className="text-danger-600" />
@@ -540,7 +547,7 @@ const TemplateComponentRow = ({
                         field: { value: string; onChange: (v: string) => void };
                     }) => (
                         <FormItem>
-                            <FormLabel>Component</FormLabel>
+                            <FormLabel>{t('components.componentLabel')}</FormLabel>
                             <FormControl>
                                 <SearchableSelect
                                     options={componentOptions}
@@ -549,11 +556,11 @@ const TemplateComponentRow = ({
                                     disabled={readOnly || componentsLoading}
                                     placeholder={
                                         componentsLoading
-                                            ? 'Loading components…'
-                                            : 'Select component'
+                                            ? t('components.componentLoading')
+                                            : t('components.componentSelect')
                                     }
-                                    searchPlaceholder="Search by code or name"
-                                    emptyText="No components found. Add one on the Components tab."
+                                    searchPlaceholder={t('components.componentSearchPlaceholder')}
+                                    emptyText={t('components.componentEmpty')}
                                     portal={false}
                                 />
                             </FormControl>
@@ -565,7 +572,7 @@ const TemplateComponentRow = ({
                 <SelectField
                     control={form.control}
                     name={`components.${index}.calculation_type`}
-                    label="Calculation"
+                    label={t('components.calculationLabel')}
                     required
                     disabled={readOnly}
                     options={CALCULATION_TYPE_OPTIONS}
@@ -587,11 +594,11 @@ const TemplateComponentRow = ({
                             };
                         }) => (
                             <FormItem>
-                                <FormLabel>Monthly amount</FormLabel>
+                                <FormLabel>{t('components.monthlyAmountLabel')}</FormLabel>
                                 <FormControl>
                                     <MyInput
                                         inputType="number"
-                                        inputPlaceholder="25000"
+                                        inputPlaceholder={t('components.monthlyAmountPlaceholder')}
                                         className="w-full sm:w-full"
                                         disabled={readOnly}
                                         input={field.value}
@@ -623,11 +630,11 @@ const TemplateComponentRow = ({
                             };
                         }) => (
                             <FormItem>
-                                <FormLabel>Percentage</FormLabel>
+                                <FormLabel>{t('components.percentageLabel')}</FormLabel>
                                 <FormControl>
                                     <MyInput
                                         inputType="number"
-                                        inputPlaceholder="40"
+                                        inputPlaceholder={t('components.percentagePlaceholder')}
                                         className="w-full sm:w-full"
                                         disabled={readOnly}
                                         input={field.value}
@@ -639,7 +646,7 @@ const TemplateComponentRow = ({
                                     />
                                 </FormControl>
                                 <FormDescription className="text-caption text-neutral-500">
-                                    Percent of the base this calculation names.
+                                    {t('components.percentageDescription')}
                                 </FormDescription>
                                 <FormMessage />
                             </FormItem>
@@ -662,11 +669,11 @@ const TemplateComponentRow = ({
                             };
                         }) => (
                             <FormItem className="sm:col-span-2 lg:col-span-1">
-                                <FormLabel>Formula</FormLabel>
+                                <FormLabel>{t('components.formulaLabel')}</FormLabel>
                                 <FormControl>
                                     <MyInput
                                         inputType="text"
-                                        inputPlaceholder="#BASIC * 0.1 + 1500"
+                                        inputPlaceholder={t('components.formulaPlaceholder')}
                                         className="w-full font-mono sm:w-full"
                                         disabled={readOnly}
                                         input={field.value}
@@ -678,7 +685,7 @@ const TemplateComponentRow = ({
                                     />
                                 </FormControl>
                                 <FormDescription className="text-caption text-neutral-500">
-                                    {FORMULA_HELP}
+                                    {t('components.formulaHelp')}
                                 </FormDescription>
                                 <FormMessage />
                             </FormItem>
@@ -700,11 +707,11 @@ const TemplateComponentRow = ({
                         };
                     }) => (
                         <FormItem>
-                            <FormLabel>Minimum (optional)</FormLabel>
+                            <FormLabel>{t('components.minLabel')}</FormLabel>
                             <FormControl>
                                 <MyInput
                                     inputType="number"
-                                    inputPlaceholder="No floor"
+                                    inputPlaceholder={t('components.minPlaceholder')}
                                     className="w-full sm:w-full"
                                     disabled={readOnly}
                                     input={field.value}
@@ -732,11 +739,11 @@ const TemplateComponentRow = ({
                         };
                     }) => (
                         <FormItem>
-                            <FormLabel>Maximum (optional)</FormLabel>
+                            <FormLabel>{t('components.maxLabel')}</FormLabel>
                             <FormControl>
                                 <MyInput
                                     inputType="number"
-                                    inputPlaceholder="No cap"
+                                    inputPlaceholder={t('components.maxPlaceholder')}
                                     className="w-full sm:w-full"
                                     disabled={readOnly}
                                     input={field.value}
@@ -764,7 +771,7 @@ const TemplateComponentRow = ({
                         };
                     }) => (
                         <FormItem>
-                            <FormLabel>Display order</FormLabel>
+                            <FormLabel>{t('components.displayOrderLabel')}</FormLabel>
                             <FormControl>
                                 <MyInput
                                     inputType="number"

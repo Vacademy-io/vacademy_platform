@@ -34,6 +34,8 @@ import {
   handleSubmitAudienceLead,
   extractRespondentIdentity,
 } from "../-services/audience-campaign-services";
+import { trackUtmAttribution } from "@/lib/utm-attribution";
+import { identityFromFormValues } from "@/lib/learner-identity";
 import {
   parsePostSubmitConfiguration,
   applyPostSubmitTokens,
@@ -349,6 +351,27 @@ const AudienceResponseForm = ({
       );
 
       await submitAudienceLead(payload);
+
+      // Attribute the lead to the campaign that produced it. Fired after the
+      // submit succeeded and before the reset, while the identity is still in
+      // scope; it never throws, so it cannot turn a successful submission into
+      // an error toast.
+      // Fall back to the shared resolver when the payload's own lookup came up
+      // empty. That lookup asks "does the field key contain 'email'?", which
+      // finds nothing on an institute naming the field `cf_9812` or
+      // `whatsapp_no` — and a touch with no identity is dropped by the server,
+      // so that institute's campaign reporting stays silently empty with no
+      // error to explain it. Additive: the payload sent to the lead API is
+      // deliberately untouched.
+      const resolvedIdentity = identityFromFormValues(values);
+      trackUtmAttribution({
+        instituteId,
+        email: payload.user_dto?.email || resolvedIdentity.email || undefined,
+        mobileNumber:
+          payload.user_dto?.mobile_number || resolvedIdentity.phone || undefined,
+        sourceType: "AUDIENCE",
+        sourceId: audienceId,
+      });
 
       // Capture identity BEFORE the reset — the thank-you screen and the
       // redirect URL both interpolate it.

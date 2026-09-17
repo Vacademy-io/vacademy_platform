@@ -6,6 +6,7 @@
 // the chapter/module/subject context passed per call. Slide ids are returned so
 // callers can build reorder payloads.
 
+import i18next from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     ADD_UPDATE_DOCUMENT_SLIDE,
@@ -226,7 +227,9 @@ export const uploadScormPackage = async (file: File): Promise<string> => {
     });
     const scormSlideId = response.data?.id;
     if (!scormSlideId) {
-        throw new Error('The SCORM package was uploaded but no package id came back.');
+        throw new Error(
+            i18next.t('studyLibraryBulkSlideCreation:errors.scormNoPackageId')
+        );
     }
     return scormSlideId;
 };

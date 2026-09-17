@@ -56,6 +56,10 @@ export interface DomainRoutingResponse {
   // Minimal naming overrides surfaced pre-login so screens like the login page
   // can honor institute-specific terminology before the full settings payload
   // is fetched post-login.
+  // Tag of the catalogue mounted at this host's ROOT: when set, the site
+  // answers on "/" and "/<page>" instead of "/<tag>" and "/<tag>/<page>".
+  // Absent/null = classic tagged routing. See RouteMatcher.basePath().
+  rootCatalogueTag?: string | null;
   namingOverrides?: {
     course?: string | null;
     coursePlural?: string | null;
@@ -101,6 +105,48 @@ export interface CachedInstituteBranding {
 const BRANDING_CACHE_KEY = "InstituteBranding";
 const PREFERRED_COUNTRIES_CACHE_KEY = "InstitutePreferredCountries";
 const PHONE_COUNTRY_GEO_MODE_CACHE_KEY = "InstitutePhoneCountryGeoMode";
+const ROOT_CATALOGUE_TAG_CACHE_KEY = "InstituteRootCatalogueTag";
+
+let cachedRootCatalogueTagMemory: string | null | undefined;
+
+/**
+ * Catalogue tag mounted at this host's root, or null. Synchronous on purpose:
+ * link builders (RouteMatcher, CatalogueLink, the header) run during render
+ * and cannot await the resolve. Written on EVERY resolve — including a null
+ * — so un-mounting a catalogue server-side takes effect on the next load
+ * rather than lingering in localStorage.
+ */
+export const getCachedRootCatalogueTag = (): string | null => {
+  if (cachedRootCatalogueTagMemory !== undefined) {
+    return cachedRootCatalogueTagMemory;
+  }
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const stored = window.localStorage.getItem(ROOT_CATALOGUE_TAG_CACHE_KEY);
+      cachedRootCatalogueTagMemory = stored && stored.trim() ? stored.trim() : null;
+      return cachedRootCatalogueTagMemory;
+    }
+  } catch {
+    // storage blocked — fall through to "not mounted"
+  }
+  cachedRootCatalogueTagMemory = null;
+  return null;
+};
+
+export const setCachedRootCatalogueTag = (tag: string | null | undefined) => {
+  const clean = (tag ?? "").trim().replace(/^\/+/, "");
+  cachedRootCatalogueTagMemory = clean || null;
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    if (clean) {
+      window.localStorage.setItem(ROOT_CATALOGUE_TAG_CACHE_KEY, clean);
+    } else {
+      window.localStorage.removeItem(ROOT_CATALOGUE_TAG_CACHE_KEY);
+    }
+  } catch (error) {
+    console.warn("[Domain Routing] Failed to persist root catalogue tag:", error);
+  }
+};
 let cachedBrandingMemory: CachedInstituteBranding | null = null;
 let cachedPreferredCountriesMemory: string[] | null = null;
 let cachedPhoneCountryGeoModeMemory: PhoneCountryGeoMode | null = null;
@@ -487,6 +533,28 @@ export const getPreferredPhoneCountries = (): ResolvedPhoneCountries =>
     hasResolvedPhonePreferences() ? detectVisitorCountry() : null,
   );
 
+/**
+ * Read a portal's routing record WITHOUT touching the per-host caches that
+ * `resolveDomainRouting` maintains. For pages that need to describe a brand
+ * other than the one the browser is on (the privacy policy with `?app=`), where
+ * caching the other brand's root-catalogue tag or phone preferences would
+ * corrupt the current host's session.
+ */
+export const peekDomainRouting = async (
+  domain: string,
+  subdomain: string
+): Promise<DomainRoutingResponse | null> => {
+  try {
+    const response = await authenticatedAxiosInstance.get<DomainRoutingResponse>(
+      `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`,
+      { params: { domain, subdomain }, timeout: 10000 }
+    );
+    return response.data;
+  } catch {
+    return null;
+  }
+};
+
 export const resolveDomainRouting = async (
   domain: string,
   subdomain: string
@@ -515,6 +583,9 @@ export const resolveDomainRouting = async (
     // which institute this page belongs to.
     setCachedPreferredCountries(data.commaSeparatedPreferredCountry ?? null);
     setCachedPhoneCountryGeoMode(data.phoneCountryGeoMode ?? null);
+    // Same reasoning: the root-mount flag must follow the resolve, whichever
+    // caller made it, or a cold load of "/" cannot know to render the site.
+    setCachedRootCatalogueTag(data.rootCatalogueTag ?? null);
 
     // Successfully resolved domain routing
     return data;

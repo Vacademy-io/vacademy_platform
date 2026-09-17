@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -807,3 +807,85 @@ def super_tutor_asset_delete(
     if not asset_registry.delete(db, asset_id):
         raise HTTPException(status_code=404, detail="Asset not found")
     return {"deleted": asset_id}
+
+
+# ── Live AI Tutor public demo topics (tutezy.ai "Try a lesson") ─────────────
+
+class DemoTopicUpsert(BaseModel):
+    title: str = Field(..., min_length=1, max_length=160)
+    source_text: str = Field(..., min_length=50, max_length=40000)
+    emoji: Optional[str] = Field(default=None, max_length=16)
+    language: str = Field(default="en", pattern="^(en|hi)$")
+    sort_order: int = 100
+    is_active: bool = True
+    # lesson | interview | practice — the session register (persona, greeting, board shape).
+    style: str = Field(default="lesson", pattern="^(lesson|interview|practice)$")
+    # Compile right away (background) after saving.
+    compile: bool = True
+
+
+@router.get("/demo-topics", summary="Tutezy demo: topics, their authored text and plan state")
+def super_demo_topics(with_source: bool = False, db: Session = Depends(db_dependency),
+                      current_user: CustomUserDetails = Depends(get_current_user)):
+    _require_super_admin(current_user)
+    from ..services.tutor import demo
+    return {"topics": demo.list_topics(db, with_source=with_source), "config": demo.config(db)}
+
+
+def _compile_demo_topic(key: str, institute_id: str, user_id: Optional[str]) -> None:
+    import asyncio
+    from ..services.tutor.plan_compiler import PlanCompiler
+    from ..services.tutor.runtime.settings import resolve_settings
+    from ..services.tutor import demo
+    from ..db import db_session
+    with db_session() as db:
+        s = resolve_settings(db, package_id="", institute_id=institute_id)
+        c = demo.config(db)
+    compiler = PlanCompiler(institute_id=institute_id, user_id=user_id, language="en",
+                            teacher_name=c.get("teacher_name") or s.teacher_name, force=True, generate_images=True,
+                            model_override=s.compile_model,
+                            voice_prepare={"provider": s.tts_provider, "voice": s.tts_voice, "base_pace": s.voice_pace,
+                                           "languages": s.languages, "course_lang": s.course_language} if s.tts_provider else None)
+    try:
+        result = asyncio.run(compiler.compile_slide(demo.slide_id_for(key)))
+        logger.info("demo topic %s compiled: %s", key, result.get("type"))
+    except Exception as e:  # noqa: BLE001
+        logger.exception("demo topic %s compile failed: %s", key, e)
+
+
+@router.put("/demo-topics/{key}", summary="Tutezy demo: create or update a topic (and compile it)")
+def super_demo_topic_put(key: str, body: DemoTopicUpsert, background: BackgroundTasks,
+                         db: Session = Depends(db_dependency), current_user: CustomUserDetails = Depends(get_current_user)):
+    _require_super_admin(current_user)
+    from ..services.tutor import demo
+    key = "".join(ch for ch in key.lower() if ch.isalnum() or ch in "-_")[:64]
+    if not key:
+        raise HTTPException(status_code=422, detail="key must be letters, digits, - or _")
+    demo.upsert_topic(db, key=key, title=body.title, source_text=body.source_text, emoji=body.emoji,
+                      language=body.language, sort_order=body.sort_order, is_active=body.is_active, style=body.style)
+    c = demo.config(db)
+    if body.compile and c["institute_id"]:
+        background.add_task(_compile_demo_topic, key, c["institute_id"], current_user.user_id)
+    return {"key": key, "compiling": bool(body.compile and c["institute_id"])}
+
+
+@router.post("/demo-topics/{key}/compile", summary="Tutezy demo: (re)compile one topic")
+def super_demo_topic_compile(key: str, background: BackgroundTasks, db: Session = Depends(db_dependency),
+                             current_user: CustomUserDetails = Depends(get_current_user)):
+    _require_super_admin(current_user)
+    from ..services.tutor import demo
+    c = demo.config(db)
+    if not c["institute_id"]:
+        raise HTTPException(status_code=422, detail="Set tutor.demo.institute_id first")
+    background.add_task(_compile_demo_topic, key, c["institute_id"], current_user.user_id)
+    return {"key": key, "compiling": True}
+
+
+@router.delete("/demo-topics/{key}", summary="Tutezy demo: delete a topic")
+def super_demo_topic_delete(key: str, db: Session = Depends(db_dependency),
+                            current_user: CustomUserDetails = Depends(get_current_user)):
+    _require_super_admin(current_user)
+    from ..services.tutor import demo
+    if not demo.delete_topic(db, key):
+        raise HTTPException(status_code=404, detail="Topic not found")
+    return {"deleted": key}

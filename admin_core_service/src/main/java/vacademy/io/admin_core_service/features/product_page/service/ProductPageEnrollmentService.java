@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
@@ -132,6 +133,9 @@ public class ProductPageEnrollmentService {
     @Autowired
     private InstituteRepository instituteRepository;
 
+    @Autowired
+    private UtmAttributionService utmAttributionService;
+
     // -------------------------------------------------------------------------
     // Step 1: form-submit — create user + ABANDONED_CART entries per invite
     // -------------------------------------------------------------------------
@@ -185,6 +189,19 @@ public class ProductPageEnrollmentService {
                     CustomFieldValueSourceTypeEnum.USER.name(),
                     user.getId());
         }
+
+        // Record the campaign that produced this person, HERE rather than after
+        // payment: the next thing the browser does is leave for the gateway, so
+        // a client-side beacon fired later would be lost on every abandoned
+        // cart — precisely the population a campaign report needs to see.
+        utmAttributionService.record(
+                request.getInstituteId(),
+                user.getId(),
+                user.getEmail(),
+                user.getMobileNumber(),
+                "PRODUCT_PAGE",
+                request.getProductPageCode(),
+                request.getUtmParams());
 
         log.info("Form submitted for user={}, {} ABANDONED_CART entries created", user.getId(),
                 abandonedCartEntryIds.size());

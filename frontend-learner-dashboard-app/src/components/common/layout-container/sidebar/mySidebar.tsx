@@ -147,6 +147,21 @@ export const MySidebar = ({
     getHamBurgerSidebarItemsData(t)
   );
   const [hideSidebar, setHideSidebar] = useState<boolean>(false);
+  // Institutes that moved their downloads to the dashboard's getApp widget turn
+  // this off. Starts true so the links do not flicker out on every load while
+  // the settings request is in flight.
+  const [showAppLinks, setShowAppLinks] = useState<boolean>(true);
+  // One gate for the footer's presence check and its contents, so the two can
+  // never disagree and leave an empty bordered strip above the profile row.
+  const hasAppLinks =
+    showAppLinks &&
+    Boolean(
+      playStoreAppLink ||
+        appStoreAppLink ||
+        windowsAppLink ||
+        macAppLink ||
+        learnerPortalUrl
+    );
   const [studentData, setStudentData] = useState<Student | null>(null);
   // Whether the institute's chat FEATURE is on (independent of the In-App
   // Messages tab's visibility) — gates the per-mentor chat entries.
@@ -424,6 +439,9 @@ export const MySidebar = ({
       ([settings, chatEnabled]) => {
         const shouldHide = settings?.sidebar?.visible === false;
         setHideSidebar(!!shouldHide);
+        // Only an explicit false hides the footer links: settings saved before
+        // this flag existed have no value here and must keep showing them.
+        setShowAppLinks(settings?.sidebar?.appLinks !== false);
         setChatFeatureEnabled(chatEnabled);
         setConfiguredTabs(
           ensureChatTab((settings?.sidebar?.tabs || []).slice(), chatEnabled)
@@ -676,18 +694,9 @@ export const MySidebar = ({
             })()}
         </SidebarMenu>
       </SidebarContent>
-      {(playStoreAppLink ||
-        appStoreAppLink ||
-        windowsAppLink ||
-        macAppLink ||
-        learnerPortalUrl ||
-        studentData) && (
+      {(hasAppLinks || studentData) && (
           <SidebarFooter className="border-t border-border">
-            {(playStoreAppLink ||
-              appStoreAppLink ||
-              windowsAppLink ||
-              macAppLink ||
-              learnerPortalUrl) &&
+            {hasAppLinks &&
             ((state === "expanded" || isMobile) ? (
               <div className="flex flex-col gap-2 px-2">
                 <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider ps-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">

@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { getInstituteId } from '@/constants/helper';
 import { reportApiError } from '@/lib/report-api-error';
 import {
@@ -64,6 +65,7 @@ export interface UsePayrollRunResult {
 }
 
 export function usePayrollRun(runId: string): UsePayrollRunResult {
+    const { t } = useTranslation('erpUsePayrollRun');
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
     const enabled = !!runId && !!instituteId;
@@ -110,7 +112,7 @@ export function usePayrollRun(runId: string): UsePayrollRunResult {
             try {
                 const message = await call();
                 await refresh();
-                return typeof message === 'string' && message.trim() ? message : 'Done';
+                return typeof message === 'string' && message.trim() ? message : t('done');
             } catch (error) {
                 reportApiError(error, {
                     feature: 'erp-payroll',
@@ -119,7 +121,7 @@ export function usePayrollRun(runId: string): UsePayrollRunResult {
                 return null;
             }
         },
-        [runId]
+        [runId, t]
     );
 
     const process = useCallback(

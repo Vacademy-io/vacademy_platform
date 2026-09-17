@@ -71,7 +71,7 @@ MAX_TURNS_PER_SESSION = 400
 LANG_TO_STT = {"en": "en-IN", "hi": "hi-IN"}
 # Pace, segmentation and cache keys are shared with the voice warm-up (runtime/speech.py).
 from ..services.tutor.runtime.speech import (  # noqa: E402
-    DEFINITION_PACE, PACE_MULTIPLIER, PACE_ORDER, TUTOR_SEGMENT_MAX_CHARS, cache_key as _cache_key, effective_pace,
+    DEFINITION_PACE, PACE_MULTIPLIER, PACE_ORDER, TUTOR_SEGMENT_MAX_CHARS, cache_key as _cache_key, spoken_form as _spoken_form, effective_pace,
     step_pace as _step_pace, tutor_segments as _tutor_segments,
 )
 QUESTION_BEAT_MS = 450
@@ -329,6 +329,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         tts_voice = ctx["tts_voice"]
         live_model: Optional[str] = ctx.get("live_model")
         max_seconds = int(ctx.get("max_seconds") or SESSION_MAX_SECONDS)
+        is_demo = bool(ctx.get("demo"))
         # What the learner answered per concept this session; quiz slides
         # write it back as a quiz activity log when the slide is done.
         attempt_log: Dict[str, Dict[str, Any]] = {}
@@ -400,7 +401,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 # marked for those sentences as the segment starts playing.
                 await _send({"type": "segment_text", "text": segment, "index": first_idx, "count": n_sent})
                 seg_pace = _effective_pace(segment)
-                key = _cache_key(tts_provider, voice, _lang_stt(), str(seg_pace), segment)
+                # What the engine hears: "9/16" as "9 by 16", not a date.
+                spoken = _spoken_form(segment, lang)
+                key = _cache_key(tts_provider, voice, _lang_stt(), str(seg_pace), spoken)
                 audio = _cache_get(key)
                 provider_used = tts_provider
                 if audio is None:
@@ -417,7 +420,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                         svc.bump_telemetry(tutor_session_id, tts_prepared_hits=1)
                 if audio is None:
                     audio, _mime, provider_used = await synthesize_speech(
-                        text=segment, language=_lang_stt(), voice=voice, provider=tts_provider,
+                        text=spoken, language=_lang_stt(), voice=voice, provider=tts_provider,
                         pace=seg_pace,
                     )
                     if audio:
@@ -429,7 +432,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                         svc.bump_telemetry(tutor_session_id, tts_chars=len(segment))
                         if provider_used == tts_provider:
                             _fire_and_forget(voice_cache.store(key, provider=tts_provider, voice=voice, lang=_lang_stt(),
-                                                               pace=str(seg_pace), text_=segment, audio=audio, mime=_mime))
+                                                               pace=str(seg_pace), text_=spoken, audio=audio, mime=_mime))
                 else:
                     svc.bump_telemetry(tutor_session_id, tts_cache_hits=1)
                 if not audio:
@@ -628,6 +631,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             minute = 0
             while True:
                 minute += 1
+                if is_demo:
+                    # The public taste is on the house: telemetry only.
+                    svc.bump_telemetry(tutor_session_id, minutes_charged=0)
+                    await asyncio.sleep(LIVE_METER_SECONDS)
+                    continue
                 ok = await asyncio.to_thread(svc.bill_live_minute, tutor_session_id=tutor_session_id,
                                              institute_id=institute_id, user_id=user_id, minute_no=minute)
                 if avatar_active:
@@ -708,7 +716,14 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _send({"type": "check", "concept_id": c.id if c else None, "check_type": chk.get("type"),
                              "prompt": prompt_text, "options": chk.get("options") or [],
                              "remediation": step.pointer.remediations})
-                await _say(prompts.tpl("ask", lang, prompt=prompt_text), meta={"concept_id": c.id if c else None, "kind": "ask"}, beat=True)
+                # The prompt is the ONE question. Plans compiled before the
+                # question-discipline rule sometimes end the narration on a
+                # question already; then the card carries the prompt and the
+                # voice does not ask a second, differently worded one.
+                if c and step.pointer.remediations == 0 and prompts.narration_asks(c.narration(lang)):
+                    await _send({"type": "beat", "ms": QUESTION_BEAT_MS})
+                else:
+                    await _say(prompts.tpl("ask", lang, prompt=prompt_text), meta={"concept_id": c.id if c else None, "kind": "ask"}, beat=True)
                 await _await("answer")
             elif step.kind == "topic_summary":
                 await _emit_state(step.pointer.phase)
@@ -762,7 +777,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 greet = prompts.tpl("greet_returning", lang, name=display_name, slide=_slide_name(),
                                     previous=previous_slide["slide_title"], summary=summary)
             elif first and not opened_once:
-                greet = prompts.tpl("greet", lang, name=display_name, teacher=teacher, slide=_slide_name())
+                greet = prompts.tpl(prompts.greet_key(lesson.style), lang, name=display_name, teacher=teacher, slide=_slide_name())
             else:
                 greet = prompts.tpl("next_slide", lang, slide=_slide_name())
             opened_once = True

@@ -4,6 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Info, WarningCircle } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Form } from '@/components/ui/form';
@@ -14,11 +16,15 @@ import { HrTextareaField } from '@/routes/erp/people/-components/HrFormFields';
 import { useActOnLeaveApplication } from '@/routes/erp/leave/-hooks/use-leave';
 import { employeeLabel, formatDays, humanizeToken } from './leave-meta';
 
-const schema = z.object({
-    rejection_reason: z.string().trim().max(500, 'Keep the reason under 500 characters'),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        rejection_reason: z
+            .string()
+            .trim()
+            .max(500, t('validation.reasonTooLong', { ns: 'erpLeaveActionDialog' })),
+    });
 
-type ActionFormValues = z.infer<typeof schema>;
+type ActionFormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 interface LeaveActionDialogProps {
     /** `null` closes the dialog; an application opens it for that row. */
@@ -45,11 +51,12 @@ const DetailRow = ({ label, value }: { label: string; value: ReactNode }) => (
  * with the dialog left open on the row it applies to.
  */
 export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDialogProps) => {
+    const { t } = useTranslation('erpLeaveActionDialog');
     const mutation = useActOnLeaveApplication();
     const [refusal, setRefusal] = useState<string | null>(null);
 
     const form = useForm<ActionFormValues>({
-        resolver: zodResolver(schema),
+        resolver: zodResolver(buildSchema(t)),
         defaultValues: { rejection_reason: '' },
         mode: 'onBlur',
     });
@@ -65,7 +72,9 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
         setRefusal(null);
         try {
             await mutation.mutateAsync({ id: application.id, status, rejectionReason });
-            toast.success(status === 'APPROVED' ? 'Leave approved' : 'Leave rejected');
+            toast.success(
+                status === 'APPROVED' ? t('toast.approved') : t('toast.rejected')
+            );
             onOpenChange(false);
         } catch (error) {
             // showToast: false — the message is the whole point here, and a toast that
@@ -76,8 +85,8 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
                     tags: { action: status === 'APPROVED' ? 'approve-leave' : 'reject-leave' },
                     fallbackMessage:
                         status === 'APPROVED'
-                            ? 'Could not approve this leave.'
-                            : 'Could not reject this leave.',
+                            ? t('errors.approveFailed')
+                            : t('errors.rejectFailed'),
                     showToast: false,
                 })
             );
@@ -88,7 +97,7 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
         const reason = form.getValues('rejection_reason').trim();
         if (!reason) {
             form.setError('rejection_reason', {
-                message: 'Give a reason — the employee is shown it with the rejection.',
+                message: t('validation.reasonRequired'),
             });
             return;
         }
@@ -97,7 +106,7 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
 
     return (
         <MyDialog
-            heading="Review leave request"
+            heading={t('heading')}
             open={!!application}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-xl"
@@ -109,25 +118,25 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        Close
+                        {t('actions.close')}
                     </MyButton>
                     <MyButton
                         buttonType="secondary"
                         scale="medium"
                         type="button"
                         onAsyncClick={onReject}
-                        loadingText="Rejecting…"
+                        loadingText={t('actions.rejecting')}
                     >
-                        Reject
+                        {t('actions.reject')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         type="button"
                         onAsyncClick={() => act('APPROVED')}
-                        loadingText="Approving…"
+                        loadingText={t('actions.approving')}
                     >
-                        Approve
+                        {t('actions.approve')}
                     </MyButton>
                 </div>
             }
@@ -136,15 +145,18 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
                 <div className="flex flex-col gap-4">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <DetailRow
-                            label="Employee"
+                            label={t('fields.employee')}
                             value={employeeLabel(
                                 application.employee_name,
                                 application.employee_code
                             )}
                         />
-                        <DetailRow label="Leave type" value={application.leave_type_name || '—'} />
                         <DetailRow
-                            label="Dates"
+                            label={t('fields.leaveType')}
+                            value={application.leave_type_name || '—'}
+                        />
+                        <DetailRow
+                            label={t('fields.dates')}
                             value={
                                 application.from_date
                                     ? `${formatDate(application.from_date)} → ${
@@ -156,12 +168,12 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
                             }
                         />
                         <DetailRow
-                            label="Total days"
+                            label={t('fields.totalDays')}
                             value={
                                 <span className="tabular-nums">
                                     {formatDays(application.total_days)}
                                     {application.is_half_day
-                                        ? ` · half day${
+                                        ? ` · ${t('fields.halfDay')}${
                                               application.half_day_type
                                                   ? ` (${humanizeToken(application.half_day_type)})`
                                                   : ''
@@ -172,17 +184,11 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
                         />
                     </div>
 
-                    <DetailRow label="Reason given" value={application.reason || '—'} />
+                    <DetailRow label={t('fields.reasonGiven')} value={application.reason || '—'} />
 
                     <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                         <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
-                        <span>
-                            Approving writes an ON_LEAVE attendance record for each of these days.
-                            The employee&apos;s balance and the month&apos;s payroll lock are
-                            re-checked as you approve — if the balance has since run out, or payroll
-                            has locked the month, the approval is refused and the reason appears
-                            here.
-                        </span>
+                        <span>{t('approvalNotice')}</span>
                     </div>
 
                     <Form {...form}>
@@ -190,10 +196,10 @@ export const LeaveActionDialog = ({ application, onOpenChange }: LeaveActionDial
                             <HrTextareaField
                                 control={form.control}
                                 name="rejection_reason"
-                                label="Rejection reason"
+                                label={t('fields.rejectionReason')}
                                 rows={3}
-                                placeholder="Why this is being turned down"
-                                description="Required to reject. Ignored when you approve."
+                                placeholder={t('fields.rejectionReasonPlaceholder')}
+                                description={t('fields.rejectionReasonDescription')}
                             />
                         </form>
                     </Form>

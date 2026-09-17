@@ -59,6 +59,17 @@
             "label": "Expressiveness",
             "hint": "How much the voice varies its intonation and emotion."
         },
+        "voiceModulation": {
+            "label": "Voice modulation",
+            "hint": "How much the pitch rises and falls. Applied to the audio itself, so it works with every voice and engine — a flat, read-out tone becomes conversational.",
+            "options": {
+                "default": "Platform default",
+                "off": "Off",
+                "subtle": "Subtle",
+                "conversational": "Conversational",
+                "lively": "Lively"
+            }
+        },
         "voiceTester": {
             "label": "Test this voice",
             "stop": "Stop",

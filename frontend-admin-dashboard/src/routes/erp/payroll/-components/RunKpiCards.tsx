@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -32,6 +33,8 @@ export const RunKpiCards = ({
     run: PayrollRunDTO | undefined;
     isLoading: boolean;
 }) => {
+    const { t } = useTranslation('erpRunKpiCards');
+
     if (isLoading || !run) {
         return (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -52,10 +55,10 @@ export const RunKpiCards = ({
 
     return (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <Tile label="Total gross" hint="Earnings before any deduction">
+            <Tile label={t('totalGross.label')} hint={t('totalGross.hint')}>
                 <MoneyCell value={run.total_gross} currency={currency} className="text-start" />
             </Tile>
-            <Tile label="Total deductions" hint="TDS, PF, ESI, loans, held amounts">
+            <Tile label={t('totalDeductions.label')} hint={t('totalDeductions.hint')}>
                 <MoneyCell
                     value={run.total_deductions}
                     currency={currency}
@@ -63,21 +66,21 @@ export const RunKpiCards = ({
                     className="text-start"
                 />
             </Tile>
-            <Tile label="Total net pay" hint="What employees actually receive">
+            <Tile label={t('totalNetPay.label')} hint={t('totalNetPay.hint')}>
                 <MoneyCell
                     value={run.total_net_pay}
                     currency={currency}
                     className="text-start font-semibold"
                 />
             </Tile>
-            <Tile label="Total employer cost" hint="Net pay plus employer contributions">
+            <Tile label={t('totalEmployerCost.label')} hint={t('totalEmployerCost.hint')}>
                 <MoneyCell
                     value={run.total_employer_cost}
                     currency={currency}
                     className="text-start"
                 />
             </Tile>
-            <Tile label="Employees" hint="Lines computed in this run">
+            <Tile label={t('employees.label')} hint={t('employees.hint')}>
                 <span className="tabular-nums">{run.total_employees ?? 0}</span>
             </Tile>
         </div>

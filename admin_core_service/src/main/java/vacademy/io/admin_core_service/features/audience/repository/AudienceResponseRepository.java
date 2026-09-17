@@ -1456,6 +1456,34 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("userIds") List<String> userIds);
 
         /**
+         * The newest ACTIVE lead row for one person inside one institute, as either
+         * the submitter or the child the submission was for.
+         *
+         * <p>Used by click-to-call from the LMS surfaces (students list / attendance /
+         * assessment side-view), where the frontend only knows a learner's user id.
+         * A learner who ALSO came through a form gets their call filed on the same
+         * lead — same call history, same timeline, disposition still works. A learner
+         * with no lead row simply yields nothing and the call is logged against the
+         * user alone.
+         *
+         * <p>Institute-scoped through the audience join for the same reason
+         * {@link #findAllByInstituteAndIds} is: a user id alone can't be allowed to
+         * reach another tenant's lead. Paged so the LIMIT 1 stays in SQL.
+         */
+        @Query("""
+                            SELECT ar.id FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND (ar.userId = :userId OR ar.studentUserId = :userId)
+                            AND ar.audienceStatus = 'ACTIVE'
+                            ORDER BY ar.createdAt DESC
+                        """)
+        List<String> findLatestResponseIdForUserInInstitute(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId,
+                        org.springframework.data.domain.Pageable pageable);
+
+        /**
          * Find audience response by parent mobile number for pre-fill lookup
          */
         Optional<AudienceResponse> findFirstByParentMobileOrderByCreatedAtDesc(String parentMobile);

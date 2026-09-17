@@ -311,6 +311,9 @@ class PlanStatusItem(BaseModel):
     source_kind: Optional[str] = None
     # What the newest plan was compiled from: script | captions | transcript | pdf | None
     text_kind: Optional[str] = None
+    # Board-quality asks the compiler let go (a dense derivation, an abstract
+    # board with no diagram). The plan is READY and teachable; these are advice.
+    quality_notes: List[str] = Field(default_factory=list)
 
 
 class PackagePlansResponse(BaseModel):

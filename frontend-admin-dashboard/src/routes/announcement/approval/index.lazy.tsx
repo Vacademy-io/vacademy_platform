@@ -2,6 +2,7 @@ import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export const Route = createLazyFileRoute('/announcement/approval/')({
     component: () => (
@@ -13,15 +14,16 @@ export const Route = createLazyFileRoute('/announcement/approval/')({
 
 function AnnouncementApprovalPage() {
     const { setNavHeading } = useNavHeadingStore();
+    const { t } = useTranslation('announcementApprovalIndex');
 
     useEffect(() => {
-        setNavHeading('Announcement Approval');
-    }, [setNavHeading]);
+        setNavHeading(t('pageHeading'));
+    }, [setNavHeading, t]);
 
     return (
         <div className="p-4">
             {/* TODO: Pending approvals list with approve/reject actions */}
-            <h2 className="text-xl font-semibold">Announcement Approval</h2>
+            <h2 className="text-xl font-semibold">{t('pageHeading')}</h2>
         </div>
     );
 }

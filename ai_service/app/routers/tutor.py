@@ -25,6 +25,8 @@ from ..schemas.tutor import (
 )
 from ..schemas.tutor import CompileKbGrounding, CompileOptions
 from ..services.tutor import plan_store
+from ..services.tutor.runtime import state as sm
+from ..services.tutor.runtime import session_service as svc
 from ..services.tutor.plan_compiler import PlanCompiler
 from ..services.tutor.roles import is_staff, normalize_roles
 from ..services.tutor.insights_export import insights_csv_text
@@ -275,6 +277,7 @@ def package_plans(
                 topics=c["topics"], concepts=c["concepts"],
                 updated_at=plan.updated_at.isoformat() if plan.updated_at else None,
                 source_kind=kinds.get(s["slide_id"]), text_kind=inputs.get("text_kind"),
+                quality_notes=plan_store.quality_notes_of(plan),
             )
         counts[item.status] = counts.get(item.status, 0) + 1
         items.append(item)
@@ -594,6 +597,110 @@ async def tutor_options(
     return {"voices": voices, "models": models, "smallest_available": smallest_available(),
             "avatar_available": spatius_service.available(), "avatar_provider": "spatius" if spatius_service.available() else None,
             "avatars": avatars, "fees": _one_time_fees(db)}
+
+
+# ── public 3-minute demo (tutezy.ai; no auth) ────────────────────────────────
+
+class DemoStartRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    topic_key: str = Field(..., min_length=1, max_length=64)
+    language: Optional[str] = Field(default=None, pattern="^(en|hi)$")
+    mode: str = Field(default="VOICE", pattern="^(VOICE|TEXT)$")
+
+
+@router.get("/demo/topics", summary="Public: topics the free 3-minute lesson can teach")
+def demo_topics(db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..services.tutor import demo
+    return demo.public_topics(db)
+
+
+@router.post("/demo/start", summary="Public: start a free, short, unbilled lesson as a guest")
+def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..services import spatius_service
+    from ..services.tutor import demo
+    c = demo.config(db)
+    pub = demo.public_topics(db)
+    if not pub["enabled"]:
+        raise HTTPException(status_code=503, detail="The free lesson is not available right now. Book a demo instead.")
+    # Look up among every startable topic, not just the listed ones: an unlisted topic
+    # (a prospect's own chapter) is reachable only by its direct link.
+    topic = demo.topic_by_key(demo.startable_topics(db), payload.topic_key)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Unknown topic")
+    topic = {**topic, "slide_id": demo.slide_id_for(topic["key"])}
+    ip = demo.client_ip(request)
+    iph = demo.ip_hash(ip)
+    reason = demo.grant_allowed(db, iph=iph, per_ip_per_day=c["per_ip_per_day"], daily_cap=c["daily_cap"])
+    if reason:
+        raise HTTPException(status_code=429, detail=reason)
+    name = demo.sanitize_name(payload.name)
+    user_id = demo.guest_user_id()
+    try:
+        boot = svc.start_session(user_id=user_id, institute_id=c["institute_id"], package_session_id=c["package_session_id"] or "demo",
+                                 slide_id=str(topic["slide_id"]), mode=payload.mode,
+                                 language=payload.language or topic.get("language") or "en",
+                                 guest={"name": name, "minutes": c["minutes"]})
+    except (PermissionError, LookupError, ValueError) as e:
+        logger.warning("demo start failed for topic %s: %s", payload.topic_key, e)
+        raise HTTPException(status_code=503, detail="The free lesson is not ready right now. Book a demo instead.")
+    demo.record_grant(db, iph=iph, name=name, topic_key=payload.topic_key, tutor_session_id=boot["tutor_session_id"],
+                      user_agent=request.headers.get("user-agent") or "")
+    lesson: sm.LessonPlan = boot["lesson"]
+    settings: TutorSettings = boot["settings"]
+    token = demo.mint_guest_token(user_id=user_id, tutor_session_id=boot["tutor_session_id"], institute_id=c["institute_id"])
+    logger.info("demo lesson %s started (topic %s, ip %s…)", boot["tutor_session_id"], payload.topic_key, iph[:8])
+    return {
+        "token": token,
+        "minutes": c["minutes"],
+        "boot": {
+            "tutor_session_id": boot["tutor_session_id"],
+            "slide_id": lesson.slide_id,
+            "slide_title": lesson.slide_title,
+            "language": boot["language"],
+            "languages": [x for x in (settings.languages or ["en"]) if x in ("en", "hi")] or ["en"],
+            "resumed": False,
+            "teacher_name": c["teacher_name"] or settings.teacher_name,
+            "teacher_avatar_file_id": settings.teacher_avatar_file_id,
+            "learner_name": name,
+            "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in lesson.topics],
+            "progress": boot["pointer"].progress(lesson),
+            "socket_path": f"/tutor/ws/{boot['tutor_session_id']}",
+            # Premium avatar of the demo institute, in voice lessons (unbilled like the rest).
+            "avatar": ({"provider": "spatius", "avatar_id": settings.avatar_id, "app_id": spatius_service.app_id()}
+                       if settings.avatar_provider == "spatius" and settings.avatar_id and spatius_service.available()
+                       and payload.mode == "VOICE" else None),
+        },
+    }
+
+
+class DemoAvatarTokenRequest(BaseModel):
+    tutor_session_id: str = Field(..., min_length=1, max_length=64)
+
+
+@router.post("/demo/avatar-token", summary="Public: Spatius session token for a guest lesson (guest JWT in Authorization)")
+async def demo_avatar_token(payload: DemoAvatarTokenRequest, authorization: Optional[str] = Header(default=None),
+                            db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..core.security import decode_access_token
+    from ..models.tutor_runtime import TutorSession
+    from ..services import spatius_service
+    from ..services.tutor import demo
+    token = (authorization or "").replace("Bearer", "").strip()
+    claims = decode_access_token(token) if token else None
+    if not claims or str(claims.get("demo") or "") != payload.tutor_session_id:
+        raise HTTPException(status_code=401, detail="Guest token required")
+    ts = db.get(TutorSession, payload.tutor_session_id)
+    if ts is None or ts.status != "ACTIVE" or ts.user_id != str(claims.get("user") or ""):
+        raise HTTPException(status_code=404, detail="Session not found")
+    c = demo.config(db)
+    pkg = svc.package_of_session(db, ts.package_session_id)
+    s = resolve_settings(db, package_id=pkg[0] if pkg else "", institute_id=c["institute_id"] or ts.institute_id)
+    if not (s.avatar_provider == "spatius" and s.avatar_id and spatius_service.available()):
+        raise HTTPException(status_code=404, detail="This lesson has no teacher avatar")
+    try:
+        tok = await spatius_service.mint_session_token()
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {**tok, "avatar_id": s.avatar_id, "provider": "spatius"}
 
 
 # ── registered assets (voices + avatars the institute may use) ───────────────

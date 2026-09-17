@@ -39,6 +39,11 @@ interface LayoutContainerProps {
      * instead of growing the whole page. Implies fullWidth.
      */
     fillViewport?: boolean;
+    /**
+     * Distraction-free: no app sidebar, nav rail or top bar — the route owns
+     * the whole viewport (Live AI Tutor lessons). Implies fillViewport.
+     */
+    immersive?: boolean;
 }
 
 export const LayoutContainer = ({
@@ -48,8 +53,10 @@ export const LayoutContainer = ({
     hideBrandingHeader,
     enableChatbotPanel = true, // Docked panel enabled by default
     fullWidth = false,
-    fillViewport = false,
+    fillViewport: fillViewportProp = false,
+    immersive = false,
 }: LayoutContainerProps) => {
+    const fillViewport = fillViewportProp || immersive;
     const { setHasCustomSidebar } = useStore();
     const { isOpen: chatbotIsOpen } = useChatbotContext();
     const { panelWidth, setIsDockedMode, viewMode, setViewMode } = useChatbotPanelStore();
@@ -123,11 +130,13 @@ export const LayoutContainer = ({
 
     return (
         <>
-            <MySidebar
-                sidebarComponent={sidebarComponent}
-                hideBrandingHeader={hideBrandingHeader}
-            />
-            {showPlayRail && <PlayNavRail />}
+            {!immersive && (
+                <MySidebar
+                    sidebarComponent={sidebarComponent}
+                    hideBrandingHeader={hideBrandingHeader}
+                />
+            )}
+            {showPlayRail && !immersive && <PlayNavRail />}
             <SidebarInset
                 className={cn("overflow-x-hidden w-full", fillViewport && "h-svh max-h-svh overflow-hidden")}
                 style={{
@@ -136,7 +145,7 @@ export const LayoutContainer = ({
                     transition: "margin-right 0.2s ease-in-out",
                 }}
             >
-                <Navbar />
+                {!immersive && <Navbar />}
                 {/* One content contract for every routed page: centered, capped
                     at screen-xl, with a consistent gutter + top rhythm. Routes
                     that self-manage (className="!m-0 !p-0 max-w-none") still
@@ -146,7 +155,7 @@ export const LayoutContainer = ({
                     className={cn(
                         "overflow-x-hidden",
                         fillViewport
-                            ? "flex min-h-0 flex-1 flex-col p-3 max-w-full md:p-4"
+                            ? cn("flex min-h-0 flex-1 flex-col max-w-full", immersive ? "p-2 md:p-3" : "p-3 md:p-4")
                             : fullWidth
                               ? "m-3 md:m-5 max-w-full"
                               : "mx-auto w-full max-w-screen-xl px-4 py-4 sm:px-6 lg:px-8 lg:py-6",

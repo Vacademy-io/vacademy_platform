@@ -15,7 +15,14 @@ const POLL_INTERVAL = 20000; // 20 seconds
 export function InboxPage() {
     const { t } = useTranslation('communicationInboxPage');
     const instituteId = getInstituteId() || '';
-    const { phone: phoneInUrl } = useSearch({ from: '/communication/inbox/' });
+    // The inbox is also embedded as a tab inside /communication/notification-hub, where the
+    // /communication/inbox route is not active. Reading its search with `from` would throw
+    // ("Could not find an active match ..."), so read it leniently. `undefined` also doubles as
+    // the "we're embedded" signal: syncing the open conversation to `?phone=` only makes sense
+    // when the inbox itself owns that parameter.
+    const inboxSearch = useSearch({ from: '/communication/inbox/', shouldThrow: false });
+    const isInboxRoute = inboxSearch !== undefined;
+    const phoneInUrl = inboxSearch?.phone ?? null;
     const navigate = useNavigate({ from: '/communication/inbox/' });
     const {
         selectedPhone,
@@ -44,12 +51,18 @@ export function InboxPage() {
     const selectedFromUrl = phoneInUrl ?? null;
 
     useEffect(() => {
+        // Embedded (notification-hub tab): there is no ?phone= parameter to adopt, and running
+        // this would deselect whatever the store already has open.
+        if (!isInboxRoute) return;
         if (shouldAdoptUrlPhone(selectedFromUrl, useInboxStore.getState().selectedPhone)) {
             useInboxStore.getState().selectPhone(selectedFromUrl);
         }
-    }, [selectedFromUrl]);
+    }, [isInboxRoute, selectedFromUrl]);
 
     useEffect(() => {
+        // Embedded (notification-hub tab): the inbox route isn't active, so there's no inbox URL
+        // to write back to.
+        if (!isInboxRoute) return;
         // Read the selection from the store, not from this render. The effect above runs first in
         // the same commit, so after a refresh with ?phone= the store is already correct while this
         // render's copy is still null — comparing against that stale value cleared the parameter,
@@ -61,7 +74,7 @@ export function InboxPage() {
         if (search) {
             navigate({ search, replace: true });
         }
-    }, [selectedPhone, selectedFromUrl, navigate]);
+    }, [isInboxRoute, selectedPhone, selectedFromUrl, navigate]);
 
     const loadConversations = useCallback(async (reset = false) => {
         setIsLoadingConversations(true);

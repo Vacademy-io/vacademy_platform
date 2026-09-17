@@ -51,7 +51,7 @@ public class AiCallApiKey {
 
     /** SHA-256 hex of the full plaintext key — the auth lookup key. */
     @Column(name = "api_key_hash", nullable = false, unique = true)
-    private String apiKeyHash;
+    private String apiKeyEncrypted;
 
     @Column(name = "status", nullable = false)
     private String status;

@@ -8,14 +8,13 @@ import vacademy.io.admin_core_service.features.telephony.apikey.entity.AiCallApi
 import vacademy.io.admin_core_service.features.telephony.apikey.repository.AiCallApiKeyRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import vacademy.io.admin_core_service.features.audience.service.TokenEncryptionService;
 
 /**
  * Issues and verifies API keys for the external AI-Calling API.
@@ -45,6 +44,7 @@ public class AiCallApiKeyService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final AiCallApiKeyRepository repository;
+    private final TokenEncryptionService encryption;
 
     // ── Issuing (admin, JWT-authenticated) ───────────────────────────────────
 
@@ -68,13 +68,12 @@ public class AiCallApiKeyService {
         RANDOM.nextBytes(rnd);
         String secretPart = HexFormat.of().formatHex(rnd);
         String plaintext = KEY_PREFIX + secretPart;
-        String hash = sha256Hex(plaintext);
 
         AiCallApiKey entity = AiCallApiKey.builder()
                 .instituteId(instituteId)
                 .keyName(keyName)
                 .keyPrefix(truncate(plaintext, 16))
-                .apiKeyHash(hash)
+                .apiKeyEncrypted(encryption.encrypt(plaintext))
                 .status(AiCallApiKey.STATUS_ACTIVE)
                 .createdBy(createdBy)
                 .build();
@@ -108,8 +107,9 @@ public class AiCallApiKeyService {
     public AiCallApiKey verify(String presentedKey) {
         if (presentedKey == null || presentedKey.isBlank())
             throw unauthorized("API key required");
-        AiCallApiKey key = repository.findByApiKeyHash(sha256Hex(presentedKey.trim()))
-                .orElseThrow(() -> unauthorized("Invalid API key"));
+        AiCallApiKey key = repository.findByStatus(AiCallApiKey.STATUS_ACTIVE).stream()
+                .filter(k -> { try { return presentedKey.trim().equals(encryption.decrypt(k.getApiKeyEncrypted())); } catch (Exception e) { return false; } })
+                .findFirst().orElseThrow(() -> unauthorized("Invalid API key"));
         if (!key.isActive())
             throw unauthorized("API key has been revoked");
         // Best-effort stamp (own tx — a failure here must not fail the call).
@@ -127,16 +127,6 @@ public class AiCallApiKeyService {
      */
     private static ResponseStatusException unauthorized(String msg) {
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, msg);
-    }
-
-    public static String sha256Hex(String s) {
-        try {
-            byte[] d = MessageDigest.getInstance("SHA-256")
-                    .digest(s.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(d);
-        } catch (Exception e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
     }
 
     private static String truncate(String s, int n) {

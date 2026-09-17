@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS ai_call_api_key (
     institute_id  VARCHAR(50) NOT NULL,
     key_name      VARCHAR(100),                    -- operator label, e.g. "client-xyz production"
     key_prefix    VARCHAR(16)  NOT NULL,           -- visible head of the plaintext, for identification
-    api_key_hash  VARCHAR(64)  NOT NULL,           -- SHA-256 hex of the full plaintext key
+    api_key_encrypted TEXT NOT NULL,               -- encrypted full key
     status        VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',  -- ACTIVE | REVOKED
     created_by    VARCHAR(50),                     -- admin user id that issued it
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
@@ -36,9 +36,6 @@ CREATE TABLE IF NOT EXISTS ai_call_api_key (
 );
 
 -- The presented key is hashed and looked up by hash — this index IS the auth path.
-CREATE UNIQUE INDEX IF NOT EXISTS ux_ai_call_api_key_hash
-    ON ai_call_api_key (api_key_hash);
-
 CREATE INDEX IF NOT EXISTS ix_ai_call_api_key_institute
     ON ai_call_api_key (institute_id);
 

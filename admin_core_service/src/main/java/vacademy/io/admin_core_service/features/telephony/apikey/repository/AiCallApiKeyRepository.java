@@ -13,7 +13,7 @@ import java.util.Optional;
 public interface AiCallApiKeyRepository extends JpaRepository<AiCallApiKey, String> {
 
     /** The auth path: the presented plaintext is hashed and looked up by hash. */
-    Optional<AiCallApiKey> findByApiKeyHash(String apiKeyHash);
+    List<AiCallApiKey> findByStatus(String status);
 
     List<AiCallApiKey> findByInstituteIdOrderByCreatedAtDesc(String instituteId);
 

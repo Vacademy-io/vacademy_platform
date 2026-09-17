@@ -6,7 +6,11 @@ export type PaperQuestionType =
     | 'TRUE_FALSE'
     | 'ONE_WORD'
     | 'LONG_ANSWER'
-    | 'NUMERIC';
+    | 'NUMERIC'
+    /** Stored as MCQS, with a source-grounded comprehension passage in its stem. */
+    | 'PASSAGE'
+    /** Stored as MCQS using the standard four Assertion–Reason alternatives. */
+    | 'ASSERTION_REASON';
 export type PaperDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
 export interface BlueprintRow {

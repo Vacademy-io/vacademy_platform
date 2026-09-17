@@ -5,7 +5,9 @@
         "TRUE_FALSE": "Vrai / faux",
         "ONE_WORD": "Un mot",
         "LONG_ANSWER": "Réponse longue",
-        "NUMERIC": "Numérique"
+        "NUMERIC": "Numérique",
+        "PASSAGE": "Passage / compréhension",
+        "ASSERTION_REASON": "Assertion–raison"
     },
     "difficultyLabel": {
         "EASY": "Facile",

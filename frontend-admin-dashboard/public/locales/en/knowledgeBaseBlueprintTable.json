@@ -5,7 +5,9 @@
         "TRUE_FALSE": "True / false",
         "ONE_WORD": "One word",
         "LONG_ANSWER": "Long answer",
-        "NUMERIC": "Numerical"
+        "NUMERIC": "Numerical",
+        "PASSAGE": "Passage / comprehension",
+        "ASSERTION_REASON": "Assertion–Reason"
     },
     "difficultyLabel": {
         "EASY": "Easy",

@@ -5,7 +5,9 @@
         "TRUE_FALSE": "सही / गलत",
         "ONE_WORD": "एक शब्द",
         "LONG_ANSWER": "दीर्घ उत्तर",
-        "NUMERIC": "संख्यात्मक"
+        "NUMERIC": "संख्यात्मक",
+        "PASSAGE": "गद्यांश / बोध",
+        "ASSERTION_REASON": "कथन–कारण"
     },
     "difficultyLabel": {
         "EASY": "आसान",

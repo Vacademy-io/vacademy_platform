@@ -30,7 +30,9 @@
             "trueFalse": "صواب / خطأ",
             "oneWord": "كلمة واحدة",
             "longAnswer": "إجابة طويلة",
-            "numeric": "رقمي"
+            "numeric": "رقمي",
+            "passage": "قطعة / فهم المقروء",
+            "assertionReason": "الادعاء والسبب"
         },
         "difficultyOptions": {
             "easy": "سهل",

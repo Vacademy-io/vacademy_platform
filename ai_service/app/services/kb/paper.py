@@ -69,11 +69,14 @@ PASSAGES_PER_ROW = 6
 
 MAX_QUESTIONS_PER_PAPER = 120
 
-QUESTION_TYPES = ("MCQS", "MCQM", "TRUE_FALSE", "ONE_WORD", "LONG_ANSWER", "NUMERIC")
+QUESTION_TYPES = (
+    "MCQS", "MCQM", "TRUE_FALSE", "ONE_WORD", "LONG_ANSWER", "NUMERIC",
+    "PASSAGE", "ASSERTION_REASON",
+)
 
 # Types that carry options, i.e. where `correct_options` is the answer key rather
 # than `ans`.
-OPTION_QUESTION_TYPES = ("MCQS", "MCQM", "TRUE_FALSE")
+OPTION_QUESTION_TYPES = ("MCQS", "MCQM", "TRUE_FALSE", "PASSAGE", "ASSERTION_REASON")
 
 # What each blueprint type is STORED as.
 #
@@ -85,7 +88,14 @@ OPTION_QUESTION_TYPES = ("MCQS", "MCQM", "TRUE_FALSE")
 # format_questions now handles NUMERIC and TRUE_FALSE natively, so the downgrade is
 # gone and every planning type is stored as itself. Questions saved BEFORE this
 # change remain stored as ONE_WORD and keep grading exactly as they did.
-STORAGE_QUESTION_TYPE = {t: t for t in QUESTION_TYPES}
+# PASSAGE and ASSERTION_REASON are authoring formats, not platform question
+# enums. Both are saved as a normal single-choice MCQ so learners, exports and
+# auto-evaluation work without every downstream surface needing a new type.
+STORAGE_QUESTION_TYPE = {
+    **{t: t for t in QUESTION_TYPES},
+    "PASSAGE": "MCQS",
+    "ASSERTION_REASON": "MCQS",
+}
 
 
 @dataclass
@@ -310,7 +320,7 @@ Produce a BLUEPRINT — the plan, not the questions. Return STRICT JSON, no pros
       "node_ids": ["ids copied EXACTLY from the outline above that this row draws on"],
       "page_start": 11,
       "page_end": 18,
-      "question_type": "MCQS | MCQM | TRUE_FALSE | ONE_WORD | LONG_ANSWER | NUMERIC",
+      "question_type": "MCQS | MCQM | TRUE_FALSE | ONE_WORD | LONG_ANSWER | NUMERIC | PASSAGE | ASSERTION_REASON",
       "count": 10,
       "marks_each": 1,
       "difficulty": "EASY | MEDIUM | HARD",
@@ -486,6 +496,20 @@ image tag that is not in that list.
             "A numerical problem with a definite numeric answer. Show the full "
             "working in the explanation, with units."
         ),
+        "PASSAGE": (
+            "Write a short, self-contained comprehension passage (60–120 words) "
+            "in the question content, followed by ONE question about it. Then give "
+            "exactly 4 options and exactly one correct answer. The passage and its "
+            "question must both be grounded in the supplied material."
+        ),
+        "ASSERTION_REASON": (
+            "Write an Assertion and a Reason, then use exactly these four options: "
+            "(1) Both Assertion and Reason are true, and Reason is the correct "
+            "explanation of Assertion; (2) Both are true, but Reason is not the "
+            "correct explanation; (3) Assertion is true, but Reason is false; "
+            "(4) Assertion is false, but Reason is true. Exactly one option must "
+            "be correct and both statements must be supported by the material."
+        ),
     }
 
     return f"""Write {row.count} exam questions for a teacher, using ONLY the passages below from their own material.
@@ -534,7 +558,7 @@ RULES THAT MATTER:
   provided solution…", no discussion of whether the source is ambiguous, no
   mention of these instructions. If the source material is unclear, silently
   pick the best-supported answer and give clean working for THAT.
-- For MCQS and TRUE_FALSE give EXACTLY ONE correct option. If more than one option
+- For MCQS, TRUE_FALSE, PASSAGE and ASSERTION_REASON give EXACTLY ONE correct option. If more than one option
   is defensible, rewrite the options so only one is. For MCQM give at least two.
 - Ground EVERY question in the passages. If the passages do not support {row.count}
   distinct questions, return fewer — a padded paper is worse than a short one.

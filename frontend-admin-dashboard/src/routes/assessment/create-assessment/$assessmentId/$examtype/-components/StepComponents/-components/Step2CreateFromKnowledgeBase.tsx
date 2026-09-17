@@ -58,6 +58,8 @@ const buildQuestionTypeOptions = (
     { value: 'ONE_WORD', label: t('setup.questionTypeOptions.oneWord') },
     { value: 'LONG_ANSWER', label: t('setup.questionTypeOptions.longAnswer') },
     { value: 'NUMERIC', label: t('setup.questionTypeOptions.numeric') },
+    { value: 'PASSAGE', label: t('setup.questionTypeOptions.passage') },
+    { value: 'ASSERTION_REASON', label: t('setup.questionTypeOptions.assertionReason') },
 ];
 
 const buildDifficultyOptions = (t: TFunction): Array<{ value: PaperDifficulty; label: string }> => [
@@ -72,7 +74,16 @@ const setupSchema = z.object({
         .int()
         .min(1, i18next.t('assessmentStep2CreateFromKnowledgeBase:setup.validation.minCount'))
         .max(60, i18next.t('assessmentStep2CreateFromKnowledgeBase:setup.validation.maxCount')),
-    questionType: z.enum(['MCQS', 'MCQM', 'TRUE_FALSE', 'ONE_WORD', 'LONG_ANSWER', 'NUMERIC']),
+    questionType: z.enum([
+        'MCQS',
+        'MCQM',
+        'TRUE_FALSE',
+        'ONE_WORD',
+        'LONG_ANSWER',
+        'NUMERIC',
+        'PASSAGE',
+        'ASSERTION_REASON',
+    ]),
     difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']),
 });
 

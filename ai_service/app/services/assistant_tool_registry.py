@@ -2093,18 +2093,45 @@ def load_assistant_tools_setting(db: Session, institute_id: str) -> Optional[Dic
     """
     Read the institute's ASSISTANT_TOOLS_SETTING from the shared admin_core DB.
 
-    Delegates to the shared reader, which knows the envelope admin_core_service
-    actually writes (``setting_json["setting"][KEY]["data"]``) and keeps the
-    legacy top-level lookup as a fallback. Returns the parsed setting blob or
-    None when the institute has not configured it — in which case the Settings
-    leg falls back to ``default_enabled`` tools.
+    Institute settings are stored as a single JSON STRING in
+    ``institutes.setting_json`` (common_service Institute.java -> @Column
+    name="setting_json", a String). Keys map to per-feature blobs via the
+    generic settings strategy. Returns the parsed setting blob or None when the
+    institute has not configured it — in which case the Settings leg falls back
+    to ``default_enabled`` tools.
 
     Fails closed-to-default (returns None, never raises) so a settings read
     problem can never silently grant a tool.
     """
-    from .institute_setting_reader import load_institute_setting_data
+    try:
+        row = db.execute(
+            text("SELECT setting_json FROM institutes WHERE id = :id"),
+            {"id": institute_id},
+        ).first()
+    except Exception as e:
+        logger.warning("Could not read institutes.setting_json for %s: %s", institute_id, e)
+        return None
 
-    return load_institute_setting_data(db, institute_id, ASSISTANT_TOOLS_SETTING_KEY)
+    if not row or not row[0]:
+        return None
+
+    raw = row[0]
+    try:
+        settings_obj = json.loads(raw) if isinstance(raw, str) else raw
+    except (ValueError, TypeError) as e:
+        logger.warning("institutes.setting_json for %s is not valid JSON: %s", institute_id, e)
+        return None
+
+    if not isinstance(settings_obj, dict):
+        return None
+
+    node = settings_obj.get(ASSISTANT_TOOLS_SETTING_KEY)
+    if node is None:
+        return None
+    # The generic settings strategy may wrap the payload as {key, name, data:{...}}.
+    if isinstance(node, dict) and isinstance(node.get("data"), dict):
+        return node["data"]
+    return node if isinstance(node, dict) else None
 
 
 def _effective_enabled_tools(setting: Optional[Dict[str, Any]], roles: Optional[List[str]]) -> set:

@@ -50,7 +50,6 @@ import {
     type SubOrgColumn,
 } from '../../-utils/sub-org-columns';
 import { CreateSubOrgModal } from './create-sub-org-modal';
-import { ShareAdminCredentialsDialog } from './share-admin-credentials-dialog';
 import { FilterChip } from '../../-components/filter-chip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -126,8 +125,6 @@ export function SubOrgList() {
     const { t } = useTranslation('manageCustomTeamsSubOrgList');
     const { t: tColumns } = useTranslation('manageCustomTeamsSubOrgColumns');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    /** Row whose admin is about to be re-sent their login details; null = dialog closed. */
-    const [credentialsTarget, setCredentialsTarget] = useState<SubOrgListItem | null>(null);
     const [searchInput, setSearchInput] = useState('');
     const [statusFilter, setStatusFilter] = useState<string[]>([]);
     const [cityFilter, setCityFilter] = useState<string[]>([]);
@@ -149,9 +146,6 @@ export function SubOrgList() {
     // Per-role capabilities (institute admins and sub-org admins always pass).
     const canCreate = subOrgPermission('canCreate');
     const canExport = subOrgPermission('canExport');
-    // Mirrors the backend's PERM_MANAGE_TEAM gate on resend-admin-credentials, so a role
-    // without it never sees a menu item that would only 403.
-    const canShareCredentials = subOrgPermission('canManageTeam');
     // Prefer the institute's white-label learner domain so the invite opens on
     // the institute's own portal; a backend `short_url` (already domain-correct)
     // still wins when present.
@@ -297,9 +291,8 @@ export function SubOrgList() {
                 buildInviteUrl,
                 copyInviteLink,
                 openSubOrg,
-                shareCredentials: canShareCredentials ? setCredentialsTarget : undefined,
             }),
-        [tColumns, buildInviteUrl, copyInviteLink, openSubOrg, canShareCredentials]
+        [tColumns, buildInviteUrl, copyInviteLink, openSubOrg]
     );
 
     /** Natural ids reconciled against the saved order — the on-screen left-to-right order. */
@@ -812,13 +805,6 @@ export function SubOrgList() {
             {canCreate && (
                 <CreateSubOrgModal open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen} />
             )}
-
-            <ShareAdminCredentialsDialog
-                org={credentialsTarget}
-                onOpenChange={(open) => {
-                    if (!open) setCredentialsTarget(null);
-                }}
-            />
         </div>
     );
 }

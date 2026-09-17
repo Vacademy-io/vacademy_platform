@@ -116,31 +116,6 @@ export interface GlobalSettings {
         header?: any;
         footer?: any;
     };
-    /**
-     * Site-level search-engine settings, read by the learner app's edge
-     * middleware for crawlers: keywords + verification go into <head>, the
-     * organization block becomes schema.org EducationalOrganization JSON-LD
-     * (footer social links are merged into sameAs automatically). Per-page
-     * title/description/share image live on each page's `seo`.
-     */
-    seo?: {
-        keywords?: string[];
-        /** `content` value of Search Console's HTML-tag verification. */
-        googleSiteVerification?: string;
-        organization?: {
-            name?: string;
-            legalName?: string;
-            description?: string;
-            founder?: string;
-            foundingDate?: string;
-            email?: string;
-            telephone?: string;
-            address?: string;
-            /** Absolute URL of a clean logo on a plain background (≥112px). */
-            logo?: string;
-            sameAs?: string[];
-        };
-    };
     /** Sticky header — sticks to top on scroll */
     stickyHeader?: boolean;
     /** Show back-to-top floating button */

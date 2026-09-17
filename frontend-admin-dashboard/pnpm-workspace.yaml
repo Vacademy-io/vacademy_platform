@@ -1,6 +1,16 @@
 packages:
   - '.'
 
+allowBuilds:
+  '@firebase/util': set this to true or false
+  '@swc/core': set this to true or false
+  canvas: set this to true or false
+  core-js: set this to true or false
+  core-js-pure: set this to true or false
+  esbuild: set this to true or false
+  protobufjs: set this to true or false
+  sharp: set this to true or false
+
 # Native postinstalls we allow to run. Deliberately does NOT include `canvas`:
 # its install script falls back to a from-source node-gyp compile (twice — the
 # tree has canvas@2 and canvas@3), which costs ~20 min on the CI builder. It is

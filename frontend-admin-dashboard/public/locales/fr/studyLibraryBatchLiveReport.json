@@ -42,13 +42,10 @@
     "export": {
         "generatedOn": "Généré le {{date}}",
         "exportSuccess": "Rapport de classe en direct exporté",
-        "exportFailed": "Échec de l'export du PDF",
-        "csvExportSuccess": "CSV exporté",
-        "csvExportFailed": "Échec de l'export CSV"
+        "exportFailed": "Échec de l'export du PDF"
     },
     "errors": {
-        "loadFailed": "Une erreur s'est produite lors du chargement du rapport. Veuillez réessayer.",
-        "batchLoadFailed": "Impossible de charger le rapport pour {{name}}."
+        "loadFailed": "Une erreur s'est produite lors du chargement du rapport. Veuillez réessayer."
     },
     "emptyState": {
         "title": "Aucune classe en direct trouvée",
@@ -57,8 +54,7 @@
     "actions": {
         "attendanceTracker": "Suivi de présence",
         "exporting": "Exportation…",
-        "exportPdf": "Exporter le PDF",
-        "exportCsv": "Exporter en CSV"
+        "exportPdf": "Exporter le PDF"
     },
     "metrics": {
         "avgAttendance": "Présence moyenne",
@@ -79,34 +75,5 @@
         "classBreakdownSubtitle": "Présence, durée et engagement pour chaque classe tenue",
         "leaderboardTitle": "Classement",
         "leaderboardSubtitle": "Classé par présence, puis par engagement. Les totaux d'interaction sont cumulés sur toutes les classes de la période sélectionnée."
-    },
-    "multiBatchTitle": "Rapport {{term}} · {{count}} sélectionné(s)",
-    "comparison": {
-        "title": "Comparaison des {{term}}",
-        "subtitle": "Assiduité, durée et engagement de chaque groupe sélectionné, côte à côte",
-        "learners": "Apprenants"
-    },
-    "csv": {
-        "fileStem": "rapport-classes-en-direct",
-        "summaryTitle": "Résumé",
-        "startDate": "Date de début",
-        "endDate": "Date de fin",
-        "avgAttendancePct": "Assiduité moyenne (%)",
-        "avgDurationMin": "Durée moyenne (min)",
-        "avgEngagementIndex": "Engagement moyen (points)",
-        "classesTitle": "Détail par classe",
-        "unmarked": "Non marqué",
-        "invited": "Invités",
-        "attendancePct": "Assiduité (%)",
-        "leaderboardTitle": "Classement",
-        "attended": "Classes suivies",
-        "totalClasses": "Classes au total",
-        "engagementIndex": "Engagement (points)",
-        "engagementScore": "Score d'engagement (0-100)",
-        "talkTimeMin": "Temps de parole (min)",
-        "chats": "Messages",
-        "polls": "Votes aux sondages",
-        "raiseHands": "Mains levées",
-        "emojis": "Émojis"
     }
 }

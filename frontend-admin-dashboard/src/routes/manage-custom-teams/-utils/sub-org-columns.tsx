@@ -119,9 +119,6 @@ const avatarTone = (name: string) => {
  */
 const Blank = () => <span className="text-muted-foreground">–</span>;
 
-/** Whether the row resolved a root admin — the person "Share credentials" would mail. */
-const hasAdmin = (o: SubOrgListItem) => !!(o.admin_user_id || o.admin_email || o.admin_name);
-
 interface BuildSubOrgColumnsArgs {
     t: TFunction;
     /** Institute-configured word for an invite (the column's header). */
@@ -131,12 +128,6 @@ interface BuildSubOrgColumnsArgs {
     copyInviteLink: (e: React.MouseEvent, org: SubOrgListItem) => void;
     /** Opens a sub-org's detail page — the name cell is the row's keyboard entry point. */
     openSubOrg: (org: SubOrgListItem) => void;
-    /**
-     * Opens the confirm dialog that re-sends the row's admin their login details. Omit it to
-     * leave the item out of the menu — the list does so for roles without canManageTeam,
-     * which is what the backend checks before sending.
-     */
-    shareCredentials?: (org: SubOrgListItem) => void;
 }
 
 /** Every column the VLE list can render, in their natural left-to-right order. */
@@ -146,7 +137,6 @@ export function buildSubOrgColumns({
     buildInviteUrl,
     copyInviteLink,
     openSubOrg,
-    shareCredentials,
 }: BuildSubOrgColumnsArgs): SubOrgColumn[] {
     return [
         {
@@ -429,16 +419,6 @@ export function buildSubOrgColumns({
                                 onSelect={() => navigator.clipboard.writeText(buildInviteUrl(o))}
                             >
                                 {t('actions.copyInviteLink')}
-                            </DropdownMenuItem>
-                        )}
-                        {/* Only where there is an admin to send to: a row whose registration
-                            never enrolled one would otherwise offer an action that can only
-                            fail. Any admin identity counts — the backend resolves the recipient
-                            from the mapping row itself, so this must not hinge on the newer
-                            admin_user_id field alone (older backends omit it). */}
-                        {shareCredentials && hasAdmin(o) && (
-                            <DropdownMenuItem onSelect={() => shareCredentials(o)}>
-                                {t('actions.shareCredentials')}
                             </DropdownMenuItem>
                         )}
                     </DropdownMenuContent>

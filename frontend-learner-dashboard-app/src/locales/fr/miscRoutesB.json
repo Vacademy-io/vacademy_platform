@@ -387,12 +387,12 @@
     "backToLogin": "Retour à la connexion",
     "header": {
       "title": "Politique de confidentialité",
-      "description": "Votre vie privée est importante pour nous. Cette politique explique comment {{appName}} collecte, utilise et protège vos informations personnelles.",
-      "lastUpdated": "Dernière mise à jour : {{date}}"
+      "description": "Votre vie privée est importante pour nous. Cette politique explique comment Vacademy collecte, utilise et protège vos informations personnelles.",
+      "lastUpdated": "Dernière mise à jour : janvier 2024"
     },
     "introduction": {
       "title": "Introduction",
-      "text": "Bienvenue sur {{appName}}. Nous nous engageons à protéger votre vie privée et à garantir la sécurité de vos informations personnelles. Cette politique de confidentialité décrit comment nous collectons, utilisons, divulguons et protégeons vos informations lorsque vous utilisez notre plateforme éducative. En utilisant nos services, vous acceptez la collecte et l'utilisation d'informations conformément à cette politique."
+      "text": "Bienvenue sur Vacademy. Nous nous engageons à protéger votre vie privée et à garantir la sécurité de vos informations personnelles. Cette politique de confidentialité décrit comment nous collectons, utilisons, divulguons et protégeons vos informations lorsque vous utilisez notre plateforme éducative. En utilisant nos services, vous acceptez la collecte et l'utilisation d'informations conformément à cette politique."
     },
     "sections": {
       "informationWeCollect": {
@@ -437,7 +437,7 @@
         },
         "legalRequirements": {
           "subtitle": "Obligations légales",
-          "text": "Nous pouvons divulguer vos informations lorsque la loi, une réglementation, une procédure judiciaire ou une demande gouvernementale l'exige, ou pour protéger les droits, les biens ou la sécurité de {{appName}}, de ses utilisateurs ou d'autrui."
+          "text": "Nous pouvons divulguer vos informations lorsque la loi, une réglementation, une procédure judiciaire ou une demande gouvernementale l'exige, ou pour protéger les droits, les biens ou la sécurité de Vacademy, de ses utilisateurs ou d'autrui."
         }
       },
       "dataSecurity": {
@@ -474,7 +474,7 @@
         "title": "Transferts internationaux de données",
         "globalOperations": {
           "subtitle": "Activités mondiales",
-          "text": "{{appName}} opère à l'échelle mondiale, et vos informations peuvent être transférées et traitées dans des pays autres que votre pays de résidence, y compris des pays dont les lois de protection des données peuvent différer."
+          "text": "Vacademy opère à l'échelle mondiale, et vos informations peuvent être transférées et traitées dans des pays autres que votre pays de résidence, y compris des pays dont les lois de protection des données peuvent différer."
         },
         "safeguards": {
           "subtitle": "Garanties",
@@ -486,9 +486,13 @@
       "title": "Nous contacter",
       "intro": "Si vous avez des questions sur cette politique de confidentialité ou sur nos pratiques en matière de données, veuillez nous contacter :",
       "emailLabel": "E-mail",
-      "addressLabel": "Adresse"
+      "email": "privacy@vacademy.com",
+      "addressLabel": "Adresse",
+      "addressLine1": "Vacademy Educational Services",
+      "addressLine2": "123 Learning Street",
+      "addressLine3": "Education City, EC 12345"
     },
-    "footer": "Cette politique de confidentialité est en vigueur depuis {{date}} et le restera, sous réserve de modifications ultérieures de ses dispositions."
+    "footer": "Cette politique de confidentialité est en vigueur depuis janvier 2024 et le restera, sous réserve de modifications ultérieures de ses dispositions."
   },
   "sessionTerminated": {
     "title": "Session terminée",

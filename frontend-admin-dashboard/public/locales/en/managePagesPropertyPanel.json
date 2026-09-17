@@ -36,9 +36,7 @@
       "metaDescription": "Meta Description",
       "metaDescriptionPlaceholder": "Brief page description for search engines...",
       "ogImage": "OG Image",
-      "ogImagePlaceholder": "Social share image URL",
-      "previewHeading": "Search result preview",
-      "previewNoDescription": "Add a description — search engines will otherwise pick their own text from the page."
+      "ogImagePlaceholder": "Social share image URL"
     }
   },
   "selectItemToEdit": "Select an item to edit",
@@ -152,29 +150,6 @@
     "enquiry": {
       "heading": "Enquiry",
       "enable": "Enable Enquiry"
-    },
-    "seo": {
-      "heading": "Search engine optimisation (SEO)",
-      "hint": "How search engines and social networks read this site. Each page also has its own title, description and share image under Page settings.",
-      "keywordsLabel": "Keywords",
-      "keywordsPlaceholder": "AI courses, learn AI, AI for teachers",
-      "keywordsHint": "Comma-separated. The terms people would search to find you — lead with your brand name.",
-      "verificationLabel": "Google Search Console verification",
-      "verificationHint": "Paste the \"content\" value from Search Console's HTML-tag method. Then submit your sitemap there.",
-      "organizationHeading": "Organisation details",
-      "organizationHint": "Shown to search engines as structured data — this is what links your name, logo and profiles into one brand result.",
-      "orgName": "Name",
-      "orgDescription": "Short description",
-      "orgFounder": "Founder",
-      "orgFoundingDate": "Founded (year)",
-      "orgEmail": "Email",
-      "orgTelephone": "Telephone",
-      "orgAddress": "Address / location",
-      "orgLogo": "Logo for search results",
-      "orgLogoHint": "A clean logo on a plain background, at least 112×112 px. Leave empty to use the institute logo.",
-      "sameAsLabel": "Social & profile links",
-      "sameAsHint": "One URL per line. Links already in your footer are included automatically.",
-      "sitemapHint": "A sitemap is generated automatically at /<catalogue>/sitemap.xml (and /sitemap.xml when the site is served from your own domain)."
     }
   },
   "options": {

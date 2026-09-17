@@ -1,10 +1,14 @@
 {
     "form": {
+        "courseRequired": "Course is required",
+        "sessionRequired": "Session is required",
+        "levelRequired": "Level is required",
         "startDateRequired": "Start Date is required",
         "endDateRequired": "End Date is required",
         "dateRangeTooLong": "The difference between Start Date and End Date should be less than one month.",
-        "errorsHeading": "Please fix the following errors:",
-        "batchRequired": "Select at least one batch"
+        "selectPlaceholder": "Select a {{term}}",
+        "searchPlaceholder": "Search {{term}}...",
+        "errorsHeading": "Please fix the following errors:"
     },
     "range": {
         "label": "Range:",
@@ -15,14 +19,11 @@
     "actions": {
         "generateReport": "Generate Report",
         "exporting": "Exporting…",
-        "exportPdf": "Export PDF",
-        "exportCsv": "Export CSV"
+        "exportPdf": "Export PDF"
     },
     "toast": {
         "exportSuccess": "Batch report exported",
-        "exportFailed": "Failed to export PDF",
-        "csvExportSuccess": "CSV exported",
-        "csvExportFailed": "Failed to export CSV"
+        "exportFailed": "Failed to export PDF"
     },
     "report": {
         "duration": "Duration:",
@@ -34,28 +35,6 @@
         "trackDailyProgress": "Track daily progress and activity patterns",
         "activitySummary": "Activity Summary",
         "leaderboard": "Leaderboard",
-        "topPerformingStudents": "Top performing students in the batch",
-        "multiBatchTitle": "{{term}} report · {{count}} selected",
-        "comparisonTitle": "{{term}} comparison",
-        "comparisonSubtitle": "Key metrics for every selected batch side by side",
-        "batchLoadFailed": "Could not load the report for {{name}}.",
-        "loadFailed": "Something went wrong loading the report. Please try again."
-    },
-    "csv": {
-        "fileStem": "learning-timeline",
-        "summaryTitle": "Summary",
-        "startDate": "Start date",
-        "endDate": "End date",
-        "courseCompleted": "{{term}} completed (%)",
-        "dailyTimeMin": "Daily time spent avg (min)",
-        "concentration": "Concentration score (%)",
-        "dailyTitle": "Daily time spent",
-        "date": "Date",
-        "avgDailyTimeMin": "Avg time spent (min)",
-        "leaderboardTitle": "Leaderboard",
-        "rank": "Rank",
-        "name": "Name",
-        "email": "Email",
-        "totalTimeMin": "Total time (min)"
+        "topPerformingStudents": "Top performing students in the batch"
     }
 }

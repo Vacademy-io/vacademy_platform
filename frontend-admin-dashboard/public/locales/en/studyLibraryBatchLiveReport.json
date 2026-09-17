@@ -35,13 +35,10 @@
     "export": {
         "generatedOn": "Generated {{date}}",
         "exportSuccess": "Live class report exported",
-        "exportFailed": "Failed to export PDF",
-        "csvExportSuccess": "CSV exported",
-        "csvExportFailed": "Failed to export CSV"
+        "exportFailed": "Failed to export PDF"
     },
     "errors": {
-        "loadFailed": "Something went wrong loading the report. Please try again.",
-        "batchLoadFailed": "Could not load the report for {{name}}."
+        "loadFailed": "Something went wrong loading the report. Please try again."
     },
     "emptyState": {
         "title": "No live classes found",
@@ -50,8 +47,7 @@
     "actions": {
         "attendanceTracker": "Attendance Tracker",
         "exporting": "Exporting…",
-        "exportPdf": "Export PDF",
-        "exportCsv": "Export CSV"
+        "exportPdf": "Export PDF"
     },
     "metrics": {
         "avgAttendance": "Avg Attendance",
@@ -71,34 +67,5 @@
         "classBreakdownSubtitle": "Attendance, duration and engagement for every class held",
         "leaderboardTitle": "Leaderboard",
         "leaderboardSubtitle": "Ranked by attendance, then engagement. Interaction totals are summed across all classes in the selected period."
-    },
-    "multiBatchTitle": "{{term}} report · {{count}} selected",
-    "comparison": {
-        "title": "{{term}} comparison",
-        "subtitle": "Attendance, duration and engagement for every selected batch side by side",
-        "learners": "Learners"
-    },
-    "csv": {
-        "fileStem": "live-class-report",
-        "summaryTitle": "Summary",
-        "startDate": "Start date",
-        "endDate": "End date",
-        "avgAttendancePct": "Avg attendance (%)",
-        "avgDurationMin": "Avg duration (min)",
-        "avgEngagementIndex": "Avg engagement (points)",
-        "classesTitle": "Class-wise breakdown",
-        "unmarked": "Unmarked",
-        "invited": "Invited",
-        "attendancePct": "Attendance (%)",
-        "leaderboardTitle": "Leaderboard",
-        "attended": "Classes attended",
-        "totalClasses": "Classes total",
-        "engagementIndex": "Engagement (points)",
-        "engagementScore": "Engagement score (0-100)",
-        "talkTimeMin": "Talk time (min)",
-        "chats": "Chats",
-        "polls": "Poll votes",
-        "raiseHands": "Raise hands",
-        "emojis": "Emojis"
     }
 }

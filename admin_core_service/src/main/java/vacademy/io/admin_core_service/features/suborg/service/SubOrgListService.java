@@ -179,9 +179,6 @@ public class SubOrgListService {
                     .suborgId(soId)
                     .name(so.getName())
                     .status(so.getStatus())
-                    // Set from the mapping row, not the auth lookup, so the action stays
-                    // available even when auth-service enrichment failed for this page.
-                    .adminUserId(admin != null ? admin[0] : null)
                     .adminName(user != null ? user.getFullName() : null)
                     .adminEmail(user != null ? user.getEmail() : null)
                     .adminPhone(user != null ? user.getMobileNumber() : null)

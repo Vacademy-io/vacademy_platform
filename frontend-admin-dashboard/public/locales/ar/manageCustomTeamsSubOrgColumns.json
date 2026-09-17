@@ -44,7 +44,6 @@
         "ariaLabel": "إجراءات {{name}}",
         "thisRow": "هذا الصف",
         "openDetails": "فتح التفاصيل",
-        "copyInviteLink": "نسخ رابط الدعوة",
-        "shareCredentials": "مشاركة بيانات الدخول"
+        "copyInviteLink": "نسخ رابط الدعوة"
     }
 }

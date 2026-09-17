@@ -692,28 +692,6 @@ async def generate_questions(
         numbering[row.id] = running
         running += row.count
 
-    # Pin each row's retrieval to the SOURCES its nodes belong to — on an
-    # AUTHORED (textbook) tree only, where every node is one chapter, so
-    # "Chapter 5 rows" can only ever retrieve Chapter 5; a similarity search
-    # over the whole book would happily answer "Introduction" from whichever
-    # chapter's intro embeds closest. Every other kind of base keeps the
-    # KB-wide search it always had (a blueprint planned from the summary
-    # outline also carries source-bound section nodes, and pinning those would
-    # be a behaviour change for existing users). Resolved once, on the request
-    # session, before the rows fan out onto their own sessions.
-    authored = (kb.get("meta") or {}).get("topic_tree_mode") == "AUTHORED"
-    row_sources: Dict[str, List[str]] = {
-        row.id: (repo.get_node_source_ids(kb_id, row.node_ids) if authored else [])
-        for row in blueprint.rows
-    }
-    if authored:
-        for row in blueprint.rows:
-            if row.node_ids and not row_sources.get(row.id):
-                logger.warning(
-                    "Paper row %r references node ids no longer in the tree; "
-                    "falling back to a book-wide search", row.topic,
-                )
-
     async def do_row(row: BlueprintRow) -> List[Dict[str, Any]]:
         if row.count <= 0:
             return []
@@ -735,7 +713,6 @@ async def generate_questions(
                 hits = await KbRetrievalService(row_db).search(
                     kb_id=kb_id, institute_id=institute_id, query=query,
                     top_k=PASSAGES_PER_ROW, similarity_threshold=0.2,
-                    source_ids=row_sources.get(row.id) or None,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Retrieval failed for row %s: %s", row.id, exc)

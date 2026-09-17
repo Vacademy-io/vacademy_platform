@@ -1,24 +1,23 @@
 {
     "validation": {
-        "batchRequired": "Select at least one batch"
+        "courseRequired": "Course is required",
+        "sessionRequired": "Session is required",
+        "levelRequired": "Level is required"
     },
     "toast": {
         "noDataToExport": "No data to export yet",
         "exportSuccess": "Report exported",
-        "exportFailed": "Failed to export PDF",
-        "csvExportSuccess": "CSV exported",
-        "csvExportFailed": "Failed to export CSV"
+        "exportFailed": "Failed to export PDF"
     },
     "form": {
+        "selectA": "Select a {{term}}",
+        "searchTerm": "Search {{term}}...",
         "generateReport": "Generate Report"
     },
     "report": {
         "exporting": "Exporting...",
         "exportPdf": "Export PDF",
-        "subjectWiseOverview": "{{term}}-wise Overview",
-        "exportCsv": "Export CSV",
-        "multiBatchTitle": "{{term}} report · {{count}} selected",
-        "batchLoadFailed": "Could not load the report for {{name}}."
+        "subjectWiseOverview": "{{term}}-wise Overview"
     },
     "pdf": {
         "batchSubjectWiseProgress": "{{batchTerm}} {{subjectTerm}}-wise Progress",
@@ -33,11 +32,5 @@
         "termDailyTimeAvg": "{{term}} Daily Time (Avg)",
         "termWiseProgressReport": "{{term}}-wise Progress Report",
         "learningProgressReport": "Learning Progress Report"
-    },
-    "csv": {
-        "fileStem": "learning-progress",
-        "title": "{{term}}-wise progress",
-        "moduleCompletedByBatch": "{{module}} completed by {{batch}} (%)",
-        "dailyTimeByBatchMin": "Daily time spent by {{batch}} avg (min)"
     }
 }

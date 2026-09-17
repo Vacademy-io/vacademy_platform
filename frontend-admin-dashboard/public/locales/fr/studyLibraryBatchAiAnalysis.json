@@ -1,11 +1,15 @@
 {
-    "description": "Générez un rapport IA pour chaque apprenant actif des groupes sélectionnés.",
+    "description": "Générez un rapport IA pour chaque apprenant actif de ce groupe.",
     "form": {
+        "courseRequired": "Le cours est requis",
+        "sessionRequired": "La session est requise",
+        "levelRequired": "Le niveau est requis",
         "startDateRequired": "La date de début est requise",
         "endDateRequired": "La date de fin est requise",
         "dateRangeTooLong": "L'écart entre la date de début et la date de fin doit être inférieur à un mois.",
-        "errorsHeading": "Veuillez corriger les erreurs suivantes :",
-        "batchRequired": "Sélectionnez au moins un groupe"
+        "selectPlaceholder": "Sélectionner un(e) {{term}}",
+        "searchPlaceholder": "Rechercher {{term}}...",
+        "errorsHeading": "Veuillez corriger les erreurs suivantes :"
     },
     "range": {
         "label": "Période :",
@@ -19,11 +23,10 @@
         "generateReports": "Générer les rapports IA",
         "stop": "Arrêter",
         "retryFailed": "Réessayer les échecs",
-        "view": "Voir",
-        "exportCsv": "Exporter en CSV"
+        "view": "Voir"
     },
     "toast": {
-        "resolveBatchFailed": "Sélectionnez au moins un groupe.",
+        "resolveBatchFailed": "Impossible de résoudre le groupe sélectionné. Vérifiez le cours / la session / le niveau.",
         "noActiveLearners": "Aucun apprenant actif trouvé dans ce groupe.",
         "generationFinished": "Génération des rapports du groupe terminée.",
         "loadLearnersFailed": "Échec du chargement des apprenants du groupe.",
@@ -48,15 +51,5 @@
         "generating": "En cours",
         "completed": "Terminé",
         "failed": "Échoué"
-    },
-    "csv": {
-        "fileStem": "analyse-ia",
-        "title": "Génération des rapports IA",
-        "name": "Nom",
-        "email": "E-mail",
-        "status": "Statut",
-        "processId": "Id du rapport",
-        "error": "Erreur",
-        "exportSuccess": "CSV exporté"
     }
 }

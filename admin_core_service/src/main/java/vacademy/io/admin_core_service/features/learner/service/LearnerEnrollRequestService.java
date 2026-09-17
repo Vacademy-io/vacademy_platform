@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -141,10 +140,6 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
-
-    @Autowired
-    @Lazy
-    private vacademy.io.admin_core_service.features.suborg.service.SubOrgPartnerOnboardingService subOrgPartnerOnboardingService;
 
     @Autowired
     private FacultyService facultyService;
@@ -480,14 +475,6 @@ public class LearnerEnrollRequestService {
                     enrollDTO.getPackageSessionIds(),
                     enrollInvite,
                     userPlan);
-
-            // A FREE partner plan is active right here; paid ones become active in the payment
-            // webhook (UserPlanService.applyOperationsOnFirstPayment), which runs the same
-            // onboarding there. Best-effort by contract: the service never throws.
-            if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
-                subOrgPartnerOnboardingService.onPartnerActivated(
-                        enrollInvite.getSubOrgId(), enrollInvite.getInstituteId(), userPlan);
-            }
         }
 
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)

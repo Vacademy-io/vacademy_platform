@@ -35,13 +35,10 @@
     "export": {
         "generatedOn": "{{date}} को तैयार किया गया",
         "exportSuccess": "लाइव क्लास रिपोर्ट निर्यात हुई",
-        "exportFailed": "PDF निर्यात करने में विफल",
-        "csvExportSuccess": "CSV निर्यात हो गया",
-        "csvExportFailed": "CSV निर्यात विफल"
+        "exportFailed": "PDF निर्यात करने में विफल"
     },
     "errors": {
-        "loadFailed": "रिपोर्ट लोड करने में कुछ गड़बड़ हुई। कृपया फिर से प्रयास करें।",
-        "batchLoadFailed": "{{name}} की रिपोर्ट लोड नहीं हो सकी।"
+        "loadFailed": "रिपोर्ट लोड करने में कुछ गड़बड़ हुई। कृपया फिर से प्रयास करें।"
     },
     "emptyState": {
         "title": "कोई लाइव क्लास नहीं मिली",
@@ -50,8 +47,7 @@
     "actions": {
         "attendanceTracker": "उपस्थिति ट्रैकर",
         "exporting": "निर्यात हो रहा है…",
-        "exportPdf": "PDF निर्यात करें",
-        "exportCsv": "CSV निर्यात करें"
+        "exportPdf": "PDF निर्यात करें"
     },
     "metrics": {
         "avgAttendance": "औसत उपस्थिति",
@@ -71,34 +67,5 @@
         "classBreakdownSubtitle": "आयोजित हर कक्षा के लिए उपस्थिति, अवधि और सहभागिता",
         "leaderboardTitle": "लीडरबोर्ड",
         "leaderboardSubtitle": "उपस्थिति के अनुसार, फिर सहभागिता के अनुसार क्रमबद्ध। सहभागिता का कुल योग चयनित अवधि की सभी कक्षाओं में जोड़ा गया है।"
-    },
-    "multiBatchTitle": "{{term}} रिपोर्ट · {{count}} चयनित",
-    "comparison": {
-        "title": "{{term}} तुलना",
-        "subtitle": "चुने गए हर बैच की उपस्थिति, अवधि और सहभागिता एक साथ",
-        "learners": "शिक्षार्थी"
-    },
-    "csv": {
-        "fileStem": "live-class-report",
-        "summaryTitle": "सारांश",
-        "startDate": "आरंभ तिथि",
-        "endDate": "समाप्ति तिथि",
-        "avgAttendancePct": "औसत उपस्थिति (%)",
-        "avgDurationMin": "औसत अवधि (मिनट)",
-        "avgEngagementIndex": "औसत सहभागिता (अंक)",
-        "classesTitle": "कक्षा-वार विवरण",
-        "unmarked": "अचिह्नित",
-        "invited": "आमंत्रित",
-        "attendancePct": "उपस्थिति (%)",
-        "leaderboardTitle": "लीडरबोर्ड",
-        "attended": "उपस्थित कक्षाएँ",
-        "totalClasses": "कुल कक्षाएँ",
-        "engagementIndex": "सहभागिता (अंक)",
-        "engagementScore": "सहभागिता स्कोर (0-100)",
-        "talkTimeMin": "बोलने का समय (मिनट)",
-        "chats": "चैट",
-        "polls": "पोल वोट",
-        "raiseHands": "हाथ उठाना",
-        "emojis": "इमोजी"
     }
 }

@@ -41,7 +41,6 @@
         "ariaLabel": "Actions pour {{name}}",
         "thisRow": "cette ligne",
         "openDetails": "Ouvrir les détails",
-        "copyInviteLink": "Copier le lien d'invitation",
-        "shareCredentials": "Partager les identifiants"
+        "copyInviteLink": "Copier le lien d'invitation"
     }
 }

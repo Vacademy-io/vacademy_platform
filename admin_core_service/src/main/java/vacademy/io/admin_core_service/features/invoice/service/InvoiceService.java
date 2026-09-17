@@ -66,9 +66,6 @@ import vacademy.io.common.media.dto.InMemoryMultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
-import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
-import vacademy.io.admin_core_service.features.common.util.PostalAddressFormatter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -985,79 +982,10 @@ public class InvoiceService {
                 .paymentDate(paymentDate)
                 .lineItems(allLineItems)
                 .aggregatedTaxComponents(aggregatedTaxComponents)
-                .overrides(organisationBillTo(firstPaymentLog.getUserPlan(), user))
                 .build();
 
         log.debug("Invoice data built successfully from {} payment logs", paymentLogs.size());
         return invoiceData;
-    }
-
-    /**
-     * BILL TO for a channel-partner (sub-org) subscription: the organisation, not the person
-     * who clicked pay.
-     *
-     * <p>The registration wizard collects the ORGANISATION's address and stamps it on the spawned
-     * sub-org institute — never on the admin's own auth user record. So the default
-     * {@code {{user_address}}} (auth {@code address_line}) rendered blank on every VLE invoice,
-     * and {@code {{user_name}}} named the admin rather than the company being invoiced.
-     *
-     * <p>Keyed on the org-level invite (tag {@code SUB_ORG}) rather than {@code UserPlan.source}:
-     * learners enrolled under a partner also carry {@code source=SUB_ORG}, and they must keep
-     * being billed personally. Returns null — "derive everything as before" — for every other
-     * purchase, so no other institute's invoice changes.
-     */
-    private Map<String, String> organisationBillTo(UserPlan plan, UserDTO admin) {
-        try {
-            if (plan == null) {
-                return null;
-            }
-            EnrollInvite invite = plan.getEnrollInvite();
-            if (invite == null || !EnrollInviteTag.SUB_ORG.name().equals(invite.getTag())) {
-                return null;
-            }
-            String subOrgId = StringUtils.hasText(invite.getSubOrgId()) ? invite.getSubOrgId() : plan.getSubOrgId();
-            if (!StringUtils.hasText(subOrgId)) {
-                return null;
-            }
-            Institute org = instituteRepository.findById(subOrgId).orElse(null);
-            if (org == null) {
-                return null;
-            }
-
-            Map<String, String> billTo = new HashMap<>();
-            if (StringUtils.hasText(org.getInstituteName())) {
-                billTo.put("user_name", org.getInstituteName().trim());
-            }
-            List<String> lines = new ArrayList<>();
-            if (admin != null && StringUtils.hasText(admin.getFullName())) {
-                lines.add("Attn: " + admin.getFullName().trim());
-            }
-            String postal = composePostalAddress(org.getAddress(), org.getCity(), org.getState(),
-                    org.getPinCode(), org.getCountry());
-            if (StringUtils.hasText(postal)) {
-                lines.add(postal);
-            }
-            if (!lines.isEmpty()) {
-                billTo.put("user_address", String.join("\n", lines));
-            }
-            return billTo.isEmpty() ? null : billTo;
-        } catch (Exception e) {
-            // Best-effort: a lookup failure must not stop the invoice — fall back to the user.
-            log.warn("Could not resolve organisation bill-to for plan {}: {}",
-                    plan.getId(), e.getMessage());
-            return null;
-        }
-    }
-
-    /** See {@link PostalAddressFormatter#compose}; kept here so the invoice tests read naturally. */
-    static String composePostalAddress(String street, String city, String state, String pinCode,
-            String country) {
-        return PostalAddressFormatter.compose(street, city, state, pinCode, country);
-    }
-
-    /** See {@link PostalAddressFormatter#dedupeSegments}. */
-    static String dedupeAddressSegments(String street) {
-        return PostalAddressFormatter.dedupeSegments(street);
     }
 
     /**
@@ -2251,17 +2179,6 @@ public class InvoiceService {
      * The gross line is omitted when nothing was discounted, because then it is
      * the same number as the total and repeating it reads as an error.
      */
-    /**
-     * Money as it should read on a document: two decimals, thousands grouped — "8,000.00", not
-     * the "8000.0" that {@code BigDecimal.toString()} produced from a double-sourced amount.
-     */
-    static String money(BigDecimal value) {
-        if (value == null) {
-            return "0.00";
-        }
-        return String.format(Locale.ENGLISH, "%,.2f", value.setScale(2, RoundingMode.HALF_UP));
-    }
-
     static String buildTotalsRowsHtml(InvoiceData invoiceData, String currencySymbol) {
         if (invoiceData == null) {
             return "";
@@ -2278,15 +2195,15 @@ public class InvoiceService {
                 "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" "
                         + "style=\"width:100%;font-size:13px;color:#222;\">");
         if (hasDiscount) {
-            rows.append(totalsRow("Amount", currencySymbol + money(gross), false));
-            rows.append(totalsRow("Discount", "-" + currencySymbol + money(discount), false));
+            rows.append(totalsRow("Amount", currencySymbol + gross.toPlainString(), false));
+            rows.append(totalsRow("Discount", "-" + currencySymbol + discount.toPlainString(), false));
         }
         if (hasTax) {
             String taxLabel = StringUtils.hasText(invoiceData.getTaxLabel()) ? invoiceData.getTaxLabel() : "Tax";
-            rows.append(totalsRow(taxLabel, currencySymbol + money(tax), false));
+            rows.append(totalsRow(taxLabel, currencySymbol + tax.toPlainString(), false));
         }
         rows.append(totalsRow("Total Paid",
-                currencySymbol + money(total), true));
+                currencySymbol + (total != null ? total.toPlainString() : "0.00"), true));
         return rows.append("</table>").toString();
     }
 
@@ -2450,7 +2367,8 @@ public class InvoiceService {
         log.info("Currency symbol resolved: '{}' for currency code: '{}'", currencySymbol, invoiceCurrency);
 
         filled = filled.replace("{{subtotal}}",
-                currencySymbol + money(invoiceData.getSubtotal()));
+                invoiceData.getSubtotal() != null ? currencySymbol + invoiceData.getSubtotal().toString()
+                        : currencySymbol + "0.00");
 
         // Original price + discount. {{discount_amount}} was being rendered literally on live
         // invoices because nothing ever substituted it — it was neither in this block nor in
@@ -2461,19 +2379,21 @@ public class InvoiceService {
         BigDecimal invoiceDiscount = invoiceData.getDiscountAmount();
         boolean hasDiscount = invoiceDiscount != null && invoiceDiscount.compareTo(BigDecimal.ZERO) > 0;
         filled = filled.replace("{{plan_price}}",
-                invoiceData.getPlanPrice() != null ? currencySymbol + money(invoiceData.getPlanPrice())
+                invoiceData.getPlanPrice() != null ? currencySymbol + invoiceData.getPlanPrice().toString()
                         : "");
         filled = filled.replace("{{discount_amount}}",
-                hasDiscount ? currencySymbol + money(invoiceDiscount) : "");
+                hasDiscount ? currencySymbol + invoiceDiscount.toString() : "");
         filled = filled.replace("{{discount_row}}",
                 hasDiscount
                         ? "<div class=\"invoice-discount-row\">Discount: -" + currencySymbol
-                                + money(invoiceDiscount) + "</div>"
+                                + invoiceDiscount.toString() + "</div>"
                         : "");
         filled = filled.replace("{{tax_amount}}",
-                currencySymbol + money(invoiceData.getTaxAmount()));
+                invoiceData.getTaxAmount() != null ? currencySymbol + invoiceData.getTaxAmount().toString()
+                        : currencySymbol + "0.00");
         filled = filled.replace("{{total_amount}}",
-                currencySymbol + money(invoiceData.getTotalAmount()));
+                invoiceData.getTotalAmount() != null ? currencySymbol + invoiceData.getTotalAmount().toString()
+                        : currencySymbol + "0.00");
         filled = filled.replace("{{currency}}", invoiceCurrency);
         // Replace currency_symbol placeholder if template uses it
         filled = filled.replace("{{currency_symbol}}", currencySymbol);
@@ -2905,11 +2825,11 @@ public class InvoiceService {
             html.append("<td class=\"right text-center\" style=\"text-align:center\">")
                     .append(item.getQuantity() != null ? item.getQuantity() : 1).append("</td>");
             // Format unit price with currency symbol
-            String unitPrice = money(item.getUnitPrice());
+            String unitPrice = item.getUnitPrice() != null ? item.getUnitPrice().toString() : "0.00";
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(unitPrice).append("</td>");
             // Format amount with currency symbol
-            String amount = money(item.getAmount());
+            String amount = item.getAmount() != null ? item.getAmount().toString() : "0.00";
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(amount).append("</td>");
             html.append("</tr>");

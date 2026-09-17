@@ -30,7 +30,6 @@ import vacademy.io.admin_core_service.features.suborg.dto.SubOrgFinanceDetailDTO
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgSubscriptionStatusDTO;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgAccessScopeService;
-import vacademy.io.admin_core_service.features.suborg.service.SubOrgAdminCredentialService;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgFinanceService;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgListService;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgManagementService;
@@ -59,7 +58,6 @@ public class SubOrgController {
     private final InstituteRepository instituteRepository;
     private final InstituteSubOrgRepository instituteSubOrgRepository;
     private final SubOrgAccessScopeService subOrgAccessScopeService;
-    private final SubOrgAdminCredentialService subOrgAdminCredentialService;
 
     private static final String ROLE_NAME_ADMIN = "ADMIN";
 
@@ -237,23 +235,6 @@ public class SubOrgController {
         out.put("sub_org_id", subOrgId);
         out.put("admin_permissions", saved);
         return ResponseEntity.ok(out);
-    }
-
-    /**
-     * Re-sends the sub-org admin's current login details by email (Manage VLEs → row menu →
-     * "Share credentials"). Read-only on the admin's account; the reply carries auth-service's
-     * own {@code sent}/{@code failed}/{@code message} so the UI can say what actually happened.
-     */
-    @PostMapping("/{subOrgId}/resend-admin-credentials")
-    public ResponseEntity<Map<String, Object>> resendAdminCredentials(
-            @PathVariable String subOrgId,
-            @RequestParam String parentInstituteId,
-            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
-        subOrgAccessScopeService.assertCanAccessSubOrg(user, subOrgId, parentInstituteId);
-        subOrgAccessScopeService.assertRolePermission(user, parentInstituteId,
-                SubOrgAccessScopeService.PERM_MANAGE_TEAM);
-        return ResponseEntity.ok(
-                subOrgAdminCredentialService.resendAdminLoginDetails(subOrgId, parentInstituteId));
     }
 
     /**

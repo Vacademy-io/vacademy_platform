@@ -20,11 +20,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DEFAULT_MANDATE_METHOD,
-  MandateMethodPicker,
-  type MandateMethod,
-} from "@/components/common/subscription/MandateMethodPicker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
@@ -40,11 +35,7 @@ interface ChangePlanDialogProps {
   subscription: Subscription | null;
   instituteId: string | null;
   /** Resolves once the change has been booked (or the checkout opened). */
-  onConfirm: (
-    target: PlanChangeTarget,
-    withAutopay: boolean,
-    mandateMethod: MandateMethod
-  ) => Promise<unknown>;
+  onConfirm: (target: PlanChangeTarget, withAutopay: boolean) => Promise<unknown>;
   isSubmitting?: boolean;
 }
 
@@ -103,7 +94,6 @@ export function ChangePlanDialog({
   const { t } = useTranslation("dashboard");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [alsoEnableAutopay, setAlsoEnableAutopay] = useState(false);
-  const [mandateMethod, setMandateMethod] = useState<MandateMethod>(DEFAULT_MANDATE_METHOD);
 
   const userPlanId = subscription?.user_plan_id ?? null;
 
@@ -119,7 +109,6 @@ export function ChangePlanDialog({
     if (!open) return;
     setSelectedPlanId(null);
     setAlsoEnableAutopay(false);
-    setMandateMethod(DEFAULT_MANDATE_METHOD);
   }, [open, userPlanId]);
 
   const targets = useMemo(() => data?.targets ?? [], [data]);
@@ -152,7 +141,7 @@ export function ChangePlanDialog({
 
   const handleConfirm = async () => {
     if (!selected) return;
-    const result = await onConfirm(selected, autopayChecked, mandateMethod);
+    const result = await onConfirm(selected, autopayChecked);
     if (result) {
       onOpenChange(false);
       if (!isUpgrade) {
@@ -345,15 +334,6 @@ export function ChangePlanDialog({
                     : t("membership.alsoEnableAutopay")}
                 </span>
               </label>
-            )}
-            {/* A recurring order is bound to one authorisation method, so the pick must
-                happen before the order exists — same as the enrol form. */}
-            {isUpgrade && subscription?.autopay_available && autopayChecked && (
-              <MandateMethodPicker
-                value={mandateMethod}
-                onChange={setMandateMethod}
-                disabled={isSubmitting}
-              />
             )}
           </div>
         )}

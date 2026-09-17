@@ -28,14 +28,6 @@ interface PaymentFiltersProps {
     onPaymentStatusesChange?: (statuses: SelectOption[]) => void;
     selectedUserPlanStatuses: SelectOption[];
     onUserPlanStatusesChange: (statuses: SelectOption[]) => void;
-    /**
-     * Payment Plan field. Omit `onPaymentPlansChange` to drop it. The options are whatever plans the
-     * caller has seen in the loaded rows (there is no plan-listing endpoint scoped to payments), so
-     * the caller derives them and the filter itself is applied client-side — see paymentPlanFilter.
-     */
-    paymentPlanOptions?: SelectOption[];
-    selectedPaymentPlans?: SelectOption[];
-    onPaymentPlansChange?: (plans: SelectOption[]) => void;
     selectedPaymentSources: SelectOption[];
     onPaymentSourcesChange: (sources: SelectOption[]) => void;
     selectedPaymentTypes: SelectOption[];
@@ -51,7 +43,7 @@ interface PaymentFiltersProps {
     /** Optional action(s) rendered on the right of the control bar (e.g. export). */
     exportSlot?: ReactNode;
     /**
-     * Render ONLY the detailed filter grid (payment type / status / plan status / plan / source / dates /
+     * Render ONLY the detailed filter grid (payment type / status / plan / source / dates /
      * course), always expanded and without the search + toggle bar. Used to embed the filters
      * inside the redesign's slide-over panel, where search/segmented-status live in the control bar.
      */
@@ -119,9 +111,6 @@ export function PaymentFilters({
     onPaymentStatusesChange,
     selectedUserPlanStatuses,
     onUserPlanStatusesChange,
-    paymentPlanOptions = [],
-    selectedPaymentPlans,
-    onPaymentPlansChange,
     selectedPaymentSources,
     onPaymentSourcesChange,
     selectedPaymentTypes,
@@ -220,7 +209,6 @@ export function PaymentFilters({
     const activeFilterCount =
         (selectedPaymentStatuses?.length || 0) +
         (selectedUserPlanStatuses.length || 0) +
-        (selectedPaymentPlans?.length || 0) +
         (selectedPaymentSources.length || 0) +
         (selectedPaymentTypes.length || 0) +
         (hideDateFilters ? 0 : (startDate ? 1 : 0) + (endDate ? 1 : 0)) +
@@ -279,25 +267,6 @@ export function PaymentFilters({
                         clearable
                     />
                 </FilterField>
-                {onPaymentPlansChange && (
-                    <FilterField label="Payment Plan">
-                        <SelectChips
-                            options={paymentPlanOptions}
-                            selected={selectedPaymentPlans ?? []}
-                            onChange={onPaymentPlansChange}
-                            placeholder={
-                                paymentPlanOptions.length === 0 ? 'No plans loaded' : 'All plans'
-                            }
-                            disabled={
-                                paymentPlanOptions.length === 0 &&
-                                (selectedPaymentPlans?.length ?? 0) === 0
-                            }
-                            multiSelect
-                            fullWidth
-                            clearable
-                        />
-                    </FilterField>
-                )}
                 {hasOrgAssociatedBatches && (
                     <FilterField label="Payment Source">
                         <SelectChips

@@ -40,11 +40,6 @@ import {
     type Subscription,
 } from "@/hooks/use-subscription-manager";
 import { ChangePlanDialog } from "@/components/common/subscription/ChangePlanDialog";
-import {
-    DEFAULT_MANDATE_METHOD,
-    MandateMethodPicker,
-    type MandateMethod,
-} from "@/components/common/subscription/MandateMethodPicker";
 
 interface MyMembershipWidgetProps {
     className?: string;
@@ -79,8 +74,6 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
     // Per-plan "also re-enable auto-pay" choice. Default off: auto-pay being
     // off usually means the learner turned it off deliberately.
     const [autopayChoice, setAutopayChoice] = useState<Record<string, boolean>>({});
-    // UPI vs card for the re-registered mandate; only read when autopayChoice is on.
-    const [mandateMethodChoice, setMandateMethodChoice] = useState<Record<string, MandateMethod>>({});
 
     useEffect(() => {
         let cancelled = false;
@@ -357,18 +350,6 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                             <span>{t("membership.alsoEnableAutopay")}</span>
                                         </label>
                                     )}
-                                    {sub.autopay_available && autopayChoice[sub.user_plan_id] && (
-                                        <MandateMethodPicker
-                                            value={mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD}
-                                            onChange={(method) =>
-                                                setMandateMethodChoice((prev) => ({
-                                                    ...prev,
-                                                    [sub.user_plan_id]: method,
-                                                }))
-                                            }
-                                            disabled={renewingPlanId === sub.user_plan_id}
-                                        />
-                                    )}
                                     <Button
                                         size="sm"
                                         onClick={() =>
@@ -377,8 +358,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                                 Boolean(
                                                     sub.autopay_available &&
                                                         autopayChoice[sub.user_plan_id]
-                                                ),
-                                                mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD
+                                                )
                                             )
                                         }
                                         disabled={renewingPlanId === sub.user_plan_id}
@@ -427,8 +407,8 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                 subscription={toChange}
                 instituteId={instituteId}
                 isSubmitting={Boolean(changingPlanId)}
-                onConfirm={(target, withAutopay, mandateMethod) =>
-                    startPlanChange(toChange as Subscription, target, withAutopay, mandateMethod)
+                onConfirm={(target, withAutopay) =>
+                    startPlanChange(toChange as Subscription, target, withAutopay)
                 }
             />
 

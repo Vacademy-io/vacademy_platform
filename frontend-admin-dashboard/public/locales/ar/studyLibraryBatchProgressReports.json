@@ -1,24 +1,23 @@
 {
     "validation": {
-        "batchRequired": "اختر دفعة واحدة على الأقل"
+        "courseRequired": "الدورة مطلوبة",
+        "sessionRequired": "الجلسة مطلوبة",
+        "levelRequired": "المستوى مطلوب"
     },
     "toast": {
         "noDataToExport": "لا توجد بيانات للتصدير بعد",
         "exportSuccess": "تم تصدير التقرير",
-        "exportFailed": "فشل تصدير ملف PDF",
-        "csvExportSuccess": "تم تصدير CSV",
-        "csvExportFailed": "فشل تصدير CSV"
+        "exportFailed": "فشل تصدير ملف PDF"
     },
     "form": {
+        "selectA": "اختر {{term}}",
+        "searchTerm": "ابحث عن {{term}}...",
         "generateReport": "إنشاء التقرير"
     },
     "report": {
         "exporting": "جارٍ التصدير...",
         "exportPdf": "تصدير PDF",
-        "subjectWiseOverview": "نظرة عامة حسب {{term}}",
-        "exportCsv": "تصدير CSV",
-        "multiBatchTitle": "تقرير {{term}} · تم اختيار {{count}}",
-        "batchLoadFailed": "تعذر تحميل تقرير {{name}}."
+        "subjectWiseOverview": "نظرة عامة حسب {{term}}"
     },
     "pdf": {
         "batchSubjectWiseProgress": "التقدم حسب {{subjectTerm}} لـ {{batchTerm}}",
@@ -33,11 +32,5 @@
         "termDailyTimeAvg": "متوسط الوقت اليومي لـ {{term}}",
         "termWiseProgressReport": "تقرير التقدم حسب {{term}}",
         "learningProgressReport": "تقرير تقدم التعلم"
-    },
-    "csv": {
-        "fileStem": "learning-progress",
-        "title": "التقدم حسب {{term}}",
-        "moduleCompletedByBatch": "اكتمال {{module}} حسب {{batch}} (%)",
-        "dailyTimeByBatchMin": "متوسط الوقت اليومي لـ {{batch}} (دقيقة)"
     }
 }

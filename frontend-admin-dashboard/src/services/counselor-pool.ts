@@ -14,7 +14,6 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
     COUNSELOR_POOL_AUDIENCE,
-    COUNSELOR_POOL_AUDIENCE_ASSIGNMENT,
     COUNSELOR_POOL_AUDIENCES,
     COUNSELOR_POOL_AUDIENCE_ORDER,
     COUNSELOR_POOL_BASE,
@@ -48,12 +47,6 @@ export interface PoolAudienceDTO {
     last_assigned_counselor_id?: string | null;
     last_assigned_at?: string | null;
     added_at?: string;
-    /**
-     * When this list hands out a counsellor. `true` (default) = the moment a lead arrives.
-     * `false` = AI-first: the lead stays unowned so the AI call runs, and the pool assigns only
-     * once the call outcome (or the exhausted-retries hand-off) asks for a counsellor.
-     */
-    assign_on_intake?: boolean;
 }
 
 export interface PoolMemberDTO {
@@ -248,16 +241,6 @@ export const removeAudienceFromPool = async (poolId: string, audienceId: string)
     await authenticatedAxiosInstance.delete(COUNSELOR_POOL_AUDIENCE(poolId, audienceId));
 };
 
-export const updateAudienceAssignOnIntake = async (
-    poolId: string,
-    audienceId: string,
-    assignOnIntake: boolean
-): Promise<void> => {
-    await authenticatedAxiosInstance.patch(COUNSELOR_POOL_AUDIENCE_ASSIGNMENT(poolId, audienceId), {
-        assign_on_intake: assignOnIntake,
-    });
-};
-
 // Atomic bulk add — backend rolls back the whole batch if any id fails.
 export const addCounselorsToPool = async (
     poolId: string,
@@ -427,15 +410,6 @@ export const useRemoveAudienceFromPool = (poolId: string) => {
     const invalidate = useInvalidatePool();
     return useMutation({
         mutationFn: (audienceId: string) => removeAudienceFromPool(poolId, audienceId),
-        onSuccess: () => invalidate(poolId),
-    });
-};
-
-export const useUpdateAudienceAssignOnIntake = (poolId: string) => {
-    const invalidate = useInvalidatePool();
-    return useMutation({
-        mutationFn: ({ audienceId, assignOnIntake }: { audienceId: string; assignOnIntake: boolean }) =>
-            updateAudienceAssignOnIntake(poolId, audienceId, assignOnIntake),
         onSuccess: () => invalidate(poolId),
     });
 };

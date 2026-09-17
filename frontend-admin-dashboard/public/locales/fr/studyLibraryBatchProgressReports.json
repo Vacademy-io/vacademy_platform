@@ -1,24 +1,23 @@
 {
     "validation": {
-        "batchRequired": "Sélectionnez au moins un groupe"
+        "courseRequired": "Le cours est requis",
+        "sessionRequired": "La session est requise",
+        "levelRequired": "Le niveau est requis"
     },
     "toast": {
         "noDataToExport": "Aucune donnée à exporter pour l'instant",
         "exportSuccess": "Rapport exporté",
-        "exportFailed": "Échec de l'exportation du PDF",
-        "csvExportSuccess": "CSV exporté",
-        "csvExportFailed": "Échec de l'export CSV"
+        "exportFailed": "Échec de l'exportation du PDF"
     },
     "form": {
+        "selectA": "Sélectionner un(e) {{term}}",
+        "searchTerm": "Rechercher {{term}}...",
         "generateReport": "Générer le rapport"
     },
     "report": {
         "exporting": "Exportation en cours...",
         "exportPdf": "Exporter en PDF",
-        "subjectWiseOverview": "Aperçu par {{term}}",
-        "exportCsv": "Exporter en CSV",
-        "multiBatchTitle": "Rapport {{term}} · {{count}} sélectionné(s)",
-        "batchLoadFailed": "Impossible de charger le rapport pour {{name}}."
+        "subjectWiseOverview": "Aperçu par {{term}}"
     },
     "pdf": {
         "batchSubjectWiseProgress": "Progression par {{subjectTerm}} — {{batchTerm}}",
@@ -33,11 +32,5 @@
         "termDailyTimeAvg": "Temps quotidien (moy.) — {{term}}",
         "termWiseProgressReport": "Rapport de progression par {{term}}",
         "learningProgressReport": "Rapport de progression d'apprentissage"
-    },
-    "csv": {
-        "fileStem": "progression-apprentissage",
-        "title": "Progression par {{term}}",
-        "moduleCompletedByBatch": "{{module}} terminé par le {{batch}} (%)",
-        "dailyTimeByBatchMin": "Temps quotidien moyen du {{batch}} (min)"
     }
 }

@@ -19,11 +19,7 @@ public interface OutstandingLearnerProjection {
 
     Double getPaid();
 
-    /** Overdue right now. */
     Double getDue();
-
-    /** Falling due within the upcoming horizon. */
-    Double getUpcoming();
 
     Long getPlanCount();
 

@@ -32,8 +32,4 @@ public class PoolAudienceDTO {
 
     @JsonProperty("added_at")
     private Timestamp addedAt;
-
-    /** See {@code CounselorPoolAudience#assignOnIntake}. */
-    @JsonProperty("assign_on_intake")
-    private Boolean assignOnIntake;
 }

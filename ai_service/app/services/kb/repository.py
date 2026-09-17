@@ -32,63 +32,6 @@ FALLBACK_EMBEDDING_DIM = 768
 # means adding a column (see the V435 header) and one entry here.
 VECTOR_COLUMN_BY_DIM: Dict[int, str] = {768: "embedding_768"}
 
-# Curriculum libraries (V517). A listing with collection='CURRICULUM' is usable
-# by an institute whose CURRICULUM_LIBRARY_SETTING names its board and class —
-# no entitlement row, no purchase. The setting is stored by admin_core as
-#   setting_json -> 'setting' -> 'CURRICULUM_LIBRARY_SETTING' -> 'data'
-#   { "enabled": true, "boards": ["NCERT"], "classes": ["11", "12"] }
-# and is evaluated here, in the same WHERE clause that scopes everything else,
-# so a curriculum base is visible and usable for exactly the same reason.
-CURRICULUM_COLLECTION = "CURRICULUM"
-CURRICULUM_SETTING_KEY = "CURRICULUM_LIBRARY_SETTING"
-
-# `:institute_id` must be bound by the caller. Correlated on `kb` (the
-# knowledge_base alias of the enclosing query). institutes.setting_json is TEXT;
-# kb_safe_jsonb (V517) casts it and returns '{}' on malformed input, so one bad
-# settings blob can never 500 that institute's whole knowledge-base list. `?`
-# is the jsonb "array contains this string" operator.
-_CURRICULUM_SETTING_DATA_SQL = f"""
-    (kb_safe_jsonb(ci.setting_json)
-     -> 'setting' -> '{CURRICULUM_SETTING_KEY}' -> 'data')
-"""
-
-_CURRICULUM_ACCESS_SQL = f"""
-    EXISTS (
-        SELECT 1
-          FROM knowledge_base_listing cl
-          JOIN institutes ci ON ci.id = :institute_id
-         WHERE cl.knowledge_base_id = kb.id
-           AND cl.status = 'PUBLISHED'
-           AND cl.collection = '{CURRICULUM_COLLECTION}'
-           AND kb.owner_type = 'PLATFORM'
-           AND ({_CURRICULUM_SETTING_DATA_SQL} ->> 'enabled') IN ('true', '1')
-           AND ({_CURRICULUM_SETTING_DATA_SQL} -> 'boards') ? cl.board
-           AND ({_CURRICULUM_SETTING_DATA_SQL} -> 'classes') ? cl.level
-    )
-"""
-
-# Columns every knowledge-base read returns. The listing join is LEFT so an
-# unlisted base still reads; curriculum facets are NULL for anything that is not
-# a curriculum library.
-_KB_SELECT = f"""
-    SELECT kb.id, kb.institute_id, kb.name, kb.description, kb.purpose,
-           kb.language_hint, kb.owner_type, kb.embedding_model,
-           kb.embedding_dim, kb.status, kb.stats_json, kb.created_by,
-           kb.created_at, kb.updated_at,
-           (SELECT COUNT(*) FROM knowledge_base_source s
-             WHERE s.knowledge_base_id = kb.id) AS source_count,
-           (SELECT COUNT(*) FROM knowledge_base_source s
-             WHERE s.knowledge_base_id = kb.id
-               AND s.status IN ('PENDING', 'PROCESSING')) AS processing_count,
-           (SELECT COALESCE(SUM(s.pages_low_confidence), 0)
-              FROM knowledge_base_source s
-             WHERE s.knowledge_base_id = kb.id) AS review_pages,
-           kb.meta_json,
-           l.collection, l.board, l.level, l.subject, l.language, l.title AS listing_title
-      FROM knowledge_base kb
-      LEFT JOIN knowledge_base_listing l ON l.knowledge_base_id = kb.id
-"""
-
 
 @dataclass
 class EmbeddingModelSpec:
@@ -166,7 +109,6 @@ class KbRepository:
         purpose: str,
         language_hint: Optional[str],
         created_by: Optional[str],
-        meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         spec = self.get_default_embedding_model()
         row = self.db.execute(
@@ -174,11 +116,11 @@ class KbRepository:
                 """
                 INSERT INTO knowledge_base
                     (institute_id, name, description, purpose, language_hint,
-                     embedding_model, embedding_dim, created_by, stats_json, meta_json)
+                     embedding_model, embedding_dim, created_by, stats_json)
                 VALUES
                     (:institute_id, :name, :description, :purpose, :language_hint,
                      :embedding_model, :embedding_dim, :created_by,
-                     CAST(:stats AS jsonb), CAST(:meta AS jsonb))
+                     CAST(:stats AS jsonb))
                 RETURNING id
                 """
             ),
@@ -192,31 +134,37 @@ class KbRepository:
                 "embedding_dim": spec.dim,
                 "created_by": created_by,
                 "stats": json.dumps({"sources": 0, "pages": 0, "chunks": 0, "figures": 0}),
-                "meta": json.dumps(meta or {}),
             },
         ).fetchone()
         self.db.commit()
         return self.get_kb(row[0], institute_id)  # type: ignore[return-value]
 
     def list_kbs(self, institute_id: str, include_archived: bool = False) -> List[Dict[str, Any]]:
-        """KBs an institute can USE: its own, libraries it has unlocked, and the
-        curriculum libraries its CURRICULUM_LIBRARY_SETTING opts into.
+        """KBs an institute can USE: its own, plus libraries it has unlocked.
 
-        A PLATFORM library the institute has not paid for (or is not configured
-        for) is deliberately absent. This list feeds the paper builder and the
-        assessment section picker, so anything in it is offered as ready to use —
-        listing a locked library here would put a paywall in the middle of
-        someone building an assessment. Browsing the catalogue is a separate
-        call with separate rules.
-
-        Curriculum bases sort last and by board → class → subject, which is the
-        order the picker groups them in.
+        A PLATFORM library the institute has not paid for is deliberately absent.
+        This list feeds the paper builder and the assessment section picker, so
+        anything in it is offered as ready to use — listing a locked library here
+        would put a paywall in the middle of someone building an assessment.
+        Browsing the catalogue is a separate call with separate rules.
         """
         status_clause = "" if include_archived else "AND kb.status = 'ACTIVE'"
         rows = self.db.execute(
             text(
                 f"""
-                {_KB_SELECT}
+                SELECT kb.id, kb.institute_id, kb.name, kb.description, kb.purpose,
+                       kb.language_hint, kb.owner_type, kb.embedding_model,
+                       kb.embedding_dim, kb.status, kb.stats_json, kb.created_by,
+                       kb.created_at, kb.updated_at,
+                       (SELECT COUNT(*) FROM knowledge_base_source s
+                         WHERE s.knowledge_base_id = kb.id) AS source_count,
+                       (SELECT COUNT(*) FROM knowledge_base_source s
+                         WHERE s.knowledge_base_id = kb.id
+                           AND s.status IN ('PENDING', 'PROCESSING')) AS processing_count,
+                       (SELECT COALESCE(SUM(s.pages_low_confidence), 0)
+                          FROM knowledge_base_source s
+                         WHERE s.knowledge_base_id = kb.id) AS review_pages
+                FROM knowledge_base kb
                 WHERE (
                         kb.institute_id = :institute_id
                         OR EXISTS (
@@ -224,21 +172,9 @@ class KbRepository:
                              WHERE e.knowledge_base_id = kb.id
                                AND e.institute_id = :institute_id
                         )
-                        OR {_CURRICULUM_ACCESS_SQL}
                       )
                 {status_clause}
-                ORDER BY (kb.owner_type = 'PLATFORM'),
-                         -- curriculum last (NULL collection must read as FALSE,
-                         -- not sort after TRUE), then board → class → subject
-                         -- → book; every other row keeps the old updated_at order
-                         COALESCE(l.collection = '{CURRICULUM_COLLECTION}', FALSE),
-                         CASE WHEN l.collection = '{CURRICULUM_COLLECTION}' THEN l.board END,
-                         CASE WHEN l.collection = '{CURRICULUM_COLLECTION}' AND l.level ~ '^[0-9]+$'
-                              THEN CAST(l.level AS INTEGER)
-                              WHEN l.collection = '{CURRICULUM_COLLECTION}' THEN 99 END,
-                         CASE WHEN l.collection = '{CURRICULUM_COLLECTION}' THEN l.subject END,
-                         CASE WHEN l.collection = '{CURRICULUM_COLLECTION}' THEN l.title END,
-                         kb.updated_at DESC
+                ORDER BY (kb.owner_type = 'PLATFORM'), kb.updated_at DESC
                 """
             ),
             {"institute_id": institute_id},
@@ -254,8 +190,20 @@ class KbRepository:
         """
         row = self.db.execute(
             text(
-                f"""
-                {_KB_SELECT}
+                """
+                SELECT kb.id, kb.institute_id, kb.name, kb.description, kb.purpose,
+                       kb.language_hint, kb.owner_type, kb.embedding_model,
+                       kb.embedding_dim, kb.status, kb.stats_json, kb.created_by,
+                       kb.created_at, kb.updated_at,
+                       (SELECT COUNT(*) FROM knowledge_base_source s
+                         WHERE s.knowledge_base_id = kb.id) AS source_count,
+                       (SELECT COUNT(*) FROM knowledge_base_source s
+                         WHERE s.knowledge_base_id = kb.id
+                           AND s.status IN ('PENDING', 'PROCESSING')) AS processing_count,
+                       (SELECT COALESCE(SUM(s.pages_low_confidence), 0)
+                          FROM knowledge_base_source s
+                         WHERE s.knowledge_base_id = kb.id) AS review_pages
+                FROM knowledge_base kb
                 WHERE kb.id = :kb_id
                   AND (kb.institute_id = :institute_id OR kb.owner_type = 'PLATFORM')
                 """
@@ -263,20 +211,6 @@ class KbRepository:
             {"kb_id": kb_id, "institute_id": institute_id},
         ).fetchone()
         return self._kb_row(row) if row else None
-
-    def update_kb_meta(self, kb_id: str, institute_id: str, meta: Dict[str, Any]) -> None:
-        """Merge keys into knowledge_base.meta_json. Owner only (no owner_type
-        guard: the publisher must be able to tag its own PLATFORM bases)."""
-        self.db.execute(
-            text(
-                "UPDATE knowledge_base "
-                "   SET meta_json = meta_json || CAST(:meta AS jsonb), "
-                "       updated_at = CURRENT_TIMESTAMP "
-                " WHERE id = :kb_id AND institute_id = :institute_id"
-            ),
-            {"kb_id": kb_id, "institute_id": institute_id, "meta": json.dumps(meta)},
-        )
-        self.db.commit()
 
     def is_writable(self, kb: Dict[str, Any], institute_id: str) -> bool:
         """Only the owning institute may mutate a knowledge base.
@@ -302,23 +236,11 @@ class KbRepository:
             return True
         if kb["owner_type"] != "PLATFORM":
             return False
-        # Paid libraries need an entitlement; curriculum libraries need the
-        # institute's setting to name their board and class. Same SQL fragment
-        # as list_kbs, so "it is in my list" and "I may use it" cannot diverge.
         return self.db.execute(
             text(
-                f"""
-                SELECT 1
-                  FROM knowledge_base kb
-                 WHERE kb.id = :kb_id
-                   AND (
-                        EXISTS (
-                            SELECT 1 FROM knowledge_base_entitlement e
-                             WHERE e.knowledge_base_id = kb.id
-                               AND e.institute_id = :institute_id
-                        )
-                        OR {_CURRICULUM_ACCESS_SQL}
-                   )
+                """
+                SELECT 1 FROM knowledge_base_entitlement
+                 WHERE knowledge_base_id = :kb_id AND institute_id = :institute_id
                  LIMIT 1
                 """
             ),
@@ -746,12 +668,6 @@ class KbRepository:
         partial rebuild would leave the picker showing a mix of old and new
         topics. Only touches topic rows — the per-source summary tree
         (book/chapter/section) is left alone.
-
-        A node may carry `source_id` (an AUTHORED tree sets it: one topic per
-        chapter source). It is what lets link_chunks_to_nodes match a
-        subtopic's page span against the RIGHT source — every chapter PDF starts
-        at page 1, so a KB-wide (source_id NULL) subtopic spanning pages 3-7
-        would otherwise claim page 3-7 of every chapter in the book.
         """
         self.db.execute(
             text(
@@ -766,21 +682,16 @@ class KbRepository:
                 text(
                     """
                     INSERT INTO knowledge_base_node
-                        (id, knowledge_base_id, source_id, institute_id, parent_id, level,
+                        (knowledge_base_id, source_id, institute_id, parent_id, level,
                          title, summary, keywords, page_start, page_end, ordinal)
                     VALUES
-                        (COALESCE(CAST(:id AS VARCHAR), CAST(gen_random_uuid() AS VARCHAR)),
-                         :kb_id, :source_id, :institute_id, NULL, 'topic',
+                        (:kb_id, NULL, :institute_id, NULL, 'topic',
                          :title, :summary, :keywords, :page_start, :page_end, :ordinal)
                     RETURNING id
                     """
                 ),
                 {
                     "kb_id": kb_id, "institute_id": institute_id, "title": topic.title,
-                    # AUTHORED trees mint deterministic ids so a rebuild keeps
-                    # the ids a saved blueprint / course plan already holds.
-                    "id": getattr(topic, "id", None),
-                    "source_id": getattr(topic, "source_id", None),
                     "summary": topic.summary, "keywords": topic.keywords,
                     "page_start": topic.page_start, "page_end": topic.page_end,
                     "ordinal": t_ordinal,
@@ -793,19 +704,15 @@ class KbRepository:
                     text(
                         """
                         INSERT INTO knowledge_base_node
-                            (id, knowledge_base_id, source_id, institute_id, parent_id, level,
+                            (knowledge_base_id, source_id, institute_id, parent_id, level,
                              title, summary, keywords, page_start, page_end, ordinal)
                         VALUES
-                            (COALESCE(CAST(:id AS VARCHAR), CAST(gen_random_uuid() AS VARCHAR)),
-                             :kb_id, :source_id, :institute_id, :parent_id, 'subtopic',
+                            (:kb_id, NULL, :institute_id, :parent_id, 'subtopic',
                              :title, :summary, :keywords, :page_start, :page_end, :ordinal)
                         """
                     ),
                     {
                         "kb_id": kb_id, "institute_id": institute_id, "parent_id": topic_id,
-                        "id": getattr(sub, "id", None),
-                        "source_id": getattr(sub, "source_id", None)
-                        or getattr(topic, "source_id", None),
                         "title": sub.title, "summary": sub.summary, "keywords": sub.keywords,
                         "page_start": sub.page_start, "page_end": sub.page_end,
                         "ordinal": s_ordinal,
@@ -821,7 +728,7 @@ class KbRepository:
             text(
                 """
                 SELECT id, parent_id, level, title, summary, keywords,
-                       page_start, page_end, ordinal, source_id
+                       page_start, page_end, ordinal
                 FROM knowledge_base_node
                 WHERE knowledge_base_id = :kb_id AND level IN ('topic', 'subtopic')
                 ORDER BY ordinal
@@ -837,7 +744,6 @@ class KbRepository:
                 "id": r[0], "parent_id": r[1], "level": r[2], "title": r[3],
                 "summary": r[4], "keywords": list(r[5] or []),
                 "page_start": r[6], "page_end": r[7], "ordinal": r[8],
-                "source_id": r[9],
             }
             if r[2] == "topic":
                 node["subtopics"] = []
@@ -852,58 +758,6 @@ class KbRepository:
         for topic in ordered:
             topic["subtopics"].sort(key=lambda s: s["ordinal"])
         return ordered
-
-    def sources_with_chunks(self, kb_id: str) -> List[str]:
-        """Sources that have at least one embedded chunk, whatever their status.
-
-        The authored tree is rebuilt at the END of an ingest while the source
-        row still reads PROCESSING (status flips to READY/PARTIAL only in the
-        finalize step), so "has chunks" — not status — is the test for
-        "belongs in the tree". A source mid-parse has no chunks yet and is
-        left out until its own rebuild."""
-        rows = self.db.execute(
-            text(
-                "SELECT DISTINCT source_id FROM kb_chunk "
-                "WHERE knowledge_base_id = :kb_id AND source_id IS NOT NULL"
-            ),
-            {"kb_id": kb_id},
-        ).fetchall()
-        return [r[0] for r in rows]
-
-    def clear_source_headings_cache(self, source_id: str) -> None:
-        """Drop the cached verbatim headings so a re-index re-reads the text."""
-        self.db.execute(
-            text(
-                "UPDATE knowledge_base_source SET meta_json = meta_json - 'headings' "
-                "WHERE id = :source_id"
-            ),
-            {"source_id": source_id},
-        )
-        self.db.commit()
-
-    def get_node_source_ids(self, kb_id: str, node_ids: Sequence[str]) -> List[str]:
-        """Sources the given topic-tree nodes belong to (distinct, order-free).
-
-        Empty for an LLM-derived tree, whose nodes span sources and carry no
-        source_id — callers then fall back to a KB-wide search. For an AUTHORED
-        tree every node is one chapter, so this is "the chapters the teacher
-        ticked", and retrieval can be pinned to exactly those.
-        """
-        if not node_ids:
-            return []
-        rows = self.db.execute(
-            text(
-                """
-                SELECT DISTINCT n.source_id
-                  FROM knowledge_base_node n
-                 WHERE n.knowledge_base_id = :kb_id
-                   AND n.id = ANY(CAST(:node_ids AS TEXT[]))
-                   AND n.source_id IS NOT NULL
-                """
-            ),
-            {"kb_id": kb_id, "node_ids": [str(n) for n in node_ids]},
-        ).fetchall()
-        return [r[0] for r in rows]
 
     def link_chunks_to_nodes(self, source_id: str) -> int:
         """Attach each chunk to the section node covering its pages.
@@ -934,30 +788,17 @@ class KbRepository:
                              OR (nd.source_id IS NULL
                                  AND nd.knowledge_base_id = ch.knowledge_base_id)
                            )
-                       AND (
-                             nd.level IN ('section', 'subtopic')
-                             -- an AUTHORED chapter topic (source-bound) owns its
-                             -- chunks too, so a chapter with no printed
-                             -- sub-headings is still retrievable by node
-                             OR (nd.level = 'topic' AND nd.source_id IS NOT NULL)
-                           )
+                       AND nd.level IN ('section', 'subtopic')
                        AND nd.page_start IS NOT NULL
                        AND nd.page_end IS NOT NULL
                        AND ch.page_start IS NOT NULL
                        AND ch.page_start BETWEEN nd.page_start AND nd.page_end
                       WHERE ch.source_id = :source_id
-                      -- Source-bound topic-tree nodes (authored trees) are the
-                      -- picker's own view of this source, so they beat the
-                      -- summary sections outright. Otherwise: narrowest
-                      -- containing node wins; on a tie prefer the SUBTOPIC —
-                      -- that is the node course slides retrieve by, and
-                      -- section-only linkage left every chunk invisible to
-                      -- node-scoped grounding (two client audits hit this)
-                      ORDER BY ch.id,
-                               CASE WHEN nd.source_id IS NOT NULL
-                                     AND nd.level IN ('topic', 'subtopic')
-                                    THEN 0 ELSE 1 END,
-                               (nd.page_end - nd.page_start) ASC,
+                      -- narrowest containing node wins; on a tie prefer the
+                      -- SUBTOPIC — that is the node course slides retrieve by,
+                      -- and section-only linkage left every chunk invisible
+                      -- to node-scoped grounding (two client audits hit this)
+                      ORDER BY ch.id, (nd.page_end - nd.page_start) ASC,
                                CASE nd.level WHEN 'subtopic' THEN 0 ELSE 1 END
                   ) AS n
                  WHERE c.id = n.chunk_id
@@ -1079,7 +920,6 @@ class KbRepository:
         embedding_dim: int,
         top_k: int = 8,
         similarity_threshold: float = 0.25,
-        source_ids: Optional[Sequence[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Vector search inside ONE knowledge base.
 
@@ -1088,27 +928,12 @@ class KbRepository:
         declared embedding dimension so a KB pinned to one embedder can never
         rank against another's vectors, and restricted to active sources.
 
-        `source_ids` narrows the search to particular sources. For a textbook
-        library where every chapter is its own source, this is what turns
-        "questions on Chapter 5" from a similarity hope into a guarantee.
-
         Returns FULL chunk text — deliberately NOT truncated. The legacy
         rag_service truncates to 1000 chars while chunking at 2000, silently
         discarding half of every retrieved chunk; for question generation that
         can cut a worked example in half.
         """
         col = self.vector_column_for_dim(embedding_dim)
-        source_clause = ""
-        params: Dict[str, Any] = {
-            "kb_id": kb_id, "institute_id": institute_id,
-            "query_vec": str(query_embedding), "embedding_dim": embedding_dim,
-            "threshold": similarity_threshold, "top_k": top_k,
-        }
-        if source_ids:
-            # A TEXT[] bind rather than an expanding IN-list: the same statement
-            # text is reused whatever the number of chapters ticked.
-            source_clause = "AND c.source_id = ANY(CAST(:source_ids AS TEXT[]))"
-            params["source_ids"] = [str(s) for s in source_ids]
         rows = self.db.execute(
             text(
                 f"""
@@ -1122,13 +947,16 @@ class KbRepository:
                   AND c.embedding_dim = :embedding_dim
                   AND c.{col} IS NOT NULL
                   AND s.is_active = TRUE
-                  {source_clause}
                   AND 1 - (c.{col} <=> CAST(:query_vec AS vector)) > :threshold
                 ORDER BY c.{col} <=> CAST(:query_vec AS vector)
                 LIMIT :top_k
                 """
             ),
-            params,
+            {
+                "kb_id": kb_id, "institute_id": institute_id,
+                "query_vec": str(query_embedding), "embedding_dim": embedding_dim,
+                "threshold": similarity_threshold, "top_k": top_k,
+            },
         ).fetchall()
         return [
             {
@@ -1231,23 +1059,17 @@ class KbRepository:
         return out
 
     def get_chunks_for_pages(
-        self, *, kb_id: str, institute_id: str, page_start: int, page_end: int, limit: int = 40,
-        source_id: Optional[str] = None,
+        self, *, kb_id: str, institute_id: str, page_start: int, page_end: int, limit: int = 40
     ) -> List[Dict[str, Any]]:
         """Every chunk within a page span, in source order.
 
         The generation-time bridge for KBs whose chunks were linked to nodes no
         slide uses (section-only linkage shipped twice): a deterministic slide
         knows its section's PAGE SPAN even when node_id retrieval comes back
-        empty, and pages are the one join both trees share.
-
-        `source_id` pins the span to one source: in a textbook library every
-        chapter restarts at page 1, so an unscoped "pages 3-7" would return
-        page 3-7 of every chapter."""
-        source_clause = "AND c.source_id = :source_id" if source_id else ""
+        empty, and pages are the one join both trees share."""
         rows = self.db.execute(
             text(
-                f"""
+                """
                 SELECT c.id, c.content_text, c.page_start, c.page_end, c.figure_ids,
                        c.lang, c.meta_data, c.source_id, s.title AS source_title
                 FROM kb_chunk c
@@ -1257,13 +1079,12 @@ class KbRepository:
                   AND c.page_start IS NOT NULL
                   AND c.page_start BETWEEN :ps AND :pe
                   AND s.is_active = TRUE
-                  {source_clause}
                 ORDER BY c.page_start, c.chunk_index
                 LIMIT :limit
                 """
             ),
             {"kb_id": kb_id, "institute_id": institute_id,
-             "ps": page_start, "pe": page_end, "limit": limit, "source_id": source_id},
+             "ps": page_start, "pe": page_end, "limit": limit},
         ).fetchall()
         return [
             {
@@ -1276,8 +1097,7 @@ class KbRepository:
         ]
 
     def get_all_chunk_summaries(
-        self, *, kb_id: str, institute_id: str, limit: int = 400,
-        source_id: Optional[str] = None, source_ids: Optional[Sequence[str]] = None,
+        self, *, kb_id: str, institute_id: str, limit: int = 400
     ) -> List[Dict[str, Any]]:
         """Every active chunk of a KB, page-ordered — the coverage-sweep census.
 
@@ -1286,41 +1106,26 @@ class KbRepository:
         chunks linked to tree nodes no slide uses (ingest linked a whole KB to
         'section' nodes while the outline teaches topic/subtopic nodes) were
         invisible to every slide. The sweep diffs this census against what the
-        slides actually retrieved.
-
-        `source_id` restricts the census to one source (the authored topic
-        tree reads one chapter at a time); `source_ids` to a set of them (the
-        coverage sweep of a course built from a few chapters of a textbook)."""
-        source_clause = ""
-        if source_id:
-            source_clause = "AND c.source_id = :source_id"
-        elif source_ids:
-            source_clause = "AND c.source_id = ANY(CAST(:source_ids AS TEXT[]))"
+        slides actually retrieved."""
         rows = self.db.execute(
             text(
-                f"""
-                SELECT c.id, c.content_text, c.page_start, c.page_end, s.title AS source_title,
-                       c.source_id
+                """
+                SELECT c.id, c.content_text, c.page_start, c.page_end, s.title AS source_title
                 FROM kb_chunk c
                 JOIN knowledge_base_source s ON s.id = c.source_id
                 WHERE c.knowledge_base_id = :kb_id
                   AND c.institute_id = :institute_id
                   AND s.is_active = TRUE
-                  {source_clause}
                 ORDER BY c.page_start NULLS LAST, c.chunk_index
                 LIMIT :limit
                 """
             ),
-            {
-                "kb_id": kb_id, "institute_id": institute_id, "limit": limit,
-                "source_id": source_id,
-                "source_ids": [str(x) for x in (source_ids or [])],
-            },
+            {"kb_id": kb_id, "institute_id": institute_id, "limit": limit},
         ).fetchall()
         return [
             {
                 "chunk_id": r[0], "content_text": r[1], "page_start": r[2],
-                "page_end": r[3], "source_title": r[4], "source_id": r[5],
+                "page_end": r[3], "source_title": r[4],
             }
             for r in rows
         ]
@@ -1432,13 +1237,7 @@ class KbRepository:
     # ------------------------------------------------------------------
     @staticmethod
     def _kb_row(r) -> Dict[str, Any]:
-        meta = r[17] or {}
-        if isinstance(meta, str):
-            try:
-                meta = json.loads(meta)
-            except ValueError:
-                meta = {}
-        row = {
+        return {
             "id": r[0], "institute_id": r[1], "name": r[2], "description": r[3],
             "purpose": r[4], "language_hint": r[5], "owner_type": r[6],
             "embedding_model": r[7], "embedding_dim": int(r[8]), "status": r[9],
@@ -1448,18 +1247,7 @@ class KbRepository:
             "source_count": int(r[14] or 0),
             "processing_count": int(r[15] or 0),
             "review_pages": int(r[16] or 0),
-            "meta": meta,
-            # Set only for curriculum libraries: the facets the picker groups by.
-            # `book` distinguishes several books of one class+subject (Class 10
-            # Social Science has four); it is the listing title.
-            "curriculum": None,
         }
-        if r[18] == CURRICULUM_COLLECTION:
-            row["curriculum"] = {
-                "board": r[19], "class": r[20], "subject": r[21],
-                "medium": r[22], "book": r[23],
-            }
-        return row
 
     @staticmethod
     def _source_row(r) -> Dict[str, Any]:

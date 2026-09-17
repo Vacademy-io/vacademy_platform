@@ -14,8 +14,6 @@ import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.StudentReportFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
-import vacademy.io.assessment_service.features.assessment.enums.ReleaseResultStatusEnum;
-import vacademy.io.assessment_service.features.assessment.enums.ResultTypeEnum;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
@@ -159,25 +157,7 @@ public class LearnerReportService {
             throw new VacademyException("You do not have access to this attempt");
         }
 
-        // Same rule the learner UI applies (AssessmentCard, assessment-slide-viewer):
-        // on a MANUAL result type nothing is visible until the teacher releases.
-        // The list endpoint hands the learner their attempt id on the "Pending
-        // evaluation" row, so without this the detail, comparison, annotated-copy
-        // and PDF endpoints would serve the AI's (or an evaluator's) marks before
-        // release to anyone who calls them directly. AUTO result types are
-        // deliberately NOT gated here: the card offers "Show report" for them
-        // regardless of release status, and refusing would break that button.
-        if (isHeldManualResult(registration.get().getAssessment(), attempt.get())) {
-            throw new VacademyException("Result has not been released yet");
-        }
-
         return registration.get();
-    }
-
-    static boolean isHeldManualResult(Assessment assessment, StudentAttempt attempt) {
-        return assessment != null
-                && ResultTypeEnum.MANUAL.name().equals(assessment.getResultType())
-                && !ReleaseResultStatusEnum.RELEASED.name().equals(attempt.getReportReleaseStatus());
     }
 
     /**

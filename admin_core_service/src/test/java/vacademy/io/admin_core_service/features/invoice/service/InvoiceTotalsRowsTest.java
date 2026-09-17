@@ -38,10 +38,10 @@ class InvoiceTotalsRowsTest {
     void discountedOrder() {
         String html = InvoiceService.buildTotalsRowsHtml(order(1396, 497, 0, 899), "₹");
         assertTrue(html.contains("Amount"), "names what the courses cost");
-        assertTrue(html.contains("₹1,396.00"), "the gross, not the charged figure");
-        assertTrue(html.contains("-₹497.00"), "the discount, as a deduction");
+        assertTrue(html.contains("₹1396"), "the gross, not the charged figure");
+        assertTrue(html.contains("-₹497"), "the discount, as a deduction");
         assertTrue(html.contains("Total Paid"));
-        assertTrue(html.contains("₹899.00"));
+        assertTrue(html.contains("₹899"));
         assertTrue(html.indexOf("1396") < html.indexOf("497")
                 && html.indexOf("497") < html.indexOf("899"), "reads top to bottom as a sum");
     }
@@ -53,7 +53,7 @@ class InvoiceTotalsRowsTest {
         assertFalse(html.contains("Discount"), "an empty discount row is what this replaces");
         assertFalse(html.contains("Amount:"), "repeating the total as an 'Amount' row reads as an error");
         assertTrue(html.contains("Total Paid"));
-        assertTrue(html.contains("₹349.00"));
+        assertTrue(html.contains("₹349"));
     }
 
     @Test

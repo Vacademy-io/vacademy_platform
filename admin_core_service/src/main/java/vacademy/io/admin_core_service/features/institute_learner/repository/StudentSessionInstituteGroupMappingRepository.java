@@ -685,10 +685,6 @@ public interface StudentSessionInstituteGroupMappingRepository
       """, nativeQuery = true)
   List<Object[]> findRootAdminBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
 
-  /** Every mapping one user holds inside one sub-org, oldest first (partner onboarding picks the ROOT_ADMIN one). */
-  List<StudentSessionInstituteGroupMapping> findBySubOrg_IdAndUserIdAndStatusOrderByCreatedAtAsc(
-      String subOrgId, String userId, String status);
-
   /**
    * Find the ROOT_ADMIN user_id for a specific sub-org and package session
    * ROOT_ADMIN is the user who purchased the plan and owns the member count limit

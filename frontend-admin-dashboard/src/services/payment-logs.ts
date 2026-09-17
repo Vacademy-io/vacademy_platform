@@ -39,32 +39,13 @@ export const fetchPaymentLogs = async (
 
 export const BILLING_SUMMARY_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/billing-summary`;
 
-/**
- * What came in, what learners with access still owe, and what falls due next. Amounts are in
- * `currency`.
- *
- * `due` is only ever money on granted access — an overdue instalment, a lapsed subscription
- * renewal, an unpaid invoice. An unfinished checkout is not due (nobody has access) and a one-time
- * purchase is never due (paid, or not enrolled). `total_billed` is always `collected + due`.
- */
+/** What learners were billed, what they paid, and the difference. Amounts are in `currency`. */
 export interface BillingSummary {
     total_billed: number;
     collected: number;
-    /** Overdue right now. */
     due: number;
-    /** Falls due within `upcoming_days`. Expected, not yet owed. */
-    upcoming: number;
-    upcoming_days: number;
-    /** Distinct learners with something overdue — the rows on the Due list. */
-    learners_owing: number;
-    learners_upcoming: number;
-    /** Live enrolments in the window. */
     plan_count: number;
-    /**
-     * Live, priced one-time plans with no payment recorded — activated by an admin by hand. Could
-     * be an offline payment nobody recorded or a free grant, so it is reported, not billed.
-     */
-    activated_without_payment_count: number;
+    settled_plan_count: number;
     currency: string | null;
 }
 
@@ -76,12 +57,12 @@ export interface BillingSummaryRequest {
 }
 
 /**
- * Billing totals for the Collected / Due / Upcoming cards.
+ * Billing totals for the Total / Collected / Due cards.
  *
- * Due comes from the obligations on the plans learners hold, not from payment rows: an overdue
- * instalment nobody has paid has no payment row at all, and a lapsed renewal leaves only the
- * failed attempt. Summing payment logs therefore cannot see what is owed — and summing plan prices
- * (the previous approach) counted every abandoned checkout and coupon discount as debt.
+ * These come from the plans learners are enrolled on, not from payment rows: a ₹50,000 course paid
+ * in one ₹10,000 instalment leaves a single PAID row and no trace of the ₹40,000 still owed, and an
+ * enrolment that has paid nothing has no payment rows at all. Summing payment logs therefore
+ * reports institutes as fully collected while the money is still outstanding.
  */
 export const fetchBillingSummary = async (
     requestBody: BillingSummaryRequest = {}
@@ -98,20 +79,15 @@ export const fetchBillingSummary = async (
     });
 
     const d = (response.data ?? {}) as Partial<BillingSummary>;
-    const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-    const collected = num(d.collected);
-    const due = Math.max(0, num(d.due));
+    const totalBilled = typeof d.total_billed === 'number' ? d.total_billed : 0;
+    const collected = typeof d.collected === 'number' ? d.collected : 0;
     return {
-        // Derived here too, so the cards reconcile even against an older server.
-        total_billed: collected + due,
+        total_billed: totalBilled,
         collected,
-        due,
-        upcoming: Math.max(0, num(d.upcoming)),
-        upcoming_days: num(d.upcoming_days) || 30,
-        learners_owing: num(d.learners_owing),
-        learners_upcoming: num(d.learners_upcoming),
-        plan_count: num(d.plan_count),
-        activated_without_payment_count: num(d.activated_without_payment_count),
+        // Trust the server's own subtraction when it sent one; never render a negative due.
+        due: Math.max(0, typeof d.due === 'number' ? d.due : totalBilled - collected),
+        plan_count: typeof d.plan_count === 'number' ? d.plan_count : 0,
+        settled_plan_count: typeof d.settled_plan_count === 'number' ? d.settled_plan_count : 0,
         currency: d.currency ?? null,
     };
 };
@@ -169,10 +145,7 @@ export interface OutstandingLearner {
     plan_status: string | null;
     billed: number;
     paid: number;
-    /** Overdue right now — what puts the learner on this list. */
     due: number;
-    /** Falls due within the upcoming horizon. */
-    upcoming: number;
     plan_count: number;
     /** CPO only: instalments still unpaid on their schedule. */
     pending_installments: number;
@@ -191,14 +164,10 @@ export interface LearnerPlanBreakdown {
     payment_type: string | null;
     billed: number;
     paid: number;
-    /** Overdue on this enrolment right now. */
     due: number;
-    /** Falls due on this enrolment within the upcoming horizon. */
-    upcoming: number;
     /**
-     * True for a live CPO / subscription plan or an unpaid invoice — the kinds that can owe. A
-     * one-time purchase or a dead plan is still returned so the side view can show it, but it
-     * contributes 0 to the learner's balance.
+     * False for a cancelled / terminated / expired enrolment. Such a plan is still returned so the
+     * side view can show it, but it contributes 0 to the learner's balance.
      */
     counts_towards_due: boolean;
     currency: string | null;

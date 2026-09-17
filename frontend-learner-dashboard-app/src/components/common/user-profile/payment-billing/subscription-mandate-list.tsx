@@ -24,7 +24,6 @@ import {
 } from "./subscription-services";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { ChangePlanDialog } from "@/components/common/subscription/ChangePlanDialog";
-import type { MandateMethod } from "@/components/common/subscription/MandateMethodPicker";
 import {
   RazorpayCheckoutForm,
   type RazorpayCheckoutFormRef,
@@ -82,8 +81,7 @@ export const SubscriptionMandateList = ({
   const startPlanChange = async (
     sub: Subscription,
     target: PlanChangeTarget,
-    withAutopay: boolean,
-    mandateMethod?: MandateMethod
+    withAutopay: boolean
   ): Promise<PlanChangeResult | null> => {
     try {
       setChangingPlanId(sub.user_plan_id);
@@ -91,8 +89,7 @@ export const SubscriptionMandateList = ({
         instituteId,
         sub.user_plan_id,
         target.plan_id,
-        withAutopay || Boolean(target.requires_mandate_reauth),
-        mandateMethod
+        withAutopay || Boolean(target.requires_mandate_reauth)
       );
       if (result.status === "PENDING_PAYMENT" && result.payment_response) {
         const orderDetails =
@@ -320,8 +317,8 @@ export const SubscriptionMandateList = ({
         subscription={toChange}
         instituteId={instituteId}
         isSubmitting={Boolean(changingPlanId)}
-        onConfirm={(target, withAutopay, mandateMethod) =>
-          startPlanChange(toChange as Subscription, target, withAutopay, mandateMethod)
+        onConfirm={(target, withAutopay) =>
+          startPlanChange(toChange as Subscription, target, withAutopay)
         }
       />
 

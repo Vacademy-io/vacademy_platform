@@ -92,13 +92,6 @@
         "renewPromptNoDate": "Payez une fois et votre abonnement se poursuit.",
         "reactivatePrompt": "Réactivez cet abonnement — même forfait, mêmes cours, sans nouvelle inscription.",
         "alsoEnableAutopay": "Réactivez aussi le paiement automatique — une seule approbation paie maintenant et configure les renouvellements futurs.",
-        "mandateMethod": {
-            "heading": "Comment configurer le paiement automatique ?",
-            "upiLabel": "UPI Autopay",
-            "upiHint": "GPay, PhonePe, Paytm",
-            "cardLabel": "Carte",
-            "cardHint": "Carte de débit / crédit"
-        },
         "payToContinue": "Payer {{amount}} pour continuer",
         "startingPayment": "Démarrage du paiement...",
         "unavailable": "Les informations d'abonnement sont indisponibles pour le moment.",

@@ -1,11 +1,15 @@
 {
-    "description": "أنشئ تقرير ذكاء اصطناعي لكل متعلم نشط في الدفعات المختارة.",
+    "description": "أنشئ تقرير ذكاء اصطناعي لكل متعلم نشط في هذه الدفعة.",
     "form": {
+        "courseRequired": "الكورس مطلوب",
+        "sessionRequired": "الفصل الدراسي مطلوب",
+        "levelRequired": "المستوى مطلوب",
         "startDateRequired": "تاريخ البدء مطلوب",
         "endDateRequired": "تاريخ الانتهاء مطلوب",
         "dateRangeTooLong": "يجب أن يكون الفرق بين تاريخ البدء وتاريخ الانتهاء أقل من شهر واحد.",
-        "errorsHeading": "يرجى تصحيح الأخطاء التالية:",
-        "batchRequired": "اختر دفعة واحدة على الأقل"
+        "selectPlaceholder": "اختر {{term}}",
+        "searchPlaceholder": "ابحث عن {{term}}...",
+        "errorsHeading": "يرجى تصحيح الأخطاء التالية:"
     },
     "range": {
         "label": "النطاق:",
@@ -19,11 +23,10 @@
         "generateReports": "إنشاء تقارير الذكاء الاصطناعي",
         "stop": "إيقاف",
         "retryFailed": "إعادة محاولة الفاشل",
-        "view": "عرض",
-        "exportCsv": "تصدير CSV"
+        "view": "عرض"
     },
     "toast": {
-        "resolveBatchFailed": "اختر دفعة واحدة على الأقل.",
+        "resolveBatchFailed": "تعذّر تحديد الدفعة المختارة. تحقق من الكورس / الفصل الدراسي / المستوى.",
         "noActiveLearners": "لم يتم العثور على متعلمين نشطين في هذه الدفعة.",
         "generationFinished": "اكتمل إنشاء تقارير الدفعة.",
         "loadLearnersFailed": "فشل تحميل متعلمي الدفعة.",
@@ -54,15 +57,5 @@
         "generating": "جارٍ الإنشاء",
         "completed": "مكتمل",
         "failed": "فاشل"
-    },
-    "csv": {
-        "fileStem": "ai-analysis-run",
-        "title": "إنشاء تقارير الذكاء الاصطناعي",
-        "name": "الاسم",
-        "email": "البريد الإلكتروني",
-        "status": "الحالة",
-        "processId": "معرّف التقرير",
-        "error": "الخطأ",
-        "exportSuccess": "تم تصدير CSV"
     }
 }

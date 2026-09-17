@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.counselor_pool.dto.*;
 import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorPoolService;
 import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorPoolShiftService;
@@ -112,23 +111,6 @@ public class CounselorPoolController {
             @RequestBody UpdateAudienceOrderRequest request) {
         poolService.updateAudienceMemberOrder(poolId, audienceId, request.getCounselorUserIds());
         return ResponseEntity.ok("Order updated");
-    }
-
-    /**
-     * When this list hands out a counsellor. Body: { assign_on_intake: true|false }.
-     * false = AI-first: leave new leads unowned so the AI call runs, assign only once the
-     * call outcome (or the exhausted-retries hand-off) asks for a counsellor.
-     */
-    @PatchMapping("/{poolId}/audiences/{audienceId}/assignment")
-    public ResponseEntity<String> updateAudienceAssignment(
-            @PathVariable String poolId,
-            @PathVariable String audienceId,
-            @RequestBody UpdateAudienceAssignmentRequest request) {
-        if (request == null || request.getAssignOnIntake() == null) {
-            throw new VacademyException("assign_on_intake is required");
-        }
-        poolService.updateAudienceAssignOnIntake(poolId, audienceId, request.getAssignOnIntake());
-        return ResponseEntity.ok("Assignment timing updated");
     }
 
     // ────────────────────────────────────────────────────────────────

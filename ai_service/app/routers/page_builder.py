@@ -17,7 +17,6 @@ Phase A scope: one page per run (wizard). Copilot ops come in Phase B.
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlparse
 import base64
 import json
 import logging
@@ -442,10 +441,6 @@ _REFERENCE_IDLE_TIMEOUT_MS = 8_000
 _REFERENCE_SETTLE_MS = 1_200
 _REFERENCE_GROWTH_POLL_MS = 500
 _REFERENCE_GROWTH_MAX_MS = 10_000
-# Hard ceiling on one capture (navigation + settle + scroll + screenshot).
-_REFERENCE_TOTAL_TIMEOUT_S = 75
-# Chromium costs ~400 MB per capture; the pod has 3 GiB with ~1 GiB in use.
-_REFERENCE_CAPTURE_SLOTS = asyncio.Semaphore(2)
 _REFERENCE_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/131.0.0.0 Safari/537.36"
@@ -534,11 +529,8 @@ def _slice_screenshot(png: bytes, tile_height: int = _REFERENCE_TILE_HEIGHT, max
 
 async def _capture_reference_screenshots(url: str, warnings: List[str]) -> List[str]:
     """Screenshot a reference website → data: URLs the vision pass can read
-    directly. SSRF-guarded like every other fetch here — for the first URL AND
-    for every request the page makes afterwards (redirects, images, XHR): the
-    browser runs inside the cluster, so an unguarded <img src=http://internal>
-    would paint an internal response into a screenshot the admin can see.
-    Returns [] on any failure and says why in warnings."""
+    directly. SSRF-guarded like every other fetch here. Returns [] on any
+    failure and says why in warnings."""
     target = (url or "").strip()
     if not target:
         return []
@@ -552,51 +544,8 @@ async def _capture_reference_screenshots(url: str, warnings: List[str]) -> List[
     except ImportError:
         warnings.append("Reference site skipped: screenshot engine unavailable")
         return []
-    try:
-        async with _REFERENCE_CAPTURE_SLOTS:
-            png = await asyncio.wait_for(_capture_reference_png(target, async_playwright), _REFERENCE_TOTAL_TIMEOUT_S)
-    except asyncio.TimeoutError:
-        warnings.append("Reference site could not be captured (timed out)")
-        return []
-    except Exception as e:  # noqa: BLE001
-        logger.warning("[page-builder] reference capture failed for %s: %s", target[:120], e)
-        warnings.append(f"Reference site could not be captured ({type(e).__name__})")
-        return []
-    if not png:
-        warnings.append("Reference site produced no screenshot")
-        return []
-    tiles = _slice_screenshot(png)
-    out: List[str] = []
-    for tile in tiles:
-        payload, ctype = _downscale_for_vision(tile, "image/png")
-        out.append(f"data:{ctype};base64,{base64.b64encode(payload).decode()}")
-    if out:
-        warnings.append(f"Captured the reference site as {len(out)} screenshot tile(s)")
-    return out
-
-
-async def _capture_reference_png(target: str, async_playwright: Any) -> Optional[bytes]:
-    """One guarded browser session → full-page PNG (or None)."""
-    host_ok: Dict[str, bool] = {}
-
-    async def guard(route: Any, request: Any) -> None:
-        # One DNS check per host per capture; anything non-public is aborted.
-        try:
-            host = (urlparse(request.url).hostname or "").lower()
-            if host not in host_ok:
-                host_ok[host] = _is_public_http_host(request.url)
-            if host_ok[host]:
-                await route.continue_()
-            else:
-                await route.abort("blockedbyclient")
-        except Exception:  # noqa: BLE001
-            try:
-                await route.abort("blockedbyclient")
-            except Exception:  # noqa: BLE001
-                pass
-
     png: Optional[bytes] = None
-    if True:
+    try:
         async with async_playwright() as pw:
             # Full Chromium (new headless), not the headless shell: sites that
             # fingerprint the shell answer with "browser not supported" banners.
@@ -608,7 +557,6 @@ async def _capture_reference_png(target: str, async_playwright: Any) -> Optional
             try:
                 context = await browser.new_context(viewport=_REFERENCE_VIEWPORT, user_agent=_REFERENCE_UA, locale="en-US")
                 await context.add_init_script(_REFERENCE_INIT_SCRIPT)
-                await context.route("**/*", guard)
                 page = await context.new_page()
                 try:
                     await page.goto(target, wait_until="domcontentloaded", timeout=_REFERENCE_NAV_TIMEOUT_MS)
@@ -640,7 +588,21 @@ async def _capture_reference_png(target: str, async_playwright: Any) -> Optional
                 png = await page.screenshot(full_page=True, type="png")
             finally:
                 await browser.close()
-    return png
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] reference capture failed for %s: %s", target[:120], e)
+        warnings.append(f"Reference site could not be captured ({type(e).__name__})")
+        return []
+    if not png:
+        warnings.append("Reference site produced no screenshot")
+        return []
+    tiles = _slice_screenshot(png)
+    out: List[str] = []
+    for tile in tiles:
+        payload, ctype = _downscale_for_vision(tile, "image/png")
+        out.append(f"data:{ctype};base64,{base64.b64encode(payload).decode()}")
+    if out:
+        warnings.append(f"Captured the reference site as {len(out)} screenshot tile(s)")
+    return out
 
 
 async def _resolve_inspiration_sources(body: "GeneratePageRequest", warnings: List[str]) -> List[str]:
@@ -2673,8 +2635,7 @@ def strip_fabricated_people(page: Dict[str, Any], evidence: str, warnings: List[
     A section left empty is removed. Returns the number of entries dropped."""
     if not isinstance(page, dict):
         return 0
-    # Punctuation → spaces so "Priya," and "(Li Na)" still match as words.
-    corpus = " " + re.sub(r"[^\w]+", " ", str(evidence or "").lower()) + " "
+    corpus = " " + re.sub(r"\s+", " ", str(evidence or "").lower()) + " "
     dropped = 0
     kept: List[Dict[str, Any]] = []
     for comp in page.get("components") or []:
@@ -2685,18 +2646,9 @@ def strip_fabricated_people(page: Dict[str, Any], evidence: str, warnings: List[
             continue
         real = []
         for entry in props[key]:
-            name = str((entry or {}).get("name") or "").strip().lower() if isinstance(entry, dict) else ""
-            words = re.findall(r"[^\W\d_]{3,}", name)
-            tokens = _name_tokens(name)
-            # A name is "given" when one of its (non-role) words occurs in the
-            # evidence. A name made only of role words ("Founder") never is. A
-            # name with no 3-letter word at all ("Li Na") is checked whole.
-            if words:
-                given = any(f" {t}" in corpus for t in tokens)
-            else:
-                whole = re.sub(r"[^\w]+", " ", name)
-                given = bool(name) and f" {whole} " in corpus
-            if given:
+            tokens = _name_tokens((entry or {}).get("name")) if isinstance(entry, dict) else []
+            # A name is "given" when one of its words occurs in the evidence.
+            if tokens and any(f" {t}" in corpus for t in tokens):
                 real.append(entry)
             else:
                 dropped += 1

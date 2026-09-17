@@ -64,26 +64,6 @@ spec:
                 port:
                   number: {{ .Values.services.auth_service.port }}
 {{- end }}
-{{- if .Values.services.ai_service.enabled }}
-          # OAuth discovery for the MCP server. RFC 9728/8414 put these documents
-          # at the ROOT of the host (the resource path is appended AFTER the
-          # well-known segment), so they cannot live under /ai-service. They must
-          # also precede the SPA's catch-all "/" below.
-          - path: /.well-known/oauth-protected-resource
-            pathType: Prefix
-            backend:
-              service:
-                name: ai-service
-                port:
-                  number: {{ .Values.services.ai_service.port }}
-          - path: /.well-known/oauth-authorization-server
-            pathType: Prefix
-            backend:
-              service:
-                name: ai-service
-                port:
-                  number: {{ .Values.services.ai_service.port }}
-{{- end }}
 {{- if .Values.frontends.enabled }}
           - path: /
             pathType: Prefix
@@ -190,24 +170,6 @@ spec:
                 port:
                   number: {{ .Values.services.notification_service.port }}
           - path: /ai-service
-            pathType: Prefix
-            backend:
-              service:
-                name: ai-service
-                port:
-                  number: {{ .Values.services.ai_service.port }}
-          # OAuth discovery for the MCP server. RFC 9728/8414 put these
-          # documents at the ROOT of the host (the resource path is appended
-          # AFTER the well-known segment), so they cannot live under
-          # /ai-service. MCP clients fetch them before they hold any token.
-          - path: /.well-known/oauth-protected-resource
-            pathType: Prefix
-            backend:
-              service:
-                name: ai-service
-                port:
-                  number: {{ .Values.services.ai_service.port }}
-          - path: /.well-known/oauth-authorization-server
             pathType: Prefix
             backend:
               service:

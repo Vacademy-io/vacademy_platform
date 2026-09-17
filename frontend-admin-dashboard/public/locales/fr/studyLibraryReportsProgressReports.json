@@ -1,32 +1,27 @@
 {
     "validation": {
-        "batchRequired": "Sélectionnez au moins un groupe",
-        "studentRequired": "L'apprenant est requis"
+        "courseRequired": "Le cours est requis",
+        "sessionRequired": "La session est requise",
+        "levelRequired": "Le niveau est requis"
     },
     "toast": {
         "exportSuccess": "Rapport exporté",
-        "exportFailed": "Échec de l'exportation du PDF",
-        "csvExportSuccess": "CSV exporté",
-        "csvExportFailed": "Échec de l'export CSV",
-        "learnerNotInBatches": "Cet apprenant n’est inscrit dans aucun des groupes sélectionnés."
+        "exportFailed": "Échec de l'exportation du PDF"
     },
     "form": {
+        "selectA": "Sélectionner un(e) {{term}}",
+        "searchTerm": "Rechercher {{term}}...",
+        "nameLabel": "Nom",
         "selectStudent": "Sélectionner un étudiant",
         "searchStudent": "Rechercher un étudiant...",
         "noStudentsFound": "Aucun étudiant trouvé",
         "generateReport": "Générer le rapport",
-        "fixErrorsPrefix": "Veuillez corriger les erreurs suivantes :",
-        "loadingStudents": "Chargement…",
-        "learnerHint": "{{count}} disponible(s)",
-        "pickBatchFirst": "Choisissez d’abord un {{batch}}."
+        "fixErrorsPrefix": "Veuillez corriger les erreurs suivantes :"
     },
     "report": {
         "exporting": "Exportation...",
         "exportPdf": "Exporter en PDF",
-        "subjectWiseHeading": "Rapport de progression par matière",
-        "exportCsv": "Exporter en CSV",
-        "batchCount": "{{term}} · {{count}} sélectionné(s)",
-        "batchLoadFailed": "Impossible de charger le rapport pour {{name}}."
+        "subjectWiseHeading": "Rapport de progression par matière"
     },
     "pdf": {
         "batchSubjectWiseProgress": "Progression par {{subjectTerm}} — {{batchTerm}}",
@@ -41,13 +36,5 @@
         "termDailyTimeAvg": "Temps quotidien (moy.) — {{term}}",
         "termWiseProgressReport": "Rapport de progression par {{term}}",
         "learningProgressReport": "Rapport de progression d'apprentissage"
-    },
-    "csv": {
-        "fileStem": "progression-apprenant",
-        "title": "Progression par {{term}}",
-        "moduleCompleted": "{{module}} terminé (%)",
-        "moduleCompletedByBatch": "{{module}} terminé par le {{batch}} (%)",
-        "dailyTimeMin": "Temps quotidien moyen (min)",
-        "dailyTimeByBatchMin": "Temps quotidien moyen du {{batch}} (min)"
     }
 }

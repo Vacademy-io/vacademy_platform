@@ -25,7 +25,6 @@ public class LearnerPlanBreakdownDTO {
     private Double billed;
     private Double paid;
     private Double due;
-    private Double upcoming;
     private Boolean countsTowardsDue;
     private String currency;
 }

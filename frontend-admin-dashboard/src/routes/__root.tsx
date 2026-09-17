@@ -73,11 +73,6 @@ const publicRoutes = [
     '/vim/onboarding',
     '/vim/login',
     '/vim/waitlist',
-    // MCP OAuth consent: the visitor arrives from an AI client and may not be
-    // signed in yet. The guard below forwards only a pathname, which would drop
-    // the ?txn= handle, so the page handles sign-in itself (it stashes the txn
-    // first). Nothing is granted without a verified session on the backend.
-    '/mcp/authorize',
 ];
 
 const isVimotionHost = () =>

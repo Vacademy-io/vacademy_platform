@@ -272,11 +272,4 @@ export const flavorConfig: FlavorConfigs = {
     domain: "oui-academie.com",
     subdomain: "student",
   },
-
-  // Sreedhar's TTS Android app
-  "com.sreedhar.app": {
-    appName: "Sreedhar's TTS",
-    domain: "ttsedu.co.in",
-    subdomain: "learn",
-  },
 };

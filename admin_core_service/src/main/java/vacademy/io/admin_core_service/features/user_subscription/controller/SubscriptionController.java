@@ -37,19 +37,15 @@ public class SubscriptionController {
      * continue"). Amount and vendor are derived server-side from the plan.
      * withAutopay=true (only when the invite has autopay enabled) opens the
      * checkout in mandate mode so the payment also re-registers auto-pay.
-     * mandateMethod (upi | card) picks how that mandate is authorised, exactly
-     * like the enrol form; when omitted the learner's existing mandate method is
-     * reused, defaulting to UPI.
      */
     @PostMapping("/{userPlanId}/renew-payment")
     public ResponseEntity<vacademy.io.common.payment.dto.PaymentResponseDTO> renewPayment(
             @RequestAttribute("user") CustomUserDetails user,
             @RequestParam String instituteId,
             @PathVariable String userPlanId,
-            @RequestParam(defaultValue = "false") boolean withAutopay,
-            @RequestParam(required = false) String mandateMethod) {
-        return ResponseEntity.ok(subscriptionService.initiateRenewalPayment(
-                user, instituteId, userPlanId, withAutopay, mandateMethod));
+            @RequestParam(defaultValue = "false") boolean withAutopay) {
+        return ResponseEntity.ok(
+                subscriptionService.initiateRenewalPayment(user, instituteId, userPlanId, withAutopay));
     }
 
     /**

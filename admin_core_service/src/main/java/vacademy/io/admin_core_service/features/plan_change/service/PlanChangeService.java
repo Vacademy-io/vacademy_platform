@@ -95,7 +95,6 @@ public class PlanChangeService {
     private final InvoiceService invoiceService;
     private final WorkflowTriggerService workflowTriggerService;
     private final vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService paymentSettingService;
-    private final vacademy.io.admin_core_service.features.payments.service.MandateRequestDefaults mandateRequestDefaults;
 
     /** Statuses from which a learner may initiate a change. */
     private static final List<String> CHANGEABLE_STATUSES = List.of(
@@ -287,8 +286,7 @@ public class PlanChangeService {
         changeRequestRepository.save(changeRequest);
 
         PaymentResponseDTO paymentResponse = initiateUpgradePayment(
-                userPlan, instituteId, target, changeRequest, request.isWithAutopay(),
-                request.getMandateMethod(), userDetails);
+                userPlan, instituteId, target, changeRequest, request.isWithAutopay(), userDetails);
         return toResponse(changeRequest, target, paymentResponse);
     }
 
@@ -302,7 +300,7 @@ public class PlanChangeService {
      */
     private PaymentResponseDTO initiateUpgradePayment(UserPlan userPlan, String instituteId,
             PlanChangeTargetResolver.Candidate target, UserPlanChangeRequest changeRequest,
-            boolean withAutopay, String mandateMethod, CustomUserDetails userDetails) {
+            boolean withAutopay, CustomUserDetails userDetails) {
 
         EnrollInvite invite = resolveInvite(target.enrollInviteId(), userPlan);
         if (invite == null) {
@@ -333,14 +331,6 @@ public class PlanChangeService {
         razorpayRequest.setContact(user.getMobileNumber());
         razorpayRequest.setEmail(user.getEmail());
         paymentRequest.setRazorpayRequest(razorpayRequest);
-        if (withAutopay) {
-            // Same fill-in as enrolment: ceiling = the TARGET plan's price (what every
-            // renewal will debit from now on), frequency as_presented, and the learner's
-            // chosen / existing authorisation method instead of the gateway's card fallback.
-            mandateRequestDefaults.applyMaxAmountAndFrequency(paymentRequest, invite, target.plan());
-            mandateRequestDefaults.applyMethod(paymentRequest, mandateMethod,
-                    userPlan.getUserId(), instituteId, invite.getVendor());
-        }
 
         PaymentResponseDTO response = withAutopay
                 // Mandate mode: one approval pays the difference AND re-registers auto-pay,

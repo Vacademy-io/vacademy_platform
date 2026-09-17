@@ -15,9 +15,14 @@
         "status": "स्थिति",
         "chaptersDone": "पूर्ण अध्याय"
     },
+    "picker": {
+        "selectA": "एक {{term}} चुनें",
+        "searchTerm": "{{term}} खोजें..."
+    },
     "emptyBatch": {
-        "selectBatch": "{{learner}} की प्रगति देखने के लिए {{batch}} चुनें।",
-        "multiHint": "कई {{batch}} चुनें ताकि उनके {{batch}} के शिक्षार्थी एक ही सूची में दिखें।"
+        "selectBatch": "{{learner}} की प्रगति देखने के लिए एक बैच चुनें।",
+        "selectCourse": "{{learner}} की प्रगति देखने के लिए एक {{course}} चुनें।",
+        "autoPicked": "जब केवल एक ही विकल्प हो तो {{session}} और {{level}} अपने आप चुन लिए जाते हैं।"
     },
     "stats": {
         "enrolled_one": "नामांकित {{learner}}",
@@ -39,29 +44,11 @@
     },
     "empty": {
         "noMatch": "कोई {{learner}} “{{search}}” से मेल नहीं खाता।",
-        "noneEnrolled": "चुने गए {{batch}} में अभी कोई {{learner}} नामांकित नहीं है।",
+        "noneEnrolled": "इस बैच में अभी तक कोई {{learner}} नामांकित नहीं है।",
         "tryDifferentName": "कोई अलग नाम आज़माएं।",
         "progressAppearsHere": "{{learner}} के नामांकित होते ही यहां प्रगति दिखाई देगी।"
     },
     "drawer": {
         "percentComplete": "{{course}} का {{percent}}% पूर्ण"
-    },
-    "csv": {
-        "fileStem": "{{learner}}-progress",
-        "exportCsv": "CSV निर्यात करें",
-        "preparing": "तैयार हो रहा है…",
-        "exporting": "{{done}}/{{total}} निर्यात हो रहा है…",
-        "exportSuccess": "CSV निर्यात हो गया · {{count}} पंक्तियाँ",
-        "exportTruncated": "CSV निर्यात हो गया · केवल पहली {{count}}",
-        "exportFailed": "CSV निर्यात विफल",
-        "summaryTitle": "{{learner}} प्रगति",
-        "email": "ईमेल",
-        "username": "उपयोगकर्ता नाम",
-        "enrollmentNumber": "नामांकन संख्या",
-        "courseProgress": "{{course}} प्रगति (%)",
-        "chaptersDone": "पूर्ण अध्याय",
-        "chaptersTotal": "कुल अध्याय",
-        "subjectTitle": "विषय के अनुसार {{learner}} प्रगति",
-        "moduleProgress": "{{module}} प्रगति (%)"
     }
 }

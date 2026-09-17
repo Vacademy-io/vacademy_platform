@@ -15,9 +15,14 @@
         "status": "الحالة",
         "chaptersDone": "الفصول المكتملة"
     },
+    "picker": {
+        "selectA": "اختر {{term}}",
+        "searchTerm": "ابحث عن {{term}}..."
+    },
     "emptyBatch": {
-        "selectBatch": "اختر {{batch}} لعرض تقدم {{learner}}.",
-        "multiHint": "اختر عدة {{batch}} لعرض متعلمي هذه {{batch}} في قائمة واحدة."
+        "selectBatch": "اختر دفعة لعرض تقدم {{learner}}.",
+        "selectCourse": "اختر {{course}} لعرض تقدم {{learner}}.",
+        "autoPicked": "يتم اختيار {{session}} و{{level}} تلقائيًا عندما يتوفر خيار واحد فقط."
     },
     "stats": {
         "enrolled_zero": "لا يوجد {{learner}} مسجل",
@@ -47,29 +52,11 @@
     },
     "empty": {
         "noMatch": "لا يوجد {{learner}} يطابق “{{search}}”.",
-        "noneEnrolled": "لا يوجد {{learner}} مسجل في {{batch}} المختارة بعد.",
+        "noneEnrolled": "لم يتم تسجيل أي {{learner}} في هذه الدفعة بعد.",
         "tryDifferentName": "جرّب اسمًا مختلفًا.",
         "progressAppearsHere": "سيظهر التقدم هنا بمجرد تسجيل {{learner}}."
     },
     "drawer": {
         "percentComplete": "اكتمال {{percent}}% من {{course}}"
-    },
-    "csv": {
-        "fileStem": "{{learner}}-progress",
-        "exportCsv": "تصدير CSV",
-        "preparing": "جارٍ التحضير…",
-        "exporting": "جارٍ التصدير {{done}}/{{total}}…",
-        "exportSuccess": "تم تصدير CSV · {{count}} صفوف",
-        "exportTruncated": "تم تصدير CSV · أول {{count}} فقط",
-        "exportFailed": "فشل تصدير CSV",
-        "summaryTitle": "تقدم {{learner}}",
-        "email": "البريد الإلكتروني",
-        "username": "اسم المستخدم",
-        "enrollmentNumber": "رقم التسجيل",
-        "courseProgress": "تقدم {{course}} (%)",
-        "chaptersDone": "الفصول المكتملة",
-        "chaptersTotal": "إجمالي الفصول",
-        "subjectTitle": "تقدم {{learner}} حسب المادة",
-        "moduleProgress": "تقدم {{module}} (%)"
     }
 }

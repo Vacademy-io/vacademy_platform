@@ -1,11 +1,15 @@
 {
-    "description": "Generate an AI report for every active learner in the selected batches.",
+    "description": "Generate an AI report for every active learner in this batch.",
     "form": {
+        "courseRequired": "Course is required",
+        "sessionRequired": "Session is required",
+        "levelRequired": "Level is required",
         "startDateRequired": "Start Date is required",
         "endDateRequired": "End Date is required",
         "dateRangeTooLong": "The difference between Start Date and End Date should be less than one month.",
-        "errorsHeading": "Please fix the following errors:",
-        "batchRequired": "Select at least one batch"
+        "selectPlaceholder": "Select a {{term}}",
+        "searchPlaceholder": "Search {{term}}...",
+        "errorsHeading": "Please fix the following errors:"
     },
     "range": {
         "label": "Range:",
@@ -19,11 +23,10 @@
         "generateReports": "Generate AI Reports",
         "stop": "Stop",
         "retryFailed": "Retry failed",
-        "view": "View",
-        "exportCsv": "Export CSV"
+        "view": "View"
     },
     "toast": {
-        "resolveBatchFailed": "Select at least one batch.",
+        "resolveBatchFailed": "Could not resolve the selected batch. Check course / session / level.",
         "noActiveLearners": "No active learners found in this batch.",
         "generationFinished": "Batch report generation finished.",
         "loadLearnersFailed": "Failed to load the batch learners.",
@@ -46,15 +49,5 @@
         "generating": "Generating",
         "completed": "Completed",
         "failed": "Failed"
-    },
-    "csv": {
-        "fileStem": "ai-analysis-run",
-        "title": "AI report generation",
-        "name": "Name",
-        "email": "Email",
-        "status": "Status",
-        "processId": "Report id",
-        "error": "Error",
-        "exportSuccess": "CSV exported"
     }
 }

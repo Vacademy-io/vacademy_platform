@@ -103,11 +103,8 @@ docker-compose.override.yml
 .vscode/
 .idea/
 
-# Python bytecode caches — global, so a new package can never re-commit them.
-__pycache__/
-*.py[cod]
-
 # AI Service (Python)
+ai_service/__pycache__/
 ai_service/.venv/
 ai_service/venv/
 ai_service/.pytest_cache/
@@ -121,8 +118,23 @@ ai_service/.env.*
 !ai_service/env.stage.example
 
 ai_service/target/*
+ai_service/app/__pycache__/*
+ai_service/app/ai-video-gen-main/__pycache__/*
+ai_service/app/ai-video-gen-main/app/__pycache__/*
+ai_service/app/ai-video-gen-main/app/ai-video-gen-main/__pycache__/*
+ai_service/app/adapters/__pycache__/*
+ai_service/app/config/__pycache__/*
+ai_service/app/main/__pycache__/*
+ai_service/app/models/__pycache__/*
+ai_service/app/repositories/__pycache__/*
+ai_service/app/services/__pycache__/*
+ai_service/app/utils/__pycache__/*
+ai_service/app/utils/s3_service/__pycache__/*
 ai_service/app/ai-video-gen-main/assets/*
 ai_service/app/ai-video-gen-main/.*
+ai_service/app/routers/__pycache__/*
+ai_service/app/ports/__pycache__/*
+ai_service/app/schemas/__pycache__/*
 
 common_service/target/*
 admin_core_service/target/*

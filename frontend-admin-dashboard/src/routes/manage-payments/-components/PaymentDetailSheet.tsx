@@ -24,7 +24,6 @@ const STATUS_META: Record<string, { label: string; chip: StatusType }> = {
     FAILED: { label: 'Failed', chip: 'DANGER' },
     PAYMENT_PENDING: { label: 'Pending', chip: 'WARNING' },
     NOT_INITIATED: { label: 'Not initiated', chip: 'INFO' },
-    ABANDONED: { label: 'Abandoned checkout', chip: 'INFO' },
 };
 
 const statusMeta = (status?: string) =>

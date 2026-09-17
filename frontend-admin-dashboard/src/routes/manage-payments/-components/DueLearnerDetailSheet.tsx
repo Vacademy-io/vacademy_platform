@@ -59,9 +59,8 @@ const statusMeta = (status?: string | null) =>
  *
  * The Due list nets a learner down to a single figure, which left an admin who had just cancelled
  * somebody's plan with no way to check the cancellation was honoured — the row simply stayed, and
- * the "+N more" hint named nothing. This shows the plans themselves: the ones that can owe (live
- * instalment plans, subscriptions, invoices), and the rest — one-time purchases and cancelled or
- * expired plans — greyed out and explicitly worth ₹0.
+ * the "+N more" hint named nothing. This shows the plans themselves: the ones still billed, and
+ * the cancelled/expired ones greyed out and explicitly worth ₹0.
  */
 export function DueLearnerDetailSheet({
     learner,
@@ -123,9 +122,7 @@ export function DueLearnerDetailSheet({
                                     <div className="text-2xs uppercase tracking-wide text-neutral-500">
                                         {label}
                                     </div>
-                                    <div
-                                        className={cn('text-body font-semibold tabular-nums', tone)}
-                                    >
+                                    <div className={cn('text-body font-semibold tabular-nums', tone)}>
                                         {money(value, currency)}
                                     </div>
                                 </div>
@@ -177,18 +174,10 @@ export function DueLearnerDetailSheet({
                                                     <span>
                                                         Billed {money(plan.billed, plan.currency)}
                                                     </span>
-                                                    <span>
-                                                        Paid {money(plan.paid, plan.currency)}
-                                                    </span>
+                                                    <span>Paid {money(plan.paid, plan.currency)}</span>
                                                     <span className="font-semibold text-warning-600">
                                                         Due {money(plan.due, plan.currency)}
                                                     </span>
-                                                    {plan.upcoming > 0 && (
-                                                        <span className="text-neutral-500">
-                                                            Upcoming{' '}
-                                                            {money(plan.upcoming, plan.currency)}
-                                                        </span>
-                                                    )}
                                                 </div>
                                                 {plan.payment_type && (
                                                     <div className="mt-1 text-2xs text-neutral-500">
@@ -207,7 +196,7 @@ export function DueLearnerDetailSheet({
                                             Not counted ({excluded.length})
                                         </h3>
                                         <p className="text-2xs text-neutral-500">
-                                            {`One-time purchases and cancelled, terminated or expired enrolments are shown for reference. They add nothing to the balance, whatever the ${courseTerm.toLowerCase()} originally cost — a one-time ${courseTerm.toLowerCase()} is either paid or not enrolled.`}
+                                            {`Cancelled, terminated and expired enrolments are shown for reference. They add nothing to the balance, whatever the ${courseTerm.toLowerCase()} originally cost.`}
                                         </p>
                                         {excluded.map((plan) => (
                                             <div

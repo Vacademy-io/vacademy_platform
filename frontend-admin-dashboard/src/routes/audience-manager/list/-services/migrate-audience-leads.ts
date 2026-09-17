@@ -57,13 +57,6 @@ export interface LeadMigrateParams {
     instituteId: string;
     scope?: LeadMigrateScope;
     workflowAnchor?: LeadWorkflowAnchor;
-    /**
-     * Also fire the target list's EVENT-driven automations (its "Lead Submitted" workflows —
-     * AI calls, instant WhatsApp/email) for each moved lead, as if it had just been submitted
-     * there. Off by default: those workflows place real calls and send real messages.
-     * Separate from `workflowAnchor`, which only governs the scheduled drips.
-     */
-    runDestinationAutomations?: boolean;
 }
 
 /** Short, human-readable labels for the skip reasons, for the result summary. */
@@ -88,7 +81,6 @@ export const migrateAudienceLeads = async ({
     instituteId,
     scope = 'RESPONSE',
     workflowAnchor = 'PRESERVE',
-    runDestinationAutomations = false,
 }: LeadMigrateParams): Promise<LeadMigrateResult> => {
     if (!responseIds?.length) {
         throw new Error('At least one lead is required to move.');
@@ -105,7 +97,6 @@ export const migrateAudienceLeads = async ({
             institute_id: instituteId,
             scope,
             workflow_anchor: workflowAnchor,
-            run_destination_automations: runDestinationAutomations,
         },
     });
     return {

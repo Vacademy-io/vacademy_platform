@@ -665,28 +665,15 @@ public class InstituteSettingService {
      * <p>Best-effort: on any failure we allocate a fresh number rather than
      * blocking the certificate.
      */
-    private Optional<IssuedCertificate> resolveExistingCertificate(StudentSessionInstituteGroupMapping mapping,
-                                                                   String certificateType) {
+    private Optional<IssuedCertificate> resolveExistingCertificate(StudentSessionInstituteGroupMapping mapping) {
         try {
             String packageSessionId = mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null;
             if (!StringUtils.hasText(packageSessionId)) {
                 return Optional.empty();
             }
-            // Course-completion rows predate the type column, so they are matched with the
-            // untyped finder (null or COURSE_COMPLETION both mean "the course certificate").
-            // Every other type is matched strictly by type.
-            Optional<IssuedCertificate> existing =
-                    CertificateTypeEnum.COURSE_COMPLETION.name().equals(certificateType)
-                            ? issuedCertificateRepository
-                                    .findFirstByUserIdAndPackageSessionIdOrderByIssuedAtDesc(
-                                            mapping.getUserId(), packageSessionId)
-                                    .filter(c -> c.getCertificateType() == null
-                                            || CertificateTypeEnum.COURSE_COMPLETION.name()
-                                                    .equals(c.getCertificateType()))
-                            : issuedCertificateRepository
-                                    .findFirstByUserIdAndPackageSessionIdAndCertificateTypeOrderByIssuedAtDesc(
-                                            mapping.getUserId(), packageSessionId, certificateType);
-            return existing.filter(c -> StringUtils.hasText(c.getCertificateId()));
+            return issuedCertificateRepository
+                    .findFirstByUserIdAndPackageSessionIdOrderByIssuedAtDesc(mapping.getUserId(), packageSessionId)
+                    .filter(c -> StringUtils.hasText(c.getCertificateId()));
         } catch (Exception e) {
             log.warn("Could not look up the existing certificate for user {}; allocating a new number",
                     mapping != null ? mapping.getUserId() : "?", e);
@@ -969,47 +956,6 @@ public class InstituteSettingService {
             StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping,
             Map<String, String> placeHoldersValueMapping, CertificationGenerationRequest request,
             String settingJson, ResolvedCertificateConfig config, Integer completionPercentage) {
-        return createCertificateUrlFromTemplateAndLearnerData(template, studentSessionInstituteGroupMapping,
-                placeHoldersValueMapping, request, settingJson, config, completionPercentage,
-                CertificateTypeEnum.COURSE_COMPLETION.name(), null);
-    }
-
-    /**
-     * Render + issue a certificate of any type for a learner/batch mapping, for callers that have
-     * ALREADY decided the learner is entitled to it. The course-completion path gates on progress
-     * before calling this; the partner-affiliation path gates on the plan being active.
-     *
-     * @param certificateType        which CERTIFICATE_SETTING entry the page size comes from, which
-     *                               existing certificate a re-render reuses, and what the audit row
-     *                               records
-     * @param extraNamedPlaceholders tokens the caller resolves itself (e.g. {@code {{ORG_NAME}}});
-     *                               merged after the built-ins, so a caller cannot accidentally
-     *                               shadow {@code {{CERTIFICATE_ID}}} — that one is always the
-     *                               allocated number
-     */
-    public Optional<FileDetailsDTO> issueCertificateForMapping(
-            String template,
-            StudentSessionInstituteGroupMapping mapping,
-            CertificationGenerationRequest request,
-            ResolvedCertificateConfig config,
-            String certificateType,
-            Map<String, String> extraNamedPlaceholders) {
-        String settingJson = mapping.getInstitute() != null ? mapping.getInstitute().getSetting() : null;
-        Map<String, String> placeHoldersValueMapping = config != null && config.getPlaceHolders() != null
-                ? config.getPlaceHolders()
-                : (StringUtils.hasText(settingJson) ? extractPlaceholders(settingJson) : new HashMap<>());
-        return createCertificateUrlFromTemplateAndLearnerData(template, mapping, placeHoldersValueMapping,
-                request, settingJson, config, null, certificateType, extraNamedPlaceholders);
-    }
-
-    private Optional<FileDetailsDTO> createCertificateUrlFromTemplateAndLearnerData(
-            String template,
-            StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping,
-            Map<String, String> placeHoldersValueMapping, CertificationGenerationRequest request,
-            String settingJson, ResolvedCertificateConfig config, Integer completionPercentage,
-            String certificateType, Map<String, String> extraNamedPlaceholders) {
-        final String type = StringUtils.hasText(certificateType)
-                ? certificateType : CertificateTypeEnum.COURSE_COMPLETION.name();
 
         // Your mapping (placeholder key -> actual value)
         Map<String, String> placeHolderMapping = new HashMap<>();
@@ -1056,7 +1002,7 @@ public class InstituteSettingService {
         // different ids. Reusing the number also means the audit `save` below
         // updates that row (the number is the PK) instead of inserting a duplicate.
         Optional<IssuedCertificate> alreadyIssued =
-                resolveExistingCertificate(studentSessionInstituteGroupMapping, type);
+                resolveExistingCertificate(studentSessionInstituteGroupMapping);
         String certificateId = alreadyIssued
                 .map(IssuedCertificate::getCertificateId)
                 .orElseGet(() -> certificateNumberService.generate(
@@ -1175,22 +1121,6 @@ public class InstituteSettingService {
         // through the same tolerant two-pass replacement as everything else.
         namedPlaceholders.putAll(
                 certificateCustomFieldService.resolveTokens(settingJson, studentId));
-        // Names the partner-affiliation design uses for values the pipeline already has: the
-        // allocated number doubles as the registration number, and the issue date is the
-        // completion/issue date. Aliases rather than new state, so they can never disagree
-        // with {{CERTIFICATE_ID}} / {{ISSUE_DATE}} printed elsewhere on the same page.
-        namedPlaceholders.put("{{REGISTRATION_NUMBER}}", certificateId);
-        namedPlaceholders.put("{{DATE_OF_ISSUE}}", completionDateStr);
-        // Caller-resolved tokens (organisation name/address, validity…). Added last, and never
-        // over the number: whatever the caller passes, {{CERTIFICATE_ID}} stays the allocated one.
-        if (extraNamedPlaceholders != null) {
-            extraNamedPlaceholders.forEach((token, value) -> {
-                if (value == null || "{{CERTIFICATE_ID}}".equals(token) || "{{REGISTRATION_NUMBER}}".equals(token)) {
-                    return;
-                }
-                namedPlaceholders.put(token, value);
-            });
-        }
         // Institute theme color, used for borders / accents in the certificate.
         // Falls back to the historical default border color so older templates
         // that hardcoded {{INSTITUTE_THEME_COLOR}} still render sanely.
@@ -1345,11 +1275,9 @@ public class InstituteSettingService {
 
         // Render the PDF using the institute-configured page size if present.
         final String renderedHtml = filledTemplate;
-        float[] pageSizeMm = getPageSizeMm(settingJson, type);
-        String fileStem = CertificateTypeEnum.COURSE_COMPLETION.name().equals(type)
-                ? "course_certification" : type.toLowerCase(Locale.ROOT) + "_certificate";
-        Optional<FileDetailsDTO> uploaded = uploadToAws(convertHtmlToPdf(renderedHtml, fileStem, pageSizeMm),
-                studentSessionInstituteGroupMapping.getUserId() + fileStem);
+        float[] pageSizeMm = getPageSizeMm(settingJson, CertificateTypeEnum.COURSE_COMPLETION.name());
+        Optional<FileDetailsDTO> uploaded = uploadToAws(convertHtmlToPdf(renderedHtml, "course_certification", pageSizeMm),
+                studentSessionInstituteGroupMapping.getUserId() + "course_certification");
 
         // Persist the audit row with the rendered HTML snapshot. Failures here
         // are logged but do not block delivery — the learner still gets the PDF.
@@ -1379,7 +1307,6 @@ public class InstituteSettingService {
                         .shortCode(shortCode)
                         .fileId(file.getId())
                         .templateHtmlSnapshot(renderedHtml)
-                        .certificateType(type)
                         .build();
                 issuedCertificateRepository.save(audit);
             } catch (Exception e) {

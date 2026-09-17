@@ -14,13 +14,10 @@
     "export": {
         "generatedOn": "Généré {{date}}",
         "exportSuccess": "Rapport de l'apprenant exporté",
-        "exportFailed": "Échec de l'exportation du PDF",
-        "csvExportSuccess": "CSV exporté",
-        "csvExportFailed": "Échec de l'export CSV"
+        "exportFailed": "Échec de l'exportation du PDF"
     },
     "errors": {
-        "loadFailed": "Une erreur s'est produite lors du chargement du rapport. Veuillez réessayer.",
-        "batchLoadFailed": "Impossible de charger le rapport pour {{name}}."
+        "loadFailed": "Une erreur s'est produite lors du chargement du rapport. Veuillez réessayer."
     },
     "emptyState": {
         "title": "Aucun cours en direct trouvé",
@@ -29,8 +26,7 @@
     "actions": {
         "attendanceTracker": "Suivi de présence",
         "exporting": "Exportation…",
-        "exportPdf": "Exporter en PDF",
-        "exportCsv": "Exporter en CSV"
+        "exportPdf": "Exporter en PDF"
     },
     "metrics": {
         "attendance": "Présence",
@@ -45,26 +41,5 @@
     "sections": {
         "classHistoryTitle": "Historique des cours",
         "classHistorySubtitle": "Présence et participation pour chaque cours de la période"
-    },
-    "batchCount": "{{term}} · {{count}} sélectionné(s)",
-    "csv": {
-        "fileStem": "rapport-classes-en-direct-apprenant",
-        "summaryTitle": "Résumé",
-        "learner": "Apprenant",
-        "email": "E-mail",
-        "startDate": "Date de début",
-        "endDate": "Date de fin",
-        "attendancePct": "Assiduité (%)",
-        "batchAttendancePct": "Assiduité du {{batch}} (%)",
-        "attended": "Classes suivies",
-        "totalClasses": "Classes au total",
-        "avgDurationMin": "Durée moyenne (min)",
-        "batchAvgDurationMin": "Durée moyenne du {{batch}} (min)",
-        "engagementScore": "Score d'engagement (0-100)",
-        "batchEngagementScore": "Score d'engagement du {{batch}} (0-100)",
-        "classesTitle": "Historique des classes",
-        "durationMin": "Durée (min)",
-        "talkTimeMin": "Temps de parole (min)",
-        "emojis": "Émojis"
     }
 }

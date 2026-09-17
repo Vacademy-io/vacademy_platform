@@ -49,8 +49,7 @@
     },
     "tabs": {
         "mine": "Mes bases de connaissances",
-        "library": "Bibliothèque",
-        "curriculum": "Programme"
+        "library": "Bibliothèque"
     },
     "mine": {
         "heading": "Bases de connaissances",

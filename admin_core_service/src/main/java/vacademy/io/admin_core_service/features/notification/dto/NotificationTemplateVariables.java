@@ -134,17 +134,6 @@ public class NotificationTemplateVariables {
         private String currentDate;
         private String year;
 
-        // Channel-partner (sub-org) onboarding — SUB_ORG_PARTNER_WELCOME. The organisation is
-        // the party being welcomed; userName/userPassword/portalUrl above carry the admin's
-        // sign-in. certificateNote is a ready-to-drop HTML block (empty when no certificate was
-        // issued), same convention as receiptButton.
-        private String organisationName;
-        private String organisationAddress;
-        private String certificateNumber;
-        private String certificateIssueDate;
-        private String certificateValidTill;
-        private String certificateNote;
-
         /**
          * Factory method to create variables from entities
          */

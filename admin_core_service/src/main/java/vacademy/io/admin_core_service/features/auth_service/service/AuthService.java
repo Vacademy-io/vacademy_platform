@@ -327,36 +327,6 @@ public class AuthService {
         }
     }
 
-    /**
-     * Re-sends one user's current login details via auth-service, branded for
-     * {@code instituteId} and with the sign-in button pointing at {@code loginUrl}.
-     * Read-only on the user. Returns auth-service's {@code {sent, failed, message}} reply.
-     */
-    public Map<String, Object> resendLoginDetails(String userId, String instituteId, String loginUrl) {
-        try {
-            String endpoint = AuthServiceRoutes.RESEND_LOGIN_DETAILS
-                    + "?userId=" + userId
-                    + "&instituteId=" + instituteId;
-            if (loginUrl != null && !loginUrl.isBlank()) {
-                // Not pre-encoded: makeHmacRequest hands the URL to RestTemplate as a string, which
-                // encodes it once itself (see createUserFromAuthServiceForLearnerEnrollment).
-                endpoint += "&loginUrl=" + loginUrl.trim();
-            }
-            // Everything travels in the query string; an empty JSON body keeps the POST
-            // well-formed for RestTemplate and the ingress alike.
-            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
-                    clientName,
-                    HttpMethod.POST.name(),
-                    authServerBaseUrl,
-                    endpoint,
-                    Map.of());
-            return new ObjectMapper().readValue(response.getBody(),
-                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-        } catch (Exception e) {
-            throw new VacademyException("Failed to resend login details: " + e.getMessage());
-        }
-    }
-
     public String sendCredToUsers(List<String> userIds) {
         try {
             String endpoint = AuthServiceRoutes.SEND_CRED_TO_USERS;

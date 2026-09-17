@@ -23,9 +23,6 @@ public class SubOrgListItemDTO {
     private String suborgId;
     private String name;
     private String status;
-    /** auth_service user id of the sub-org's root-admin (from the mapping row, so it survives
-     *  an auth-service lookup failure) — what the row's "Share credentials" action sends to. */
-    private String adminUserId;
     /** Root-admin of the sub-org (null when none resolved / auth lookup failed). */
     private String adminName;
     private String adminEmail;

@@ -13,7 +13,6 @@ import {
   type PlanChangeTarget,
   type Subscription,
 } from "@/components/common/user-profile/payment-billing/subscription-services";
-import type { MandateMethod } from "@/components/common/subscription/MandateMethodPicker";
 
 /**
  * Gateway checkout payload handed to the host's <RazorpayCheckoutForm> ref.
@@ -93,11 +92,7 @@ export function useSubscriptionManager({
     onSuccess: () => invalidate(),
   });
 
-  const startRenewal = async (
-    sub: Subscription,
-    withAutopay: boolean,
-    mandateMethod?: MandateMethod
-  ) => {
+  const startRenewal = async (sub: Subscription, withAutopay: boolean) => {
     if (!instituteId) return;
     try {
       setRenewingPlanId(sub.user_plan_id);
@@ -116,8 +111,7 @@ export function useSubscriptionManager({
       const response = await initiateRenewalPayment(
         instituteId,
         sub,
-        withAutopay,
-        mandateMethod
+        withAutopay
       );
       const orderDetails =
         response?.payment_response?.response_data || response?.response_data;
@@ -157,8 +151,7 @@ export function useSubscriptionManager({
   const startPlanChange = async (
     sub: Subscription,
     target: PlanChangeTarget,
-    withAutopay: boolean,
-    mandateMethod?: MandateMethod
+    withAutopay: boolean
   ): Promise<PlanChangeResult | null> => {
     if (!instituteId) return null;
     try {
@@ -167,8 +160,7 @@ export function useSubscriptionManager({
         instituteId,
         sub.user_plan_id,
         target.plan_id,
-        withAutopay || Boolean(target.requires_mandate_reauth),
-        mandateMethod
+        withAutopay || Boolean(target.requires_mandate_reauth)
       );
 
       if (result.status === "PENDING_PAYMENT" && result.payment_response) {

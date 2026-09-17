@@ -66,9 +66,6 @@ class ListingUpsert(BaseModel):
     tags: List[str] = Field(default_factory=list)
     sort_weight: int = 0
     institute_id: Optional[str] = None
-    # NULL = paid library. "CURRICULUM" = pre-loaded textbook library (V517):
-    # hidden from the catalogue, granted by the institute setting.
-    collection: Optional[str] = Field(None, max_length=30)
 
 
 class StatusChange(BaseModel):
@@ -109,7 +106,6 @@ async def catalogue(
     language: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
     limit: int = Query(60, ge=1, le=200),
-    collection: Optional[str] = Query(None, description="e.g. CURRICULUM; default = paid libraries only"),
     institute_id: Optional[str] = Query(None),
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
@@ -119,7 +115,7 @@ async def catalogue(
     return {
         "libraries": kb_library.list_catalogue(
             db, resolved, subject=subject, level=level, board=board,
-            language=language, query=q, limit=limit, collection=collection,
+            language=language, query=q, limit=limit,
         ),
         "unlock_credits": _unlock_price(db, resolved),
     }
@@ -196,7 +192,6 @@ async def upsert_listing(
         subject=body.subject, level=body.level, board=body.board,
         language=body.language, tags=body.tags, sort_weight=body.sort_weight,
         created_by=caller.user_id,
-        collection=(body.collection or "").strip().upper() or None,
     )
 
 
@@ -273,17 +268,6 @@ async def unlock(
 
     if listing["status"] != "PUBLISHED":
         raise HTTPException(400, "This library is not available")
-
-    # Curriculum textbooks are not for sale: access comes from the institute's
-    # Curriculum library setting (V517). The catalogue never shows them, but a
-    # hand-typed URL or direct API call must not charge 50 credits for
-    # something the setting grants for free.
-    if listing.get("collection") == kb_library.CURRICULUM:
-        raise HTTPException(
-            400,
-            "This is a curriculum textbook. Enable it under Settings → AI → "
-            "Curriculum library instead of unlocking it.",
-        )
 
     # The catalogue already hides archived bases, but a direct link would still
     # reach here — and charging for an archived corpus is a refund waiting to

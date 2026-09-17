@@ -205,6 +205,8 @@ class TranscriptCollector(FrameProcessor):
                  end_pending=None,
                  diag=None, in_machine_window=None, reply_in_flight=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
+                 resume_unplayed=None, resume_on_stop_secs: float = 0.0,
+                 resume_max_chars: int = 600,
                  voice_live=None, resay_opening=None):
         super().__init__()
         self._outcome = outcome
@@ -226,6 +228,14 @@ class TranscriptCollector(FrameProcessor):
         # Tells NoRepeatGate the NEXT response is a continuation of a cut reply
         # — the one place a paraphrased restatement is never legitimate.
         self._on_continuation = on_continuation or (lambda: None)
+        # Resuming after a backchannel: the words the caller never heard
+        # (NoRepeatGate.take_unplayed_tail), said again by the TTS with no model
+        # in the loop — see config.backchannel_resume_verbatim.
+        self._resume_unplayed = resume_unplayed
+        self._resume_on_stop_secs = resume_on_stop_secs
+        self._resume_max_chars = resume_max_chars
+        self._vad_started_t = 0.0
+        self._resumed_t = 0.0
         # True only while an operator/voicemail recording is still plausible.
         # This was a LATCH ("have we heard a real caller yet?") and the latch is
         # what broke on call 14029bd6: Sarvam rendered "…after the tone" as the
@@ -293,6 +303,17 @@ class TranscriptCollector(FrameProcessor):
                                     else s.filler_phrases)
         self._filler_probability = max(0.0, min(1.0, s.filler_probability))
 
+    def _played_tail_is_question(self) -> bool:
+        """Did the LAST thing the caller actually heard end in a question?
+        Unlike _played_ended_with_question this does not need their final to
+        have landed yet — it is asked at the VAD stop, before any transcript.
+        A question mark that PLAYED means they could be answering; a reply cut
+        before it means they cannot be."""
+        for entry in reversed(self._outcome.transcript):
+            if entry.get("role") == "assistant" and (entry.get("text") or "").strip():
+                return (entry["text"] or "").rstrip().endswith(("?", "？"))
+        return False
+
     def _played_ended_with_question(self) -> bool:
         """Did the bot's most recent PLAYED speech — since the caller last spoke —
         end in a question? The caller's own final has just been appended, so the
@@ -340,7 +361,20 @@ class TranscriptCollector(FrameProcessor):
                 _rp["vad"].append([round(time.time() - self._outcome.connected_at, 2),
                                    int(isinstance(frame, VADUserStartedSpeakingFrame))])
             if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._vad_started_t = time.time()
                 self._set_user_speaking(True)
+            elif self._resume_on_stop_secs > 0 and self._vad_started_t:
+                # Their voice has stopped and it was SHORT, and we were cut
+                # before finishing a question — so they cannot have been
+                # answering one. Resume now instead of waiting out the STT
+                # final (0.25-4.07 s on Sarvam, call 1e374b99). If the words
+                # turn out to be a real turn, its final interrupts us exactly
+                # as any barge-in does.
+                _voice = time.time() - self._vad_started_t
+                if (_voice <= self._resume_on_stop_secs and not self._is_bot_speaking()
+                        and not self._played_tail_is_question()):
+                    await self._resume_cut_words(
+                        direction, "%.1fs of voice over our reply" % _voice)
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._set_user_speaking(False)
             self._on_activity(user=True)  # give them thinking time from speech END
@@ -639,6 +673,16 @@ class TranscriptCollector(FrameProcessor):
                     await self.push_frame(LLMMessagesAppendFrame(
                         messages=[{"role": "user", "content": text}]), direction)
                     await self._on_absorb(text)
+                    if (self._resumed_t and time.time() - self._resumed_t < 8.0
+                            and self._is_bot_speaking()):
+                        # The words they missed are already playing (resumed at
+                        # their VAD stop). Their "हम्म" is in the context; there
+                        # is nothing to generate. If that resume was itself cut,
+                        # the bot is quiet and we fall through to the cues.
+                        logger.info("turn-gate: already resuming the cut words — "
+                                    "no cue for %r", text[:20])
+                        self._resumed_t = 0.0
+                        return
                     if self._interrupt_on_vad():
                         # The callee's pickup "Hello" lands INSIDE our opening:
                         # call 9e566e32 (2026-09-09) said "Hello" 250ms into
@@ -685,23 +729,27 @@ class TranscriptCollector(FrameProcessor):
                                 run_llm=True), direction)
                             return
                         # The VAD onset already cancelled the reply, and a
-                        # cancelled reply cannot be un-cancelled — so ask for the
-                        # rest of it instead of leaving the caller in silence
-                        # after their "haan". run_llm=True: this is the ONLY
-                        # place that regenerates, and it fires solely for
-                        # acknowledgments, so it cannot loop on real answers.
-                        #
-                        # Duck-only (resume the held audio instead of
-                        # regenerating) would be the cleaner answer here and is
-                        # NOT available: measured on the deployed image
-                        # 2026-08-06, INTERRUPT_ON_VAD=false gives 1.92s of
-                        # talk-over against 0.52s with it on — the founder's
-                        # original "the bot takes ages to stop". So: cancel
-                        # fast, then be careful about what we say next.
+                        # cancelled reply cannot be un-cancelled. Duck-only
+                        # (holding the audio instead of cancelling) is NOT
+                        # available: measured on the deployed image 2026-08-06,
+                        # INTERRUPT_ON_VAD=false gives 1.92s of talk-over
+                        # against 0.52s with it on. So: cancel fast, then say
+                        # the cut words AGAIN ourselves (the branch below) —
+                        # and only ask the model for a line when there is
+                        # nothing left to resume.
                         if is_audio_check(text):
                             self._audio_checks += 1
                         else:
                             self._audio_checks = 0
+                        if (self._audio_checks < 2
+                                and await self._resume_cut_words(
+                                    direction, "backchannel %r" % text[:16])):
+                            # Words we emitted and they never heard: the reply
+                            # did NOT finish, whatever bot_speaking says now
+                            # (the VAD onset cancelled it). Say them — no cue,
+                            # no generation, nothing for the model to shorten.
+                            self._resumed_t = 0.0
+                            return
                         if self._audio_checks >= 2:
                             # Twice in a row means the line is genuinely bad.
                             # Re-delivering the sentence a third time is what
@@ -864,6 +912,27 @@ class TranscriptCollector(FrameProcessor):
         for entry in reversed(t[:-1] if t and t[-1].get("role") == "user" else t):
             if entry.get("role") == "assistant":
                 return "?" in (entry.get("text") or "") or "？" in (entry.get("text") or "")
+        return True
+
+    async def _resume_cut_words(self, direction, why: str) -> bool:
+        """Say the exact words the caller did not hear, with no model in the
+        loop. Call 1e374b99 (2026-09-17): a "हम्म" over a reply cost a full LLM
+        round trip (1.7-5.9 s of silence, fifteen times) and the re-generated
+        sentence lost its opening clause to the no-echo trimmer, so the parent
+        heard "नाम क्या है…" and had to ask "किसका नाम?"."""
+        if self._resume_unplayed is None:
+            return False
+        try:
+            tail = self._resume_unplayed(self._resume_max_chars)
+        except Exception:
+            logger.exception("turn-gate: could not read the unplayed tail")
+            return False
+        if not tail:
+            return False
+        self._resumed_t = time.time()
+        logger.info("turn-gate: %s — resuming the %d unheard words verbatim: %r",
+                    why, len(tail.split()), tail[:60])
+        await self.push_frame(TTSSpeakFrame(tail, append_to_context=True), direction)
         return True
 
     def _heard_tail(self, words: int = 12) -> str:
@@ -1173,6 +1242,11 @@ class NoRepeatGate(FrameProcessor):
         # these that never PLAYED are un-recorded, because "already said" must
         # mean "already heard". See the InterruptionFrame branch.
         self._pending: list = []
+        # Set on an interruption: what was emitted to the TTS and never heard,
+        # plus the (norm, topic) of each so they go back into _spoken when the
+        # turn-gate actually resumes them.
+        self._unplayed_tail: str = ""
+        self._unplayed_entries: list = []
         self._buf = ""
         self._emitted = 0
         self._held_tail = ""
@@ -1281,6 +1355,25 @@ class NoRepeatGate(FrameProcessor):
     _GREETING_RE = re.compile(
         r"^\W*(good\s+(morning|afternoon|evening)|hello|hi|hey|namaste|namaskar|"
         r"नमस्ते|नमस्कार|हेलो|हैलो)(\s+(ji|जी|sir|ma'?am|madam))?\W*$", re.I)
+
+    def take_unplayed_tail(self, max_chars: int = 600) -> str:
+        """The exact sentences cut off by the last interruption, once. Empty
+        when the reply had finished, when everything was heard, or when it is
+        too long to be a natural resumption."""
+        tail, self._unplayed_tail = self._unplayed_tail, ""
+        entries, self._unplayed_entries = self._unplayed_entries, []
+        if not tail or len(tail) > max_chars:
+            if tail:
+                logger.info("no-repeat: unplayed tail too long to resume verbatim (%d chars)",
+                            len(tail))
+            return ""
+        # They are about to be SAID, so they are "already said" again — the
+        # un-record above had removed them on the assumption they were lost.
+        for norm, topic in entries:
+            self._spoken.append(norm)
+            if topic:
+                self._asked[topic] = norm
+        return tail
 
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
@@ -1449,7 +1542,7 @@ class NoRepeatGate(FrameProcessor):
         prev_exemplar = self._asked.get(topic) if topic else None
         if topic:
             self._asked[topic] = norm
-        self._pending.append((norm, topic, prev_exemplar))
+        self._pending.append((norm, topic, prev_exemplar, text.strip()))
         self._emitted += 1
         if not self._is_content_free(text):
             self._said_real = True          # the bot said something answerable
@@ -1474,10 +1567,17 @@ class NoRepeatGate(FrameProcessor):
             # The previous response ran to a natural start-of-next — its
             # sentences played (or are playing out normally) and stay recorded.
             self._pending = []
+            self._unplayed_tail = ""
+            self._unplayed_entries = []
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, InterruptionFrame):
+            # Whatever the previous interruption left unsaid is history: only
+            # THIS cut's words may be resumed (else a stale tail could surface
+            # minutes later, mid-topic).
+            self._unplayed_tail = ""
+            self._unplayed_entries = []
             # A cancelled reply's unsaid tail was never heard, so it is not
             # "already said" — but what DID play is still in _spoken.
             #
@@ -1495,8 +1595,16 @@ class NoRepeatGate(FrameProcessor):
                 try:
                     played_raw = self._played_text() or ""
                     played = spoken_key(played_raw)
-                    for norm, topic, prev_exemplar in self._pending:
+                    unplayed = []
+                    for norm, topic, prev_exemplar, said in self._pending:
                         if norm and spoken_key(norm) not in played:
+                            # Only REAL words are worth resuming: a hand-back
+                            # ("जी, बोलिए।") or an acknowledgement carries
+                            # nothing, and saying it again after a backchannel
+                            # is the content-free turn we fight everywhere else.
+                            if said and not self._is_content_free(said) and not self._is_filler(said):
+                                unplayed.append(said)
+                                self._unplayed_entries.append((norm, topic))
                             logger.info("no-repeat: not in the played text (tail %r)",
                                         played_raw[-100:])
                             for i in range(len(self._spoken) - 1, -1, -1):
@@ -1514,6 +1622,10 @@ class NoRepeatGate(FrameProcessor):
                                 self._diag.bump("unsaid_reverted")
                             logger.info("no-repeat: un-recording never-played %r",
                                         norm[:56])
+                    # The exact words the caller did NOT hear, in order: the
+                    # turn-gate speaks them verbatim when the thing that cut us
+                    # off was only a backchannel.
+                    self._unplayed_tail = " ".join(unplayed).strip()
                 except Exception:
                     logger.exception("no-repeat: unplayed-revert failed — keeping all")
             self._pending = []
@@ -4113,6 +4225,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                          < settings.filler_voice_live_secs),
                                      # late-bound: no_repeat is created below
                                      on_continuation=lambda: no_repeat.mark_continuation(),
+                                     resume_unplayed=(
+                                         (lambda n: no_repeat.take_unplayed_tail(n))
+                                         if settings.backchannel_resume_verbatim else None),
+                                     resume_on_stop_secs=settings.backchannel_resume_on_stop_secs,
+                                     resume_max_chars=settings.backchannel_resume_max_chars,
                                      resay_opening=_resay_opening)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
@@ -4704,14 +4821,25 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 # replies until the JSON fits rather than ship a broken tail.
                 _rec = dict(outcome.replay, agent=str(agent.get("id") or ""),
                             ended=round(time.time() - outcome.connected_at, 2))
+                # 14 KB, not 40: docker's journald driver splits a log line at
+                # 16 KB and the remainder never arrives, so call 1e374b99's
+                # record came back as invalid JSON cut mid-character.
                 _cap = 600
                 while True:
                     _rec["replies"] = [[t, x[:_cap]] for t, x in _rec["replies"]]
                     _rec["runs"] = [[t, x[:max(60, _cap // 3)]] for t, x in _rec["runs"]]
                     _js = json.dumps(_rec, ensure_ascii=False, separators=(",", ":"))
-                    if len(_js.encode("utf-8")) <= 40000 or _cap <= 40:
+                    if len(_js.encode("utf-8")) <= 14000 or _cap <= 40:
                         break
                     _cap //= 2
+                if len(_js.encode("utf-8")) > 14000:
+                    # Still too big (a very long call): drop the oldest turns
+                    # rather than ship a truncated line.
+                    while len(_js.encode("utf-8")) > 14000 and len(_rec["finals"]) > 4:
+                        for k in ("finals", "vad", "bot", "runs", "replies"):
+                            _rec[k] = _rec[k][len(_rec[k]) // 4:]
+                        _rec["truncated"] = True
+                        _js = json.dumps(_rec, ensure_ascii=False, separators=(",", ":"))
                 logger.info("replay corr=%s %s", corr, _js)
             except Exception:
                 logger.exception("replay record failed corr=%s", corr)

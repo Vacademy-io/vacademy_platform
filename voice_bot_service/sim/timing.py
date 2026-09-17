@@ -496,6 +496,7 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "llm_runs": providers["llm"].runs,
         "llm_prompts": providers["llm"].prompts,
         "nudges": getattr(d, "nudges", 0) or 0,
+        "replies_scripted": list(scenario.replies),
         "stt_failovers": getattr(d, "stt_failovers", 0) or 0,
         "orphan_reasks": getattr(d, "orphan_reasks", 0) or 0,
         "opening_resaid": getattr(d, "opening_resaid", 0) or 0,
@@ -575,12 +576,26 @@ def chk_farewell(res):
 
 
 def chk_backchannel(res):
+    """Founder 2026-09-17 (call 1e374b99): "हम्म" / "ठीक है" over a reply left a
+    1.7-5.9 s hole, an acknowledgement, and a sentence missing its opening
+    words. The reply must resume with the SAME words, fast, no generation."""
     f = []
     texts = " ".join(_assistant_texts(res))
     if "on its own" not in texts:
         f.append("reply did not complete after the backchannel")
     if res["llm_runs"] > 2:
         f.append(f"backchannel triggered a new LLM run (runs={res['llm_runs']})")
+    # Every word of the interrupted reply reaches the caller.
+    reply = (res.get("replies_scripted") or [""])[0]
+    for phrase in ("daily running around", "goes out to everyone on WhatsApp",
+                   "Are your classes online at the moment?"):
+        if phrase and phrase not in texts:
+            f.append(f"words lost across the backchannel: {phrase!r} never played")
+    # NOTE: this simulator cannot cut the bot with a backchannel — its
+    # aggregator keeps the first caller turn open, so a second short burst
+    # never broadcasts an interruption. The cut-and-resume path (call
+    # 1e374b99) is covered by the unit tests and by sim.replay's
+    # "resumed after a backchannel" invariant, which runs on real calls.
     return f
 
 

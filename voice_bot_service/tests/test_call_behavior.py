@@ -18,6 +18,7 @@ import inspect
 import json as _json
 
 import app.bot as b
+from app.turntake import normalize_spoken
 import app.diagnostics as dg_mod
 import app.providers as pv
 
@@ -1525,7 +1526,7 @@ class _Rec:
 
 
 def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
-                      in_machine_window=None):
+                      in_machine_window=None, **kw):
     tc = b.TranscriptCollector(
         FakeOutcome(), lambda user=True: None,
         is_bot_speaking=lambda: bot_speaking,
@@ -1537,6 +1538,7 @@ def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
         in_machine_window=in_machine_window or (lambda: True),
         reply_in_flight=lambda: False,
         bot_spoke_once=lambda: True,
+        **kw,
     )
 
     async def _push(frame, direction=None):
@@ -4880,6 +4882,139 @@ def test_stt_waterfall_builds_a_switcher_only_with_a_fallback(monkeypatch):
     cfg.get_settings.cache_clear() if hasattr(cfg.get_settings, "cache_clear") else None
     proc, prim, fb = pv.build_stt_waterfall(8000, language="hi-IN")
     assert proc is prim and fb is None
+
+
+# ── call 1e374b99 (2026-09-17): "हम्म" cost a round trip and ate words ──────
+
+def _spoken_texts(rec):
+    from pipecat.frames.frames import TTSSpeakFrame
+    return [f.text for f in rec.frames if isinstance(f, TTSSpeakFrame)]
+
+
+@pytest.mark.asyncio
+async def test_unplayed_tail_is_exactly_what_the_caller_did_not_hear():
+    from pipecat.frames.frames import InterruptionFrame
+    rec = _NRRec()
+    played = {"t": ""}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "",
+                       played_text=lambda: played["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है। ",
+                 "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ — नाम क्या है? ",
+                 "और अभी किस class में पढ़ रहा है?")
+    played["t"] = "Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है"
+    await g.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    tail = g.take_unplayed_tail()
+    assert tail.startswith("क्या मैं बच्चे के बारे में") and "किस class में पढ़ रहा है?" in tail, tail
+    assert "focus सिर्फ syllabus" not in tail, "they heard that one"
+    assert g.take_unplayed_tail() == "", "handed over once"
+
+
+@pytest.mark.asyncio
+async def test_a_backchannel_resumes_the_cut_words_verbatim_with_no_model():
+    """The founder's report: the bot acknowledges ("जी सर"), pauses, and a few
+    words go missing. Instead say the exact words that were cut."""
+    rec = _Rec()
+    tail = {"t": "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ — नाम क्या है और अभी किस class में पढ़ रहा है?"}
+
+    def take(n=600):
+        t, tail["t"] = tail["t"], ""
+        return t
+    tc = _replay_collector(rec, bot_speaking=False, resume_unplayed=take,
+                           recently_cut=lambda: True)   # the VAD onset cut the reply
+    tc._outcome.transcript.append({"role": "assistant", "text": "Shiksha Nation में हमारा focus…"})
+    await _feed(tc, "हम्म।")
+    assert _spoken_texts(rec) and "किस class में पढ़ रहा है?" in _spoken_texts(rec)[0]
+    assert not any("carry on" in c for c in rec.cues()), rec.cues()
+    assert not any(getattr(f, "run_llm", False) for f in rec.frames), "no generation for a backchannel"
+    # the backchannel itself still reaches the context
+    assert any("हम्म" in c for c in rec.cues()), rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_the_cut_words_resume_at_the_vad_stop_without_waiting_for_the_stt():
+    """0.25-4.07 s of the gap was the STT final. A short burst of voice over a
+    reply that had not finished its question cannot be an answer — resume."""
+    from pipecat.frames.frames import (VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+    D = b.FrameDirection.DOWNSTREAM
+    for played, voice_secs, want in ((" तो बताइए।", 0.4, True),      # cut mid-statement
+                                     (" नाम क्या है?", 0.4, False),   # a question: could be an answer
+                                     (" तो बताइए।", 3.0, False)):    # too long to be a backchannel
+        rec = _Rec()
+        tail = {"t": "और अभी किस class में पढ़ रहा है?"}
+        tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                               resume_unplayed=lambda n=600: tail.pop("t", ""),
+                               resume_on_stop_secs=1.0)
+        tc._outcome.transcript.append({"role": "assistant", "text": "जी सर।" + played})
+        b.FrameProcessor.process_frame = _noop_super
+        await tc.process_frame(VADUserStartedSpeakingFrame(), D)
+        tc._vad_started_t -= voice_secs
+        await tc.process_frame(VADUserStoppedSpeakingFrame(), D)
+        got = bool(_spoken_texts(rec))
+        assert got is want, f"played={played!r} voice={voice_secs}s resumed={got}"
+
+
+@pytest.mark.asyncio
+async def test_resumed_words_count_as_said_again_and_a_stale_tail_is_never_spoken():
+    """Two hazards of resuming verbatim: the sentences must go BACK into the
+    already-said set (the un-record had removed them), and a tail left over
+    from an earlier interruption must never surface later."""
+    from pipecat.frames.frames import InterruptionFrame
+    rec = _NRRec()
+    played = {"t": ""}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "",
+                       played_text=lambda: played["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    Q = "क्या मैं जान सकती हूँ कि आकाश के previous class में कितने marks आए थे?"
+    await _reply(g, "जी सर। ", Q)
+    played["t"] = "जी सर।"
+    D = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(InterruptionFrame(), D)
+    assert normalize_spoken(Q) not in g._spoken, "un-recorded while it was lost"
+    assert g.take_unplayed_tail().strip() == Q
+    assert normalize_spoken(Q) in g._spoken, "resumed ⇒ said again"
+    rec.text.clear()
+    played["t"] = "जी सर। " + Q
+    await _reply(g, Q)                       # the model asks it again
+    # The question itself must not be asked again (a hand-back in its place is
+    # the gate's existing, intended behaviour).
+    assert not any(normalize_spoken(Q) in normalize_spoken(t) for t in rec.text), \
+        f"a resumed question must still count as asked: {rec.text}"
+    # The hand-back the gate just emitted is content-free: never resumable,
+    # and a NEW interruption must clear whatever the old one left.
+    await g.process_frame(InterruptionFrame(), D)
+    assert g.take_unplayed_tail() == "", "a hand-back is not words worth repeating"
+
+
+@pytest.mark.asyncio
+async def test_a_second_backchannel_after_the_resume_was_cut_still_gets_a_cue():
+    """If the resumed words were themselves cut off, the bot is silent — the
+    caller must not be left there."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "")
+    tc._outcome.transcript.append({"role": "assistant", "text": "जी सर, तो बताइए।"})
+    tc._resumed_t = time.time()              # resumed a moment ago, then cut
+    await _feed(tc, "हम्म।")
+    assert any(("carry on" in c) or ("NEXT step" in c) for c in rec.cues()), rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_a_backchannel_after_an_early_resume_says_nothing_more():
+    """bot_speaking=True: the words resumed at their VAD stop are still
+    playing, so a second "ठीक है" over them needs no cue at all."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "")
+    tc._outcome.transcript.append({"role": "assistant", "text": "जी सर, तो बताइए।"})
+    tc._resumed_t = time.time()
+    await _feed(tc, "ठीक है।")
+    assert _spoken_texts(rec) == [], "already resuming"
+    assert not any("carry on" in c or "NEXT step" in c for c in rec.cues()), rec.cues()
+    assert any("ठीक है" in c for c in rec.cues()), "the backchannel still reaches the context"
 
 
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():

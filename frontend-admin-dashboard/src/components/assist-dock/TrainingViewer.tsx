@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     CaretLeft,
@@ -48,18 +48,34 @@ const samePath = (a: string[], b: string[]) =>
     a.length === b.length && a.every((segment, i) => segment === b[i]);
 
 /**
- * Assist Dock "Training" popup — the LMS training library super admins publish from the
+ * Assist Dock "Training" popup - the LMS training library super admins publish from the
  * health-check dashboard. Videos sit in a module tree built from their module path and can
  * be searched by name, description or path; picking one plays it right here in the popup.
  */
 export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () => void }) {
     const { t } = useTranslation('trainingViewer');
-    // Deferred like the roadmap body — only downloaded while the popup is open.
+    // Deferred like the roadmap body - only downloaded while the popup is open.
     const videos = useTrainingVideos(open);
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<string[]>([]);
     const [expanded, setExpanded] = useState<string[]>([]);
     const [playing, setPlaying] = useState<TrainingVideoDto | null>(null);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            if (playing) {
+                setPlaying(null);
+                return;
+            }
+            onClose();
+        };
+
+        document.addEventListener('keydown', handleEscape);
+        return () => document.removeEventListener('keydown', handleEscape);
+    }, [onClose, open, playing]);
 
     const all = useMemo(() => videos.data ?? [], [videos.data]);
     const filtered = useMemo(() => {
@@ -95,48 +111,55 @@ export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () =
 
     return (
         <div
-            className="fixed inset-0 z-50 flex justify-center bg-black/60 p-4 sm:p-10"
+            className="fixed inset-0 z-50 flex justify-center bg-black/60 p-0 sm:p-4 lg:p-8"
             role="dialog"
             aria-modal="true"
+            aria-labelledby="training-viewer-title"
             onClick={onClose}
         >
             <div
-                className="flex size-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl"
+                className="flex size-full flex-col overflow-hidden bg-card text-card-foreground shadow-xl sm:rounded-lg"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header — title + search */}
-                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-neutral-200 px-4 py-3">
-                    <div className="flex items-center gap-2">
-                        <PlayCircle size={18} className="text-primary-500" />
-                        <p className="text-subtitle font-semibold text-neutral-800">{t('title')}</p>
+                {/* Header: title + search */}
+                <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-6">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <PlayCircle size={20} className="shrink-0 text-primary-500" />
+                        <h2
+                            id="training-viewer-title"
+                            className="truncate text-title font-semibold text-foreground"
+                        >
+                            {t('title')}
+                        </h2>
                         <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption text-neutral-500">
                             {all.length}
                         </span>
                     </div>
-                    <div className="relative ml-auto w-full max-w-xs">
+                    <div className="relative order-3 w-full sm:order-none sm:ml-auto sm:max-w-sm">
                         <MagnifyingGlass
-                            size={14}
-                            className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-neutral-400"
+                            size={16}
+                            className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-neutral-400"
                         />
                         <input
+                            type="search"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder={t('searchPlaceholder')}
-                            className="w-full rounded-md border border-neutral-200 bg-neutral-50 py-1.5 pe-2 ps-8 text-caption text-neutral-700 outline-none transition-colors placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white"
+                            className="h-10 w-full rounded-md border border-input bg-background pe-3 ps-10 text-body text-foreground outline-none transition-colors placeholder:text-neutral-400 focus:border-primary-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         />
                     </div>
                     <button
                         type="button"
                         aria-label={t('closeAriaLabel')}
                         onClick={onClose}
-                        className="flex size-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100"
+                        className="flex size-10 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                        <X size={18} />
+                        <X size={20} />
                     </button>
                 </div>
 
-                {/* Body — module tree + video list, or the player once a video is picked */}
-                <div className="flex min-h-0 flex-1">
+                {/* Body: module tree + video list, or the player once a video is picked */}
+                <div className="flex min-h-0 flex-1 flex-col md:flex-row">
                     {playing ? (
                         <PlayerPane
                             video={playing}
@@ -168,19 +191,21 @@ export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () =
                         <EmptyPane title={t('noResults')} description={t('noResultsDescription')} />
                     ) : (
                         <>
-                            <aside className="w-60 shrink-0 overflow-y-auto border-e border-neutral-200 bg-neutral-50/70 p-2">
+                            <aside className="max-h-48 w-full shrink-0 overflow-y-auto border-b border-border bg-muted/40 p-2 md:max-h-none md:w-72 md:border-b-0 md:border-e">
                                 <button
                                     type="button"
                                     onClick={() => setSelected([])}
                                     className={cn(
-                                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-caption font-medium transition-colors',
+                                        'flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-start text-body font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                         selected.length === 0
                                             ? 'bg-primary-50 text-primary-600'
-                                            : 'text-neutral-600 hover:bg-neutral-100'
+                                            : 'text-neutral-600 hover:bg-muted'
                                     )}
                                 >
-                                    <FolderSimple size={14} />
-                                    <span className="flex-1 truncate">{t('allVideos')}</span>
+                                    <FolderSimple size={16} className="shrink-0" />
+                                    <span className="min-w-0 flex-1 break-words">
+                                        {t('allVideos')}
+                                    </span>
                                     <span className="text-caption text-neutral-400">
                                         {filtered.length}
                                     </span>
@@ -199,16 +224,30 @@ export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () =
                                     ))}
                                 </div>
                             </aside>
-                            <div className="flex-1 overflow-y-auto p-3">
-                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            <div className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-4">
+                                <div className="mb-3 flex min-w-0 items-center gap-2">
+                                    <p
+                                        className="min-w-0 flex-1 truncate text-body font-semibold text-foreground"
+                                        title={
+                                            selected.length ? selected.join(' › ') : t('allVideos')
+                                        }
+                                    >
+                                        {selected.length ? selected.join(' › ') : t('allVideos')}
+                                    </p>
+                                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">
+                                        {listed.length}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                                     {listed.map((v) => (
                                         <button
                                             key={v.id}
                                             type="button"
                                             onClick={() => setPlaying(v)}
-                                            className="group flex flex-col rounded-lg border border-neutral-200 bg-white p-2 text-start transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md"
+                                            aria-label={v.title}
+                                            className="group flex h-full min-w-0 flex-col rounded-lg border border-border bg-card p-2 text-start transition-colors hover:border-primary-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:bg-muted"
                                         >
-                                            {/* First-frame thumbnail straight from the S3 video — no extra asset pipeline. */}
+                                            {/* First-frame thumbnail straight from the S3 video - no extra asset pipeline. */}
                                             <span className="relative block aspect-video overflow-hidden rounded-md bg-neutral-900">
                                                 <video
                                                     src={`${v.fileUrl}#t=0.1`}
@@ -217,22 +256,32 @@ export function TrainingViewer({ open, onClose }: { open: boolean; onClose: () =
                                                     playsInline
                                                     className="size-full object-cover"
                                                 />
-                                                <span className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
-                                                    <span className="flex size-10 items-center justify-center rounded-full bg-white/95 text-primary-600 shadow">
+                                                <span className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors group-hover:bg-black/40">
+                                                    <span className="flex size-10 items-center justify-center rounded-full bg-card/95 text-primary-600 shadow-sm transition-transform group-hover:scale-105">
                                                         <Play size={16} weight="fill" />
                                                     </span>
                                                 </span>
                                             </span>
-                                            <span className="mt-2 truncate text-caption font-semibold text-neutral-800">
+                                            <span
+                                                className="mt-3 w-full break-words text-body font-semibold leading-snug text-foreground"
+                                                title={v.title}
+                                            >
                                                 {v.title}
                                             </span>
-                                            <span className="mt-1 flex min-w-0">
-                                                <span className="truncate rounded-full bg-primary-50 px-2 py-0.5 text-caption text-primary-600">
+                                            <span className="mt-2 flex min-w-0 items-start gap-1 text-caption text-muted-foreground">
+                                                <FolderSimple
+                                                    size={13}
+                                                    className="mt-0.5 shrink-0"
+                                                />
+                                                <span
+                                                    className="line-clamp-2 break-words"
+                                                    title={v.modulePath.join(' › ')}
+                                                >
                                                     {v.modulePath.join(' › ')}
                                                 </span>
                                             </span>
                                             {v.description ? (
-                                                <span className="mt-1 line-clamp-2 text-caption leading-snug text-neutral-500">
+                                                <span className="mt-2 line-clamp-2 text-caption leading-relaxed text-neutral-500">
                                                     {v.description}
                                                 </span>
                                             ) : null}
@@ -271,43 +320,46 @@ function TreeBranch({
         <div>
             <div
                 className={cn(
-                    'flex w-full items-center gap-1 rounded-md pe-2 text-caption transition-colors',
+                    'flex w-full items-stretch rounded-md text-body transition-colors',
                     isSelected
                         ? 'bg-primary-50 text-primary-600'
-                        : 'text-neutral-600 hover:bg-neutral-100'
+                        : 'text-neutral-600 hover:bg-muted'
                 )}
                 style={{
-                    // Genuinely dynamic value: tree indentation scales with branch depth — no static token exists.
-                    paddingLeft: depth * 12 + 4,
+                    // Genuinely dynamic value: tree indentation scales with branch depth - no static token exists.
+                    paddingInlineStart: depth * 12 + 4,
                 }}
             >
-                <button
-                    type="button"
-                    onClick={() =>
-                        node.children.length ? onToggle(node.path) : onSelect(node.path)
-                    }
-                    className="flex min-w-0 flex-1 items-center gap-1 py-1.5 text-start"
-                >
-                    {node.children.length ? (
+                {node.children.length ? (
+                    <button
+                        type="button"
+                        aria-label={node.name}
+                        aria-expanded={isOpen}
+                        onClick={() => onToggle(node.path)}
+                        className="flex size-10 shrink-0 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:size-8"
+                    >
                         <CaretRight
-                            size={12}
+                            size={14}
                             className={cn(
                                 'shrink-0 text-neutral-400 transition-transform',
                                 isOpen && 'rotate-90'
                             )}
                         />
-                    ) : (
-                        <span className="w-3 shrink-0" />
-                    )}
-                    <FolderSimple size={13} className="shrink-0 text-neutral-400" />
-                    <span className="flex-1 truncate">{node.name}</span>
-                </button>
+                    </button>
+                ) : (
+                    <span className="w-10 shrink-0 md:w-8" />
+                )}
                 <button
                     type="button"
                     onClick={() => onSelect(node.path)}
-                    className="shrink-0 text-caption text-neutral-400 transition-colors hover:text-primary-500"
+                    title={node.name}
+                    className="flex min-w-0 flex-1 items-start gap-2 rounded-md py-2 pe-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                    {node.videos.length}
+                    <FolderSimple size={15} className="mt-0.5 shrink-0 text-neutral-400" />
+                    <span className="min-w-0 flex-1 break-words leading-snug">{node.name}</span>
+                    <span className="shrink-0 text-caption text-neutral-400">
+                        {node.videos.length}
+                    </span>
                 </button>
             </div>
             {isOpen && node.children.length ? (

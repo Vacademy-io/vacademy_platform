@@ -104,6 +104,13 @@
         "renewPromptNoDate": "ادفع مرة واحدة وتستمر عضويتك.",
         "reactivatePrompt": "أعد تفعيل هذه العضوية — نفس الخطة ونفس الدورات، دون إعادة تسجيل.",
         "alsoEnableAutopay": "أعد تفعيل الدفع التلقائي أيضًا — موافقة واحدة تدفع الآن وتهيّئ التجديدات القادمة.",
+        "mandateMethod": {
+            "heading": "كيف تريد إعداد الدفع التلقائي؟",
+            "upiLabel": "UPI Autopay",
+            "upiHint": "GPay, PhonePe, Paytm",
+            "cardLabel": "بطاقة",
+            "cardHint": "بطاقة خصم / ائتمان"
+        },
         "payToContinue": "ادفع {{amount}} للمتابعة",
         "startingPayment": "جارٍ بدء الدفع...",
         "unavailable": "تفاصيل العضوية غير متاحة حاليًا.",

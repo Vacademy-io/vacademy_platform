@@ -36,7 +36,9 @@
       "metaDescription": "मेटा डिस्क्रिप्शन",
       "metaDescriptionPlaceholder": "सर्च इंजन के लिए पेज का संक्षिप्त विवरण...",
       "ogImage": "OG इमेज",
-      "ogImagePlaceholder": "सोशल शेयर इमेज का URL"
+      "ogImagePlaceholder": "सोशल शेयर इमेज का URL",
+      "previewHeading": "सर्च परिणाम पूर्वावलोकन",
+      "previewNoDescription": "विवरण जोड़ें — वरना सर्च इंजन पेज से अपना टेक्स्ट चुन लेंगे।"
     }
   },
   "selectItemToEdit": "एडिट करने के लिए कोई आइटम चुनें",
@@ -150,6 +152,29 @@
     "enquiry": {
       "heading": "इंक्वायरी",
       "enable": "इंक्वायरी सक्षम करें"
+    },
+    "seo": {
+      "heading": "सर्च इंजन ऑप्टिमाइज़ेशन (SEO)",
+      "hint": "सर्च इंजन और सोशल नेटवर्क इस साइट को कैसे पढ़ते हैं। हर पेज का अपना शीर्षक, विवरण और शेयर इमेज भी पेज सेटिंग्स में है।",
+      "keywordsLabel": "कीवर्ड",
+      "keywordsPlaceholder": "AI कोर्स, AI सीखें, शिक्षकों के लिए AI",
+      "keywordsHint": "कॉमा से अलग करें। वे शब्द जिन्हें लोग आपको खोजने के लिए सर्च करेंगे — अपने ब्रांड नाम से शुरू करें।",
+      "verificationLabel": "Google Search Console सत्यापन",
+      "verificationHint": "Search Console की HTML-टैग विधि से \"content\" मान यहाँ पेस्ट करें। फिर वहाँ अपना साइटमैप सबमिट करें।",
+      "organizationHeading": "संस्था का विवरण",
+      "organizationHint": "सर्च इंजन को संरचित डेटा के रूप में दिखाया जाता है — यही आपके नाम, लोगो और प्रोफ़ाइल को एक ब्रांड परिणाम में जोड़ता है।",
+      "orgName": "नाम",
+      "orgDescription": "संक्षिप्त विवरण",
+      "orgFounder": "संस्थापक",
+      "orgFoundingDate": "स्थापना (वर्ष)",
+      "orgEmail": "ईमेल",
+      "orgTelephone": "टेलीफ़ोन",
+      "orgAddress": "पता / स्थान",
+      "orgLogo": "सर्च परिणामों के लिए लोगो",
+      "orgLogoHint": "सादे बैकग्राउंड पर साफ़ लोगो, कम से कम 112×112 px। खाली छोड़ने पर संस्थान का लोगो इस्तेमाल होगा।",
+      "sameAsLabel": "सोशल व प्रोफ़ाइल लिंक",
+      "sameAsHint": "हर पंक्ति में एक URL। फुटर में मौजूद लिंक अपने आप शामिल हो जाते हैं।",
+      "sitemapHint": "साइटमैप अपने आप /<catalogue>/sitemap.xml पर बनता है (और अपने डोमेन से साइट चलने पर /sitemap.xml पर)।"
     }
   },
   "options": {

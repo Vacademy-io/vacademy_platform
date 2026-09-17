@@ -533,6 +533,28 @@ export const getPreferredPhoneCountries = (): ResolvedPhoneCountries =>
     hasResolvedPhonePreferences() ? detectVisitorCountry() : null,
   );
 
+/**
+ * Read a portal's routing record WITHOUT touching the per-host caches that
+ * `resolveDomainRouting` maintains. For pages that need to describe a brand
+ * other than the one the browser is on (the privacy policy with `?app=`), where
+ * caching the other brand's root-catalogue tag or phone preferences would
+ * corrupt the current host's session.
+ */
+export const peekDomainRouting = async (
+  domain: string,
+  subdomain: string
+): Promise<DomainRoutingResponse | null> => {
+  try {
+    const response = await authenticatedAxiosInstance.get<DomainRoutingResponse>(
+      `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`,
+      { params: { domain, subdomain }, timeout: 10000 }
+    );
+    return response.data;
+  } catch {
+    return null;
+  }
+};
+
 export const resolveDomainRouting = async (
   domain: string,
   subdomain: string

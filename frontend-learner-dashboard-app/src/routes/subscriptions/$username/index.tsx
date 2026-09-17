@@ -46,6 +46,11 @@ import {
   type Subscription,
 } from "@/components/common/user-profile/payment-billing/subscription-services";
 import { ChangePlanDialog } from "@/components/common/subscription/ChangePlanDialog";
+import {
+  DEFAULT_MANDATE_METHOD,
+  MandateMethodPicker,
+  type MandateMethod,
+} from "@/components/common/subscription/MandateMethodPicker";
 
 const formatPrice = (amount?: number | null, currency?: string | null): string => {
   if (amount == null) return "";
@@ -215,6 +220,8 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   // Per-plan "also enable auto-pay" choice (offered only when the invite has
   // autopay configured). Default off: the learner cancelled it deliberately.
   const [autopayChoice, setAutopayChoice] = useState<Record<string, boolean>>({});
+  // UPI vs card for the re-registered mandate; only read when autopayChoice is on.
+  const [mandateMethodChoice, setMandateMethodChoice] = useState<Record<string, MandateMethod>>({});
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
 
   const refetchSoon = () => {
@@ -249,7 +256,12 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       const withAutopay = Boolean(
         sub.autopay_available && autopayChoice[sub.user_plan_id]
       );
-      const response = await initiateRenewalPayment(instituteId, sub, withAutopay);
+      const response = await initiateRenewalPayment(
+        instituteId,
+        sub,
+        withAutopay,
+        mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD
+      );
       const orderDetails =
         response?.payment_response?.response_data || response?.response_data;
       if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
@@ -285,7 +297,8 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   const startPlanChange = async (
     sub: Subscription,
     target: PlanChangeTarget,
-    withAutopay: boolean
+    withAutopay: boolean,
+    mandateMethod?: MandateMethod
   ): Promise<PlanChangeResult | null> => {
     try {
       setChangingPlanId(sub.user_plan_id);
@@ -293,7 +306,8 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         instituteId,
         sub.user_plan_id,
         target.plan_id,
-        withAutopay || Boolean(target.requires_mandate_reauth)
+        withAutopay || Boolean(target.requires_mandate_reauth),
+        mandateMethod
       );
       if (result.status === "PENDING_PAYMENT" && result.payment_response) {
         const orderDetails =
@@ -532,6 +546,18 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                     </span>
                   </label>
                 )}
+                {sub.autopay_available && autopayChoice[sub.user_plan_id] && (
+                  <MandateMethodPicker
+                    value={mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD}
+                    onChange={(method) =>
+                      setMandateMethodChoice((prev) => ({
+                        ...prev,
+                        [sub.user_plan_id]: method,
+                      }))
+                    }
+                    disabled={renewingPlanId === sub.user_plan_id}
+                  />
+                )}
                 <div className="flex justify-end">
                   <MyButton
                     type="button"
@@ -607,8 +633,8 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         subscription={toChange}
         instituteId={instituteId}
         isSubmitting={Boolean(changingPlanId)}
-        onConfirm={(target, withAutopay) =>
-          startPlanChange(toChange as Subscription, target, withAutopay)
+        onConfirm={(target, withAutopay, mandateMethod) =>
+          startPlanChange(toChange as Subscription, target, withAutopay, mandateMethod)
         }
       />
 

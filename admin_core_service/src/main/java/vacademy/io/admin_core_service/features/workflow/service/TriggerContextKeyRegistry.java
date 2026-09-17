@@ -54,7 +54,10 @@ public class TriggerContextKeyRegistry {
         AUDITED.put(WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(), Set.of(
                 "user", "userId", "leadUserId", "phone", "parentMobile", "responseId", "audience", "audienceId",
                 "instituteId", "instituteName", "campaignName", "customFields", "submissionTime",
-                "sendRespondentEmail", "respondentEmailRequests", "adminEmailRequests", "formProvider"));
+                "sendRespondentEmail", "respondentEmailRequests", "adminEmailRequests", "formProvider",
+                // Set only by AudienceService.scheduleDestinationAutomations (a lead MOVED into the
+                // list with "run destination automations" ticked): leadSource = "LEAD_MOVED".
+                "leadSource", "fromAudienceId"));
         // StudentRegistrationManager ~L1200. `packageSessionIds` is a single id string despite the name.
         AUDITED.put(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(), Set.of(
                 "user", "packageSessionIds", "subOrg", "packageId", "packageName", "lmsEditExistingUser"));

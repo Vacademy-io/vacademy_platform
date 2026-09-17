@@ -387,12 +387,26 @@
     "backToLogin": "Back to Login",
     "header": {
       "title": "Privacy Policy",
-      "description": "Your privacy is important to us. This policy explains how Vacademy collects, uses, and protects your personal information.",
-      "lastUpdated": "Last updated: January 2024"
+      "description": "Your privacy is important to us. This policy explains how {{appName}} collects, uses, and protects your personal information.",
+      "lastUpdated": "Last updated: {{date}}"
+    },
+    "identity": {
+      "title": "Who this policy covers",
+      "intro": "This Privacy Policy applies to the {{appName}} mobile applications for Android and iOS and to the {{appName}} web portal (together, the \"Service\"). It is the privacy policy linked from the {{appName}} listings on Google Play and the Apple App Store and from inside the app.",
+      "introWeb": "This Privacy Policy applies to the {{appName}} web portal (the \"Service\") and to any {{appName}} mobile application published by {{publisher}}.",
+      "appNameLabel": "App name",
+      "appIdsLabel": "Application identifiers",
+      "webOnly": "None — web portal only",
+      "publisherLabel": "Developer / publisher",
+      "publisherAddressLabel": "Registered address",
+      "operatedForLabel": "Service operated for",
+      "portalLabel": "Web portal",
+      "contactLabel": "Privacy contact",
+      "controller": "{{appName}} is developed and published by {{publisher}}, which is responsible for the personal information collected through the Service. Where the Service is provided on behalf of an educational institution or organisation, that institution decides which learners are enrolled and what content they receive, and can see learner progress within the Service."
     },
     "introduction": {
       "title": "Introduction",
-      "text": "Welcome to Vacademy. We are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy describes how we collect, use, disclose, and safeguard your information when you use our educational platform. By using our services, you agree to the collection and use of information in accordance with this policy."
+      "text": "Welcome to {{appName}}. We are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy describes how we collect, use, disclose, and safeguard your information when you use our educational platform and services. Please read this policy carefully to understand our practices regarding your personal data."
     },
     "sections": {
       "informationWeCollect": {
@@ -408,6 +422,10 @@
         "technicalInformation": {
           "subtitle": "Technical Information",
           "text": "We automatically collect certain technical information about your device and how you interact with our platform, including IP address, browser type, operating system, and usage analytics."
+        },
+        "devicePermissions": {
+          "subtitle": "Device permissions",
+          "text": "The {{appName}} app asks for your permission before using your camera or microphone, and only does so for live classes and video features you choose to join. It may ask to access your photo library so you can upload assignments or a profile picture, and to send you notifications about your courses. Notifications are delivered through Firebase Cloud Messaging, which involves a device token being stored with your account. The app does not access your contacts or your precise location."
         }
       },
       "howWeUse": {
@@ -429,7 +447,7 @@
         "title": "Information Sharing and Disclosure",
         "educationalPartners": {
           "subtitle": "Educational Partners",
-          "text": "We may share your learning progress and achievements with educational institutions or employers as authorized by you or required for certification purposes."
+          "text": "If you use {{appName}} through a school, coaching institute, employer or other organisation, we share your enrolment details, learning progress and assessment results with that organisation so it can deliver and evaluate your learning. We may also share achievements with institutions or employers as authorised by you or as required for certification purposes."
         },
         "serviceProviders": {
           "subtitle": "Service Providers",
@@ -437,7 +455,11 @@
         },
         "legalRequirements": {
           "subtitle": "Legal Requirements",
-          "text": "We may disclose your information when required by law, regulation, legal process, or governmental request, or to protect the rights, property, or safety of Vacademy, our users, or others."
+          "text": "We may disclose your information when required by law, regulation, legal process, or governmental request, or to protect the rights, property, or safety of {{publisher}}, {{appName}}, our users, or others."
+        },
+        "thirdPartyServices": {
+          "subtitle": "Third-party services",
+          "text": "{{appName}} relies on a small number of third-party providers that process data on our behalf: Firebase (Google) for push notifications; Google Sign-In and Sign in with Apple when you choose to log in with those accounts; payment gateways such as Razorpay, Stripe, Cashfree, PhonePe or PayPal when you purchase a course (your card or bank details are entered directly with the gateway and are never stored by us); and video hosting and live-class providers such as YouTube, Vimeo, Zoom or BigBlueButton when you watch or attend a class. Each provider handles your data under its own privacy policy."
         }
       },
       "dataSecurity": {
@@ -467,18 +489,43 @@
         },
         "deletion": {
           "subtitle": "Deletion",
-          "text": "You may request deletion of your personal information, subject to certain exceptions where we may need to retain information for legal or legitimate business purposes."
+          "text": "You may request deletion of your personal information at any time, subject to certain exceptions where we may need to retain information for legal or legitimate business purposes. See \"Data retention and deletion\" below for how to delete your account."
+        }
+      },
+      "dataRetention": {
+        "title": "Data retention and deletion",
+        "retentionPeriod": {
+          "subtitle": "How long we keep your data",
+          "text": "We keep your account information and learning records for as long as your {{appName}} account is active, so that your progress, certificates and purchases remain available to you. Payment records are kept for as long as tax and accounting laws require."
+        },
+        "accountDeletion": {
+          "subtitle": "Deleting your account",
+          "text": "You can delete your {{appName}} account and the personal data associated with it from within the app (Profile → Delete account) or by emailing {{email}} from the address registered to your account. Once a deletion request is verified, your personal data is deleted or anonymised within 30 days, except for records we are legally required to retain."
+        }
+      },
+      "childrensPrivacy": {
+        "title": "Children's privacy",
+        "learnersUnder18": {
+          "subtitle": "Learners under 18",
+          "text": "{{appName}} is an educational service and may be used by learners under 18. Accounts for such learners are created by, or with the consent of, a parent, guardian or the educational institution that enrols them. We collect only the information needed to deliver the learning service and do not knowingly use children's data for advertising. A parent or guardian can review or delete a child's information by contacting us."
         }
       },
       "internationalTransfers": {
         "title": "International Data Transfers",
         "globalOperations": {
           "subtitle": "Global Operations",
-          "text": "Vacademy operates globally, and your information may be transferred to and processed in countries other than your country of residence, including countries that may have different data protection laws."
+          "text": "{{publisher}} is based in India and hosts the Service on servers that may be located outside your country of residence, including countries that may have different data protection laws."
         },
         "safeguards": {
           "subtitle": "Safeguards",
           "text": "When we transfer your information internationally, we implement appropriate safeguards to ensure your information receives adequate protection, including standard contractual clauses and adequacy decisions."
+        }
+      },
+      "changes": {
+        "title": "Changes to this policy",
+        "notification": {
+          "subtitle": "How we notify you",
+          "text": "We may update this Privacy Policy from time to time. The date at the top of this page shows when it was last revised, and the current version is always available from the {{appName}} app and its store listings. Where a change materially affects how we use your personal information, we will notify you in the app or by email before it takes effect."
         }
       }
     },
@@ -486,13 +533,9 @@
       "title": "Contact Us",
       "intro": "If you have any questions about this Privacy Policy or our data practices, please contact us:",
       "emailLabel": "Email",
-      "email": "privacy@vacademy.com",
-      "addressLabel": "Address",
-      "addressLine1": "Vacademy Educational Services",
-      "addressLine2": "123 Learning Street",
-      "addressLine3": "Education City, EC 12345"
+      "addressLabel": "Address"
     },
-    "footer": "This privacy policy is effective as of January 2024 and will remain in effect except with respect to any changes in its provisions in the future."
+    "footer": "This privacy policy is effective as of {{date}} and will remain in effect except with respect to any changes in its provisions in the future."
   },
   "sessionTerminated": {
     "title": "Session Terminated",

@@ -88,6 +88,13 @@
         "renewPromptNoDate": "Pay once and your membership carries on.",
         "reactivatePrompt": "Reactivate this membership — same plan, same courses, no re-enrollment needed.",
         "alsoEnableAutopay": "Also turn auto-pay back on — one approval pays now and sets up future renewals.",
+        "mandateMethod": {
+            "heading": "How should auto-pay be set up?",
+            "upiLabel": "UPI Autopay",
+            "upiHint": "GPay, PhonePe, Paytm",
+            "cardLabel": "Card",
+            "cardHint": "Debit / credit card"
+        },
         "payToContinue": "Pay {{amount}} to continue",
         "startingPayment": "Starting payment...",
         "unavailable": "Membership details are unavailable right now.",

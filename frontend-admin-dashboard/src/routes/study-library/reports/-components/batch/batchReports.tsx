@@ -84,7 +84,7 @@ export default function BatchReports({ packageSessionId, courseId }: BatchReport
                             className="mt-0 p-6 focus-visible:outline-none"
                         >
                             {/* No packageSessionId (Learning Reports page) → the
-                                component shows its own course/session/level picker. */}
+                                component shows its own multi-batch picker. */}
                             <LearnerProgressReports
                                 packageSessionId={packageSessionId}
                                 courseId={courseId}

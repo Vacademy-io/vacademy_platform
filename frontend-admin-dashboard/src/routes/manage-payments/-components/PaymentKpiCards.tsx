@@ -1,147 +1,145 @@
-import { CheckCircle, Clock, HourglassMedium, Receipt, XCircle } from '@phosphor-icons/react';
+import {
+    CalendarBlank,
+    CheckCircle,
+    Clock,
+    HourglassMedium,
+    Receipt,
+    XCircle,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatMoney } from '@/utils/payment-currency';
 import type { PaymentSummary } from '../-utils/paymentSummary';
-import { bucketAmountTotal, summarizeBucketAmount } from '../-utils/paymentSummary';
+import { summarizeBucketAmount } from '../-utils/paymentSummary';
 
 /**
- * The five KPI cards. Four describe payment records; 'due' describes a balance — money a learner
- * owes on their enrolment, which usually has no payment record at all. Keeping them apart is the
- * whole point: an institute can have ₹85,000 due and zero pending transactions.
+ * Every status the cards and the segmented switch can be set to. Three of them describe payment
+ * records (paid / pending / failed, plus 'total' for all of them and 'abandoned' for stale
+ * checkouts); 'due' and 'upcoming' describe balances — money a learner with access owes, which
+ * usually has no payment record at all. Keeping them apart is the whole point: an institute can
+ * have ₹85,000 due and zero pending transactions, or ₹5 lakh of abandoned checkouts and nothing owed.
  */
-export type SummaryStatusKey = 'total' | 'paid' | 'due' | 'pending' | 'failed';
+export type SummaryStatusKey =
+    | 'total'
+    | 'paid'
+    | 'due'
+    | 'upcoming'
+    | 'pending'
+    | 'abandoned'
+    | 'failed';
 
-/** The cards that map onto an actual payment record, so they can filter the table. */
-export type RecordStatusKey = Exclude<SummaryStatusKey, 'due'>;
+/** The statuses that map onto payment records, so they can filter the table. */
+export type RecordStatusKey = Exclude<SummaryStatusKey, 'due' | 'upcoming'>;
 
 /**
- * Billing figures from the server: what learners were billed, what they paid, and the difference.
- * When present these drive the Total / Collected / Due cards, because payment records alone cannot
- * see an unpaid balance — see fetchBillingSummary.
+ * Billing figures from the server: what came in, what learners with access still owe, and what
+ * falls due next. Drives the Collected / Due / Upcoming cards — payment records alone cannot see an
+ * unpaid balance. See fetchBillingSummary.
  */
 export interface KpiBilling {
-    totalBilled: number;
     collected: number;
+    /** Overdue right now. */
     due: number;
+    /** Falls due within `upcomingDays`. Expected, not yet owed. */
+    upcoming: number;
+    upcomingDays: number;
+    learnersOwing: number;
+    learnersUpcoming: number;
+    /** Priced one-time plans an admin activated with no payment recorded — a hygiene hint. */
+    activatedWithoutPaymentCount: number;
     currency: string;
-    /** Live enrolments behind the figures. */
-    planCount: number;
-    settledPlanCount: number;
 }
 
 interface PaymentKpiCardsProps {
     summary: PaymentSummary;
-    /** Preferred source for Total / Collected / Due. Falls back to `summary` when absent. */
+    /**
+     * Source for Collected / Due / Upcoming. Without it Collected falls back to the paid records
+     * and the two balance cards show a dash — there is no honest client-side substitute for them.
+     */
     billing?: KpiBilling | null;
-    /** Accurate total count from the paginated response (across all filtered results). */
-    totalCount?: number;
     isLoading?: boolean;
-    /** True when the summary was computed from a capped subset of results. */
-    truncated?: boolean;
     /** Which card is currently reflected in the active status filter. */
     activeKey?: SummaryStatusKey;
-    /** When given, each card acts as a one-click status filter for the table below. */
+    /** When given, each record/balance card acts as a one-click filter for the table below. */
     onSelect?: (key: SummaryStatusKey) => void;
     className?: string;
 }
 
 interface CardDef {
-    key: SummaryStatusKey;
+    key: Exclude<SummaryStatusKey, 'total' | 'abandoned'>;
     label: string;
-    /** Trailing word(s) on the count line, e.g. "980 settled". */
-    hint: string;
     /** One line spelling out what the number actually is, so two "pending"s can't be confused. */
     caption: string;
     icon: typeof Receipt;
     iconClass: string;
-    barClass: string;
-    /** Which summary bucket backs the amount when no server billing figures are available. */
-    bucket: 'total' | 'paid' | 'pending' | 'due' | 'failed';
+    accentClass: string;
+    /** Balance cards need the server; record cards are computed from the rows on screen. */
+    source: 'billing' | 'records';
+    /** Which record bucket backs the card when `source` is 'records'. */
+    bucket?: 'paid' | 'pending' | 'failed';
 }
 
 /**
- * Total / Collected / Due / Failed — the four numbers an admin actually asks for. "Due" is every
- * record that has not settled (PAYMENT_PENDING, NOT_INITIATED, blank), which is the money still
- * owed to the institute; "Failed" is money that was attempted and bounced, kept separate so a
- * retry-able failure is never mistaken for an unbilled due.
+ * Collected / Due / Upcoming / Pending / Failed.
+ *
+ * The rule behind Due: a learner owes money only when they have been granted access and an
+ * obligation on it is unpaid — an overdue instalment, a lapsed subscription renewal, an unpaid
+ * invoice. Pending and Failed are transactions at the gateway, not balances; a stale pending row
+ * is an abandoned checkout and is in neither (see the Abandoned segment).
  */
 const CARDS: CardDef[] = [
     {
-        key: 'total',
-        label: 'Total payment',
-        hint: 'payments',
-        caption: 'Billed to learners',
-        icon: Receipt,
-        iconClass: 'bg-primary-50 text-primary-500',
-        barClass: 'bg-primary-500',
-        bucket: 'total',
-    },
-    {
         key: 'paid',
-        label: 'Collected payment',
-        hint: 'settled',
+        label: 'Collected',
         caption: 'Money received',
         icon: CheckCircle,
         iconClass: 'bg-success-50 text-success-600',
-        barClass: 'bg-success-500',
+        accentClass: 'bg-success-500',
+        source: 'billing',
         bucket: 'paid',
     },
     {
         key: 'due',
-        label: 'Due payment',
-        hint: 'awaiting payment',
-        caption: 'Balance owed on enrolments',
+        label: 'Due',
+        caption: 'Overdue on instalments, renewals & invoices',
         icon: HourglassMedium,
         iconClass: 'bg-warning-50 text-warning-600',
-        barClass: 'bg-warning-500',
-        // 'due', not 'pending': an unfinished payment on a cancelled or terminated enrolment is an
-        // abandoned checkout, not money owed. Only this card makes that distinction — "Payment
-        // pending" below is about gateway traffic and deliberately still counts them.
-        bucket: 'due',
+        accentClass: 'bg-warning-500',
+        source: 'billing',
+    },
+    {
+        key: 'upcoming',
+        label: 'Upcoming',
+        caption: 'Falls due soon — expected, not yet owed',
+        icon: CalendarBlank,
+        iconClass: 'bg-primary-50 text-primary-500',
+        accentClass: 'bg-primary-500',
+        source: 'billing',
     },
     {
         key: 'pending',
         label: 'Payment pending',
-        hint: 'in progress',
-        caption: 'Online transactions not completed',
+        caption: 'Checkouts awaiting the gateway',
         icon: Clock,
         iconClass: 'bg-info-50 text-info-600',
-        barClass: 'bg-info-500',
+        accentClass: 'bg-info-500',
+        source: 'records',
         bucket: 'pending',
     },
     {
         key: 'failed',
-        label: 'Failed payment',
-        hint: 'declined',
+        label: 'Failed',
         caption: 'Online transactions declined',
         icon: XCircle,
         iconClass: 'bg-danger-50 text-danger-600',
-        barClass: 'bg-danger-500',
+        accentClass: 'bg-danger-500',
+        source: 'records',
         bucket: 'failed',
     },
 ];
 
-/**
- * Which billing figure each card shows. Pending and Failed have none by design — they count
- * transactions at the gateway, not what anyone was billed.
- */
-const BILLING_AMOUNT: Partial<Record<SummaryStatusKey, (b: KpiBilling) => number>> = {
-    total: (b) => b.totalBilled,
-    paid: (b) => b.collected,
-    due: (b) => b.due,
-};
-
-/** Meta line under each headline while billing figures are driving the cards. */
-const BILLING_META: Partial<Record<SummaryStatusKey, (b: KpiBilling, count: number) => string>> = {
-    total: (b) =>
-        `${b.planCount.toLocaleString()} ${b.planCount === 1 ? 'enrolment' : 'enrolments'} billed`,
-    paid: (b) => `${b.settledPlanCount.toLocaleString()} fully paid up`,
-    due: (b) => {
-        const owing = Math.max(0, b.planCount - b.settledPlanCount);
-        return `${owing.toLocaleString()} ${owing === 1 ? 'learner' : 'learners'} still owing`;
-    },
-};
+const plural = (n: number, one: string, many: string) =>
+    `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
 /**
  * The KPI row shown on both Manage Payments and the Payment Dashboard — same buckets, same maths,
@@ -150,19 +148,13 @@ const BILLING_META: Partial<Record<SummaryStatusKey, (b: KpiBilling, count: numb
 export function PaymentKpiCards({
     summary,
     billing,
-    totalCount,
     isLoading,
-    truncated,
     activeKey = 'total',
     onSelect,
     className,
 }: PaymentKpiCardsProps) {
-    const overallCount = totalCount != null ? totalCount : summary.total.count;
-    // Share the headline is measured in: money when there is any, otherwise the record count.
-    const billedAmount = billing
-        ? billing.totalBilled
-        : bucketAmountTotal(summary.total.amountByCurrency);
-    const shareIsAmount = billedAmount > 0;
+    const money = (amount: number) =>
+        formatMoney(amount, billing?.currency ?? '', { maximumFractionDigits: 0 });
 
     return (
         <div
@@ -172,62 +164,91 @@ export function PaymentKpiCards({
             )}
         >
             {CARDS.map((card) => {
-                const bucket = summary[card.bucket];
-                const count = card.key === 'total' ? overallCount : bucket.count;
-                // Without server figures each card falls back to its own record bucket — for 'due'
-                // that is summary.due, the unsettled rows minus the ones on a dead enrolment.
-                const amount = summarizeBucketAmount(bucket.amountByCurrency);
-                const billed = billing ? BILLING_AMOUNT[card.key]?.(billing) : undefined;
-                const truncatedSuffix = card.key === 'total' && truncated && !billing ? '+' : '';
-                const amountDisplay =
-                    billed != null
-                        ? formatMoney(billed, billing?.currency ?? '', { maximumFractionDigits: 0 })
-                        : amount.display
-                          ? `${amount.display}${truncatedSuffix}`
-                          : '—';
-                const amountTooltip =
-                    billed == null && amount.full ? `Total amount: ${amount.full}` : undefined;
-                const shareAmount = billing
-                    ? BILLING_AMOUNT[card.key]?.(billing) ??
-                      bucketAmountTotal(bucket.amountByCurrency)
-                    : bucketAmountTotal(bucket.amountByCurrency);
-                const share = shareIsAmount
-                    ? Math.round((shareAmount / billedAmount) * 100)
-                    : overallCount > 0
-                      ? Math.round((bucket.count / overallCount) * 100)
-                      : 0;
+                const bucket = card.bucket ? summary[card.bucket] : undefined;
+                const recordAmount = bucket ? summarizeBucketAmount(bucket.amountByCurrency) : null;
+
+                let amountDisplay = '—';
+                let amountTooltip: string | undefined;
+                let meta = '';
+                let hint: string | undefined;
+
+                switch (card.key) {
+                    case 'paid':
+                        // Prefer the server's figure (it also counts invoice payments); the paid
+                        // records are the fallback, never the two summed.
+                        amountDisplay = billing
+                            ? money(billing.collected)
+                            : recordAmount?.display || '—';
+                        amountTooltip =
+                            !billing && recordAmount?.full
+                                ? `Total amount: ${recordAmount.full}`
+                                : undefined;
+                        meta = plural(bucket?.count ?? 0, 'payment', 'payments');
+                        break;
+                    case 'due':
+                        amountDisplay = billing ? money(billing.due) : '—';
+                        meta = billing
+                            ? plural(billing.learnersOwing, 'learner owing', 'learners owing')
+                            : 'Needs the billing summary';
+                        if (billing && billing.activatedWithoutPaymentCount > 0) {
+                            hint = `${plural(
+                                billing.activatedWithoutPaymentCount,
+                                'plan',
+                                'plans'
+                            )} activated without a recorded payment`;
+                        }
+                        break;
+                    case 'upcoming':
+                        amountDisplay = billing ? money(billing.upcoming) : '—';
+                        meta = billing
+                            ? `${plural(billing.learnersUpcoming, 'learner', 'learners')} · next ${
+                                  billing.upcomingDays
+                              } days`
+                            : 'Needs the billing summary';
+                        break;
+                    case 'pending':
+                        amountDisplay = recordAmount?.display || '—';
+                        amountTooltip = recordAmount?.full
+                            ? `Total amount: ${recordAmount.full}`
+                            : undefined;
+                        meta = plural(bucket?.count ?? 0, 'in progress', 'in progress');
+                        if (summary.abandoned.count > 0) {
+                            hint = `${plural(
+                                summary.abandoned.count,
+                                'abandoned checkout',
+                                'abandoned checkouts'
+                            )} not counted`;
+                        }
+                        break;
+                    case 'failed':
+                        amountDisplay = recordAmount?.display || '—';
+                        amountTooltip = recordAmount?.full
+                            ? `Total amount: ${recordAmount.full}`
+                            : undefined;
+                        meta = plural(bucket?.count ?? 0, 'declined', 'declined');
+                        break;
+                }
+
                 const isActive = activeKey === card.key;
                 const Icon = card.icon;
-                const interactive = Boolean(onSelect);
+                // Upcoming is informational: the Due list only holds learners with something
+                // overdue, so there is nothing to open for it.
+                const interactive = Boolean(onSelect) && card.key !== 'upcoming';
 
                 const content = (
                     <>
-                        <div className="flex items-start justify-between gap-2">
-                            <span className="flex items-center gap-2">
-                                <span
-                                    className={cn(
-                                        'flex size-7 shrink-0 items-center justify-center rounded-lg',
-                                        card.iconClass
-                                    )}
-                                >
-                                    <Icon size={15} weight="duotone" />
-                                </span>
-                                <span className="text-2xs font-semibold uppercase tracking-wide text-neutral-500">
-                                    {card.label}
-                                </span>
+                        <div className="flex items-center gap-2">
+                            <span
+                                className={cn(
+                                    'flex size-7 shrink-0 items-center justify-center rounded-lg',
+                                    card.iconClass
+                                )}
+                            >
+                                <Icon size={15} weight="duotone" />
                             </span>
-                            {!isLoading && card.key !== 'total' && (
-                                <span
-                                    title={
-                                        shareIsAmount
-                                            ? 'Share of the total amount billed'
-                                            : 'Share of the payment count'
-                                    }
-                                    className="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-2xs font-semibold tabular-nums text-neutral-500"
-                                >
-                                    {share}%
-                                </span>
-                            )}
+                            <span className="text-2xs font-semibold uppercase tracking-wide text-neutral-500">
+                                {card.label}
+                            </span>
                         </div>
 
                         {isLoading ? (
@@ -242,24 +263,17 @@ export function PaymentKpiCards({
                         )}
 
                         <div className="mt-0.5 text-caption text-neutral-500">
-                            {isLoading
-                                ? ' '
-                                : billing && BILLING_META[card.key]
-                                  ? BILLING_META[card.key]!(billing, count)
-                                  : `${count.toLocaleString()} ${
-                                        card.key === 'total' && count === 1 ? 'payment' : card.hint
-                                    }`}
+                            {isLoading ? ' ' : meta}
                         </div>
 
                         <div className="mt-0.5 text-2xs text-neutral-400">{card.caption}</div>
 
-                        <div className="mt-3 h-1 overflow-hidden rounded-full bg-neutral-100">
-                            <div
-                                className={cn('h-full rounded-full transition-all', card.barClass)}
-                                style={{
-                                    width: `${card.key === 'total' ? 100 : Math.min(100, share)}%`,
-                                }}
-                            />
+                        {!isLoading && hint && (
+                            <div className="mt-1 text-2xs font-medium text-warning-600">{hint}</div>
+                        )}
+
+                        <div className="mt-auto pt-3">
+                            <div className={cn('h-1 w-10 rounded-full', card.accentClass)} />
                         </div>
                     </>
                 );

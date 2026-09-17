@@ -36,7 +36,9 @@
       "metaDescription": "Méta-description",
       "metaDescriptionPlaceholder": "Brève description de la page pour les moteurs de recherche...",
       "ogImage": "Image OG",
-      "ogImagePlaceholder": "URL de l'image de partage social"
+      "ogImagePlaceholder": "URL de l'image de partage social",
+      "previewHeading": "Aperçu du résultat de recherche",
+      "previewNoDescription": "Ajoutez une description — sinon les moteurs choisiront eux-mêmes un extrait de la page."
     }
   },
   "selectItemToEdit": "Sélectionnez un élément à modifier",
@@ -150,6 +152,29 @@
     "enquiry": {
       "heading": "Demande de renseignements",
       "enable": "Activer les demandes de renseignements"
+    },
+    "seo": {
+      "heading": "Référencement (SEO)",
+      "hint": "Comment les moteurs de recherche et réseaux sociaux lisent ce site. Chaque page a aussi son titre, sa description et son image de partage dans les paramètres de page.",
+      "keywordsLabel": "Mots-clés",
+      "keywordsPlaceholder": "cours IA, apprendre l'IA, IA pour enseignants",
+      "keywordsHint": "Séparés par des virgules. Les termes que l'on taperait pour vous trouver — commencez par le nom de votre marque.",
+      "verificationLabel": "Vérification Google Search Console",
+      "verificationHint": "Collez la valeur « content » de la méthode balise HTML de Search Console. Puis soumettez-y votre sitemap.",
+      "organizationHeading": "Informations sur l'organisation",
+      "organizationHint": "Transmises aux moteurs de recherche en données structurées — c'est ce qui relie votre nom, logo et profils en un seul résultat de marque.",
+      "orgName": "Nom",
+      "orgDescription": "Description courte",
+      "orgFounder": "Fondateur",
+      "orgFoundingDate": "Fondée en (année)",
+      "orgEmail": "E-mail",
+      "orgTelephone": "Téléphone",
+      "orgAddress": "Adresse / lieu",
+      "orgLogo": "Logo pour les résultats de recherche",
+      "orgLogoHint": "Un logo net sur fond uni, au moins 112×112 px. Laissez vide pour utiliser le logo de l'établissement.",
+      "sameAsLabel": "Liens sociaux et profils",
+      "sameAsHint": "Une URL par ligne. Les liens déjà présents dans le pied de page sont inclus automatiquement.",
+      "sitemapHint": "Un sitemap est généré automatiquement sur /<catalogue>/sitemap.xml (et /sitemap.xml lorsque le site est servi depuis votre propre domaine)."
     }
   },
   "options": {

@@ -49,9 +49,9 @@ public class AiCallApiKey {
     @Column(name = "key_prefix", nullable = false)
     private String keyPrefix;
 
-    /** SHA-256 hex of the full plaintext key — the auth lookup key. */
-    @Column(name = "api_key_hash", nullable = false, unique = true)
-    private String apiKeyEncrypted;
+    /** Plaintext key, intentionally retained for operator retrieval. */
+    @Column(name = "api_key", nullable = false, unique = true)
+    private String apiKey;
 
     @Column(name = "status", nullable = false)
     private String status;

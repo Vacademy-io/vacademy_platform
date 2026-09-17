@@ -14,7 +14,6 @@ import java.util.HexFormat;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import vacademy.io.admin_core_service.features.audience.service.TokenEncryptionService;
 
 /**
  * Issues and verifies API keys for the external AI-Calling API.
@@ -44,7 +43,6 @@ public class AiCallApiKeyService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final AiCallApiKeyRepository repository;
-    private final TokenEncryptionService encryption;
 
     // ── Issuing (admin, JWT-authenticated) ───────────────────────────────────
 
@@ -73,7 +71,7 @@ public class AiCallApiKeyService {
                 .instituteId(instituteId)
                 .keyName(keyName)
                 .keyPrefix(truncate(plaintext, 16))
-                .apiKeyEncrypted(encryption.encrypt(plaintext))
+                .apiKey(plaintext)
                 .status(AiCallApiKey.STATUS_ACTIVE)
                 .createdBy(createdBy)
                 .build();
@@ -108,7 +106,7 @@ public class AiCallApiKeyService {
         if (presentedKey == null || presentedKey.isBlank())
             throw unauthorized("API key required");
         AiCallApiKey key = repository.findByStatus(AiCallApiKey.STATUS_ACTIVE).stream()
-                .filter(k -> { try { return presentedKey.trim().equals(encryption.decrypt(k.getApiKeyEncrypted())); } catch (Exception e) { return false; } })
+                .filter(k -> presentedKey.trim().equals(k.getApiKey()))
                 .findFirst().orElseThrow(() -> unauthorized("Invalid API key"));
         if (!key.isActive())
             throw unauthorized("API key has been revoked");

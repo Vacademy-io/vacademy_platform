@@ -540,12 +540,13 @@ def normalise_title(title: str) -> str:
     out = []
     for i, w in enumerate(words):
         core = re.sub(r"[^A-Za-z]", "", w)
-        if core.isupper() and 2 <= len(core) <= 5 and not title.isupper():
-            out.append(w)  # acronym inside a normally cased title
-            continue
         lw = w.lower()
+        # Small words first: a small-caps font yields "Pair OF Linear
+        # Equations IN Two Variables", and "OF"/"IN" are not acronyms.
         if lw in _SMALL_WORDS and i not in (0, len(words) - 1):
             out.append(lw)
+        elif core.isupper() and 2 <= len(core) <= 5 and not title.isupper():
+            out.append(w)  # acronym inside a normally cased title
         elif re.match(r"^[spdf]-[A-Za-z]", w):
             out.append(w[0] + "-" + w[2:3].upper() + w[3:].lower())  # p-Block, d-Block
         else:

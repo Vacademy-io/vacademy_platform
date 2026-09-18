@@ -46,7 +46,8 @@
         "empty": "No tools are available on this server yet.",
         "modeRead": "View only",
         "modeWrite": "Edits drafts",
-        "actionsLabel": "Can do:"
+        "actionsLabel": "Can do:",
+        "alwaysOn": "Always on"
     },
     "roles": {
         "title": "Who can connect",

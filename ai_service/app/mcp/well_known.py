@@ -29,10 +29,12 @@ from mcp.server.auth.routes import (
 )
 from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
 from pydantic import AnyHttpUrl
+from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from ..config import Settings
 from .constants import MCP_SCOPE_READ
+from .institute_scope import institute_from_path_suffix, scoped_server_url
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,26 @@ def build_discovery_routes(settings: Settings) -> List[Route]:
                  "/.well-known/oauth-authorization-server"}:
         routes.append(Route(path, endpoint=handler, methods=["GET", "OPTIONS"]))
 
+    # Institute-scoped resource (white-label): /ai-service/mcp/i/<id> is its own
+    # RFC 9728 resource — same authorization server, its own `resource` value —
+    # so the client's `resource` parameter names the institute from step one.
+    async def scoped_resource_metadata(request):
+        institute_id = institute_from_path_suffix(f"/i/{request.path_params.get('institute_id', '')}")
+        if not institute_id:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return JSONResponse({
+            "resource": scoped_server_url(settings.mcp_issuer_url, institute_id),
+            "authorization_servers": [str(issuer)],
+            "scopes_supported": [MCP_SCOPE_READ],
+            "bearer_methods_supported": ["header"],
+            "resource_name": "Vacademy",
+        })
+
+    routes.append(Route(
+        f"/.well-known/oauth-protected-resource{issuer_path}/i/{{institute_id}}",
+        endpoint=cors_middleware(scoped_resource_metadata, ["GET", "OPTIONS"]),
+        methods=["GET", "OPTIONS"],
+    ))
     logger.info("MCP discovery routes: %s", [r.path for r in routes])
     return routes
 

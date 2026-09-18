@@ -78,6 +78,8 @@ def tool_catalog() -> List[Dict[str, Any]]:
                 "summary": MCP_TOOL_GROUP_SUMMARIES.get(key, description),
                 "actions": actions,
                 "mode": spec.mode,
+                # Not a toggle: on for everyone who may connect (identity only).
+                "always_on": bool(spec.always_allowed),
             }
         )
     return catalog

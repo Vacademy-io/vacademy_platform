@@ -106,7 +106,7 @@ class _FakeDb:
             return SimpleNamespace(first=lambda: ("sites.acme.edu",))
         if "SELECT name FROM institutes" in sql:
             return SimpleNamespace(first=lambda: ("Acme Coaching",))
-        return SimpleNamespace(first=lambda: None)
+        return SimpleNamespace(first=lambda: None, fetchall=lambda: [])
 
 
 def ctx(roles=("ADMIN",)):
@@ -506,3 +506,93 @@ async def test_button_surfaces_get_campaign_names_from_the_institute_list(admin_
     out = json.loads(await website_mod.execute_website({"action": "lead_summary"}, ctx()))
     header = next(f for f in out["forms"] if f["section_id"] == "c-header")
     assert header["campaign_name"] == "Admissions 2027"
+
+
+def test_site_url_is_none_without_a_learner_domain():
+    # A dead link to the shared learner host (which serves ANOTHER institute) is
+    # worse than no link — the learner app resolves the institute from the domain.
+    assert learner_site_url("t", None, "") is None
+    assert learner_site_url("t", "", "") is None
+    assert learner_site_url("t", "sites.acme.edu", "") == "https://sites.acme.edu/t"
+
+
+@pytest.mark.asyncio
+async def test_list_explains_missing_portal_domain(admin_core):
+    class _NoDomainDb(_FakeDb):
+        def execute(self, stmt, params=None):
+            sql = str(stmt)
+            if "learner_portal_base_url" in sql:
+                return SimpleNamespace(first=lambda: (None,))
+            if "institute_domain_routing" in sql:
+                return SimpleNamespace(fetchall=lambda: [("vacademy.io", "admin-acme"), ("acme.edu", "*")])
+            return super().execute(stmt, params)
+    c = ToolContext(db=_NoDomainDb(), principal=principal(), keys=(), bearer_token="jwt")
+    out = json.loads(await website_mod.execute_website({"action": "list"}, c))
+    # admin-* portals are skipped; the wildcard LEARNER row gives the bare domain.
+    assert out["sites"][0]["live_url"] == "https://acme.edu/main-site"
+
+    class _NothingDb(_NoDomainDb):
+        def execute(self, stmt, params=None):
+            if "institute_domain_routing" in str(stmt):
+                return SimpleNamespace(fetchall=lambda: [])
+            return super().execute(stmt, params)
+    c = ToolContext(db=_NothingDb(), principal=principal(), keys=(), bearer_token="jwt")
+    out = json.loads(await website_mod.execute_website({"action": "list"}, c))
+    assert out["sites"][0]["live_url"] is None and "no learner-portal domain" in out["live_url_note"]
+
+
+# ── identity + institute profile ─────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_whoami_returns_user_and_institute_without_any_toggle(monkeypatch):
+    from app.services import assistant_tool_registry as reg
+
+    async def fake_auth(ctx_, method, path, params=None, **kw):
+        assert path.endswith("/user-details/get") and params == {"userId": "user-1", "instituteId": "inst-1"}
+        return {"full_name": "Priya Sharma", "email": "priya@acme.edu", "mobile_number": "+91 99", "profile_pic_file_id": "pic-1"}
+
+    async def fake_admin(ctx_, method, path, params=None, body=None, timeout=None):
+        assert path.endswith("/institute/v1/details-non-batches/inst-1")
+        return {"institute_name": "Shiksha Nation", "institute_logo_file_id": "logo-1", "institute_theme_code": "emerald",
+                "learner_portal_url": "https://learn.shikshanation.com", "admin_portal_url": "https://admin.shikshanation.com",
+                "setting": json.dumps({"setting": {"NAMING_SETTING": {"data": {"data": [
+                    {"key": "Course", "systemValue": "Course", "customValue": "Program"},
+                    {"key": "Level", "systemValue": "Level", "customValue": "Level"}]}}}})}
+
+    async def fake_media(ctx_, file_id):
+        return f"https://cdn/{file_id}.png" if file_id else None
+
+    monkeypatch.setattr(reg, "_auth_json", fake_auth)
+    monkeypatch.setattr(reg, "_admin_core_json", fake_admin)
+    monkeypatch.setattr(reg, "_media_public_url", fake_media)
+
+    # No settings, TEACHER role: still allowed — identity only.
+    out = json.loads(await execute_tool("whoami", {"institute_id": "evil"}, ctx(("TEACHER",)), {"enabled_tools": [], "role_overrides": {}}))
+    assert out["user"] == {"user_id": "user-1", "roles": ["TEACHER"], "full_name": "Priya Sharma", "email": "priya@acme.edu",
+                           "mobile": "+91 99", "profile_photo_url": "https://cdn/pic-1.png"}
+    assert out["institute"]["name"] == "Shiksha Nation" and out["institute"]["logo_url"] == "https://cdn/logo-1.png"
+    assert out["institute"]["theme"] == "emerald" and out["institute"]["terminology"] == {"Course": "Program"}
+    assert "Priya Sharma" in out["note"] and "Shiksha Nation" in out["note"]
+
+    # The overview's profile section is the same data, but that tool IS gated.
+    out = json.loads(await execute_tool("get_institute_overview", {"sections": ["profile"]}, ctx(), {"enabled_tools": ["institute_overview"], "role_overrides": {}}))
+    assert out["profile"]["name"] == "Shiksha Nation"
+    denied = json.loads(await execute_tool("get_institute_overview", {"sections": ["profile"]}, ctx(), {"enabled_tools": [], "role_overrides": {}}))
+    assert denied["error"] == "tool_not_permitted"
+
+
+# ── schema: the contract the connected LLM composes against ─────────────
+@pytest.mark.asyncio
+async def test_schema_is_compact_by_default_and_detailed_on_request():
+    out = json.loads(await website_mod.execute_website({"action": "schema"}, ctx()))
+    types = {c["type"] for c in out["components"]}
+    assert {"heroSection", "featureGrid", "leadForm", "courseCatalog", "faqSection"} <= types
+    assert "header" not in types and "footer" not in types           # chrome goes through set_layout
+    assert all("what" in c and "props" in c for c in out["components"])
+    assert out["examples"] == {} and "hint" in out
+    assert out["design_rules"] and out["doctrine"] and out["page_contract"]
+    assert "ocean" in out["theme_choices"]["presets"]
+    assert len(json.dumps(out)) < 40_000
+
+    out = json.loads(await website_mod.execute_website({"action": "schema", "page_type": "courses", "section_types": ["heroSection", "nope"]}, ctx()))
+    assert list(out["examples"]) == ["heroSection"] and "title" in out["examples"]["heroSection"]["left"]
+    assert out["archetype"]["page_type"] == "courses" and "DIRECTORY" in out["archetype"]["rules"]

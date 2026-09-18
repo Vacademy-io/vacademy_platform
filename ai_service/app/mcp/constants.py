@@ -28,6 +28,7 @@ MCP_SETTINGS_PATH = "/settings?selectedTab=mcpServer"
 #: docs/ai-page-builder/WEBSITE_BUILDER_MCP_PLAN.md §4), so the institute's
 #: settings tab has one toggle per feature to manage per role.
 MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
+    "whoami",               # READ:  the caller's own identity + institute profile; always on, no toggle
     "get_institute_overview",
     "website",              # READ:  sites, pages, courses/campaigns to link, analytics, audit
     "website_edit",         # WRITE: draft-only — every change lands as a draft the admin publishes
@@ -48,6 +49,7 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
 #: Friendly labels for the settings groups the exposed tools belong to. Serves
 #: the settings UI so the FE never hardcodes a catalogue that can drift.
 MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
+    "identity": "Who is connected",
     "institute_overview": "Institute stats",
     "website_builder": "Website: view",
     "website_builder_edits": "Website: edit drafts",
@@ -59,15 +61,16 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
 #: descriptions are written for the model (argument lists, rules) and read as
 #: a wall of text next to a toggle.
 MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
-    "institute_overview": "Outstanding fees, classes live now and active learner counts.",
+    "identity": "The connected user's name and contact details, and the institute's name, logo and theme. Always on.",
+    "institute_overview": "The institute's profile (name, logo, theme, terminology), outstanding fees, classes live now and active learner counts.",
     "website_builder": (
         "See the institute's websites: pages and what each section shows, traffic, lead-capture "
         "health, pre-publish checks, and the interview an AI runs before building a site."
     ),
     "website_builder_edits": (
-        "Build and change websites by conversation — generate pages, edit sections, set colours and "
-        "fonts, wire forms to lead campaigns. Every change is saved as a draft; nothing goes live "
-        "until you publish it in Manage Pages."
+        "Let the connected AI app build and change websites — compose pages, edit sections, set "
+        "colours and fonts, wire forms to lead campaigns. Every change is saved as a draft; nothing "
+        "goes live until you publish it in Manage Pages. Uses no AI credits."
     ),
     "audience_forms": (
         "See lead campaigns: their form fields, where they are used on the websites, and leads received."

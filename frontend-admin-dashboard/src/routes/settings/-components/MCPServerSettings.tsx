@@ -115,6 +115,8 @@ export default function MCPServerSettings() {
     }, [customRoles]);
 
     const tools: McpToolCatalogEntry[] = info?.tools ?? [];
+    // Always-on tools (identity) are shown but never written into the setting.
+    const toggleableTools = tools.filter((tool) => !tool.always_on);
 
     // The allow-list as a LIST, not a switch per role: institutes have a dozen+
     // roles and only a couple ever connect, so the page shows who is allowed
@@ -164,8 +166,8 @@ export default function MCPServerSettings() {
             // admin enabling the server means "make this usable", so switch the
             // read-only catalogue on with it. They can untick individually below.
             const seedTools =
-                on && prev.enabled_tools.length === 0 && tools.length > 0
-                    ? tools.map((tool) => tool.key)
+                on && prev.enabled_tools.length === 0 && toggleableTools.length > 0
+                    ? toggleableTools.map((tool) => tool.key)
                     : prev.enabled_tools;
             return { ...prev, enabled: on, enabled_tools: seedTools };
         });
@@ -540,7 +542,8 @@ export default function MCPServerSettings() {
                             <div key={tool.key} className="flex items-start gap-3">
                                 <Switch
                                     id={`mcp-tool-${tool.key}`}
-                                    checked={isToolEnabled(tool.key)}
+                                    checked={tool.always_on || isToolEnabled(tool.key)}
+                                    disabled={tool.always_on}
                                     onCheckedChange={(v) => toggleTool(tool.key, v)}
                                 />
                                 <div>
@@ -552,13 +555,21 @@ export default function MCPServerSettings() {
                                             {tool.label}
                                         </Label>
                                         <StatusChip
-                                            status={tool.mode === 'WRITE' ? 'WARNING' : 'INFO'}
+                                            status={
+                                                tool.always_on
+                                                    ? 'SUCCESS'
+                                                    : tool.mode === 'WRITE'
+                                                      ? 'WARNING'
+                                                      : 'INFO'
+                                            }
                                             textSize="text-caption"
                                             showIcon={false}
                                             text={
-                                                tool.mode === 'WRITE'
-                                                    ? t('tools.modeWrite')
-                                                    : t('tools.modeRead')
+                                                tool.always_on
+                                                    ? t('tools.alwaysOn')
+                                                    : tool.mode === 'WRITE'
+                                                      ? t('tools.modeWrite')
+                                                      : t('tools.modeRead')
                                             }
                                         />
                                     </div>
@@ -662,7 +673,7 @@ export default function MCPServerSettings() {
                                         </label>
                                     </div>
 
-                                    {customized && tools.length === 0 && (
+                                    {customized && toggleableTools.length === 0 && (
                                         <p className="border-t border-neutral-100 pt-3 text-caption text-neutral-500">
                                             {infoError
                                                 ? t('errors.infoUnavailable')
@@ -670,9 +681,9 @@ export default function MCPServerSettings() {
                                         </p>
                                     )}
 
-                                    {customized && tools.length > 0 && (
+                                    {customized && toggleableTools.length > 0 && (
                                         <div className="space-y-2 border-t border-neutral-100 pt-3">
-                                            {tools.map((tool) => (
+                                            {toggleableTools.map((tool) => (
                                                 <label
                                                     key={tool.key}
                                                     className="flex items-center gap-2"

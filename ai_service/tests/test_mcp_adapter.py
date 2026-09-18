@@ -45,7 +45,7 @@ def test_exposed_set_is_the_documented_one():
     # One tool per feature (with an `action` argument), so the settings tab has
     # one toggle per feature. Adding here means adding a label + docs too.
     assert MCP_EXPOSED_TOOLS == (
-        "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit"
+        "whoami", "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit"
     )
 
 
@@ -78,11 +78,16 @@ def test_draft_write_tool_is_off_unless_its_group_is_enabled():
 
 
 # ── schema translation ───────────────────────────────────────────────────
+def gated(tools):
+    """Tool names minus the always-on identity tool, which every caller gets."""
+    return [t.name for t in tools if t.name != "whoami"]
+
+
 def test_tools_translate_to_valid_mcp_tools():
     tools = adapter.list_tools_for(principal(), setting(["institute_overview"]))
-    assert [t.name for t in tools] == ["get_institute_overview"]
+    assert gated(tools) == ["get_institute_overview"]
 
-    tool = tools[0]
+    tool = next(t for t in tools if t.name == "get_institute_overview")
     assert tool.description
     assert tool.input_schema["type"] == "object"
     assert "sections" in tool.input_schema["properties"]
@@ -93,32 +98,37 @@ def test_tools_translate_to_valid_mcp_tools():
 def test_catalog_describes_each_exposed_tool_for_the_settings_ui():
     catalog = adapter.tool_catalog()
     assert [c["name"] for c in catalog] == list(MCP_EXPOSED_TOOLS)
-    entry = catalog[0]
+    entry = next(c for c in catalog if c["name"] == "get_institute_overview")
     assert entry["key"] == "institute_overview"
     assert entry["label"] == "Institute stats"
     assert entry["mode"] == "READ"
     assert entry["description"]
+    assert entry["always_on"] is False
+    # The identity tool is listed so the settings page can SHOW it, flagged as not a toggle.
+    assert next(c for c in catalog if c["name"] == "whoami")["always_on"] is True
 
 
 # ── the per-tool gate ────────────────────────────────────────────────────
 def test_tool_is_hidden_when_the_institute_has_not_enabled_it():
-    assert adapter.list_tools_for(principal(), setting([])) == []
+    assert gated(adapter.list_tools_for(principal(), setting([]))) == []
+
+
+def test_whoami_is_always_offered_to_anyone_who_may_connect():
+    """Identity only — no toggle can switch it off, in any configuration."""
+    for conf in (setting([]), setting([], {"TEACHER": {"enabled_tools": []}}), normalize_setting(None)):
+        assert [t.name for t in adapter.list_tools_for(principal(), conf)] == ["whoami"]
 
 
 def test_tool_is_hidden_for_a_role_without_an_override():
     """Institute-level tools apply to everyone; overrides only ADD for a role."""
     conf = setting([], {"TEACHER": {"enabled_tools": ["institute_overview"]}})
-    assert adapter.list_tools_for(principal(["ADMIN"]), conf) == []
-    assert [t.name for t in adapter.list_tools_for(principal(["TEACHER"]), conf)] == [
-        "get_institute_overview"
-    ]
+    assert gated(adapter.list_tools_for(principal(["ADMIN"]), conf)) == []
+    assert gated(adapter.list_tools_for(principal(["TEACHER"]), conf)) == ["get_institute_overview"]
 
 
 def test_role_override_grants_on_top_of_institute_level_tools():
     conf = setting(["institute_overview"], {"TEACHER": {"enabled_tools": []}})
-    assert [t.name for t in adapter.list_tools_for(principal(["TEACHER"]), conf)] == [
-        "get_institute_overview"
-    ]
+    assert gated(adapter.list_tools_for(principal(["TEACHER"]), conf)) == ["get_institute_overview"]
 
 
 def test_unconfigured_setting_exposes_nothing():
@@ -126,7 +136,7 @@ def test_unconfigured_setting_exposes_nothing():
     The registry treats a falsy setting as 'use Assistant defaults'. MCP must not
     inherit that: an institute that never configured tools exposes none.
     """
-    assert adapter.list_tools_for(principal(), normalize_setting(None)) == []
+    assert gated(adapter.list_tools_for(principal(), normalize_setting(None))) == []
 
 
 # ── call containment ─────────────────────────────────────────────────────

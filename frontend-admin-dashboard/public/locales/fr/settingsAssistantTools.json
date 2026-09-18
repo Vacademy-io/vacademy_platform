@@ -62,7 +62,7 @@
         },
         "website_builder_edits": {
             "label": "Site web : modifier les brouillons",
-            "description": "Permettre à l’assistant de créer et modifier des sites web par conversation — générer des pages, modifier des sections, définir couleurs et polices, relier des formulaires aux campagnes de prospects. Chaque modification est enregistrée en brouillon ; rien n’est publié tant que vous ne le publiez pas dans Manage Pages. Désactivé par défaut."
+            "description": "Permettre à l’assistant de créer et modifier des sites web par conversation — composer des pages, modifier des sections, définir couleurs et polices, relier des formulaires aux campagnes de prospects. Chaque modification est enregistrée en brouillon ; rien n’est publié tant que vous ne le publiez pas dans Manage Pages. N’utilise aucun crédit IA. Désactivé par défaut."
         },
         "audience_forms": {
             "label": "Formulaires de prospects : consultation",

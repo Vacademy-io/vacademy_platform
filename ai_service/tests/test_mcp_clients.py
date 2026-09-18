@@ -74,25 +74,35 @@ def test_client_response_flags_the_primary_client():
 # ── provisioning ─────────────────────────────────────────────────────────
 def test_primary_client_is_minted_when_missing():
     repo = _FakeRepo()
-    _ensure_auto_client(repo, _principal())
+    _ensure_auto_client(repo, _principal(), db=None)
     assert len(repo.saved) == 1
     saved = repo.saved[0]
     assert saved["client_id"].startswith(AUTO_CLIENT_ID_PREFIX)
-    assert saved["client_name"] == AUTO_CLIENT_NAME
+    assert saved["client_name"] == AUTO_CLIENT_NAME      # no DB → platform name
     assert saved["institute_id"] == "inst-1"
     assert saved["source"] == "manual"
+
+
+def test_primary_client_is_named_after_the_institute():
+    """White-label: the AI app shows "<client name> wants access"."""
+    class _Db:
+        def execute(self, stmt, params=None):
+            return SimpleNamespace(first=lambda: ("Shiksha Nation",))
+    repo = _FakeRepo()
+    _ensure_auto_client(repo, _principal(), db=_Db())
+    assert repo.saved[0]["client_name"] == "Shiksha Nation"
 
 
 def test_primary_client_is_minted_even_when_custom_clients_exist():
     # A custom client alone must not count as "the institute already has one".
     repo = _FakeRepo([_custom()])
-    _ensure_auto_client(repo, _principal())
+    _ensure_auto_client(repo, _principal(), db=None)
     assert len(repo.saved) == 1
 
 
 def test_provisioning_is_idempotent():
     repo = _FakeRepo([_primary()])
-    _ensure_auto_client(repo, _principal())
+    _ensure_auto_client(repo, _principal(), db=None)
     assert repo.saved == []
 
 

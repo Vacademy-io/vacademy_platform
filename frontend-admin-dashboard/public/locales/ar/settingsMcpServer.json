@@ -46,7 +46,8 @@
         "empty": "لا تتوفر أدوات على هذا الخادم بعد.",
         "modeRead": "عرض فقط",
         "modeWrite": "يعدّل المسودات",
-        "actionsLabel": "يمكنه:"
+        "actionsLabel": "يمكنه:",
+        "alwaysOn": "مفعّل دائماً"
     },
     "roles": {
         "title": "من يمكنه الاتصال",

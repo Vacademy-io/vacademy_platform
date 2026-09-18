@@ -3,32 +3,31 @@ The ``website_edit`` tool — DRAFT-ONLY changes to the institute's websites for
 the Assistant and the MCP server.
 
 One tool with an ``action`` argument, its own settings toggle ("Website: edit
-drafts", off by default), and one rule that makes it safe to hand to an AI app:
-**nothing here reaches a visitor.** Every action loads the site the editor
-would show (draft over published), applies the change, and saves it as a new
-DRAFT revision (``source=AI_COPILOT`` / ``AI_WIZARD``, ``ai_run_id``). The admin
-reviews it in the dashboard, where the publish checks run, and presses Publish
-themselves — that is the confirmation step. ``discard_draft`` is the undo.
+drafts", off by default), and two rules that make it safe and cheap to hand to
+an AI app:
+
+* **nothing here reaches a visitor** — every action saves a DRAFT revision the
+  admin reviews and publishes in Manage Pages (``discard_draft`` is the undo);
+* **no model runs inside** — the connected LLM composes the page JSON itself
+  (it holds the whole interview; see ``website(action="schema")`` for the
+  contract), and this tool only validates, audits and persists. No credits.
 
 Actions
-    estimate          credits a generation would cost + balance
-    generate_page     wizard-equivalent: brief object → a composed page (new or existing site)
-    generate_site     whole site into a NEW draft site
-    edit_page         copilot: instruction → ops → applied
-    edit_chrome       header / footer / theme / fonts / motion by instruction
-    add_section       deterministic insert of one block (no LLM)
-    set_theme         colours, fonts, radius, atmosphere, motion (no LLM)
-    brand_kit         2–3 brand kits from notes / an existing website
-    import_image      bring a public image into the media library
-    generate_image    logo / hero / banner / photo options
+    create_page       a page the caller composed → sanitised, audited, saved as a draft
+    create_site       several pages + theme + header/footer → a NEW draft site
+    update_page       insert / update / remove / move ops on an existing page
+    set_layout        the site's header and footer
+    add_section       one block with default content (no composition needed)
+    set_theme         colours, fonts, radius, atmosphere, motion
     set_courses       which courses a course block shows
     link_lead_form    point a form / popup button at a lead campaign
     set_seo           meta title / description of a page
+    import_image      bring a public https image into the media library
     discard_draft     drop the draft, back to what is published
 
-The heavy lifting (composer, copilot, images, credits, sanitising) is the page
-builder's own handlers, called in-process with the pinned principal; this
-module only shapes arguments and persists results.
+Validation is the AI website builder's own (``sanitize_component``,
+``_sanitize_page``, ``_sanitize_ops``, ``page_audit``) — the deterministic half
+of that feature, without its composer.
 """
 from __future__ import annotations
 
@@ -37,11 +36,8 @@ import json
 import logging
 import re
 import uuid
-from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import HTTPException
 
 from .assistant_tool_registry import ToolContext, ToolSpec, _admin_core_json
 from .catalogue_summary import (
@@ -52,8 +48,10 @@ from .catalogue_summary import (
     run_publish_checks,
     summarize_component,
     summarize_global_settings,
+    summarize_page,
 )
 from .website_data import (
+    NO_PORTAL_DOMAIN_NOTE,
     _err,
     _is_error,
     get_campaign,
@@ -71,9 +69,8 @@ WEBSITE_EDIT_TOOL_NAME = "website_edit"
 WEBSITE_EDIT_GROUP_KEY = "website_builder_edits"
 
 WEBSITE_EDIT_ACTIONS = (
-    "estimate", "generate_page", "generate_site", "edit_page", "edit_chrome", "add_section",
-    "set_theme", "brand_kit", "import_image", "generate_image", "set_courses", "link_lead_form",
-    "set_seo", "discard_draft",
+    "create_page", "create_site", "update_page", "set_layout", "add_section", "set_theme",
+    "set_site_settings", "set_courses", "link_lead_form", "set_seo", "import_image", "discard_draft",
 )
 
 THEME_PRESETS = ("default", "ocean", "forest", "sunset", "midnight", "rose", "violet", "amber", "slate")
@@ -82,7 +79,7 @@ DESIGN_LANGUAGES = (
     "warm-community", "corporate-trust", "directory-reference",
 )
 PAGE_TYPES = ("homepage", "courses", "course-landing", "about", "admissions", "contact")
-IMAGE_KINDS = ("logo", "hero", "banner", "illustration", "photo", "image")
+IMAGE_KINDS = ("logo", "photo", "banner", "inspiration")
 BORDER_RADII = ("sharp", "rounded", "pill")
 HEADING_SCALES = ("compact", "default", "large", "display")
 ATMOSPHERES = ("flat", "soft", "mesh", "aurora")
@@ -106,8 +103,6 @@ _MAX_OPS = 40
 _MAX_IMPORT_BYTES = 6_000_000
 _IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "image/svg+xml": "svg"}
 
-_CATALOG_PATH = Path(__file__).resolve().parent.parent / "data" / "catalogue_schema_catalog.json"
-
 #: A fresh site's global settings — the dashboard's default template, minus the
 #: sample header/footer (the composer supplies those when a theme is proposed).
 DEFAULT_GLOBAL_SETTINGS: Dict[str, Any] = {
@@ -130,57 +125,82 @@ DEFAULT_GLOBAL_SETTINGS: Dict[str, Any] = {
 # ──────────────────────────────────────────────────────────────────────────
 # Schema
 # ──────────────────────────────────────────────────────────────────────────
-_BRIEF_SCHEMA: Dict[str, Any] = {
+_THEME_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "description": "Colours and type. Omit a field to leave it unchanged.",
+    "properties": {
+        "preset": {"type": "string", "enum": list(THEME_PRESETS)},
+        "primary_color": {"type": "string", "description": "Brand hex, e.g. #1D4ED8."},
+        "mode": {"type": "string", "enum": ["light", "dark"]},
+        "fonts": {"type": "object", "properties": {
+            "body": {"type": "string", "description": "Font name from the choices, e.g. Poppins."},
+            "heading": {"type": "string"},
+        }},
+        "border_radius": {"type": "string", "enum": list(BORDER_RADII)},
+        "heading_scale": {"type": "string", "enum": list(HEADING_SCALES)},
+        "atmosphere": {"type": "string", "enum": list(ATMOSPHERES)},
+        "atmosphere_intensity": {"type": "string", "enum": ["subtle", "medium", "bold"]},
+        "motion": {"type": "string", "enum": list(MOTIONS)},
+    },
+}
+
+_SITE_SETTINGS_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "description": "Site-wide behaviour and search settings (globalSettings), apart from the theme.",
+    "properties": {
+        "sticky_header": {"type": "boolean"},
+        "back_to_top": {"type": "boolean"},
+        "compactness": {"type": "string", "enum": ["small", "medium", "large"], "description": "Section density."},
+        "audience": {"type": "string", "enum": ["children", "adults", "all"]},
+        "lead_popup": {"type": "object", "description": "Site-wide lead-capture popup.", "properties": {
+            "enabled": {"type": "boolean"}, "mandatory": {"type": "boolean"}}},
+        "seo": {"type": "object", "description": "Site-level SEO (page titles/descriptions live on each page).", "properties": {
+            "keywords": {"type": "array", "items": {"type": "string"}},
+            "google_site_verification": {"type": "string"},
+            "organization": {"type": "object", "properties": {
+                "name": {"type": "string"}, "legal_name": {"type": "string"}, "description": {"type": "string"},
+                "founder": {"type": "string"}, "founding_date": {"type": "string"}, "email": {"type": "string"},
+                "telephone": {"type": "string"}, "address": {"type": "string"}, "logo": {"type": "string"},
+                "same_as": {"type": "array", "items": {"type": "string"}}}},
+        }},
+    },
+}
+
+_COMPONENT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "description": "One section, per website(action='schema'): {id (kebab-case, unique), type, enabled: true, props, style?}.",
+    "properties": {
+        "id": {"type": "string"}, "type": {"type": "string"}, "enabled": {"type": "boolean"},
+        "props": {"type": "object"}, "style": {"type": "object"}, "anchorId": {"type": "string"},
+    },
+    "required": ["id", "type", "props"],
+}
+
+_PAGE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "description": "A page you composed. Get the component contract from website(action='schema') first.",
+    "properties": {
+        "route": {"type": "string", "description": "URL path segment, e.g. 'home', 'admissions'."},
+        "title": {"type": "string"},
+        "seo": {"type": "object", "properties": {"metaTitle": {"type": "string"}, "metaDescription": {"type": "string"}}},
+        "components": {"type": "array", "items": _COMPONENT_SCHEMA},
+    },
+    "required": ["route", "components"],
+}
+
+_OP_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "description": (
-        "What the admin told you in the interview (website action='brief_checklist'). Ask before "
-        "guessing: identity and page_type are required; theme or design_language is required; the "
-        "rest lifts the result."
+        "One edit: {op:'insert', component, afterId|null} · {op:'update', id, propsPatch?, stylePatch?} · "
+        "{op:'remove', id} · {op:'move', id, afterId|null}. Add a short `note` saying what it does."
     ),
     "properties": {
-        "identity": {"type": "string", "description": "What the institute is, what it offers, what makes it different, its display name and tagline."},
-        "proof_points": {"type": "array", "items": {"type": "string"}, "description": "Results, years, learner counts, toppers, records, notable faculty."},
-        "audience": {"type": "string", "enum": ["children", "adults", "all"]},
-        "tone": {"type": "string", "description": "e.g. warm, premium, bold, academic, playful."},
-        "theme": {
-            "type": "object",
-            "description": "Colours and type. Omit a field to let the composer choose.",
-            "properties": {
-                "preset": {"type": "string", "enum": list(THEME_PRESETS)},
-                "primary_color": {"type": "string", "description": "Brand hex, e.g. #1D4ED8."},
-                "mode": {"type": "string", "enum": ["light", "dark"]},
-                "fonts": {"type": "object", "properties": {
-                    "body": {"type": "string", "description": "Font name from the choices, e.g. Poppins."},
-                    "heading": {"type": "string"},
-                }},
-                "border_radius": {"type": "string", "enum": list(BORDER_RADII)},
-                "heading_scale": {"type": "string", "enum": list(HEADING_SCALES)},
-                "atmosphere": {"type": "string", "enum": list(ATMOSPHERES)},
-                "motion": {"type": "string", "enum": list(MOTIONS)},
-            },
-        },
-        "design_language": {"type": "string", "enum": list(DESIGN_LANGUAGES)},
-        "images": {
-            "type": "array",
-            "description": "Logo and photos to place — media-library URLs from website(list_media) or import_image / generate_image results.",
-            "items": {"type": "object", "properties": {
-                "url": {"type": "string"},
-                "kind": {"type": "string", "enum": ["logo", "photo", "banner"]},
-                "caption": {"type": "string"},
-            }, "required": ["url"]},
-        },
-        "inspiration_image_urls": {"type": "array", "items": {"type": "string"}, "description": "Screenshots of sites the admin admires (max 6)."},
-        "reference_url": {"type": "string", "description": "A website whose LAYOUT to follow (colours stay ours)."},
-        "source_url": {"type": "string", "description": "The admin's existing website, to take copy and structure from."},
-        "contact": {"type": "object", "properties": {
-            "phone": {"type": "string"}, "whatsapp": {"type": "string"}, "email": {"type": "string"},
-            "address": {"type": "string"}, "socials": {"type": "array", "items": {"type": "string"}},
-        }},
-        "sections_wanted": {"type": "array", "items": {"type": "string"}, "description": "Sections the admin explicitly asked for, in order."},
-        "language": {"type": "string", "description": "Language for the copy, when not English."},
-        "notes": {"type": "string", "description": "Anything else from the interview."},
+        "op": {"type": "string", "enum": ["insert", "update", "remove", "move"]},
+        "id": {"type": "string"}, "afterId": {"type": ["string", "null"]},
+        "component": _COMPONENT_SCHEMA, "propsPatch": {"type": "object"}, "stylePatch": {"type": "object"},
+        "note": {"type": "string"},
     },
-    "required": ["identity"],
+    "required": ["op"],
 }
 
 WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
@@ -189,28 +209,26 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
         "name": WEBSITE_EDIT_TOOL_NAME,
         "description": (
             "Change the institute's websites. EVERY change is saved as a DRAFT the admin reviews and "
-            "publishes in the dashboard — nothing goes live from here. Pick an `action`:\n"
-            "- estimate (scope: page|site): credits a generation costs + balance. Call before generating.\n"
-            "- generate_page (tag_name OR new_site_name, brief, page_type, route_slug?, use_real_courses?, "
-            "course_ids?, auto_images?): compose a page from the interview brief. Run "
-            "website(action='brief_checklist') first and ask the admin what is missing.\n"
-            "- generate_site (new_site_name, brief, page_types?, use_real_courses?, auto_images?): a whole "
-            "site into a NEW draft site.\n"
-            "- edit_page (tag_name, page_route, instruction, section_id?): change a page by instruction "
-            "('add a testimonials section after the courses', 'make the hero darker').\n"
-            "- edit_chrome (tag_name, instruction): header, footer, theme, fonts, motion by instruction.\n"
+            "publishes in the dashboard — nothing goes live from here, and nothing here calls a model: "
+            "YOU compose the content. Before composing, run website(action='brief_checklist') and "
+            "website(action='schema'). Pick an `action`:\n"
+            "- create_page (tag_name OR new_site_name, page, page_type?, theme?): validate, audit and save "
+            "a page you composed. Returns issues to fix (resubmit with update_page) and the editor_url.\n"
+            "- create_site (new_site_name, pages, theme?, site_settings?, header?, footer?): a whole NEW draft site.\n"
+            "- update_page (tag_name, page_route, ops): insert / update / remove / move sections you author.\n"
+            "- set_layout (tag_name, header?, footer?): the site's header and footer components.\n"
             "- add_section (tag_name, page_route, section_type, after_section_id?, props?): insert one block "
-            "with default content — no AI call, no credits.\n"
-            "- set_theme (tag_name, theme): colours, fonts, radius, atmosphere, motion — no credits.\n"
-            "- brand_kit (brand_notes?, website_url?, institute_name?): 2–3 brand kits to offer the admin; "
-            "pass the chosen one to set_theme or brief.theme.\n"
-            "- import_image (url, kind, caption?): copy a public https image into the media library so it "
-            "can be placed. generate_image (prompt, kind, count?, aspect_ratio?): logo/hero/photo options.\n"
+            "with default content.\n"
+            "- set_theme (tag_name, theme): colours, fonts, radius, atmosphere, motion.\n"
+            "- set_site_settings (tag_name, site_settings): sticky header, back-to-top, density, audience, "
+            "site-wide lead popup, site-level SEO (keywords, organization).\n"
             "- set_courses (tag_name, page_route, section_id, source: all|showcase|product_page, mode?, "
             "course_ids?, limit?, product_page_code?): which courses a course block shows.\n"
             "- link_lead_form (tag_name, page_route, section_id, audience_id): send a form or popup button's "
             "enquiries to a lead campaign. Ids ONLY from website(action='context') / audience_forms.\n"
             "- set_seo (tag_name, page_route, meta_title?, meta_description?).\n"
+            "- import_image (url, kind, caption?): copy a public https image into the media library so it "
+            "can be placed. Images on pages must come from list_media or import_image — never invent URLs.\n"
             "- discard_draft (tag_name): throw the draft away — the undo for everything above.\n"
             "Every result carries editor_url: tell the admin to review and publish there."
         ),
@@ -219,30 +237,23 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "action": {"type": "string", "enum": list(WEBSITE_EDIT_ACTIONS)},
                 "tag_name": {"type": "string", "description": "Existing site (from website list)."},
-                "new_site_name": {"type": "string", "description": "generate_page / generate_site: name for a NEW site; becomes its URL path."},
+                "new_site_name": {"type": "string", "description": "create_page / create_site: name for a NEW site; becomes its URL path."},
                 "page_route": {"type": "string"},
                 "section_id": {"type": "string", "description": "A section id from website(get_page)."},
-                "brief": _BRIEF_SCHEMA,
-                "page_type": {"type": "string", "enum": list(PAGE_TYPES)},
-                "page_types": {"type": "array", "items": {"type": "string", "enum": list(PAGE_TYPES)}},
-                "route_slug": {"type": "string"},
-                "use_real_courses": {"type": "boolean", "description": "Ground the copy in the institute's real courses (default true)."},
-                "course_ids": {"type": "array", "items": {"type": "string"}},
-                "auto_images": {"type": "boolean", "description": "Let the composer generate missing images (default true)."},
-                "instruction": {"type": "string"},
+                "page": _PAGE_SCHEMA,
+                "pages": {"type": "array", "items": _PAGE_SCHEMA, "description": "create_site: the pages, in navigation order."},
+                "page_type": {"type": "string", "enum": list(PAGE_TYPES), "description": "create_page: which archetype the page follows (drives the audit)."},
+                "ops": {"type": "array", "items": _OP_SCHEMA},
+                "header": _COMPONENT_SCHEMA,
+                "footer": _COMPONENT_SCHEMA,
+                "theme": _THEME_SCHEMA,
+                "site_settings": _SITE_SETTINGS_SCHEMA,
                 "section_type": {"type": "string", "description": "Block type, e.g. testimonialSection, faqSection, courseShowcase, leadForm."},
                 "after_section_id": {"type": "string"},
                 "props": {"type": "object", "description": "add_section: prop overrides for the new block."},
-                "theme": _BRIEF_SCHEMA["properties"]["theme"],
-                "brand_notes": {"type": "string", "description": "brand_kit: colours, vibe, fonts the admin described; logo description."},
-                "website_url": {"type": "string", "description": "brand_kit: the institute's current website to read colours/fonts/logo from."},
-                "institute_name": {"type": "string"},
                 "url": {"type": "string", "description": "import_image: public https image URL."},
                 "kind": {"type": "string", "enum": list(IMAGE_KINDS)},
                 "caption": {"type": "string"},
-                "prompt": {"type": "string", "description": "generate_image: what to draw."},
-                "count": {"type": "integer", "description": "generate_image: 1–3 options."},
-                "aspect_ratio": {"type": "string", "description": "generate_image: 16:9, 4:3, 1:1, 3:4, 9:16, 3:2, 2:3."},
                 "source": {"type": "string", "enum": ["all", "showcase", "product_page"]},
                 "mode": {"type": "string", "enum": ["newest", "onSale", "tag", "picked"], "description": "set_courses showcase mode."},
                 "tag": {"type": "string", "description": "set_courses mode=tag: the course tag."},
@@ -251,7 +262,6 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "audience_id": {"type": "string"},
                 "meta_title": {"type": "string"},
                 "meta_description": {"type": "string"},
-                "scope": {"type": "string", "enum": ["page", "site"]},
             },
             "required": ["action"],
         },
@@ -267,24 +277,6 @@ def _require(args: Dict[str, Any], action: str, *names: str) -> Optional[Dict[st
     if missing:
         return _err("missing_argument", action=action, needs=missing)
     return None
-
-
-def _builder_user(ctx: ToolContext) -> Any:
-    """What the page-builder handlers read off ``current_user``: the pinned identity only."""
-    return SimpleNamespace(institute_id=ctx.principal.institute_id, user_id=ctx.principal.user_id)
-
-
-async def _call_builder(fn, body: Any, ctx: ToolContext) -> Tuple[Any, Optional[Dict[str, Any]]]:
-    """Run a page-builder handler in-process; HTTP errors become tool errors."""
-    try:
-        return await fn(body, db=ctx.db, current_user=_builder_user(ctx)), None
-    except HTTPException as exc:
-        code = {402: "insufficient_credits", 400: "bad_request", 429: "rate_limited"}.get(exc.status_code, "builder_failed")
-        detail = exc.detail if isinstance(exc.detail, str) else json.dumps(exc.detail, default=str)
-        return None, _err(code, message=detail[:400])
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("website_edit builder call failed: %s", exc)
-        return None, _err("builder_failed", message="The page builder could not complete this request.")
 
 
 def _slugify(name: str) -> str:
@@ -318,61 +310,6 @@ def _course_snapshot(courses: List[Dict[str, Any]], only_ids: Optional[List[str]
             "tags": [c["session"]] if c.get("session") else None,
         }.items() if v})
     return out[:40]
-
-
-# ── brief → composer text / theme patch ─────────────────────────────────
-def brief_to_text(brief: Dict[str, Any], page_type: Optional[str] = None) -> str:
-    """
-    Flatten the interview object into the rich composer brief the wizard's
-    intake produces: identity + proof + tone + colour/style direction + which
-    photos exist + explicit sections. Dense, under ~350 words.
-    """
-    parts: List[str] = []
-    identity = str(brief.get("identity") or "").strip()
-    if identity:
-        parts.append(identity)
-    if page_type:
-        parts.append(f"Page type: {page_type}.")
-    proof = [str(p).strip() for p in brief.get("proof_points") or [] if str(p).strip()]
-    if proof:
-        parts.append("Proof points to feature: " + "; ".join(proof[:12]) + ".")
-    if brief.get("audience"):
-        parts.append(f"Audience: {brief['audience']}.")
-    if brief.get("tone"):
-        parts.append(f"Tone: {brief['tone']}.")
-    theme = brief.get("theme") if isinstance(brief.get("theme"), dict) else {}
-    style_bits = []
-    if theme.get("primary_color"):
-        style_bits.append(f"brand colour {theme['primary_color']}")
-    if theme.get("preset"):
-        style_bits.append(f"palette preset '{theme['preset']}'")
-    if theme.get("mode"):
-        style_bits.append(f"{theme['mode']} mode")
-    fonts = theme.get("fonts") if isinstance(theme.get("fonts"), dict) else {}
-    if fonts.get("body") or fonts.get("heading"):
-        style_bits.append("fonts: " + " / ".join(f for f in (fonts.get("heading"), fonts.get("body")) if f))
-    if style_bits:
-        parts.append("Colour/style direction: " + ", ".join(style_bits) + ".")
-    images = [i for i in brief.get("images") or [] if isinstance(i, dict) and i.get("url")]
-    if images:
-        kinds = {}
-        for i in images:
-            kinds[i.get("kind") or "photo"] = kinds.get(i.get("kind") or "photo", 0) + 1
-        parts.append("Provided assets: " + ", ".join(f"{n} {k}{'s' if n > 1 else ''}" for k, n in kinds.items()) + " — place them; do not invent others for those roles.")
-    contact = brief.get("contact") if isinstance(brief.get("contact"), dict) else {}
-    contact_bits = [f"{k}: {v}" for k, v in contact.items() if v and k != "socials"]
-    if contact.get("socials"):
-        contact_bits.append("socials: " + ", ".join(map(str, contact["socials"])))
-    if contact_bits:
-        parts.append("Contact details (use verbatim): " + "; ".join(contact_bits) + ".")
-    sections = [str(s).strip() for s in brief.get("sections_wanted") or [] if str(s).strip()]
-    if sections:
-        parts.append("Sections the admin asked for, in order: " + " → ".join(sections) + ".")
-    if brief.get("language"):
-        parts.append(f"Write the copy in {brief['language']}.")
-    if brief.get("notes"):
-        parts.append(str(brief["notes"]).strip())
-    return "\n".join(parts)
 
 
 def theme_to_global_patch(theme: Dict[str, Any]) -> Dict[str, Any]:
@@ -409,10 +346,12 @@ def theme_to_global_patch(theme: Dict[str, Any]) -> Dict[str, Any]:
         t["borderRadius"] = radius
     if scale in HEADING_SCALES:
         t["headingScale"] = scale
+    intensity = theme.get("atmosphere_intensity")
+    intensity = intensity if intensity in ("subtle", "medium", "bold") else None
     if isinstance(atmosphere, str) and atmosphere in ATMOSPHERES:
-        t["atmosphere"] = {"canvas": atmosphere, "intensity": "medium"}
+        t["atmosphere"] = {"canvas": atmosphere, "intensity": intensity or "medium"}
     elif isinstance(atmosphere, dict) and atmosphere.get("canvas") in ATMOSPHERES:
-        t["atmosphere"] = {"canvas": atmosphere["canvas"], "intensity": atmosphere.get("intensity") or "medium"}
+        t["atmosphere"] = {"canvas": atmosphere["canvas"], "intensity": intensity or atmosphere.get("intensity") or "medium"}
     if t:
         patch["theme"] = t
     if theme.get("mode") in ("light", "dark"):
@@ -440,6 +379,49 @@ def _font_stack(label: Any) -> Optional[str]:
         if k.lower() == name.lower() or v == name:
             return v
     return None
+
+
+_SEO_ORG_KEYS = {"name": "name", "legal_name": "legalName", "description": "description", "founder": "founder",
+                 "founding_date": "foundingDate", "email": "email", "telephone": "telephone", "address": "address",
+                 "logo": "logo", "same_as": "sameAs"}
+
+
+def site_settings_to_global_patch(settings_in: Dict[str, Any]) -> Dict[str, Any]:
+    """``site_settings`` argument → globalSettings patch (only recognised values; nothing invented)."""
+    si = settings_in if isinstance(settings_in, dict) else {}
+    patch: Dict[str, Any] = {}
+    if isinstance(si.get("sticky_header"), bool):
+        patch["stickyHeader"] = si["sticky_header"]
+    if isinstance(si.get("back_to_top"), bool):
+        patch["backToTop"] = si["back_to_top"]
+    if si.get("compactness") in ("small", "medium", "large"):
+        patch["compactness"] = si["compactness"]
+    if si.get("audience") in ("children", "adults", "all"):
+        patch["audience"] = si["audience"]
+    popup = si.get("lead_popup")
+    if isinstance(popup, dict):
+        lc = {k: bool(popup[k]) for k in ("enabled", "mandatory") if isinstance(popup.get(k), bool)}
+        if lc:
+            patch["leadCollection"] = lc
+    seo = si.get("seo")
+    if isinstance(seo, dict):
+        out: Dict[str, Any] = {}
+        if isinstance(seo.get("keywords"), list):
+            out["keywords"] = [str(k)[:60] for k in seo["keywords"] if isinstance(k, str)][:30]
+        if isinstance(seo.get("google_site_verification"), str):
+            out["googleSiteVerification"] = seo["google_site_verification"][:200]
+        org = seo.get("organization")
+        if isinstance(org, dict):
+            o = {_SEO_ORG_KEYS[k]: v for k, v in org.items() if k in _SEO_ORG_KEYS and v not in (None, "")}
+            if "sameAs" in o and not isinstance(o["sameAs"], list):
+                o.pop("sameAs")
+            if "logo" in o and not _is_institute_asset(o["logo"]):
+                o.pop("logo")
+            if o:
+                out["organization"] = o
+        if out:
+            patch["seo"] = out
+    return patch
 
 
 def merge_global_settings(gs: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
@@ -596,13 +578,14 @@ def _result(ctx: ToolContext, site: Dict[str, Any], config: Dict[str, Any], revi
     if page_route:
         route = str(page_route).lstrip("/").lower()
         issues = [i for i in issues if not i.get("page_route") or str(i["page_route"]).lstrip("/").lower() == route]
+    live_url = site_url(ctx, site["tag_name"])
     out: Dict[str, Any] = {
         "tag_name": site["tag_name"],
         "summary_of_change": summary,
         "saved_as": "draft",
         "draft_revision_no": (revision or {}).get("revision_no"),
-        "editor_url": site_editor_url(site["tag_name"], page_route, section_id),
-        "live_url": site_url(ctx, site["tag_name"]),
+        "editor_url": site_editor_url(site["tag_name"], page_route, section_id, ctx=ctx),
+        "live_url": live_url,
         "audit": {
             "errors": [{k: v for k, v in i.items() if k != "page_id"} for i in issues if i["severity"] == "error"][:8],
             "warnings": len([i for i in issues if i["severity"] == "warning"]),
@@ -611,6 +594,8 @@ def _result(ctx: ToolContext, site: Dict[str, Any], config: Dict[str, Any], revi
     }
     if page_route:
         out["page_route"] = page_route
+    if live_url is None:
+        out["live_url_note"] = NO_PORTAL_DOMAIN_NOTE
     out.update(extra)
     return out
 
@@ -647,289 +632,371 @@ async def _target_site(ctx: ToolContext, args: Dict[str, Any], action: str):
 # ──────────────────────────────────────────────────────────────────────────
 # Actions
 # ──────────────────────────────────────────────────────────────────────────
-async def _action_estimate(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from ..routers.page_builder import estimate_page_generation
-    try:
-        est = await estimate_page_generation(db=ctx.db, current_user=_builder_user(ctx))
-    except HTTPException as exc:
-        return _err("estimate_failed", message=str(exc.detail)[:200])
-    scope = args.get("scope") or "page"
-    pages = len(args.get("page_types") or []) or (3 if scope == "site" else 1)
-    per_page = est.get("estimated_credits")
-    out: Dict[str, Any] = {
-        "scope": scope,
-        "pages": pages,
-        "credits_per_page": per_page,
-        "current_balance": est.get("current_balance"),
+
+def default_layout(institute_name: Optional[str], pages: List[Dict[str, Any]],
+                   contact: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Header + footer for a NEW site, as the dashboard's default template seeds
+    them (CreateCatalogueDialog → defaultTemplate.globalSettings.layout), so a
+    site built by conversation has navigation and a footer from the start.
+    """
+    title = (institute_name or "").strip() or "My Platform"
+    nav = [{"label": (p.get("title") or str(p.get("route") or "").replace("-", " ").title() or "Home")[:24],
+            "route": p.get("route"), "openInSameTab": True} for p in pages[:6] if p.get("route")]
+    contact = contact if isinstance(contact, dict) else {}
+    footer_lines = [v for v in (contact.get("phone"), contact.get("email"), contact.get("address")) if v]
+    return {
+        "header": {
+            "id": "header-1", "type": "header", "enabled": True,
+            "props": {"logo": "", "title": title, "navigation": nav,
+                      "authLinks": [{"label": "Login", "route": "login"}]},
+        },
+        "footer": {
+            "id": "footer-1", "type": "footer", "enabled": True,
+            "props": {
+                "layout": "two-column",
+                "leftSection": {"title": title, "text": " · ".join(footer_lines) or f"Welcome to {title}.", "socials": []},
+                "rightSection": {"title": "Links", "links": [{"label": n["label"], "route": n["route"]} for n in nav]},
+                "bottomNote": f"© {title}",
+            },
+        },
     }
-    try:
-        total = float(per_page) * pages
-        out["estimated_total"] = total
-        balance = est.get("current_balance")
-        out["sufficient"] = None if balance is None else float(balance) >= total
-    except (TypeError, ValueError):
-        pass
-    out["note"] = "Generated images and copilot edits are metered separately per call."
+
+
+def _example_props(section_type: str) -> Optional[Dict[str, Any]]:
+    for c in _catalog().get("components") or []:
+        if c.get("type") == section_type:
+            return copy.deepcopy(c.get("exampleProps") or {})
+    return None
+
+
+# ── validation on top of the AI builder's own sanitisers ─────────────────
+#: Blocks the editor offers that the composer's schema catalogue does not carry
+#: (it lists what the AI may COMPOSE). Defaults mirror component-templates.ts;
+#: `capabilities` is what website(action="schema") shows for them.
+_EXTRA_COMPONENTS: List[Dict[str, Any]] = [
+    {"type": "courseShowcase",
+     "capabilities": "A strip of a FEW live courses: source newest | onSale | tag (with `tag`) | picked (with `courseIds`), "
+                     "`limit` 1–12, layout row | grid. Prefer this over courseCatalog on a landing page; wire it later with "
+                     "website_edit(set_courses).",
+     "exampleProps": {"title": "New courses", "subtitle": "", "source": "newest", "tag": "", "courseIds": [],
+                      "limit": 3, "layout": "row", "badgeText": "", "badgeTone": "hot"}},
+    {"type": "productCourseGrid",
+     "capabilities": "Every course in the institute as a plain grid (live data), with optional filters/search.",
+     "exampleProps": {"title": "", "columns": 3, "layout": "grid", "showPrice": True, "showBadge": True, "showFilters": True}},
+    {"type": "trustChip",
+     "capabilities": "One line of reassurance — a certification, a count, a guarantee — with an icon name.",
+     "exampleProps": {"text": "Trusted by 10,000+ learners", "icon": "ShieldCheck", "align": "center"}},
+]
+
+
+def authoring_catalog() -> Dict[str, Any]:
+    """The composer's catalogue plus the editor-only blocks: what an authored page may contain."""
+    from ..routers.page_builder import _load_catalog
+    base = _load_catalog()
+    known = {c.get("type") for c in base.get("components") or []}
+    return {**base, "components": list(base.get("components") or []) + [c for c in _EXTRA_COMPONENTS if c["type"] not in known]}
+
+
+_catalog = authoring_catalog
+
+
+def _is_institute_asset(url: Any) -> bool:
+    """Only media we host may be placed: our S3 bucket / CDN, or the media service."""
+    if not isinstance(url, str) or not url.startswith("http"):
+        return False
+    from urllib.parse import urlparse
+    from ..config import get_settings
+    from .s3_url_utils import extract_s3_key
+    st = get_settings()
+    bucket = st.aws_bucket_name or getattr(st, "aws_s3_public_bucket", None)
+    if bucket and extract_s3_key(url, bucket, st.cdn_public_base_url):
+        return True
+    host = (urlparse(url).hostname or "").lower()
+    allowed_hosts = {h for h in ((urlparse(st.cdn_public_base_url or "").hostname or ""),
+                                 (urlparse(st.media_server_base_url or "").hostname or "")) if h}
+    # The media library serves through CloudFront in front of our buckets.
+    return host in allowed_hosts or host.endswith(".amazonaws.com") or host.endswith(".cloudfront.net")
+
+
+_IMAGE_PROP_KEYS = {"image", "src", "logo", "avatar", "photo", "backgroundimage", "posterimage", "thumbnail", "url", "ogimage"}
+
+
+def _asset_urls_in(node: Any, out: set) -> set:
+    """Every image-ish URL in a tree that is one of OUR assets (the allow-list for the sanitiser)."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if isinstance(v, str) and k.lower() in _IMAGE_PROP_KEYS and _is_institute_asset(v):
+                out.add(v)
+            else:
+                _asset_urls_in(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            _asset_urls_in(v, out)
     return out
 
 
-async def _prepare_generation(args: Dict[str, Any], ctx: ToolContext, action: str):
-    """Shared by generate_page / generate_site: brief text, snapshot, images, target."""
-    brief = args.get("brief") if isinstance(args.get("brief"), dict) else None
-    if not brief or not str(brief.get("identity") or "").strip():
-        return None, _err("missing_argument", action=action, needs=["brief.identity"],
-                          hint="Run website(action='brief_checklist') and interview the admin first.")
-    theme = brief.get("theme") if isinstance(brief.get("theme"), dict) else {}
-    design_language = brief.get("design_language")
-    if design_language and design_language not in DESIGN_LANGUAGES:
-        design_language = None
+def _sanitize_authored_page(page: Dict[str, Any], page_type: str, global_settings: Optional[Dict[str, Any]]):
+    """
+    Run a caller-composed page through the builder's sanitiser and audit.
+
+    Returns ``(clean_page, issues, warnings)`` or ``(None, issues, warnings)``
+    when nothing usable survived. Unknown types, hostile HTML/CSS and foreign
+    image URLs are stripped with a warning each; the audit says what a visitor
+    would notice.
+    """
+    from ..routers.page_builder import (
+        _MAX_HTML_BLOCKS_PER_PAGE, coerce_hex_color, resolve_dead_anchors, sanitize_component,
+    )
+    from ..services.page_audit import audit_page
+    if not isinstance(page, dict) or not isinstance(page.get("components"), list):
+        return None, [{"severity": "error", "code": "invalid_page", "message": "A page is {route, components:[…]}."}], []
+    allowed = _asset_urls_in(page, set())
+    allowed_types = {c["type"] for c in _catalog().get("components") or []}
+    warnings: List[str] = []
+    seen_ids: set = set()
+    components: List[Dict[str, Any]] = []
+    html_blocks = 0
+    # The builder's per-component pass, minus its composer-only page rules: an
+    # authored page may have ONE section (course-details templates do), and its
+    # explicit paddings are intentional, not a model's over-tight rhythm.
+    for original in page["components"]:
+        cleaned = sanitize_component(original, allowed_types, False, seen_ids, allowed, warnings)
+        if cleaned is None:
+            continue
+        if cleaned["type"] == "htmlBlock":
+            html_blocks += 1
+            if html_blocks > _MAX_HTML_BLOCKS_PER_PAGE:
+                warnings.append(f"Dropped htmlBlock beyond the {_MAX_HTML_BLOCKS_PER_PAGE}-per-page cap")
+                continue
+        _restore_explicit_padding(original, cleaned, warnings)
+        components.append(cleaned)
+    if not components:
+        return None, [{"severity": "error", "code": "empty_page",
+                       "message": "No section survived validation — check the warnings and the schema."}], warnings
+    resolve_dead_anchors(components, warnings)
+    clean: Dict[str, Any] = {"id": page.get("id") or _new_id("page"), "components": components}
+    page_bg = coerce_hex_color(page.get("backgroundColor"))
+    if page_bg:
+        clean["backgroundColor"] = page_bg
+    if page.get("hideSiteChrome") is True:
+        clean["hideSiteChrome"] = True
+    clean["route"] = str(page.get("route") or clean.get("route") or "").strip("/ ") or "page"
+    clean["title"] = page.get("title") or clean.get("title")
+    seo = page.get("seo") if isinstance(page.get("seo"), dict) else {}
+    clean["seo"] = {k: str(seo[k])[:170] for k in ("metaTitle", "metaDescription", "ogImage") if seo.get(k)}
+    issues = [{"severity": "error" if i.get("kind") == "fix" else "warning", "code": i.get("code"),
+               "message": i.get("message"), "fix": i.get("hint"), "component_id": i.get("component_id")}
+              for i in audit_page(clean, global_settings, page_type=page_type or "homepage")]
+    return clean, [i for i in issues if i["message"]], warnings
+
+
+_PAD_KEYS = ("paddingTop", "paddingBottom")
+_PAD_NOTE = "keeps the section's own vertical rhythm"
+
+
+def _restore_explicit_padding(original: Any, cleaned: Dict[str, Any], warnings: List[str]) -> None:
+    """The composer's small-padding rule does not apply to authored pages: put back what the author set."""
+    style = original.get("style") if isinstance(original, dict) and isinstance(original.get("style"), dict) else {}
+    restored = False
+    for key in _PAD_KEYS:
+        val = style.get(key)
+        if isinstance(val, str) and re.fullmatch(r"\s*\d+(?:\.\d+)?px\s*", val) and key not in (cleaned.get("style") or {}):
+            cleaned.setdefault("style", {})[key] = val.strip()
+            restored = True
+    if restored:
+        warnings[:] = [w for w in warnings if _PAD_NOTE not in w or f"'{cleaned.get('type')}'" not in w]
+
+
+def _sanitize_authored_component(comp: Dict[str, Any], allow_chrome: bool, warnings: List[str]) -> Optional[Dict[str, Any]]:
+    from ..routers.page_builder import sanitize_component
+    allowed_types = {c["type"] for c in _catalog().get("components") or []} | {"header", "footer"}
+    return sanitize_component(comp, allowed_types, allow_chrome, set(), _asset_urls_in(comp, set()), warnings)
+
+
+def _sanitize_authored_ops(ops: List[Dict[str, Any]], page: Dict[str, Any]):
+    """The builder's op sanitiser, fed the caller's ops instead of a model's."""
+    from ..routers.page_builder import EditPageRequest, PageImage, _sanitize_ops
+    allowed = _asset_urls_in(ops, set())
+    req = EditPageRequest(page={"id": page.get("id"), "components": page.get("components") or []},
+                          instruction="-", images=[PageImage(url=u) for u in sorted(allowed)])
+    clean, _reply, warnings = _sanitize_ops(json.dumps({"ops": ops, "reply": ""}), req, _catalog())
+    return clean, warnings
+
+
+def _page_issues(config: Dict[str, Any], route: str) -> List[Dict[str, Any]]:
+    """Publish checks for one page (the dashboard's), without ids the model cannot use."""
+    r = str(route).lstrip("/").lower()
+    return [{k: v for k, v in i.items() if k != "page_id"} for i in run_publish_checks(config)
+            if not i.get("page_route") or str(i["page_route"]).lstrip("/").lower() == r]
+
+
+def _new_site_config(theme: Optional[Dict[str, Any]], site_settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    config = {"version": "1.0", "globalSettings": copy.deepcopy(DEFAULT_GLOBAL_SETTINGS), "pages": []}
+    if theme:
+        config["globalSettings"] = merge_global_settings(config["globalSettings"], theme_to_global_patch(theme))
+    if site_settings:
+        config["globalSettings"] = merge_global_settings(config["globalSettings"], site_settings_to_global_patch(site_settings))
+    return config
+
+
+async def _action_create_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    page = args.get("page")
+    if not isinstance(page, dict) or not isinstance(page.get("components"), list):
+        return _err("missing_argument", action="create_page", needs=["page.components"],
+                    hint="Compose the page per website(action='schema') first.")
+    page_type = args.get("page_type") if args.get("page_type") in PAGE_TYPES else "homepage"
+    theme = args.get("theme") if isinstance(args.get("theme"), dict) else None
 
     site = None
     if args.get("tag_name"):
         site, err = await load_site(ctx, args["tag_name"])
         if err:
-            return None, {**err, "action": action}
+            return {**err, "action": "create_page"}
     elif not args.get("new_site_name"):
-        # No site named: use the institute's default/only site if it has one,
-        # otherwise the admin has to name the new site.
         tag, err = await resolve_tag(ctx, None)
         if tag:
             site, err = await load_site(ctx, tag)
         if site is None:
-            return None, _err("missing_argument", action=action, needs=["tag_name or new_site_name"],
-                              message=(err or {}).get("message"))
+            return _err("missing_argument", action="create_page", needs=["tag_name or new_site_name"],
+                        message=(err or {}).get("message"))
 
-    courses = await load_courses(ctx) if args.get("use_real_courses", True) else []
-    snapshot = _course_snapshot(courses, args.get("course_ids"))
-    images = [{"url": i["url"], "caption": i.get("caption"), "kind": i.get("kind")}
-              for i in brief.get("images") or [] if isinstance(i, dict) and i.get("url")]
-    inspiration = [u for u in brief.get("inspiration_image_urls") or [] if isinstance(u, str)][:6]
+    site_settings = args.get("site_settings") if isinstance(args.get("site_settings"), dict) else None
+    config = copy.deepcopy(site["config"]) if site else _new_site_config(theme, site_settings)
+    if site and theme:
+        config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, theme_to_global_patch(theme))
+    if site and site_settings:
+        config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, site_settings_to_global_patch(site_settings))
+    clean, issues, warnings = _sanitize_authored_page(page, page_type, config.get("globalSettings"))
+    if clean is None:
+        return _err("invalid_page", issues=issues, warnings=warnings[:12])
+    clean["id"] = clean.get("id") or _new_id("page")
+    clean["route"] = _unique_route(config, clean["route"])
+    config.setdefault("pages", []).append(clean)
 
-    existing_gs = (site or {}).get("config", {}).get("globalSettings") if site else None
-    # Keep an existing site's look unless the admin gave a theme; a new site
-    # starts from the brief's theme (or lets the composer propose one).
-    global_settings = None
-    if site and existing_gs and not theme and not design_language:
-        global_settings = existing_gs
-    elif theme:
-        global_settings = merge_global_settings(existing_gs or DEFAULT_GLOBAL_SETTINGS, theme_to_global_patch(theme))
-
-    return {
-        "brief": brief, "brief_text": brief_to_text(brief, args.get("page_type")),
-        "site": site, "courses": snapshot, "images": images, "inspiration": inspiration,
-        "design_language": design_language, "global_settings": global_settings,
-        "institute_name": args.get("institute_name") or _institute_name(ctx),
-        "reference_url": brief.get("reference_url"), "source_url": brief.get("source_url"),
-        "theme_patch": theme_to_global_patch(theme) if theme else None,
-    }, None
-
-
-def _brand_profile(brief: Dict[str, Any]) -> Dict[str, Any]:
-    """The interview facts worth keeping on the site for later edits."""
-    keep = {k: brief.get(k) for k in ("identity", "proof_points", "audience", "tone", "contact", "language") if brief.get(k)}
-    return keep
-
-
-async def _action_generate_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from ..routers.page_builder import GeneratePageRequest, generate_page
-    page_type = args.get("page_type") or "homepage"
-    if page_type not in PAGE_TYPES:
-        return _err("bad_request", action="generate_page", message=f"page_type must be one of {PAGE_TYPES}")
-    prep, err = await _prepare_generation(args, ctx, "generate_page")
-    if err:
-        return err
-
-    body = GeneratePageRequest(
-        brief=prep["brief_text"],
-        page_type=page_type,
-        route_slug=args.get("route_slug") or None,
-        institute_name=prep["institute_name"],
-        images=prep["images"],
-        inspiration_image_urls=prep["inspiration"],
-        design_language=prep["design_language"],
-        source_url=prep["source_url"],
-        reference_url=prep["reference_url"],
-        courses=prep["courses"],
-        global_settings=prep["global_settings"],
-        auto_images=bool(args.get("auto_images", True)),
-    )
-    resp, err = await _call_builder(generate_page, body, ctx)
-    if err:
-        return err
-
-    site = prep["site"]
     if site is None:
         tag = _slugify(args["new_site_name"])
-        config = {"version": "1.0", "globalSettings": copy.deepcopy(DEFAULT_GLOBAL_SETTINGS), "pages": []}
-        if prep["theme_patch"]:
-            config["globalSettings"] = merge_global_settings(config["globalSettings"], prep["theme_patch"])
-        if resp.global_settings:
-            config["globalSettings"] = merge_global_settings(config["globalSettings"], resp.global_settings)
-        config["globalSettings"]["brandProfile"] = _brand_profile(prep["brief"])
-        config["pages"].append(_generated_page_to_page(resp.page, config, page_type))
+        config["globalSettings"]["layout"] = default_layout(_institute_name(ctx), config["pages"])
         if await create_site(ctx, tag, config) is None:
-            return _err("create_failed", message=f"The page was composed but a site named '{tag}' could not be created (it may already exist).")
+            return _err("create_failed", message=f"A site named '{tag}' could not be created (it may already exist).")
         site, err = await load_site(ctx, tag)
         if err:
             return err
-        revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_WIZARD", resp.run_id)
-        if err:
-            return err
-        return _result(ctx, site, config, revision,
-                       f"Created site '{tag}' with a new {page_type} page ({len(config['pages'][0]['components'])} sections).",
-                       config["pages"][0]["route"], warnings=resp.warnings[:6], created_site=True)
-
-    config = copy.deepcopy(site["config"])
-    if prep["theme_patch"]:
-        config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, prep["theme_patch"])
-    elif resp.global_settings and not site["config"].get("globalSettings", {}).get("theme"):
-        config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, resp.global_settings)
-    gs = config.setdefault("globalSettings", {})
-    if not gs.get("brandProfile"):
-        gs["brandProfile"] = _brand_profile(prep["brief"])
-    page = _generated_page_to_page(resp.page, config, page_type)
-    config.setdefault("pages", []).append(page)
-    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_WIZARD", resp.run_id)
+        created = True
+    else:
+        created = False
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
     return _result(ctx, site, config, revision,
-                   f"Added a new {page_type} page '{page['route']}' with {len(page['components'])} sections.",
-                   page["route"], warnings=resp.warnings[:6])
+                   (f"Created site '{site['tag_name']}' with " if created else "Added ") +
+                   f"page '{clean['route']}' ({len(clean['components'])} sections).",
+                   clean["route"], created_site=created, page=summarize_page(clean),
+                   design_issues=issues[:20], warnings=warnings[:12],
+                   next="Fix the issues with update_page (ops), wire forms/courses with link_lead_form / set_courses, then ask the admin to review at editor_url.")
 
 
-async def _action_generate_site(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from ..routers.page_builder import GenerateSiteRequest, generate_site
-    if err := _require(args, "generate_site", "new_site_name"):
+async def _action_create_site(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    if err := _require(args, "create_site", "new_site_name", "pages"):
         return err
-    page_types = [p for p in (args.get("page_types") or ["homepage", "about", "contact"]) if p in PAGE_TYPES] or ["homepage"]
-    prep, err = await _prepare_generation({**args, "tag_name": None}, ctx, "generate_site")
-    if err:
-        return err
-    body = GenerateSiteRequest(
-        brief=prep["brief_text"],
-        page_types=page_types,
-        institute_name=prep["institute_name"],
-        images=prep["images"],
-        courses=prep["courses"],
-        source_url=prep["source_url"],
-        auto_images=bool(args.get("auto_images", True)),
-        inspiration_image_urls=prep["inspiration"],
-        reference_url=prep["reference_url"],
-        design_language=prep["design_language"],
-        global_settings=prep["global_settings"],
-    )
-    resp, err = await _call_builder(generate_site, body, ctx)
-    if err:
-        return err
+    pages_in = [p for p in args.get("pages") or [] if isinstance(p, dict)]
+    if not pages_in:
+        return _err("missing_argument", action="create_site", needs=["pages"])
+    theme = args.get("theme") if isinstance(args.get("theme"), dict) else None
+    config = _new_site_config(theme, args.get("site_settings") if isinstance(args.get("site_settings"), dict) else None)
+    all_issues: Dict[str, Any] = {}
+    all_warnings: List[str] = []
+    for p in pages_in:
+        clean, issues, warnings = _sanitize_authored_page(p, "homepage" if not config["pages"] else "about", config["globalSettings"])
+        all_warnings.extend(warnings)
+        if clean is None:
+            all_issues[str(p.get("route") or "?")] = issues
+            continue
+        clean["id"] = clean.get("id") or _new_id("page")
+        clean["route"] = _unique_route(config, clean["route"])
+        config["pages"].append(clean)
+        if issues:
+            all_issues[clean["route"]] = issues[:12]
+    if not config["pages"]:
+        return _err("invalid_page", issues=all_issues, warnings=all_warnings[:12])
+
+    warnings: List[str] = []
+    layout = default_layout(_institute_name(ctx), config["pages"])
+    for key in ("header", "footer"):
+        if isinstance(args.get(key), dict):
+            cleaned = _sanitize_authored_component(args[key], True, warnings)
+            if cleaned and cleaned.get("type") == key:
+                layout[key] = cleaned
+    config["globalSettings"]["layout"] = layout
+
     tag = _slugify(args["new_site_name"])
-    config = {"version": "1.0", "globalSettings": copy.deepcopy(DEFAULT_GLOBAL_SETTINGS), "pages": []}
-    if prep["theme_patch"]:
-        config["globalSettings"] = merge_global_settings(config["globalSettings"], prep["theme_patch"])
-    if resp.global_settings:
-        config["globalSettings"] = merge_global_settings(config["globalSettings"], resp.global_settings)
-    config["globalSettings"]["brandProfile"] = _brand_profile(prep["brief"])
-    for sp in resp.pages:
-        gen = sp.page if isinstance(sp.page, dict) else sp.page.model_dump()
-        config["pages"].append(_generated_page_to_page(gen, config, sp.page_type))
     if await create_site(ctx, tag, config) is None:
-        return _err("create_failed", message=f"The site was composed but '{tag}' could not be created (it may already exist).")
+        return _err("create_failed", message=f"A site named '{tag}' could not be created (it may already exist).")
     site, err = await load_site(ctx, tag)
     if err:
         return err
-    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_WIZARD", None)
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
     return _result(ctx, site, config, revision,
                    f"Created site '{tag}' with {len(config['pages'])} pages: " + ", ".join(p["route"] for p in config["pages"]) + ".",
-                   None, warnings=resp.warnings[:6], created_site=True,
-                   pages=[{"route": p["route"], "sections": len(p["components"])} for p in config["pages"]])
+                   None, created_site=True,
+                   pages=[{"route": p["route"], "sections": len(p["components"])} for p in config["pages"]],
+                   design_issues=all_issues, warnings=(all_warnings + warnings)[:16])
 
 
-async def _action_edit_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from ..routers.page_builder import EditPageRequest, edit_page
-    if err := _require(args, "edit_page", "instruction"):
-        return err
-    site, err = await _target_site(ctx, args, "edit_page")
+async def _action_update_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    ops = args.get("ops")
+    if not isinstance(ops, list) or not ops:
+        return _err("missing_argument", action="update_page", needs=["ops"])
+    site, err = await _target_site(ctx, args, "update_page")
     if err:
         return err
     page = find_page(site["config"], args.get("page_route"))
     if page is None:
         return _err("unknown_page", available=[p.get("route") for p in site["config"].get("pages") or []])
-    gs = site["config"].get("globalSettings") or {}
-    profile = gs.get("brandProfile") if isinstance(gs.get("brandProfile"), dict) else {}
-    body = EditPageRequest(
-        page={"id": page.get("id"), "components": page.get("components") or []},
-        instruction=str(args["instruction"]),
-        selected_component_id=args.get("section_id") or None,
-        institute_name=_institute_name(ctx),
-        images=[],
-        terminology=None,
-        history=[{"role": "user", "content": f"Brand profile: {json.dumps(profile, ensure_ascii=False)}"}] if profile else [],
-        allow_chrome=False,
-        auto_images=bool(args.get("auto_images", True)),
-    )
-    resp, err = await _call_builder(edit_page, body, ctx)
+    clean_ops, warnings = _sanitize_authored_ops([o for o in ops if isinstance(o, dict)][:_MAX_OPS], page)
+    if not clean_ops:
+        return _err("no_valid_ops", message="None of the ops could be applied.", warnings=warnings[:12])
+    config = apply_ops(site["config"], page.get("id"), clean_ops)
+    new_page = find_page(config, page.get("route")) or page
+    from ..services.page_audit import audit_page
+    issues = [{"severity": "error" if i.get("kind") == "fix" else "warning", "code": i.get("code"),
+               "message": i.get("message"), "fix": i.get("hint"), "component_id": i.get("component_id")}
+              for i in audit_page(new_page, config.get("globalSettings"))]
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
-    ops = [o for o in resp.ops if isinstance(o, dict)]
-    if not ops:
-        return {"tag_name": site["tag_name"], "summary_of_change": "No change made.", "reply": resp.reply, "saved_as": None}
-    config = apply_ops(site["config"], page.get("id"), ops)
-    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", resp.run_id)
-    if err:
-        return err
-    return _result(ctx, site, config, revision, resp.reply or "Applied the requested edits.", page.get("route"),
-                   changes=describe_ops(ops), warnings=resp.warnings[:6])
+    return _result(ctx, site, config, revision, f"Applied {len(clean_ops)} change(s) to '{page.get('route')}'.",
+                   page.get("route"), changes=describe_ops(clean_ops), page=summarize_page(new_page),
+                   design_issues=issues[:20], warnings=warnings[:12])
 
 
-async def _action_edit_chrome(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from ..routers.page_builder import SiteChromeRequest, edit_site_chrome
-    if err := _require(args, "edit_chrome", "instruction"):
-        return err
-    site, err = await _target_site(ctx, args, "edit_chrome")
-    if err:
-        return err
-    body = SiteChromeRequest(
-        instruction=str(args["instruction"]),
-        global_settings=site["config"].get("globalSettings") or {},
-        pages=[{"id": p.get("id"), "route": p.get("route"), "title": p.get("title")}
-               for p in site["config"].get("pages") or [] if isinstance(p, dict)],
-        institute_name=_institute_name(ctx),
-    )
-    resp, err = await _call_builder(edit_site_chrome, body, ctx)
+async def _action_set_layout(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    if not (isinstance(args.get("header"), dict) or isinstance(args.get("footer"), dict)):
+        return _err("missing_argument", action="set_layout", needs=["header or footer"])
+    site, err = await _target_site(ctx, args, "set_layout")
     if err:
         return err
     config = copy.deepcopy(site["config"])
-    config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, resp.global_settings or {})
-    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", resp.run_id)
+    layout = dict((config.get("globalSettings") or {}).get("layout") or {})
+    warnings: List[str] = []
+    changed = []
+    for key in ("header", "footer"):
+        if isinstance(args.get(key), dict):
+            comp = {**args[key], "type": key, "id": args[key].get("id") or f"{key}-1", "enabled": args[key].get("enabled", True)}
+            cleaned = _sanitize_authored_component(comp, True, warnings)
+            if cleaned:
+                layout[key] = cleaned
+                changed.append(key)
+    if not changed:
+        return _err("invalid_component", message="Neither header nor footer survived validation.", warnings=warnings[:12])
+    config.setdefault("globalSettings", {})["layout"] = layout
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
     if err:
         return err
-    return _result(ctx, site, config, revision, resp.reply or "Updated the site's header/footer/theme.",
-                   settings=summarize_global_settings(config["globalSettings"]), warnings=resp.warnings[:6])
-
-
-#: Blocks the editor offers that the composer's schema catalogue does not carry
-#: (it lists what the AI may COMPOSE). Defaults mirror component-templates.ts.
-_EXTRA_TEMPLATES: Dict[str, Dict[str, Any]] = {
-    "courseShowcase": {"title": "New courses", "subtitle": "", "source": "newest", "tag": "", "courseIds": [],
-                       "limit": 3, "layout": "row", "badgeText": "", "badgeTone": "hot"},
-    "productCourseGrid": {"title": "", "columns": 3, "layout": "grid", "showPrice": True, "showBadge": True,
-                          "showFilters": True},
-    "trustChip": {"text": "Trusted by 10,000+ learners", "icon": "ShieldCheck", "align": "center"},
-}
-
-
-def _example_props(section_type: str) -> Optional[Dict[str, Any]]:
-    try:
-        catalog = json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        catalog = {}
-    for c in catalog.get("components") or []:
-        if c.get("type") == section_type:
-            return copy.deepcopy(c.get("exampleProps") or {})
-    if section_type in _EXTRA_TEMPLATES:
-        return copy.deepcopy(_EXTRA_TEMPLATES[section_type])
-    return None
+    return _result(ctx, site, config, revision, f"Updated the site's {' and '.join(changed)}.",
+                   layout={k: summarize_component(v) for k, v in layout.items() if isinstance(v, dict)}, warnings=warnings[:12])
 
 
 async def _action_add_section(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -989,55 +1056,22 @@ async def _action_set_theme(args: Dict[str, Any], ctx: ToolContext) -> Dict[str,
                    settings=summarize_global_settings(config["globalSettings"]))
 
 
-async def _action_brand_kit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from ..routers.page_builder import BrandKitRequest, derive_brand_kit
-    notes = [str(args.get("brand_notes") or "").strip()]
-    warnings: List[str] = []
-    scraped: Optional[Dict[str, Any]] = None
-    website_url = str(args.get("website_url") or "").strip()
-    if website_url:
-        try:
-            from .brand_kit_scrape_service import BrandKitScrapeService
-            res = await BrandKitScrapeService().scrape_brand_kit(website_url, ctx.principal.institute_id)
-            draft = res.draft
-            palette = draft.palette
-            scraped = {k: v for k, v in {
-                "primary": palette.primary, "secondary": palette.secondary, "accent": palette.accent,
-                "background": palette.background, "heading_font": draft.heading_font, "body_font": draft.body_font,
-                "logo_url": res.preview.logo_url,
-            }.items() if v}
-            warnings.extend(res.warnings[:3])
-            if scraped:
-                notes.append("From the institute's current website: " + ", ".join(f"{k} {v}" for k, v in scraped.items() if k != "logo_url"))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("brand_kit scrape of %s failed: %s", website_url, exc)
-            warnings.append("Could not read the website; kits are based on the notes only.")
-    body = BrandKitRequest(
-        institute_name=args.get("institute_name") or _institute_name(ctx),
-        brief=str(args.get("brief") if isinstance(args.get("brief"), str) else (args.get("brief") or {}).get("identity") or "") or None,
-        brand_notes=" ".join(n for n in notes if n) or None,
-    )
-    resp, err = await _call_builder(derive_brand_kit, body, ctx)
+async def _action_set_site_settings(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    if err := _require(args, "set_site_settings", "site_settings"):
+        return err
+    patch = site_settings_to_global_patch(args["site_settings"])
+    if not patch:
+        return _err("bad_request", message="Nothing in `site_settings` was a recognised setting.")
+    site, err = await _target_site(ctx, args, "set_site_settings")
     if err:
         return err
-    kits = []
-    for k in resp.kits:
-        kd = k.model_dump() if hasattr(k, "model_dump") else dict(k)
-        kits.append({
-            "label": kd.get("label"), "rationale": kd.get("rationale"),
-            "theme": {
-                "preset": kd.get("themePreset"), "primary_color": kd.get("primaryColor"),
-                "fonts": {"body": kd.get("fontFamily"), "heading": kd.get("headingFontFamily")},
-                "border_radius": kd.get("borderRadius"), "heading_scale": kd.get("headingScale"),
-                "atmosphere": (kd.get("atmosphere") or {}).get("canvas"), "motion": kd.get("motion"),
-            },
-        })
-    out: Dict[str, Any] = {"kits": kits, "next": "Offer these to the admin; pass the chosen `theme` to set_theme or as brief.theme."}
-    if scraped:
-        out["read_from_website"] = scraped
-    if warnings:
-        out["warnings"] = warnings
-    return out
+    config = copy.deepcopy(site["config"])
+    config["globalSettings"] = merge_global_settings(config.get("globalSettings") or {}, patch)
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
+    if err:
+        return err
+    return _result(ctx, site, config, revision, "Updated site settings: " + ", ".join(patch.keys()) + ".",
+                   settings=summarize_global_settings(config["globalSettings"]))
 
 
 async def _action_import_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -1076,24 +1110,6 @@ async def _action_import_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
         return _err("upload_failed", message="The image was downloaded but could not be stored.")
     return {"url": stored, "kind": kind, "caption": args.get("caption"), "bytes": len(resp.content),
             "next": "Use this url in brief.images or an edit instruction."}
-
-
-async def _action_generate_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    from ..routers.page_builder import GenerateImageRequest, generate_page_image
-    if err := _require(args, "generate_image", "prompt"):
-        return err
-    count = max(1, min(int(args.get("count") or 1), 3))
-    body = GenerateImageRequest(
-        prompt=str(args["prompt"]),
-        kind=args.get("kind") if args.get("kind") in IMAGE_KINDS else "image",
-        aspect_ratio=args.get("aspect_ratio") or None,
-        count=count,
-    )
-    resp, err = await _call_builder(generate_page_image, body, ctx)
-    if err:
-        return err
-    return {"urls": list(resp.urls), "kind": body.kind,
-            "next": "Show the admin the options; use the chosen url in brief.images or an edit instruction."}
 
 
 async def _action_set_courses(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -1254,23 +1270,21 @@ async def _action_discard_draft(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     if _is_error(data) and data.get("status") not in (200, 204):
         return _err("discard_failed", message="The draft could not be discarded.")
     return {"tag_name": site["tag_name"], "summary_of_change": "Draft discarded; the site is back to its published version.",
-            "editor_url": site_editor_url(site["tag_name"])}
+            "editor_url": site_editor_url(site["tag_name"], ctx=ctx)}
 
 
 _ACTIONS = {
-    "estimate": _action_estimate,
-    "generate_page": _action_generate_page,
-    "generate_site": _action_generate_site,
-    "edit_page": _action_edit_page,
-    "edit_chrome": _action_edit_chrome,
+    "create_page": _action_create_page,
+    "create_site": _action_create_site,
+    "update_page": _action_update_page,
+    "set_layout": _action_set_layout,
     "add_section": _action_add_section,
     "set_theme": _action_set_theme,
-    "brand_kit": _action_brand_kit,
-    "import_image": _action_import_image,
-    "generate_image": _action_generate_image,
+    "set_site_settings": _action_set_site_settings,
     "set_courses": _action_set_courses,
     "link_lead_form": _action_link_lead_form,
     "set_seo": _action_set_seo,
+    "import_image": _action_import_image,
     "discard_draft": _action_discard_draft,
 }
 
@@ -1312,6 +1326,7 @@ _register()
 
 __all__ = [
     "WEBSITE_EDIT_TOOLS", "WEBSITE_EDIT_TOOL_NAME", "WEBSITE_EDIT_GROUP_KEY", "WEBSITE_EDIT_ACTIONS",
-    "WEBSITE_EDIT_SCHEMA", "execute_website_edit", "apply_ops", "describe_ops", "brief_to_text",
-    "theme_to_global_patch", "merge_global_settings", "DEFAULT_GLOBAL_SETTINGS",
+    "WEBSITE_EDIT_SCHEMA", "execute_website_edit", "apply_ops", "describe_ops",
+    "theme_to_global_patch", "site_settings_to_global_patch", "merge_global_settings", "DEFAULT_GLOBAL_SETTINGS",
+    "default_layout", "authoring_catalog",
 ]

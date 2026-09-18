@@ -40,25 +40,68 @@ def _settings():
     return get_settings()
 
 
+NO_PORTAL_DOMAIN_NOTE = (
+    "This institute has no learner-portal domain configured, so its websites cannot be reached on "
+    "the shared learner host (that host serves a different institute). An admin can set the "
+    "institute's learner domain under white-label / domain settings; the site is then served at "
+    "https://<that domain>/<site name>. Until then, preview it in the editor."
+)
+
+
 def learner_portal_base(ctx: ToolContext) -> Optional[str]:
-    """``institutes.learner_portal_base_url`` from the shared DB; None when unset."""
+    """
+    The institute's learner-portal origin, or None when it has none.
+
+    Mirrors admin-core's LearnerPortalUrlResolver without its final fallback:
+    ``institutes.learner_portal_base_url`` first, else a LEARNER row in
+    ``institute_domain_routing`` (wildcard subdomains and admin-* portals
+    skipped). No fallback to the shared learner host on purpose — the learner
+    app resolves the INSTITUTE from the domain, so a site of an institute
+    without a domain is a 404 there, and a dead link is worse than none.
+    """
+    inst = ctx.principal.institute_id
     try:
         row = ctx.db.execute(
-            text("SELECT learner_portal_base_url FROM institutes WHERE id = :id"),
-            {"id": ctx.principal.institute_id},
+            text("SELECT learner_portal_base_url FROM institutes WHERE id = :id"), {"id": inst}
         ).first()
-        return (row[0] or "").strip() or None if row else None
+        column = (row[0] or "").strip() if row else ""
+        if column:
+            return column
     except Exception as exc:  # noqa: BLE001
-        logger.warning("learner_portal_base_url lookup failed for %s: %s", ctx.principal.institute_id, exc)
+        logger.warning("learner_portal_base_url lookup failed for %s: %s", inst, exc)
         return None
+    try:
+        rows = ctx.db.execute(
+            text("SELECT domain, subdomain FROM institute_domain_routing WHERE institute_id = :id AND role = 'LEARNER'"),
+            {"id": inst},
+        ).fetchall()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("institute_domain_routing lookup failed for %s: %s", inst, exc)
+        return None
+    for domain, subdomain in rows or []:
+        domain = str(domain or "").strip().lower()
+        domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
+        sub = str(subdomain or "").strip().lower()
+        if not domain or sub.startswith("admin"):
+            continue
+        return domain if (not sub or sub == "*") else f"{sub}.{domain}"
+    return None
 
 
-def site_url(ctx: ToolContext, tag_name: str) -> str:
-    return learner_site_url(tag_name, learner_portal_base(ctx), _settings().learner_dashboard_url)
+def site_url(ctx: ToolContext, tag_name: str) -> Optional[str]:
+    """Public URL of a site, or None when the institute has no learner domain."""
+    base = learner_portal_base(ctx)
+    return learner_site_url(tag_name, base, "") if base else None
 
 
-def site_editor_url(tag_name: str, page_route: Optional[str] = None, section_id: Optional[str] = None) -> str:
-    return editor_url(_settings().admin_dashboard_url, tag_name, page_route, section_id)
+def site_editor_url(tag_name: str, page_route: Optional[str] = None, section_id: Optional[str] = None,
+                    ctx: Optional[ToolContext] = None) -> str:
+    """Editor deep link on the institute's OWN admin portal (white-label), else the platform's."""
+    from ..mcp.institute_scope import admin_portal_base
+    base = _settings().admin_dashboard_url
+    if ctx is not None:
+        base = admin_portal_base(ctx.db, ctx.principal.institute_id, base)
+    return editor_url(base, tag_name, page_route, section_id)
 
 
 async def list_catalogues(ctx: ToolContext) -> Any:
@@ -151,7 +194,7 @@ async def load_site(ctx: ToolContext, tag_name: Optional[str]) -> Tuple[Optional
         return None, _err(
             "catalogue_unreadable",
             message=f"Website '{tag}' is too large or malformed to summarise here; open it in the dashboard.",
-            editor_url=site_editor_url(tag),
+            editor_url=site_editor_url(tag, ctx=ctx),
         )
     return {
         "tag_name": tag,
@@ -310,6 +353,7 @@ async def campaign_lead_stats(ctx: ToolContext, audience_id: str, days: Optional
 
 
 __all__ = [
+    "NO_PORTAL_DOMAIN_NOTE",
     "learner_portal_base", "site_url", "site_editor_url", "list_catalogues", "resolve_tag",
     "get_draft", "get_history", "load_site", "load_courses", "load_product_pages",
     "load_campaigns", "campaign_lead_stats", "get_campaign", "campaign_name_map",

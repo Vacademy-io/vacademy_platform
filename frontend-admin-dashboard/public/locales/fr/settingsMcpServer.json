@@ -46,7 +46,8 @@
         "empty": "Aucun outil n'est encore disponible sur ce serveur.",
         "modeRead": "Lecture seule",
         "modeWrite": "Modifie les brouillons",
-        "actionsLabel": "Peut faire :"
+        "actionsLabel": "Peut faire :",
+        "alwaysOn": "Toujours actif"
     },
     "roles": {
         "title": "Qui peut se connecter",

@@ -113,9 +113,10 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         key: 'website_builder_edits',
         label: 'Website: edit drafts',
         description:
-            'Let the assistant build and change websites by conversation — generate pages, edit ' +
+            'Let the assistant build and change websites by conversation — compose pages, edit ' +
             'sections, set colours and fonts, wire forms to lead campaigns. Every change is saved ' +
-            'as a draft; nothing goes live until you publish it in Manage Pages. Off by default.',
+            'as a draft; nothing goes live until you publish it in Manage Pages. Uses no AI ' +
+            'credits. Off by default.',
         phase: 3,
         defaultEnabled: false,
     },

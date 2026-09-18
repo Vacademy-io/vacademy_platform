@@ -62,7 +62,7 @@
         },
         "website_builder_edits": {
             "label": "Website: edit drafts",
-            "description": "Let the assistant build and change websites by conversation — generate pages, edit sections, set colours and fonts, wire forms to lead campaigns. Every change is saved as a draft; nothing goes live until you publish it in Manage Pages. Off by default."
+            "description": "Let the assistant build and change websites by conversation — compose pages, edit sections, set colours and fonts, wire forms to lead campaigns. Every change is saved as a draft; nothing goes live until you publish it in Manage Pages. Uses no AI credits. Off by default."
         },
         "audience_forms": {
             "label": "Lead forms: view",

@@ -512,9 +512,15 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 # ── URLs ─────────────────────────────────────────────────────────────────
-def learner_site_url(tag_name: str, learner_portal_base_url: Optional[str], fallback_origin: str) -> str:
-    """Public URL of one catalogue site, mirroring the dashboard's getCatalogueSiteUrl."""
-    base = (learner_portal_base_url or "").strip() or fallback_origin
+def learner_site_url(tag_name: str, learner_portal_base_url: Optional[str], fallback_origin: str) -> Optional[str]:
+    """Public URL of one catalogue site, mirroring the dashboard's getCatalogueSiteUrl.
+
+    None when neither a portal base nor a fallback origin is given — the caller
+    then tells the admin the institute has no learner domain rather than
+    inventing a link to a host that serves another institute."""
+    base = (learner_portal_base_url or "").strip() or (fallback_origin or "").strip()
+    if not base:
+        return None
     base = base.rstrip("/")
     if not base.startswith("http"):
         base = f"https://{base}"

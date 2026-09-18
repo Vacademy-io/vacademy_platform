@@ -42,6 +42,7 @@ from pydantic import AnyUrl
 
 from ..config import Settings
 from ..db import db_session
+from .institute_scope import admin_portal_base, institute_from_resource
 from .crypto import (
     ACCESS_TOKEN_PREFIX,
     AUTH_CODE_PREFIX,
@@ -163,6 +164,11 @@ class VacademyOAuthProvider(
         if not is_acceptable_redirect_uri(redirect_uri):
             raise AuthorizeError("invalid_request", "Unsupported redirect_uri.")
 
+        # A scoped server URL (…/mcp/i/<institute>) names the institute up front,
+        # so the browser can go to THAT institute's own admin portal — its brand,
+        # its session — instead of the platform dashboard with a picker.
+        institute_id = institute_from_resource(params.resource, self.settings.mcp_issuer_url)
+
         with db_session() as db:
             txn = self._repo(db).create_txn(
                 client_id=client.client_id,
@@ -174,8 +180,10 @@ class VacademyOAuthProvider(
                 resource=params.resource,
                 ttl_seconds=self.settings.mcp_auth_txn_ttl_seconds,
             )
+            portal = admin_portal_base(db, institute_id, self.settings.admin_dashboard_url) if institute_id else None
 
-        return f"{self._consent_url_base}?{urlencode({'txn': txn})}"
+        base = f"{portal}/mcp/authorize" if portal else self._consent_url_base
+        return f"{base}?{urlencode({'txn': txn})}"
 
     async def load_authorization_code(
         self,

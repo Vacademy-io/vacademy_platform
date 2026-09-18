@@ -11,6 +11,7 @@ import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
 import { pageOpensWithOwnHeader } from "../-utils/page-own-header";
+import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -37,6 +38,9 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   instituteThemeCode,
 }) => {
   const { t } = useTranslation("coursePlayerA");
+  // Institute terminology must be seeded before the first paint — see
+  // institute-naming-seed.ts.
+  const namingReady = useInstituteNamingSettings(instituteId);
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
@@ -268,7 +272,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [page]);
 
-  if (isLoading || isCheckingAuth) {
+  if (isLoading || isCheckingAuth || !namingReady) {
     return <DashboardLoader />;
   }
 

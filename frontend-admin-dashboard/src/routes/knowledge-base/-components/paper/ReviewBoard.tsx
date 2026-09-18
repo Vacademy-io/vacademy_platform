@@ -2,7 +2,16 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { ArrowClockwise, BookOpen, CheckCircle, WarningCircle } from '@phosphor-icons/react';
+import {
+    ArrowClockwise,
+    ArrowDown,
+    ArrowUp,
+    BookOpen,
+    CheckCircle,
+    PencilSimple,
+    Trash,
+    WarningCircle,
+} from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { StatusChip } from '@/components/design-system/status-chips';
 import { Card } from '@/components/ui/card';
@@ -15,6 +24,12 @@ interface ReviewBoardProps {
     issuesByQuestion: Map<number, PaperIssue[]>;
     regeneratingNumber: number | null;
     onRegenerate: (raw: RawPaperQuestion, instruction?: string) => void;
+    /** Hand-edit a question (text, options, answer, scheme). */
+    onEdit?: (index: number) => void;
+    /** Drop a question from the paper. */
+    onDelete?: (index: number) => void;
+    /** Move a question one place up or down within the paper. */
+    onMove?: (index: number, direction: -1 | 1) => void;
 }
 
 const buildNudges = (t: TFunction) => [
@@ -39,6 +54,9 @@ export const ReviewBoard = ({
     issuesByQuestion,
     regeneratingNumber,
     onRegenerate,
+    onEdit,
+    onDelete,
+    onMove,
 }: ReviewBoardProps) => {
     const { t } = useTranslation('knowledgeBaseReviewBoard');
     const [openNudge, setOpenNudge] = useState<number | null>(null);
@@ -178,7 +196,56 @@ export const ReviewBoard = ({
                                 {(meta.figures?.length ?? 0) > 0 &&
                                     ` · ${t('diagramsFromBook', { count: meta.figures?.length ?? 0 })}`}
                             </span>
-                            <div className="flex items-center gap-1">
+                            <div className="flex flex-wrap items-center gap-1">
+                                {onMove && (
+                                    <>
+                                        <MyButton
+                                            buttonType="text"
+                                            layoutVariant="icon"
+                                            scale="small"
+                                            disable={busy || index === 0}
+                                            aria-label={t('actions.moveUp')}
+                                            onClick={() => onMove(index, -1)}
+                                        >
+                                            <ArrowUp className="size-3.5" />
+                                        </MyButton>
+                                        <MyButton
+                                            buttonType="text"
+                                            layoutVariant="icon"
+                                            scale="small"
+                                            disable={
+                                                busy || index === result.raw_questions.length - 1
+                                            }
+                                            aria-label={t('actions.moveDown')}
+                                            onClick={() => onMove(index, 1)}
+                                        >
+                                            <ArrowDown className="size-3.5" />
+                                        </MyButton>
+                                    </>
+                                )}
+                                {onEdit && (
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="small"
+                                        disable={busy}
+                                        onClick={() => onEdit(index)}
+                                    >
+                                        <PencilSimple className="mr-1 size-3.5" />
+                                        {t('actions.edit')}
+                                    </MyButton>
+                                )}
+                                {onDelete && (
+                                    <MyButton
+                                        buttonType="text"
+                                        scale="small"
+                                        className="text-danger-600"
+                                        disable={busy}
+                                        onClick={() => onDelete(index)}
+                                    >
+                                        <Trash className="mr-1 size-3.5" />
+                                        {t('actions.delete')}
+                                    </MyButton>
+                                )}
                                 {openNudge === num &&
                                     nudges.map((n) => (
                                         <MyButton

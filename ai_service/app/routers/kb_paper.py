@@ -61,6 +61,13 @@ class PaperSpec(BaseModel):
     grade: Optional[str] = None
     language: Optional[str] = None
     exam_style: Optional[str] = None          # e.g. "CBSE board pattern"
+    # The teacher's own title; blank lets the planner name the paper.
+    title: Optional[str] = Field(None, max_length=200)
+    # Fixed mix, in paper order: [{question_type, count, marks_each, label?,
+    # instruction?, difficulty?}]. Counts/marks are enforced, not suggested.
+    type_plan: Optional[List[Dict[str, Any]]] = None
+    # Optional share per chapter/topic id, e.g. {"<node_id>": 30}. Guidance only.
+    weightage: Optional[Dict[str, float]] = None
 
 
 class BlueprintRequest(BaseModel):
@@ -89,6 +96,13 @@ class RegenerateRequest(BaseModel):
 class ValidateRequest(BaseModel):
     blueprint: Dict[str, Any]
     questions: List[Dict[str, Any]]
+    institute_id: Optional[str] = None
+
+
+class FormatRequest(BaseModel):
+    """One question the teacher edited by hand, in the raw (review-board) shape."""
+    raw_question: Dict[str, Any]
+    generation_id: Optional[str] = None
     institute_id: Optional[str] = None
 
 
@@ -739,6 +753,32 @@ async def delete_generation(
     if not kb_generations.delete(db, generation_id, resolved):
         raise HTTPException(404, "Not found")
     return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# 3a. Format — a hand-edited question back into the shape the bank stores
+# ---------------------------------------------------------------------------
+
+@router.post("/bases/{kb_id}/paper/format")
+async def format_edited_question(
+    kb_id: str,
+    body: FormatRequest,
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """The review board lets a teacher edit a question's text, options, answer
+    and marking scheme. The formatted QuestionDTO the bank stores must follow
+    that edit, and the only safe way is the same formatter generation uses —
+    hand-building the DTO on the client is how MCQ answers went missing before.
+    Not metered: no model call."""
+    resolved = caller.require_institute(body.institute_id)
+    _assert_kb(db, kb_id, resolved)
+    raw_kept, formatted, _ = kb_paper.pair_with_formatted(
+        [body.raw_question], kb_id=kb_id, generation_id=body.generation_id
+    )
+    if not formatted:
+        raise HTTPException(422, "That question could not be converted. Check its options and answer.")
+    return {"question": formatted[0], "raw_question": raw_kept[0]}
 
 
 # ---------------------------------------------------------------------------

@@ -134,6 +134,25 @@ export const validatePaper = async (
     return data;
 };
 
+/**
+ * A hand-edited question, run through the same formatter as generated ones so
+ * the QuestionDTO the bank stores follows the edit. Not metered.
+ */
+export const formatEditedQuestion = async (
+    kbId: string,
+    rawQuestion: RawPaperQuestion,
+    generationId?: string | null
+): Promise<{ question: PaperQuestion; raw_question: RawPaperQuestion }> => {
+    const { data } = await authenticatedAxiosInstance.post<{
+        question: PaperQuestion;
+        raw_question: RawPaperQuestion;
+    }>(`${BASE}/bases/${kbId}/paper/format`, {
+        raw_question: rawQuestion,
+        generation_id: generationId ?? null,
+    });
+    return data;
+};
+
 // ---- PDF: the paper as a sheet ---------------------------------------------
 
 export interface PaperPdfOptions {

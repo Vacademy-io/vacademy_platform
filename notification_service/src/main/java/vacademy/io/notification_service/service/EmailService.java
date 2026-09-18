@@ -286,6 +286,27 @@ public class EmailService {
     }
 
     /**
+     * The display name to put on the From header. An explicit {@code customFromName} wins. A caller
+     * that passes only a bare {@code customFromEmail} (the inbox reply path sends the address with no
+     * name) still gets the name stored in the config's "Name <addr>" from-string when that address IS
+     * the configured sender — otherwise mail clients show the local-part ("neeraj") as the sender.
+     * A formatted custom address ("X <a@b>") is left alone; InternetAddress parses its own name.
+     */
+    static String resolveFromName(String customFromEmail, String customFromName, String configuredFrom) {
+        if (customFromName != null && !customFromName.trim().isEmpty()) {
+            return customFromName;
+        }
+        if (customFromEmail == null || customFromEmail.indexOf('<') >= 0) {
+            return null;
+        }
+        String custom = normalizeFromAddress(customFromEmail);
+        if (custom == null || !custom.equals(normalizeFromAddress(configuredFrom))) {
+            return null;
+        }
+        return displayNameOf(configuredFrom);
+    }
+
+    /**
      * Builds a mail sender from the dedicated verified-sender SES SMTP credentials (env-provided).
      * Lets an institute send from its SES-verified custom address without storing SMTP credentials
      * in that institute's settings. Mirrors the TLS/timeout properties of {@link #createCustomMailSender}.
@@ -909,9 +930,8 @@ public class EmailService {
                 logger.info("Using from email from config: {} for service: {}", fromEmail, service);
             }
 
-            // Determine final from name
-            final String finalFromName = (customFromName != null && !customFromName.trim().isEmpty()) ? customFromName
-                    : null;
+            // Determine final from name (see resolveFromName for the bare-address fallback).
+            final String finalFromName = resolveFromName(customFromEmail, customFromName, fromEmail);
 
             // Daily cap: reserve a slot or hand the email to the deferred queue. A weekend
             // pause is checked first — it is not "cap 0" (that means unlimited), and no slot

@@ -360,9 +360,31 @@ const CourseHighlightsAccordion: React.FC<{
               overlayClass="from-primary-500/5 to-transparent"
             >
               <div className="space-y-2">
-                <p className="text-sm text-catalogue-text-secondary">
-                  {visibleInstructors.length} {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher).toLocaleLowerCase()}
-                </p>
+                {/* Name + subtitle inline, so an author is recognisable without
+                    a click; the dialog below carries the full description. A
+                    bare "1 teachers" count used to be all that showed here. */}
+                <ul className="space-y-1.5">
+                  {visibleInstructors.map((inst, idx) => (
+                    <li
+                      key={`${inst.email}-${idx}`}
+                      className="flex items-center gap-2.5"
+                    >
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white">
+                        {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-catalogue-text-primary">
+                          {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
+                        </span>
+                        {inst.subtitle && (
+                          <span className="block truncate text-xs text-catalogue-text-secondary">
+                            {inst.subtitle}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
                 <CourseHighlightDialog
                   title={getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
                 >

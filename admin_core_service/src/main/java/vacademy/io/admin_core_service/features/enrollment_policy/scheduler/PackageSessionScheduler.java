@@ -196,8 +196,15 @@ public class PackageSessionScheduler {
     // pre-existing / non-autopay plan — unlike processActiveEnrollments, which
     // stays manual to avoid activating dormant destructive expiry behaviour.
 
-    /** Runs daily at 11:00 (after the 09:00 reminder scan). */
-    @Scheduled(cron = "0 0 11 * * ?")
+    /**
+     * Runs daily at 15:00 IST (09:30 UTC, still after the 09:00 UTC reminder scan).
+     * The hour is deliberate for UPI Autopay: the issuing bank sends the customer a
+     * pre-debit notification and executes the debit roughly 24 h after we present
+     * the charge, so presenting at 15:00 on the day BEFORE the due date (see
+     * {@code AUTOPAY_SETTING.CHARGE_LEAD_DAYS}) lands the money on the due date itself.
+     * Pinned to Asia/Kolkata so a pod timezone change cannot move it.
+     */
+    @Scheduled(cron = "0 0 15 * * ?", zone = "Asia/Kolkata")
     public void emitRenewalCharges() {
         log.info("[RenewalCharge] Starting autopay charge scan...");
         try {

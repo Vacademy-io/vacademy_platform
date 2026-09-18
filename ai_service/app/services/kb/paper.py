@@ -284,6 +284,29 @@ def _blueprint_prompt(
         wanted.append(f"paper language: {spec['language']}")
     if spec.get("exam_style"):
         wanted.append(f"pattern to follow: {spec['exam_style']}")
+    if spec.get("title"):
+        wanted.append(f"the paper is titled \"{spec['title']}\" — use exactly this title")
+    type_plan = spec.get("type_plan") or []
+    if type_plan:
+        # The teacher fixed the mix (Acadine-style "question types & marks"):
+        # the planner only decides WHICH material each row draws on. Counts and
+        # marks are re-imposed after the model answers (apply_type_plan), so
+        # this line is guidance, not the enforcement.
+        mix = "; ".join(
+            f"{int(e.get('count') or 0)} × {e.get('label') or e.get('question_type')} "
+            f"({e.get('question_type')}, {e.get('marks_each')} mark(s) each)"
+            for e in type_plan
+        )
+        wanted.append(
+            "REQUIRED question mix, in this order, one or more rows per entry, "
+            f"counts and marks exactly as given: {mix}"
+        )
+    weightage = spec.get("weightage") or {}
+    if weightage:
+        wanted.append(
+            "weightage the teacher set (share of questions per chapter/topic id): "
+            + ", ".join(f"{k}: {v}%" for k, v in weightage.items())
+        )
 
     refine_block = ""
     if current is not None:
@@ -414,12 +437,92 @@ async def build_blueprint(
             "map to anything in this knowledge base."
         )
 
+    if spec.get("type_plan"):
+        apply_type_plan(blueprint, spec["type_plan"], selected_node_ids or sorted(valid_ids))
+    if (spec.get("title") or "").strip():
+        blueprint.title = str(spec["title"]).strip()
+    if spec.get("duration_minutes"):
+        blueprint.duration_minutes = int(spec["duration_minutes"])
+    if spec.get("language"):
+        blueprint.language = str(spec["language"])
+
     if blueprint.total_questions > MAX_QUESTIONS_PER_PAPER:
         blueprint.notes.append(
             f"This plan has {blueprint.total_questions} questions; the limit per "
             f"paper is {MAX_QUESTIONS_PER_PAPER}. Reduce some counts before generating."
         )
     return blueprint, usage, model
+
+
+def _section_name(index: int) -> str:
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    return f"Section {letters[index]}" if index < len(letters) else f"Section {index + 1}"
+
+
+def apply_type_plan(
+    blueprint: Blueprint, type_plan: Sequence[Dict[str, Any]], fallback_node_ids: Sequence[str]
+) -> None:
+    """Make the plan match the mix the teacher configured, exactly.
+
+    The model is asked to honour the mix but a language model does not do
+    arithmetic reliably; a teacher who configured "10 MCQs × 1 mark, 5 short
+    answers × 3 marks" must see 10 and 5, not 9 and 6. For each entry, in the
+    teacher's order: keep the model's rows of that type (they carry the
+    material split), rescale their counts to the requested total, set the
+    marks and the section instruction; invent one row on the whole selection
+    when the model planned none. Rows of types not in the mix are dropped.
+    Sections are relettered A, B, C… in mix order.
+    """
+    kept: List[BlueprintRow] = []
+    for index, entry in enumerate(type_plan):
+        qtype = str(entry.get("question_type") or "MCQS").upper()
+        if qtype not in QUESTION_TYPES:
+            qtype = "MCQS"
+        count = max(0, int(entry.get("count") or 0))
+        if count == 0:
+            continue
+        try:
+            marks_each = float(entry.get("marks_each") or 1)
+        except (TypeError, ValueError):
+            marks_each = 1.0
+        instruction = (entry.get("instruction") or "").strip() or None
+        section = _section_name(index)
+
+        rows = [r for r in blueprint.rows if r.question_type == qtype and r not in kept]
+        if not rows:
+            rows = [BlueprintRow(
+                id=f"row-{index + 1}", section=section,
+                topic=str(entry.get("label") or qtype).strip() or qtype,
+                node_ids=list(fallback_node_ids), question_type=qtype,
+                count=count, marks_each=marks_each,
+                difficulty=str(entry.get("difficulty") or "MEDIUM").upper(),
+                instruction=instruction,
+            )]
+        else:
+            planned = sum(max(0, r.count) for r in rows) or len(rows)
+            assigned = 0
+            for i, r in enumerate(rows):
+                if i == len(rows) - 1:
+                    r.count = count - assigned
+                else:
+                    share = max(0, r.count) if planned else 1
+                    r.count = int(round(count * share / planned)) if planned else 0
+                    assigned += r.count
+            # Rounding can leave a row at 0 or push the tail negative; both mean
+            # one row should carry the remainder.
+            if any(r.count < 0 for r in rows):
+                for r in rows:
+                    r.count = 0
+                rows[0].count = count
+            rows = [r for r in rows if r.count > 0]
+        for r in rows:
+            r.section = section
+            r.marks_each = marks_each
+            if instruction and not r.instruction:
+                r.instruction = instruction
+            r.id = r.id if r.id and not any(k.id == r.id for k in kept) else f"row-{len(kept) + 1}"
+            kept.append(r)
+    blueprint.rows = kept
 
 
 # ---------------------------------------------------------------------------

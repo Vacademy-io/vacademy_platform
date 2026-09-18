@@ -55,6 +55,19 @@ export interface KbTopic {
     subtopics?: KbTopic[];
 }
 
+/** One line of the teacher's question mix: "10 × MCQ, 1 mark each". */
+export interface TypePlanEntry {
+    /** Stable key of the subtype card that produced it (UI only). */
+    key: string;
+    question_type: PaperQuestionType;
+    count: number;
+    marks_each: number;
+    /** Printed name, e.g. "Short answer". */
+    label: string;
+    /** Line printed under the section heading. */
+    instruction?: string;
+}
+
 export interface PaperSpec {
     /** What a teacher actually asks for; marks follow from the blueprint. */
     total_questions?: number;
@@ -65,6 +78,12 @@ export interface PaperSpec {
     grade?: string;
     language?: string;
     exam_style?: string;
+    /** The teacher's own title; blank lets the planner name the paper. */
+    title?: string;
+    /** Fixed mix in paper order. Counts and marks are enforced server-side. */
+    type_plan?: Array<Omit<TypePlanEntry, 'key'>>;
+    /** Share of questions per chapter/topic id, in percent. Guidance only. */
+    weightage?: Record<string, number>;
 }
 
 export interface CreditEstimate {

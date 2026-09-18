@@ -29,6 +29,8 @@ interface Instructor {
     id: string;
     full_name: string;
     image_url?: string;
+    author_subtitle?: string;
+    author_description?: string;
 }
 
 interface CourseCardProps {
@@ -357,6 +359,11 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                     </span>
                                 ))}
                             </div>
+                            {instructor?.author_subtitle && (
+                                <p className="text-xs text-muted-foreground truncate">
+                                    {instructor.author_subtitle}
+                                </p>
+                            )}
                         </div>
                     </div>
                 )}

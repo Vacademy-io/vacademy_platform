@@ -61,6 +61,8 @@ export interface TeamMember {
   full_name: string;
   mobile_number: string | null;
   profile_pic_file_id: string | null;
+  author_subtitle?: string | null;
+  author_description?: string | null;
   roles: TeamMemberRole[];
   status: string | null;
   root_user: boolean;
@@ -181,14 +183,23 @@ function RouteComponent() {
   // Resolve the viewer's effective display settings (admin or teacher cache,
   // matching the layout-container pattern). Custom-role users fall through to
   // teacher settings, which is the same baseline used elsewhere.
-  const viewerTeamManagement = useMemo(() => {
+  const viewerDisplaySettings = useMemo(() => {
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const viewerRoles = getUserRoles(accessToken);
     const isAdmin = viewerRoles.includes('ADMIN');
     const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
-    const ds = getDisplaySettingsFromCache(roleKey);
-    return ds?.teamManagement;
+    return {
+      isAdmin,
+      settings: getDisplaySettingsFromCache(roleKey),
+    };
   }, []);
+
+  const viewerTeamManagement = viewerDisplaySettings.settings?.teamManagement;
+  // Admins can always maintain team profiles. Other roles require the existing
+  // profile-edit permission from their display settings.
+  const canEditTeamProfiles =
+    viewerDisplaySettings.isAdmin ||
+    viewerDisplaySettings.settings?.permissions?.canEditProfileDetails === true;
 
   // Memoized so an institute without `visibleRoles` doesn't get a fresh `{}` each
   // render — an unstable identity here cascades into allRoles → allRolesFilter and
@@ -474,6 +485,8 @@ function RouteComponent() {
     gender: null,
     password: null,
     profile_pic_file_id: member.profile_pic_file_id,
+    author_subtitle: member.author_subtitle,
+    author_description: member.author_description,
     roles: member.roles.map((r) => ({
       role_name: r.role_name,
       status: r.status,
@@ -622,6 +635,7 @@ function RouteComponent() {
               user={userEntry}
               refetchData={handleRefetchData}
               availableRoles={allRoles}
+              canEditProfile={canEditTeamProfiles}
               subOrgAssign={
                 canAssignSubOrgs
                   ? {

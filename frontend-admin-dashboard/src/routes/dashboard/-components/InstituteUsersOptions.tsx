@@ -4,7 +4,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { DotsThree, WarningCircle } from '@phosphor-icons/react';
+import { DotsThree, WarningCircle, PencilSimple } from '@phosphor-icons/react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useEffect, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
@@ -25,6 +25,11 @@ import { mapRoleToCustomName } from '@/utils/roleUtils';
 import AssignSubOrgsDialog from '@/routes/manage-institute/teams/-components/assign-sub-orgs-dialog';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { UPDATE_ADMIN_DETAILS_URL } from '@/constants/urls';
+import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 export const buildInviteUsersSchema = (t: TFunction) =>
     z.object({
@@ -294,7 +299,125 @@ interface DeleteUserComponentProps {
 
 // Internal action codes for the options menu — used for dispatch/comparison
 // only, never rendered directly (the visible labels are translated separately).
-type MenuAction = 'changeRoleType' | 'disableUser' | 'enableUser' | 'assignSubOrgs' | 'deleteUser';
+type MenuAction = 'editProfile' | 'changeRoleType' | 'disableUser' | 'enableUser' | 'assignSubOrgs' | 'deleteUser';
+
+/** Shared profile used by every course on which this person is an author. */
+const EditTeamMemberComponent = ({
+    student,
+    onClose,
+    refetchData,
+}: {
+    student: UserRolesDataEntry;
+    onClose: () => void;
+    refetchData: () => void;
+}) => {
+    const instituteId = getInstituteId();
+    const [fullName, setFullName] = useState(student.full_name ?? '');
+    const [email, setEmail] = useState(student.email ?? '');
+    const [mobileNumber, setMobileNumber] = useState(student.mobile_number ?? '');
+    const [subtitle, setSubtitle] = useState(student.author_subtitle ?? '');
+    const [description, setDescription] = useState(student.author_description ?? '');
+    const [photoId, setPhotoId] = useState<string | null>(student.profile_pic_file_id);
+    const [saving, setSaving] = useState(false);
+
+    const uploadPhoto = async (file?: File) => {
+        if (!file || !file.type.startsWith('image/')) {
+            toast.error('Please choose an image file.');
+            return;
+        }
+
+        try {
+            setSaving(true);
+            const uploadedFileId = await UploadFileInS3Public(
+                file,
+                () => undefined,
+                instituteId,
+                'STUDENTS'
+            );
+            if (!uploadedFileId) throw new Error('The image did not return a file id.');
+            setPhotoId(uploadedFileId);
+        } catch {
+            toast.error('Image upload failed.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const save = async () => {
+        try {
+            setSaving(true);
+            await authenticatedAxiosInstance.post(
+                `${UPDATE_ADMIN_DETAILS_URL}?userId=${student.id}&instituteId=${instituteId}`,
+                {
+                    id: student.id,
+                    full_name: fullName.trim(),
+                    email: email.trim(),
+                    mobile_number: mobileNumber.trim(),
+                    profile_pic_file_id: photoId,
+                    // Empty strings deliberately clear previously saved author details.
+                    author_subtitle: subtitle.trim(),
+                    author_description: description.trim(),
+                    delete_user_role_request: [],
+                    add_user_role_request: [],
+                }
+            );
+            toast.success('Team member updated.');
+            refetchData();
+            onClose();
+        } catch {
+            toast.error('Could not update the team member.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <DialogContent className="max-w-md">
+            <h2 className="text-h3 font-semibold">Edit team member</h2>
+            <p className="mt-1 text-sm text-neutral-500">
+                The photo, subtitle, and description are shared across every course this person authors.
+            </p>
+            <div className="space-y-3 py-4">
+                <label className="block text-sm font-medium">
+                    Name
+                    <Input className="mt-1" value={fullName} onChange={(event) => setFullName(event.target.value)} />
+                </label>
+                <label className="block text-sm font-medium">
+                    Email
+                    <Input className="mt-1" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+                </label>
+                <label className="block text-sm font-medium">
+                    Mobile number
+                    <Input className="mt-1" value={mobileNumber} onChange={(event) => setMobileNumber(event.target.value)} />
+                </label>
+                <label className="block text-sm font-medium">
+                    Shared author photo
+                    <Input
+                        type="file"
+                        accept="image/*"
+                        className="mt-1"
+                        disabled={saving}
+                        onChange={(event) => void uploadPhoto(event.target.files?.[0])}
+                    />
+                </label>
+                <label className="block text-sm font-medium">
+                    Author subtitle
+                    <Input className="mt-1" maxLength={255} value={subtitle} onChange={(event) => setSubtitle(event.target.value)} placeholder="e.g. Physics educator" />
+                </label>
+                <label className="block text-sm font-medium">
+                    Author description
+                    <Textarea className="mt-1" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Short author bio" />
+                </label>
+            </div>
+            <div className="flex justify-end gap-2">
+                <MyButton buttonType="secondary" onClick={onClose}>Cancel</MyButton>
+                <MyButton buttonType="primary" disable={saving || !fullName.trim()} onClick={save}>
+                    {saving ? 'Saving…' : 'Save changes'}
+                </MyButton>
+            </div>
+        </DialogContent>
+    );
+};
 
 const DeleteUserComponent: React.FC<DeleteUserComponentProps> = ({
     student,
@@ -369,6 +492,7 @@ const InstituteUsersOptions = ({
     refetchData,
     availableRoles,
     subOrgAssign,
+    canEditProfile = false,
 }: {
     user: UserRolesDataEntry;
     refetchData: () => void;
@@ -379,6 +503,7 @@ const InstituteUsersOptions = ({
      * from the institute Teams list keeps those untouched.
      */
     subOrgAssign?: { label: string; currentSubOrgIds: string[] };
+    canEditProfile?: boolean;
 }) => {
     const { t } = useTranslation('dashboardInstituteUsersOptions');
     const [openDialog, setOpenDialog] = useState(false);
@@ -401,6 +526,9 @@ const InstituteUsersOptions = ({
                     </p>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
+                    {canEditProfile && <DropdownMenuItem onClick={() => handleDropdownMenuClick('editProfile')}>
+                        <PencilSimple className="mr-2 size-4" /> Edit team member
+                    </DropdownMenuItem>}
                     <DropdownMenuItem
                         onClick={() => handleDropdownMenuClick('changeRoleType')}
                     >
@@ -433,6 +561,7 @@ const InstituteUsersOptions = ({
                 </DropdownMenuContent>
             </DropdownMenu>
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+                {selectedOption === 'editProfile' && <EditTeamMemberComponent student={user} onClose={() => setOpenDialog(false)} refetchData={refetchData} />}
                 {selectedOption === 'changeRoleType' && (
                     <ChangeRoleTypeComponent
                         student={user}

@@ -2,7 +2,7 @@ import { Steps } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
 // Removed unused icon imports to improve modularity and avoid linter warnings
-import { toTitleCase } from "@/lib/utils";
+import { sanitizeHtml, toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Select,
@@ -56,6 +56,7 @@ import { SlideCountEntry } from "@/utils/courseTime";
 import { CourseStatsSidebar } from "@/routes/study-library/courses/course-details/-components/course-stats-sidebar";
 import { useCatalogStore } from "@/routes/courses/-store/catalogStore";
 import { formatTotalCourseDuration, getBackendCourseDuration } from "@/utils/courseTime";
+import { useCourseDisplaySettings } from "@/routes/study-library/courses/course-details/-hooks/use-course-display-settings";
 
 type SlideType = {
     id: string;
@@ -166,6 +167,7 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
+    const { showInstructors } = useCourseDisplaySettings();
     const { t } = useTranslation("coursesRouteB");
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
@@ -1052,7 +1054,8 @@ export const CourseDetailsPage = () => {
                             )}
 
                             {/* Instructors Section */}
-                            {form.getValues("courseData").instructors &&
+                            {showInstructors &&
+                                form.getValues("courseData").instructors &&
                                 form.getValues("courseData").instructors
                                     .length > 0 && (
                                     <div className="mb-6 sm:mb-8 space-y-stack">
@@ -1081,11 +1084,30 @@ export const CourseDetailsPage = () => {
                                                                     )}
                                                                 </AvatarFallback>
                                                             </Avatar>
-                                                            <h3 className="text-base sm:text-lg font-medium">
-                                                                {
-                                                                    instructor.name
-                                                                }
-                                                            </h3>
+                                                            <div className="min-w-0 flex-1">
+                                                                <h3 className="text-base sm:text-lg font-medium">
+                                                                    {
+                                                                        instructor.name
+                                                                    }
+                                                                </h3>
+                                                                {instructor.authorSubtitle && (
+                                                                    <p className="text-xs sm:text-sm text-gray-500">
+                                                                        {
+                                                                            instructor.authorSubtitle
+                                                                        }
+                                                                    </p>
+                                                                )}
+                                                                {instructor.authorDescription && (
+                                                                    <div
+                                                                        className="text-xs sm:text-sm leading-relaxed text-gray-600 mt-1"
+                                                                        dangerouslySetInnerHTML={{
+                                                                            __html: sanitizeHtml(
+                                                                                instructor.authorDescription
+                                                                            ),
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )
                                                 )}

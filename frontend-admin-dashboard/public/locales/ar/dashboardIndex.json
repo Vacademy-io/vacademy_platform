@@ -70,11 +70,11 @@
         "manyMore": "والمزيد"
     },
     "assistant": {
-        "name": "مساعد Vacademy",
+        "name": "روبوت محادثة المعهد",
         "heading": "ما الذي ترغب في إنجازه اليوم؟",
         "description": "اطرح سؤالاً أو اختر مهمة للبدء.",
         "openChat": "فتح المحادثة",
-        "inputLabel": "اسأل مساعد Vacademy",
+        "inputLabel": "اسأل {{chatbotName}}",
         "placeholder": "كيف يمكنني مساعدتك؟",
         "inputHint": "Enter للإرسال · Shift + Enter لسطر جديد",
         "submit": "اسأل المساعد",
@@ -115,7 +115,9 @@
                 "label": "مساعدة في مهمة",
                 "prompt": "كيف أنشئ دورة؟"
             }
-        }
+        },
+        "instituteName": "روبوت محادثة معهد {{instituteName}}",
+        "helpDescription": "اسألني كيف أو أين تنفذ أي مهمة في مساحة الإدارة الخاصة بك."
     },
     "quickActions": {
         "title": "إجراءات سريعة"

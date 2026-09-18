@@ -57,6 +57,7 @@ interface CourseWithSessionsType {
       email: string;
       full_name?: string;
       name?: string;
+      profile_pic_file_id?: string | null;
       author_subtitle?: string;
       author_description?: string;
     }>;
@@ -215,9 +216,10 @@ export const transformApiDataToCourseData = async (
       courseMediaId: courseMediaPreview,
       courseHtmlDescription: apiData.course.course_html_description,
       instructors:
-        apiData.course.instructors?.map((instructor) => ({
+        (await Promise.all((apiData.course.instructors || []).map(async (instructor) => ({
           id: instructor.id,
           email: instructor.email,
+          profilePicUrl: await tryGetPublicUrl(instructor.profile_pic_file_id),
           authorSubtitle: instructor.author_subtitle,
           authorDescription: instructor.author_description,
           name:
@@ -229,7 +231,7 @@ export const transformApiDataToCourseData = async (
                   instructor: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
                 })
               : "Unknown Instructor"),
-        })) || [],
+        })))),
       sessions: apiData.sessions.map((session) => ({
         levelDetails: session.level_with_details.map((level) => {
           // For course structure 4, add a default subject if no subjects exist

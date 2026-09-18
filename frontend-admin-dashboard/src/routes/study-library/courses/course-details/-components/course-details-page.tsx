@@ -37,6 +37,13 @@ import {
     AccordionTrigger,
 } from '@/components/ui/accordion';
 import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import {
     Select,
     SelectContent,
     SelectItem,
@@ -301,6 +308,33 @@ const MetaChip = ({ icon, children }: { icon?: React.ReactNode; children: React.
         {icon}
         {children}
     </span>
+);
+
+const CourseHighlightDialog = ({
+    title,
+    triggerLabel,
+    children,
+}: {
+    title: string;
+    triggerLabel: string;
+    children: React.ReactNode;
+}) => (
+    <Dialog>
+        <DialogTrigger asChild>
+            <button
+                type="button"
+                className="mt-3 rounded text-sm font-medium text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+            >
+                {triggerLabel}
+            </button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+            <DialogHeader>
+                <DialogTitle>{title}</DialogTitle>
+            </DialogHeader>
+            {children}
+        </DialogContent>
+    </Dialog>
 );
 
 type AdvancedIdItem = { label: string; value: string };
@@ -1989,8 +2023,8 @@ export const CourseDetailsPage = () => {
                                                         {t('courseDetails:whatYoullLearn')}
                                                     </h2>
                                                     <div className="rounded-md">
-                                                        <p
-                                                            className="text-sm leading-relaxed text-gray-700"
+                                                        <div
+                                                            className="line-clamp-4 text-sm leading-relaxed text-gray-700"
                                                             dangerouslySetInnerHTML={{
                                                                 __html:
                                                                     form.getValues('courseData')
@@ -1998,6 +2032,19 @@ export const CourseDetailsPage = () => {
                                                             }}
                                                         />
                                                     </div>
+                                                    <CourseHighlightDialog
+                                                        title={t('courseDetails:whatYoullLearn')}
+                                                        triggerLabel={t('courseDetails:viewMore')}
+                                                    >
+                                                        <div
+                                                            className="richtext-content text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .whatYoullLearn || '',
+                                                            }}
+                                                        />
+                                                    </CourseHighlightDialog>
                                                 </div>
                                             )}
 
@@ -2015,8 +2062,8 @@ export const CourseDetailsPage = () => {
                                                         })}
                                                     </h2>
                                                     <div className="rounded-md">
-                                                        <p
-                                                            className="text-sm leading-relaxed text-gray-700"
+                                                        <div
+                                                            className="line-clamp-4 text-sm leading-relaxed text-gray-700"
                                                             dangerouslySetInnerHTML={{
                                                                 __html:
                                                                     form.getValues('courseData')
@@ -2024,6 +2071,24 @@ export const CourseDetailsPage = () => {
                                                             }}
                                                         />
                                                     </div>
+                                                    <CourseHighlightDialog
+                                                        title={t('courseDetails:aboutThis', {
+                                                            course: getTerminology(
+                                                                ContentTerms.Course,
+                                                                SystemTerms.Course
+                                                            ).toLocaleLowerCase(),
+                                                        })}
+                                                        triggerLabel={t('courseDetails:viewMore')}
+                                                    >
+                                                        <div
+                                                            className="richtext-content text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .aboutTheCourse || '',
+                                                            }}
+                                                        />
+                                                    </CourseHighlightDialog>
                                                 </div>
                                             )}
 
@@ -2036,8 +2101,8 @@ export const CourseDetailsPage = () => {
                                                         {t('courseDetails:whoShouldJoin')}
                                                     </h2>
                                                     <div className="rounded-md">
-                                                        <p
-                                                            className="text-sm leading-relaxed text-gray-700"
+                                                        <div
+                                                            className="line-clamp-4 text-sm leading-relaxed text-gray-700"
                                                             dangerouslySetInnerHTML={{
                                                                 __html:
                                                                     form.getValues('courseData')
@@ -2045,6 +2110,19 @@ export const CourseDetailsPage = () => {
                                                             }}
                                                         />
                                                     </div>
+                                                    <CourseHighlightDialog
+                                                        title={t('courseDetails:whoShouldJoin')}
+                                                        triggerLabel={t('courseDetails:viewMore')}
+                                                    >
+                                                        <div
+                                                            className="richtext-content text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .whoShouldLearn || '',
+                                                            }}
+                                                        />
+                                                    </CourseHighlightDialog>
                                                 </div>
                                             )}
 
@@ -2063,12 +2141,21 @@ export const CourseDetailsPage = () => {
                                                                 )}
                                                             </div>
                                                         ) : (
-                                                            <div className="space-y-2">
-                                                                {resolvedInstructors.map(
-                                                                    (instructor, index) => (
+                                                            <>
+                                                                <p className="text-sm text-gray-600">
+                                                                    {resolvedInstructors.length}{' '}
+                                                                    {t('courseDetails:authors').toLocaleLowerCase()}
+                                                                </p>
+                                                                <CourseHighlightDialog
+                                                                    title={t('courseDetails:authors')}
+                                                                    triggerLabel={t('courseDetails:viewMore')}
+                                                                >
+                                                                    <div className="space-y-2">
+                                                                        {resolvedInstructors.map(
+                                                                            (instructor, index) => (
                                                                         <div
                                                                             key={index}
-                                                                            className="flex items-center gap-2 rounded-md p-1"
+                                                                            className="flex items-center gap-2 rounded-md bg-gray-50 p-2"
                                                                         >
                                                                             <Avatar className="size-6">
                                                                                 {instructor.profilePicUrl ? (
@@ -2092,9 +2179,11 @@ export const CourseDetailsPage = () => {
                                                                                 {instructor.name}
                                                                             </h3>
                                                                         </div>
-                                                                    )
-                                                                )}
-                                                            </div>
+                                                                            )
+                                                                        )}
+                                                                    </div>
+                                                                </CourseHighlightDialog>
+                                                            </>
                                                         )}
                                                     </div>
                                                 )}

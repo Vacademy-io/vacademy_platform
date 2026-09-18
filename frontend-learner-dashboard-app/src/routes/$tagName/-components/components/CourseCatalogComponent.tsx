@@ -666,7 +666,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     () => new Set((filtersConfig ?? []).map((filter) => filter.id)),
     [filtersConfig],
   );
-  const defaultToAllFilters = filterIds.size === 0;
+  // Pages created before filter configuration existed have no value at all and
+  // retain the historic "show every useful filter" behaviour. An explicit
+  // empty array, however, is an admin decision to show none.
+  const defaultToAllFilters = !Array.isArray(filtersConfig);
 
   // How a course preview image sits in the card's image band. `cover` (default)
   // fills it but crops — fine for photos, destructive for wide marketing
@@ -682,14 +685,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("level")) &&
     levels.length > 1;
-  // Sessions and Tags are intentionally NOT gated on filtersConfig: the
-  // page-builder default template ships filtersConfig=[{level}] and there is
-  // no admin UI to add a "session" / "tags" entry, so gating would hide them on
-  // every catalogue. Show them whenever filters are enabled and the loaded
-  // courses actually span more than one session / carry any tags. The heading
-  // still honours a configured label, else Naming Settings (ContentTerms.Session).
-  const shouldShowSessionFilter = filtersEnabled && sessions.length > 1;
-  const shouldShowTagsFilter = filtersEnabled && tags.length > 0;
+  const shouldShowSessionFilter =
+    filtersEnabled &&
+    (defaultToAllFilters || filterIds.has("session")) &&
+    sessions.length > 1;
+  const shouldShowTagsFilter =
+    filtersEnabled &&
+    (defaultToAllFilters || filterIds.has("tags") || filterIds.has("tag")) &&
+    tags.length > 0;
   const shouldShowInstructorFilter =
     filtersEnabled &&
     (defaultToAllFilters ||
@@ -1297,8 +1300,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {shouldShowLevelFilter && (
                       <FilterSection
                         title={
-                          filtersConfig?.find((filter) => filter.id === "level")
-                            ?.label ??
                           getTerminology(ContentTerms.Level, SystemTerms.Level)
                         }
                         items={levels}
@@ -1313,8 +1314,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {shouldShowSessionFilter && (
                       <FilterSection
                         title={
-                          filtersConfig?.find((filter) => filter.id === "session")
-                            ?.label ??
                           getTerminology(ContentTerms.Session, SystemTerms.Session)
                         }
                         items={sessions}
@@ -1329,8 +1328,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {shouldShowTagsFilter && (
                       <FilterSection
                         title={
-                          filtersConfig?.find((filter) => filter.id === "tags")
-                            ?.label ??
                           getTerminologyPlural(
                             ContentTerms.PopularTag,
                             SystemTerms.PopularTag,

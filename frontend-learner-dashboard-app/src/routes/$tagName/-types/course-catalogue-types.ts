@@ -310,7 +310,8 @@ export interface CourseCatalogProps {
   defaultSort?: CourseCatalogSortOption;
   filtersConfig?: Array<{
     id: string;
-    label: string;
+    /** Built-in filters use Naming Settings for their label. */
+    label?: string;
     type: "dropdown" | "checkbox" | "range";
     field: string;
     default?: {

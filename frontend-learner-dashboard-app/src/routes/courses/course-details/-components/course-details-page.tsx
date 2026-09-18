@@ -1073,7 +1073,7 @@ export const CourseDetailsPage = () => {
                                                         >
                                                             <Avatar className="size-6 sm:size-8 flex-shrink-0">
                                                                 <AvatarImage
-                                                                    src=""
+                                                                    src={instructor.profilePicUrl || ""}
                                                                     alt={
                                                                         instructor.email
                                                                     }

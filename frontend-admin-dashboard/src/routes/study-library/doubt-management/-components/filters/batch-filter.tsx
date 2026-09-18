@@ -33,6 +33,11 @@ export const BatchFilter = () => {
     batchList?.push(...batches);
 
     const [selectedBatch, setSelectedBatch] = useState<FilterType[]>([AllBatchOption]);
+    // Re-read labels from the live list so "All" isn't frozen as a raw key from before the
+    // namespace loaded.
+    const selectedDisplay = selectedBatch.map(
+        (sel) => batchList.find((o) => o.value === sel.value) ?? sel
+    );
 
     const handleBatchChange = (next: FilterType[]) => {
         if (next.length === 0) {
@@ -69,7 +74,7 @@ export const BatchFilter = () => {
             </span>
             <SelectChips
                 options={batchList}
-                selected={selectedBatch}
+                selected={selectedDisplay}
                 onChange={handleBatchChange}
                 multiSelect={true}
                 hasClearFilter={false}

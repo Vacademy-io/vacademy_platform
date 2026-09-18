@@ -68,6 +68,8 @@ class PaperSpec(BaseModel):
     type_plan: Optional[List[Dict[str, Any]]] = None
     # Optional share per chapter/topic id, e.g. {"<node_id>": 30}. Guidance only.
     weightage: Optional[Dict[str, float]] = None
+    # The teacher's own "General Instructions" lines; replace the planner's.
+    instructions: Optional[List[str]] = None
 
 
 class BlueprintRequest(BaseModel):
@@ -82,6 +84,10 @@ class BlueprintRequest(BaseModel):
 class GenerateRequest(BaseModel):
     blueprint: Dict[str, Any]
     grade: Optional[str] = None
+    # Draw a figure for questions the writer marks as needing one and the book
+    # does not provide (slow: ~1 min per figure; billed per image). Off unless
+    # the teacher asks — a wrong diagram on an exam is worse than none.
+    generate_diagrams: bool = False
     institute_id: Optional[str] = None
 
 
@@ -117,6 +123,12 @@ class PaperPdfRequest(BaseModel):
     institute_name: Optional[str] = None
     # "A", "B"… for parallel sets; printed in a box at the top right.
     set_label: Optional[str] = Field(None, max_length=8)
+    # Where the institute logo goes: faint watermark behind every page
+    # (default), beside the name as a letterhead, or nowhere.
+    logo_placement: str = "watermark"
+    # The "Name / Roll No. / Date" line under the marks strip. Off by default:
+    # most institutes hand the paper out digitally, not as an answer booklet.
+    candidate_line: bool = False
     institute_id: Optional[str] = None
 
 
@@ -311,6 +323,7 @@ async def generate_paper(
     task_id = str(task.id)
     user_id = caller.user_id
     grade = body.grade
+    generate_diagrams = body.generate_diagrams
 
     # Record the run BEFORE it starts, so a generation that fails or that the
     # user navigates away from is still visible and resumable. input_json keeps
@@ -322,7 +335,10 @@ async def generate_paper(
         artifact_type="QUESTION_PAPER",
         title=blueprint.title,
         status="GENERATING",
-        input_payload={"blueprint": blueprint.to_dict(), "grade": grade},
+        input_payload={
+            "blueprint": blueprint.to_dict(), "grade": grade,
+            "generate_diagrams": body.generate_diagrams,
+        },
         ai_task_id=task_id,
         items_planned=blueprint.total_questions,
         created_by=user_id,
@@ -349,6 +365,7 @@ async def generate_paper(
             generated = await kb_paper.generate_questions(
                 job_db, kb_id=kb_id, institute_id=resolved,
                 blueprint=blueprint, grade=grade,
+                generate_diagrams=generate_diagrams,
             )
             issues = kb_paper.validate_paper(blueprint, generated.questions)
 
@@ -366,6 +383,17 @@ async def generate_paper(
                 institute_id=resolved, user_id=user_id,
                 # Keyed on the task, so a retry of the same job cannot double-charge.
                 idempotency_key=f"kb_paper:{task_id}",
+            )
+        # Drawn figures are real image-model spend, priced like document
+        # illustrations (same tool key, per image that actually came back).
+        if generated.diagrams_drawn:
+            _bill(
+                "html_document_image",
+                {"num_images": generated.diagrams_drawn},
+                model="image",
+                usage={"prompt_tokens": 0, "completion_tokens": 0},
+                institute_id=resolved, user_id=user_id,
+                idempotency_key=f"kb_paper_diagrams:{task_id}",
             )
 
         # Paired so `questions[i]` always describes `raw_questions[i]`. The review
@@ -807,6 +835,8 @@ async def _render_paper(
     show_marks: bool,
     institute_name: Optional[str],
     set_label: Optional[str],
+    logo_placement: str = "watermark",
+    candidate_line: bool = False,
 ) -> Response:
     if not questions:
         raise HTTPException(400, "There are no questions to print")
@@ -816,6 +846,7 @@ async def _render_paper(
             db, kb, institute_id, blueprint, questions,
             include_answer_key=include_answer_key, show_marks=show_marks,
             institute_name=institute_name, set_label=set_label,
+            logo_placement=logo_placement, candidate_line=candidate_line,
         )
     except Exception as exc:  # noqa: BLE001 — surface as a 503, keep the trace
         logger.exception("paper PDF render failed for kb %s", kb.get("id"))
@@ -880,6 +911,7 @@ async def paper_pdf(
         db, kb, resolved, body.blueprint, body.questions,
         include_answer_key=body.include_answer_key, show_marks=body.show_marks,
         institute_name=body.institute_name, set_label=body.set_label,
+        logo_placement=body.logo_placement, candidate_line=body.candidate_line,
     )
 
 
@@ -889,6 +921,8 @@ async def generation_paper_pdf(
     include_answer_key: bool = Query(False),
     show_marks: bool = Query(True),
     set_label: Optional[str] = Query(None, max_length=8),
+    logo_placement: str = Query("watermark"),
+    candidate_line: bool = Query(False),
     institute_id: Optional[str] = Query(None),
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
@@ -902,6 +936,7 @@ async def generation_paper_pdf(
         db, kb, resolved, blueprint_raw, questions,
         include_answer_key=include_answer_key, show_marks=show_marks,
         institute_name=None, set_label=set_label,
+        logo_placement=logo_placement, candidate_line=candidate_line,
     )
 
 

@@ -171,6 +171,12 @@ export const ReviewBoard = ({
                             </div>
                         )}
 
+                        {meta.diagram_missing && (
+                            <p className="ml-8 flex items-start gap-1.5 text-caption text-warning-700">
+                                <WarningCircle className="mt-0.5 size-3.5 shrink-0" />
+                                {t('diagramMissing', { description: meta.diagram_missing })}
+                            </p>
+                        )}
                         {issues.length > 0 && (
                             <ul className="ml-8 flex flex-col gap-0.5">
                                 {issues.map((issue, ii) => (

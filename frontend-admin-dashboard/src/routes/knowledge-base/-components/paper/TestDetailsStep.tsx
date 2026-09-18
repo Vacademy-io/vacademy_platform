@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { MyInput } from '@/components/design-system/input';
+import { Switch } from '@/components/ui/switch';
+import { InstructionsEditor } from './InstructionsEditor';
 import {
     Select,
     SelectContent,
@@ -139,6 +141,25 @@ export const TestDetailsStep = ({
                 className="w-full sm:w-full"
                 disabled={disabled}
             />
+
+            <InstructionsEditor
+                value={value.instructions ?? []}
+                onChange={(instructions) => onChange({ ...value, instructions })}
+                disabled={disabled}
+            />
+
+            <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-neutral-200 p-3">
+                <span className="flex flex-col gap-0.5">
+                    <span className="text-subtitle text-neutral-700">{t('diagrams.label')}</span>
+                    <span className="text-caption text-neutral-500">{t('diagrams.help')}</span>
+                </span>
+                <Switch
+                    checked={Boolean(value.generate_diagrams)}
+                    onCheckedChange={(on) => onChange({ ...value, generate_diagrams: on })}
+                    disabled={disabled}
+                    aria-label={t('diagrams.label')}
+                />
+            </label>
         </div>
     );
 };

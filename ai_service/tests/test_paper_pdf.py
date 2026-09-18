@@ -129,6 +129,7 @@ def test_letterhead_has_logo_and_contact_and_footer_names_institute():
         institute_name="Oriental Group Of Institution",
         logo_url="https://cdn.example.com/logo.png",
         contact_line="www.oriental.edu · info@oriental.edu",
+        logo_placement="header",
     )
     assert 'class="logo" src="https://cdn.example.com/logo.png"' in html
     assert "www.oriental.edu · info@oriental.edu" in html
@@ -147,3 +148,26 @@ def test_publish_variant_and_subtitle():
     assert paper_publish.paper_subtitle({"curriculum": {"board": "NCERT", "class": "10", "subject": "Science"}}) \
         == "Class 10 · Science · NCERT"
     assert paper_publish.paper_subtitle({"curriculum": None}) is None
+
+
+def test_logo_is_a_watermark_by_default_and_name_line_is_off():
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)],
+        institute_name="Oriental Group Of Institution",
+        logo_url="https://cdn.example.com/logo.png",
+    )
+    assert 'class="watermark" style="background-image:url(https://cdn.example.com/logo.png)"' in html
+    assert 'class="logo"' not in html                    # not in the header
+    assert "Roll No.:" not in html                        # candidate line off
+    assert html.index("ORIENTAL GROUP OF INSTITUTION".title()) < html.index("Time Allowed")
+    # The letterhead and the name line come back on request.
+    header = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)], institute_name="X", logo_url="https://cdn.example.com/logo.png",
+        logo_placement="header", candidate_line=True,
+    )
+    assert 'class="logo" src="https://cdn.example.com/logo.png"' in header
+    assert 'class="watermark"' not in header
+    assert "Roll No.:" in header
+    assert 'class="watermark"' not in paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)], logo_url="https://x/l.png", logo_placement="none"
+    )

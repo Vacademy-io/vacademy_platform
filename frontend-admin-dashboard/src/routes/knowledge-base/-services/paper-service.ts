@@ -68,7 +68,7 @@ export const buildBlueprint = async (
 
 export const startGeneration = async (
     kbId: string,
-    payload: { blueprint: Blueprint; grade?: string }
+    payload: { blueprint: Blueprint; grade?: string; generate_diagrams?: boolean }
 ): Promise<{ task_id: string; planned: number; generation_id: string | null }> => {
     const { data } = await authenticatedAxiosInstance.post<{
         task_id: string;

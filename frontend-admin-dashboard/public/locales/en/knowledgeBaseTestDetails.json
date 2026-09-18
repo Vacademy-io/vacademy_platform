@@ -31,5 +31,14 @@
     "examStyle": {
         "label": "Follow a pattern (optional)",
         "placeholder": "e.g. CBSE board pattern"
+    },
+    "instructions": {
+        "label": "General instructions",
+        "reset": "Use defaults",
+        "help": "One instruction per line, printed as (i), (ii)… under the marks strip. Edit freely."
+    },
+    "diagrams": {
+        "label": "Generate diagrams where a question needs one",
+        "help": "Diagrams from the book are always used. Turn this on to also draw a labelled figure for questions that need one the book does not have — about a minute per figure, billed per image. Review every drawn figure before printing."
     }
 }

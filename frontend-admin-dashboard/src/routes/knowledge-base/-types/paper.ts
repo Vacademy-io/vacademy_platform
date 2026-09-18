@@ -84,6 +84,10 @@ export interface PaperSpec {
     type_plan?: Array<Omit<TypePlanEntry, 'key'>>;
     /** Share of questions per chapter/topic id, in percent. Guidance only. */
     weightage?: Record<string, number>;
+    /** The teacher's own "General Instructions" lines; replace the planner's. */
+    instructions?: string[];
+    /** Draw a figure for questions that need one and the book lacks (slow, billed per image). */
+    generate_diagrams?: boolean;
 }
 
 export interface CreditEstimate {
@@ -116,6 +120,12 @@ export interface PaperQuestion {
     question_response_type?: string | null;
     access_level?: string | null;
     auto_evaluation_json?: string | null;
+    /**
+     * The paper's marking scheme as the AI evaluator's rubric
+     * ({max_marks, rubric:[…]}). Passed through untouched on save so a
+     * Manual Upload Exam is checked against the scheme the teacher reviewed.
+     */
+    evaluation_criteria_json?: string | null;
     options?: Array<{
         preview_id?: string | null;
         text?: RichText | null;
@@ -151,7 +161,11 @@ export interface RawPaperQuestion {
         topic?: string;
         marks?: number;
         source_page?: number;
-        figures?: Array<{ image_url: string; page_number: number | null }>;
+        figures?: Array<{ image_url: string; page_number: number | null; generated?: boolean }>;
+        /** The writer asked for a figure and it was drawn (description). */
+        diagram_generated?: string;
+        /** The writer asked for a figure and none could be drawn (description). */
+        diagram_missing?: string;
     };
 }
 

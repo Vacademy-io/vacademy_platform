@@ -441,6 +441,12 @@ async def build_blueprint(
         apply_type_plan(blueprint, spec["type_plan"], selected_node_ids or sorted(valid_ids))
     if (spec.get("title") or "").strip():
         blueprint.title = str(spec["title"]).strip()
+    if spec.get("instructions"):
+        # The teacher's own instruction lines replace the model's: what is
+        # printed under "General Instructions" is theirs to decide.
+        blueprint.instructions = [
+            str(line).strip() for line in spec["instructions"] if str(line or "").strip()
+        ]
     if spec.get("duration_minutes"):
         blueprint.duration_minutes = int(spec["duration_minutes"])
     if spec.get("language"):
@@ -650,12 +656,18 @@ Return STRICT JSON, no prose, no markdown fence:
       "level": "{row.difficulty.lower()}",
       "tags": ["concept names this tests"],
       "source_passage": "P1",
-      "source_page": 14
+      "source_page": 14,
+      "diagram_needed": null
     }}
   ]
 }}
 
 RULES THAT MATTER:
+- "diagram_needed": normally null. Only when the question CANNOT be answered
+  without a figure and no DIAGRAMS AVAILABLE tag fits, describe in one line the
+  simple labelled diagram to draw (e.g. "a series circuit with a 6 V cell, two
+  resistors R1 = 2 Ω and R2 = 4 Ω, and an ammeter"). It is drawn separately, so
+  the question text must still read correctly on its own.
 - "marking_steps" is what a teacher marks from: at most 6 short steps, each one
   line. NEVER put your reasoning in it. No "Let's re-examine", no "However, the
   provided solution…", no discussion of whether the source is ambiguous, no
@@ -685,6 +697,7 @@ class GeneratedPaper:
     model: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
     per_row: Dict[str, int] = field(default_factory=dict)           # row id → delivered count
+    diagrams_drawn: int = 0                                          # billed per image
 
 
 # Openers that mark the model thinking out loud rather than explaining an answer.
@@ -785,6 +798,89 @@ def _substitute_figures(
     return re.sub(r"\[(FIG\d+)\]", repl, content or "")
 
 
+# A drawn diagram is ~70 s of an image model; six is a paper's worth and a
+# bounded wait. The rest keep their description in kb_meta for a teacher to
+# supply by hand.
+MAX_DIAGRAMS_PER_PAPER = 6
+_DIAGRAM_SEMAPHORE = asyncio.Semaphore(2)
+_DIAGRAM_TIMEOUT_S = 150
+
+
+async def _draw_diagram(description: str) -> Optional[str]:
+    """One exam-style figure for a question, as a public S3 URL (None on failure).
+
+    Same route as document illustrations (ImageGenerationService → OpenRouter
+    image model → S3), with an exam-figure style: black line art, labelled,
+    nothing decorative — the way a printed paper draws a circuit or a ray
+    diagram.
+    """
+    from ...config import get_settings
+    from ..image_service import ImageGenerationService
+    from ..s3_service import S3Service
+
+    settings = get_settings()
+    key = getattr(settings, "openrouter_api_key", None)
+    if not key:
+        return None
+    prompt = (
+        f"A clean black-and-white line diagram for a school exam question: {description}. "
+        "Textbook figure style: thin black lines on a white background, clear labels in "
+        "plain sans-serif, no colour fill, no shading, no decoration, no extra text, "
+        "no watermark."
+    )
+    svc = ImageGenerationService(openrouter_api_key=key)
+    try:
+        async with _DIAGRAM_SEMAPHORE:
+            image_bytes, _usage = await asyncio.wait_for(
+                svc._call_image_generation_llm(prompt, 1024, 768),
+                timeout=_DIAGRAM_TIMEOUT_S,
+            )
+        if not image_bytes:
+            return None
+        import secrets
+
+        return await asyncio.to_thread(
+            S3Service().upload_file_content,
+            image_bytes,
+            "diagram.png",
+            s3_key=f"kb-papers/diagrams/{secrets.token_urlsafe(12)}.png",
+            content_type="image/png",
+        )
+    except Exception:  # noqa: BLE001 — a missing figure is a review-board note, not a failed paper
+        logger.warning("Diagram generation failed for %r", description[:80], exc_info=True)
+        return None
+
+
+async def attach_generated_diagrams(questions: List[Dict[str, Any]]) -> int:
+    """Draw the diagrams the writer asked for and place them under the question
+    text. Returns how many were drawn (what gets billed)."""
+    wanted = [
+        q for q in questions
+        if str(q.get("diagram_needed") or "").strip()
+        and "<img" not in ((q.get("question") or {}).get("content") or "")
+    ][:MAX_DIAGRAMS_PER_PAPER]
+    if not wanted:
+        return 0
+    urls = await asyncio.gather(*(_draw_diagram(str(q["diagram_needed"])) for q in wanted))
+    drawn = 0
+    for q, url in zip(wanted, urls):
+        meta = q.setdefault("kb_meta", {})
+        if not url:
+            meta["diagram_missing"] = str(q["diagram_needed"])
+            continue
+        content = (q.get("question") or {}).get("content") or ""
+        import html as _html
+
+        q["question"]["content"] = (
+            f'{content}<p><img src="{_html.escape(url, quote=True)}" '
+            f'alt="{_html.escape(str(q["diagram_needed"])[:120], quote=True)}"></p>'
+        )
+        meta.setdefault("figures", []).append({"image_url": url, "page_number": None, "generated": True})
+        meta["diagram_generated"] = str(q["diagram_needed"])
+        drawn += 1
+    return drawn
+
+
 async def generate_questions(
     db: Session,
     *,
@@ -792,6 +888,7 @@ async def generate_questions(
     institute_id: str,
     blueprint: Blueprint,
     grade: Optional[str] = None,
+    generate_diagrams: bool = False,
 ) -> GeneratedPaper:
     """Generate every question in a blueprint, row by row, in bounded parallel.
 
@@ -980,6 +1077,9 @@ async def generate_questions(
         len(result.questions), blueprint.total_questions, len(blueprint.rows),
         result.prompt_tokens, result.completion_tokens,
     )
+    if generate_diagrams and result.questions:
+        result.diagrams_drawn = await attach_generated_diagrams(result.questions)
+
     return result
 
 
@@ -1142,6 +1242,12 @@ def _provenance(
         "kb_id": kb_id,
         "generation_id": generation_id,
         "row_id": meta.get("row_id"),
+        # The marks and section the paper printed for this question. The
+        # assessment builder pre-fills per-question marks from these on import,
+        # so a mixed paper (1-mark MCQs, 3-mark short answers) is not flattened
+        # to one section default — which would also mis-set the AI checker's
+        # maximum for every question.
+        "marks": meta.get("marks"),
         "section": meta.get("section"),
         "topic": meta.get("topic"),
         "node_ids": meta.get("node_ids") or [],
@@ -1149,6 +1255,59 @@ def _provenance(
         "source_page": meta.get("source_page") or raw.get("source_page"),
         "figures": meta.get("figures") or [],
         "planned_type": meta.get("planned_type"),
+    }
+
+
+def marking_rubric(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """The paper's marking scheme in the shape the AI evaluator grades against.
+
+    assessment_service's evaluator (AiEvaluationAsyncService) reads
+    `evaluation_criteria_json` — {max_marks, rubric:[{criteria_name, max_marks,
+    keywords, evaluation_guidelines}]} — and, when it is empty, invents a rubric
+    from the question text alone. A generated paper already has the scheme the
+    teacher reviewed (`marking_steps`), so it is handed over as the rubric:
+    what the answer key prints is what the checker marks against.
+    """
+    meta = raw.get("kb_meta") or {}
+    try:
+        max_marks = float(meta.get("marks") or 1)
+    except (TypeError, ValueError):
+        max_marks = 1.0
+    steps = [str(s).strip() for s in (raw.get("marking_steps") or []) if str(s or "").strip()]
+    tags = [str(t) for t in (raw.get("tags") or []) if str(t or "").strip()]
+    qtype = str(raw.get("question_type") or "").upper()
+    if qtype in OPTION_QUESTION_TYPES or qtype in ("ONE_WORD", "TRUE_FALSE") or not steps:
+        rubric = [{
+            "criteria_name": "Correct answer",
+            "max_marks": max_marks,
+            "keywords": tags,
+            "evaluation_guidelines": (
+                "Full marks for the correct answer as given in the answer key; "
+                "no partial marks." if not steps else " ".join(steps)
+            ),
+        }]
+    else:
+        # Equal split with the remainder on the final step (the answer), so the
+        # rubric always sums to exactly the question's marks.
+        share = round(max_marks / len(steps), 2)
+        rubric = [
+            {
+                "criteria_name": f"Step {i + 1}",
+                "max_marks": share if i < len(steps) - 1 else round(max_marks - share * (len(steps) - 1), 2),
+                "keywords": tags if i == len(steps) - 1 else [],
+                "evaluation_guidelines": step,
+            }
+            for i, step in enumerate(steps)
+        ]
+    return {
+        "max_marks": max_marks,
+        "partial_marking_enabled": len(rubric) > 1,
+        "evaluation_instructions": (
+            "Mark step-wise against the scheme below. Award a step's marks when the "
+            "student's working shows it, in any equivalent form; do not penalise a "
+            "correct method for a slip that was carried forward."
+        ),
+        "rubric": rubric,
     }
 
 
@@ -1189,6 +1348,9 @@ def pair_with_formatted(
             question["source_meta"] = json.dumps(
                 _provenance(raw, kb_id, generation_id), ensure_ascii=False
             )
+            question["evaluation_criteria_json"] = json.dumps(
+                marking_rubric(raw), ensure_ascii=False
+            )
             raw_kept.append(raw)
             formatted.append(question)
         else:
@@ -1207,6 +1369,7 @@ def pair_with_formatted(
 __all__ = [
     "Blueprint", "BlueprintRow", "GeneratedPaper", "PaperIssue",
     "build_blueprint", "generate_questions", "validate_paper", "pair_with_formatted",
+    "marking_rubric",
     "MAX_QUESTIONS_PER_PAPER", "QUESTION_TYPES", "OPTION_QUESTION_TYPES",
     "STORAGE_QUESTION_TYPE",
 ]

@@ -11,6 +11,7 @@ import {
     Coins,
     FloppyDisk,
     ListChecks,
+    NotePencil,
     PaperPlaneTilt,
     Sparkle,
     Spinner,
@@ -39,6 +40,8 @@ import {
 } from '../-services/paper-service';
 import { BlueprintTable } from '../-components/paper/BlueprintTable';
 import { EditQuestionDialog } from '../-components/paper/EditQuestionDialog';
+import { DEFAULT_INSTRUCTIONS, InstructionsEditor } from '../-components/paper/InstructionsEditor';
+import { MyDialog } from '@/components/design-system/dialog';
 import { PaperDownloadMenu } from '../-components/paper/PaperDownloadMenu';
 import {
     QuestionTypesStep,
@@ -108,7 +111,10 @@ function PaperBuilderPage() {
         grade: '',
         language: 'English',
         title: '',
+        instructions: [...DEFAULT_INSTRUCTIONS],
+        generate_diagrams: false,
     });
+    const [instructionsOpen, setInstructionsOpen] = useState(false);
 
     const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
     const [estimate, setEstimate] = useState<CreditEstimate | null>(null);
@@ -210,6 +216,11 @@ function PaperBuilderPage() {
                         grade: spec.grade?.trim() || undefined,
                         exam_style: spec.exam_style?.trim() || undefined,
                         total_questions: totals.questions || undefined,
+                        instructions: (spec.instructions ?? [])
+                            .map((l) => l.trim())
+                            .filter(Boolean),
+                        // FE-only switch; it rides the generate call, not the plan.
+                        generate_diagrams: undefined,
                         type_plan: typePlan.length ? toSpecTypePlan(typePlan) : undefined,
                         weightage: Object.keys(selectedWeightage).length
                             ? selectedWeightage
@@ -251,6 +262,7 @@ function PaperBuilderPage() {
             const { task_id } = await startGeneration(kbId, {
                 blueprint: plannedBlueprint,
                 grade: spec.grade || undefined,
+                generate_diagrams: Boolean(spec.generate_diagrams),
             });
             setTaskId(task_id);
             // A fresh run supersedes whatever we resumed from.
@@ -396,7 +408,10 @@ function PaperBuilderPage() {
     };
 
     // ---- Save -------------------------------------------------------------
-    const save = async () => {
+    // `next` = where to go once the paper is in the bank: the list, or straight
+    // into creating a Manual Upload Exam (students download the paper, solve
+    // offline, upload their answer sheet; teachers or AI check it).
+    const save = async (next: 'list' | 'offline-test' = 'list') => {
         if (!result || !blueprint) return;
         setSaving(true);
         try {
@@ -412,7 +427,15 @@ function PaperBuilderPage() {
                 );
             }
             toast.success(t('toasts.savedToQuestionBank'));
-            navigate({ to: '/assessment/question-papers' });
+            if (next === 'offline-test') {
+                navigate({
+                    to: '/assessment/create-assessment/$assessmentId/$examtype',
+                    params: { assessmentId: 'defaultId', examtype: 'MANUAL_UPLOAD_EXAM' },
+                    search: { currentStep: 0 },
+                });
+            } else {
+                navigate({ to: '/assessment/question-papers' });
+            }
         } catch (error) {
             toast.error(errorMessage(t, error, t('errors.saveFailed')));
         } finally {
@@ -872,6 +895,15 @@ function PaperBuilderPage() {
                                 </p>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => setInstructionsOpen(true)}
+                                    disable={saving}
+                                >
+                                    <NotePencil className="mr-1 size-4" />
+                                    {t('review.editInstructions')}
+                                </MyButton>
                                 {/* The sheet a teacher hands out — available before
                                     saving, since most papers are printed, not
                                     delivered online. Sends the on-screen questions
@@ -896,9 +928,17 @@ function PaperBuilderPage() {
                                     }
                                 />
                                 <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => void save('offline-test')}
+                                    disable={saving || result.questions.length === 0}
+                                >
+                                    {t('review.createOfflineTest')}
+                                </MyButton>
+                                <MyButton
                                     buttonType="primary"
                                     scale="medium"
-                                    onClick={save}
+                                    onClick={() => void save('list')}
                                     disable={saving || result.questions.length === 0}
                                 >
                                     <FloppyDisk className="mr-1 size-4" />
@@ -934,6 +974,30 @@ function PaperBuilderPage() {
                             onDelete={(index) => void deleteQuestion(index)}
                             onMove={moveQuestion}
                         />
+
+                        <MyDialog
+                            heading={t('review.editInstructions')}
+                            open={instructionsOpen}
+                            onOpenChange={setInstructionsOpen}
+                            dialogWidth="max-w-xl"
+                        >
+                            <div className="flex flex-col gap-3 p-6">
+                                <InstructionsEditor
+                                    value={blueprint.instructions ?? []}
+                                    onChange={(instructions) =>
+                                        setBlueprint({ ...blueprint, instructions })
+                                    }
+                                />
+                                <MyButton
+                                    buttonType="primary"
+                                    scale="medium"
+                                    className="self-end"
+                                    onClick={() => setInstructionsOpen(false)}
+                                >
+                                    {t('review.done')}
+                                </MyButton>
+                            </div>
+                        </MyDialog>
 
                         <EditQuestionDialog
                             open={editIndex !== null}

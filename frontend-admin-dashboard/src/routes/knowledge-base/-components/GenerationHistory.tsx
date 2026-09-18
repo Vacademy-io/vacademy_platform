@@ -22,9 +22,11 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     deleteGeneration,
-    downloadGenerationPdf,
+    fetchGenerationPdf,
     listGenerations,
+    publishGenerationLink,
 } from '../-services/paper-service';
+import type { PaperPdfOptions } from '../-services/paper-service';
 import { PaperDownloadMenu } from './paper/PaperDownloadMenu';
 import type { ArtifactType, GenerationStatus, KbGeneration } from '../-types/paper';
 
@@ -109,6 +111,21 @@ export const GenerationHistory = ({ kbId, refreshKey = 0 }: GenerationHistoryPro
         }, 5000);
         return () => clearTimeout(handle);
     }, [rows, kbId]);
+
+    // Publish a variant and keep the row current, so reopening the share
+    // dialog shows the link instead of minting another.
+    const publish = async (row: KbGeneration, options: PaperPdfOptions) => {
+        const link = await publishGenerationLink(row.id, options);
+        setRows(
+            (prev) =>
+                prev?.map((r) =>
+                    r.id === row.id
+                        ? { ...r, published: { ...(r.published ?? {}), [link.variant]: link } }
+                        : r
+                ) ?? null
+        );
+        return link;
+    };
 
     const remove = async (row: KbGeneration) => {
         setBusyId(row.id);
@@ -228,9 +245,10 @@ export const GenerationHistory = ({ kbId, refreshKey = 0 }: GenerationHistoryPro
                                         scale="small"
                                         buttonType="text"
                                         disabled={busyId === row.id}
-                                        onDownload={(options) =>
-                                            downloadGenerationPdf(row.id, options)
-                                        }
+                                        title={row.title}
+                                        published={row.published}
+                                        fetchPdf={(options) => fetchGenerationPdf(row.id, options)}
+                                        onPublish={(options) => publish(row, options)}
                                     />
                                 )}
                             {row.status === 'SAVED' && (

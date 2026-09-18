@@ -121,3 +121,29 @@ def test_filename_is_a_safe_slug():
     assert paper_pdf.paper_filename("Class 10: Science / Unit Test", with_key=True) == \
         "Class-10-Science-Unit-Test-with-answer-key.pdf"
     assert paper_pdf.paper_filename("", with_key=False) == "question-paper.pdf"
+
+
+def test_letterhead_has_logo_and_contact_and_footer_names_institute():
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)],
+        institute_name="Oriental Group Of Institution",
+        logo_url="https://cdn.example.com/logo.png",
+        contact_line="www.oriental.edu · info@oriental.edu",
+    )
+    assert 'class="logo" src="https://cdn.example.com/logo.png"' in html
+    assert "www.oriental.edu · info@oriental.edu" in html
+    assert 'class="brand"' in html            # logo + text side by side
+    assert 'class="rule"' in html
+    # No logo → the name is centred on its own; no brand block without either.
+    assert 'class="brand centered"' in paper_pdf.build_paper_html(_blueprint(), [_mcq(1)], institute_name="X")
+    assert 'class="brand' not in paper_pdf.build_paper_html(_blueprint(), [_mcq(1)])
+
+
+def test_publish_variant_and_subtitle():
+    from app.services.kb import paper_publish
+
+    assert paper_publish.variant_for(True) == "with_answer_key"
+    assert paper_publish.variant_for(False) == "question_paper"
+    assert paper_publish.paper_subtitle({"curriculum": {"board": "NCERT", "class": "10", "subject": "Science"}}) \
+        == "Class 10 · Science · NCERT"
+    assert paper_publish.paper_subtitle({"curriculum": None}) is None

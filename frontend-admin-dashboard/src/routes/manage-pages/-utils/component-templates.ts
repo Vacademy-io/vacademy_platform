@@ -77,7 +77,11 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         props: {
             title: t('courseCatalog.title'),
             showFilters: true,
-            filtersConfig: [{ id: 'level', label: t('courseCatalog.filterLevelLabel'), type: 'checkbox', field: 'level_name' }],
+            filtersConfig: [
+                { id: 'level', type: 'checkbox', field: 'level_name' },
+                { id: 'session', type: 'checkbox', field: 'session_name' },
+                { id: 'tags', type: 'checkbox', field: 'comma_separeted_tags' },
+            ],
             render: {
                 layout: 'grid',
                 cardFields: ['package_name', 'course_preview_image_media_id', 'price'],

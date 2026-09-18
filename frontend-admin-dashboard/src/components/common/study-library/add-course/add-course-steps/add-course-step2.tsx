@@ -426,7 +426,10 @@ export const AddCourseStep2 = ({
 
     // Add state to track used existing batches
     const [usedExistingBatchIds, setUsedExistingBatchIds] = useState<Set<string>>(new Set());
-    const [showAdvanced, setShowAdvanced] = useState(false);
+    // Collapsed on create, where the basics matter first. Open when editing:
+    // Add Authors lives in here, and an admin who comes back to assign an
+    // author or fill a subtitle/description otherwise finds nothing on screen.
+    const [showAdvanced, setShowAdvanced] = useState(Boolean(isEdit));
 
     const allowAdvancedSettings = courseCreationDisplay?.showAdvancedSettings !== false;
     const limitLevelsToOne = courseCreationDisplay?.limitToSingleLevel === true;
@@ -3320,6 +3323,19 @@ export const AddCourseStep2 = ({
                                                             existingMembers={instructors}
                                                         />
                                                     )}
+
+                                                    {/* No assignment yet: say so, because the public
+                                                        catalogue meanwhile shows the course creator as a
+                                                        fallback and the two can look contradictory. */}
+                                                    {isEdit &&
+                                                        (!selectedInstructors ||
+                                                            selectedInstructors.length === 0) && (
+                                                            <p className="text-sm text-gray-600">
+                                                                No authors assigned yet. Select one below to
+                                                                add a subtitle and description; until then the
+                                                                catalogue shows the course creator.
+                                                            </p>
+                                                        )}
 
                                                     <div className="flex flex-col gap-4">
                                                         <MultiSelectDropdown

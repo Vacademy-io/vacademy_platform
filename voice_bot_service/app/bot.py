@@ -236,6 +236,7 @@ class TranscriptCollector(FrameProcessor):
         self._resume_max_chars = resume_max_chars
         self._vad_started_t = 0.0
         self._resumed_t = 0.0
+        self._reran_for = ""
         # True only while an operator/voicemail recording is still plausible.
         # This was a LATCH ("have we heard a real caller yet?") and the latch is
         # what broke on call 14029bd6: Sarvam rendered "…after the tone" as the
@@ -363,7 +364,7 @@ class TranscriptCollector(FrameProcessor):
             if isinstance(frame, VADUserStartedSpeakingFrame):
                 self._vad_started_t = time.time()
                 self._set_user_speaking(True)
-            elif self._resume_on_stop_secs > 0 and self._vad_started_t:
+            elif self._resume_on_stop_secs > 0 and self._vad_started_t:  # noqa: SIM102
                 # Their voice has stopped and it was SHORT, and we were cut
                 # before finishing a question — so they cannot have been
                 # answering one. Resume now instead of waiting out the STT
@@ -371,10 +372,18 @@ class TranscriptCollector(FrameProcessor):
                 # turn out to be a real turn, its final interrupts us exactly
                 # as any barge-in does.
                 _voice = time.time() - self._vad_started_t
-                if (_voice <= self._resume_on_stop_secs and not self._is_bot_speaking()
-                        and not self._played_tail_is_question()):
-                    await self._resume_cut_words(
-                        direction, "%.1fs of voice over our reply" % _voice)
+                if _voice <= self._resume_on_stop_secs and not self._is_bot_speaking():
+                    if (not self._played_tail_is_question()
+                            and await self._resume_cut_words(
+                                direction, "%.1fs of voice over our reply" % _voice)):
+                        pass
+                    else:
+                        # Nothing played yet to resume: the noise cancelled the
+                        # reply while the model was still writing it, so their
+                        # turn has no answer at all. Call 3b5fb592: a 0.02 s
+                        # blip killed the answer to "मैं बच्चे का पिता बोल रहा हूँ"
+                        # and the caller waited 6 s for an apology instead.
+                        await self._answer_never_arrived(direction, _voice)
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._set_user_speaking(False)
             self._on_activity(user=True)  # give them thinking time from speech END
@@ -914,6 +923,29 @@ class TranscriptCollector(FrameProcessor):
                 return "?" in (entry.get("text") or "") or "？" in (entry.get("text") or "")
         return True
 
+    async def _answer_never_arrived(self, direction, voice: float) -> bool:
+        """Their turn was answered by a generation that a noise cancelled before
+        one word of it played. Ask for that answer again — not for them to
+        repeat themselves, which is what the orphan re-ask used to do."""
+        t = self._outcome.transcript
+        if not t or t[-1].get("role") != "user":
+            return False                       # the last thing heard was ours
+        said = (t[-1].get("text") or "").strip()
+        if len(said.split()) < 2 or said.startswith("["):
+            return False                       # a scrap, not a turn owed an answer
+        if self._reran_for == said:
+            return False                       # once per turn
+        self._reran_for = said
+        logger.info("turn-gate: %.2fs of noise killed the reply before they heard any of it "
+                    "— asking for it again (their turn: %r)", voice, said[:40])
+        await self.push_frame(LLMMessagesAppendFrame(
+            messages=[{"role": "user", "content":
+                       "[A noise on the line cut your reply off before they heard a single "
+                       "word of it. Say that reply now, in one or two short sentences. Do "
+                       "not apologise, and do not ask them to repeat anything.]"}],
+            run_llm=True), direction)
+        return True
+
     async def _resume_cut_words(self, direction, why: str) -> bool:
         """Say the exact words the caller did not hear, with no model in the
         loop. Call 1e374b99 (2026-09-17): a "हम्म" over a reply cost a full LLM
@@ -933,7 +965,40 @@ class TranscriptCollector(FrameProcessor):
         logger.info("turn-gate: %s — resuming the %d unheard words verbatim: %r",
                     why, len(tail.split()), tail[:60])
         await self.push_frame(TTSSpeakFrame(tail, append_to_context=True), direction)
+        # VERIFY IT WAS ACTUALLY SPOKEN. pipecat tears the TTS websocket down on
+        # every interruption (call 3b5fb592, 2026-09-18: "Disconnecting from
+        # Smallest TTS" 0.2 s before this push, and the frame never reached
+        # run_tts at all — the caller heard nothing and then got an apology).
+        # A frame handed to a reconnecting vendor is lost silently, so check the
+        # played transcript and say it once more if it never arrived.
+        try:
+            self.create_task(self._speak_again_if_lost(tail, direction))
+        except Exception:
+            # No task manager (a bare unit harness, or teardown): the words were
+            # still pushed — only the did-it-play check is skipped.
+            logger.debug("turn-gate: no task manager for the resume re-check")
         return True
+
+    async def _speak_again_if_lost(self, text: str, direction, wait: float = 1.2):
+        try:
+            await asyncio.sleep(wait)
+            if self._is_bot_speaking():
+                return
+            key = spoken_key(text)[:60]
+            played = spoken_key(" ".join(e.get("text") or "" for e in self._outcome.transcript[-4:]
+                                         if e.get("role") == "assistant"))
+            if key and key in played:
+                return
+            logger.warning("turn-gate: the resumed words never reached the line "
+                           "(the vendor socket was reconnecting) — saying them again")
+            if self._diag is not None:
+                self._diag.bump("resume_respoken")
+            self._resumed_t = time.time()
+            await self.push_frame(TTSSpeakFrame(text, append_to_context=True), direction)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("turn-gate: resume re-check failed")
 
     def _heard_tail(self, words: int = 12) -> str:
         """The last words of what the caller actually heard (played transcript)."""
@@ -3847,13 +3912,25 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             _dur = time.time() - (flags["user_started_t"] or time.time())
             if _dur > diag.longest_user_secs:
                 diag.longest_user_secs = _dur
-            if _dur >= 4.0 and flags["transcript_t"] < flags["user_started_t"]:
-                # The aggregator gave up on this turn (5 s stop timeout) and no
-                # words ever came: they spoke, we heard nothing. Arms the
-                # orphan re-ask even when the VAD only caught blips.
+            # ACOUSTIC length, not `_dur`: when no transcript arrives the
+            # aggregator always closes the turn on its 5 s stop-timeout, so
+            # `_dur >= 4.0` was true for EVERY transcript-less turn — including
+            # a 0.02 s blip. Call 3b5fb592 (2026-09-18): two blips (0.02 s and
+            # 0.22 s) each armed this, so the bot twice told a caller who had
+            # said nothing "माफ़ कीजिए, आवाज़ कट गई — क्या आप दोबारा बोल सकते हैं?",
+            # and the second one also demoted Sarvam to the fallback STT. The
+            # VAD ticks say how long they REALLY spoke.
+            _voice = flags["voice_tick_t"] - flags["user_started_t"]
+            if (_dur >= 4.0 and _voice >= settings.orphan_min_utterance_secs
+                    and flags["transcript_t"] < flags["user_started_t"]):
+                # They spoke for a real span, the aggregator gave up on the turn
+                # and no words ever came: we did not hear them.
                 flags["unheard_turn_t"] = time.time()
-                logger.info("turn closed after %.1fs with no transcript — orphan re-ask armed "
-                            "corr=%s", _dur, corr)
+                logger.info("turn closed after %.1fs with no transcript (%.1fs of voice) — "
+                            "orphan re-ask armed corr=%s", _dur, _voice, corr)
+            elif _dur >= 4.0 and flags["transcript_t"] < flags["user_started_t"]:
+                logger.info("turn closed with no transcript after only %.2fs of voice — "
+                            "a blip, not an unheard turn corr=%s", max(_voice, 0.0), corr)
         flags["user_speaking"] = speaking
         if speaking:
             flags["user_started_t"] = time.time()

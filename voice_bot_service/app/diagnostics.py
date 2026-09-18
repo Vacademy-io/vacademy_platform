@@ -226,6 +226,10 @@ class CallDiagnostics:
     # resumed inside the grace — the whole turn was answered once instead
     # (bot.RunGuard, 2026-09-15). The fix working, not a fault.
     short_answer_holds: int = 0
+    # Resumed words that had to be sent to the TTS twice because the first
+    # frame was swallowed by the vendor socket reconnecting after the
+    # interruption (call 3b5fb592). Evidence, not a fault.
+    resume_respoken: int = 0
     # From the PLAYED transcript at report time (report._played_invariants):
     # the opening said again after a substantive caller turn; 5+-word
     # sentences played twice without a caller "hello?"/"say again" between.
@@ -907,6 +911,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "unsaidReverted": d.unsaid_reverted,
                 "emptyRunsBlocked": d.empty_runs_blocked,
                 "shortAnswerHolds": d.short_answer_holds,
+                "resumeRespoken": d.resume_respoken,
                 "openingReplays": d.opening_replays,
                 "repeatedLines": d.repeated_lines,
                 "repeatedLineSamples": d.repeated_line_samples[:3],

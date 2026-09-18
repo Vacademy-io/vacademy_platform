@@ -902,8 +902,31 @@ const EnrollByInvite = ({
           sourceId: inviteData?.id,
         });
       } catch (error) {
+        const errorData = (
+          error as {
+            response?: { data?: { ex?: string; responseCode?: string } };
+          }
+        )?.response?.data;
+
+        // A repeated phone-identifier submission is an enrollment conflict, not an
+        // abandoned-cart telemetry failure. Stop before the checkout step and
+        // show the same conflict UI used by the enrollment endpoint.
+        if (errorData?.responseCode?.includes("ENROLLMENT_CONFLICT:")) {
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errorData?.ex,
+            errorData?.responseCode,
+          );
+          if (!dialogOpened) {
+            toast.error(errorData?.ex || t("errors.enrollmentFailed"));
+          }
+          setError(errorData?.ex || t("errors.enrollmentFailed"));
+          return;
+        }
+
         console.error("Form submission failed (non-blocking):", error);
-        // We do not block the user; they can proceed to payment step without this
+        // Tracking failures remain non-blocking; the authoritative enrollment
+        // endpoint repeats the invite-submission guard before it creates any payment.
       } finally {
         setLoading(false);
       }

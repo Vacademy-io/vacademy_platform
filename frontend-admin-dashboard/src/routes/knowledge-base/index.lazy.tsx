@@ -22,7 +22,7 @@ import { useKnowledgeBases } from './-hooks';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CreateKbDialog } from './-components/CreateKbDialog';
 import { LibraryBrowser } from './-components/library/LibraryBrowser';
-import { curriculumOnly, ownOnly } from './-components/curriculum/curriculum';
+import { ownOnly } from './-components/curriculum/curriculum';
 import type { KnowledgeBase } from './-types';
 
 export const Route = createLazyFileRoute('/knowledge-base/')({
@@ -202,11 +202,7 @@ function KnowledgeBaseListPage() {
     // interruption to what they came here to do.
     const [tab, setTab] = useState<'mine' | 'library'>('mine');
     const { data: allBases, isLoading, isError, refetch } = useKnowledgeBases();
-    // Curriculum textbooks (NCERT…) arrive in the same list but live under the
-    // Library tab, grouped by class — a hundred textbooks would bury the
-    // institute's own bases.
     const bases = useMemo(() => ownOnly(allBases), [allBases]);
-    const curriculum = useMemo(() => curriculumOnly(allBases), [allBases]);
 
     useEffect(() => {
         setNavHeading(t('navHeading'));
@@ -243,7 +239,7 @@ function KnowledgeBaseListPage() {
                 </TabsList>
             </Tabs>
 
-            {tab === 'library' && <LibraryBrowser curriculum={curriculum} />}
+            {tab === 'library' && <LibraryBrowser />}
 
             <div className={tab === 'mine' ? 'flex flex-col gap-5' : 'hidden'}>
                 <div className="flex flex-wrap items-start justify-between gap-3">

@@ -32,35 +32,11 @@ FALLBACK_EMBEDDING_DIM = 768
 # means adding a column (see the V435 header) and one entry here.
 VECTOR_COLUMN_BY_DIM: Dict[int, str] = {768: "embedding_768"}
 
-# The Library is free (decision 2026-09-16): every PUBLISHED platform library
-# — paid-catalogue ones like "STEM in the Secondary School" and the NCERT
-# curriculum books alike — is visible to and usable by every institute, with
-# no unlock and no credits. Entitlement rows remain only so an institute that
-# unlocked a library before it was WITHDRAWN (UNLISTED) keeps using it.
-#
-# Curriculum libraries (V517, collection='CURRICULUM') additionally honour an
-# optional institute setting that NARROWS or HIDES them:
-#   setting_json -> 'setting' -> 'CURRICULUM_LIBRARY_SETTING' -> 'data'
-#   { "enabled": true, "boards": ["NCERT"], "classes": ["11", "12"] }
-# No setting at all  → every curriculum book shows (the default).
-# enabled = false    → none show.
-# enabled = true     → only the listed boards / classes (empty list = no limit).
-# Evaluated here, in the same WHERE clause that scopes everything else, so a
-# book is visible and usable for exactly the same reason.
+# Every PUBLISHED platform library is free for every institute. This includes
+# NCERT and other curriculum books: they are platform-owned library content,
+# not per-institute features or paid catalogue products.
 CURRICULUM_COLLECTION = "CURRICULUM"
-CURRICULUM_SETTING_KEY = "CURRICULUM_LIBRARY_SETTING"
 
-# `:institute_id` must be bound by the caller. Correlated on `kb` (the
-# knowledge_base alias of the enclosing query). institutes.setting_json is TEXT;
-# kb_safe_jsonb (V517) casts it and returns '{}' on malformed input, so one bad
-# settings blob can never 500 that institute's whole knowledge-base list. `?`
-# is the jsonb "array contains this string" operator.
-_CURRICULUM_SETTING_DATA_SQL = f"""
-    (kb_safe_jsonb(ci.setting_json)
-     -> 'setting' -> '{CURRICULUM_SETTING_KEY}' -> 'data')
-"""
-
-# Any PUBLISHED platform library that is NOT a curriculum book: free for all.
 _FREE_LIBRARY_ACCESS_SQL = f"""
     EXISTS (
         SELECT 1
@@ -68,36 +44,6 @@ _FREE_LIBRARY_ACCESS_SQL = f"""
          WHERE fl.knowledge_base_id = kb.id
            AND fl.status = 'PUBLISHED'
            AND kb.owner_type = 'PLATFORM'
-           AND fl.collection IS DISTINCT FROM '{CURRICULUM_COLLECTION}'
-    )
-"""
-
-# A PUBLISHED curriculum book, unless the institute's setting hides or
-# excludes it. LEFT JOIN on institutes: a caller with no institute row (or no
-# setting) sees everything.
-_CURRICULUM_ACCESS_SQL = f"""
-    EXISTS (
-        SELECT 1
-          FROM knowledge_base_listing cl
-          LEFT JOIN institutes ci ON ci.id = :institute_id
-         WHERE cl.knowledge_base_id = kb.id
-           AND cl.status = 'PUBLISHED'
-           AND cl.collection = '{CURRICULUM_COLLECTION}'
-           AND kb.owner_type = 'PLATFORM'
-           AND (
-                 {_CURRICULUM_SETTING_DATA_SQL} IS NULL
-                 OR (
-                      COALESCE({_CURRICULUM_SETTING_DATA_SQL} ->> 'enabled', 'true') IN ('true', '1')
-                      AND (
-                            COALESCE(jsonb_array_length({_CURRICULUM_SETTING_DATA_SQL} -> 'boards'), 0) = 0
-                            OR ({_CURRICULUM_SETTING_DATA_SQL} -> 'boards') ? cl.board
-                          )
-                      AND (
-                            COALESCE(jsonb_array_length({_CURRICULUM_SETTING_DATA_SQL} -> 'classes'), 0) = 0
-                            OR ({_CURRICULUM_SETTING_DATA_SQL} -> 'classes') ? cl.level
-                          )
-                    )
-               )
     )
 """
 
@@ -272,15 +218,13 @@ class KbRepository:
         return self.get_kb(row[0], institute_id)  # type: ignore[return-value]
 
     def list_kbs(self, institute_id: str, include_archived: bool = False) -> List[Dict[str, Any]]:
-        """KBs an institute can USE: its own, every published platform library
-        (the Library is free), curriculum books its setting does not hide, and
-        anything it unlocked before that library was withdrawn.
+        """KBs an institute can USE: its own, every published platform library,
+        and anything it unlocked before that library was withdrawn.
 
         This list feeds the paper builder and the assessment section picker,
         so anything in it is offered as ready to use.
 
-        Curriculum bases sort last and by board → class → subject, which is the
-        order the picker groups them in.
+        Curriculum metadata is retained for grouping in authoring pickers.
         """
         status_clause = "" if include_archived else "AND kb.status = 'ACTIVE'"
         rows = self.db.execute(
@@ -295,7 +239,6 @@ class KbRepository:
                                AND e.institute_id = :institute_id
                         )
                         OR {_FREE_LIBRARY_ACCESS_SQL}
-                        OR {_CURRICULUM_ACCESS_SQL}
                       )
                 {status_clause}
                 ORDER BY (kb.owner_type = 'PLATFORM'),
@@ -374,7 +317,7 @@ class KbRepository:
         if kb["owner_type"] != "PLATFORM":
             return False
         # Published libraries are free; withdrawn ones need the entitlement
-        # their buyers hold; curriculum books honour the institute setting.
+        # their buyers hold.
         # Same SQL fragments as list_kbs, so "it is in my list" and "I may use
         # it" cannot diverge.
         return self.db.execute(
@@ -390,7 +333,6 @@ class KbRepository:
                                AND e.institute_id = :institute_id
                         )
                         OR {_FREE_LIBRARY_ACCESS_SQL}
-                        OR {_CURRICULUM_ACCESS_SQL}
                    )
                  LIMIT 1
                 """

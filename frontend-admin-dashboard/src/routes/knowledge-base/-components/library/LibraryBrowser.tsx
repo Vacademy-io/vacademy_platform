@@ -19,8 +19,6 @@ import type {
     ListingFacets,
 } from '../../-types/library';
 import { LibraryCover } from './LibraryCover';
-import type { KnowledgeBase } from '../../-types';
-import { CurriculumBrowser } from '../curriculum/CurriculumBrowser';
 
 const buildFacetLabels = (t: TFunction): Array<{ key: keyof ListingFacets; label: string }> => [
     { key: 'subject', label: t('facets.subject') },
@@ -101,13 +99,7 @@ const LibraryGridCard = ({ library, onOpen }: { library: LibraryListing; onOpen:
  * knowing what exists, so covers, facets and honest size figures do the work of
  * explaining what each library is before they spend anything on it.
  */
-export const LibraryBrowser = ({
-    curriculum = [],
-}: {
-    /** Curriculum textbooks (NCERT…) the institute can use — shown as their
-     *  own section, grouped by class, above the other libraries. */
-    curriculum?: KnowledgeBase[];
-}) => {
+export const LibraryBrowser = () => {
     const { t } = useTranslation('knowledgeBaseLibraryBrowser');
     const navigate = useNavigate();
     const FACET_LABELS = useMemo(() => buildFacetLabels(t), [t]);
@@ -172,15 +164,6 @@ export const LibraryBrowser = ({
                     </MyButton>
                 )}
             </div>
-
-            {curriculum.length > 0 && (
-                <>
-                    <CurriculumBrowser knowledgeBases={curriculum} />
-                    <p className="pt-2 text-subtitle font-semibold text-neutral-700">
-                        {t('otherLibrariesHeading')}
-                    </p>
-                </>
-            )}
 
             <div className="flex flex-col gap-3">
                 <MyInput

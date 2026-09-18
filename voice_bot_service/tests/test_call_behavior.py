@@ -5017,6 +5017,25 @@ async def test_a_backchannel_after_an_early_resume_says_nothing_more():
     assert any("ठीक है" in c for c in rec.cues()), "the backchannel still reaches the context"
 
 
+def test_tts_probe_sends_what_the_vendor_would_really_get():
+    """The nightly of 2026-09-16 reported "<<END_CALL>> → 3.7 s of audio" as a
+    vendor fault. Nothing of the sort reaches the TTS (0 of three days' renders
+    carry a marker) — the probe was feeding it the RAW model reply, which is
+    recorded before SentinelGate strips markers and cues. A harness that cries
+    wolf is worse than no harness."""
+    import importlib.util as _u
+    import os as _os
+    _p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                       "sim", "ttsprobe.py")
+    _spec = _u.spec_from_file_location("_ttsprobe", _p)
+    tp = _u.module_from_spec(_spec); _spec.loader.exec_module(tp)
+    assert tp.strip_like_the_sentinel("जी सर। बात हो गई। " + b.END_MARKER) == "जी सर। बात हो गई।"
+    assert tp.strip_like_the_sentinel("Okay. <SEND:brochure> Thank you.") == "Okay. Thank you."
+    assert tp.strip_like_the_sentinel("[That was their ANSWER…] नाम क्या है?") == "नाम क्या है?"
+    assert tp.strip_like_the_sentinel(b.TRANSFER_MARKER) == ""
+    assert tp.strip_like_the_sentinel("Plain sentence.") == "Plain sentence."
+
+
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
     from app import callstate as cs
     cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,

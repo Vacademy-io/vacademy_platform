@@ -21,8 +21,9 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..db import db_dependency, db_session
@@ -34,6 +35,7 @@ from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.ai_task_service import AiTaskService
 from ..services.kb import generations as kb_generations
 from ..services.kb import paper as kb_paper
+from ..services.kb import paper_pdf as kb_paper_pdf
 from ..services.kb.repository import KbRepository
 from .knowledge_base import Caller, get_caller, require_usable
 
@@ -87,6 +89,20 @@ class RegenerateRequest(BaseModel):
 class ValidateRequest(BaseModel):
     blueprint: Dict[str, Any]
     questions: List[Dict[str, Any]]
+    institute_id: Optional[str] = None
+
+
+class PaperPdfRequest(BaseModel):
+    """The paper as it is on the review board right now — including questions
+    rewritten since generation, which only the client holds."""
+    blueprint: Dict[str, Any]
+    questions: List[Dict[str, Any]]
+    include_answer_key: bool = False
+    show_marks: bool = True
+    # Printed above the title. Defaults to the institute's own name.
+    institute_name: Optional[str] = None
+    # "A", "B"… for parallel sets; printed in a box at the top right.
+    set_label: Optional[str] = Field(None, max_length=8)
     institute_id: Optional[str] = None
 
 
@@ -711,6 +727,124 @@ async def delete_generation(
     if not kb_generations.delete(db, generation_id, resolved):
         raise HTTPException(404, "Not found")
     return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# 3b. PDF — the paper as a sheet (free — no model call)
+# ---------------------------------------------------------------------------
+
+def _institute_name(db: Session, institute_id: str) -> Optional[str]:
+    row = db.execute(
+        text("SELECT name FROM institutes WHERE id = :id"), {"id": institute_id}
+    ).fetchone()
+    return (row[0] or "").strip() or None if row else None
+
+
+def _paper_subtitle(kb: Dict[str, Any]) -> Optional[str]:
+    """'Class 10 · Science · NCERT' for a curriculum library; nothing otherwise."""
+    curriculum = kb.get("curriculum") or {}
+    if not curriculum:
+        return None
+    bits = []
+    if curriculum.get("class"):
+        cls = str(curriculum["class"])
+        bits.append(f"Class {cls}" if cls.isdigit() else cls)
+    if curriculum.get("subject"):
+        bits.append(str(curriculum["subject"]))
+    if curriculum.get("board"):
+        bits.append(str(curriculum["board"]))
+    return " · ".join(bits) or None
+
+
+def _pdf_response(pdf: bytes, filename: str) -> Response:
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+async def _render_paper(
+    db: Session,
+    kb: Dict[str, Any],
+    institute_id: str,
+    blueprint_raw: Dict[str, Any],
+    questions: List[Dict[str, Any]],
+    *,
+    include_answer_key: bool,
+    show_marks: bool,
+    institute_name: Optional[str],
+    set_label: Optional[str],
+) -> Response:
+    if not questions:
+        raise HTTPException(400, "There are no questions to print")
+    blueprint = kb_paper.Blueprint.from_dict(blueprint_raw)
+    try:
+        pdf = await kb_paper_pdf.render_paper_pdf(
+            blueprint,
+            questions,
+            institute_name=(institute_name or "").strip() or _institute_name(db, institute_id),
+            subtitle=_paper_subtitle(kb),
+            include_answer_key=include_answer_key,
+            show_marks=show_marks,
+            set_label=(set_label or "").strip() or None,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface as a 503, keep the trace
+        logger.exception("paper PDF render failed for kb %s", kb.get("id"))
+        raise HTTPException(503, "Could not render the PDF right now. Please try again.") from exc
+    return _pdf_response(pdf, kb_paper_pdf.paper_filename(blueprint.title, with_key=include_answer_key))
+
+
+@router.post("/bases/{kb_id}/paper/pdf")
+async def paper_pdf(
+    kb_id: str,
+    body: PaperPdfRequest,
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """The paper on screen as a print-ready A4 PDF (optionally with the answer
+    key and marking scheme on its own pages). Not metered: layout, not a model
+    call. Takes the client's copy because rewrites live only there until the
+    paper is saved."""
+    resolved = caller.require_institute(body.institute_id)
+    kb = _assert_kb(db, kb_id, resolved)
+    return await _render_paper(
+        db, kb, resolved, body.blueprint, body.questions,
+        include_answer_key=body.include_answer_key, show_marks=body.show_marks,
+        institute_name=body.institute_name, set_label=body.set_label,
+    )
+
+
+@router.get("/generations/{generation_id}/paper.pdf")
+async def generation_paper_pdf(
+    generation_id: str,
+    include_answer_key: bool = Query(False),
+    show_marks: bool = Query(True),
+    set_label: Optional[str] = Query(None, max_length=8),
+    institute_id: Optional[str] = Query(None),
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """A finished paper from the history, straight to PDF — no need to reopen
+    it on the review board first."""
+    resolved = caller.require_institute(institute_id)
+    record = kb_generations.get(db, generation_id, resolved)
+    if not record:
+        raise HTTPException(404, "Not found")
+    result = record.get("result") or {}
+    questions = result.get("raw_questions") or []
+    blueprint_raw = (record.get("input") or {}).get("blueprint") or result.get("blueprint") or {}
+    if not questions or not blueprint_raw:
+        raise HTTPException(409, "This paper has no generated questions to print yet")
+    kb = _assert_kb(db, record["knowledge_base_id"], resolved)
+    return await _render_paper(
+        db, kb, resolved, blueprint_raw, questions,
+        include_answer_key=include_answer_key, show_marks=show_marks,
+        institute_name=None, set_label=set_label,
+    )
 
 
 # ---------------------------------------------------------------------------

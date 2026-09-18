@@ -1,0 +1,7 @@
+{
+    "button": "Télécharger le PDF",
+    "preparing": "Préparation du PDF…",
+    "questionPaper": "Sujet d’examen",
+    "withAnswerKey": "Sujet + corrigé",
+    "failed": "Impossible de préparer le PDF. Veuillez réessayer."
+}

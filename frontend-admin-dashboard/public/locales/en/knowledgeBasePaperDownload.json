@@ -1,0 +1,7 @@
+{
+    "button": "Download PDF",
+    "preparing": "Preparing PDF…",
+    "questionPaper": "Question paper",
+    "withAnswerKey": "Question paper + answer key",
+    "failed": "Could not prepare the PDF. Please try again."
+}

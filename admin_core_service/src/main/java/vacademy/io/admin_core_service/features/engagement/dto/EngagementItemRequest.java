@@ -5,10 +5,14 @@ import lombok.Data;
 /**
  * Authoring payload for one item.
  *
- * For QUESTION_OF_DAY the options and the answer key travel inside {@code payloadJson}:
- * {"options":[{"id":"a","text":"..."}],"correctOptionId":"a","explanation":"..."}
- * The key is stripped before the item ever reaches a learner and grading happens
- * server-side, which is what makes this item type genuinely verifiable.
+ * For QUESTION_OF_DAY the payload also carries the FORMAT:
+ * {"format":"MCQ","options":[{"id":"a","text":"…"}],"correctOptionId":"a","explanation":"…"}
+ * format is MCQ (default), TEXT (the learner writes an answer) or UPLOAD (the learner
+ * attaches a document). Only MCQ has an answer key the server can grade; TEXT and
+ * UPLOAD earn completion points and are read by the teacher in the tracking table.
+ *
+ * The key is stripped before the item ever reaches a learner and MCQ grading happens
+ * server-side, which is what makes that format genuinely verifiable.
  */
 @Data
 public class EngagementItemRequest {
@@ -25,6 +29,8 @@ public class EngagementItemRequest {
     private Integer completionPoints;
     private Integer correctPoints;
     private Integer maxScore;
+    /** Keep correctness (and the bonus) hidden until the slot's reveal time. */
+    private Boolean hideResultUntilReveal;
     private String missPolicy;
     private Integer catchUpDays;
     private Integer catchUpPercent;

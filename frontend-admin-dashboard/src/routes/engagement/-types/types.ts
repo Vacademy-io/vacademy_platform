@@ -19,6 +19,9 @@ export type PlanStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED' | 'DELETED';
 /** What happens to an item a learner never opened while it was live. */
 export type MissPolicy = 'EXPIRES' | 'CATCH_UP_FULL' | 'CATCH_UP_REDUCED';
 
+/** How a question of the day is answered. */
+export type QuestionFormat = 'MCQ' | 'TEXT' | 'UPLOAD';
+
 export interface EngagementItemRequest {
     id?: string;
     itemType: EngagementItemType;
@@ -38,6 +41,8 @@ export interface EngagementItemRequest {
     completionPoints?: number;
     correctPoints?: number;
     maxScore?: number;
+    /** Withhold correctness (and the bonus) until the slot's reveal time. */
+    hideResultUntilReveal?: boolean;
     missPolicy?: MissPolicy;
     catchUpDays?: number;
     catchUpPercent?: number;
@@ -92,6 +97,7 @@ export interface EngagementItemDTO {
     completionPoints: number;
     correctPoints: number;
     maxScore?: number | null;
+    hideResultUntilReveal?: boolean | null;
     completedCount?: number | null;
 }
 

@@ -358,6 +358,7 @@ def _mount_mcp(app: FastAPI, settings) -> None:
         from starlette.routing import Route
 
         from .mcp.consent import router as mcp_consent_router
+        from .mcp.institute_scope import McpInstitutePathAdapter
         from .mcp.server import McpExactPathAdapter, build_mcp_asgi_app, build_mcp_server
         from .mcp.well_known import build_discovery_routes
     except Exception as exc:  # noqa: BLE001
@@ -388,6 +389,12 @@ def _mount_mcp(app: FastAPI, settings) -> None:
             methods=["GET", "POST", "DELETE", "OPTIONS"],
         )
     )
+    # Institute-scoped endpoint for white-label institutes (see institute_scope):
+    # the same app, with the institute pinned by the path.
+    scoped = McpInstitutePathAdapter(mcp_app, settings.mcp_issuer_url)
+    for path in (f"{settings.api_base_path}/mcp/i/{{institute_id}}",
+                 f"{settings.api_base_path}/mcp/i/{{institute_id}}/"):
+        app.router.routes.append(Route(path, endpoint=scoped, methods=["GET", "POST", "DELETE", "OPTIONS"]))
     app.mount(f"{settings.api_base_path}/mcp", mcp_app)
 
     # RFC 9728 / RFC 8414 discovery lives at the ROOT, not under /ai-service, so

@@ -37,6 +37,12 @@ interface TutorSearch {
   demo?: string;
 }
 
+/** True for "1", the number 1, or a JSON-quoted "\"1\"" — see validateSearch below. */
+export function isDemoFlag(value: unknown): boolean {
+  if (value === 1) return true;
+  return typeof value === "string" && value.replace(/^"|"$/g, "") === "1";
+}
+
 export const Route = createFileRoute("/study-library/courses/course-details/tutor/")({
   component: TutorPage,
   validateSearch: (search: Record<string, unknown>): TutorSearch => ({
@@ -47,7 +53,10 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
     subjectId: search.subjectId ? String(search.subjectId) : undefined,
     moduleId: search.moduleId ? String(search.moduleId) : undefined,
     mode: search.mode === "voice" ? "voice" : "text",
-    demo: search.demo === "1" ? "1" : undefined,
+    // The router's default search stringifier JSON-encodes any value that is itself
+    // valid JSON, so a client-side navigate emits demo="1" (quoted) while a
+    // hand-written link carries demo=1, which parses to the number 1. Accept all forms.
+    demo: isDemoFlag(search.demo) ? "1" : undefined,
   }),
 });
 

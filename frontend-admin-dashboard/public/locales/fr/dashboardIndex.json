@@ -68,5 +68,61 @@
             "planLecture": "Planifiez votre cours"
         },
         "manyMore": "Et bien plus encore"
+    },
+    "assistant": {
+        "name": "Chatbot de l’établissement",
+        "heading": "Que souhaitez-vous accomplir aujourd’hui ?",
+        "description": "Posez une question ou choisissez une tâche pour commencer.",
+        "openChat": "Ouvrir le chat",
+        "inputLabel": "Interroger {{chatbotName}}",
+        "placeholder": "Comment puis-je vous aider ?",
+        "inputHint": "Entrée pour envoyer · Maj + Entrée pour une nouvelle ligne",
+        "submit": "Demander",
+        "suggestionsLabel": "Tâches suggérées. Sélectionnez-en une pour modifier votre question.",
+        "loading": "Chargement de votre assistant",
+        "unavailable": "L’assistant est temporairement indisponible. Votre tableau de bord reste accessible.",
+        "retry": "Réessayer",
+        "starters": {
+            "overview": {
+                "label": "Frais en attente",
+                "prompt": "Quel est le montant total des frais en attente dans l’établissement ?"
+            },
+            "learner": {
+                "label": "Trouver un apprenant",
+                "prompt": "Aidez-moi à trouver un apprenant par son nom."
+            },
+            "assessments": {
+                "label": "Évaluations en attente",
+                "prompt": "Quels travaux soumis sont encore en attente d’évaluation ?"
+            },
+            "announcement": {
+                "label": "Rédiger une annonce",
+                "prompt": "Aidez-moi à rédiger une annonce pour un groupe."
+            },
+            "schedule": {
+                "label": "Cours du jour",
+                "prompt": "Quels cours sont prévus aujourd’hui ?"
+            },
+            "payments": {
+                "label": "Frais d’un apprenant",
+                "prompt": "Aidez-moi à vérifier les frais en retard d’un apprenant."
+            },
+            "batch": {
+                "label": "Liste d’un groupe",
+                "prompt": "Aidez-moi à trouver les apprenants d’un groupe."
+            },
+            "help": {
+                "label": "Aide pour une tâche",
+                "prompt": "Comment créer un cours ?"
+            }
+        },
+        "instituteName": "Chatbot de l’établissement {{instituteName}}",
+        "helpDescription": "Demandez-moi comment ou où effectuer une tâche dans votre espace d’administration."
+    },
+    "quickActions": {
+        "title": "Actions rapides"
+    },
+    "overview": {
+        "title": "Vue d’ensemble de l’établissement"
     }
 }

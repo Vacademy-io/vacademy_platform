@@ -33,8 +33,15 @@ export interface McpToolCatalogEntry {
     /** Settings group key that the toggles write, e.g. "institute_overview". */
     key: string;
     label: string;
+    /** Model-facing description (argument lists, rules) — long. */
     description: string;
+    /** One plain sentence for the settings page. */
+    summary?: string;
+    /** For action-style tools: the verbs the toggle allows, e.g. ["list", "get_page"]. */
+    actions?: string[];
     mode: 'READ' | 'WRITE';
+    /** Not a toggle: on for everyone who may connect (identity only). */
+    always_on?: boolean;
 }
 
 export interface McpManualClient {
@@ -42,6 +49,11 @@ export interface McpManualClient {
     client_name?: string | null;
     redirect_uris: string[];
     created_at?: string | null;
+    /**
+     * The client every institute gets automatically. Shown as "your client ID";
+     * the backend refuses to delete it, so the UI offers no Remove for it.
+     */
+    is_primary?: boolean;
 }
 
 export interface McpConnection {
@@ -55,7 +67,13 @@ export interface McpConnection {
 }
 
 export interface McpConnectionInfo {
+    /** Institute-scoped URL to paste into an AI app (…/mcp/i/<institute>): the
+     *  OAuth consent then lands on this institute's own admin portal. */
     server_url: string;
+    /** The bare, institute-less endpoint (platform dashboard + institute picker). */
+    legacy_server_url?: string;
+    /** This institute's admin portal origin (white-label aware). */
+    admin_portal_url?: string;
     issuer: string;
     scope: string;
     tools: McpToolCatalogEntry[];

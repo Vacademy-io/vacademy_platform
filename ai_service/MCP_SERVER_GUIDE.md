@@ -10,15 +10,50 @@ are. The MCP surface is a narrow adapter over those, not a second implementation
 ---
 ## 1. What it exposes
 
-Phase 1 ships exactly **one** tool, read-only:
+Four tools. Each feature is **one tool with an `action` argument**, so the
+institute's settings tab has one toggle per feature to manage per role:
 
-| Tool | Settings group | What it returns |
-| :--- | :--- | :--- |
-| `get_institute_overview` | `institute_overview` | Outstanding fees, classes live now, active learner count |
+| Tool | Mode | Settings group | Actions |
+| :--- | :--- | :--- | :--- |
+| `whoami` | READ | `identity` — **always on**, not a toggle | the caller's name, username, email, mobile, roles + the institute's name, logo, theme, portals, terminology |
+| `get_institute_overview` | READ | `institute_overview` | sections: `profile` (name, logo, theme, contact, terminology), outstanding fees, classes live now, active learners |
+| `website` | READ | `website_builder` | `list`, `get_page`, `context`, `analytics`, `lead_summary`, `audit`, `brief_checklist`, `schema`, `list_media` |
+| `website_edit` | WRITE (drafts only, no model, no credits) | `website_builder_edits` | `create_page`, `create_site`, `update_page`, `set_layout`, `add_section`, `set_theme`, `set_site_settings`, `set_courses`, `link_lead_form`, `set_seo`, `import_image`, `discard_draft` |
+| `audience_forms` | READ | `audience_forms` | `list`, `get`, `leads` |
+| `audience_forms_edit` | WRITE (additive only) | `audience_forms_edits` | `create`, `update_fields` (adds/changes, never removes), `send_test_lead` |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so
-adding Assistant tools never widens this surface by accident.
+adding Assistant tools never widens this surface by accident. The tools live in
+`app/services/assistant_tools_website.py`, `assistant_tools_website_edit.py` and
+`assistant_tools_audience.py` (shared loaders in `website_data.py`, page
+summaries and the publish-check port in `catalogue_summary.py`); the design is
+in `docs/ai-page-builder/WEBSITE_BUILDER_MCP_PLAN.md`.
+
+**One model, not two.** The connected AI app is the only LLM: it interviews the
+admin (`website(brief_checklist)`), reads the component contract
+(`website(schema)` — the AI builder's own catalogue, design rules and page
+archetypes), composes the page JSON itself and saves it with
+`website_edit(create_page | create_site)`. The server validates with the
+builder's sanitiser, audits, and returns issues to fix with `update_page`.
+Nothing on the MCP path calls a model or spends credits; images come only from
+the media library (`list_media`) or public URLs pulled in with `import_image`.
+Authored pages keep what the author set — explicit paddings, one-section
+pages (course-details templates), rich text (nh3-cleaned) — where the
+composer's own output rules would have normalised them; a site written
+straight to the DB (the Claude-CLI path) round-trips through `create_site`
+unchanged (verified against learn.ttsedu.co.in/new-website).
+
+**Why a write tool is allowed.** MCP has no confirm card, so `website_edit`
+never touches live data: every action saves a **draft revision**
+(`source=AI_COPILOT`/`AI_WIZARD`, `ai_run_id`) that the admin reviews in Manage
+Pages — where the publish checks run — and publishes themselves.
+`discard_draft` is the undo. `audience_forms_edit` is allowed on the other safe
+property: it only **adds** (a campaign, a field, a test lead) and never changes
+or removes what exists. `MCP_ALLOWED_WRITE_TOOLS` names each allowed write tool
+with the property that makes it safe, and `tests/test_mcp_adapter.py` refuses
+any other write tool. Write groups are off for every role until an admin
+enables them.
 
 ## 2. Who can reach it
 
@@ -46,6 +81,35 @@ Identity is never taken from tool arguments: `execute_tool` overwrites `user_id`
 and `institute_id` with the pinned principal before the executor runs.
 
 ## 3. How a connection is made
+
+### White-label institutes: the institute-scoped server URL
+
+Vacademy is sold white-label (Shiksha Nation, Edzumo …): each institute's admins
+live on their own admin portal with their own brand. OAuth discovery is per
+resource URL, so the URL the admin pastes carries the institute:
+
+```
+https://<backend>/ai-service/mcp/i/<institute_id>      ← what Settings → MCP Server shows
+https://<backend>/ai-service/mcp                        ← legacy: platform dashboard + institute picker
+```
+
+Both are the same MCP app (one issuer, one `/token`, one `/register`). Under
+`/i/<id>` (`app/mcp/institute_scope.py`):
+
+* the 401 challenge and RFC 9728 document are per institute, so the client's
+  `resource` names the institute from its first request;
+* `/authorize` reads the institute from `resource` and sends the browser to
+  **that institute's admin portal** (`institutes.admin_portal_base_url`, else
+  the `ADMIN` row in `institute_domain_routing`, else `ADMIN_DASHBOARD_URL`) —
+  its brand, its session, no picker;
+* consent binds only a user of that institute (`institute_mismatch` otherwise);
+* a token minted for `/i/<id>` is accepted only under `/i/<id>` (the SDK's
+  single-URL resource check is replaced by ours in `server._authorize`);
+* the auto-provisioned OAuth client — the name the AI app shows — is the
+  institute's name; `editor_url`s point at the institute's portal.
+
+The only thing still platform-branded is the MCP `initialize` title/instructions,
+which the SDK serves statically.
 
 ```
 AI client ──POST /ai-service/mcp (no token)──▶ 401 + WWW-Authenticate: resource_metadata=…
@@ -101,6 +165,17 @@ Stored under `MCP_SERVER_SETTING` in `institutes.setting_json`, edited at
 `role_overrides` is additive on top of `enabled_tools`, matching the Assistant's
 semantics — the same gate code reads both.
 
+### Institute client id
+
+Every institute gets one OAuth client (`vacademy-<hex>`, name `Vacademy`) minted
+the first time an admin opens the settings page, pre-seeded with the callbacks of
+the apps we know (`AUTO_CLIENT_REDIRECT_URIS`). It is the **primary** client:
+`connection-info` flags it `is_primary: true`, the settings page shows it as
+"Your client ID" once the server is enabled, and `DELETE /manual-client/{id}`
+refuses it (403 `primary_client`) so an institute can never be left without an
+id to paste. Clients an admin adds for other apps use the `vcm-` prefix and can
+be removed. Most AI apps never need any of this — they self-register via DCR.
+
 ## 5. Layout
 
 | File | Responsibility |
@@ -115,7 +190,8 @@ semantics — the same gate code reads both.
 | `consent.py` | Dashboard-facing endpoints: consent, connection info, client ids |
 | `adapter.py` | Registry `ToolSpec` → MCP `Tool`; call dispatch + audit |
 | `server.py` | Protocol handlers and the mounted ASGI app |
-| `well_known.py` | Root-level OAuth discovery documents |
+| `well_known.py` | Root-level OAuth discovery documents (global + per-institute) |
+| `institute_scope.py` | Institute-scoped server URLs for white-label institutes: path adapter, portal lookup, resource parsing |
 
 Tables: `mcp_oauth_client`, `mcp_oauth_txn`, `mcp_oauth_code`, `mcp_oauth_token`,
 `mcp_tool_call_log`. Issued tokens are stored as SHA-256 hashes; auth codes and
@@ -159,7 +235,9 @@ claude mcp add --transport http vacademy https://backend-stage.vacademy.io/ai-se
 ```bash
 cd ai_service
 python -m pytest tests/test_mcp_access.py tests/test_mcp_adapter.py \
-                 tests/test_mcp_oauth.py tests/test_institute_setting_reader.py -q
+                 tests/test_mcp_oauth.py tests/test_mcp_clients.py tests/test_mcp_institute_scope.py \
+                 tests/test_website_tools.py tests/test_website_edit_tool.py \
+                 tests/test_institute_setting_reader.py -q
 ```
 
 These cover the gates, the exposed-tool containment, the redirect-URI policy and
@@ -169,10 +247,20 @@ see the verification notes in the PR.
 
 ## 8. Adding a tool
 
-1. Add the registry tool name to `MCP_EXPOSED_TOOLS` in `constants.py`, and a
-   label for its settings group in `MCP_TOOL_GROUP_LABELS`.
-2. Confirm it is read-only (`mode == "READ"`). Write tools need a confirmation
-   story first — MCP has no equivalent of the Assistant's confirm card, so the
-   intended route is elicitation, which Phase 1 does not implement.
-3. Nothing else: the settings UI reads its catalogue from
+1. Prefer adding an **action** to an existing feature tool over a new tool —
+   every tool is a toggle an admin has to understand.
+2. For a new tool: add the registry name to `MCP_EXPOSED_TOOLS` in
+   `constants.py`, a label in `MCP_TOOL_GROUP_LABELS` and a one-sentence
+   `MCP_TOOL_GROUP_SUMMARIES` entry (the settings page shows the summary and the
+   tool's `action` enum, not the model-facing description).
+3. Read-only tools (`mode == "READ"`) need nothing else. `always_allowed=True`
+   skips the settings toggle altogether (the settings page shows the tool as
+   "Always on"); reserve it for identity-only tools like `whoami` — the
+   institute/role gate still applies. A write tool is only
+   allowed when **every** action is draft-only (published from the dashboard)
+   or purely additive; add it to `MCP_ALLOWED_WRITE_TOOLS` with that reason and
+   keep it `default_enabled=False` with no `default_roles`. Live writes that
+   change or remove data (learner edits, announcements) stay off MCP until
+   elicitation exists.
+4. Nothing else: the settings UI reads its catalogue from
    `/mcp/oauth/connection-info`, so the toggle appears on its own.

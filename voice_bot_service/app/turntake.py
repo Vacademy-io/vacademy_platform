@@ -494,6 +494,42 @@ def caller_says_goodbye(text: str) -> bool:
     return 0 < len(ws) <= 5 and all(w in _GOODBYE_WORDS for w in ws)
 
 
+# "I could not follow you" is a request to say it again, and it is almost never
+# five words long. Call 0c42d3a6 (2026-09-18): "क्या बोल रहे हैं समझ नहीं आया"
+# is SEVEN words, so the old length cap missed it, the clarification the model
+# wrote was dropped as already-said, and the parent got an apology and 7.6 s of
+# silence before having to say "Hello." to unstick the call.
+#
+# The cap existed to keep "समझ आ गया" (I DID understand) out, so the test is the
+# NEGATION, not the length: a hearing/understanding word next to a negation.
+_NOT_HEARD_WORDS = frozenset({
+    "समझ", "समझा", "समझी", "समझे", "समझमें", "सुनाई", "सुना", "सुनी", "सुन",
+    "आवाज", "आवाज़", "clear", "samajh", "samjha", "sunai", "suna",
+    "understand", "understood", "hear", "heard", "catch", "caught", "follow",
+    "audible", "clearly",
+})
+_NEGATIONS = frozenset({
+    "नहीं", "नही", "ना", "न", "nahi", "nahin", "na",
+    "not", "no", "didn't", "didnt", "don't", "dont", "can't", "cant", "cannot",
+    "couldn't", "couldnt", "won't", "unable",
+})
+
+
+def could_not_hear_us(text: str) -> bool:
+    """Did they just say they could not hear or follow what we said? True only
+    when a hearing/understanding word sits within three tokens of a negation,
+    so "समझ आ गया" / "yes, clear" (no negation) are NOT this."""
+    ws = _words(text)
+    if not ws:
+        return False
+    heard = [i for i, w in enumerate(ws) if w in _NOT_HEARD_WORDS]
+    if not heard:
+        return False
+    negs = [i for i, w in enumerate(ws)
+            if w in _NEGATIONS or (w.endswith("n't") and len(w) > 3)]
+    return any(abs(i - j) <= 3 for i in heard for j in negs)
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))
@@ -509,8 +545,13 @@ def caller_asked_to_repeat(text: str) -> bool:
         return True                       # "say that again", "come again?", "sorry, again?"
     if "sorry" in ws and len(ws) <= 2:
         return True                       # "Sorry?" — they missed it
+    if could_not_hear_us(text):
+        return True                       # "समझ नहीं आया", "I didn't catch that"
+    # "समझ"/"सुनाई" are NOT here any more: bare, they also match "समझ गया सर"
+    # (I DID understand), which is the opposite request — could_not_hear_us
+    # above reads the negation instead. "phir"/"फिर" ("फिर से बोलिए") stays.
     return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
-        len(ws) <= 5 and bool(ws & {"phir", "फिर", "samajh", "समझ", "sunai", "सुनाई"}))
+        len(ws) <= 5 and bool(ws & {"phir", "फिर"}))
 
 
 def is_repeat(sentence: str, spoken, threshold: float = 0.80) -> bool:

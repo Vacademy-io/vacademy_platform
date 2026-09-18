@@ -34,7 +34,7 @@ from ..services.assistant_tool_registry import (
     is_tool_allowed,
 )
 from .access import setting_for_tool_gate
-from .constants import MCP_EXPOSED_TOOLS, MCP_TOOL_GROUP_LABELS
+from .constants import MCP_EXPOSED_TOOLS, MCP_TOOL_GROUP_LABELS, MCP_TOOL_GROUP_SUMMARIES
 from .repository import McpOAuthRepository
 
 logger = logging.getLogger(__name__)
@@ -64,13 +64,22 @@ def tool_catalog() -> List[Dict[str, Any]]:
     for spec in exposed_specs():
         fn = spec.schema.get("function", {})
         key = spec.key()
+        description = fn.get("description", "")
+        # Action-style tools carry their verbs in an `action` enum; surface them
+        # so an admin can see what a toggle actually allows.
+        action_prop = ((fn.get("parameters") or {}).get("properties") or {}).get("action") or {}
+        actions = [a for a in action_prop.get("enum") or [] if isinstance(a, str)]
         catalog.append(
             {
                 "name": spec.name,
                 "key": key,
                 "label": MCP_TOOL_GROUP_LABELS.get(key, key.replace("_", " ").title()),
-                "description": fn.get("description", ""),
+                "description": description,
+                "summary": MCP_TOOL_GROUP_SUMMARIES.get(key, description),
+                "actions": actions,
                 "mode": spec.mode,
+                # Not a toggle: on for everyone who may connect (identity only).
+                "always_on": bool(spec.always_allowed),
             }
         )
     return catalog

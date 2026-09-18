@@ -5017,6 +5017,187 @@ async def test_a_backchannel_after_an_early_resume_says_nothing_more():
     assert any("ठीक है" in c for c in rec.cues()), "the backchannel still reaches the context"
 
 
+def test_tts_probe_sends_what_the_vendor_would_really_get():
+    """The nightly of 2026-09-16 reported "<<END_CALL>> → 3.7 s of audio" as a
+    vendor fault. Nothing of the sort reaches the TTS (0 of three days' renders
+    carry a marker) — the probe was feeding it the RAW model reply, which is
+    recorded before SentinelGate strips markers and cues. A harness that cries
+    wolf is worse than no harness."""
+    import importlib.util as _u
+    import os as _os
+    _p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                       "sim", "ttsprobe.py")
+    _spec = _u.spec_from_file_location("_ttsprobe", _p)
+    tp = _u.module_from_spec(_spec); _spec.loader.exec_module(tp)
+    assert tp.strip_like_the_sentinel("जी सर। बात हो गई। " + b.END_MARKER) == "जी सर। बात हो गई।"
+    assert tp.strip_like_the_sentinel("Okay. <SEND:brochure> Thank you.") == "Okay. Thank you."
+    assert tp.strip_like_the_sentinel("[That was their ANSWER…] नाम क्या है?") == "नाम क्या है?"
+    assert tp.strip_like_the_sentinel(b.TRANSFER_MARKER) == ""
+    assert tp.strip_like_the_sentinel("Plain sentence.") == "Plain sentence."
+
+
+# ── call 3b5fb592 (2026-09-18): two 0.2 s blips, two false apologies ────────
+
+def test_a_blip_is_not_an_unheard_turn():
+    """THE REGRESSION THIS FILE MISSED. With no transcript the aggregator always
+    closes a turn on its 5 s stop-timeout, so "turn lasted >= 4 s" was true for
+    a 0.02 s blip too — the bot twice told a caller who had said nothing
+    "माफ़ कीजिए, आवाज़ कट गई", and the second one demoted the STT as well.
+    The VAD ticks are the only honest measure of how long they spoke."""
+    def armed(voice_secs: float, dur: float = 5.1) -> bool:
+        # mirrors run_bot.set_user_speaking(False)
+        started, min_utt = 100.0, 0.4
+        voice_tick_t = started + voice_secs
+        transcript_t = started - 1.0
+        return (dur >= 4.0 and (voice_tick_t - started) >= min_utt
+                and transcript_t < started)
+    assert not armed(0.02), "a 20 ms blip must never arm the re-ask"
+    assert not armed(0.22), "the 0.22 s blip of call 3b5fb592"
+    assert not armed(0.39)
+    assert armed(0.4), "a real short utterance the STT lost still arms it"
+    assert armed(5.0), "5 s of speech with a deaf STT is exactly what it is for"
+    assert not armed(5.0, dur=2.0), "the turn must also have been given up on"
+
+
+@pytest.mark.asyncio
+async def test_a_blip_that_killed_a_reply_asks_for_the_reply_again_not_for_a_repeat():
+    """The 0.02 s blip cancelled the generation answering "मैं बच्चे का पिता बोल
+    रहा हूँ" before a word of it played, and the caller waited 6 s for an
+    apology. Ask the model for that answer again instead."""
+    from pipecat.frames.frames import (VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+    D = b.FrameDirection.DOWNSTREAM
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "",   # nothing played, nothing to resume
+                           resume_on_stop_secs=1.0)
+    tc._outcome.transcript.extend([{"role": "assistant", "text": "नमस्ते जी, मैं श्रेया बोल रही हूँ।"},
+                                   {"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"}])
+    b.FrameProcessor.process_frame = _noop_super
+    await tc.process_frame(VADUserStartedSpeakingFrame(), D)
+    tc._vad_started_t -= 0.02
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), D)
+    cues = rec.cues()
+    assert any("cut your reply off" in c for c in cues), cues
+    assert any(getattr(f, "run_llm", False) for f in rec.frames), "must actually regenerate"
+    # the CALLER is never asked to repeat: no apology is spoken, and the cue
+    # tells the model not to ask for one
+    assert _spoken_texts(rec) == [], f"nothing should be spoken to the caller: {_spoken_texts(rec)}"
+    assert any("do not ask them to repeat" in c for c in cues), cues
+    # once per turn, not on every blip
+    rec.frames.clear()
+    await tc.process_frame(VADUserStartedSpeakingFrame(), D)
+    tc._vad_started_t -= 0.02
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), D)
+    assert rec.cues() == [], "a second blip on the same turn must not re-fire"
+
+
+@pytest.mark.asyncio
+async def test_resumed_words_are_said_again_when_the_vendor_socket_ate_them():
+    """pipecat tears the TTS websocket down on every interruption; a frame
+    pushed in that instant never reaches run_tts and the caller hears nothing
+    (call 3b5fb592). Verify against the played transcript and re-send once."""
+    rec = _Rec()
+    tail = "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?"
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: tail)
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    assert _spoken_texts(rec) == [tail]
+    await asyncio.sleep(0.05)
+    # nothing ever played → said again
+    await tc._speak_again_if_lost(tail, b.FrameDirection.DOWNSTREAM, wait=0.01)
+    assert _spoken_texts(rec) == [tail, tail], "the lost words were never re-sent"
+    # once it IS in the played transcript, no repeat
+    tc._outcome.transcript.append({"role": "assistant", "text": tail})
+    await tc._speak_again_if_lost(tail, b.FrameDirection.DOWNSTREAM, wait=0.01)
+    assert _spoken_texts(rec) == [tail, tail], "re-sent words that had actually played"
+
+
+# ── call 0c42d3a6 (2026-09-18): "समझ नहीं आया" and the stale re-send ────────
+
+def test_could_not_hear_us_reads_the_negation_not_the_length():
+    """"क्या बोल रहे हैं समझ नहीं आया" is SEVEN words, so the old <=5 cap missed
+    it and the clarification was dropped as already-said — the parent got an
+    apology and 7.6 s of silence. The same cap also matched "समझ गया सर"
+    (I DID understand), which is the opposite request."""
+    from app.turntake import caller_asked_to_repeat as r, could_not_hear_us as c
+    for t in ("क्या बोल रहे हैं समझ नहीं आया", "समझ में नहीं आया सर", "मैं समझा नहीं",
+              "मुझे कुछ सुनाई नहीं दे रहा", "आवाज़ नहीं आ रही है",
+              "I didn't understand what you said", "Sorry, I didn't catch that",
+              "I can't hear you properly", "that was not clear at all"):
+        assert c(t) and r(t), t
+    for t in ("समझ गया सर", "जी समझ आ गया", "मुझे समझ में आ रहा है", "yes I understand",
+              "हाँ जी clear है", "हाँ मैंने बोला clear है", "yes that is clear",
+              "I can hear you fine", "नहीं नहीं बस यही है", "नहीं बस यही है",
+              "अभी नहीं बाद में बात करते हैं"):
+        assert not c(t), t
+        assert not r(t), t
+    # the phrases the old rule got right still work
+    for t in ("फिर से बोलिए", "can you repeat", "say that again", "Sorry?", "दोबारा बोलिए"):
+        assert r(t), t
+
+
+@pytest.mark.asyncio
+async def test_a_barge_in_cancels_the_pending_re_send_of_resumed_words():
+    """Call 0c42d3a6: the resume was pushed, the caller barged in 0.13 s later,
+    and 1.2 s after that the watcher re-sent the stale words — which the gate
+    then suppressed, so the model's real reply was lost and the call ended on
+    "हाँ जी?"."""
+    rec = _Rec()
+    tail = "आपको एक online dashboard मिलता है — schedule, link, recordings, सब एक जगह।"
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: tail)
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    assert tc._resume_check is not None and not tc._resume_check.done()
+    await _feed(tc, "हाँ जी clear है।")          # a real barge-in: they took the turn
+    assert tc._resume_check is None, "the stale re-send was left armed"
+    await asyncio.sleep(0.05)
+    assert _spoken_texts(rec) == [tail], "the stale words were sent again"
+
+
+@pytest.mark.asyncio
+async def test_no_re_send_while_the_model_is_already_writing():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "x y z")
+    tc._reply_in_flight = lambda: True
+    b.FrameProcessor.process_frame = _noop_super
+    await tc._speak_again_if_lost("x y z", b.FrameDirection.DOWNSTREAM, wait=0.01)
+    assert _spoken_texts(rec) == [], "spoke over a reply that was on its way"
+
+
+@pytest.mark.asyncio
+async def test_resumed_words_that_never_played_stop_counting_as_said():
+    """The other half of the same collapse: take_unplayed_tail marks the words
+    "said", so when the resume itself is cut the model's reply gets dropped as
+    a repeat. They go back into _pending, so the next interruption un-records
+    them exactly like any other emitted sentence."""
+    from pipecat.frames.frames import InterruptionFrame
+    rec = _NRRec()
+    played = {"t": ""}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "",
+                       played_text=lambda: played["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    D = b.FrameDirection.DOWNSTREAM
+    Q = "आपको एक online dashboard मिलता है, सब एक जगह।"
+    await _reply(g, "जी सर। ", Q)
+    played["t"] = "जी सर।"
+    await g.process_frame(InterruptionFrame(), D)
+    assert g.take_unplayed_tail().strip() == Q
+    assert normalize_spoken(Q) in g._spoken
+    # the resume is itself cut before a word of it plays
+    await g.process_frame(InterruptionFrame(), D)
+    assert normalize_spoken(Q) not in g._spoken, "still marked said though never heard"
+    rec.text.clear()
+    await _reply(g, Q)                       # the model says it properly this time
+    assert [t.strip() for t in rec.text] == [Q], f"suppressed the only copy the caller would hear: {rec.text}"
+
+
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():
     from app import callstate as cs
     cfg = cs.WatchdogConfig(connected_at=0.0, cap_secs=600, idle_timeout_secs=1e9,

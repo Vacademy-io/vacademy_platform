@@ -25,6 +25,7 @@ import { BatchPickerDialog, type BatchOption } from './BatchPickerDialog';
 import { CourseSlidePicker, type PickedSlide } from './CourseSlidePicker';
 import type {
     EngagementItemRequest,
+    QuestionFormat,
     EngagementItemType,
     EngagementPlanRequest,
     MissPolicy,
@@ -73,6 +74,12 @@ const MISS_POLICIES: { value: MissPolicy; label: string; hint: string }[] = [
  */
 const GAME_SCORE_SNIPPET = "postMessage({ type: 'vacademy:complete', score, maxScore })";
 
+const QUESTION_FORMATS: { value: QuestionFormat; label: string; hint: string }[] = [
+    { value: 'MCQ', label: 'Multiple choice', hint: 'Graded by the server' },
+    { value: 'TEXT', label: 'Written answer', hint: 'You read the replies' },
+    { value: 'UPLOAD', label: 'Upload a file', hint: 'They attach their work' },
+];
+
 interface DraftItem extends EngagementItemRequest {
     /** Local-only key so rows stay stable before the server assigns ids. */
     key: string;
@@ -80,6 +87,8 @@ interface DraftItem extends EngagementItemRequest {
     id?: string;
     /** Chosen course slide, serialised into slideId + payloadJson on save. */
     slide?: PickedSlide;
+    /** MCQ | TEXT | UPLOAD for a question of the day. */
+    format?: QuestionFormat;
     /** QUESTION_OF_DAY authoring, serialised into payloadJson on save. */
     prompt?: string;
     options?: { id: string; text: string }[];
@@ -91,6 +100,7 @@ function newItem(): DraftItem {
     return {
         key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         itemType: 'READING_HTML',
+        format: 'MCQ',
         title: '',
         completionPoints: 10,
         correctPoints: 0,
@@ -201,6 +211,9 @@ export function PlanComposerDialog({
                                   slideId: item.slideId,
                               } as PickedSlide)
                             : undefined,
+                    hideResultUntilReveal: item.hideResultUntilReveal ?? false,
+                    format: ((parsed as { format?: QuestionFormat }).format ??
+                        'MCQ') as QuestionFormat,
                     prompt: parsed.prompt ?? '',
                     options:
                         parsed.options && parsed.options.length > 0
@@ -271,16 +284,25 @@ export function PlanComposerDialog({
             return item.slide ? JSON.stringify(item.slide) : undefined;
         }
         if (item.itemType === 'QUESTION_OF_DAY' || item.itemType === 'POLL') {
+            const format: QuestionFormat = item.itemType === 'POLL' ? 'MCQ' : item.format ?? 'MCQ';
+            const isMcq = format === 'MCQ';
             return JSON.stringify({
+                format,
                 prompt: item.prompt ?? '',
-                options: (item.options ?? []).filter((o) => o.text.trim().length > 0),
-                // Only the question type has an answer key; the server strips it
-                // from every learner response until the reveal time passes.
-                ...(item.itemType === 'QUESTION_OF_DAY'
+                // Only a multiple-choice question has options to show.
+                ...(isMcq
+                    ? { options: (item.options ?? []).filter((o) => o.text.trim().length > 0) }
+                    : {}),
+                // Only a graded question has an answer key; the server strips it from
+                // every learner response until the reveal time passes.
+                ...(item.itemType === 'QUESTION_OF_DAY' && isMcq
                     ? {
                           correctOptionId: item.correctOptionId,
                           explanation: item.explanation ?? '',
                       }
+                    : {}),
+                ...(item.itemType === 'QUESTION_OF_DAY' && !isMcq
+                    ? { explanation: item.explanation ?? '' }
                     : {}),
             });
         }
@@ -297,7 +319,7 @@ export function PlanComposerDialog({
             if (item.itemType === 'COURSE_SLIDE' && !item.slide) {
                 return 'Pick the course content for every course-content task.';
             }
-            if (item.itemType === 'QUESTION_OF_DAY') {
+            if (item.itemType === 'QUESTION_OF_DAY' && (item.format ?? 'MCQ') === 'MCQ') {
                 const filled = (item.options ?? []).filter((o) => o.text.trim().length > 0);
                 if (filled.length < 2) return 'A question needs at least two options.';
                 if (!filled.some((o) => o.id === item.correctOptionId)) {
@@ -348,6 +370,7 @@ export function PlanComposerDialog({
                             completionPoints: item.completionPoints ?? 0,
                             correctPoints: item.correctPoints ?? 0,
                             maxScore: item.maxScore,
+                            hideResultUntilReveal: item.hideResultUntilReveal,
                         })),
                     },
                 ],
@@ -675,6 +698,38 @@ export function PlanComposerDialog({
                                     {(item.itemType === 'QUESTION_OF_DAY' ||
                                         item.itemType === 'POLL') && (
                                         <div className="space-y-3">
+                                            {item.itemType === 'QUESTION_OF_DAY' && (
+                                                <div className="space-y-1.5">
+                                                    <Label>How do they answer?</Label>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {QUESTION_FORMATS.map((f) => (
+                                                            <button
+                                                                key={f.value}
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    patchItem(item.key, {
+                                                                        format: f.value,
+                                                                    })
+                                                                }
+                                                                className={
+                                                                    (item.format ?? 'MCQ') ===
+                                                                    f.value
+                                                                        ? 'rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-left text-xs'
+                                                                        : 'rounded-lg border border-neutral-200 px-3 py-2 text-left text-xs hover:border-neutral-300'
+                                                                }
+                                                            >
+                                                                <span className="block font-medium text-neutral-900">
+                                                                    {f.label}
+                                                                </span>
+                                                                <span className="block text-neutral-500">
+                                                                    {f.hint}
+                                                                </span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <div className="space-y-1.5">
                                                 <Label>Question</Label>
                                                 <TipTapEditor
@@ -687,63 +742,104 @@ export function PlanComposerDialog({
                                                     minimalToolbar
                                                 />
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label>Options</Label>
-                                                {(item.options ?? []).map((option, optionIndex) => (
-                                                    <div
-                                                        key={option.id}
-                                                        className="flex items-center gap-2"
+                                            {/* Options belong to multiple choice only; a written
+                                                or uploaded answer has nothing to choose from. */}
+                                            {(item.itemType === 'POLL' ||
+                                                (item.format ?? 'MCQ') === 'MCQ') && (
+                                                <div className="space-y-2">
+                                                    <Label>Options</Label>
+                                                    {(item.options ?? []).map(
+                                                        (option, optionIndex) => (
+                                                            <div
+                                                                key={option.id}
+                                                                className="flex items-center gap-2"
+                                                            >
+                                                                {item.itemType ===
+                                                                    'QUESTION_OF_DAY' && (
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`correct-${item.key}`}
+                                                                        checked={
+                                                                            item.correctOptionId ===
+                                                                            option.id
+                                                                        }
+                                                                        onChange={() =>
+                                                                            patchItem(item.key, {
+                                                                                correctOptionId:
+                                                                                    option.id,
+                                                                            })
+                                                                        }
+                                                                        aria-label={`Option ${option.id} is correct`}
+                                                                    />
+                                                                )}
+                                                                <Input
+                                                                    value={option.text}
+                                                                    onChange={(e) => {
+                                                                        const next = [
+                                                                            ...(item.options ?? []),
+                                                                        ];
+                                                                        next[optionIndex] = {
+                                                                            ...option,
+                                                                            text: e.target.value,
+                                                                        };
+                                                                        patchItem(item.key, {
+                                                                            options: next,
+                                                                        });
+                                                                    }}
+                                                                    placeholder={`Option ${option.id.toUpperCase()}`}
+                                                                />
+                                                            </div>
+                                                        )
+                                                    )}
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            const next = [...(item.options ?? [])];
+                                                            const id = String.fromCharCode(
+                                                                97 + next.length
+                                                            );
+                                                            next.push({ id, text: '' });
+                                                            patchItem(item.key, { options: next });
+                                                        }}
                                                     >
-                                                        {item.itemType === 'QUESTION_OF_DAY' && (
-                                                            <input
-                                                                type="radio"
-                                                                name={`correct-${item.key}`}
-                                                                checked={
-                                                                    item.correctOptionId ===
-                                                                    option.id
-                                                                }
-                                                                onChange={() =>
-                                                                    patchItem(item.key, {
-                                                                        correctOptionId: option.id,
-                                                                    })
-                                                                }
-                                                                aria-label={`Option ${option.id} is correct`}
-                                                            />
+                                                        <Plus size={14} /> Option
+                                                    </Button>
+                                                </div>
+                                            )}
+                                            {item.itemType === 'QUESTION_OF_DAY' && (
+                                                <div className="flex items-start gap-2 rounded-lg border border-neutral-200 p-3">
+                                                    <Switch
+                                                        id={`item-hide-result-${index}`}
+                                                        checked={Boolean(
+                                                            item.hideResultUntilReveal
                                                         )}
-                                                        <Input
-                                                            value={option.text}
-                                                            onChange={(e) => {
-                                                                const next = [
-                                                                    ...(item.options ?? []),
-                                                                ];
-                                                                next[optionIndex] = {
-                                                                    ...option,
-                                                                    text: e.target.value,
-                                                                };
-                                                                patchItem(item.key, {
-                                                                    options: next,
-                                                                });
-                                                            }}
-                                                            placeholder={`Option ${option.id.toUpperCase()}`}
-                                                        />
+                                                        onCheckedChange={(checked) =>
+                                                            patchItem(item.key, {
+                                                                hideResultUntilReveal: checked,
+                                                            })
+                                                        }
+                                                    />
+                                                    <div className="space-y-0.5">
+                                                        <Label
+                                                            htmlFor={`item-hide-result-${index}`}
+                                                        >
+                                                            Only show the answer at reveal
+                                                        </Label>
+                                                        <p className="text-xs text-neutral-500">
+                                                            Learners see that their answer is in,
+                                                            but not whether it was right — so the
+                                                            first to answer can&apos;t pass it
+                                                            around before the reveal. The bonus
+                                                            points land at reveal too, since an
+                                                            early bonus would give it away just as
+                                                            clearly.
+                                                        </p>
                                                     </div>
-                                                ))}
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        const next = [...(item.options ?? [])];
-                                                        const id = String.fromCharCode(
-                                                            97 + next.length
-                                                        );
-                                                        next.push({ id, text: '' });
-                                                        patchItem(item.key, { options: next });
-                                                    }}
-                                                >
-                                                    <Plus size={14} /> Option
-                                                </Button>
-                                            </div>
+                                                </div>
+                                            )}
+
                                             {item.itemType === 'QUESTION_OF_DAY' && (
                                                 <div className="space-y-1.5">
                                                     <Label>Explanation (shown at reveal)</Label>

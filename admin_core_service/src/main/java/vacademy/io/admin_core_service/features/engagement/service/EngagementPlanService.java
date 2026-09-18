@@ -309,6 +309,7 @@ public class EngagementPlanService {
         item.setCompletionPoints(request.getCompletionPoints() == null ? 0 : request.getCompletionPoints());
         item.setCorrectPoints(request.getCorrectPoints() == null ? 0 : request.getCorrectPoints());
         item.setMaxScore(request.getMaxScore());
+        item.setHideResultUntilReveal(Boolean.TRUE.equals(request.getHideResultUntilReveal()));
         // Only types the SERVER can grade are verifiable. A teacher-uploaded game
         // reports its own score and anyone with devtools can report any number.
         // Verifiable = the SERVER can decide the outcome itself. A course slide
@@ -385,6 +386,7 @@ public class EngagementPlanService {
                     .completionPoints(item.getCompletionPoints())
                     .correctPoints(item.getCorrectPoints())
                     .maxScore(item.getMaxScore())
+                    .hideResultUntilReveal(item.getHideResultUntilReveal())
                     .completedCount(attemptRepository.countCompletedForItem(item.getId()))
                     .build());
         }

@@ -268,6 +268,14 @@ public class EngagementLearnerService {
         }
 
         int points = grade.points;
+        boolean withholdResult = Boolean.TRUE.equals(ctx.item.getHideResultUntilReveal())
+                && !scheduleResolver.isRevealed(ctx.plan, ctx.slot, ctx.runDate);
+        if (withholdResult && Boolean.TRUE.equals(grade.isCorrect)) {
+            // Hold the bonus back to the reveal. Awarding it now would tell the learner
+            // they were right through the points, which is the same secret by another
+            // route. EngagementRevealJob pays it out once the reveal time passes.
+            points -= nz(ctx.item.getCorrectPoints());
+        }
         if (isLate) {
             int percent = scheduleResolver.resolveCatchUpPercent(ctx.plan, ctx.item);
             points = (int) Math.floor(points * (percent / 100.0));
@@ -335,6 +343,22 @@ public class EngagementLearnerService {
 
         switch (type) {
             case QUESTION_OF_DAY -> {
+                String format = questionFormat(item);
+                if ("TEXT".equals(format)) {
+                    // Nothing to grade against: a written answer is read by the teacher
+                    // in the tracking table, so it earns completion points only.
+                    if (request.getTextAnswer() == null || request.getTextAnswer().isBlank()) {
+                        return Grade.reject("Write your answer first");
+                    }
+                    return Grade.of(null, null, completion);
+                }
+                if ("UPLOAD".equals(format)) {
+                    if (request.getFileIds() == null || request.getFileIds().isEmpty()) {
+                        return Grade.reject("Attach your answer first");
+                    }
+                    return Grade.of(null, null, completion);
+                }
+
                 String correctOptionId = readPayloadText(item.getPayloadJson(), "correctOptionId");
                 if (correctOptionId == null) {
                     // Nothing to grade against — treat as completion-only rather than
@@ -399,6 +423,12 @@ public class EngagementLearnerService {
         }
     }
 
+    /** MCQ (the default), TEXT or UPLOAD, from the item's payload. */
+    private String questionFormat(EngagementItem item) {
+        String format = readPayloadText(item.getPayloadJson(), "format");
+        return (format == null || format.isBlank()) ? "MCQ" : format.toUpperCase();
+    }
+
     /** True when any slide-progress row for this learner reads as finished. */
     private boolean hasCompletedSlide(String userId, String slideId) {
         for (String operation : SLIDE_COMPLETION_OPERATIONS) {
@@ -456,6 +486,7 @@ public class EngagementLearnerService {
                 .isRevealed(revealed)
                 .pointsPercent(state == SlotState.CATCH_UP
                         ? scheduleResolver.resolveCatchUpPercent(plan, item) : 100)
+                .hideResultUntilReveal(item.getHideResultUntilReveal())
                 .completedCount(completedCount);
 
         if (!locked) {
@@ -496,17 +527,20 @@ public class EngagementLearnerService {
     private EngagementSubmitResponse buildResponse(Context ctx, EngagementAttempt attempt,
                                                    String instituteId, String userId) {
         boolean revealed = scheduleResolver.isRevealed(ctx.plan, ctx.slot, ctx.runDate);
+        boolean withholdResult =
+                Boolean.TRUE.equals(ctx.item.getHideResultUntilReveal()) && !revealed;
         return new EngagementSubmitResponse(
                 attempt.getId(),
                 attempt.getStatus(),
-                attempt.getIsCorrect(),
+                withholdResult ? null : attempt.getIsCorrect(),
                 attempt.getPointsAwarded(),
                 attempt.getIsLate(),
                 attempt.getIsVerified(),
                 revealed,
                 revealed ? readPayloadText(ctx.item.getPayloadJson(), "correctOptionId") : null,
                 revealed ? readPayloadText(ctx.item.getPayloadJson(), "explanation") : null,
-                pointsLedgerService.getSummary(instituteId, userId).getTotalPoints());
+                pointsLedgerService.getSummary(instituteId, userId).getTotalPoints(),
+                withholdResult);
     }
 
     // ── Context loading ──────────────────────────────────────────────────────

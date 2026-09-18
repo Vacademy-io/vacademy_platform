@@ -35,12 +35,15 @@ from ..schemas.auth import PinnedPrincipal
 from .access import check_mcp_access, load_mcp_setting, normalize_role
 from .adapter import tool_catalog
 from .constants import (
+    AUTO_CLIENT_ID_PREFIX,
     AUTO_CLIENT_NAME,
     AUTO_CLIENT_REDIRECT_URIS,
     DENIAL_MESSAGES,
     MCP_SCOPE_READ,
+    is_auto_client,
 )
 from .crypto import TokenCipher
+from .institute_scope import admin_portal_base, institute_from_resource, institute_name, scoped_server_url
 from .oauth_provider import is_acceptable_redirect_uri, new_authorization_code
 from .repository import McpOAuthRepository
 
@@ -83,7 +86,7 @@ def _require_can_connect(principal: PinnedPrincipal, db: Session) -> Dict[str, A
     return setting
 
 
-def _ensure_auto_client(repo: McpOAuthRepository, principal: PinnedPrincipal) -> None:
+def _ensure_auto_client(repo: McpOAuthRepository, principal: PinnedPrincipal, db: Session) -> None:
     """
     Give every institute an OAuth client id without anyone filling in a form.
 
@@ -95,13 +98,19 @@ def _ensure_auto_client(repo: McpOAuthRepository, principal: PinnedPrincipal) ->
 
     Idempotent, and deliberately additive-only: it never rewrites an existing
     client's redirect URIs, so an admin who added their own is left alone.
+
+    This is the institute's PRIMARY client: it is the one the settings page
+    shows front and centre, and it cannot be removed (see
+    ``delete_manual_client``), so an institute always has a working id.
     """
-    if repo.list_manual_clients(principal.institute_id):
+    if any(is_auto_client(c["client_id"]) for c in repo.list_manual_clients(principal.institute_id)):
         return
 
     repo.save_client(
-        client_id=f"vacademy-{uuid.uuid4().hex}",
-        client_name=AUTO_CLIENT_NAME,
+        client_id=f"{AUTO_CLIENT_ID_PREFIX}{uuid.uuid4().hex}",
+        # White-label: the AI app shows this name ("<name> wants access"), so it
+        # is the institute's, not ours.
+        client_name=institute_name(db, principal.institute_id) or AUTO_CLIENT_NAME,
         redirect_uris=list(AUTO_CLIENT_REDIRECT_URIS),
         grant_types=["authorization_code", "refresh_token"],
         scope=MCP_SCOPE_READ,
@@ -134,6 +143,11 @@ class TxnResponse(BaseModel):
     redirect_host: Optional[str] = None
     scopes: List[str] = Field(default_factory=list)
     expires_at: Optional[str] = None
+    #: Set when the AI app connected to an institute-scoped server URL
+    #: (…/mcp/i/<id>): the consent page then shows this institute instead of a
+    #: picker, and only a member of it may approve.
+    institute_id: Optional[str] = None
+    institute_name: Optional[str] = None
 
 
 @router.get(
@@ -162,6 +176,7 @@ async def get_txn(
     except ValueError:
         redirect_host = None
 
+    institute_id = institute_from_resource(record.get("resource"), settings.mcp_issuer_url)
     return TxnResponse(
         txn=record["txn"],
         client_id=record["client_id"],
@@ -169,6 +184,8 @@ async def get_txn(
         redirect_host=redirect_host,
         scopes=record["scopes"] or [MCP_SCOPE_READ],
         expires_at=record["expires_at"].isoformat() if record["expires_at"] else None,
+        institute_id=institute_id,
+        institute_name=institute_name(db, institute_id) if institute_id else None,
     )
 
 
@@ -202,6 +219,19 @@ async def consent(
         repo.consume_txn(payload.txn)
         return ConsentResponse(
             redirect_to=f"{record['redirect_uri']}?{urlencode({'error': 'access_denied', **state_qs})}"
+        )
+
+    # A scoped server URL fixes the institute at /authorize time; the user must
+    # be approving AS that institute (the dashboard sends it as clientId).
+    pinned = institute_from_resource(record.get("resource"), settings.mcp_issuer_url)
+    if pinned and pinned != principal.institute_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "institute_mismatch",
+                "message": "This connection is for a different institute. Sign in to that institute's portal to approve it.",
+                "institute_id": pinned,
+            },
         )
 
     # Gate the institute + role BEFORE issuing anything.
@@ -249,12 +279,25 @@ class ManualClientResponse(BaseModel):
     client_name: Optional[str] = None
     redirect_uris: List[str]
     created_at: Optional[str] = None
+    #: True for the auto-provisioned client every institute gets. It is listed
+    #: first and cannot be deleted; the UI renders it as "your client ID".
+    is_primary: bool = False
+
+
+def _client_response(client: Dict[str, Any]) -> ManualClientResponse:
+    return ManualClientResponse(**client, is_primary=is_auto_client(client.get("client_id")))
 
 
 class ConnectionInfoResponse(BaseModel):
+    #: The URL admins paste into their AI app: institute-scoped, so the OAuth
+    #: dance lands on THIS institute's own admin portal (white-label).
     server_url: str
+    #: The bare, institute-less endpoint (platform dashboard + institute picker).
+    legacy_server_url: str
     issuer: str
     scope: str
+    #: Where this institute's consent page and editor live.
+    admin_portal_url: str
     tools: List[Dict[str, Any]]
     manual_clients: List[ManualClientResponse]
     connections: List[Dict[str, Any]]
@@ -272,17 +315,21 @@ async def connection_info(
 ) -> ConnectionInfoResponse:
     _require_institute_admin(principal)
     repo = _repo(db, settings)
-    _ensure_auto_client(repo, principal)
+    _ensure_auto_client(repo, principal, db)
     # Note this is NOT gated on check_mcp_access: the settings page must render
     # (server URL, catalogue) precisely while the server is still switched off.
     return ConnectionInfoResponse(
-        server_url=settings.mcp_issuer_url,
+        server_url=scoped_server_url(settings.mcp_issuer_url, principal.institute_id),
+        legacy_server_url=settings.mcp_issuer_url,
+        admin_portal_url=admin_portal_base(db, principal.institute_id, settings.admin_dashboard_url),
         issuer=settings.mcp_issuer_url,
         scope=MCP_SCOPE_READ,
         tools=tool_catalog(),
-        manual_clients=[
-            ManualClientResponse(**c) for c in repo.list_manual_clients(principal.institute_id)
-        ],
+        # Primary client first, then custom ones newest-first (the repository order).
+        manual_clients=sorted(
+            (_client_response(c) for c in repo.list_manual_clients(principal.institute_id)),
+            key=lambda c: not c.is_primary,
+        ),
         connections=repo.list_connections(principal.institute_id),
     )
 
@@ -350,6 +397,16 @@ async def delete_manual_client(
     settings: Settings = Depends(get_settings),
 ) -> Dict[str, bool]:
     _require_institute_admin(principal)
+    if is_auto_client(client_id):
+        # The primary client is what the settings page hands to admins; deleting
+        # it would leave the institute with no id to paste. Custom ones only.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "primary_client",
+                "message": "Your institute's own client ID cannot be removed.",
+            },
+        )
     deleted = _repo(db, settings).delete_manual_client(principal.institute_id, client_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="No such client for this institute.")

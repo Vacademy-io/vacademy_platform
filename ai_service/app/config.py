@@ -263,6 +263,9 @@ class Settings(BaseSettings):
     )
     # Where the browser is sent to log in and approve a connection.
     admin_dashboard_url: str = os.getenv("ADMIN_DASHBOARD_URL", "https://dash.vacademy.io")
+    # Default learner-portal origin for institutes without their own domain
+    # (institutes.learner_portal_base_url). Catalogue sites are served there.
+    learner_dashboard_url: str = os.getenv("LEARNER_DASHBOARD_URL", "https://learner.vacademy.io")
     # Encrypts the platform tokens stored against each grant. Prefer a dedicated
     # key (generate: Fernet.generate_key()). Falls back to another server-side
     # secret so the MCP server does not need a deploy-time variable to come up —

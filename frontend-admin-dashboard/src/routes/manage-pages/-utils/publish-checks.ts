@@ -85,11 +85,17 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
             const p = c?.props || {};
             const cctx = { ...ctx, componentId: c?.id };
 
-            // Capture surfaces wired to nothing.
-            const wantsForm =
-                p.action === 'openForm' || p.button?.action === 'openForm';
-            const formAudience = String(p.audienceId || p.button?.audienceId || '').trim();
-            if (wantsForm && !formAudience) {
+            // Capture surfaces wired to nothing: a bare action, the single
+            // `button` (CTA banner, media showcase…) and each hero button.
+            const formButtons: Array<{ action?: string; audienceId?: string }> = [
+                { action: p.action, audienceId: p.audienceId },
+                ...(p.button ? [p.button] : []),
+                ...(p.left?.buttons || []),
+            ];
+            const unwiredButton = formButtons.some(
+                (b) => b?.action === 'openForm' && !String(b?.audienceId || '').trim(),
+            );
+            if (unwiredButton) {
                 issues.push({
                     severity: 'error',
                     title: 'A button opens a form but no campaign is selected',

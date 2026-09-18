@@ -44,6 +44,10 @@ interface TxnInfo {
     redirect_host?: string | null;
     scopes: string[];
     expires_at?: string | null;
+    /** Set when the app connected to an institute-scoped server URL: no picker,
+     *  and only a member of this institute may approve (white-label flow). */
+    institute_id?: string | null;
+    institute_name?: string | null;
 }
 
 function readTxn(): string | null {
@@ -90,12 +94,6 @@ function McpAuthorizePage() {
     const signedIn = !isNullOrEmptyOrUndefined(accessToken);
     const institutes = useMemo(() => (signedIn ? institutesFromToken() : []), [signedIn]);
 
-    useEffect(() => {
-        if (signedIn && !institute && institutes.length > 0) {
-            setInstitute(institutes[0] as string);
-        }
-    }, [signedIn, institute, institutes]);
-
     const { data, isLoading, isError } = useQuery({
         queryKey: ['mcp-authorize-txn', txn],
         // Unauthenticated on purpose: this runs before the user signs in.
@@ -103,6 +101,19 @@ function McpAuthorizePage() {
         enabled: Boolean(txn),
         retry: false,
     });
+
+    // A scoped request names its institute; otherwise the user picks one.
+    const pinnedInstitute = data?.institute_id || null;
+    const instituteLabel = data?.institute_name || t('yourInstitute');
+    const memberOfPinned = !pinnedInstitute || institutes.includes(pinnedInstitute);
+
+    useEffect(() => {
+        if (pinnedInstitute) {
+            setInstitute(pinnedInstitute);
+        } else if (signedIn && !institute && institutes.length > 0) {
+            setInstitute(institutes[0] as string);
+        }
+    }, [signedIn, institute, institutes, pinnedInstitute]);
 
     const goToLogin = () => {
         window.location.assign(`/login?redirect=${encodeURIComponent('/mcp/authorize')}`);
@@ -147,7 +158,9 @@ function McpAuthorizePage() {
                         <PlugsConnected size={20} weight="fill" className="text-primary-500" />
                         <CardTitle>{t('title')}</CardTitle>
                     </div>
-                    <CardDescription>{t('subtitle')}</CardDescription>
+                    <CardDescription>
+                        {t('subtitle', { institute: instituteLabel })}
+                    </CardDescription>
                 </CardHeader>
 
                 <CardContent className="space-y-4">
@@ -165,7 +178,7 @@ function McpAuthorizePage() {
                         <>
                             <div className="rounded-lg border border-neutral-200 p-4">
                                 <p className="text-body text-neutral-800">
-                                    {t('request', { app: appName })}
+                                    {t('request', { app: appName, institute: instituteLabel })}
                                 </p>
                                 {data.redirect_host && (
                                     <p className="mt-1 text-caption text-neutral-600">
@@ -185,7 +198,27 @@ function McpAuthorizePage() {
                                 </ul>
                             </div>
 
-                            {signedIn && institutes.length > 1 && (
+                            {pinnedInstitute && (
+                                <p className="text-caption text-neutral-700">
+                                    {t('instituteLabel')}:{' '}
+                                    <span className="font-medium text-neutral-800">
+                                        {data.institute_name || pinnedInstitute}
+                                    </span>
+                                </p>
+                            )}
+
+                            {signedIn && pinnedInstitute && !memberOfPinned && (
+                                <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3">
+                                    <Warning size={16} className="mt-0.5 text-warning-600" />
+                                    <p className="text-caption text-warning-700">
+                                        {t('errors.wrongInstitute', {
+                                            institute: data.institute_name || pinnedInstitute,
+                                        })}
+                                    </p>
+                                </div>
+                            )}
+
+                            {signedIn && !pinnedInstitute && institutes.length > 1 && (
                                 <div className="space-y-1">
                                     <Label className="text-caption text-neutral-700">
                                         {t('instituteLabel')}
@@ -231,7 +264,9 @@ function McpAuthorizePage() {
                                         scale="medium"
                                         className="flex-1"
                                         onClick={() => respond(true)}
-                                        disable={submitting !== null || !institute}
+                                        disable={
+                                            submitting !== null || !institute || !memberOfPinned
+                                        }
                                     >
                                         {submitting === 'approve' ? t('approving') : t('approve')}
                                     </MyButton>

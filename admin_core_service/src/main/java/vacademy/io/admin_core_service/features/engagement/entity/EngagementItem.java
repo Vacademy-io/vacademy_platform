@@ -81,6 +81,17 @@ public class EngagementItem {
     @Column(name = "is_verifiable", nullable = false)
     private Boolean isVerifiable = false;
 
+    /**
+     * Keep the outcome hidden until the slot's reveal time.
+     *
+     * With the result shown at submit, early answerers learn the answer and can pass
+     * it on before the reveal. When this is on, the correctness bonus is withheld too
+     * and awarded by the reveal sweep — a learner who saw the bonus land would know
+     * they were right without being told.
+     */
+    @Column(name = "hide_result_until_reveal", nullable = false)
+    private Boolean hideResultUntilReveal = false;
+
     /** NULL = inherit the plan default. */
     @Column(name = "miss_policy")
     private String missPolicy;

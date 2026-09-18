@@ -133,6 +133,85 @@ export const validatePaper = async (
     return data;
 };
 
+// ---- PDF: the paper as a sheet ---------------------------------------------
+
+export interface PaperPdfOptions {
+    /** Answer key + marking scheme on pages of their own after the paper. */
+    includeAnswerKey?: boolean;
+    /** Marks in the right margin and per-section totals. */
+    showMarks?: boolean;
+    /** "A", "B"… printed in a box at the top right for parallel sets. */
+    setLabel?: string;
+}
+
+const pdfFileName = (headers: Record<string, unknown>, fallback: string): string => {
+    const disposition = String(headers['content-disposition'] ?? '');
+    const match = /filename="?([^";]+)"?/.exec(disposition);
+    return match?.[1] ?? fallback;
+};
+
+const saveBlob = (blob: Blob, fileName: string): void => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+};
+
+/**
+ * Download the paper currently on the review board as a print-ready PDF.
+ *
+ * Sends the client's copy of the questions: a rewritten question exists only
+ * here until the paper is saved, and the printout must match what the teacher
+ * just reviewed. Not metered — the server lays out, it does not generate.
+ */
+export const downloadPaperPdf = async (
+    kbId: string,
+    payload: { blueprint: Blueprint; questions: RawPaperQuestion[] },
+    options: PaperPdfOptions = {}
+): Promise<void> => {
+    const response = await authenticatedAxiosInstance.post<Blob>(
+        `${BASE}/bases/${kbId}/paper/pdf`,
+        {
+            blueprint: payload.blueprint,
+            questions: payload.questions,
+            include_answer_key: Boolean(options.includeAnswerKey),
+            show_marks: options.showMarks ?? true,
+            set_label: options.setLabel || null,
+        },
+        { responseType: 'blob' }
+    );
+    saveBlob(
+        response.data,
+        pdfFileName(response.headers as Record<string, unknown>, 'question-paper.pdf')
+    );
+};
+
+/** The same PDF for a finished paper in the history, without reopening it. */
+export const downloadGenerationPdf = async (
+    generationId: string,
+    options: PaperPdfOptions = {}
+): Promise<void> => {
+    const response = await authenticatedAxiosInstance.get<Blob>(
+        `${BASE}/generations/${generationId}/paper.pdf`,
+        {
+            params: {
+                include_answer_key: Boolean(options.includeAnswerKey),
+                show_marks: options.showMarks ?? true,
+                ...(options.setLabel ? { set_label: options.setLabel } : {}),
+            },
+            responseType: 'blob',
+        }
+    );
+    saveBlob(
+        response.data,
+        pdfFileName(response.headers as Record<string, unknown>, 'question-paper.pdf')
+    );
+};
+
 /**
  * Make `auto_evaluation_json` acceptable to assessment_service.
  *

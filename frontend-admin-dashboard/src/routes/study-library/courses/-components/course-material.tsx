@@ -327,6 +327,19 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         });
     };
 
+    const handleSessionChange = (sessionId: string) => {
+        setSelectedFilters((prev) => {
+            const session_ids = prev.session_ids ?? [];
+            const alreadySelected = session_ids.includes(sessionId);
+            return {
+                ...prev,
+                session_ids: alreadySelected
+                    ? session_ids.filter((id) => id !== sessionId)
+                    : [...session_ids, sessionId],
+            };
+        });
+    };
+
     const handleTagChange = (tagValue: string) => {
         setSelectedFilters((prev) => {
             const tag = prev.tag ?? [];
@@ -879,6 +892,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                             // Check if any filters are applied
                             const hasActiveFilters =
                                 selectedFilters.level_ids.length > 0 ||
+                                selectedFilters.session_ids.length > 0 ||
                                 selectedFilters.tag.length > 0 ||
                                 selectedFilters.faculty_ids.length > 0 ||
                                 selectedFilters.search_by_name ||
@@ -909,6 +923,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                                                 handleApply={handleApply}
                                                 levels={levels}
                                                 handleLevelChange={handleLevelChange}
+                                                handleSessionChange={handleSessionChange}
                                                 tags={tags}
                                                 accessControlUsers={accessControlUsers}
                                                 handleUserChange={handleUserChange}
@@ -954,6 +969,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                                     handleApply={handleApply}
                                     levels={levels}
                                     handleLevelChange={handleLevelChange}
+                                    handleSessionChange={handleSessionChange}
                                     tags={tags}
                                     accessControlUsers={accessControlUsers}
                                     handleUserChange={handleUserChange}

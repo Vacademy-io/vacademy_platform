@@ -552,15 +552,19 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
         .sort(compareByNameNatural),
     [courses],
   );
+  // Same sentinel rule as levels: the placeholder "DEFAULT" session must not
+  // surface as a "Default" checkbox next to real streams, and an institute
+  // whose only session is the placeholder gets no Session filter at all.
   const sessions = useMemo(() => {
     const byId = new Map<string, string>();
     courses.forEach((c) => {
       if (c.sessionId && !byId.has(c.sessionId)) {
-        byId.set(c.sessionId, c.sessionName || c.sessionId);
+        const name = displayLevelName(c.sessionName || c.sessionId);
+        if (name) byId.set(c.sessionId, name);
       }
     });
     return Array.from(byId.entries())
-      .map(([id, name]) => ({ id, name: toTitleCase(name) }))
+      .map(([id, name]) => ({ id, name }))
       .sort(compareByNameNatural);
   }, [courses]);
   const tags = useMemo(
@@ -579,12 +583,18 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       ].map((tag) => ({ id: tag, name: tag })),
     [courses],
   );
+  // Courses with no instructor carry the "Unknown Teacher" placeholder as
+  // their instructor (see the fetch mapping). Keep it off the filter list so a
+  // catalogue of author-less courses does not offer an "Unknown" checkbox.
+  const unknownInstructorLabel = t("courseCatalog.unknownInstructor", {
+    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+  });
   const instructors = useMemo(
     () =>
-      [...new Set(courses.map((c) => c.instructor).filter(Boolean))].map(
-        (instructor) => ({ id: instructor, name: instructor }),
-      ),
-    [courses],
+      [...new Set(courses.map((c) => c.instructor).filter(Boolean))]
+        .filter((instructor) => instructor !== unknownInstructorLabel)
+        .map((instructor) => ({ id: instructor, name: instructor })),
+    [courses, unknownInstructorLabel],
   );
 
   // Broadcast this block's own filter options up to the page-level Course
@@ -699,12 +709,15 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("tags") || filterIds.has("tag")) &&
     tags.length > 0;
+  // Same one-option rule as Level/Session, now that the placeholder author is
+  // excluded above. It used to need two distinct authors, so an institute with
+  // a single author never saw the section it had enabled.
   const shouldShowInstructorFilter =
     filtersEnabled &&
     (defaultToAllFilters ||
       filterIds.has("instructors") ||
       filterIds.has("authors")) &&
-    instructors.length > 1;
+    instructors.length > 0;
   const priceFilterConfig = useMemo(
     () =>
       filtersEnabled

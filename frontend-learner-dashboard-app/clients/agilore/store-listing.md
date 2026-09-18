@@ -18,7 +18,7 @@ With 20+ years of L&D expertise across 15+ industries and 10+ countries, Agilore
 
 WHAT YOU CAN DO
 
-• Learn anywhere — Access your assigned courses, video lessons, documents and presentations on your phone or tablet, at your own pace.
+• Learn anywhere — Access your courses, video lessons, documents and presentations on your phone or tablet, at your own pace.
 • Join live sessions — Attend instructor-led classes and workshops, and catch up with recordings if you miss one.
 • Test your understanding — Complete quizzes and assessments, get instant feedback and see where you stand.
 • Track your progress — Follow completion, scores and learning streaks across every programme you're enrolled in.
@@ -45,7 +45,7 @@ WHY AGILORE
 
 WHO IT'S FOR
 
-The app is intended for professionals enrolled in an Agilore Global learning programme through their employer or institution. You'll need an account or invite from your organisation to sign in.
+Anyone who wants to learn. Create a free account with your email, Google or Apple ID, browse the programme catalogue and enrol. If your employer has arranged an Agilore programme for you, sign in with the account you were given and it will be waiting for you.
 
 Get in touch: info@agilore.com | +91 99208 25555
 Learn more: https://agilore.com

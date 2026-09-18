@@ -47,6 +47,9 @@ public class EnrollmentFormService {
     @Autowired
     private InviteFormAdminNotificationService inviteFormAdminNotificationService;
 
+    @Autowired
+    private PhoneIdentifierInviteSubmissionGuard phoneIdentifierInviteSubmissionGuard;
+
 
     @Transactional
     public EnrollmentFormSubmitResponseDTO submitEnrollmentForm(EnrollmentFormSubmitDTO request) {
@@ -61,6 +64,11 @@ public class EnrollmentFormService {
                 request.getUserDetails(), 
                 request.getInstituteId(), 
                 false);
+
+        // PHONE is this institute's identity key. Once that resolved account has a
+        // plan for this invite, stop here before checkout rows/payment can begin.
+        phoneIdentifierInviteSubmissionGuard.validateNotAlreadySubmitted(
+                enrollInvite, createdUser.getId(), request.getInstituteId());
         
         // Step 3: Create student record
         studentRegistrationManager.createStudentFromRequest(

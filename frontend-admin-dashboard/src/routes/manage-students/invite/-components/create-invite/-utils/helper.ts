@@ -506,9 +506,18 @@ export function convertInviteData(
             // so a co-enabled SUB_ORG_SETTING above is preserved.
             const autopay = data.autopaySettings;
             if (autopay?.enabled) {
+                // Keys this form does not manage (TRIAL_STARTS_ON, TRIAL_TIMEZONE,
+                // CHARGE_LEAD_DAYS, ...) are set directly on the invite by ops and must
+                // survive an admin re-saving the form. Only the form's own keys are
+                // rebuilt below, so clearing a field here still removes that key.
+                const { ENABLED: _e, TRIAL_DAYS: _t, MAX_AMOUNT: _m, AUTH_ENABLED: _ae,
+                    AUTH_REFUNDABLE: _ar, AUTH_AMOUNT: _aa, GRACE_PERIOD_DAYS: _g,
+                    TOTAL_DURATION_MONTHS: _d, ...preservedAutopay } =
+                    (next.setting || existing.setting || {}).AUTOPAY_SETTING || {};
                 next.setting = {
                     ...(next.setting || existing.setting || {}),
                     AUTOPAY_SETTING: {
+                        ...preservedAutopay,
                         ENABLED: true,
                         TRIAL_DAYS: autopay.trialDays ?? 0,
                         ...(autopay.maxAmount != null

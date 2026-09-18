@@ -48,6 +48,7 @@ public class RenewalPaymentService {
     private final vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService paymentNotificatonService;
     private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
     private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
+    private final RenewalGracePolicy gracePolicy;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -355,7 +356,9 @@ public class RenewalPaymentService {
 
         try {
             int attempts = userPlan.getRenewalAttemptCount() != null ? userPlan.getRenewalAttemptCount() : 0;
-            boolean exhausted = attempts >= MAX_RENEWAL_ATTEMPTS;
+            // Same rule as the sweep: a configured grace period (end_date + N days) governs;
+            // otherwise the attempt ceiling. Keeps the two failure paths from disagreeing.
+            boolean exhausted = gracePolicy.isExhausted(userPlan, new Date(), attempts, MAX_RENEWAL_ATTEMPTS);
             if (exhausted) {
                 userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
                 userPlan.setNextChargeAt(null);

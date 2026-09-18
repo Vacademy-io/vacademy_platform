@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .constants import AUTO_CLIENT_ID_PREFIX
 from .crypto import TokenCipher, hash_token
 
 logger = logging.getLogger(__name__)
@@ -146,9 +147,12 @@ class McpOAuthRepository:
         result = self.db.execute(
             text(
                 "DELETE FROM mcp_oauth_client "
-                "WHERE client_id = :cid AND institute_id = :inst AND source = 'manual'"
+                "WHERE client_id = :cid AND institute_id = :inst AND source = 'manual' "
+                # The auto-provisioned primary client is never deletable, even if
+                # a caller gets past the endpoint-level check.
+                "AND client_id NOT LIKE :auto_prefix"
             ),
-            {"cid": client_id, "inst": institute_id},
+            {"cid": client_id, "inst": institute_id, "auto_prefix": f"{AUTO_CLIENT_ID_PREFIX}%"},
         )
         self.db.commit()
         return (result.rowcount or 0) > 0

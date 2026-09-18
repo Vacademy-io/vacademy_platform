@@ -1,7 +1,7 @@
 """Constants for the Vacademy MCP server."""
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 #: Institute-settings key holding the MCP server configuration. Written by the
 #: admin dashboard through the generic settings endpoint, read here.
@@ -20,15 +20,61 @@ MCP_SERVER_SETTING_KEY = "MCP_SERVER_SETTING"
 #: Deep link the denial messages point admins at.
 MCP_SETTINGS_PATH = "/settings?selectedTab=mcpServer"
 
-#: The ONLY registry tools this server exposes. Phase 1 ships one general,
-#: read-only, institute-scoped tool. Everything else in ASSISTANT_TOOLS stays
-#: invisible and uncallable over MCP regardless of any institute setting.
-MCP_EXPOSED_TOOLS: Tuple[str, ...] = ("get_institute_overview",)
+#: The ONLY registry tools this server exposes. Everything else in
+#: ASSISTANT_TOOLS stays invisible and uncallable over MCP regardless of any
+#: institute setting.
+#:
+#: Each feature is ONE tool with an ``action`` argument (see
+#: docs/ai-page-builder/WEBSITE_BUILDER_MCP_PLAN.md §4), so the institute's
+#: settings tab has one toggle per feature to manage per role.
+MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
+    "get_institute_overview",
+    "website",              # READ:  sites, pages, courses/campaigns to link, analytics, audit
+    "website_edit",         # WRITE: draft-only — every change lands as a draft the admin publishes
+    "audience_forms",       # READ:  lead campaigns, their form fields, recent leads
+    "audience_forms_edit",  # WRITE: additive only — create a campaign, add fields, send a test lead
+)
+
+#: WRITE tools this server may expose, with the property that makes each safe
+#: without a confirm card (MCP has none). A write tool is allowed here only
+#: when nothing it does can destroy or publish anything: it writes DRAFTS the
+#: admin publishes from the dashboard, or it only ADDS records. Live edits that
+#: change or remove existing data (learner edits, announcements) stay off.
+MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
+    "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
+    "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
+}
 
 #: Friendly labels for the settings groups the exposed tools belong to. Serves
 #: the settings UI so the FE never hardcodes a catalogue that can drift.
 MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "institute_overview": "Institute stats",
+    "website_builder": "Website: view",
+    "website_builder_edits": "Website: edit drafts",
+    "audience_forms": "Lead forms: view",
+    "audience_forms_edits": "Lead forms: edit",
+}
+
+#: One plain sentence per group for the settings page. The registry's tool
+#: descriptions are written for the model (argument lists, rules) and read as
+#: a wall of text next to a toggle.
+MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
+    "institute_overview": "Outstanding fees, classes live now and active learner counts.",
+    "website_builder": (
+        "See the institute's websites: pages and what each section shows, traffic, lead-capture "
+        "health, pre-publish checks, and the interview an AI runs before building a site."
+    ),
+    "website_builder_edits": (
+        "Build and change websites by conversation — generate pages, edit sections, set colours and "
+        "fonts, wire forms to lead campaigns. Every change is saved as a draft; nothing goes live "
+        "until you publish it in Manage Pages."
+    ),
+    "audience_forms": (
+        "See lead campaigns: their form fields, where they are used on the websites, and leads received."
+    ),
+    "audience_forms_edits": (
+        "Create lead campaigns, add fields to their forms and send test leads. Never removes anything."
+    ),
 }
 
 #: Roles that must NEVER reach this server, even if an admin lists them. The MCP
@@ -43,6 +89,17 @@ MCP_SCOPE_READ = "vacademy.read"
 
 #: Name given to the OAuth client every institute gets automatically.
 AUTO_CLIENT_NAME = "Vacademy"
+
+#: Client ids of the auto-provisioned client start with this; manually created
+#: ones use ``vcm-``. The prefix is how the primary client is told apart, so it
+#: can be shown first and protected from deletion.
+AUTO_CLIENT_ID_PREFIX = "vacademy-"
+
+
+def is_auto_client(client_id: Any) -> bool:
+    """True for the institute's auto-provisioned (primary) client id."""
+    return isinstance(client_id, str) and client_id.startswith(AUTO_CLIENT_ID_PREFIX)
+
 
 #: Callback URLs the auto-provisioned client accepts out of the box.
 #:
@@ -84,11 +141,15 @@ __all__ = [
     "MCP_SERVER_SETTING_KEY",
     "MCP_SETTINGS_PATH",
     "MCP_EXPOSED_TOOLS",
+    "MCP_ALLOWED_WRITE_TOOLS",
     "MCP_TOOL_GROUP_LABELS",
+    "MCP_TOOL_GROUP_SUMMARIES",
     "LEARNER_ROLES",
     "DEFAULT_ALLOWED_ROLES",
     "MCP_SCOPE_READ",
     "AUTO_CLIENT_NAME",
+    "AUTO_CLIENT_ID_PREFIX",
+    "is_auto_client",
     "AUTO_CLIENT_REDIRECT_URIS",
     "DENY_DISABLED",
     "DENY_LEARNER",

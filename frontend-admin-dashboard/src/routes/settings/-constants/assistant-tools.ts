@@ -99,6 +99,46 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         defaultRoles: ['ADMIN'],
     },
     {
+        key: 'website_builder',
+        label: 'Website: view',
+        description:
+            'See the institute’s websites — pages, what each section shows (which courses, which ' +
+            'lead campaign), traffic, lead capture health and pre-publish checks — and run the ' +
+            'interview needed before a site is generated. Read-only. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'website_builder_edits',
+        label: 'Website: edit drafts',
+        description:
+            'Let the assistant build and change websites by conversation — generate pages, edit ' +
+            'sections, set colours and fonts, wire forms to lead campaigns. Every change is saved ' +
+            'as a draft; nothing goes live until you publish it in Manage Pages. Off by default.',
+        phase: 3,
+        defaultEnabled: false,
+    },
+    {
+        key: 'audience_forms',
+        label: 'Lead forms: view',
+        description:
+            'See lead campaigns (Audience Manager): their form fields, where they are used on the ' +
+            'websites, leads received and recent leads. Read-only. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'audience_forms_edits',
+        label: 'Lead forms: edit',
+        description:
+            'Let the assistant create lead campaigns, add fields to their forms and send test leads. ' +
+            'It never removes anything. Off by default.',
+        phase: 3,
+        defaultEnabled: false,
+    },
+    {
         key: 'announcements',
         label: 'Announcements',
         description:

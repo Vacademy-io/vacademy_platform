@@ -8,23 +8,23 @@
         "title": "Enable the MCP server",
         "description": "Nothing is reachable until you turn this on.",
         "label": "MCP server enabled",
-        "hint": "Off by default. While this is off, every connection attempt is refused, including ones that were already approved."
+        "hint": "Off by default. Once it's on, your connection details appear below and your team can connect their AI apps."
     },
     "connect": {
-        "title": "Connection details",
-        "description": "Share these with the people you allow below. They will be asked to sign in to Vacademy and approve the connection.",
+        "title": "Connect your AI app",
+        "description": "Share these with the people you allow below. They'll be asked to sign in to Vacademy and approve the connection.",
         "serverUrlLabel": "Server URL",
-        "scopeLabel": "Scope",
+        "clientIdHint": "Created automatically for your institute and can't be removed. Only needed by apps that ask for a client ID.",
+        "clientIdLabel": "Your client ID",
         "copy": "Copy",
         "copied": "Copied",
         "howToTitle": "How to connect",
         "howToClaude": "Claude: Settings → Connectors → Add custom connector, then paste the server URL.",
         "howToCursor": "Claude Code / Cursor: run claude mcp add --transport http vacademy <server URL>.",
-        "howToManual": "If an app asks for a client ID instead of registering itself, create one below."
+        "howToManual": "If an app asks for a client ID, paste your client ID above."
     },
     "clients": {
-        "title": "OAuth client IDs",
-        "description": "Most AI apps register themselves and need nothing here — just the server URL above. Your institute's client ID is ready below for apps that ask for one.",
+        "title": "Client IDs for other apps",
         "nameLabel": "App name",
         "namePlaceholder": "e.g. Marketing team's assistant",
         "redirectLabel": "Redirect URLs",
@@ -32,24 +32,29 @@
         "redirectHint": "Comma-separated. Must be https, or http on localhost. The app's own documentation tells you what to use.",
         "create": "Create client ID",
         "creating": "Creating…",
-        "empty": "No client IDs yet.",
-        "clientIdLabel": "Client ID",
         "remove": "Remove",
         "removed": "Client ID removed",
         "created": "Client ID created",
         "createFailed": "Could not create the client ID",
         "removeFailed": "Could not remove the client ID",
-        "addCustom": "Add a client ID for another app"
+        "addCustom": "Add a client ID for another app",
+        "cancel": "Cancel"
     },
     "tools": {
         "title": "What AI apps can do",
         "description": "Only what you enable here is available, and only read-only actions are offered.",
-        "empty": "No tools are available on this server yet."
+        "empty": "No tools are available on this server yet.",
+        "modeRead": "View only",
+        "modeWrite": "Edits drafts",
+        "actionsLabel": "Can do:"
     },
     "roles": {
         "title": "Who can connect",
         "description": "Only these roles can connect an AI app. Everyone else is refused, even with a link.",
-        "learnerNote": "Learners and parents can never connect, whatever is selected here."
+        "learnerNote": "Learners and parents can never connect, whatever is selected here.",
+        "addPlaceholder": "Add a role…",
+        "remove": "Remove",
+        "empty": "No roles can connect yet. Add one below — Admins are allowed by default."
     },
     "perRole": {
         "title": "Per-role access (advanced)",

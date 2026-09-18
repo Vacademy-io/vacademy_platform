@@ -10,15 +10,35 @@ are. The MCP surface is a narrow adapter over those, not a second implementation
 ---
 ## 1. What it exposes
 
-Phase 1 ships exactly **one** tool, read-only:
+Four tools. Each feature is **one tool with an `action` argument**, so the
+institute's settings tab has one toggle per feature to manage per role:
 
-| Tool | Settings group | What it returns |
-| :--- | :--- | :--- |
-| `get_institute_overview` | `institute_overview` | Outstanding fees, classes live now, active learner count |
+| Tool | Mode | Settings group | Actions |
+| :--- | :--- | :--- | :--- |
+| `get_institute_overview` | READ | `institute_overview` | sections: outstanding fees, classes live now, active learners |
+| `website` | READ | `website_builder` | `list`, `get_page`, `context`, `analytics`, `lead_summary`, `audit`, `brief_checklist`, `list_media` |
+| `website_edit` | WRITE (drafts only) | `website_builder_edits` | `estimate`, `generate_page`, `generate_site`, `edit_page`, `edit_chrome`, `add_section`, `set_theme`, `brand_kit`, `import_image`, `generate_image`, `set_courses`, `link_lead_form`, `set_seo`, `discard_draft` |
+| `audience_forms` | READ | `audience_forms` | `list`, `get`, `leads` |
+| `audience_forms_edit` | WRITE (additive only) | `audience_forms_edits` | `create`, `update_fields` (adds/changes, never removes), `send_test_lead` |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so
-adding Assistant tools never widens this surface by accident.
+adding Assistant tools never widens this surface by accident. The tools live in
+`app/services/assistant_tools_website.py`, `assistant_tools_website_edit.py` and
+`assistant_tools_audience.py` (shared loaders in `website_data.py`, page
+summaries and the publish-check port in `catalogue_summary.py`); the design is
+in `docs/ai-page-builder/WEBSITE_BUILDER_MCP_PLAN.md`.
+
+**Why a write tool is allowed.** MCP has no confirm card, so `website_edit`
+never touches live data: every action saves a **draft revision**
+(`source=AI_COPILOT`/`AI_WIZARD`, `ai_run_id`) that the admin reviews in Manage
+Pages — where the publish checks run — and publishes themselves.
+`discard_draft` is the undo. `audience_forms_edit` is allowed on the other safe
+property: it only **adds** (a campaign, a field, a test lead) and never changes
+or removes what exists. `MCP_ALLOWED_WRITE_TOOLS` names each allowed write tool
+with the property that makes it safe, and `tests/test_mcp_adapter.py` refuses
+any other write tool. Write groups are off for every role until an admin
+enables them.
 
 ## 2. Who can reach it
 
@@ -101,6 +121,17 @@ Stored under `MCP_SERVER_SETTING` in `institutes.setting_json`, edited at
 `role_overrides` is additive on top of `enabled_tools`, matching the Assistant's
 semantics — the same gate code reads both.
 
+### Institute client id
+
+Every institute gets one OAuth client (`vacademy-<hex>`, name `Vacademy`) minted
+the first time an admin opens the settings page, pre-seeded with the callbacks of
+the apps we know (`AUTO_CLIENT_REDIRECT_URIS`). It is the **primary** client:
+`connection-info` flags it `is_primary: true`, the settings page shows it as
+"Your client ID" once the server is enabled, and `DELETE /manual-client/{id}`
+refuses it (403 `primary_client`) so an institute can never be left without an
+id to paste. Clients an admin adds for other apps use the `vcm-` prefix and can
+be removed. Most AI apps never need any of this — they self-register via DCR.
+
 ## 5. Layout
 
 | File | Responsibility |
@@ -159,7 +190,9 @@ claude mcp add --transport http vacademy https://backend-stage.vacademy.io/ai-se
 ```bash
 cd ai_service
 python -m pytest tests/test_mcp_access.py tests/test_mcp_adapter.py \
-                 tests/test_mcp_oauth.py tests/test_institute_setting_reader.py -q
+                 tests/test_mcp_oauth.py tests/test_mcp_clients.py \
+                 tests/test_website_tools.py tests/test_website_edit_tool.py \
+                 tests/test_institute_setting_reader.py -q
 ```
 
 These cover the gates, the exposed-tool containment, the redirect-URI policy and
@@ -169,10 +202,17 @@ see the verification notes in the PR.
 
 ## 8. Adding a tool
 
-1. Add the registry tool name to `MCP_EXPOSED_TOOLS` in `constants.py`, and a
-   label for its settings group in `MCP_TOOL_GROUP_LABELS`.
-2. Confirm it is read-only (`mode == "READ"`). Write tools need a confirmation
-   story first — MCP has no equivalent of the Assistant's confirm card, so the
-   intended route is elicitation, which Phase 1 does not implement.
-3. Nothing else: the settings UI reads its catalogue from
+1. Prefer adding an **action** to an existing feature tool over a new tool —
+   every tool is a toggle an admin has to understand.
+2. For a new tool: add the registry name to `MCP_EXPOSED_TOOLS` in
+   `constants.py`, a label in `MCP_TOOL_GROUP_LABELS` and a one-sentence
+   `MCP_TOOL_GROUP_SUMMARIES` entry (the settings page shows the summary and the
+   tool's `action` enum, not the model-facing description).
+3. Read-only tools (`mode == "READ"`) need nothing else. A write tool is only
+   allowed when **every** action is draft-only (published from the dashboard)
+   or purely additive; add it to `MCP_ALLOWED_WRITE_TOOLS` with that reason and
+   keep it `default_enabled=False` with no `default_roles`. Live writes that
+   change or remove data (learner edits, announcements) stay off MCP until
+   elicitation exists.
+4. Nothing else: the settings UI reads its catalogue from
    `/mcp/oauth/connection-info`, so the toggle appears on its own.

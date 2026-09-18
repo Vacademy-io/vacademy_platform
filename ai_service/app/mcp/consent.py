@@ -35,10 +35,12 @@ from ..schemas.auth import PinnedPrincipal
 from .access import check_mcp_access, load_mcp_setting, normalize_role
 from .adapter import tool_catalog
 from .constants import (
+    AUTO_CLIENT_ID_PREFIX,
     AUTO_CLIENT_NAME,
     AUTO_CLIENT_REDIRECT_URIS,
     DENIAL_MESSAGES,
     MCP_SCOPE_READ,
+    is_auto_client,
 )
 from .crypto import TokenCipher
 from .oauth_provider import is_acceptable_redirect_uri, new_authorization_code
@@ -95,12 +97,16 @@ def _ensure_auto_client(repo: McpOAuthRepository, principal: PinnedPrincipal) ->
 
     Idempotent, and deliberately additive-only: it never rewrites an existing
     client's redirect URIs, so an admin who added their own is left alone.
+
+    This is the institute's PRIMARY client: it is the one the settings page
+    shows front and centre, and it cannot be removed (see
+    ``delete_manual_client``), so an institute always has a working id.
     """
-    if repo.list_manual_clients(principal.institute_id):
+    if any(is_auto_client(c["client_id"]) for c in repo.list_manual_clients(principal.institute_id)):
         return
 
     repo.save_client(
-        client_id=f"vacademy-{uuid.uuid4().hex}",
+        client_id=f"{AUTO_CLIENT_ID_PREFIX}{uuid.uuid4().hex}",
         client_name=AUTO_CLIENT_NAME,
         redirect_uris=list(AUTO_CLIENT_REDIRECT_URIS),
         grant_types=["authorization_code", "refresh_token"],
@@ -249,6 +255,13 @@ class ManualClientResponse(BaseModel):
     client_name: Optional[str] = None
     redirect_uris: List[str]
     created_at: Optional[str] = None
+    #: True for the auto-provisioned client every institute gets. It is listed
+    #: first and cannot be deleted; the UI renders it as "your client ID".
+    is_primary: bool = False
+
+
+def _client_response(client: Dict[str, Any]) -> ManualClientResponse:
+    return ManualClientResponse(**client, is_primary=is_auto_client(client.get("client_id")))
 
 
 class ConnectionInfoResponse(BaseModel):
@@ -280,9 +293,11 @@ async def connection_info(
         issuer=settings.mcp_issuer_url,
         scope=MCP_SCOPE_READ,
         tools=tool_catalog(),
-        manual_clients=[
-            ManualClientResponse(**c) for c in repo.list_manual_clients(principal.institute_id)
-        ],
+        # Primary client first, then custom ones newest-first (the repository order).
+        manual_clients=sorted(
+            (_client_response(c) for c in repo.list_manual_clients(principal.institute_id)),
+            key=lambda c: not c.is_primary,
+        ),
         connections=repo.list_connections(principal.institute_id),
     )
 
@@ -350,6 +365,16 @@ async def delete_manual_client(
     settings: Settings = Depends(get_settings),
 ) -> Dict[str, bool]:
     _require_institute_admin(principal)
+    if is_auto_client(client_id):
+        # The primary client is what the settings page hands to admins; deleting
+        # it would leave the institute with no id to paste. Custom ones only.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "primary_client",
+                "message": "Your institute's own client ID cannot be removed.",
+            },
+        )
     deleted = _repo(db, settings).delete_manual_client(principal.institute_id, client_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="No such client for this institute.")

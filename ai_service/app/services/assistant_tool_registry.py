@@ -2227,6 +2227,25 @@ async def execute_tool(
         return json.dumps({"error": "tool_failed", "tool": tool_name})
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Feature tools that live in their own modules (website builder, lead forms).
+# Each module self-registers into ASSISTANT_TOOLS / GROUP_LABELS when imported,
+# so importing it here is only to make sure that happens. The import is
+# tolerant of the cycle: a test that imports the feature module first will find
+# this module half-initialised, and the feature module registers itself once
+# this one finishes.
+# ──────────────────────────────────────────────────────────────────────────
+def _load_feature_tools() -> None:
+    for module in ("assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_audience"):
+        try:
+            __import__(f"{__package__}.{module}")
+        except ImportError as exc:  # partially initialised cycle; see above
+            logger.debug("deferred feature tool module %s: %s", module, exc)
+
+
+_load_feature_tools()
+
+
 __all__ = [
     "ASSISTANT_TOOLS",
     "ASSISTANT_TOOLS_SETTING_KEY",

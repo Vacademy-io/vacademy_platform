@@ -8,23 +8,23 @@
         "title": "Activer le serveur MCP",
         "description": "Rien n'est accessible tant que vous ne l'avez pas activé.",
         "label": "Serveur MCP activé",
-        "hint": "Désactivé par défaut. Tant qu'il est désactivé, toute tentative de connexion est refusée, y compris celles déjà approuvées."
+        "hint": "Désactivé par défaut. Une fois activé, vos détails de connexion apparaissent ci-dessous et votre équipe peut connecter ses applications d'IA."
     },
     "connect": {
-        "title": "Détails de connexion",
+        "title": "Connecter votre application d'IA",
         "description": "Partagez-les avec les personnes que vous autorisez ci-dessous. Il leur sera demandé de se connecter à Vacademy et d'approuver la connexion.",
         "serverUrlLabel": "URL du serveur",
-        "scopeLabel": "Portée",
+        "clientIdHint": "Créé automatiquement pour votre établissement et ne peut pas être supprimé. Nécessaire uniquement pour les applications qui demandent un identifiant client.",
+        "clientIdLabel": "Votre identifiant client",
         "copy": "Copier",
         "copied": "Copié",
         "howToTitle": "Comment se connecter",
         "howToClaude": "Claude : Settings → Connectors → Add custom connector, puis collez l'URL du serveur.",
         "howToCursor": "Claude Code / Cursor : exécutez claude mcp add --transport http vacademy <URL du serveur>.",
-        "howToManual": "Si une application demande un identifiant client au lieu de s'enregistrer elle-même, créez-en un ci-dessous."
+        "howToManual": "Si une application demande un identifiant client, collez votre identifiant client ci-dessus."
     },
     "clients": {
-        "title": "Identifiants client OAuth",
-        "description": "La plupart des applications d'IA s'enregistrent elles-mêmes et n'ont besoin de rien ici — seulement l'URL du serveur ci-dessus. L'identifiant client de votre établissement est prêt ci-dessous pour les applications qui en demandent un.",
+        "title": "Identifiants client pour d'autres applications",
         "nameLabel": "Nom de l'application",
         "namePlaceholder": "ex. Assistant de l'équipe marketing",
         "redirectLabel": "URL de redirection",
@@ -32,24 +32,29 @@
         "redirectHint": "Séparées par des virgules. Doivent être en https, ou en http sur localhost. La documentation de l'application indique quoi utiliser.",
         "create": "Créer un identifiant client",
         "creating": "Création…",
-        "empty": "Aucun identifiant client pour le moment.",
-        "clientIdLabel": "Identifiant client",
         "remove": "Supprimer",
         "removed": "Identifiant client supprimé",
         "created": "Identifiant client créé",
         "createFailed": "Impossible de créer l'identifiant client",
         "removeFailed": "Impossible de supprimer l'identifiant client",
-        "addCustom": "Ajouter un identifiant client pour une autre application"
+        "addCustom": "Ajouter un identifiant client pour une autre application",
+        "cancel": "Annuler"
     },
     "tools": {
         "title": "Ce que les applications d'IA peuvent faire",
         "description": "Seul ce que vous activez ici est disponible, et seules des actions en lecture seule sont proposées.",
-        "empty": "Aucun outil n'est encore disponible sur ce serveur."
+        "empty": "Aucun outil n'est encore disponible sur ce serveur.",
+        "modeRead": "Lecture seule",
+        "modeWrite": "Modifie les brouillons",
+        "actionsLabel": "Peut faire :"
     },
     "roles": {
         "title": "Qui peut se connecter",
         "description": "Seuls ces rôles peuvent connecter une application d'IA. Tous les autres sont refusés, même avec un lien.",
-        "learnerNote": "Les apprenants et les parents ne peuvent jamais se connecter, quelle que soit la sélection ici."
+        "learnerNote": "Les apprenants et les parents ne peuvent jamais se connecter, quelle que soit la sélection ici.",
+        "addPlaceholder": "Ajouter un rôle…",
+        "remove": "Retirer",
+        "empty": "Aucun rôle ne peut encore se connecter. Ajoutez-en un ci-dessous — les administrateurs sont autorisés par défaut."
     },
     "perRole": {
         "title": "Accès par rôle (avancé)",

@@ -41,6 +41,7 @@ import { Textarea } from '@/components/ui/textarea';
 export const CatalogueEditorPage = () => {
     const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
     const { tagName } = Route.useParams();
+    const { page: linkedPageRoute, section: linkedSectionId } = Route.useSearch();
     const instituteId = getCurrentInstituteId();
     const {
         setConfig,
@@ -193,6 +194,21 @@ export const CatalogueEditorPage = () => {
             setSavedConfigJSON(json);
             setHasDraft(!!draftQuery.data);
             loadedForRef.current = meta.id;
+            // Deep link (?page=&section=): land on the page/section that was
+            // just changed instead of the first page.
+            if (linkedPageRoute) {
+                const wanted = linkedPageRoute.replace(/^\//, '').toLowerCase();
+                const target = (parsed.pages || []).find(
+                    (p: { route?: string; id?: string }) =>
+                        String(p.route || '')
+                            .replace(/^\//, '')
+                            .toLowerCase() === wanted || p.id === linkedPageRoute
+                );
+                if (target?.id) {
+                    selectPage(target.id);
+                    if (linkedSectionId) selectComponent(linkedSectionId);
+                }
+            }
         } catch (e) {
             console.error('Failed to parse catalogue JSON', e);
         }

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Check, Copy, PlugsConnected, Trash, WarningCircle } from '@phosphor-icons/react';
+import { Check, Copy, Plus, PlugsConnected, Trash, WarningCircle } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
+import { MyDropdown } from '@/components/design-system/dropdown';
+import { StatusChip } from '@/components/design-system/status-chips';
 import {
     getAllRoles,
     type CustomRole,
@@ -113,6 +115,35 @@ export default function MCPServerSettings() {
     }, [customRoles]);
 
     const tools: McpToolCatalogEntry[] = info?.tools ?? [];
+
+    // The allow-list as a LIST, not a switch per role: institutes have a dozen+
+    // roles and only a couple ever connect, so the page shows who is allowed
+    // and offers the rest in a dropdown.
+    const allowedRoles = useMemo(
+        () => roleNames.filter((role) => settings.allowed_roles.includes(role)),
+        [roleNames, settings.allowed_roles]
+    );
+    const addableRoles = useMemo(
+        () => roleNames.filter((role) => !settings.allowed_roles.includes(role)),
+        [roleNames, settings.allowed_roles]
+    );
+    const formatRoleName = (role: string) =>
+        role
+            .toLowerCase()
+            .split('_')
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ');
+
+    // The institute's own client ID is provisioned by the backend and cannot be
+    // removed; anything else in the list is one an admin added for a specific app.
+    const primaryClient = useMemo(
+        () => (info?.manual_clients ?? []).find((c) => c.is_primary) ?? null,
+        [info?.manual_clients]
+    );
+    const customClients = useMemo(
+        () => (info?.manual_clients ?? []).filter((c) => !c.is_primary),
+        [info?.manual_clients]
+    );
 
     const copyToClipboard = async (key: string, value: string) => {
         if (!value) return;
@@ -257,206 +288,242 @@ export default function MCPServerSettings() {
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>{t('connect.title')}</CardTitle>
-                    <CardDescription>{t('connect.description')}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {infoError ? (
-                        <p className="flex items-center gap-2 text-body text-danger-600">
-                            <WarningCircle size={18} />
-                            {t('errors.infoUnavailable')}
-                        </p>
-                    ) : infoLoading ? (
-                        <div className="text-body text-neutral-500">{t('loading')}</div>
-                    ) : (
-                        <>
-                            <div className="space-y-1.5">
-                                <Label className="text-caption font-medium text-neutral-600">
-                                    {t('connect.serverUrlLabel')}
-                                </Label>
-                                <div className="flex items-center gap-2">
-                                    <div className="flex-1 truncate rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-caption text-neutral-800">
-                                        {info?.server_url}
+            {settings.enabled && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('connect.title')}</CardTitle>
+                        <CardDescription>{t('connect.description')}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                        {infoError ? (
+                            <p className="flex items-center gap-2 text-body text-danger-600">
+                                <WarningCircle size={18} />
+                                {t('errors.infoUnavailable')}
+                            </p>
+                        ) : infoLoading ? (
+                            <div className="text-body text-neutral-500">{t('loading')}</div>
+                        ) : (
+                            <>
+                                <div className="space-y-1.5">
+                                    <Label className="text-caption font-medium text-neutral-600">
+                                        {t('connect.serverUrlLabel')}
+                                    </Label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 truncate rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-body text-neutral-800">
+                                            {info?.server_url}
+                                        </div>
+                                        <MyButton
+                                            buttonType="secondary"
+                                            scale="small"
+                                            onClick={() =>
+                                                copyToClipboard(
+                                                    'server-url',
+                                                    info?.server_url ?? ''
+                                                )
+                                            }
+                                        >
+                                            {copiedKey === 'server-url' ? (
+                                                <span className="flex items-center gap-1">
+                                                    <Check size={14} />
+                                                    {t('connect.copied')}
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center gap-1">
+                                                    <Copy size={14} />
+                                                    {t('connect.copy')}
+                                                </span>
+                                            )}
+                                        </MyButton>
                                     </div>
+                                </div>
+
+                                {primaryClient && (
+                                    <div className="space-y-1.5">
+                                        <Label className="text-caption font-medium text-neutral-600">
+                                            {t('connect.clientIdLabel')}
+                                        </Label>
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex-1 break-all rounded-md border border-primary-200 bg-primary-50 px-4 py-3 font-mono text-subtitle font-medium text-neutral-800">
+                                                {primaryClient.client_id}
+                                            </div>
+                                            <MyButton
+                                                buttonType="secondary"
+                                                scale="small"
+                                                onClick={() =>
+                                                    copyToClipboard(
+                                                        'primary-client',
+                                                        primaryClient.client_id
+                                                    )
+                                                }
+                                            >
+                                                {copiedKey === 'primary-client' ? (
+                                                    <span className="flex items-center gap-1">
+                                                        <Check size={14} />
+                                                        {t('connect.copied')}
+                                                    </span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1">
+                                                        <Copy size={14} />
+                                                        {t('connect.copy')}
+                                                    </span>
+                                                )}
+                                            </MyButton>
+                                        </div>
+                                        <p className="text-caption text-neutral-500">
+                                            {t('connect.clientIdHint')}
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="space-y-1.5 rounded-lg bg-neutral-50 p-3">
+                                    <p className="text-caption font-medium text-neutral-700">
+                                        {t('connect.howToTitle')}
+                                    </p>
+                                    <p className="text-caption text-neutral-600">
+                                        {t('connect.howToClaude')}
+                                    </p>
+                                    <p className="text-caption text-neutral-600">
+                                        {t('connect.howToCursor')}
+                                    </p>
+                                    <p className="text-caption text-neutral-600">
+                                        {t('connect.howToManual')}
+                                    </p>
+                                </div>
+
+                                {(customClients.length > 0 || showClientForm) && (
+                                    <div className="space-y-2 border-t border-neutral-200 pt-4">
+                                        <p className="text-body font-medium text-neutral-800">
+                                            {t('clients.title')}
+                                        </p>
+                                        {customClients.map((client) => (
+                                            <div
+                                                key={client.client_id}
+                                                className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3 sm:flex-row sm:items-center sm:justify-between"
+                                            >
+                                                <div className="min-w-0 space-y-1">
+                                                    <p className="text-body font-medium text-neutral-800">
+                                                        {client.client_name || client.client_id}
+                                                    </p>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-caption font-medium text-neutral-500">
+                                                            {t('connect.clientIdLabel')}
+                                                        </span>
+                                                        <span className="truncate font-mono text-body text-neutral-600">
+                                                            {client.client_id}
+                                                        </span>
+                                                        <MyButton
+                                                            buttonType="text"
+                                                            layoutVariant="icon"
+                                                            scale="small"
+                                                            aria-label={t('connect.copy')}
+                                                            onClick={() =>
+                                                                copyToClipboard(
+                                                                    `client-${client.client_id}`,
+                                                                    client.client_id
+                                                                )
+                                                            }
+                                                        >
+                                                            {copiedKey ===
+                                                            `client-${client.client_id}` ? (
+                                                                <Check size={14} />
+                                                            ) : (
+                                                                <Copy size={14} />
+                                                            )}
+                                                        </MyButton>
+                                                    </div>
+                                                </div>
+                                                <MyButton
+                                                    buttonType="text"
+                                                    scale="small"
+                                                    className="shrink-0 !text-danger-600"
+                                                    onClick={() => removeClient(client.client_id)}
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        <Trash size={14} />
+                                                        {t('clients.remove')}
+                                                    </span>
+                                                </MyButton>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {showClientForm ? (
+                                    <div className="grid gap-3 rounded-lg border border-dashed border-neutral-300 p-3 sm:grid-cols-2">
+                                        <div className="space-y-1.5">
+                                            <Label
+                                                htmlFor="mcp-new-client-name"
+                                                className="text-caption font-medium text-neutral-600"
+                                            >
+                                                {t('clients.nameLabel')}
+                                            </Label>
+                                            <Input
+                                                id="mcp-new-client-name"
+                                                value={newClientName}
+                                                placeholder={t('clients.namePlaceholder')}
+                                                onChange={(e) => setNewClientName(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label
+                                                htmlFor="mcp-new-client-redirects"
+                                                className="text-caption font-medium text-neutral-600"
+                                            >
+                                                {t('clients.redirectLabel')}
+                                            </Label>
+                                            <Input
+                                                id="mcp-new-client-redirects"
+                                                value={newClientRedirects}
+                                                placeholder={t('clients.redirectPlaceholder')}
+                                                onChange={(e) =>
+                                                    setNewClientRedirects(e.target.value)
+                                                }
+                                            />
+                                            <p className="text-caption text-neutral-500">
+                                                {t('clients.redirectHint')}
+                                            </p>
+                                        </div>
+                                        <div className="flex justify-end gap-2 sm:col-span-2">
+                                            <MyButton
+                                                buttonType="secondary"
+                                                scale="small"
+                                                onClick={() => setShowClientForm(false)}
+                                            >
+                                                {t('clients.cancel')}
+                                            </MyButton>
+                                            <MyButton
+                                                buttonType="primary"
+                                                scale="small"
+                                                disable={
+                                                    creatingClient ||
+                                                    !newClientName.trim() ||
+                                                    !newClientRedirects.trim()
+                                                }
+                                                onClick={handleCreateClient}
+                                            >
+                                                {creatingClient
+                                                    ? t('clients.creating')
+                                                    : t('clients.create')}
+                                            </MyButton>
+                                        </div>
+                                    </div>
+                                ) : (
                                     <MyButton
                                         buttonType="secondary"
                                         scale="small"
-                                        onClick={() =>
-                                            copyToClipboard('server-url', info?.server_url ?? '')
-                                        }
-                                    >
-                                        {copiedKey === 'server-url' ? (
-                                            <span className="flex items-center gap-1">
-                                                <Check size={14} />
-                                                {t('connect.copied')}
-                                            </span>
-                                        ) : (
-                                            <span className="flex items-center gap-1">
-                                                <Copy size={14} />
-                                                {t('connect.copy')}
-                                            </span>
-                                        )}
-                                    </MyButton>
-                                </div>
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <Label className="text-caption font-medium text-neutral-600">
-                                    {t('connect.scopeLabel')}
-                                </Label>
-                                <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-caption text-neutral-800">
-                                    {info?.scope}
-                                </div>
-                            </div>
-
-                            <div className="space-y-1.5 rounded-lg bg-neutral-50 p-3">
-                                <p className="text-caption font-medium text-neutral-700">
-                                    {t('connect.howToTitle')}
-                                </p>
-                                <p className="text-caption text-neutral-600">
-                                    {t('connect.howToClaude')}
-                                </p>
-                                <p className="text-caption text-neutral-600">
-                                    {t('connect.howToCursor')}
-                                </p>
-                                <p className="font-mono text-caption text-neutral-600">
-                                    {t('connect.howToManual')}
-                                </p>
-                            </div>
-                        </>
-                    )}
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>{t('clients.title')}</CardTitle>
-                    <CardDescription>{t('clients.description')}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {(info?.manual_clients ?? []).length === 0 ? (
-                        <p className="text-body text-neutral-500">
-                            {infoError ? t('errors.infoUnavailable') : t('clients.empty')}
-                        </p>
-                    ) : (
-                        <div className="space-y-2">
-                            {(info?.manual_clients ?? []).map((client) => (
-                                <div
-                                    key={client.client_id}
-                                    className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3 sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                    <div className="min-w-0 space-y-1">
-                                        <p className="text-body font-medium text-neutral-800">
-                                            {client.client_name || client.client_id}
-                                        </p>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-caption font-medium text-neutral-500">
-                                                {t('clients.clientIdLabel')}
-                                            </span>
-                                            <span className="truncate font-mono text-caption text-neutral-600">
-                                                {client.client_id}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                aria-label={t('connect.copy')}
-                                                onClick={() =>
-                                                    copyToClipboard(
-                                                        `client-${client.client_id}`,
-                                                        client.client_id
-                                                    )
-                                                }
-                                                className="text-neutral-400 hover:text-neutral-600"
-                                            >
-                                                {copiedKey === `client-${client.client_id}` ? (
-                                                    <Check size={14} />
-                                                ) : (
-                                                    <Copy size={14} />
-                                                )}
-                                            </button>
-                                        </div>
-                                        {client.redirect_uris.length > 0 && (
-                                            <p className="truncate text-caption text-neutral-500">
-                                                {client.redirect_uris.join(', ')}
-                                            </p>
-                                        )}
-                                    </div>
-                                    <MyButton
-                                        buttonType="text"
-                                        scale="small"
-                                        className="shrink-0 !text-danger-600"
-                                        onClick={() => removeClient(client.client_id)}
+                                        onClick={() => setShowClientForm(true)}
                                     >
                                         <span className="flex items-center gap-1">
-                                            <Trash size={14} />
-                                            {t('clients.remove')}
+                                            <Plus size={14} />
+                                            {t('clients.addCustom')}
                                         </span>
                                     </MyButton>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {showClientForm ? (
-                        <div className="grid gap-3 rounded-lg border border-dashed border-neutral-300 p-3 sm:grid-cols-2">
-                            <div className="space-y-1.5">
-                                <Label
-                                    htmlFor="mcp-new-client-name"
-                                    className="text-caption font-medium text-neutral-600"
-                                >
-                                    {t('clients.nameLabel')}
-                                </Label>
-                                <Input
-                                    id="mcp-new-client-name"
-                                    value={newClientName}
-                                    placeholder={t('clients.namePlaceholder')}
-                                    onChange={(e) => setNewClientName(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label
-                                    htmlFor="mcp-new-client-redirects"
-                                    className="text-caption font-medium text-neutral-600"
-                                >
-                                    {t('clients.redirectLabel')}
-                                </Label>
-                                <Input
-                                    id="mcp-new-client-redirects"
-                                    value={newClientRedirects}
-                                    placeholder={t('clients.redirectPlaceholder')}
-                                    onChange={(e) => setNewClientRedirects(e.target.value)}
-                                />
-                                <p className="text-caption text-neutral-500">
-                                    {t('clients.redirectHint')}
-                                </p>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <MyButton
-                                    buttonType="secondary"
-                                    scale="small"
-                                    disable={
-                                        creatingClient ||
-                                        !newClientName.trim() ||
-                                        !newClientRedirects.trim()
-                                    }
-                                    onClick={handleCreateClient}
-                                >
-                                    {creatingClient ? t('clients.creating') : t('clients.create')}
-                                </MyButton>
-                            </div>
-                        </div>
-                    ) : (
-                        <MyButton
-                            buttonType="text"
-                            scale="small"
-                            onClick={() => setShowClientForm(true)}
-                        >
-                            {t('clients.addCustom')}
-                        </MyButton>
-                    )}
-                </CardContent>
-            </Card>
+                                )}
+                            </>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             <Card>
                 <CardHeader>
@@ -477,15 +544,35 @@ export default function MCPServerSettings() {
                                     onCheckedChange={(v) => toggleTool(tool.key, v)}
                                 />
                                 <div>
-                                    <Label
-                                        htmlFor={`mcp-tool-${tool.key}`}
-                                        className="cursor-pointer text-body font-medium text-neutral-800"
-                                    >
-                                        {tool.label}
-                                    </Label>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Label
+                                            htmlFor={`mcp-tool-${tool.key}`}
+                                            className="cursor-pointer text-body font-medium text-neutral-800"
+                                        >
+                                            {tool.label}
+                                        </Label>
+                                        <StatusChip
+                                            status={tool.mode === 'WRITE' ? 'WARNING' : 'INFO'}
+                                            textSize="text-caption"
+                                            showIcon={false}
+                                            text={
+                                                tool.mode === 'WRITE'
+                                                    ? t('tools.modeWrite')
+                                                    : t('tools.modeRead')
+                                            }
+                                        />
+                                    </div>
                                     <p className="mt-0.5 text-caption text-neutral-600">
-                                        {tool.description}
+                                        {tool.summary || tool.description}
                                     </p>
+                                    {tool.actions && tool.actions.length > 0 && (
+                                        <p className="mt-0.5 text-caption text-neutral-500">
+                                            {t('tools.actionsLabel')}{' '}
+                                            {tool.actions
+                                                .map((a) => a.replace(/_/g, ' '))
+                                                .join(' · ')}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         ))
@@ -499,22 +586,46 @@ export default function MCPServerSettings() {
                     <CardDescription>{t('roles.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                        {roleNames.map((role) => (
-                            <label
-                                key={role}
-                                htmlFor={`mcp-role-${role}`}
-                                className="flex items-center gap-2 rounded-lg border border-neutral-200 p-2"
-                            >
-                                <Switch
-                                    id={`mcp-role-${role}`}
-                                    checked={isRoleAllowed(role)}
-                                    onCheckedChange={(v) => toggleRoleAllowed(role, v)}
-                                />
-                                <span className="text-body text-neutral-800">{role}</span>
-                            </label>
-                        ))}
-                    </div>
+                    {allowedRoles.length === 0 ? (
+                        <p className="text-body text-neutral-500">{t('roles.empty')}</p>
+                    ) : (
+                        <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-200">
+                            {allowedRoles.map((role) => (
+                                <li
+                                    key={role}
+                                    className="flex items-center justify-between gap-3 px-3 py-2"
+                                >
+                                    <span className="text-body text-neutral-800">
+                                        {formatRoleName(role)}
+                                    </span>
+                                    <MyButton
+                                        buttonType="text"
+                                        scale="small"
+                                        className="shrink-0 !text-danger-600"
+                                        onClick={() => toggleRoleAllowed(role, false)}
+                                    >
+                                        <span className="flex items-center gap-1">
+                                            <Trash size={14} />
+                                            {t('roles.remove')}
+                                        </span>
+                                    </MyButton>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {addableRoles.length > 0 && (
+                        <div className="max-w-sm">
+                            <MyDropdown
+                                key={`add-role-${allowedRoles.length}`}
+                                dropdownList={addableRoles.map((role) => ({
+                                    label: formatRoleName(role),
+                                    value: role,
+                                }))}
+                                placeholder={t('roles.addPlaceholder')}
+                                handleChange={(role) => toggleRoleAllowed(role, true)}
+                            />
+                        </div>
+                    )}
                     <p className="text-caption text-neutral-500">{t('roles.learnerNote')}</p>
                 </CardContent>
             </Card>
@@ -536,7 +647,7 @@ export default function MCPServerSettings() {
                                 >
                                     <div className="flex items-center justify-between gap-3">
                                         <span className="text-body font-medium text-neutral-800">
-                                            {role}
+                                            {formatRoleName(role)}
                                         </span>
                                         <label className="flex items-center gap-2">
                                             <Switch

@@ -32,7 +32,7 @@ from ..services import ai_task_service
 from ..services.ai_billing import preflight_tool_credits
 from ..services.ai_task_service import AiTaskService
 from ..services.kb import ingest as kb_ingest
-from ..services.kb.repository import KbRepository
+from ..services.kb.repository import KbRepository, is_curriculum_kb
 from ..services.kb.retrieval import KbRetrievalService
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,9 @@ class KbCreate(BaseModel):
     # Free-form per-base metadata (V517). The curriculum loader sets
     # {topic_tree_mode: "AUTHORED", curriculum: {...}} here.
     meta: Optional[Dict[str, Any]] = None
+    # A registered embedder id (kb_embedding_model). Default = the platform
+    # default; the curriculum loader picks the in-process BAAI/bge-base-en-v1.5.
+    embedding_model: Optional[str] = Field(None, max_length=100)
 
 
 class KbUpdate(BaseModel):
@@ -304,6 +307,7 @@ async def create_base(
             language_hint=body.language_hint,
             created_by=caller.user_id,
             meta=body.meta,
+            embedding_model=body.embedding_model,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Knowledge base creation failed")
@@ -577,10 +581,11 @@ async def add_source(
                 f"{kb_ingest.parsing.MAX_PAGES_PER_SOURCE}. Please split it.",
             )
         title = title or "Untitled document"
-        _preflight_or_402(
-            db, tool_key="kb_ingest_page",
-            tool_params={"num_pages": expected_pages}, institute_id=resolved,
-        )
+        if not is_curriculum_kb(kb):
+            _preflight_or_402(
+                db, tool_key="kb_ingest_page",
+                tool_params={"num_pages": expected_pages}, institute_id=resolved,
+            )
 
     elif kind in ("URL", "YOUTUBE"):
         if not body.source_url:
@@ -588,7 +593,8 @@ async def add_source(
         if kind == "YOUTUBE" and not kb_ingest.parsing.youtube_video_id(body.source_url):
             raise HTTPException(400, "That does not look like a YouTube video URL")
         title = title or body.source_url[:200]
-        _preflight_or_402(db, tool_key="kb_ingest_url", tool_params={}, institute_id=resolved)
+        if not is_curriculum_kb(kb):
+            _preflight_or_402(db, tool_key="kb_ingest_url", tool_params={}, institute_id=resolved)
 
     else:  # TEXT
         if not (body.raw_text or "").strip():

@@ -139,11 +139,13 @@ def list_catalogue(
                    (SELECT COALESCE(SUM(s.page_count), 0)
                       FROM knowledge_base_source s
                      WHERE s.knowledge_base_id = l.knowledge_base_id) AS pages,
-                   EXISTS (
+                   -- The Library is free: a published listing is "unlocked" for
+                   -- everyone; an entitlement still counts for withdrawn ones.
+                   (l.status = 'PUBLISHED' OR EXISTS (
                        SELECT 1 FROM knowledge_base_entitlement e
                         WHERE e.knowledge_base_id = l.knowledge_base_id
                           AND e.institute_id = :institute_id
-                   ) AS unlocked
+                   )) AS unlocked
             FROM knowledge_base_listing l
             JOIN knowledge_base kb ON kb.id = l.knowledge_base_id
             WHERE {' AND '.join(where)}
@@ -190,11 +192,13 @@ def get_listing(
                    (SELECT COALESCE(SUM(s.page_count), 0)
                       FROM knowledge_base_source s
                      WHERE s.knowledge_base_id = l.knowledge_base_id) AS pages,
-                   EXISTS (
+                   -- The Library is free: a published listing is "unlocked" for
+                   -- everyone; an entitlement still counts for withdrawn ones.
+                   (l.status = 'PUBLISHED' OR EXISTS (
                        SELECT 1 FROM knowledge_base_entitlement e
                         WHERE e.knowledge_base_id = l.knowledge_base_id
                           AND e.institute_id = :institute_id
-                   ) AS unlocked
+                   )) AS unlocked
             FROM knowledge_base_listing l
             WHERE l.knowledge_base_id = :kb_id
             """

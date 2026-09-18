@@ -349,11 +349,78 @@ def _chapter_sort_key(source: Dict[str, Any]) -> tuple:
     return (no, source.get("created_at") or "")
 
 
+# Headings supplied by hand (the loader's structure files, or an admin edit)
+# live here on the source; they take precedence over the LLM quoter.
+_MANUAL_HEADINGS_META_KEY = "headings_manual"
+
+
+_LOOSE_MAP = str.maketrans({"\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"',
+                            "\u2013": "-", "\u2014": "-", "\u00a0": " "})
+
+
+def _loose(text: str) -> str:
+    """_norm plus typographic quotes/dashes folded — a hand-typed heading
+    uses ' and -, the PDF text layer usually has ’ and –."""
+    return _norm((text or "").translate(_LOOSE_MAP))
+
+
+def locate_headings(titles: List[str], chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Give hand-written headings their page numbers by finding them in the text.
+
+    Same idea as the quoter's verbatim gate, in reverse: the heading is
+    trusted, the page is looked up. A heading that appears nowhere keeps
+    page=None — it still becomes a subtopic (a teacher can pick it, and
+    retrieval falls back to similarity), it just cannot own a page span.
+    """
+    pages: Dict[int, str] = {}
+    for c in chunks:
+        p = c.get("page_start") or 0
+        pages[p] = pages.get(p, "") + "\n" + _loose(c.get("content_text") or "")
+    ordered = sorted(pages.items())
+    cleaned = [" ".join(str(raw).split()).strip() for raw in titles]
+    keys = [_loose(t) for t in cleaned]
+    # A chapter opener often carries a contents box listing every heading of
+    # the chapter on page 1-2. A page where many headings co-occur is that
+    # box, not the sections themselves — never locate a heading there.
+    toc_pages = {
+        pg for pg, txt in ordered[:3]
+        if sum(1 for k in keys if k and k in txt) >= 3
+    }
+    out: List[Dict[str, Any]] = []
+    cursor = 0  # headings are in book order; never look backwards
+    for title, key in zip(cleaned, keys):
+        if not (2 <= len(title) <= 200):
+            continue
+        page = None
+        for idx in range(cursor, len(ordered)):
+            pg, txt = ordered[idx]
+            if pg in toc_pages:
+                continue
+            if key in txt:
+                page = pg or None
+                cursor = idx
+                break
+        out.append({"title": title, "page": page, "level": 1})
+    # Page span: to the next located heading's page.
+    for i, h in enumerate(out):
+        nxt = next((v["page"] for v in out[i + 1:] if v["page"]), None)
+        h["page_end"] = max(h["page"] or 0, (nxt or h["page"] or 0)) or None
+    return out
+
+
 async def _chapter_headings(
     db: Session, repo: KbRepository, kb: Dict[str, Any], source: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
-    """Verbatim headings for one chapter, from cache or one quoter call."""
+    """Headings for one chapter: hand-supplied (located in the text) beat the
+    cached quoter result, which beats a fresh quoter call."""
     meta = source.get("meta") or {}
+    manual = meta.get(_MANUAL_HEADINGS_META_KEY)
+    if isinstance(manual, list) and manual:
+        chunks = repo.get_all_chunk_summaries(
+            kb_id=kb["id"], institute_id=kb["institute_id"], limit=400, source_id=source["id"]
+        )
+        return locate_headings([str(t) for t in manual], chunks)
+
     cached = meta.get(_HEADINGS_META_KEY)
     if isinstance(cached, list):
         return cached
@@ -436,19 +503,24 @@ async def build_authored_tree(
         # Only major headings become subtopics: NCERT's "1.2 Nature of Matter"
         # is the unit a teacher sets questions on; its "1.2.1 States" is not.
         majors = [h for h in headings if h.get("level") == 1] or headings
-        majors = [h for h in majors if h.get("page")][:MAX_SUBTOPICS_PER_TOPIC * 2]
+        majors = [h for h in majors if str(h.get("title") or "").strip()][:MAX_SUBTOPICS_PER_TOPIC * 2]
         # Spans are recomputed HERE, over the merged list: a major section runs
         # to the next MAJOR heading (not to its own first sub-heading, and not
         # to the end of the page window the quoter happened to read it in),
-        # and the last one runs to the end of the chapter.
+        # and the last one runs to the end of the chapter. A heading with no
+        # page (hand-supplied, not found in the text) becomes a subtopic with
+        # no span: pickable, retrieved by similarity, owning no chunks.
         for i, h in enumerate(majors):
-            nxt = next((m["page"] for m in majors[i + 1:] if m.get("page")), None)
-            end = max(int(h["page"]), int(nxt) if nxt else (page_count or int(h["page"])))
+            page = h.get("page")
+            end = None
+            if page:
+                nxt = next((m["page"] for m in majors[i + 1:] if m.get("page")), None)
+                end = max(int(page), int(nxt) if nxt else (page_count or int(page)))
             topic.subtopics.append(
                 TopicNode(
                     id=_node_id(kb["id"], source["id"], str(i), str(h.get("title") or "")),
                     title=str(h.get("title") or "")[:300],
-                    page_start=int(h["page"]),
+                    page_start=int(page) if page else None,
                     page_end=end,
                     source_id=source["id"],
                 )

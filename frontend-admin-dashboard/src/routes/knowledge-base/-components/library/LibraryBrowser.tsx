@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { BookOpenText, Books, Lock, UploadSimple, X } from '@phosphor-icons/react';
+import { BookOpenText, Books, UploadSimple, X } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { StatusChip } from '@/components/design-system/status-chips';
@@ -19,6 +19,8 @@ import type {
     ListingFacets,
 } from '../../-types/library';
 import { LibraryCover } from './LibraryCover';
+import type { KnowledgeBase } from '../../-types';
+import { CurriculumBrowser } from '../curriculum/CurriculumBrowser';
 
 const buildFacetLabels = (t: TFunction): Array<{ key: keyof ListingFacets; label: string }> => [
     { key: 'subject', label: t('facets.subject') },
@@ -49,15 +51,7 @@ const describeSize = (t: TFunction, library: LibraryListing): string =>
         .filter(Boolean)
         .join(' · ');
 
-const LibraryGridCard = ({
-    library,
-    price,
-    onOpen,
-}: {
-    library: LibraryListing;
-    price: number;
-    onOpen: () => void;
-}) => {
+const LibraryGridCard = ({ library, onOpen }: { library: LibraryListing; onOpen: () => void }) => {
     const { t } = useTranslation('knowledgeBaseLibraryBrowser');
     return (
         <button
@@ -80,29 +74,20 @@ const LibraryGridCard = ({
                     {library.summary}
                 </p>
                 <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-caption text-neutral-400">
-                    {[library.subject, library.level, library.board]
-                        .filter(Boolean)
-                        .map((chip) => (
-                            <span key={chip} className="rounded-sm bg-neutral-50 px-1.5 py-0.5">
-                                {chip}
-                            </span>
-                        ))}
+                    {[library.subject, library.level, library.board].filter(Boolean).map((chip) => (
+                        <span key={chip} className="rounded-sm bg-neutral-50 px-1.5 py-0.5">
+                            {chip}
+                        </span>
+                    ))}
                 </div>
                 <p className="text-caption text-neutral-400">{describeSize(t, library)}</p>
                 <div className="pt-1">
-                    {library.unlocked ? (
-                        <StatusChip
-                            status="SUCCESS"
-                            text={t('card.unlocked')}
-                            textSize="text-caption"
-                            showIcon={false}
-                        />
-                    ) : (
-                        <span className="flex items-center gap-1.5 text-caption font-medium text-primary-500">
-                            <Lock size={13} weight="fill" />
-                            {t('card.credits', { count: price })}
-                        </span>
-                    )}
+                    <StatusChip
+                        status="SUCCESS"
+                        text={t('card.free')}
+                        textSize="text-caption"
+                        showIcon={false}
+                    />
                 </div>
             </div>
         </button>
@@ -116,12 +101,17 @@ const LibraryGridCard = ({
  * knowing what exists, so covers, facets and honest size figures do the work of
  * explaining what each library is before they spend anything on it.
  */
-export const LibraryBrowser = () => {
+export const LibraryBrowser = ({
+    curriculum = [],
+}: {
+    /** Curriculum textbooks (NCERT…) the institute can use — shown as their
+     *  own section, grouped by class, above the other libraries. */
+    curriculum?: KnowledgeBase[];
+}) => {
     const { t } = useTranslation('knowledgeBaseLibraryBrowser');
     const navigate = useNavigate();
     const FACET_LABELS = useMemo(() => buildFacetLabels(t), [t]);
     const [libraries, setLibraries] = useState<LibraryListing[] | null>(null);
-    const [price, setPrice] = useState(0);
     const [facets, setFacets] = useState<FacetValues | null>(null);
     const [filters, setFilters] = useState<CatalogueFilters>({});
     const [search, setSearch] = useState('');
@@ -141,7 +131,6 @@ export const LibraryBrowser = () => {
                     .then((response) => {
                         if (cancelled) return;
                         setLibraries(response.libraries);
-                        setPrice(response.unlock_credits);
                     })
                     .catch(() => !cancelled && setLibraries([]));
             },
@@ -183,6 +172,15 @@ export const LibraryBrowser = () => {
                     </MyButton>
                 )}
             </div>
+
+            {curriculum.length > 0 && (
+                <>
+                    <CurriculumBrowser knowledgeBases={curriculum} />
+                    <p className="pt-2 text-subtitle font-semibold text-neutral-700">
+                        {t('otherLibrariesHeading')}
+                    </p>
+                </>
+            )}
 
             <div className="flex flex-col gap-3">
                 <MyInput
@@ -272,7 +270,6 @@ export const LibraryBrowser = () => {
                         <LibraryGridCard
                             key={library.knowledge_base_id}
                             library={library}
-                            price={price}
                             onOpen={() =>
                                 navigate({
                                     to: '/knowledge-base/library/$kbId',

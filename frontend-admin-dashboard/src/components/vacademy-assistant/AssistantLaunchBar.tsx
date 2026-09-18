@@ -21,6 +21,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { ASSISTANT_CAPABILITIES } from '@/constants/urls';
 import { useAssistDock } from '@/components/assist-dock/store';
 import type { AssistantCapabilities } from './types';
+import { useInstituteChatbotName } from './useInstituteChatbotName';
 
 // Ordered by everyday dashboard tasks, not the API's group ordering. Each
 // suggestion requires its actual tool: a read-only group can never suggest a write.
@@ -43,6 +44,7 @@ const STARTERS: { key: string; group: string; tool: string; Icon: Icon }[] = [
 /** Dashboard composer. Sends through the same dock and session as the global assistant. */
 export function AssistantLaunchBar() {
     const { t } = useTranslation('dashboardIndex');
+    const chatbotName = useInstituteChatbotName();
     const [question, setQuestion] = useState('');
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const id = useId();
@@ -119,14 +121,14 @@ export function AssistantLaunchBar() {
             className="mt-5 rounded-xl border border-primary-100 bg-primary-50/40 p-4 sm:p-5"
         >
             <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
+                <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-neutral-700">
                     <span
-                        className="flex size-7 items-center justify-center rounded-lg bg-primary-100"
+                        className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary-100"
                         aria-hidden="true"
                     >
                         <Sparkle size={16} weight="fill" />
                     </span>
-                    {t('assistant.name')}
+                    <span className="min-w-0 break-words">{chatbotName}</span>
                 </div>
                 <button
                     type="button"
@@ -155,7 +157,7 @@ export function AssistantLaunchBar() {
                 className="mt-4 rounded-xl border border-neutral-300 bg-white shadow-sm transition-colors focus-within:border-neutral-500 focus-within:ring-2 focus-within:ring-primary-200"
             >
                 <label htmlFor={`${id}-question`} className="sr-only">
-                    {t('assistant.inputLabel')}
+                    {t('assistant.inputLabel', { chatbotName })}
                 </label>
                 <Textarea
                     ref={inputRef}

@@ -70,11 +70,11 @@
         "manyMore": "Et bien plus encore"
     },
     "assistant": {
-        "name": "Assistant Vacademy",
+        "name": "Chatbot de l’établissement",
         "heading": "Que souhaitez-vous accomplir aujourd’hui ?",
         "description": "Posez une question ou choisissez une tâche pour commencer.",
         "openChat": "Ouvrir le chat",
-        "inputLabel": "Interroger l’assistant Vacademy",
+        "inputLabel": "Interroger {{chatbotName}}",
         "placeholder": "Comment puis-je vous aider ?",
         "inputHint": "Entrée pour envoyer · Maj + Entrée pour une nouvelle ligne",
         "submit": "Demander",
@@ -115,7 +115,9 @@
                 "label": "Aide pour une tâche",
                 "prompt": "Comment créer un cours ?"
             }
-        }
+        },
+        "instituteName": "Chatbot de l’établissement {{instituteName}}",
+        "helpDescription": "Demandez-moi comment ou où effectuer une tâche dans votre espace d’administration."
     },
     "quickActions": {
         "title": "Actions rapides"

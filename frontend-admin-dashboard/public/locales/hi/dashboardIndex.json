@@ -70,11 +70,11 @@
         "manyMore": "और भी बहुत कुछ"
     },
     "assistant": {
-        "name": "Vacademy सहायक",
+        "name": "संस्थान चैटबॉट",
         "heading": "आज आप क्या करना चाहेंगे?",
         "description": "कोई प्रश्न पूछें या शुरू करने के लिए कोई कार्य चुनें।",
         "openChat": "चैट खोलें",
-        "inputLabel": "Vacademy सहायक से पूछें",
+        "inputLabel": "{{chatbotName}} से पूछें",
         "placeholder": "मैं आपकी कैसे मदद कर सकता हूँ?",
         "inputHint": "भेजने के लिए Enter · नई पंक्ति के लिए Shift + Enter",
         "submit": "सहायक से पूछें",
@@ -115,7 +115,9 @@
                 "label": "कार्य में सहायता",
                 "prompt": "मैं पाठ्यक्रम कैसे बनाऊँ?"
             }
-        }
+        },
+        "instituteName": "{{instituteName}} संस्थान चैटबॉट",
+        "helpDescription": "अपने एडमिन कार्यक्षेत्र में कोई भी काम कैसे या कहाँ करना है, मुझसे पूछें।"
     },
     "quickActions": {
         "title": "त्वरित कार्य"

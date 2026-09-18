@@ -70,11 +70,11 @@
         "manyMore": "Many More"
     },
     "assistant": {
-        "name": "Vacademy Assistant",
+        "name": "Institute Chatbot",
         "heading": "What would you like to get done today?",
         "description": "Ask a question or choose a task to get started.",
         "openChat": "Open chat",
-        "inputLabel": "Ask the Vacademy Assistant",
+        "inputLabel": "Ask {{chatbotName}}",
         "placeholder": "What can I help you with?",
         "inputHint": "Enter to send · Shift + Enter for a new line",
         "submit": "Ask assistant",
@@ -115,7 +115,9 @@
                 "label": "Help with a task",
                 "prompt": "How do I create a course?"
             }
-        }
+        },
+        "instituteName": "{{instituteName}} Institute Chatbot",
+        "helpDescription": "Ask me how or where to do anything in your admin workspace."
     },
     "quickActions": {
         "title": "Quick actions"

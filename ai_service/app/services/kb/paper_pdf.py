@@ -520,8 +520,8 @@ async def render_pdf(document_html: str, *, footer_title: str = "") -> bytes:
                     logger.warning("paper_pdf: assets did not settle in %sms; printing anyway", _ASSET_WAIT_MS)
                 try:
                     await page.wait_for_load_state("networkidle", timeout=4_000)
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception:  # noqa: BLE001 — a straggling image is not worth a failed download
+                    logger.debug("paper_pdf: network still busy after 4s; printing anyway")
                 return await page.pdf(
                     format="A4",
                     print_background=True,

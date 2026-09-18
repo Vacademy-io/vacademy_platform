@@ -159,7 +159,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                           id: instructor.id,
                           full_name:
                             instructor.full_name || t("common.unknownInstructor"),
-                          image_url: undefined,
+                          image_url: instructor.image_url,
+                          profile_pic_file_id: instructor.profile_pic_file_id,
+                          author_subtitle: instructor.author_subtitle,
+                          author_description: instructor.author_description,
                         }))
                         : []
                     }

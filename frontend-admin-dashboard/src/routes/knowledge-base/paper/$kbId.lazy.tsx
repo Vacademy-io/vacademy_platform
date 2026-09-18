@@ -32,8 +32,9 @@ import { useKnowledgeBase } from '../-hooks';
 import { getTopics, rebuildTopics } from '../-services/paper-service';
 import {
     buildBlueprint,
-    downloadPaperPdf,
+    fetchPaperPdf,
     getGeneration,
+    publishPaperLink,
     markGenerationSaved,
     getPaperJob,
     regenerateQuestion,
@@ -713,11 +714,20 @@ function PaperBuilderPage() {
                                     so rewrites are in the printout. */}
                                 <PaperDownloadMenu
                                     disabled={saving || result.raw_questions.length === 0}
-                                    onDownload={(options) =>
-                                        downloadPaperPdf(
+                                    title={blueprint.title}
+                                    fetchPdf={(options) =>
+                                        fetchPaperPdf(
                                             kbId,
                                             { blueprint, questions: result.raw_questions },
                                             options
+                                        )
+                                    }
+                                    onPublish={(options) =>
+                                        publishPaperLink(
+                                            kbId,
+                                            { blueprint, questions: result.raw_questions },
+                                            options,
+                                            generationId ?? undefined
                                         )
                                     }
                                 />

@@ -160,6 +160,20 @@ export interface PaperJob {
     result: PaperResult | null;
 }
 
+/** A PDF of a paper published behind a public link. */
+export interface PublishedPaperLink {
+    variant: 'question_paper' | 'with_answer_key';
+    title: string;
+    /** Long public-bucket URL; always present. */
+    file_url: string;
+    /** u.vacademy.io/s/… when media_service could make one. */
+    short_url: string | null;
+    /** What to hand out: the short link when there is one. */
+    url: string;
+    size_bytes: number;
+    published_at: string;
+}
+
 /** One artifact created from a knowledge base — a paper today, a course later. */
 export type ArtifactType =
     | 'QUESTION_PAPER'
@@ -191,6 +205,8 @@ export interface KbGeneration {
     created_by: string | null;
     created_at: string | null;
     updated_at: string | null;
+    /** Links already published for this paper, keyed by variant. */
+    published?: Partial<Record<PublishedPaperLink['variant'], PublishedPaperLink>>;
 }
 
 /** The single-record read: adds the payloads Resume needs. */

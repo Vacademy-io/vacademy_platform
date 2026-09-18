@@ -169,10 +169,19 @@ p { margin: 0; }
 img { max-width: 100%; height: auto; }
 table { border-collapse: collapse; }
 .head { text-align: center; }
+.brand { display: flex; align-items: center; justify-content: center; gap: 5mm; }
+.brand .logo { max-height: 18mm; max-width: 40mm; object-fit: contain; }
+.brand .text { text-align: left; }
+.brand.centered .text { text-align: center; }
 .head .institute {
   font-family: "Noto Sans", "Liberation Sans", Arial, "Noto Sans Devanagari", sans-serif;
-  font-size: 15pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: 15pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.2;
 }
+.head .contact {
+  font-family: "Noto Sans", "Liberation Sans", Arial, sans-serif;
+  font-size: 8.5pt; color: #444; margin-top: 1mm; letter-spacing: 0.02em;
+}
+.head .rule { margin: 3mm 0 3.5mm; border-top: 1.6pt solid #111; border-bottom: 0.5pt solid #111; height: 1.2mm; }
 .head .title { margin-top: 2mm; font-size: 13pt; font-weight: 700; }
 .head .subtitle { margin-top: 1mm; font-size: 10.5pt; color: #333; }
 .set { position: absolute; top: 0; right: 0; border: 1.2pt solid #111; padding: 0.5mm 2.5mm;
@@ -353,6 +362,27 @@ def _needs_math(questions: Sequence[Dict[str, Any]]) -> bool:
     return any(_MATH_RE.search(str(part or "")) for q in questions for part in _question_html_parts(q))
 
 
+def _render_brand(
+    institute_name: Optional[str], logo_url: Optional[str], contact_line: Optional[str]
+) -> str:
+    """Logo beside the institute name (or the name alone), contact line under
+    it, then a double rule — the letterhead a school paper is printed on."""
+    if not institute_name and not logo_url:
+        return ""
+    text = ""
+    if institute_name:
+        text += f'<div class="institute">{html.escape(institute_name)}</div>'
+    if contact_line:
+        text += f'<div class="contact">{html.escape(contact_line)}</div>'
+    logo = (
+        f'<img class="logo" src="{html.escape(logo_url, quote=True)}" alt="">' if logo_url else ""
+    )
+    return (
+        f'<div class="brand{"" if logo_url else " centered"}">{logo}<div class="text">{text}</div></div>'
+        '<div class="rule"></div>'
+    )
+
+
 def _render_header(
     blueprint: Blueprint,
     *,
@@ -361,12 +391,13 @@ def _render_header(
     institute_name: Optional[str],
     subtitle: Optional[str],
     set_label: Optional[str],
+    logo_url: Optional[str] = None,
+    contact_line: Optional[str] = None,
 ) -> str:
     parts = ['<header class="head" style="position:relative">']
     if set_label:
         parts.append(f'<div class="set">SET {html.escape(set_label)}</div>')
-    if institute_name:
-        parts.append(f'<div class="institute">{html.escape(institute_name)}</div>')
+    parts.append(_render_brand(institute_name, logo_url, contact_line))
     parts.append(f'<div class="title">{html.escape(blueprint.title)}</div>')
     if subtitle:
         parts.append(f'<div class="subtitle">{html.escape(subtitle)}</div>')
@@ -451,6 +482,8 @@ def build_paper_html(
     include_answer_key: bool = False,
     show_marks: bool = True,
     set_label: Optional[str] = None,
+    logo_url: Optional[str] = None,
+    contact_line: Optional[str] = None,
 ) -> str:
     """The whole document. Pure: same inputs, same HTML."""
     sections = _group_by_section(blueprint, questions)
@@ -463,6 +496,7 @@ def build_paper_html(
         _render_header(
             blueprint, delivered=delivered, total_marks=total_marks,
             institute_name=institute_name, subtitle=subtitle, set_label=set_label,
+            logo_url=logo_url, contact_line=contact_line,
         )
     ]
     number = 0
@@ -541,8 +575,11 @@ async def render_paper_pdf(
     **options: Any,
 ) -> bytes:
     document = build_paper_html(blueprint, questions, **options)
+    footer = " · ".join(
+        t for t in (options.get("institute_name"), blueprint.title) if t
+    )
     return await asyncio.wait_for(
-        render_pdf(document, footer_title=blueprint.title), timeout=_RENDER_TIMEOUT_S
+        render_pdf(document, footer_title=footer), timeout=_RENDER_TIMEOUT_S
     )
 
 

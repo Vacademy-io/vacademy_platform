@@ -73,6 +73,13 @@ export interface FormattedCourseData {
     contain_levels: boolean;
     sessions: SessionDetails[];
     /**
+     * Authors for a course with no sessions/levels. The backend ignores
+     * `sessions` entirely when `contain_levels` is false and reads its
+     * authors from here instead (CourseService.addCourse ->
+     * createPackageSessionForDefaultLevelAndSession).
+     */
+    add_faculty_to_course?: AddFacultyToCourse[];
+    /**
      * Optional subgroup configuration for the course.
      * When true, the backend will create child batches (package_session rows)
      * for each provided subgroup under the first active parent batch.
@@ -325,6 +332,16 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         }
     }
 
+    // A simple course (no sessions, no levels) sends contain_levels=false, and
+    // the backend then never looks inside `sessions` -- so the authors nested
+    // under the DEFAULT level above were silently dropped on every create and
+    // the course fell back to showing its creator. Mirror them at the top
+    // level, which is the field that path actually reads.
+    const defaultAuthors =
+        !hasLevels && !hasSessions && Array.isArray(formData.instructors)
+            ? formData.instructors.map(mapUser)
+            : undefined;
+
     return {
         id: '',
         new_course: true,
@@ -332,6 +349,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         thumbnail_file_id: '',
         contain_levels: hasLevels || hasSessions,
         sessions,
+        ...(defaultAuthors ? { add_faculty_to_course: defaultAuthors } : {}),
         contains_subgroup: containsSubgroup,
         subgroups: formattedSubgroups,
         is_course_published_to_catalaouge: formData.publishToCatalogue,

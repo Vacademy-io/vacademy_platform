@@ -2312,6 +2312,13 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
             field: 'comma_separeted_tags',
             label: getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag),
         },
+        // The public catalogue already renders an "Authors" section for an
+        // `instructors` entry; it just could not be switched on from here.
+        {
+            id: 'instructors',
+            field: 'instructors',
+            label: t('bookCatalogue.filterAuthors'),
+        },
     ] as const;
     const selectedFilterIds = new Set(
         Array.isArray(props.filtersConfig)
@@ -2322,9 +2329,9 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
         const next = new Set(selectedFilterIds);
         if (next.has(filter.id)) next.delete(filter.id);
         else next.add(filter.id);
-        // Only the three checkbox filters are managed here. Anything else in
-        // filtersConfig (the price range, an instructors entry, a hand-authored
-        // filter) must survive a toggle — rebuilding the array from the three
+        // Only the checkbox filters above are managed here. Anything else in
+        // filtersConfig (the price range, a hand-authored
+        // filter) must survive a toggle — rebuilding the array from those
         // alone silently deleted a catalogue's Price Range on the first click.
         const managedIds = new Set<string>(catalogueFilters.map((item) => item.id));
         const unmanaged = (Array.isArray(props.filtersConfig) ? props.filtersConfig : []).filter(

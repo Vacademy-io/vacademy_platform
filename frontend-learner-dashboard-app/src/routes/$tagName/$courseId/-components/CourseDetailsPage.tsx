@@ -71,6 +71,16 @@ const displayLevelName = (raw?: string | null): string => {
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
+// One author as the course page shows it. `subtitle` / `description` are the
+// author-profile fields an admin fills in under Add Course > Add Authors;
+// both are optional and older courses have neither.
+type CourseInstructor = {
+  name: string;
+  email: string;
+  subtitle?: string;
+  description?: string;
+};
+
 const hasContent = (htmlString: string | undefined | null): boolean => {
   if (!htmlString) return false;
   // Strip HTML tags and decode HTML entities
@@ -197,7 +207,7 @@ const CourseHighlightsAccordion: React.FC<{
   whyLearn: string;
   aboutCourse: string | null;
   whoShouldLearn: string;
-  instructors: Array<{ name: string; email: string }>;
+  instructors: Array<CourseInstructor>;
   showInstructors: boolean;
   primaryInstructor?: string | null;
 }> = ({
@@ -360,18 +370,28 @@ const CourseHighlightsAccordion: React.FC<{
                     {visibleInstructors.map((inst, idx) => (
                       <div
                         key={`${inst.email}-${idx}`}
-                        className="flex items-center gap-3 rounded-catalogue-md bg-catalogue-bg-subtle/80 p-2.5"
+                        className="flex items-start gap-3 rounded-catalogue-md bg-catalogue-bg-subtle/80 p-2.5"
                       >
-                        <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white">
                           {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
                         </div>
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <h4 className="text-sm font-semibold text-catalogue-text-primary">
                             {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
                           </h4>
+                          {/* The author's own subtitle ("Historian, IIT Bombay")
+                              replaces the email line when one is set; the
+                              email stays as the fallback for legacy authors. */}
                           <p className="text-xs text-catalogue-text-secondary">
-                            {inst.email || t("courseDetails.noEmailProvided")}
+                            {inst.subtitle ||
+                              inst.email ||
+                              t("courseDetails.noEmailProvided")}
                           </p>
+                          {inst.description && (
+                            <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-catalogue-text-secondary">
+                              {inst.description}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -424,10 +444,7 @@ interface CourseData {
   whoShouldLearn: string;
   whyLearn: string;
   aboutCourse: string | null;
-  instructors: Array<{
-    name: string;
-    email: string;
-  }>;
+  instructors: Array<CourseInstructor>;
   rating: number;
   tags: string[];
   curriculum: Array<{
@@ -979,14 +996,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             "Internet connection",
             "Motivation to learn",
           ],
-          whoShouldLearn:
-            rawHtmlContent(course.who_should_learn) ||
-            t("courseDetails.defaultWhoShouldLearn", {
-              subject: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
-            }),
-          whyLearn:
-            rawHtmlContent(course.why_learn) ||
-            t("courseDetails.defaultWhyLearn"),
+          // No canned fallback copy: the overview hides "What you'll learn" /
+          // "Who should learn" when the admin left them blank. The generic
+          // "Gain valuable skills and knowledge" placeholder used to make the
+          // section appear on every course, filled or not.
+          whoShouldLearn: rawHtmlContent(course.who_should_learn),
+          whyLearn: rawHtmlContent(course.why_learn),
           // "About this course" must show the dedicated About field (rich text),
           // falling back to the course description. Previously read the wrong field
           // (course_html_description) and stripped all formatting.
@@ -1003,6 +1018,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
                   }),
                 email: inst.email || t("courseDetails.noEmailProvided"),
+                subtitle: inst.author_subtitle?.trim() || undefined,
+                description: inst.author_description?.trim() || undefined,
               }),
             ) || [
               {

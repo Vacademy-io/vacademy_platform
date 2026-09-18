@@ -301,6 +301,20 @@ def _answer_text(question: Dict[str, Any]) -> str:
     return _clean_html(question.get("ans")) or "—"
 
 
+def _marking_steps_html(question: Dict[str, Any]) -> str:
+    """The marking scheme under a key entry: the generator's steps, else the
+    explanation split on its line breaks."""
+    steps = question.get("marking_steps") or []
+    if not isinstance(steps, list):
+        steps = []
+    steps = [_clean_html(s) for s in steps if str(s or "").strip()]
+    if not steps and question.get("exp"):
+        steps = [s for s in re.split(r"<br\s*/?>", _clean_html(question.get("exp"))) if s.strip()]
+    if not steps:
+        return ""
+    return '<ol class="steps">' + "".join(f"<li>{s}</li>" for s in steps) + "</ol>"
+
+
 def _render_key(
     sections: List[Dict[str, Any]], show_marks: bool, title: str
 ) -> str:
@@ -311,18 +325,9 @@ def _render_key(
             row = entry["row"]
             for q in entry["questions"]:
                 number += 1
-                steps = q.get("marking_steps") or []
-                if not isinstance(steps, list):
-                    steps = []
-                steps = [_clean_html(s) for s in steps if str(s or "").strip()]
-                if not steps and q.get("exp"):
-                    steps = [s for s in re.split(r"<br\s*/?>", _clean_html(q.get("exp"))) if s.strip()]
-                steps_html = (
-                    '<ol class="steps">' + "".join(f"<li>{s}</li>" for s in steps) + "</ol>"
-                ) if steps else ""
                 marks_cell = f'<td class="m">{_fmt_marks(_question_marks(q, row))}</td>' if show_marks else ""
                 rows_html.append(
-                    f'<tr><td class="n">{number}.</td><td>{_answer_text(q)}{steps_html}</td>{marks_cell}</tr>'
+                    f'<tr><td class="n">{number}.</td><td>{_answer_text(q)}{_marking_steps_html(q)}</td>{marks_cell}</tr>'
                 )
     head_marks = "<th>Marks</th>" if show_marks else ""
     return (
@@ -335,35 +340,29 @@ def _render_key(
     )
 
 
-def build_paper_html(
-    blueprint: Blueprint,
-    questions: Sequence[Dict[str, Any]],
-    *,
-    institute_name: Optional[str] = None,
-    subtitle: Optional[str] = None,
-    include_answer_key: bool = False,
-    show_marks: bool = True,
-    set_label: Optional[str] = None,
-) -> str:
-    """The whole document. Pure: same inputs, same HTML."""
-    sections = _group_by_section(blueprint, questions)
-    delivered = sum(len(e["questions"]) for b in sections for e in b["rows"])
-    total_marks = sum(
-        _question_marks(q, e["row"]) for b in sections for e in b["rows"] for q in e["questions"]
-    )
-    needs_math = any(
-        _MATH_RE.search(str(part or ""))
-        for q in questions
-        for part in (
-            [(q.get("question") or {}).get("content") if isinstance(q.get("question"), dict) else q.get("question"),
-             q.get("ans"), q.get("exp")]
-            + [o.get("content") for o in (q.get("options") or []) if isinstance(o, dict)]
-            + list(q.get("marking_steps") or [])
-        )
+def _question_html_parts(question: Dict[str, Any]) -> List[str]:
+    q = question.get("question")
+    return (
+        [q.get("content") if isinstance(q, dict) else q, question.get("ans"), question.get("exp")]
+        + [o.get("content") for o in (question.get("options") or []) if isinstance(o, dict)]
+        + list(question.get("marking_steps") or [])
     )
 
-    parts: List[str] = []
-    parts.append('<header class="head" style="position:relative">')
+
+def _needs_math(questions: Sequence[Dict[str, Any]]) -> bool:
+    return any(_MATH_RE.search(str(part or "")) for q in questions for part in _question_html_parts(q))
+
+
+def _render_header(
+    blueprint: Blueprint,
+    *,
+    delivered: int,
+    total_marks: float,
+    institute_name: Optional[str],
+    subtitle: Optional[str],
+    set_label: Optional[str],
+) -> str:
+    parts = ['<header class="head" style="position:relative">']
     if set_label:
         parts.append(f'<div class="set">SET {html.escape(set_label)}</div>')
     if institute_name:
@@ -388,64 +387,99 @@ def build_paper_html(
             f"<li>({_roman(i)}) {html.escape(text)}</li>" for i, text in enumerate(blueprint.instructions)
         )
         parts.append(
-            f'<div class="instructions"><h3>General Instructions</h3><ol style="list-style:none;padding-left:0">{items}</ol></div>'
+            '<div class="instructions"><h3>General Instructions</h3>'
+            f'<ol style="list-style:none;padding-left:0">{items}</ol></div>'
         )
+    return "".join(parts)
 
+
+def _section_marks_line(bucket: Dict[str, Any], show_marks: bool) -> str:
+    questions = [q for e in bucket["rows"] for q in e["questions"]]
+    count = len(questions)
+    if not show_marks:
+        return f"{count} questions"
+    total = sum(_question_marks(q, e["row"]) for e in bucket["rows"] for q in e["questions"])
+    rows = [e["row"] for e in bucket["rows"] if e["row"] is not None]
+    if len(bucket["rows"]) == 1 and rows:
+        each = rows[0].marks_each
+        return (
+            f"{count} question{'s' if count != 1 else ''} × "
+            f"{_fmt_marks(each)} mark{'s' if each != 1 else ''} = {_fmt_marks(total)} marks"
+        )
+    return f"{count} questions · {_fmt_marks(total)} marks"
+
+
+def _render_section(bucket: Dict[str, Any], first_number: int, show_marks: bool) -> tuple:
+    """One section's HTML and the next question number.
+
+    The heading, the section's first instruction and its first question travel
+    as one unbreakable block: a "SECTION C" alone at the foot of a page is the
+    first thing a teacher notices about a printout.
+    """
+    parts = [
+        '<section class="section"><div class="section-start">',
+        f'<div class="section-head"><h2>{html.escape(bucket["section"])}</h2>'
+        f'<div class="marks">({html.escape(_section_marks_line(bucket, show_marks))})</div></div>',
+    ]
+    number = first_number
+    last_instruction: Optional[str] = None
+    block_open = True
+    for entry in bucket["rows"]:
+        row = entry["row"]
+        instruction = (row.instruction or "").strip() if row else ""
+        if instruction and instruction != last_instruction:
+            parts.append(f'<p class="row-instruction">{html.escape(instruction)}</p>')
+            last_instruction = instruction
+        for q in entry["questions"]:
+            number += 1
+            parts.append(_render_question(number, q, _question_marks(q, row), show_marks))
+            if block_open:
+                parts.append("</div>")
+                block_open = False
+    if block_open:
+        parts.append("</div>")
+    parts.append("</section>")
+    return "".join(parts), number
+
+
+def build_paper_html(
+    blueprint: Blueprint,
+    questions: Sequence[Dict[str, Any]],
+    *,
+    institute_name: Optional[str] = None,
+    subtitle: Optional[str] = None,
+    include_answer_key: bool = False,
+    show_marks: bool = True,
+    set_label: Optional[str] = None,
+) -> str:
+    """The whole document. Pure: same inputs, same HTML."""
+    sections = _group_by_section(blueprint, questions)
+    delivered = sum(len(e["questions"]) for b in sections for e in b["rows"])
+    total_marks = sum(
+        _question_marks(q, e["row"]) for b in sections for e in b["rows"] for q in e["questions"]
+    )
+
+    body = [
+        _render_header(
+            blueprint, delivered=delivered, total_marks=total_marks,
+            institute_name=institute_name, subtitle=subtitle, set_label=set_label,
+        )
+    ]
     number = 0
     for bucket in sections:
-        section_questions = [q for e in bucket["rows"] for q in e["questions"]]
-        section_marks = sum(_question_marks(q, e["row"]) for e in bucket["rows"] for q in e["questions"])
-        rows = [e["row"] for e in bucket["rows"] if e["row"] is not None]
-        if len(bucket["rows"]) == 1 and rows and show_marks:
-            row = rows[0]
-            marks_line = (
-                f"{len(section_questions)} question{'s' if len(section_questions) != 1 else ''} × "
-                f"{_fmt_marks(row.marks_each)} mark{'s' if row.marks_each != 1 else ''} = "
-                f"{_fmt_marks(section_marks)} marks"
-            )
-        elif show_marks:
-            marks_line = f"{len(section_questions)} questions · {_fmt_marks(section_marks)} marks"
-        else:
-            marks_line = f"{len(section_questions)} questions"
-        parts.append('<section class="section">')
-        # The heading, the section's first instruction and its first question
-        # travel as one block: a "SECTION C" alone at the foot of a page is the
-        # first thing a teacher notices about a printout.
-        parts.append('<div class="section-start">')
-        parts.append(
-            f'<div class="section-head"><h2>{html.escape(bucket["section"])}</h2>'
-            f'<div class="marks">({html.escape(marks_line)})</div></div>'
-        )
-        last_instruction: Optional[str] = None
-        first_in_section = True
-        for entry in bucket["rows"]:
-            row = entry["row"]
-            instruction = (row.instruction or "").strip() if row else ""
-            if instruction and instruction != last_instruction:
-                parts.append(f'<p class="row-instruction">{html.escape(instruction)}</p>')
-                last_instruction = instruction
-            for q in entry["questions"]:
-                number += 1
-                parts.append(_render_question(number, q, _question_marks(q, row), show_marks))
-                if first_in_section:
-                    parts.append("</div>")
-                    first_in_section = False
-        if first_in_section:
-            parts.append("</div>")
-        parts.append("</section>")
-
+        section_html, number = _render_section(bucket, number, show_marks)
+        body.append(section_html)
     if include_answer_key:
-        parts.append(_render_key(sections, show_marks, blueprint.title))
+        body.append(_render_key(sections, show_marks, blueprint.title))
 
     lang = "hi" if (blueprint.language or "").lower().startswith("hi") else "en"
+    head_script = _katex_head() if _needs_math(questions) else "<script>window.__paperReady = true;</script>"
     return (
         "<!DOCTYPE html>\n"
         f'<html lang="{lang}"><head><meta charset="utf-8">'
         f"<title>{html.escape(blueprint.title)}</title>"
-        f"<style>{_CSS}</style>"
-        f"{_katex_head() if needs_math else '<script>window.__paperReady = true;</script>'}"
-        "</head><body>"
-        + "".join(parts)
+        f"<style>{_CSS}</style>{head_script}</head><body>"
+        + "".join(body)
         + "</body></html>"
     )
 

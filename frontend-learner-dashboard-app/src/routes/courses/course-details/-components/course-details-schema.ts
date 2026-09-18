@@ -27,6 +27,8 @@ const instructorSchema = z.object({
     id: z.string().uuid(), // Assuming IDs are UUIDs
     email: z.string().email({ message: "Invalid email address." }),
     name: z.string().min(1, { message: "Instructor name is required." }),
+    authorSubtitle: z.string().optional(),
+    authorDescription: z.string().optional(),
 });
 
 // Define the schema for level details within a session

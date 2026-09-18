@@ -57,6 +57,8 @@ interface CourseWithSessionsType {
       email: string;
       full_name?: string;
       name?: string;
+      author_subtitle?: string;
+      author_description?: string;
     }>;
   };
   sessions: Array<{
@@ -216,6 +218,8 @@ export const transformApiDataToCourseData = async (
         apiData.course.instructors?.map((instructor) => ({
           id: instructor.id,
           email: instructor.email,
+          authorSubtitle: instructor.author_subtitle,
+          authorDescription: instructor.author_description,
           name:
             instructor.full_name ||
             instructor.name ||

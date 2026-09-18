@@ -274,6 +274,8 @@ public class UserService {
             user.setDateOfBirth(userDTO.getDateOfBirth());
             user.setGender(userDTO.getGender());
             user.setRootUser(true);
+            user.setAuthorSubtitle(userDTO.getAuthorSubtitle());
+            user.setAuthorDescription(userDTO.getAuthorDescription());
             User savedUser = userRepository.save(user);
             userDTO.setId(savedUser.getId());
             return user;
@@ -510,6 +512,10 @@ public class UserService {
         if (StringUtils.hasText(userDTO.getPassword()))
             user.setPassword(userDTO.getPassword());
 
+        if (userDTO.getAuthorSubtitle() != null)
+            user.setAuthorSubtitle(userDTO.getAuthorSubtitle());
+        if (userDTO.getAuthorDescription() != null)
+            user.setAuthorDescription(userDTO.getAuthorDescription());
         // isRootUser is primitive boolean, so check if change is desired
         user.setRootUser(userDTO.isRootUser());
         return userRepository.save(user);
@@ -530,6 +536,8 @@ public class UserService {
             updateIfNotNull(request.getEmail(), userOptional.get()::setEmail);
             updateIfNotNull(request.getMobileNumber(), userOptional.get()::setMobileNumber);
             userOptional.get().setProfilePicFileId(request.getProfilePicFileId());
+            updateIfNotNull(request.getAuthorSubtitle(), userOptional.get()::setAuthorSubtitle);
+            updateIfNotNull(request.getAuthorDescription(), userOptional.get()::setAuthorDescription);
             updateIfNotNull(request.getPinCode(), userOptional.get()::setPinCode);
             updateIfNotNull(request.getCity(), userOptional.get()::setCity);
             updateIfNotNull(request.getGender(), userOptional.get()::setGender);

@@ -32,7 +32,39 @@ export interface DomainRoutingState {
   logoWidthPx: number | null;
   logoHeightPx: number | null;
   stackNameBelowLogo: boolean | null;
+  // Pre-login policy for this portal, straight from domain routing. The login
+  // screen must read these from here and NOT from Preferences/localStorage:
+  // on a fresh native install neither store has anything yet, and the
+  // Preferences read raced the write on every first launch. Null = the
+  // backend did not say, callers fall back to their own default.
+  allowSignup: boolean | null;
+  allowGoogleAuth: boolean | null;
+  allowGithubAuth: boolean | null;
+  allowEmailOtpAuth: boolean | null;
+  allowUsernamePasswordAuth: boolean | null;
+  allowPhoneAuth: boolean | null;
 }
+
+const NO_AUTH_POLICY = {
+  allowSignup: null,
+  allowGoogleAuth: null,
+  allowGithubAuth: null,
+  allowEmailOtpAuth: null,
+  allowUsernamePasswordAuth: null,
+  allowPhoneAuth: null,
+} as const;
+
+const boolOrNull = (v: unknown): boolean | null =>
+  typeof v === "boolean" ? v : null;
+
+const authPolicyFrom = (data: DomainRoutingResponse) => ({
+  allowSignup: boolOrNull(data.allowSignup),
+  allowGoogleAuth: boolOrNull(data.allowGoogleAuth),
+  allowGithubAuth: boolOrNull(data.allowGithubAuth),
+  allowEmailOtpAuth: boolOrNull(data.allowEmailOtpAuth),
+  allowUsernamePasswordAuth: boolOrNull(data.allowUsernamePasswordAuth),
+  allowPhoneAuth: boolOrNull(data.allowPhoneAuth),
+});
 
 // Global state to prevent multiple simultaneous domain routing calls
 let isResolvingGlobally = false;
@@ -66,6 +98,7 @@ export const useDomainRouting = () => {
       logoWidthPx: null,
       logoHeightPx: null,
       stackNameBelowLogo: null,
+      ...NO_AUTH_POLICY,
     };
   });
 
@@ -349,6 +382,7 @@ export const useDomainRouting = () => {
             typeof apiResult.stackNameBelowLogo === "boolean"
               ? apiResult.stackNameBelowLogo
               : null,
+          ...authPolicyFrom(apiResult),
         };
 
         // Cache the result globally
@@ -378,6 +412,7 @@ export const useDomainRouting = () => {
           logoWidthPx: null,
           logoHeightPx: null,
           stackNameBelowLogo: null,
+          ...NO_AUTH_POLICY,
         };
 
         globalDomainRoutingState = newState;
@@ -402,6 +437,7 @@ export const useDomainRouting = () => {
         hideInstituteName: null,
         logoWidthPx: null,
         logoHeightPx: null,
+        ...NO_AUTH_POLICY,
       };
 
       globalDomainRoutingState = newState;
@@ -429,6 +465,7 @@ export const useDomainRouting = () => {
             hideInstituteName: null,
             logoWidthPx: null,
             logoHeightPx: null,
+            ...NO_AUTH_POLICY,
           };
 
           globalDomainRoutingState = newState;
@@ -456,6 +493,7 @@ export const useDomainRouting = () => {
         hideInstituteName: null,
         logoWidthPx: null,
         logoHeightPx: null,
+        ...NO_AUTH_POLICY,
       };
 
       globalDomainRoutingState = newState;

@@ -279,4 +279,26 @@ export const flavorConfig: FlavorConfigs = {
     domain: "ttsedu.co.in",
     subdomain: "learn",
   },
+
+  // Sreedhar's TTS iOS app
+  "io.sreedhar.app": {
+    appName: "Sreedhar's TTS",
+    domain: "ttsedu.co.in",
+    subdomain: "learn",
+  },
+
+  // Smart AI Academy iOS app
+  "io.smartaiacademy.app": {
+    appName: "Smart AI Academy",
+    domain: "smartaiacademy.co.in",
+    subdomain: "student",
+  },
+
+  // Smart AI Academy Android app (gradle flavor `smartaiacademy` existed without
+  // this entry, so its builds fell back to generic Vacademy branding)
+  "com.smartaiacademy.app": {
+    appName: "Smart AI Academy",
+    domain: "smartaiacademy.co.in",
+    subdomain: "student",
+  },
 };

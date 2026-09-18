@@ -20,6 +20,15 @@ export interface SignupAvailability {
    * catalogue page editor.
    */
   enabled: boolean;
+  /**
+   * Whether the signup UI has at least one provider it can actually render
+   * (Google, GitHub or email OTP). `usernamePassword` is a settings key with
+   * no signup implementation behind it, so an institute that enabled only
+   * that opens on an empty "Create Your Account" box — Shiksha Nation's
+   * config is exactly this. Callers that OFFER a signup entry point should
+   * require this as well as `enabled`.
+   */
+  hasProvider: boolean;
   /** The institute the answer was computed for, once resolved. */
   instituteId: string | null;
   /** False until the institute settings have been read once. */
@@ -31,6 +40,7 @@ const INITIAL: SignupAvailability = {
   // so defaulting to visible keeps the header stable while the read is in
   // flight. The three institutes that set `false` see it disappear a beat later.
   enabled: true,
+  hasProvider: true,
   instituteId: null,
   resolved: false,
 };
@@ -93,8 +103,12 @@ export function useSignupAvailability(
       const settings = await getPublicStudentDisplaySettings(instituteId);
       if (cancelled) return;
 
+      const providers = settings?.signup?.providers;
       setState({
         enabled: settings?.signup?.enabled !== false,
+        hasProvider:
+          !providers ||
+          !!(providers.google || providers.github || providers.emailOtp),
         instituteId,
         resolved: true,
       });

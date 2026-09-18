@@ -13,6 +13,7 @@ import { JsonRenderer } from "../../-components/JsonRenderer";
 import { CourseCatalogueService } from "../../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { resolveCourseView } from "../../-utils/course-page-routing";
+import { useInstituteNamingSettings } from "../../-utils/institute-naming-seed";
 import {
   resolveLearnerStructureVariant,
   type LearnerCourseDetailsSettings,
@@ -465,6 +466,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   productPageCode,
 }) => {
   const { t } = useTranslation("coursePlayerB");
+  // Institute terminology must be seeded before the first paint — see
+  // institute-naming-seed.ts.
+  const namingReady = useInstituteNamingSettings(instituteId);
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === "android";
@@ -1167,7 +1171,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     setShowLeadCollection(false);
   };
 
-  if (isLoading) {
+  if (isLoading || !namingReady) {
     return <DashboardLoader />;
   }
 

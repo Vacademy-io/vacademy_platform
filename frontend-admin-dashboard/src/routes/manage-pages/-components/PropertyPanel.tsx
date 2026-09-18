@@ -2322,12 +2322,20 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
         const next = new Set(selectedFilterIds);
         if (next.has(filter.id)) next.delete(filter.id);
         else next.add(filter.id);
-        updateProp(
-            'filtersConfig',
-            catalogueFilters
+        // Only the three checkbox filters are managed here. Anything else in
+        // filtersConfig (the price range, an instructors entry, a hand-authored
+        // filter) must survive a toggle — rebuilding the array from the three
+        // alone silently deleted a catalogue's Price Range on the first click.
+        const managedIds = new Set<string>(catalogueFilters.map((item) => item.id));
+        const unmanaged = (Array.isArray(props.filtersConfig) ? props.filtersConfig : []).filter(
+            (item: { id?: string }) => !item.id || !managedIds.has(item.id)
+        );
+        updateProp('filtersConfig', [
+            ...catalogueFilters
                 .filter((item) => next.has(item.id))
                 .map(({ id, field }) => ({ id, type: 'checkbox', field })),
-        );
+            ...unmanaged,
+        ]);
     };
 
     return (

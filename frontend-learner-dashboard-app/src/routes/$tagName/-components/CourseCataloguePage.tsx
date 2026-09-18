@@ -12,6 +12,7 @@ import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
 import {
   clearCourseFinderSelection,
@@ -50,6 +51,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   pageSlug,
 }) => {
   const { t } = useTranslation("coursePlayerA");
+  // Institute terminology must be in localStorage before the first paint —
+  // see institute-naming-seed.ts. Read the terms only after it settles.
+  const namingReady = useInstituteNamingSettings(instituteId);
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const navigate = useNavigate();
@@ -495,7 +499,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     reopenedFromCheckout.current = false;
   };
 
-  if (isLoading) {
+  if (isLoading || !namingReady) {
     return <DashboardLoader />;
   }
 

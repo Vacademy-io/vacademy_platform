@@ -537,7 +537,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
-  // Derive filter options from loaded courses (before shouldShow* checks)
+  // Derive filter options from loaded courses (before shouldShow* checks).
+  // Sentinel level names ("DEFAULT") are dropped here as well as on the card
+  // badge: a public "Level: Default" checkbox is noise. An institute that
+  // wants its single level filterable renames it in Admin > Levels.
   const levels = useMemo(
     () =>
       [...new Set(courses.map((c) => c.level).filter(Boolean))]
@@ -681,14 +684,17 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       ?.imageFit === "contain"
       ? "contain"
       : "cover";
+  // Level and Session render as soon as there is one real option to pick,
+  // the same rule the admin All Courses panel uses. They used to need two,
+  // which hid both on the many institutes that run a single level or session.
   const shouldShowLevelFilter =
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("level")) &&
-    levels.length > 1;
+    levels.length > 0;
   const shouldShowSessionFilter =
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("session")) &&
-    sessions.length > 1;
+    sessions.length > 0;
   const shouldShowTagsFilter =
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("tags") || filterIds.has("tag")) &&
@@ -1297,11 +1303,16 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       </div>
                     </div>
 
+                    {/* Plural headings, as on the admin All Courses panel
+                        ("Categories" / "Streams" for an institute that renamed
+                        Level / Session). Resolved from Naming Settings, which
+                        institute-naming-seed.ts guarantees are loaded first. */}
                     {shouldShowLevelFilter && (
                       <FilterSection
-                        title={
-                          getTerminology(ContentTerms.Level, SystemTerms.Level)
-                        }
+                        title={getTerminologyPlural(
+                          ContentTerms.Level,
+                          SystemTerms.Level,
+                        )}
                         items={levels}
                         selectedItems={selectedLevels}
                         handleChange={(id) =>
@@ -1313,9 +1324,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
                     {shouldShowSessionFilter && (
                       <FilterSection
-                        title={
-                          getTerminology(ContentTerms.Session, SystemTerms.Session)
-                        }
+                        title={getTerminologyPlural(
+                          ContentTerms.Session,
+                          SystemTerms.Session,
+                        )}
                         items={sessions}
                         selectedItems={selectedSessions}
                         handleChange={(id) =>

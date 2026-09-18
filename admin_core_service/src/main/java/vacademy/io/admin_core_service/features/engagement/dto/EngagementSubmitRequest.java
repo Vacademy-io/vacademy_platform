@@ -14,4 +14,8 @@ public class EngagementSubmitRequest {
     private Long timeSpentMs;
     /** READING_HTML: how far the learner scrolled, 0-100. */
     private Integer scrollPercent;
+    /** QUESTION_OF_DAY, format TEXT: what the learner wrote. */
+    private String textAnswer;
+    /** QUESTION_OF_DAY, format UPLOAD: ids of the files the learner attached. */
+    private java.util.List<String> fileIds;
 }

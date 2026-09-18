@@ -29,6 +29,8 @@ export function InlineQuestion({
   const [result, setResult] = useState<EngagementSubmitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Written and uploaded answers cannot be given from a one-line card, so those
+  // formats fall through to the dialog rather than rendering an empty option list.
   const options = payload?.options ?? [];
   if (options.length === 0) return null;
 
@@ -117,15 +119,21 @@ export function InlineQuestion({
 
       {result && (
         <p className="animate-in fade-in text-sm font-semibold text-primary-700 dark:text-primary-300">
-          {result.isCorrect === true
-            ? "Correct!"
-            : result.isCorrect === false
-              ? "Not this time —"
-              : "Answered —"}{" "}
-          +{result.pointsAwarded} points
-          {!result.isRevealed && result.isCorrect === null
-            ? " · the answer drops later today"
-            : ""}
+          {result.resultPending ? (
+            <>🔒 Answer locked in · you&apos;ll find out at the reveal</>
+          ) : (
+            <>
+              {result.isCorrect === true
+                ? "Correct!"
+                : result.isCorrect === false
+                  ? "Not this time —"
+                  : "Answered —"}{" "}
+              +{result.pointsAwarded} points
+              {!result.isRevealed && result.isCorrect === null
+                ? " · the answer drops later today"
+                : ""}
+            </>
+          )}
         </p>
       )}
 

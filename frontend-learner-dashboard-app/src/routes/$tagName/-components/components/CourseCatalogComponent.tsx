@@ -682,14 +682,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("level")) &&
     levels.length > 1;
-  const shouldShowSessionFilter =
-    filtersEnabled &&
-    (defaultToAllFilters || filterIds.has("session")) &&
-    sessions.length > 1;
-  // Tags are intentionally NOT gated on filtersConfig: the page-builder default
-  // template ships filtersConfig=[{level}] and there is no admin UI to add a
-  // "tags" entry yet, so gating would hide tags on every catalogue. Show the Tags
-  // filter whenever filters are enabled and the loaded courses carry any tags.
+  // Sessions and Tags are intentionally NOT gated on filtersConfig: the
+  // page-builder default template ships filtersConfig=[{level}] and there is
+  // no admin UI to add a "session" / "tags" entry, so gating would hide them on
+  // every catalogue. Show them whenever filters are enabled and the loaded
+  // courses actually span more than one session / carry any tags. The heading
+  // still honours a configured label, else Naming Settings (ContentTerms.Session).
+  const shouldShowSessionFilter = filtersEnabled && sessions.length > 1;
   const shouldShowTagsFilter = filtersEnabled && tags.length > 0;
   const shouldShowInstructorFilter =
     filtersEnabled &&

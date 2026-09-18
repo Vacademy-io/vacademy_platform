@@ -220,7 +220,7 @@ const CurriculumLibrarySettings = () => {
                             </div>
                             {setting.enabled &&
                                 (setting.classes.length === 0 || setting.boards.length === 0) && (
-                                    <p className="text-caption text-warning-600">
+                                    <p className="text-caption text-neutral-500">
                                         {t('pickAtLeastOne')}
                                     </p>
                                 )}
@@ -233,13 +233,7 @@ const CurriculumLibrarySettings = () => {
                                 buttonType="primary"
                                 scale="medium"
                                 onClick={save}
-                                disable={
-                                    saving ||
-                                    !dirty ||
-                                    (setting.enabled &&
-                                        (setting.classes.length === 0 ||
-                                            setting.boards.length === 0))
-                                }
+                                disable={saving || !dirty}
                             >
                                 {saving ? t('saving') : t('save')}
                             </MyButton>

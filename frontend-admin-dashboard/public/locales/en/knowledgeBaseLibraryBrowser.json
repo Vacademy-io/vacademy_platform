@@ -14,9 +14,10 @@
     "card": {
         "unlocked": "Unlocked",
         "credits_one": "{{count}} credit",
-        "credits_other": "{{count}} credits"
+        "credits_other": "{{count}} credits",
+        "free": "Free to use"
     },
-    "intro": "Ready-made knowledge bases from Vacademy. Unlock one and use it to build question papers and assessments straight away — no uploading, no waiting for a book to process.",
+    "intro": "Ready-made knowledge bases from Vacademy — free to use. Open one and build question papers, assessments and courses straight away — no uploading, no waiting for a book to process.",
     "manageLibrary": "Manage library",
     "searchPlaceholder": "Search libraries",
     "clearFilters": "Clear filters",
@@ -26,5 +27,6 @@
         "widenSearch": "Try widening your search.",
         "willAppear": "Vacademy-published libraries will appear here as they are released."
     },
-    "footerNote": "Unlocking a library is a one-time charge and lasts forever, including material we add to it later."
+    "footerNote": "Every library here is free to use, including material we add to it later.",
+    "otherLibrariesHeading": "More libraries"
 }

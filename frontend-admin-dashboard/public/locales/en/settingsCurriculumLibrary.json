@@ -1,6 +1,6 @@
 {
     "title": "Curriculum library",
-    "description": "Give this institute ready-made textbooks (NCERT, chapter by chapter) to build tests and courses from.",
+    "description": "NCERT textbooks are shown to every institute by default. Use this only to limit them to certain boards or classes, or to hide them.",
     "enabled": "On",
     "disabled": "Off",
     "boards": "Boards",
@@ -12,8 +12,8 @@
         "secondary": "9–10",
         "senior": "11–12"
     },
-    "pickAtLeastOne": "Pick at least one board and one class, or nothing will show.",
-    "hint": "Only the chosen boards and classes appear under Knowledge Base → Curriculum and in the assessment builder; everything else stays hidden. There is no unlock fee — generating questions and asking use AI credits as usual.",
+    "pickAtLeastOne": "Nothing selected — every board and class will show.",
+    "hint": "Leave this off to show every textbook. Turn it on to show only the chosen boards and classes; turning it on with nothing selected shows everything. No credits are involved.",
     "save": "Save",
     "saving": "Saving…",
     "toast": {

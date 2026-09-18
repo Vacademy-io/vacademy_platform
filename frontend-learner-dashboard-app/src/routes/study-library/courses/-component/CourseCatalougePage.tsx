@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IconBooks, IconChartBar, IconCheck } from "@tabler/icons-react";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
-import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils.ts";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils.ts";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import { Preferences } from "@capacitor/preferences";
@@ -165,7 +165,10 @@ const CourseCatalougePage: React.FC = () => {
   const wizardLevels = useMemo<CatalogueFilterWizardOption[]>(
     () =>
       ((publicInstituteDetails?.levels || []) as WizardLevelItem[])
-        .map((level) => ({ id: level.id, name: toTitleCase(level.level_name || "Level") }))
+        .map((level) => ({
+          id: level.id,
+          name: toTitleCase(level.level_name || getTerminology(ContentTerms.Level, SystemTerms.Level)),
+        }))
         .sort(compareByNameNatural),
     [publicInstituteDetails?.levels]
   );
@@ -173,7 +176,12 @@ const CourseCatalougePage: React.FC = () => {
   const wizardSessions = useMemo<CatalogueFilterWizardOption[]>(
     () =>
       ((publicInstituteDetails?.sessions || []) as WizardSessionItem[])
-        .map((session) => ({ id: session.id, name: toTitleCase(session.session_name || "Session") }))
+        .map((session) => ({
+          id: session.id,
+          name: toTitleCase(
+            session.session_name || getTerminology(ContentTerms.Session, SystemTerms.Session)
+          ),
+        }))
         .sort(compareByNameNatural),
     [publicInstituteDetails?.sessions]
   );

@@ -95,7 +95,10 @@ function overrideRender<T extends IBlockData>(
         validParentType: original.validParentType,
         render: (params) => render(original, params),
     };
-    BlockManager.registerBlocks({ [type]: block });
+    // registerBlocks takes IBlock<IBlockData>; IBlock<T> is not assignable
+    // (`create`'s payload is contravariant), but the block IS the T-typed
+    // original with only `render` wrapped, so widening back is safe.
+    BlockManager.registerBlocks({ [type]: block as unknown as IBlock });
 }
 
 let registered = false;

@@ -38,7 +38,9 @@ public class CsvToStudentDataMapper {
                     null,
                     null,
                     null,
-                    null); // preferredLocale (added to UserDTO by i18n Phase 0) — CSV import sets none
+                    null, // preferredLocale (added to UserDTO by i18n Phase 0) — CSV import sets none
+                    null, // authorSubtitle (added to UserDTO by Add Authors flow) — CSV import sets none
+                    null); // authorDescription (added to UserDTO by Add Authors flow) — CSV import sets none
 
             StudentExtraDetails studentExtraDetails = new StudentExtraDetails(
                     getFieldValue(record, "FATHER_NAME"),

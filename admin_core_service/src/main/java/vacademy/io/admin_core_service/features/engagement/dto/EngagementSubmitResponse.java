@@ -21,4 +21,9 @@ public class EngagementSubmitResponse {
     private String explanation;
     /** The learner's new running total, so the UI can animate it without a refetch. */
     private Long newTotalPoints;
+    /**
+     * The answer is in, but the outcome is being withheld until the reveal time.
+     * isCorrect and the bonus are both absent while this is true.
+     */
+    private Boolean resultPending;
 }

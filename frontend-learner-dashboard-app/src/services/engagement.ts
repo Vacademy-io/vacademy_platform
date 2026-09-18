@@ -53,6 +53,8 @@ export interface EngagementItem {
   isRevealed?: boolean | null;
   /** Points kept on a late completion; 100 while the task is open. */
   pointsPercent?: number | null;
+  /** The outcome is withheld until revealAt. */
+  hideResultUntilReveal?: boolean | null;
 
   attemptStatus?: string | null;
   isCorrect?: boolean | null;
@@ -86,6 +88,11 @@ export interface EngagementSlideTarget {
   chapterId?: string;
 }
 
+/** MCQ unless the item says otherwise — older items carry no format. */
+export function questionFormatOf(item: EngagementItem): QuestionFormat {
+  return (parseQuestionPayload(item)?.format ?? "MCQ") as QuestionFormat;
+}
+
 /** Parse a COURSE_SLIDE item's target; null when the payload is absent or broken. */
 export function parseSlideTarget(item: EngagementItem): EngagementSlideTarget | null {
   if (!item.payloadJson) return null;
@@ -98,7 +105,12 @@ export function parseSlideTarget(item: EngagementItem): EngagementSlideTarget | 
 }
 
 /** Options as authored by the teacher. `correctOptionId` only arrives after reveal. */
+/** How a question of the day is answered. */
+export type QuestionFormat = "MCQ" | "TEXT" | "UPLOAD";
+
 export interface EngagementQuestionPayload {
+  /** Absent on older items, which were all multiple choice. */
+  format?: QuestionFormat;
   options?: { id: string; text: string }[];
   correctOptionId?: string;
   explanation?: string;
@@ -107,6 +119,10 @@ export interface EngagementQuestionPayload {
 
 export interface EngagementSubmitRequest {
   selectedOptionId?: string;
+  /** Written-answer format. */
+  textAnswer?: string;
+  /** Upload format: ids returned by the file upload. */
+  fileIds?: string[];
   score?: number;
   responseJson?: string;
   timeSpentMs?: number;
@@ -124,6 +140,8 @@ export interface EngagementSubmitResponse {
   correctOptionId?: string | null;
   explanation?: string | null;
   newTotalPoints: number;
+  /** Answer accepted, but correctness is being held back until the reveal. */
+  resultPending?: boolean | null;
 }
 
 const EMPTY_FEED: EngagementFeed = {

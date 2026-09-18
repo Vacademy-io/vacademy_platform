@@ -10,9 +10,13 @@ import {
   fetchEngagementItem,
   parseQuestionPayload,
   parseSlideTarget,
+  questionFormatOf,
   submitEngagementItem,
   type EngagementSubmitResponse,
 } from "@/services/engagement";
+import { UploadFileInS3 } from "@/services/upload_file";
+import { getUserId } from "@/constants/getUserId";
+import { Textarea } from "@/components/ui/textarea";
 import { visualFor } from "./engagement-visuals";
 
 /**
@@ -63,6 +67,10 @@ export function EngagementItemDialog({
   const [dwellMet, setDwellMet] = useState(false);
   const [dwellProgress, setDwellProgress] = useState(0);
   const navigate = useNavigate();
+  const [textAnswer, setTextAnswer] = useState("");
+  const [fileIds, setFileIds] = useState<string[]>([]);
+  const [fileNames, setFileNames] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!open || !item) return;
@@ -76,6 +84,9 @@ export function EngagementItemDialog({
     setReachedEnd(false);
     setDwellMet(false);
     setDwellProgress(0);
+    setTextAnswer("");
+    setFileIds([]);
+    setFileNames([]);
 
     fetchEngagementItem(item.id)
       .then((full) => {
@@ -136,7 +147,14 @@ export function EngagementItemDialog({
   const payload = useMemo(() => (active ? parseQuestionPayload(active) : null), [active]);
   const visual = active ? visualFor(active.itemType) : null;
 
-  const isQuestion = active?.itemType === "QUESTION_OF_DAY" || active?.itemType === "POLL";
+  const format = active ? questionFormatOf(active) : "MCQ";
+  const isQuestionItem =
+    active?.itemType === "QUESTION_OF_DAY" || active?.itemType === "POLL";
+  // A poll is always a choice; only a question of the day can be written or uploaded.
+  const isChoice = isQuestionItem && (active?.itemType === "POLL" || format === "MCQ");
+  const isText = active?.itemType === "QUESTION_OF_DAY" && format === "TEXT";
+  const isUpload = active?.itemType === "QUESTION_OF_DAY" && format === "UPLOAD";
+  const isQuestion = isChoice;
   const isCourseSlide = active?.itemType === "COURSE_SLIDE";
   const slideTarget = useMemo(
     () => (active && isCourseSlide ? parseSlideTarget(active) : null),
@@ -153,6 +171,8 @@ export function EngagementItemDialog({
     try {
       const response = await submitEngagementItem(active.id, {
         selectedOptionId: selectedOptionId ?? undefined,
+        textAnswer: isText ? textAnswer.trim() : undefined,
+        fileIds: isUpload && fileIds.length > 0 ? fileIds : undefined,
         score: gameScoreRef.current ?? undefined,
         timeSpentMs: Date.now() - openedAtRef.current,
         // Reaching the sentinel is the scroll signal; the server re-checks it.
@@ -169,18 +189,22 @@ export function EngagementItemDialog({
     } finally {
       setSubmitting(false);
     }
-  }, [active, selectedOptionId, reachedEnd, onCompleted]);
+  }, [active, selectedOptionId, reachedEnd, onCompleted, isText, isUpload, textAnswer, fileIds]);
 
   const canSubmit = (() => {
     if (submitting || result) return false;
-    if (isQuestion) return Boolean(selectedOptionId);
+    if (isChoice) return Boolean(selectedOptionId);
+    if (isText) return textAnswer.trim().length > 0;
+    if (isUpload) return fileIds.length > 0 && !uploading;
     if (isReading) return readingGateMet;
     return true;
   })();
 
   const submitLabel = (() => {
     if (submitting) return "Submitting…";
-    if (isQuestion) return "Submit answer";
+    if (isChoice) return "Submit answer";
+    if (isText) return "Submit answer";
+    if (isUpload) return uploading ? "Uploading…" : "Submit answer";
     if (isReading && !reachedEnd) return "Scroll to the end to finish";
     if (isReading && !dwellMet) return "Almost there…";
     if (isCourseSlide) return "I've finished the lesson";
@@ -348,6 +372,102 @@ export function EngagementItemDialog({
                 </div>
               )}
 
+              {isText && !result && (
+                <div className="space-y-2">
+                  {payload?.prompt && (
+                    <RichText
+                      html={payload.prompt}
+                      className="prose prose-sm max-w-none text-base font-medium text-neutral-900 dark:prose-invert dark:text-neutral-50"
+                    />
+                  )}
+                  <Textarea
+                    value={textAnswer}
+                    onChange={(e) => setTextAnswer(e.target.value)}
+                    rows={6}
+                    placeholder="Write your answer…"
+                  />
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Your teacher reads these — say what you think and why.
+                  </p>
+                </div>
+              )}
+
+              {isUpload && !result && (
+                <div className="space-y-2">
+                  {payload?.prompt && (
+                    <RichText
+                      html={payload.prompt}
+                      className="prose prose-sm max-w-none text-base font-medium text-neutral-900 dark:prose-invert dark:text-neutral-50"
+                    />
+                  )}
+                  <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-neutral-300 px-4 py-8 text-center transition hover:border-primary-400 dark:border-neutral-700">
+                    <span className="text-2xl">📎</span>
+                    <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                      {uploading ? "Uploading…" : "Choose a file"}
+                    </span>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                      A photo of your work, a PDF, a document
+                    </span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      disabled={uploading}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploading(true);
+                        try {
+                          const userId = await getUserId();
+                          const id = await UploadFileInS3(
+                            file,
+                            () => {},
+                            userId || "",
+                            "ENGAGEMENT_ANSWERS",
+                            "LEARNER"
+                          );
+                          if (id) {
+                            setFileIds((prev) => [...prev, id]);
+                            setFileNames((prev) => [...prev, file.name]);
+                          } else {
+                            setError("That file could not be uploaded.");
+                          }
+                        } catch {
+                          setError("That file could not be uploaded.");
+                        } finally {
+                          setUploading(false);
+                          // Allow re-picking the same file after a failure.
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                  </label>
+                  {fileNames.length > 0 && (
+                    <ul className="space-y-1">
+                      {fileNames.map((name, i) => (
+                        <li
+                          key={`${name}-${i}`}
+                          className="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2 text-sm dark:bg-neutral-900"
+                        >
+                          <span className="truncate text-neutral-800 dark:text-neutral-100">
+                            📄 {name}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-xs text-neutral-500 hover:text-rose-600"
+                            onClick={() => {
+                              setFileIds((prev) => prev.filter((_, x) => x !== i));
+                              setFileNames((prev) => prev.filter((_, x) => x !== i));
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               {/* Reading progress — shows the gate instead of hiding it behind a
                   disabled button. */}
               {isReading && !result && (
@@ -370,15 +490,29 @@ export function EngagementItemDialog({
               {result && (
                 <div className="animate-in fade-in zoom-in-95 space-y-2 rounded-xl border border-neutral-200 bg-gradient-to-br from-primary-50 to-white p-4 text-center duration-300 dark:border-neutral-800 dark:from-primary-950/30 dark:to-neutral-900">
                   <p className="text-3xl">
-                    {result.isCorrect === true ? "🎉" : result.isCorrect === false ? "💪" : "✅"}
+                    {result.resultPending
+                      ? "🔒"
+                      : result.isCorrect === true
+                        ? "🎉"
+                        : result.isCorrect === false
+                          ? "💪"
+                          : "✅"}
                   </p>
                   <p className="text-lg font-bold text-neutral-900 dark:text-neutral-50">
-                    {result.isCorrect === true
-                      ? "Correct!"
-                      : result.isCorrect === false
-                        ? "Not this time"
-                        : "Done!"}
+                    {result.resultPending
+                      ? "Answer locked in"
+                      : result.isCorrect === true
+                        ? "Correct!"
+                        : result.isCorrect === false
+                          ? "Not this time"
+                          : "Done!"}
                   </p>
+                  {result.resultPending && (
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      You&apos;ll find out how you did — and get any bonus points — when
+                      the answer is revealed.
+                    </p>
+                  )}
                   <p className="text-sm font-semibold text-primary-700 dark:text-primary-300">
                     +{result.pointsAwarded} points
                   </p>

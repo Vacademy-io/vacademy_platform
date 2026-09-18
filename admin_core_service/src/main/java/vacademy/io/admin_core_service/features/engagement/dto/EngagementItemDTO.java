@@ -51,6 +51,8 @@ public class EngagementItemDTO {
     private Boolean isRevealed;
     /** Points kept on a late completion (100 while OPEN). */
     private Integer pointsPercent;
+    /** Outcome is withheld until revealAt. */
+    private Boolean hideResultUntilReveal;
 
     // This learner's progress.
     private String attemptStatus;

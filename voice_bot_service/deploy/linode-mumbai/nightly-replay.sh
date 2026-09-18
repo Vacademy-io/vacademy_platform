@@ -15,14 +15,17 @@ DAY=${1:-$(date -u -d 'yesterday' +%F)}
 OUT=/var/lib/voice-bot-replays/$DAY
 mkdir -p "$OUT/records"
 IMG=$(grep -E '^VOICE_BOT_IMAGE=' .env | cut -d= -f2-)
-MAX_CALLS=${MAX_CALLS:-30}
+# A call replays in REAL TIME, so the 3 h budget below fits ~10 calls of 3-6
+# min. 30 records meant 25 of them were never looked at (nightly 2026-09-16:
+# "records 30 | replay 2 ok / 3 failed"). Take the NEWEST ten.
+MAX_CALLS=${MAX_CALLS:-10}
 
 echo "== nightly replay for $DAY (image ${IMG##*:})"
 # 1. records
 journalctl CONTAINER_NAME=voice-bot-voice-bot-1 -o cat --since "$DAY 00:00:00" --until "$DAY 23:59:59" 2>/dev/null \
   | grep -a 'app.bot replay corr=' \
   | sed -E 's/.*replay corr=([0-9a-f-]+) (.*)$/\1\t\2/' \
-  | head -n "$MAX_CALLS" \
+  | tail -n "$MAX_CALLS" \
   | while IFS=$'\t' read -r corr js; do printf '%s' "$js" > "$OUT/records/replay_$corr.json"; done
 N=$(ls "$OUT/records" | wc -l)
 echo "records: $N"

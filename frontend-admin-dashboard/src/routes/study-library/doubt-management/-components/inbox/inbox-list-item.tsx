@@ -4,6 +4,7 @@ import { ChatsCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { CategoryCell } from '../doubt-table/category-cell';
+import { DoubtStatusChip } from '../doubt-status-chip';
 import { getInitials, stripHtml, timeAgo } from './utils';
 
 /** One row in the inbox list: status dot, learner, snippet, category, reply count, time. */
@@ -68,8 +69,9 @@ export const InboxListItem = ({
             <p className="line-clamp-2 pl-1 text-xs text-neutral-600">
                 {snippet || t('noDescription')}
             </p>
-            <div className="flex items-center gap-2 pl-1">
+            <div className="flex flex-wrap items-center gap-2 pl-1">
                 <CategoryCell doubt={doubt} />
+                <DoubtStatusChip doubt={doubt} />
                 {replyCount > 0 && (
                     <span className="flex items-center gap-1 text-caption text-neutral-400">
                         <ChatsCircle size={13} weight="duotone" />

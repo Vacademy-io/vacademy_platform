@@ -32,6 +32,7 @@ import { useKnowledgeBase } from '../-hooks';
 import { getTopics, rebuildTopics } from '../-services/paper-service';
 import {
     buildBlueprint,
+    downloadPaperPdf,
     getGeneration,
     markGenerationSaved,
     getPaperJob,
@@ -41,6 +42,7 @@ import {
     validatePaper,
 } from '../-services/paper-service';
 import { BlueprintTable } from '../-components/paper/BlueprintTable';
+import { PaperDownloadMenu } from '../-components/paper/PaperDownloadMenu';
 import { TopicPicker, toSelectedNodeIds } from '../-components/paper/TopicPicker';
 import { ReviewBoard } from '../-components/paper/ReviewBoard';
 import type {
@@ -704,15 +706,31 @@ function PaperBuilderPage() {
                                     )}
                                 </p>
                             </div>
-                            <MyButton
-                                buttonType="primary"
-                                scale="medium"
-                                onClick={save}
-                                disable={saving || result.questions.length === 0}
-                            >
-                                <FloppyDisk className="mr-1 size-4" />
-                                {saving ? t('review.savingButton') : t('review.saveButton')}
-                            </MyButton>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* The sheet a teacher hands out — available before
+                                    saving, since most papers are printed, not
+                                    delivered online. Sends the on-screen questions
+                                    so rewrites are in the printout. */}
+                                <PaperDownloadMenu
+                                    disabled={saving || result.raw_questions.length === 0}
+                                    onDownload={(options) =>
+                                        downloadPaperPdf(
+                                            kbId,
+                                            { blueprint, questions: result.raw_questions },
+                                            options
+                                        )
+                                    }
+                                />
+                                <MyButton
+                                    buttonType="primary"
+                                    scale="medium"
+                                    onClick={save}
+                                    disable={saving || result.questions.length === 0}
+                                >
+                                    <FloppyDisk className="mr-1 size-4" />
+                                    {saving ? t('review.savingButton') : t('review.saveButton')}
+                                </MyButton>
+                            </div>
                         </Card>
 
                         {(paperLevelIssues.length > 0 || result.warnings.length > 0) && (

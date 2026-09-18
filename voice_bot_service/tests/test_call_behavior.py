@@ -18,6 +18,7 @@ import inspect
 import json as _json
 
 import app.bot as b
+from app.turntake import normalize_spoken
 import app.diagnostics as dg_mod
 import app.providers as pv
 
@@ -1525,7 +1526,7 @@ class _Rec:
 
 
 def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
-                      in_machine_window=None):
+                      in_machine_window=None, **kw):
     tc = b.TranscriptCollector(
         FakeOutcome(), lambda user=True: None,
         is_bot_speaking=lambda: bot_speaking,
@@ -1537,6 +1538,7 @@ def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
         in_machine_window=in_machine_window or (lambda: True),
         reply_in_flight=lambda: False,
         bot_spoke_once=lambda: True,
+        **kw,
     )
 
     async def _push(frame, direction=None):
@@ -4880,6 +4882,237 @@ def test_stt_waterfall_builds_a_switcher_only_with_a_fallback(monkeypatch):
     cfg.get_settings.cache_clear() if hasattr(cfg.get_settings, "cache_clear") else None
     proc, prim, fb = pv.build_stt_waterfall(8000, language="hi-IN")
     assert proc is prim and fb is None
+
+
+# ── call 1e374b99 (2026-09-17): "हम्म" cost a round trip and ate words ──────
+
+def _spoken_texts(rec):
+    from pipecat.frames.frames import TTSSpeakFrame
+    return [f.text for f in rec.frames if isinstance(f, TTSSpeakFrame)]
+
+
+@pytest.mark.asyncio
+async def test_unplayed_tail_is_exactly_what_the_caller_did_not_hear():
+    from pipecat.frames.frames import InterruptionFrame
+    rec = _NRRec()
+    played = {"t": ""}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "",
+                       played_text=lambda: played["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है। ",
+                 "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ — नाम क्या है? ",
+                 "और अभी किस class में पढ़ रहा है?")
+    played["t"] = "Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है"
+    await g.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    tail = g.take_unplayed_tail()
+    assert tail.startswith("क्या मैं बच्चे के बारे में") and "किस class में पढ़ रहा है?" in tail, tail
+    assert "focus सिर्फ syllabus" not in tail, "they heard that one"
+    assert g.take_unplayed_tail() == "", "handed over once"
+
+
+@pytest.mark.asyncio
+async def test_a_backchannel_resumes_the_cut_words_verbatim_with_no_model():
+    """The founder's report: the bot acknowledges ("जी सर"), pauses, and a few
+    words go missing. Instead say the exact words that were cut."""
+    rec = _Rec()
+    tail = {"t": "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ — नाम क्या है और अभी किस class में पढ़ रहा है?"}
+
+    def take(n=600):
+        t, tail["t"] = tail["t"], ""
+        return t
+    tc = _replay_collector(rec, bot_speaking=False, resume_unplayed=take,
+                           recently_cut=lambda: True)   # the VAD onset cut the reply
+    tc._outcome.transcript.append({"role": "assistant", "text": "Shiksha Nation में हमारा focus…"})
+    await _feed(tc, "हम्म।")
+    assert _spoken_texts(rec) and "किस class में पढ़ रहा है?" in _spoken_texts(rec)[0]
+    assert not any("carry on" in c for c in rec.cues()), rec.cues()
+    assert not any(getattr(f, "run_llm", False) for f in rec.frames), "no generation for a backchannel"
+    # the backchannel itself still reaches the context
+    assert any("हम्म" in c for c in rec.cues()), rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_the_cut_words_resume_at_the_vad_stop_without_waiting_for_the_stt():
+    """0.25-4.07 s of the gap was the STT final. A short burst of voice over a
+    reply that had not finished its question cannot be an answer — resume."""
+    from pipecat.frames.frames import (VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+    D = b.FrameDirection.DOWNSTREAM
+    for played, voice_secs, want in ((" तो बताइए।", 0.4, True),      # cut mid-statement
+                                     (" नाम क्या है?", 0.4, False),   # a question: could be an answer
+                                     (" तो बताइए।", 3.0, False)):    # too long to be a backchannel
+        rec = _Rec()
+        tail = {"t": "और अभी किस class में पढ़ रहा है?"}
+        tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                               resume_unplayed=lambda n=600: tail.pop("t", ""),
+                               resume_on_stop_secs=1.0)
+        tc._outcome.transcript.append({"role": "assistant", "text": "जी सर।" + played})
+        b.FrameProcessor.process_frame = _noop_super
+        await tc.process_frame(VADUserStartedSpeakingFrame(), D)
+        tc._vad_started_t -= voice_secs
+        await tc.process_frame(VADUserStoppedSpeakingFrame(), D)
+        got = bool(_spoken_texts(rec))
+        assert got is want, f"played={played!r} voice={voice_secs}s resumed={got}"
+
+
+@pytest.mark.asyncio
+async def test_resumed_words_count_as_said_again_and_a_stale_tail_is_never_spoken():
+    """Two hazards of resuming verbatim: the sentences must go BACK into the
+    already-said set (the un-record had removed them), and a tail left over
+    from an earlier interruption must never surface later."""
+    from pipecat.frames.frames import InterruptionFrame
+    rec = _NRRec()
+    played = {"t": ""}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "",
+                       played_text=lambda: played["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    Q = "क्या मैं जान सकती हूँ कि आकाश के previous class में कितने marks आए थे?"
+    await _reply(g, "जी सर। ", Q)
+    played["t"] = "जी सर।"
+    D = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(InterruptionFrame(), D)
+    assert normalize_spoken(Q) not in g._spoken, "un-recorded while it was lost"
+    assert g.take_unplayed_tail().strip() == Q
+    assert normalize_spoken(Q) in g._spoken, "resumed ⇒ said again"
+    rec.text.clear()
+    played["t"] = "जी सर। " + Q
+    await _reply(g, Q)                       # the model asks it again
+    # The question itself must not be asked again (a hand-back in its place is
+    # the gate's existing, intended behaviour).
+    assert not any(normalize_spoken(Q) in normalize_spoken(t) for t in rec.text), \
+        f"a resumed question must still count as asked: {rec.text}"
+    # The hand-back the gate just emitted is content-free: never resumable,
+    # and a NEW interruption must clear whatever the old one left.
+    await g.process_frame(InterruptionFrame(), D)
+    assert g.take_unplayed_tail() == "", "a hand-back is not words worth repeating"
+
+
+@pytest.mark.asyncio
+async def test_a_second_backchannel_after_the_resume_was_cut_still_gets_a_cue():
+    """If the resumed words were themselves cut off, the bot is silent — the
+    caller must not be left there."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "")
+    tc._outcome.transcript.append({"role": "assistant", "text": "जी सर, तो बताइए।"})
+    tc._resumed_t = time.time()              # resumed a moment ago, then cut
+    await _feed(tc, "हम्म।")
+    assert any(("carry on" in c) or ("NEXT step" in c) for c in rec.cues()), rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_a_backchannel_after_an_early_resume_says_nothing_more():
+    """bot_speaking=True: the words resumed at their VAD stop are still
+    playing, so a second "ठीक है" over them needs no cue at all."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "")
+    tc._outcome.transcript.append({"role": "assistant", "text": "जी सर, तो बताइए।"})
+    tc._resumed_t = time.time()
+    await _feed(tc, "ठीक है।")
+    assert _spoken_texts(rec) == [], "already resuming"
+    assert not any("carry on" in c or "NEXT step" in c for c in rec.cues()), rec.cues()
+    assert any("ठीक है" in c for c in rec.cues()), "the backchannel still reaches the context"
+
+
+def test_tts_probe_sends_what_the_vendor_would_really_get():
+    """The nightly of 2026-09-16 reported "<<END_CALL>> → 3.7 s of audio" as a
+    vendor fault. Nothing of the sort reaches the TTS (0 of three days' renders
+    carry a marker) — the probe was feeding it the RAW model reply, which is
+    recorded before SentinelGate strips markers and cues. A harness that cries
+    wolf is worse than no harness."""
+    import importlib.util as _u
+    import os as _os
+    _p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                       "sim", "ttsprobe.py")
+    _spec = _u.spec_from_file_location("_ttsprobe", _p)
+    tp = _u.module_from_spec(_spec); _spec.loader.exec_module(tp)
+    assert tp.strip_like_the_sentinel("जी सर। बात हो गई। " + b.END_MARKER) == "जी सर। बात हो गई।"
+    assert tp.strip_like_the_sentinel("Okay. <SEND:brochure> Thank you.") == "Okay. Thank you."
+    assert tp.strip_like_the_sentinel("[That was their ANSWER…] नाम क्या है?") == "नाम क्या है?"
+    assert tp.strip_like_the_sentinel(b.TRANSFER_MARKER) == ""
+    assert tp.strip_like_the_sentinel("Plain sentence.") == "Plain sentence."
+
+
+# ── call 3b5fb592 (2026-09-18): two 0.2 s blips, two false apologies ────────
+
+def test_a_blip_is_not_an_unheard_turn():
+    """THE REGRESSION THIS FILE MISSED. With no transcript the aggregator always
+    closes a turn on its 5 s stop-timeout, so "turn lasted >= 4 s" was true for
+    a 0.02 s blip too — the bot twice told a caller who had said nothing
+    "माफ़ कीजिए, आवाज़ कट गई", and the second one demoted the STT as well.
+    The VAD ticks are the only honest measure of how long they spoke."""
+    def armed(voice_secs: float, dur: float = 5.1) -> bool:
+        # mirrors run_bot.set_user_speaking(False)
+        started, min_utt = 100.0, 0.4
+        voice_tick_t = started + voice_secs
+        transcript_t = started - 1.0
+        return (dur >= 4.0 and (voice_tick_t - started) >= min_utt
+                and transcript_t < started)
+    assert not armed(0.02), "a 20 ms blip must never arm the re-ask"
+    assert not armed(0.22), "the 0.22 s blip of call 3b5fb592"
+    assert not armed(0.39)
+    assert armed(0.4), "a real short utterance the STT lost still arms it"
+    assert armed(5.0), "5 s of speech with a deaf STT is exactly what it is for"
+    assert not armed(5.0, dur=2.0), "the turn must also have been given up on"
+
+
+@pytest.mark.asyncio
+async def test_a_blip_that_killed_a_reply_asks_for_the_reply_again_not_for_a_repeat():
+    """The 0.02 s blip cancelled the generation answering "मैं बच्चे का पिता बोल
+    रहा हूँ" before a word of it played, and the caller waited 6 s for an
+    apology. Ask the model for that answer again instead."""
+    from pipecat.frames.frames import (VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+    D = b.FrameDirection.DOWNSTREAM
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "",   # nothing played, nothing to resume
+                           resume_on_stop_secs=1.0)
+    tc._outcome.transcript.extend([{"role": "assistant", "text": "नमस्ते जी, मैं श्रेया बोल रही हूँ।"},
+                                   {"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"}])
+    b.FrameProcessor.process_frame = _noop_super
+    await tc.process_frame(VADUserStartedSpeakingFrame(), D)
+    tc._vad_started_t -= 0.02
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), D)
+    cues = rec.cues()
+    assert any("cut your reply off" in c for c in cues), cues
+    assert any(getattr(f, "run_llm", False) for f in rec.frames), "must actually regenerate"
+    # the CALLER is never asked to repeat: no apology is spoken, and the cue
+    # tells the model not to ask for one
+    assert _spoken_texts(rec) == [], f"nothing should be spoken to the caller: {_spoken_texts(rec)}"
+    assert any("do not ask them to repeat" in c for c in cues), cues
+    # once per turn, not on every blip
+    rec.frames.clear()
+    await tc.process_frame(VADUserStartedSpeakingFrame(), D)
+    tc._vad_started_t -= 0.02
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), D)
+    assert rec.cues() == [], "a second blip on the same turn must not re-fire"
+
+
+@pytest.mark.asyncio
+async def test_resumed_words_are_said_again_when_the_vendor_socket_ate_them():
+    """pipecat tears the TTS websocket down on every interruption; a frame
+    pushed in that instant never reaches run_tts and the caller hears nothing
+    (call 3b5fb592). Verify against the played transcript and re-send once."""
+    rec = _Rec()
+    tail = "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?"
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: tail)
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    assert _spoken_texts(rec) == [tail]
+    await asyncio.sleep(0.05)
+    # nothing ever played → said again
+    await tc._speak_again_if_lost(tail, b.FrameDirection.DOWNSTREAM, wait=0.01)
+    assert _spoken_texts(rec) == [tail, tail], "the lost words were never re-sent"
+    # once it IS in the played transcript, no repeat
+    tc._outcome.transcript.append({"role": "assistant", "text": tail})
+    await tc._speak_again_if_lost(tail, b.FrameDirection.DOWNSTREAM, wait=0.01)
+    assert _spoken_texts(rec) == [tail, tail], "re-sent words that had actually played"
 
 
 def test_orphan_ask_fires_past_the_retry_window_and_at_most_twice():

@@ -6,7 +6,6 @@ import { isUserAdmin, isUserTeacher, getUserId } from '@/utils/userDetails';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { convertCapitalToTitleCase } from '@/lib/utils';
 import { formatISODateTimeReadable } from '@/helpers/formatISOTime';
-import { MarkAsResolved } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/doubt-resolution/MarkAsResolved';
 import { DeleteDoubt } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/doubt-resolution/DeleteDoubt';
 import { AddReply } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/doubt-resolution/AddReply';
 import { Reply } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/doubt-resolution/reply';
@@ -14,19 +13,29 @@ import { AssigneeCell } from '../doubt-table/assignee-cell';
 import { CategoryCell } from '../doubt-table/category-cell';
 import { TimestampCell } from '../doubt-table/doubt-cell';
 import { NavigateCell } from '../doubt-table/navigate-cell';
+import { DoubtStatusPicker } from '../status/doubt-status-picker';
+import { DoubtActivityTimeline } from '../activity/doubt-activity-timeline';
 import { getInitials } from './utils';
 
-/** Right pane: header (resolve/assign/delete/view-source) + conversation thread + reply composer. */
+/**
+ * Right pane: header (status picker / assign / delete / view-source) + activity trail +
+ * conversation thread + reply composer. The status picker lists the institute's configurable
+ * statuses and records a remark on the change; the activity section shows who assigned / moved
+ * what (and whether a rule did it) — both staff-only.
+ */
 export const ConversationPane = ({
     doubt,
     refetch,
     learnerName,
     onBack,
+    activityDefaultOpen = false,
 }: {
     doubt: Doubt;
     refetch: () => void;
     learnerName?: string;
     onBack: () => void;
+    /** Open with the activity trail expanded (board toast → "Add remark"). */
+    activityDefaultOpen?: boolean;
 }) => {
     const { t } = useTranslation('studyLibraryConversationPane');
     const isAdmin = isUserAdmin();
@@ -90,7 +99,9 @@ export const ConversationPane = ({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                     {isSlide && <NavigateCell doubt={doubt} />}
-                    <MarkAsResolved doubt={doubt} refetch={refetch} />
+                    {/* Every admin-app viewer could flip Resolved before; the picker keeps that
+                        reach (remarks/custom statuses are still staff-gated server-side). */}
+                    <DoubtStatusPicker doubt={doubt} refetch={refetch} canChange />
                     {isAdmin && <DeleteDoubt doubt={doubt} refetch={refetch} showText={false} />}
                 </div>
             </div>
@@ -103,6 +114,16 @@ export const ConversationPane = ({
                     </span>
                     <AssigneeCell doubt={doubt} />
                 </div>
+            )}
+
+            {/* Who did what — assignments (manual / by rule), status changes, remarks */}
+            {canReply && (
+                <DoubtActivityTimeline
+                    key={`${doubt.id}-${activityDefaultOpen}`}
+                    doubt={doubt}
+                    canRemark={canReply}
+                    defaultOpen={activityDefaultOpen}
+                />
             )}
 
             {/* Conversation thread */}

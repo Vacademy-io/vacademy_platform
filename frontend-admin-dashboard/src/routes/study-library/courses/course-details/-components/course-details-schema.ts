@@ -81,6 +81,8 @@ export const buildCourseDetailsSchema = (t: TFunction) => {
             .min(1, { message: t('studyLibraryCourseDetailsSchema:instructorNameRequired') }),
         profilePicId: z.string().optional(),
         roles: z.array(z.string()).optional(),
+        authorSubtitle: z.string().optional(),
+        authorDescription: z.string().optional(),
     });
 
     // Define the schema for level details within a session

@@ -608,6 +608,25 @@ class Settings:
     # (less the silence already elapsed when their final lands). 0.8 covers a
     # 0.45 s breath plus the VAD's 0.2 s onset; 0.6 lost the race once in three
     # real-STT sim runs (2026-09-15).
+    # RESUMING AFTER A BACKCHANNEL. "हम्म" / "ठीक है" / "Okay" over a reply
+    # cancels it at the VAD onset (INTERRUPT_ON_VAD, a measured decision). What
+    # follows used to be a full LLM round trip to "carry on", which on call
+    # 1e374b99 (2026-09-17) cost 1.7-5.9 s of silence FIFTEEN times and — worse
+    # — let the no-echo trimmer delete the opening of the re-generated sentence,
+    # so the parent heard "नाम क्या है…" without the clause before it and had to
+    # ask "किसका नाम?". Instead: say the exact words that were cut, no model.
+    backchannel_resume_verbatim: bool = field(
+        default_factory=lambda: _env("BACKCHANNEL_RESUME_VERBATIM", "true").lower() == "true")
+    # Do not wait for the transcript to know it was a backchannel: if the voice
+    # lasted at most this long AND the bot was cut before finishing a question
+    # (so they cannot be answering one), resume the moment the VAD says they
+    # stopped. A real turn's final still interrupts, as any barge-in does.
+    # 0 disables. The STT final is the whole remaining wait: 0.25-4.07 s on
+    # Sarvam in that call.
+    backchannel_resume_on_stop_secs: float = field(
+        default_factory=lambda: float(_env("BACKCHANNEL_RESUME_ON_STOP_SECS", "1.0")))
+    backchannel_resume_max_chars: int = field(
+        default_factory=lambda: int(_env("BACKCHANNEL_RESUME_MAX_CHARS", "600")))
     short_answer_grace_secs: float = field(
         default_factory=lambda: float(_env("SHORT_ANSWER_GRACE_SECS", "0.8")))
     short_answer_max_words: int = field(

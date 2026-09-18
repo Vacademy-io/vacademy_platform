@@ -336,8 +336,8 @@ public class EnrollInviteService {
             // Scoped list, with or without a search term. Before this the search
             // branch won regardless of scope, so typing in the course-details
             // dialog returned invites from every course in the institute.
-            // searchName is passed as "" rather than null: Postgres cannot infer a
-            // type for a null bound inside CONCAT and rejects the statement.
+            // Normalize absent search text; the repository explicitly casts search
+            // parameters so PostgreSQL can also handle untyped/null bindings.
             pageResult = repository.getEnrollInvitesWithFilters(instituteId,
                     enrollInviteFilterDTO.getPackageSessionIds(),
                     enrollInviteFilterDTO.getPaymentOptionIds(),

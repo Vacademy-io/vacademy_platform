@@ -45,6 +45,7 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.PhoneIdentifierInviteSubmissionGuard;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
@@ -123,6 +124,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private ReenrollmentGapValidationService reenrollmentGapValidationService;
+
+    @Autowired
+    private PhoneIdentifierInviteSubmissionGuard phoneIdentifierInviteSubmissionGuard;
 
     @Autowired
     private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
@@ -318,6 +322,13 @@ public class LearnerEnrollRequestService {
         // for the per-rule rationale.
         validateEnrollmentReferences(enrollInvite, paymentOption, paymentPlan,
                 enrollDTO.getPackageSessionIds());
+
+        // Defense in depth for clients that skip form-submit: the same phone-based
+        // account cannot create another plan/payment for this exact invite.
+        phoneIdentifierInviteSubmissionGuard.validateNotAlreadySubmitted(
+                enrollInvite,
+                learnerEnrollRequestDTO.getUser().getId(),
+                learnerEnrollRequestDTO.getInstituteId());
 
         // Determine if this is a SubOrg enrollment and create SubOrg if needed
         String userPlanSource = UserPlanSourceEnum.USER.name();

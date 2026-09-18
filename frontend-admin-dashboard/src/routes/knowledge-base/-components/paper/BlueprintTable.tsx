@@ -26,6 +26,8 @@ const buildTypeLabel = (t: TFunction): Record<PaperQuestionType, string> => ({
     ONE_WORD: t('typeLabel.ONE_WORD'),
     LONG_ANSWER: t('typeLabel.LONG_ANSWER'),
     NUMERIC: t('typeLabel.NUMERIC'),
+    PASSAGE: t('typeLabel.PASSAGE'),
+    ASSERTION_REASON: t('typeLabel.ASSERTION_REASON'),
 });
 
 const buildDifficultyLabel = (t: TFunction): Record<PaperDifficulty, string> => ({

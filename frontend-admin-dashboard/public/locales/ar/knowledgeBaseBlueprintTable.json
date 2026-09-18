@@ -5,7 +5,9 @@
         "TRUE_FALSE": "صح / خطأ",
         "ONE_WORD": "كلمة واحدة",
         "LONG_ANSWER": "إجابة طويلة",
-        "NUMERIC": "رقمي"
+        "NUMERIC": "رقمي",
+        "PASSAGE": "قطعة / فهم المقروء",
+        "ASSERTION_REASON": "الادعاء والسبب"
     },
     "difficultyLabel": {
         "EASY": "سهل",

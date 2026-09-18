@@ -32,40 +32,32 @@ FALLBACK_EMBEDDING_DIM = 768
 # means adding a column (see the V435 header) and one entry here.
 VECTOR_COLUMN_BY_DIM: Dict[int, str] = {768: "embedding_768"}
 
-# Curriculum libraries (V517). A listing with collection='CURRICULUM' is usable
-# by an institute whose CURRICULUM_LIBRARY_SETTING names its board and class —
-# no entitlement row, no purchase. The setting is stored by admin_core as
-#   setting_json -> 'setting' -> 'CURRICULUM_LIBRARY_SETTING' -> 'data'
-#   { "enabled": true, "boards": ["NCERT"], "classes": ["11", "12"] }
-# and is evaluated here, in the same WHERE clause that scopes everything else,
-# so a curriculum base is visible and usable for exactly the same reason.
+# Every PUBLISHED platform library is free for every institute. This includes
+# NCERT and other curriculum books: they are platform-owned library content,
+# not per-institute features or paid catalogue products.
 CURRICULUM_COLLECTION = "CURRICULUM"
-CURRICULUM_SETTING_KEY = "CURRICULUM_LIBRARY_SETTING"
 
-# `:institute_id` must be bound by the caller. Correlated on `kb` (the
-# knowledge_base alias of the enclosing query). institutes.setting_json is TEXT;
-# kb_safe_jsonb (V517) casts it and returns '{}' on malformed input, so one bad
-# settings blob can never 500 that institute's whole knowledge-base list. `?`
-# is the jsonb "array contains this string" operator.
-_CURRICULUM_SETTING_DATA_SQL = f"""
-    (kb_safe_jsonb(ci.setting_json)
-     -> 'setting' -> '{CURRICULUM_SETTING_KEY}' -> 'data')
-"""
-
-_CURRICULUM_ACCESS_SQL = f"""
+_FREE_LIBRARY_ACCESS_SQL = f"""
     EXISTS (
         SELECT 1
-          FROM knowledge_base_listing cl
-          JOIN institutes ci ON ci.id = :institute_id
-         WHERE cl.knowledge_base_id = kb.id
-           AND cl.status = 'PUBLISHED'
-           AND cl.collection = '{CURRICULUM_COLLECTION}'
+          FROM knowledge_base_listing fl
+         WHERE fl.knowledge_base_id = kb.id
+           AND fl.status = 'PUBLISHED'
            AND kb.owner_type = 'PLATFORM'
-           AND ({_CURRICULUM_SETTING_DATA_SQL} ->> 'enabled') IN ('true', '1')
-           AND ({_CURRICULUM_SETTING_DATA_SQL} -> 'boards') ? cl.board
-           AND ({_CURRICULUM_SETTING_DATA_SQL} -> 'classes') ? cl.level
     )
 """
+
+def is_curriculum_kb(kb: dict) -> bool:
+    """A pre-loaded textbook library (the loader stamps meta_json.curriculum).
+
+    These are the platform's own uploads, made once for every institute, so
+    ingesting them is NOT metered: charging 3 credits/page to the publisher
+    institute was only ever Vacademy paying Vacademy, and an empty publisher
+    wallet would still block the upload. Usage (ask / paper generation) stays
+    on normal AI credits — those are real model calls."""
+    meta = kb.get("meta") or {}
+    return bool(meta.get("curriculum")) or meta.get("topic_tree_mode") == "AUTHORED"
+
 
 # Columns every knowledge-base read returns. The listing join is LEFT so an
 # unlisted base still reads; curriculum facets are NULL for anything that is not
@@ -141,6 +133,29 @@ class KbRepository:
             VECTOR_COLUMN_BY_DIM[FALLBACK_EMBEDDING_DIM],
         )
 
+    def get_embedding_model(self, model_id: Optional[str]) -> EmbeddingModelSpec:
+        """The registered embedder a knowledge base is pinned to.
+
+        Every chunk of a KB must be written — and every query against it
+        embedded — with THIS model, never the current default: the default can
+        change, stored vectors do not. Falls back to the default only when the
+        id is missing/unknown (pre-registry rows)."""
+        if model_id:
+            try:
+                row = self.db.execute(
+                    text(
+                        "SELECT model_id, dim, vector_column FROM kb_embedding_model "
+                        "WHERE model_id = :m AND is_active = TRUE"
+                    ),
+                    {"m": model_id},
+                ).fetchone()
+                if row:
+                    return EmbeddingModelSpec(row[0], int(row[1]), row[2])
+                logger.warning("Embedding model %s is not registered/active; using default", model_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("kb_embedding_model lookup for %s failed (%s)", model_id, exc)
+        return self.get_default_embedding_model()
+
     @staticmethod
     def vector_column_for_dim(dim: int) -> str:
         """kb_chunk column for a dimension. Raises rather than guessing: writing
@@ -167,8 +182,12 @@ class KbRepository:
         language_hint: Optional[str],
         created_by: Optional[str],
         meta: Optional[Dict[str, Any]] = None,
+        embedding_model: Optional[str] = None,
     ) -> Dict[str, Any]:
-        spec = self.get_default_embedding_model()
+        # Pinned for the life of the base (see get_embedding_model). A caller
+        # may pick any ACTIVE registered embedder; unknown ids fall back to
+        # the default rather than creating a base nothing can embed for.
+        spec = self.get_embedding_model(embedding_model) if embedding_model else self.get_default_embedding_model()
         row = self.db.execute(
             text(
                 """
@@ -199,18 +218,13 @@ class KbRepository:
         return self.get_kb(row[0], institute_id)  # type: ignore[return-value]
 
     def list_kbs(self, institute_id: str, include_archived: bool = False) -> List[Dict[str, Any]]:
-        """KBs an institute can USE: its own, libraries it has unlocked, and the
-        curriculum libraries its CURRICULUM_LIBRARY_SETTING opts into.
+        """KBs an institute can USE: its own, every published platform library,
+        and anything it unlocked before that library was withdrawn.
 
-        A PLATFORM library the institute has not paid for (or is not configured
-        for) is deliberately absent. This list feeds the paper builder and the
-        assessment section picker, so anything in it is offered as ready to use —
-        listing a locked library here would put a paywall in the middle of
-        someone building an assessment. Browsing the catalogue is a separate
-        call with separate rules.
+        This list feeds the paper builder and the assessment section picker,
+        so anything in it is offered as ready to use.
 
-        Curriculum bases sort last and by board → class → subject, which is the
-        order the picker groups them in.
+        Curriculum metadata is retained for grouping in authoring pickers.
         """
         status_clause = "" if include_archived else "AND kb.status = 'ACTIVE'"
         rows = self.db.execute(
@@ -224,7 +238,7 @@ class KbRepository:
                              WHERE e.knowledge_base_id = kb.id
                                AND e.institute_id = :institute_id
                         )
-                        OR {_CURRICULUM_ACCESS_SQL}
+                        OR {_FREE_LIBRARY_ACCESS_SQL}
                       )
                 {status_clause}
                 ORDER BY (kb.owner_type = 'PLATFORM'),
@@ -302,9 +316,10 @@ class KbRepository:
             return True
         if kb["owner_type"] != "PLATFORM":
             return False
-        # Paid libraries need an entitlement; curriculum libraries need the
-        # institute's setting to name their board and class. Same SQL fragment
-        # as list_kbs, so "it is in my list" and "I may use it" cannot diverge.
+        # Published libraries are free; withdrawn ones need the entitlement
+        # their buyers hold.
+        # Same SQL fragments as list_kbs, so "it is in my list" and "I may use
+        # it" cannot diverge.
         return self.db.execute(
             text(
                 f"""
@@ -317,7 +332,7 @@ class KbRepository:
                              WHERE e.knowledge_base_id = kb.id
                                AND e.institute_id = :institute_id
                         )
-                        OR {_CURRICULUM_ACCESS_SQL}
+                        OR {_FREE_LIBRARY_ACCESS_SQL}
                    )
                  LIMIT 1
                 """
@@ -1334,6 +1349,7 @@ class KbRepository:
         top_k: int = 5,
         similarity_threshold: float = 0.35,
         purposes: Optional[List[str]] = None,
+        embedding_model: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search across all of an institute's KBs at once.
 
@@ -1343,9 +1359,12 @@ class KbRepository:
         """
         col = self.vector_column_for_dim(embedding_dim)
         purpose_clause = "AND kb.purpose = ANY(:purposes)" if purposes else ""
+        # Same width is not the same space: bge and gemini are both 768-d.
+        model_clause = "AND c.embedding_model = :embedding_model" if embedding_model else ""
         params: Dict[str, Any] = {
             "institute_id": institute_id, "query_vec": str(query_embedding),
             "embedding_dim": embedding_dim, "threshold": similarity_threshold, "top_k": top_k,
+            "embedding_model": embedding_model,
         }
         if purposes:
             params["purposes"] = purposes
@@ -1361,6 +1380,7 @@ class KbRepository:
                 JOIN knowledge_base kb ON kb.id = c.knowledge_base_id
                 WHERE c.institute_id = :institute_id
                   AND c.embedding_dim = :embedding_dim
+                  {model_clause}
                   AND c.{col} IS NOT NULL
                   AND s.is_active = TRUE
                   AND kb.status = 'ACTIVE'

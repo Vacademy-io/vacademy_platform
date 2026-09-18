@@ -926,11 +926,25 @@ export const Route = createRootRouteWithContext<{
     }
 
     // The public tutor lesson reuses the tutor route with a guest token.
+    // During a client-side navigate, window.location.search still holds the PREVIOUS
+    // url, so the parsed location.search is checked too. And the router's default
+    // stringifier JSON-encodes values that are themselves valid JSON, so the flag
+    // arrives as demo="1" (quoted) from /try and as demo=1 when typed by hand —
+    // getting this wrong sends a guest to the login screen, which is what the
+    // "no sign-up" lesson promises will never happen.
+    const demoFlagIsSet = (value: unknown): boolean =>
+      value === 1 || (typeof value === "string" && value.replace(/^"|"$/g, "") === "1");
+    const rawDemoParam =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("demo")
+        : null;
+    const parsedDemoParam =
+      location.search && typeof location.search === "object"
+        ? (location.search as Record<string, unknown>).demo
+        : null;
     const isGuestTutor =
       location.pathname.startsWith("/study-library/courses/course-details/tutor") &&
-      new URLSearchParams(
-        (typeof window !== "undefined" && window.location.search) || location.search || "",
-      ).get("demo") === "1";
+      (demoFlagIsSet(rawDemoParam) || demoFlagIsSet(parsedDemoParam));
     // Skip all logic for public routes - they should work without any redirects
     if (isPublicRoute(location.pathname) || isGuestTutor) {
       console.log("[__root] Route is public, skipping authentication check");

@@ -70,6 +70,14 @@ public class User {
     @Column(name = "preferred_locale")
     private String preferredLocale;
 
+    // Author metadata surfaced on course pages / catalogue (set from the
+    // Add Course → Add Authors flow). NULL = not an author / not set.
+    @Column(name = "author_subtitle")
+    private String authorSubtitle;
+
+    @Column(name = "author_description", columnDefinition = "TEXT")
+    private String authorDescription;
+
     @Column(name = "last_token_update_time")
     @Temporal(TemporalType.TIMESTAMP)
     private Date lastTokenUpdateTime;
@@ -97,6 +105,8 @@ public class User {
                 .email(this.email)
                 .pinCode(this.pinCode)
                 .profilePicFileId(this.profilePicFileId)
+                .authorSubtitle(this.authorSubtitle)
+                .authorDescription(this.authorDescription)
                 .preferredLocale(this.preferredLocale)
                 .roles(this.roles != null ? roles.stream().map(UserRole::getRoleDto).toList() : new ArrayList<>())
                 .build();
@@ -258,6 +268,22 @@ public class User {
 
     public void setPreferredLocale(String preferredLocale) {
         this.preferredLocale = preferredLocale;
+    }
+
+    public String getAuthorSubtitle() {
+        return authorSubtitle;
+    }
+
+    public void setAuthorSubtitle(String authorSubtitle) {
+        this.authorSubtitle = authorSubtitle;
+    }
+
+    public String getAuthorDescription() {
+        return authorDescription;
+    }
+
+    public void setAuthorDescription(String authorDescription) {
+        this.authorDescription = authorDescription;
     }
 
     public Date getLastTokenUpdateTime() {

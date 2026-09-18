@@ -81,8 +81,8 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
           WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds) AND psl.status != 'DELETED'
       ))
       AND (:#{#searchName == null || #searchName.isBlank()} = true
-           OR LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%'))
-           OR LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', :searchName, '%')))
+           OR LOWER(ei.name) LIKE LOWER(CONCAT('%', CAST(:searchName AS text), '%'))
+           OR LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', CAST(:searchName AS text), '%')))
     """,
             countQuery = """
     SELECT COUNT(*)
@@ -100,8 +100,8 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
           WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds) AND psl.status != 'DELETED'
       ))
       AND (:#{#searchName == null || #searchName.isBlank()} = true
-           OR LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%'))
-           OR LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', :searchName, '%')))
+           OR LOWER(ei.name) LIKE LOWER(CONCAT('%', CAST(:searchName AS text), '%'))
+           OR LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', CAST(:searchName AS text), '%')))
     """,
             nativeQuery = true)
     Page<EnrollInviteWithSessionsProjection> getEnrollInvitesWithFilters(
@@ -128,9 +128,9 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             "WHERE ei.institute_id = :instituteId " +
             "AND ei.tag IS DISTINCT FROM 'SUB_ORG_REGISTRATION' " +
             "AND (COALESCE(:enrollInviteStatus, NULL) IS NULL OR ei.status IN (:enrollInviteStatus)) " +
-            "AND (:searchName IS NULL OR :searchName = '' OR " +
-            "     LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%')) OR " +
-            "     LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', :searchName, '%'))) " +
+            "AND (CAST(:searchName AS text) IS NULL OR CAST(:searchName AS text) = '' OR " +
+            "     LOWER(ei.name) LIKE LOWER(CONCAT('%', CAST(:searchName AS text), '%')) OR " +
+            "     LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', CAST(:searchName AS text), '%'))) " +
             "AND (COALESCE(:packageSessionStatuses, NULL) IS NULL OR ps.status IN (:packageSessionStatuses)) " +
             "GROUP BY ei.id",
             countQuery = "SELECT COUNT(DISTINCT ei.id) FROM enroll_invite ei " +
@@ -139,9 +139,9 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
                     "WHERE ei.institute_id = :instituteId " +
                     "AND ei.tag IS DISTINCT FROM 'SUB_ORG_REGISTRATION' " +
                     "AND (COALESCE(:enrollInviteStatus, NULL) IS NULL OR ei.status IN (:enrollInviteStatus)) " +
-                    "AND (:searchName IS NULL OR :searchName = '' OR " +
-                    "     LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%')) OR " +
-                    "     LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', :searchName, '%'))) " +
+                    "AND (CAST(:searchName AS text) IS NULL OR CAST(:searchName AS text) = '' OR " +
+                    "     LOWER(ei.name) LIKE LOWER(CONCAT('%', CAST(:searchName AS text), '%')) OR " +
+                    "     LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', CAST(:searchName AS text), '%'))) " +
                     "AND (COALESCE(:packageSessionStatuses, NULL) IS NULL OR ps.status IN (:packageSessionStatuses))",
             nativeQuery = true)
     Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndSearchName(

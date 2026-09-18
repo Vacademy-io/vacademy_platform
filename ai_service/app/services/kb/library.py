@@ -97,17 +97,14 @@ def list_catalogue(
     UNLISTED rows are excluded: withdrawn from sale, but an institute that
     already unlocked one keeps using it through the normal KB list.
 
-    Curriculum listings are excluded unless asked for by `collection`: they
-    are not for sale, a hundred textbooks would bury the paid libraries, and
-    an institute reaches them through its own KB list once its setting names
-    the board and class.
+    Curriculum listings are ordinary free platform libraries and appear beside
+    other published libraries, such as STEM.
     """
     where = ["l.status = 'PUBLISHED'"]
     if collection:
         where.append("l.collection = :collection")
         params_collection = collection
     else:
-        where.append("l.collection IS NULL")
         params_collection = None
     params: Dict[str, Any] = {"institute_id": institute_id, "limit": limit}
     if params_collection:
@@ -139,11 +136,13 @@ def list_catalogue(
                    (SELECT COALESCE(SUM(s.page_count), 0)
                       FROM knowledge_base_source s
                      WHERE s.knowledge_base_id = l.knowledge_base_id) AS pages,
-                   EXISTS (
+                   -- The Library is free: a published listing is "unlocked" for
+                   -- everyone; an entitlement still counts for withdrawn ones.
+                   (l.status = 'PUBLISHED' OR EXISTS (
                        SELECT 1 FROM knowledge_base_entitlement e
                         WHERE e.knowledge_base_id = l.knowledge_base_id
                           AND e.institute_id = :institute_id
-                   ) AS unlocked
+                   )) AS unlocked
             FROM knowledge_base_listing l
             JOIN knowledge_base kb ON kb.id = l.knowledge_base_id
             WHERE {' AND '.join(where)}
@@ -168,7 +167,6 @@ def facet_values(db: Session) -> Dict[str, List[str]]:
                 SELECT DISTINCT l.{facet} AS v
                   FROM knowledge_base_listing l
                  WHERE l.status = 'PUBLISHED' AND l.{facet} IS NOT NULL
-                   AND l.collection IS NULL
                  ORDER BY v
                 """
             )
@@ -190,11 +188,13 @@ def get_listing(
                    (SELECT COALESCE(SUM(s.page_count), 0)
                       FROM knowledge_base_source s
                      WHERE s.knowledge_base_id = l.knowledge_base_id) AS pages,
-                   EXISTS (
+                   -- The Library is free: a published listing is "unlocked" for
+                   -- everyone; an entitlement still counts for withdrawn ones.
+                   (l.status = 'PUBLISHED' OR EXISTS (
                        SELECT 1 FROM knowledge_base_entitlement e
                         WHERE e.knowledge_base_id = l.knowledge_base_id
                           AND e.institute_id = :institute_id
-                   ) AS unlocked
+                   )) AS unlocked
             FROM knowledge_base_listing l
             WHERE l.knowledge_base_id = :kb_id
             """

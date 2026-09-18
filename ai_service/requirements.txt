@@ -55,3 +55,7 @@ json-repair==0.*
 # because app/mcp/crypto.py imports Fernet directly.
 mcp==2.2.0
 cryptography>=42.0.0
+
+# In-process text embeddings (ONNX on CPU, no torch) for the curriculum
+# libraries — see app/services/embedding_service.py LOCAL_MODELS.
+fastembed>=0.7

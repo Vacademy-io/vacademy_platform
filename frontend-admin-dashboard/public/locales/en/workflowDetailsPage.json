@@ -13,13 +13,13 @@
         "edit": "Edit",
         "runNow": "Run now",
         "running": "Running...",
-        "delete": "Delete",
         "dismiss": "Dismiss",
         "cancel": "Cancel",
         "triggering": "Triggering...",
         "yesRunNow": "Yes, run now",
         "deactivating": "Deactivating...",
-        "yesDeactivate": "Yes, deactivate"
+        "yesDeactivate": "Yes, deactivate",
+        "deactivate": "Deactivate"
     },
     "runConfirm": {
         "title": "Trigger workflow now?",
@@ -35,10 +35,12 @@
     },
     "deactivateConfirm": {
         "title": "Deactivate this workflow?",
-        "body": "will stop running immediately.",
-        "warnNoNewExecutions": "No new executions will be triggered after this.",
+        "body": "will become inactive. Its schedules and event triggers will be disabled.",
+        "warnNoNewExecutions": "New scheduled and event-triggered runs will stop.",
         "warnHistoryPreserved": "All past execution history will be preserved.",
-        "warnContactAdmin": "Contact your administrator to reactivate it."
+        "warnInProgress": "Executions already in progress may continue.",
+        "success": "Workflow is now inactive.",
+        "failed": "Could not deactivate the workflow. Please try again."
     },
     "tabs": {
         "diagram": "Diagram",

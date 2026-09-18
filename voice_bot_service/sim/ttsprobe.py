@@ -42,6 +42,19 @@ SMOKE = [
 ]
 
 _SENT = re.compile(r"(?<=[.!?।])\s+")
+# The records hold the model's RAW reply — markers and steering cues included,
+# because they are recorded before SentinelGate strips them. Sending those to
+# the vendor is not what production does: the nightly of 2026-09-16 reported
+# "<<END_CALL>> → 3.7 s of audio" as a vendor fault when nothing of the sort
+# ever reaches the TTS (verified: 0 of 3 days' TTS renders contain a marker).
+_MARKER_RE = re.compile(r"<<\s*(?:SEND:[^<>]*|END_CALL|TRANSFER)\s*>>|"
+                        r"(?<!<)<\s*(?:SEND:[^<>]*|END_CALL|TRANSFER)\s*>(?!>)")
+_CUE_RE = re.compile(r"\[[^\]]*\]")
+
+
+def strip_like_the_sentinel(text: str) -> str:
+    """What the TTS would actually be handed: markers and bracketed cues gone."""
+    return " ".join(_CUE_RE.sub(" ", _MARKER_RE.sub(" ", text or "")).split())
 
 
 def sentences_from_records(folder: Path) -> List[str]:
@@ -52,9 +65,9 @@ def sentences_from_records(folder: Path) -> List[str]:
         except Exception:
             continue
         for _, reply in rec.get("replies", []):
-            for s in _SENT.split(str(reply)):
+            for s in _SENT.split(strip_like_the_sentinel(str(reply))):
                 s = s.strip()
-                if s and s not in out:
+                if s and any(ch.isalnum() for ch in s) and s not in out:
                     out.append(s)
     return out
 

@@ -52,6 +52,11 @@ export const DateFilter = () => {
     );
 
     const [selectedDate, setSelectedDate] = useState<FilterType[]>([dateFilterList[1]!]);
+    // Labels are re-read from the live option list: the initial state captures `t` before the
+    // namespace has loaded in dev, which otherwise leaves "options.thisWeek" frozen on the chip.
+    const selectedDisplay = selectedDate.map(
+        (sel) => dateFilterList.find((o) => o.value === sel.value) ?? sel
+    );
     const [customOpen, setCustomOpen] = useState(false);
     const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined);
 
@@ -98,7 +103,7 @@ export const DateFilter = () => {
             <span className="text-xs font-semibold text-neutral-600">{t('label.date')}</span>
             <SelectChips
                 options={dateFilterList}
-                selected={selectedDate}
+                selected={selectedDisplay}
                 onChange={handleDateChange}
                 hasClearFilter={false}
                 className="min-w-40"

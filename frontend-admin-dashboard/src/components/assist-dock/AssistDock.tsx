@@ -8,6 +8,7 @@ import {
     Compass,
     DeviceMobile,
     GraduationCap,
+    PlayCircle,
     Question,
     RocketLaunch,
     Sparkle,
@@ -22,10 +23,7 @@ import {
     getDisplaySettingsFromCache,
     getDisplaySettingsWithFallback,
 } from '@/services/display-settings';
-import {
-    ADMIN_DISPLAY_SETTINGS_KEY,
-    type DisplaySettingsData,
-} from '@/types/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY, type DisplaySettingsData } from '@/types/display-settings';
 import { useSupportConfig } from '@/services/support';
 import { useRoadmap, useRoadmapMeta } from '@/services/roadmap';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
@@ -35,6 +33,7 @@ import { TutorialViewer } from './TutorialViewer';
 import { RoadmapViewer } from './RoadmapViewer';
 import { ExploreViewer } from './ExploreViewer';
 import { AdminAppViewer } from './AdminAppViewer';
+import { TrainingViewer } from './TrainingViewer';
 
 // Keep in sync with routes/__root.tsx publicRoutes — the dock only shows inside
 // the authenticated shell.
@@ -193,6 +192,14 @@ export function AssistDock() {
                     </RailButton>
 
                     <RailButton
+                        label={t('training')}
+                        active={panel === 'training'}
+                        onClick={() => togglePanel('training')}
+                    >
+                        <PlayCircle size={20} weight={panel === 'training' ? 'fill' : 'duotone'} />
+                    </RailButton>
+
+                    <RailButton
                         label={t('assist')}
                         active={panel === 'assistant'}
                         onClick={() => togglePanel('assistant')}
@@ -257,13 +264,17 @@ export function AssistDock() {
 
             <AdminAppViewer open={panel === 'adminApp'} onClose={() => setPanel('none')} />
 
+            <TrainingViewer open={panel === 'training'} onClose={() => setPanel('none')} />
+
             {/* Tutorials panel (slides out left of the rail) */}
             {panel === 'tutorials' && (
                 <div className="fixed bottom-4 right-16 top-20 z-40 flex w-72 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl">
                     <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-4 py-3">
                         <div className="flex items-center gap-2">
                             <GraduationCap size={18} className="text-primary-500" />
-                            <p className="text-body font-semibold text-neutral-800">{t('tutorials')}</p>
+                            <p className="text-body font-semibold text-neutral-800">
+                                {t('tutorials')}
+                            </p>
                         </div>
                         <button
                             type="button"

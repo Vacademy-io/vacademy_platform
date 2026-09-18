@@ -68,5 +68,59 @@
             "planLecture": "Plan Your Lecture"
         },
         "manyMore": "Many More"
+    },
+    "assistant": {
+        "name": "Vacademy Assistant",
+        "heading": "What would you like to get done today?",
+        "description": "Ask a question or choose a task to get started.",
+        "openChat": "Open chat",
+        "inputLabel": "Ask the Vacademy Assistant",
+        "placeholder": "What can I help you with?",
+        "inputHint": "Enter to send · Shift + Enter for a new line",
+        "submit": "Ask assistant",
+        "suggestionsLabel": "Suggested tasks. Select one to edit your question.",
+        "loading": "Loading your assistant",
+        "unavailable": "The assistant is temporarily unavailable. Your dashboard is still ready to use.",
+        "retry": "Try again",
+        "starters": {
+            "overview": {
+                "label": "Check pending fees",
+                "prompt": "How much in fees is pending across the institute?"
+            },
+            "learner": {
+                "label": "Find a learner",
+                "prompt": "Help me find a learner by name."
+            },
+            "assessments": {
+                "label": "Pending evaluations",
+                "prompt": "Which assessment submissions are still pending evaluation?"
+            },
+            "announcement": {
+                "label": "Draft an announcement",
+                "prompt": "Help me draft an announcement for a batch."
+            },
+            "schedule": {
+                "label": "Today’s classes",
+                "prompt": "What classes are scheduled for today?"
+            },
+            "payments": {
+                "label": "Check learner fees",
+                "prompt": "Help me check a learner’s overdue fees."
+            },
+            "batch": {
+                "label": "View a batch roster",
+                "prompt": "Help me find the learners in a batch."
+            },
+            "help": {
+                "label": "Help with a task",
+                "prompt": "How do I create a course?"
+            }
+        }
+    },
+    "quickActions": {
+        "title": "Quick actions"
+    },
+    "overview": {
+        "title": "Institute overview"
     }
 }

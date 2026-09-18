@@ -6,7 +6,8 @@
         "pushBlocked": "Notifications bloquées. Débloquez-les depuis l'icône de cadenas du navigateur, puis réessayez.",
         "saveSuccess": "Paramètres de gestion des questions enregistrés",
         "saveFailed": "Échec de l'enregistrement des paramètres de gestion des questions",
-        "duplicateType": "Clé de type de requête en double « {{key}} ». Renommez l'un des deux."
+        "duplicateType": "Clé de type de requête en double « {{key}} ». Renommez l'un des deux.",
+        "duplicateStatus": "Clé de statut « {{key}} » en double. Renommez l'un des deux."
     },
     "defaultAssignment": {
         "title": "Attribution automatique par défaut",
@@ -157,5 +158,30 @@
     "saveButton": {
         "saving": "Enregistrement…",
         "save": "Enregistrer les paramètres"
+    },
+    "statuses": {
+        "title": "Statuts des questions",
+        "description": "Les étapes qu'une question traverse côté personnel — En attente et Résolu sont intégrés ; ajoutez les vôtres (En cours, En attente de l'apprenant, Escaladé…). Chaque changement de statut et chaque remarque sont consignés dans l'historique de la question avec leur auteur.",
+        "namePlaceholder": "Nom du statut (ex. En cours)",
+        "builtIn": "Intégré",
+        "removeStatus": "Supprimer le statut",
+        "color": "Couleur du statut",
+        "kind": "Compte comme",
+        "kinds": {
+            "OPEN": "Ouvert",
+            "IN_PROGRESS": "En cours",
+            "RESOLVED": "Résolu"
+        },
+        "kindHint": {
+            "OPEN": "Les apprenants voient une question ouverte, sans réponse.",
+            "IN_PROGRESS": "Les apprenants voient que la question est en cours de traitement. Elle reste ouverte.",
+            "RESOLVED": "Passer ici résout la question : l'apprenant est notifié et elle quitte les listes en attente."
+        },
+        "learnerLabel": "L'apprenant voit",
+        "learnerLabelPlaceholder": "Identique à « {{label}} »",
+        "thisStatus": "ce statut",
+        "enabled": "Activé",
+        "addStatus": "Ajouter un statut",
+        "trailNote": "Les remarques internes et l'historique d'attribution/statut ne sont montrés qu'aux administrateurs et enseignants — les apprenants ne voient que le libellé ci-dessus."
     }
 }

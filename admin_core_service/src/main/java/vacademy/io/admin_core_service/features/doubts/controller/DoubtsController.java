@@ -4,10 +4,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.doubts.dtos.AllDoubtsResponse;
+import vacademy.io.admin_core_service.features.doubts.dtos.DoubtActivityDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsRequestFilter;
 import vacademy.io.admin_core_service.features.doubts.manager.DoubtsManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
 
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_SIZE;
@@ -43,5 +46,15 @@ public class DoubtsController {
     ResponseEntity<DoubtsDto> getDoubtById(@RequestAttribute("user") CustomUserDetails userDetails,
                                            @PathVariable("doubtId") String doubtId){
         return doubtsManager.getDoubtById(doubtId);
+    }
+
+    /**
+     * Audit trail for one doubt — who assigned whom (by hand or by which routing rule), status
+     * changes and remarks, oldest first. Staff only; learners get a 4xx.
+     */
+    @GetMapping("/{doubtId}/activity")
+    ResponseEntity<List<DoubtActivityDto>> getDoubtActivity(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                             @PathVariable("doubtId") String doubtId){
+        return doubtsManager.getDoubtActivity(userDetails, doubtId);
     }
 }

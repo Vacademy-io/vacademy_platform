@@ -5,7 +5,6 @@ import { Trans, useTranslation } from 'react-i18next';
 import {
     Books,
     BookOpen,
-    BookOpenText,
     FileText,
     Plus,
     Sparkle,
@@ -23,8 +22,7 @@ import { useKnowledgeBases } from './-hooks';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CreateKbDialog } from './-components/CreateKbDialog';
 import { LibraryBrowser } from './-components/library/LibraryBrowser';
-import { CurriculumBrowser } from './-components/curriculum/CurriculumBrowser';
-import { curriculumOnly, ownOnly } from './-components/curriculum/curriculum';
+import { ownOnly } from './-components/curriculum/curriculum';
 import type { KnowledgeBase } from './-types';
 
 export const Route = createLazyFileRoute('/knowledge-base/')({
@@ -42,7 +40,9 @@ function KbCard({ kb }: { kb: KnowledgeBase }) {
     const open = () => navigate({ to: '/knowledge-base/$kbId', params: { kbId: kb.id } });
     const purposeLabel =
         purposeOptions.find((p) => p.value === kb.purpose)?.label ??
-        (kb.purpose === 'institute_info' ? t('purpose.instituteInfo') : t('purpose.generalReference'));
+        (kb.purpose === 'institute_info'
+            ? t('purpose.instituteInfo')
+            : t('purpose.generalReference'));
     const pages = kb.stats?.pages ?? 0;
     const figures = kb.stats?.figures ?? 0;
 
@@ -200,19 +200,9 @@ function KnowledgeBaseListPage() {
     const [createOpen, setCreateOpen] = useState(false);
     // Their own bases stay the landing view: the library is an offer, not an
     // interruption to what they came here to do.
-    const [tab, setTab] = useState<'mine' | 'curriculum' | 'library'>('mine');
+    const [tab, setTab] = useState<'mine' | 'library'>('mine');
     const { data: allBases, isLoading, isError, refetch } = useKnowledgeBases();
-    // Curriculum libraries (NCERT…) arrive in the same list but are shown on
-    // their own tab, grouped by class — a hundred textbooks would bury the
-    // institute's own bases. The tab only exists when the institute is
-    // configured for them (Settings → AI → Curriculum library).
     const bases = useMemo(() => ownOnly(allBases), [allBases]);
-    const curriculum = useMemo(() => curriculumOnly(allBases), [allBases]);
-    // The setting can be switched off elsewhere while this tab is open; the
-    // trigger unmounts, so the selection must follow it.
-    useEffect(() => {
-        if (tab === 'curriculum' && !isLoading && curriculum.length === 0) setTab('mine');
-    }, [tab, isLoading, curriculum.length]);
 
     useEffect(() => {
         setNavHeading(t('navHeading'));
@@ -225,7 +215,7 @@ function KnowledgeBaseListPage() {
                 <meta name="description" content={t('meta.description')} />
             </Helmet>
 
-            <Tabs value={tab} onValueChange={(v) => setTab(v as 'mine' | 'curriculum' | 'library')}>
+            <Tabs value={tab} onValueChange={(v) => setTab(v as 'mine' | 'library')}>
                 <TabsList className="mb-5 inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
                     <TabsTrigger
                         value="mine"
@@ -235,19 +225,6 @@ function KnowledgeBaseListPage() {
                     >
                         {t('tabs.mine')}
                     </TabsTrigger>
-                    {curriculum.length > 0 && (
-                        <TabsTrigger
-                            value="curriculum"
-                            className={`flex gap-1.5 rounded-none px-6 py-2 !shadow-none ${
-                                tab === 'curriculum'
-                                    ? 'border-b-2 border-primary-500 text-primary-500'
-                                    : ''
-                            }`}
-                        >
-                            <BookOpenText className="size-4" />
-                            {t('tabs.curriculum')}
-                        </TabsTrigger>
-                    )}
                     <TabsTrigger
                         value="library"
                         className={`flex gap-1.5 rounded-none px-6 py-2 !shadow-none ${
@@ -263,7 +240,6 @@ function KnowledgeBaseListPage() {
             </Tabs>
 
             {tab === 'library' && <LibraryBrowser />}
-            {tab === 'curriculum' && <CurriculumBrowser knowledgeBases={curriculum} />}
 
             <div className={tab === 'mine' ? 'flex flex-col gap-5' : 'hidden'}>
                 <div className="flex flex-wrap items-start justify-between gap-3">

@@ -20,7 +20,12 @@ import { StatusChip } from '@/components/design-system/status-chips';
 import type { StatusType } from '@/components/design-system/status-chips';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { deleteGeneration, listGenerations } from '../-services/paper-service';
+import {
+    deleteGeneration,
+    downloadGenerationPdf,
+    listGenerations,
+} from '../-services/paper-service';
+import { PaperDownloadMenu } from './paper/PaperDownloadMenu';
 import type { ArtifactType, GenerationStatus, KbGeneration } from '../-types/paper';
 
 /**
@@ -216,6 +221,18 @@ export const GenerationHistory = ({ kbId, refreshKey = 0 }: GenerationHistoryPro
                                         : t('actions.open')}
                                 </MyButton>
                             )}
+                            {resumable &&
+                                (row.status === 'READY' || row.status === 'SAVED') &&
+                                row.items_delivered > 0 && (
+                                    <PaperDownloadMenu
+                                        scale="small"
+                                        buttonType="text"
+                                        disabled={busyId === row.id}
+                                        onDownload={(options) =>
+                                            downloadGenerationPdf(row.id, options)
+                                        }
+                                    />
+                                )}
                             {row.status === 'SAVED' && (
                                 <MyButton
                                     buttonType="text"

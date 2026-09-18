@@ -94,7 +94,7 @@
             "showSettings": "Show Settings",
             "showSettingsHint": "Hides the Settings gear in the sidebar rail. You can still open Settings directly at /settings.",
             "showAssistDock": "Show Right Side Rail",
-            "showAssistDockHint": "Guides, Assist, Issues, What's new, Explore & Admin App. Hidden for this role by default."
+            "showAssistDockHint": "Guides, Training, Assist, Issues, What's new, Explore & Admin App. Hidden for this role by default."
         },
         "sidebarCategories": {
             "title": "Sidebar Categories",

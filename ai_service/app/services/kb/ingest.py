@@ -35,7 +35,7 @@ from ..api_key_resolver import ApiKeyResolver
 from ..embedding_service import EmbeddingService
 from . import parsing
 from .chunking import build_chunks
-from .repository import KbRepository
+from .repository import KbRepository, is_curriculum_kb
 from .summary_index import build_summary_index
 
 logger = logging.getLogger(__name__)
@@ -209,7 +209,8 @@ async def ingest_source(
         repo.update_source_progress(
             source_id, status="PROCESSING", progress=5, stage="parsing", error_message=""
         )
-        embedding_model = repo.get_default_embedding_model()
+        # The model this base was created with — never the current default.
+        embedding_model = repo.get_embedding_model(kb.get("embedding_model"))
 
     outcome: Dict[str, Any] = {
         "source_id": source_id,
@@ -290,7 +291,8 @@ async def ingest_source(
                 for start in range(0, len(chunks), EMBED_BATCH):
                     batch = chunks[start:start + EMBED_BATCH]
                     vectors = await embedder.embed_batch(
-                        [c.content_text for c in batch], institute_id
+                        [c.content_text for c in batch], institute_id,
+                        model=embedding_model.model_id,
                     )
                     for chunk, vector in zip(batch, vectors):
                         chunk.embedding = vector
@@ -327,6 +329,11 @@ async def ingest_source(
         # notes an institute types. Short sources still get a book node below,
         # so they remain visible in the outline.
         substantial = len(document.pages) >= 3 or document.total_chars >= MIN_CHARS_FOR_INDEX
+        # Curriculum bases get their structure from the AUTHORED topic tree
+        # (chapter = source, subtopics = the book's headings); the LLM summary
+        # tree would duplicate it at ~6 model calls per chapter.
+        if is_curriculum_kb(kb):
+            substantial = False
         if build_index and substantial:
             with db_session() as db:
                 KbRepository(db).update_source_progress(
@@ -403,6 +410,10 @@ async def ingest_source(
             else "kb_ingest_url" if kind in ("URL", "YOUTUBE")
             else None
         )
+        # Curriculum libraries are the platform's own uploads, made once for
+        # every institute: not metered (see is_curriculum_kb).
+        if is_curriculum_kb(kb):
+            tool_key = None
         if tool_key:
             record_tool_billing(
                 tool_key=tool_key,

@@ -109,6 +109,7 @@ export function PlanComposerDialog({
     onCreated,
     defaultPackageSessionId,
     planId,
+    presetSlide,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -116,6 +117,11 @@ export function PlanComposerDialog({
     defaultPackageSessionId?: string;
     /** Present = edit an existing plan instead of creating one. */
     planId?: string | null;
+    /**
+     * Open with one course-content task already filled in — used by "Assign as task"
+     * on a slide, so the teacher only has to choose batches and a window.
+     */
+    presetSlide?: PickedSlide | null;
 }) {
     const isEdit = Boolean(planId);
     const [title, setTitle] = useState('');
@@ -209,6 +215,23 @@ export function PlanComposerDialog({
             })
         );
     }, [open, existing]);
+
+    // Seed a course-content task when opened from a slide.
+    useEffect(() => {
+        if (!open || !presetSlide) return;
+        setItems([
+            {
+                ...newItem(),
+                itemType: 'COURSE_SLIDE',
+                title: presetSlide.slideTitle,
+                slide: presetSlide,
+                completionPoints: 10,
+                isRequired: true,
+            },
+        ]);
+        setTitle((current) => current || presetSlide.slideTitle);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, presetSlide]);
 
     // A batch passed in by the course page seeds the selection.
     useEffect(() => {

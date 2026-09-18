@@ -174,9 +174,27 @@ def invariants(res: Dict[str, Any]) -> List[str]:
             if cs + 0.4 < bs < ce - 0.3:
                 f.append(f"bot started talking at {bs:.1f}s over the caller ({cs:.1f}–{ce:.1f}s)")
                 break
-    # 6. every heard caller turn gets a reply (audio within 5 s), unless the call ended
     ended = res.get("ended_at")
     finals = res.get("finals", [])
+    # 6. a backchannel must not cost a silence. Call 1e374b99 (2026-09-17):
+    #    fifteen "हम्म" / "ठीक है" / "Okay"s each cut the reply and cost
+    #    1.7-5.9 s of nothing while the model re-generated what was already
+    #    written — and the re-generated sentence came back short.
+    for cs, ce in res.get("caller", []):
+        words = [x for t, x in finals if cs - 0.3 <= t <= ce + 3.0 and x.strip()]
+        if not words or len(" ".join(words).split()) > 3:
+            continue                                   # not a backchannel
+        if ended is not None and ce > ended - 1.5:
+            continue
+        spoke_before = any(bs < cs < be + 0.5 for bs, be in res.get("bot", []))
+        if not spoke_before:
+            continue                                   # they were not talking over us
+        nxt = [bs for bs, _ in res.get("bot", []) if bs >= ce - 0.2]
+        gap = (nxt[0] - ce) if nxt else 99.0
+        if gap > 2.0:
+            f.append(f"backchannel {' '.join(words)[:20]!r} at {cs:.1f}s cost "
+                     f"{gap:.1f}s of silence before the bot spoke again")
+    # 7. every heard caller turn gets a reply (audio within 5 s), unless the call ended
     for cs, ce in res.get("caller", []):
         heard = any(cs <= t <= ce + 3.0 and x.strip() for t, x in finals)
         if not heard:

@@ -49,12 +49,20 @@ import httpx
 HERE = Path(__file__).resolve().parent
 INVENTORY = HERE / "ncert_inventory.json"
 OVERRIDES = HERE / "chapter_title_overrides.json"   # {"kech101": "Some Basic Concepts of Chemistry", ...}
+# Hand-written tables of contents (one JSON per book, see structure_prompt()).
+# When a book has one, its chapter titles and section headings come from here
+# and no model is asked anything; the server locates each heading in the
+# chapter text to give it a page.
+STRUCTURES_DIR = HERE / "structures"
 
 NCERT_PDF = "https://ncert.nic.in/textbook/pdf/{code}.pdf"
 NCERT_TEXTBOOK_PAGE = "https://ncert.nic.in/textbook.php"
 
 BOARD = "NCERT"
 SESSION = "2026-27"
+# In-process embedder (fastembed, ONNX on CPU) registered by V520: no
+# per-token cost and no metered key behind every client's search.
+EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
 
 # The v1 scope: the subjects a test is actually set on. Vocational, arts,
 # PE, crafts and the Sanskrit/Urdu readers are left out on purpose — they
@@ -360,6 +368,72 @@ class Api:
 
 
 # ---------------------------------------------------------------------------
+# Hand-written structures (optional)
+# ---------------------------------------------------------------------------
+
+def _squash(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+
+
+def load_structures() -> List[Dict[str, Any]]:
+    """Every structures/*.json that parses. Shape (from structure_prompt):
+    {board, class, subject, book, chapters: [{no, title, topics: [..]}]}"""
+    out: List[Dict[str, Any]] = []
+    if not STRUCTURES_DIR.exists():
+        return out
+    for path in sorted(STRUCTURES_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text())
+            if isinstance(data, dict) and data.get("chapters"):
+                data["_file"] = path.name
+                out.append(data)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("structure file %s ignored: %s", path.name, exc)
+    return out
+
+
+def structure_for(plan: "Plan", structures: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The structure describing this plan's book, if any: same board, class and
+    subject; and, when the subject has several books, a matching book title."""
+    cands = [
+        st for st in structures
+        if _squash(st.get("board")) == _squash(BOARD)
+        and str(st.get("class", "")).strip() == str(plan.cls)
+        and _squash(st.get("subject")) == _squash(plan.subject)
+    ]
+    if not cands:
+        return None
+    if len(cands) == 1 and not plan.multi_book_subject:
+        return cands[0]
+    want = _squash(plan.series_title)
+    for st in cands:
+        book = _squash(st.get("book"))
+        if book and (book in want or want in book):
+            return st
+    return None if plan.multi_book_subject else cands[0]
+
+
+def structure_prompt(cls: int, subject: str, book_title: str) -> str:
+    """The prompt to paste into any chat model to produce one structure file."""
+    return f"""You are given the NCERT textbook: Class {cls} {subject} ({book_title}, {SESSION} edition).
+List its official table of contents as JSON. Use the book's OWN chapter numbers and
+printed section headings, verbatim - do not invent, merge, rename or summarise.
+Skip exercises, summaries, "points to ponder" and appendices.
+
+Output ONLY this JSON, nothing else:
+{{
+  "board": "{BOARD}",
+  "class": "{cls}",
+  "subject": "{subject}",
+  "book": "{book_title}",
+  "chapters": [
+    {{"no": 1, "title": "<chapter title exactly as printed>",
+      "topics": ["<section heading 1 exactly as printed>", "<section heading 2>", "..."]}}
+  ]
+}}"""
+
+
+# ---------------------------------------------------------------------------
 # Plan
 # ---------------------------------------------------------------------------
 
@@ -466,12 +540,13 @@ def normalise_title(title: str) -> str:
     out = []
     for i, w in enumerate(words):
         core = re.sub(r"[^A-Za-z]", "", w)
-        if core.isupper() and 2 <= len(core) <= 5 and not title.isupper():
-            out.append(w)  # acronym inside a normally cased title
-            continue
         lw = w.lower()
+        # Small words first: a small-caps font yields "Pair OF Linear
+        # Equations IN Two Variables", and "OF"/"IN" are not acronyms.
         if lw in _SMALL_WORDS and i not in (0, len(words) - 1):
             out.append(lw)
+        elif core.isupper() and 2 <= len(core) <= 5 and not title.isupper():
+            out.append(w)  # acronym inside a normally cased title
         elif re.match(r"^[spdf]-[A-Za-z]", w):
             out.append(w[0] + "-" + w[2:3].upper() + w[3:].lower())  # p-Block, d-Block
         else:
@@ -555,7 +630,9 @@ def _pick_present(sources: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
 
 
 async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
-                    dry_run: bool, publish: bool, retitle: bool = False) -> Dict[str, Any]:
+                    dry_run: bool, publish: bool, retitle: bool = False,
+                    embedding_model: str = EMBEDDING_MODEL,
+                    structures: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Load one knowledge base (one book). Chapters run SEQUENTIALLY on purpose:
     the server rebuilds the book's topic tree after every chapter, and two
     rebuilds of the same tree racing each other would duplicate its nodes."""
@@ -563,6 +640,28 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
                "chapters": len(plan.chapters), "published": False}
     log.info("== %s (%d chapters from %s)", plan.kb_name, len(plan.chapters),
              ", ".join(b.code for b in plan.books))
+    structure = structure_for(plan, structures or [])
+    by_no: Dict[int, Dict[str, Any]] = {}
+    if structure:
+        for chap in structure.get("chapters") or []:
+            try:
+                by_no[int(chap.get("no"))] = chap
+            except (TypeError, ValueError):
+                continue
+        log.info("   using hand-written structure %s (%d chapters)", structure["_file"], len(by_no))
+
+    def manual_for(ch: Chapter) -> Dict[str, Any]:
+        """Extra source meta from the structure file: title + headings."""
+        chap = by_no.get(ch.chapter_no)
+        if not chap:
+            return {}
+        extra: Dict[str, Any] = {}
+        topics = [str(t).strip() for t in (chap.get("topics") or []) if str(t).strip()]
+        if topics:
+            extra["headings_manual"] = topics
+        if chap.get("title"):
+            extra["chapter_title"] = str(chap["title"]).strip()
+        return extra
 
     # 1. Knowledge base (by name, under the publisher institute)
     existing = {kb["name"]: kb for kb in await api.list_kbs() if kb["institute_id"] == api.institute_id}
@@ -589,6 +688,7 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
             "purpose": "teaching",
             "language_hint": LANGUAGE_HINT.get(plan.medium),
             "meta": meta,
+            "embedding_model": embedding_model,
         })
         log.info("   created knowledge base %s", kb["id"])
     kb_id = kb["id"]
@@ -601,14 +701,14 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
 
         if src and src["status"] in ("READY", "PARTIAL", "PROCESSING", "PENDING"):
             if retitle:
-                title = await resolve_title(ch, overrides)
+                extra = manual_for(ch)
+                title = extra.get("chapter_title") or await resolve_title(ch, overrides)
                 wanted = f"Chapter {ch.chapter_no}: {title}" if not title.lower().startswith("chapter") else title
-                if src["title"] != wanted:
-                    await api.patch_source(src["id"], {
-                        "title": wanted,
-                        "meta": {"chapter_title": title, "chapter_no": ch.chapter_no},
-                    })
-                    log.info("   %s retitled → '%s'", ch.code, wanted)
+                patch_meta = {"chapter_title": title, "chapter_no": ch.chapter_no, **extra}
+                if src["title"] != wanted or "headings_manual" in extra:
+                    await api.patch_source(src["id"], {"title": wanted, "meta": patch_meta})
+                    log.info("   %s retitled → '%s'%s", ch.code, wanted,
+                             "  + manual headings" if "headings_manual" in extra else "")
             summary["skipped"] += 1
             continue
 
@@ -631,7 +731,8 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
                 log.error("   %s re-index error: %s", ch.code, exc)
             continue
 
-        title = await resolve_title(ch, overrides)
+        extra = manual_for(ch)
+        title = extra.get("chapter_title") or await resolve_title(ch, overrides)
         body = {
             "source_kind": "PDF",
             "title": f"Chapter {ch.chapter_no}: {title}" if not title.lower().startswith("chapter") else title,
@@ -641,6 +742,7 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
                 "ncert_code": ch.code, "book_code": ch.book_code, "part_no": ch.part_no,
                 "board": BOARD, "class": str(plan.cls), "subject": plan.subject,
                 "session": SESSION,
+                **extra,
             },
         }
         try:
@@ -718,6 +820,15 @@ async def main_async(args: argparse.Namespace) -> int:
     log.info("%d book(s) → %d knowledge base(s), %d chapters",
              len(books), len(plans), sum(len(p.chapters) for p in plans))
     overrides = json.loads(OVERRIDES.read_text()) if OVERRIDES.exists() else {}
+    structures = load_structures()
+    if structures:
+        log.info("%d hand-written structure file(s) in %s", len(structures), STRUCTURES_DIR)
+    if args.print_prompts:
+        for plan in plans:
+            print(f"\n===== {plan.kb_name}  →  save as structures/{BOARD}_{plan.cls}_{plan.subject.replace(' ', '')}"
+                  f"{'_' + re.sub(r'[^A-Za-z0-9]+', '', plan.series_title) if plan.multi_book_subject else ''}.json =====")
+            print(structure_prompt(plan.cls, plan.subject, ", ".join(b.title for b in plan.books)))
+        return 0
 
     api = Api(args.base_url, jwt=args.jwt, internal_token=args.internal_token,
               institute_id=args.institute_id, client_id=args.client_id)
@@ -737,6 +848,7 @@ async def main_async(args: argparse.Namespace) -> int:
                 return await load_plan(
                     api, plan, overrides=overrides,
                     dry_run=args.dry_run, publish=not args.no_publish, retitle=args.retitle,
+                    embedding_model=args.embedding_model, structures=structures,
                 )
             except OutOfCredits as exc:
                 log.error("OUT OF CREDITS — stopping: %s", exc)
@@ -781,6 +893,10 @@ def main() -> None:
     ap.add_argument("--limit-books", type=int, help="stop after N knowledge bases (testing)")
     ap.add_argument("--no-publish", action="store_true", help="create + ingest but leave the listing DRAFT")
     ap.add_argument("--retitle", action="store_true", help="re-resolve titles of chapters already loaded")
+    ap.add_argument("--embedding-model", default=EMBEDDING_MODEL,
+                    help="registered embedder for NEW bases (existing bases keep theirs)")
+    ap.add_argument("--print-prompts", action="store_true",
+                    help="print the structure prompt for each selected book and exit (no API calls)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--refresh-inventory", action="store_true", help="re-parse ncert.nic.in first")
     ap.add_argument("-v", "--verbose", action="store_true")

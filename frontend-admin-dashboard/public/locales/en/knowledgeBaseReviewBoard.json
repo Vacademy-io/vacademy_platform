@@ -35,5 +35,6 @@
     },
     "errors": {
         "sectionRemoved": "This question's section is no longer in the plan."
-    }
+    },
+    "diagramMissing": "Needs a diagram that could not be drawn: {{description}}. Add one by hand, or rewrite the question."
 }

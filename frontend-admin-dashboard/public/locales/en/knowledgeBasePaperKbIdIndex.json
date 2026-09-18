@@ -96,7 +96,10 @@
         "generateButton": "Generate question paper",
         "adjustPlanButton": "Adjust plan first",
         "generateHint": "Generate plans the sections and writes every question in one go. Adjust plan first shows the section plan for editing before anything is written.",
-        "noMixHint": "No question types configured — the planner will choose a mix."
+        "noMixHint": "No question types configured — the planner will choose a mix.",
+        "editInstructions": "Edit instructions",
+        "done": "Done",
+        "createOfflineTest": "Save & create offline test"
     },
     "wizard": {
         "heading": "Generate question paper",

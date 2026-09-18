@@ -184,6 +184,11 @@ table { border-collapse: collapse; }
 .head .rule { margin: 3mm 0 3.5mm; border-top: 1.6pt solid #111; border-bottom: 0.5pt solid #111; height: 1.2mm; }
 .head .title { margin-top: 2mm; font-size: 13pt; font-weight: 700; }
 .head .subtitle { margin-top: 1mm; font-size: 10.5pt; color: #333; }
+.watermark {
+  position: fixed; left: 50%; top: 50%; width: 110mm; height: 110mm; margin: -55mm 0 0 -55mm;
+  background-position: center; background-repeat: no-repeat; background-size: contain;
+  opacity: 0.06; filter: grayscale(100%); z-index: -1; pointer-events: none;
+}
 .set { position: absolute; top: 0; right: 0; border: 1.2pt solid #111; padding: 0.5mm 2.5mm;
        font-family: "Noto Sans", "Liberation Sans", Arial, sans-serif; font-size: 10pt; font-weight: 700; }
 .strip {
@@ -362,11 +367,21 @@ def _needs_math(questions: Sequence[Dict[str, Any]]) -> bool:
     return any(_MATH_RE.search(str(part or "")) for q in questions for part in _question_html_parts(q))
 
 
+LOGO_PLACEMENTS = ("watermark", "header", "none")
+
+
 def _render_brand(
-    institute_name: Optional[str], logo_url: Optional[str], contact_line: Optional[str]
+    institute_name: Optional[str],
+    logo_url: Optional[str],
+    contact_line: Optional[str],
+    logo_placement: str = "watermark",
 ) -> str:
-    """Logo beside the institute name (or the name alone), contact line under
-    it, then a double rule — the letterhead a school paper is printed on."""
+    """The institute's name (and contact line) at the top, then a double rule.
+
+    The logo goes where the institute wants it: a faint watermark behind every
+    page (the default — the title stays the first thing on the sheet), beside
+    the name as a letterhead, or nowhere.
+    """
     if not institute_name and not logo_url:
         return ""
     text = ""
@@ -374,12 +389,25 @@ def _render_brand(
         text += f'<div class="institute">{html.escape(institute_name)}</div>'
     if contact_line:
         text += f'<div class="contact">{html.escape(contact_line)}</div>'
+    in_header = bool(logo_url) and logo_placement == "header"
     logo = (
-        f'<img class="logo" src="{html.escape(logo_url, quote=True)}" alt="">' if logo_url else ""
+        f'<img class="logo" src="{html.escape(logo_url, quote=True)}" alt="">' if in_header else ""
     )
+    if not text and not logo:
+        return ""
     return (
-        f'<div class="brand{"" if logo_url else " centered"}">{logo}<div class="text">{text}</div></div>'
+        f'<div class="brand{"" if in_header else " centered"}">{logo}<div class="text">{text}</div></div>'
         '<div class="rule"></div>'
+    )
+
+
+def _render_watermark(logo_url: Optional[str], logo_placement: str) -> str:
+    """position:fixed repeats on every printed page in Chromium, which is what
+    makes one element a watermark for the whole paper."""
+    if not logo_url or logo_placement != "watermark":
+        return ""
+    return (
+        f'<div class="watermark" style="background-image:url({html.escape(logo_url, quote=True)})"></div>'
     )
 
 
@@ -393,11 +421,14 @@ def _render_header(
     set_label: Optional[str],
     logo_url: Optional[str] = None,
     contact_line: Optional[str] = None,
+    logo_placement: str = "watermark",
+    candidate_line: bool = False,
 ) -> str:
-    parts = ['<header class="head" style="position:relative">']
+    parts = [_render_watermark(logo_url, logo_placement)]
+    parts.append('<header class="head" style="position:relative">')
     if set_label:
         parts.append(f'<div class="set">SET {html.escape(set_label)}</div>')
-    parts.append(_render_brand(institute_name, logo_url, contact_line))
+    parts.append(_render_brand(institute_name, logo_url, contact_line, logo_placement))
     parts.append(f'<div class="title">{html.escape(blueprint.title)}</div>')
     if subtitle:
         parts.append(f'<div class="subtitle">{html.escape(subtitle)}</div>')
@@ -409,10 +440,11 @@ def _render_header(
         f'<div class="strip"><span>{html.escape(left)}</span>'
         f"<span>Maximum Marks: {_fmt_marks(total_marks)}</span></div>"
     )
-    parts.append(
-        '<div class="candidate"><span>Name:</span><span class="short">Roll No.:</span>'
-        '<span class="short">Date:</span></div>'
-    )
+    if candidate_line:
+        parts.append(
+            '<div class="candidate"><span>Name:</span><span class="short">Roll No.:</span>'
+            '<span class="short">Date:</span></div>'
+        )
     if blueprint.instructions:
         items = "".join(
             f"<li>({_roman(i)}) {html.escape(text)}</li>" for i, text in enumerate(blueprint.instructions)
@@ -484,6 +516,8 @@ def build_paper_html(
     set_label: Optional[str] = None,
     logo_url: Optional[str] = None,
     contact_line: Optional[str] = None,
+    logo_placement: str = "watermark",
+    candidate_line: bool = False,
 ) -> str:
     """The whole document. Pure: same inputs, same HTML."""
     sections = _group_by_section(blueprint, questions)
@@ -497,6 +531,8 @@ def build_paper_html(
             blueprint, delivered=delivered, total_marks=total_marks,
             institute_name=institute_name, subtitle=subtitle, set_label=set_label,
             logo_url=logo_url, contact_line=contact_line,
+            logo_placement=logo_placement if logo_placement in LOGO_PLACEMENTS else "watermark",
+            candidate_line=candidate_line,
         )
     ]
     number = 0

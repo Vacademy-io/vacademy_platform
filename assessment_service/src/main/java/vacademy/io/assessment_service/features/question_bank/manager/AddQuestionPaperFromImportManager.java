@@ -394,6 +394,13 @@ public class AddQuestionPaperFromImportManager {
         if (questionRequest.getSourceMeta() != null) {
             question.setSourceMeta(questionRequest.getSourceMeta());
         }
+        // The rubric the AI evaluator grades against. A generated paper carries
+        // its own marking scheme; without this line the evaluator ignored it and
+        // invented a rubric from the question text.
+        if (questionRequest.getEvaluationCriteriaJson() != null
+                && !questionRequest.getEvaluationCriteriaJson().isBlank()) {
+            question.setEvaluationCriteriaJson(questionRequest.getEvaluationCriteriaJson());
+        }
         question.setQuestionType(questionRequest.getQuestionType());
         switch (questionRequest.getQuestionType()) {
             case "NUMERIC":

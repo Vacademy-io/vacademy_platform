@@ -113,6 +113,8 @@ async def render_branded_pdf(
     show_marks: bool,
     institute_name: Optional[str] = None,
     set_label: Optional[str] = None,
+    logo_placement: str = "watermark",
+    candidate_line: bool = False,
 ) -> bytes:
     branding = await institute_branding(db, institute_id)
     return await paper_pdf.render_paper_pdf(
@@ -125,6 +127,8 @@ async def render_branded_pdf(
         include_answer_key=include_answer_key,
         show_marks=show_marks,
         set_label=(set_label or "").strip() or None,
+        logo_placement=logo_placement,
+        candidate_line=candidate_line,
     )
 
 

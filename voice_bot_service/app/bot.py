@@ -237,6 +237,7 @@ class TranscriptCollector(FrameProcessor):
         self._vad_started_t = 0.0
         self._resumed_t = 0.0
         self._reran_for = ""
+        self._resume_check = None
         # True only while an operator/voicemail recording is still plausible.
         # This was a LATCH ("have we heard a real caller yet?") and the latch is
         # what broke on call 14029bd6: Sarvam rendered "…after the tone" as the
@@ -827,6 +828,8 @@ class TranscriptCollector(FrameProcessor):
                 self._audio_checks = 0
                 logger.info("turn-gate: real barge-in %r — interrupting reply "
                             "(ducked=%s)", text[:40], ducked)
+                # They took the turn: the words we were resuming are stale.
+                self._cancel_resume_check()
                 await self.broadcast_interruption()
             elif ducked:
                 # The reply finished while we were ducked (nothing held, bot
@@ -971,18 +974,32 @@ class TranscriptCollector(FrameProcessor):
         # run_tts at all — the caller heard nothing and then got an apology).
         # A frame handed to a reconnecting vendor is lost silently, so check the
         # played transcript and say it once more if it never arrived.
+        self._cancel_resume_check()
         try:
-            self.create_task(self._speak_again_if_lost(tail, direction))
+            self._resume_check = self.create_task(self._speak_again_if_lost(tail, direction))
         except Exception:
             # No task manager (a bare unit harness, or teardown): the words were
             # still pushed — only the did-it-play check is skipped.
             logger.debug("turn-gate: no task manager for the resume re-check")
         return True
 
+    def _cancel_resume_check(self):
+        """The caller has taken the turn (or a newer resume replaced this one):
+        whatever was cut is stale, and re-sending it would fight the reply the
+        model is already writing."""
+        t, self._resume_check = self._resume_check, None
+        if t is not None and not t.done():
+            t.cancel()
+
     async def _speak_again_if_lost(self, text: str, direction, wait: float = 1.2):
         try:
             await asyncio.sleep(wait)
             if self._is_bot_speaking():
+                return
+            if self._reply_in_flight():
+                # The model is already writing the next line; two voices is
+                # what broke call 0c42d3a6.
+                logger.info("turn-gate: not re-sending the resumed words — a reply is on its way")
                 return
             key = spoken_key(text)[:60]
             played = spoken_key(" ".join(e.get("text") or "" for e in self._outcome.transcript[-4:]
@@ -1434,10 +1451,17 @@ class NoRepeatGate(FrameProcessor):
             return ""
         # They are about to be SAID, so they are "already said" again — the
         # un-record above had removed them on the assumption they were lost.
-        for norm, topic in entries:
+        # They also go back into _pending, so if THIS resume is cut before it
+        # plays the next interruption un-records them exactly as it would any
+        # other emitted sentence. Without that, a resume killed by a barge-in
+        # left the words marked "said" forever and the model's own reply was
+        # then suppressed as a repeat — call 0c42d3a6 (2026-09-18) ended on
+        # "हाँ जी?" and a hang-up because of it.
+        for norm, topic, prev_exemplar, said in entries:
             self._spoken.append(norm)
             if topic:
                 self._asked[topic] = norm
+            self._pending.append((norm, topic, prev_exemplar, said))
         return tail
 
     def _keep(self, sentence: str) -> bool:
@@ -1669,7 +1693,7 @@ class NoRepeatGate(FrameProcessor):
                             # is the content-free turn we fight everywhere else.
                             if said and not self._is_content_free(said) and not self._is_filler(said):
                                 unplayed.append(said)
-                                self._unplayed_entries.append((norm, topic))
+                                self._unplayed_entries.append((norm, topic, prev_exemplar, said))
                             logger.info("no-repeat: not in the played text (tail %r)",
                                         played_raw[-100:])
                             for i in range(len(self._spoken) - 1, -1, -1):

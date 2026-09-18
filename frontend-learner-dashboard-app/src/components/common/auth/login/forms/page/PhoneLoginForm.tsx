@@ -70,6 +70,7 @@ export function PhoneLoginForm({
     onSwitchToSignup,
     allowUsernamePasswordAuth,
     allowEmailOtpAuth,
+    allowSignup,
 }: {
     onSwitchToUsername?: () => void;
     onSwitchToEmail?: () => void;
@@ -78,6 +79,8 @@ export function PhoneLoginForm({
     onSwitchToSignup?: () => void;
     allowUsernamePasswordAuth?: boolean;
     allowEmailOtpAuth?: boolean;
+    /** Portal policy from domain routing. This form never gated the link before, so only an explicit false hides it. */
+    allowSignup?: boolean;
 }) {
     const { t, i18n: i18nInstance } = useTranslation("auth");
     const phoneSchema = useMemo(
@@ -723,19 +726,21 @@ export function PhoneLoginForm({
                     )}
                 </div>
 
-                <div className="text-sm text-gray-600 pt-2">
-                    {t("common.dontHaveAccount")}{" "}
-                    <motion.button
-                        type="button"
-                        whileHover={{ scale: 1.02 }}
-                        onClick={
-                            onSwitchToSignup || (() => navigate({ to: "/signup" }))
-                        }
-                        className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
-                    >
-                        {t("common.signUpHere")}
-                    </motion.button>
-                </div>
+                {allowSignup !== false && (
+                    <div className="text-sm text-gray-600 pt-2">
+                        {t("common.dontHaveAccount")}{" "}
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.02 }}
+                            onClick={
+                                onSwitchToSignup || (() => navigate({ to: "/signup" }))
+                            }
+                            className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+                        >
+                            {t("common.signUpHere")}
+                        </motion.button>
+                    </div>
+                )}
             </motion.div>
 
             <SessionLimitDialog

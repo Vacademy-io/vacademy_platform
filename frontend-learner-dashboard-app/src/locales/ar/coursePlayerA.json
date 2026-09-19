@@ -187,6 +187,9 @@
   "jsonRenderer": {
     "video": "فيديو",
     "noVideoUrlConfigured": "لم يتم تكوين رابط فيديو",
+    "play": "تشغيل",
+    "pause": "إيقاف مؤقت",
+    "videoTagUnsupported": "متصفحك لا يدعم تشغيل الفيديو.",
     "recommended": "موصى به",
     "includeEmailAddress": "يرجى إدخال عنوان بريدك الإلكتروني.",
     "formNotConnected": "هذا النموذج غير متصل بعد — يرجى المحاولة لاحقًا.",

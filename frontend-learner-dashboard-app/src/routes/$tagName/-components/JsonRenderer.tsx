@@ -58,6 +58,8 @@ import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 import { FooterComponent } from "./components/FooterComponent";
 import { HeroSectionComponent } from "./components/HeroSectionComponent";
 import { MediaShowcaseComponent } from "./components/MediaShowcaseComponent";
+import { PlainVideoPlayer } from "./components/PlainVideoPlayer";
+import { isDirectVideoFile } from "../-utils/video-url";
 import { StatsHighlightsComponent } from "./components/StatsHighlightsComponent";
 import { CourseShowcaseComponent } from "./components/CourseShowcaseComponent";
 import { TestimonialSectionComponent } from "./components/TestimonialSectionComponent";
@@ -594,8 +596,13 @@ const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], 
   );
 };
 
-const VideoEmbedRenderer: React.FC<any> = ({ url = '', title, caption, aspectRatio = '16:9', autoplay = false }) => {
+const VideoEmbedRenderer: React.FC<any> = ({ url = '', title, caption, aspectRatio = '16:9', autoplay = false, poster = '' }) => {
   const { t } = useTranslation("coursePlayerA");
+  // An UPLOADED file (mp4/webm) gets the play/pause-only player rather than an
+  // iframe: framing a raw media URL hands the visitor the browser's stock media
+  // page, complete with a download menu and no styling hooks. YouTube/Vimeo
+  // links keep the iframe below.
+  const isFile = isDirectVideoFile(url);
   const getEmbedUrl = (rawUrl: string) => {
     if (!rawUrl) return '';
     const ytMatch = rawUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([A-Za-z0-9_-]{11})/);
@@ -610,7 +617,9 @@ const VideoEmbedRenderer: React.FC<any> = ({ url = '', title, caption, aspectRat
     <section className="catalogue-section-tight">
       <div className="catalogue-shell-narrow">
         {title && <h2 className="mb-6 text-center text-2xl font-bold text-catalogue-text-primary">{title}</h2>}
-        {embedUrl ? (
+        {isFile ? (
+          <PlainVideoPlayer src={url} poster={poster} title={title || caption} paddingBottom={padMap[aspectRatio] || '56.25%'} />
+        ) : embedUrl ? (
           <div className="relative w-full overflow-hidden rounded-xl shadow-lg" style={{ paddingBottom: padMap[aspectRatio] || '56.25%' }}>
             <iframe src={embedUrl} className="absolute inset-0 size-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title={title || t("jsonRenderer.video")} />
           </div>

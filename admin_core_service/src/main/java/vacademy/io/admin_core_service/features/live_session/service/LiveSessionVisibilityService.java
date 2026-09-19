@@ -35,7 +35,7 @@ import java.util.*;
  * additive: restricting TEACHER cannot accidentally restrict the person who is
  * both a TEACHER and an ADMIN, because ADMIN has no rule and therefore means
  * ALL. Restricting somebody genuinely requires restricting every role they
- * hold. Root users are never restricted.
+ * hold.
  *
  * <h2>Failure behaviour</h2>
  * A missing or malformed setting resolves to ALL — an unreadable rule must not
@@ -68,9 +68,12 @@ public class LiveSessionVisibilityService {
         if (!StringUtils.hasText(instituteId) || user == null || !StringUtils.hasText(callerId)) {
             return LiveSessionVisibilityScope.unrestricted(callerId);
         }
-        if (user.isRootUser()) {
-            return LiveSessionVisibilityScope.unrestricted(callerId);
-        }
+        // Deliberately NO is_root_user bypass. On this platform that flag is set
+        // for every invited staff account (InviteUserService.setRootUser(true);
+        // 13 of 13 staff on the first institute checked), so it means "admin
+        // portal user", not "institute owner". Exempting it would make every
+        // rule a no-op. Owners are already protected by the ALL default: an
+        // ADMIN role with no rule always sees everything.
 
         Map<String, LiveSessionRoleVisibilityConfigDTO> rules = readRoleVisibilityRules(instituteId);
         if (rules.isEmpty()) {

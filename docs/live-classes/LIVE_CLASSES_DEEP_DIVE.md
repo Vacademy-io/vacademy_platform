@@ -404,7 +404,7 @@ Instructor contacts come from auth_service (staff have no `student` row), over t
 | `OWN` | Sessions the caller created **or** instructs. |
 | `SPECIFIC_ROLES` | Own sessions **∪** sessions instructed by a user holding one of the listed roles. |
 
-**Most-permissive-wins across a caller's roles.** This is the safety property: restricting TEACHER cannot accidentally restrict someone who is also an ADMIN, because ADMIN has no rule and therefore means ALL. Root users are never restricted.
+**Most-permissive-wins across a caller's roles.** This is the safety property: restricting TEACHER cannot accidentally restrict someone who is also an ADMIN, because ADMIN has no rule and therefore means ALL. There is **no `is_root_user` bypass**: on this platform that flag is set for every invited staff account, so it means "admin-portal user", not "owner".
 
 **The predicate** (`LiveSessionVisibilityScope`), applied in SQL rather than by post-filtering so paging counts stay truthful:
 

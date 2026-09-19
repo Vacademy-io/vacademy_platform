@@ -59,6 +59,7 @@ import {
 } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { AxiosError } from "axios";
+import i18next from "i18next";
 import { toast } from "sonner";
 import AssessmentRegistrationCompleted from "./AssessmentRegistrationCompleted";
 import PostRegistrationOTPVerify from "./PostRegistrationOTPVerify";
@@ -67,6 +68,7 @@ import PhoneInputField from "@/components/design-system/phone-input-field";
 import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useTranslation } from "react-i18next";
+import { classifyRequestError } from "../-utils/request-error";
 
 const MetaChip = ({
   icon,
@@ -156,14 +158,18 @@ const case3 = (serverTime: number, endDate: string) => {
 // falling back to the axios message. Also toasts plain Errors (e.g. the
 // client-side blank user_id guard) instead of letting them fail silently.
 const showRegistrationError = (error: unknown) => {
+  console.error("[register] registration failed:", error);
   if (error instanceof AxiosError) {
-    const serverMessage = (
-      error.response?.data as { ex?: string } | undefined
-    )?.ex;
-    toast.error(serverMessage || error.message, {
-      className: "error-toast",
-      duration: 2000,
-    });
+    const { kind, message } = classifyRequestError(error);
+    toast.error(
+      kind === "network"
+        ? i18next.t("registrationA:form.toast.networkError")
+        : message || error.message,
+      {
+        className: "error-toast",
+        duration: 3000,
+      },
+    );
   } else if (error instanceof Error) {
     toast.error(error.message, {
       className: "error-toast",
@@ -520,7 +526,11 @@ const AssessmentRegistrationForm = () => {
   useEffect(() => {
     const fetchToken = async () => {
       const accessToken = await getTokenFromStorage(TokenKey.accessToken);
-      if (accessToken) {
+      if (!accessToken) return;
+      // Best effort: a stale token or a failed lookup simply means we treat
+      // the visitor as not logged in. Never let it surface as an unhandled
+      // rejection.
+      try {
         const decodedData = getTokenDecodedData(accessToken);
         const userId = decodedData?.user;
         const assessmentId = data.assessment_public_dto.assessment_id;
@@ -539,11 +549,13 @@ const AssessmentRegistrationForm = () => {
           psIds,
         );
         if (
-          getTestDetailsOfParticipants.is_already_registered &&
+          getTestDetailsOfParticipants?.is_already_registered &&
           getTestDetailsOfParticipants.remaining_attempts > 0
         ) {
           setIsAlreadyLoggedIn(true);
         }
+      } catch (error) {
+        console.warn("[register] logged-in status check skipped:", error);
       }
     };
 

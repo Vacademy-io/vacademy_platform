@@ -43,8 +43,6 @@ export interface DripScheduleDialogProps {
     /** Institute-wide starting point for the form (Settings → Course). */
     defaults?: DripScheduleDefaults;
     dripEnabled?: boolean;
-    /** Whether saved rules are actually applied to learners yet. */
-    enforcing?: boolean;
 }
 
 /**
@@ -63,7 +61,6 @@ export function DripScheduleDialog({
     onSave,
     defaults = DEFAULT_DRIP_SCHEDULE,
     dripEnabled = true,
-    enforcing = false,
 }: DripScheduleDialogProps) {
     const { t } = useTranslation('studyLibraryDripScheduleDialog');
     const availableLevels = useMemo(
@@ -169,15 +166,6 @@ export function DripScheduleDialog({
                         <Info className="size-4 text-amber-600" />
                         <AlertDescription className="text-sm text-amber-900">
                             {t('alerts.dripDisabled')}
-                        </AlertDescription>
-                    </Alert>
-                )}
-
-                {dripEnabled && !enforcing && (
-                    <Alert className="border-neutral-200 bg-neutral-50">
-                        <Info className="size-4 text-neutral-500" />
-                        <AlertDescription className="text-sm">
-                            {t('alerts.previewMode')}
                         </AlertDescription>
                     </Alert>
                 )}

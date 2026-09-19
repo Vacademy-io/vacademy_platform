@@ -5506,7 +5506,6 @@ export const CourseStructureDetails = ({
                 onSave={handleSaveChapterDripConditions}
                 defaults={dripScheduleDefaults}
                 dripEnabled={dripConditionsEnabled}
-                enforcing={dripEnforcing}
             />
 
             {/* Offline Availability Dialog (subject / module / chapter) */}

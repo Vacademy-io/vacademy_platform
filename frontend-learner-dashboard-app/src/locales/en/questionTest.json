@@ -41,6 +41,10 @@
                 "timeIncrease": "Request Time Increase"
             }
         },
+        "questionPanel": {
+            "hide": "Hide question panel",
+            "show": "Show question panel"
+        },
         "pdf": {
             "preview": "Preview PDF",
             "upload": "Upload",
@@ -174,7 +178,8 @@
         "questionCount_one": "{{count}} question",
         "questionCount_other": "{{count}} questions",
         "legendAriaLabel": "Question status legend",
-        "submitPaper": "Submit paper"
+        "submitPaper": "Submit paper",
+        "hidePanel": "Hide question panel"
     },
     "questionPassage": {
         "label": "Passage",

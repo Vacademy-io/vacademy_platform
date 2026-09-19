@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import { PaperPlaneTilt } from "@phosphor-icons/react";
+import { PaperPlaneTilt, X } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { ViewToggle } from "./view-toggle";
 import { QuestionListView } from "./question-list-view";
@@ -20,6 +20,11 @@ import {
 
 interface QuestionNavigatorProps {
   onClose: () => void;
+  /**
+   * Collapses the desktop rail. Only the rail passes this — the phone sheet
+   * dismisses via its drag handle and backdrop, so it renders no close button.
+   */
+  onCollapse?: () => void;
   evaluationType: string;
 }
 
@@ -29,6 +34,7 @@ interface QuestionNavigatorProps {
  */
 export function QuestionNavigator({
   onClose,
+  onCollapse,
   evaluationType,
 }: QuestionNavigatorProps) {
   const { t } = useTranslation("questionTest");
@@ -93,6 +99,17 @@ export function QuestionNavigator({
             </p>
           </div>
           <ViewToggle view={paletteView} onViewChange={setPaletteView} />
+          {onCollapse && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              aria-label={t("questionNavigator.hidePanel")}
+              title={t("questionNavigator.hidePanel")}
+              className="grid size-8 flex-none place-items-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-800"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
         {!isManual && (

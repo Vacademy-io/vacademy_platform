@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowUpRight } from "@phosphor-icons/react";
 import { CatalogueLink } from "../CatalogueLink";
 
@@ -107,6 +108,7 @@ export const DetailBlocksComponent: React.FC<DetailBlocksProps> = ({
   backgroundColor,
   isPreviewMode = false,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const list = Array.isArray(blocks) ? blocks.filter((b) => b && b.title) : [];
 
   const section = (children: React.ReactNode) => (
@@ -132,7 +134,7 @@ export const DetailBlocksComponent: React.FC<DetailBlocksProps> = ({
     if (!isPreviewMode) return null;
     return section(
       <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
-        Add a block for each programme you want to document.
+        {t("detailBlocks.emptyGuidance")}
       </div>
     );
   }
@@ -217,8 +219,8 @@ export const DetailBlocksComponent: React.FC<DetailBlocksProps> = ({
               {specs.length > 0 && (
                 <dl className={`catalogue-hairline-grid ${specCols}`}>
                   {specs.map((s, j) => (
-                    <div key={j} className="px-6 py-4">
-                      <dt className="mb-1 text-xs font-semibold uppercase tracking-wide-08 text-catalogue-text-muted">
+                    <div key={j} className="px-6 py-4 space-y-1">
+                      <dt className="text-xs font-semibold uppercase tracking-wide-08 text-catalogue-text-muted">
                         {s.label}
                       </dt>
                       <dd className="text-sm font-medium text-catalogue-text-secondary">{s.value}</dd>

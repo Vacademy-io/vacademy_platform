@@ -2,6 +2,8 @@
  * RoleAccessGrid — a simple ADMIN/STUDENT/PARENT × view/edit checkbox grid.
  * Reused for both the per-step and per-field role-access editors.
  */
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
     ONBOARDING_ROLE_KEYS,
@@ -9,11 +11,11 @@ import {
     type OnboardingRoleKey,
 } from '../-services/onboarding-service';
 
-const ROLE_LABELS: Record<OnboardingRoleKey, string> = {
-    ADMIN: 'Admin',
-    STUDENT: 'Student',
-    PARENT: 'Parent',
-};
+const buildRoleLabels = (t: TFunction): Record<OnboardingRoleKey, string> => ({
+    ADMIN: t('roleLabels.admin'),
+    STUDENT: t('roleLabels.student'),
+    PARENT: t('roleLabels.parent'),
+});
 
 interface RoleAccessGridProps {
     value: OnboardingRoleAccess[];
@@ -23,6 +25,8 @@ interface RoleAccessGridProps {
 }
 
 export function RoleAccessGrid({ value, onChange, compact = false }: RoleAccessGridProps) {
+    const { t } = useTranslation('audienceManagerRoleAccessGrid');
+    const roleLabels = buildRoleLabels(t);
     const byRole = new Map(value.map((r) => [r.role_key, r]));
 
     const update = (role: OnboardingRoleKey, patch: Partial<OnboardingRoleAccess>) => {
@@ -52,21 +56,21 @@ export function RoleAccessGrid({ value, onChange, compact = false }: RoleAccessG
                                     : 'text-caption font-semibold text-neutral-700'
                             }
                         >
-                            {ROLE_LABELS[role]}
+                            {roleLabels[role]}
                         </span>
                         <label className="flex items-center gap-1.5">
                             <Checkbox
                                 checked={entry.can_view}
                                 onCheckedChange={(v) => update(role, { can_view: v === true })}
                             />
-                            <span className="text-caption text-neutral-600">View</span>
+                            <span className="text-caption text-neutral-600">{t('actions.view')}</span>
                         </label>
                         <label className="flex items-center gap-1.5">
                             <Checkbox
                                 checked={entry.can_edit}
                                 onCheckedChange={(v) => update(role, { can_edit: v === true })}
                             />
-                            <span className="text-caption text-neutral-600">Edit</span>
+                            <span className="text-caption text-neutral-600">{t('actions.edit')}</span>
                         </label>
                     </div>
                 );

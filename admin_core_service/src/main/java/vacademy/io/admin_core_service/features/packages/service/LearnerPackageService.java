@@ -210,6 +210,9 @@ public class LearnerPackageService {
                 if (dto.getLevelIds() == null) {
                         dto.setLevelIds(List.of());
                 }
+                if (dto.getSessionIds() == null) {
+                        dto.setSessionIds(List.of());
+                }
                 if (dto.getFacultyIds() == null) {
                         dto.setFacultyIds(List.of());
                 }
@@ -297,6 +300,7 @@ public class LearnerPackageService {
                                         userId,
                                         instituteId,
                                         learnerPackageFilterDTO.getLevelIds(),
+                                        learnerPackageFilterDTO.getSessionIds(),
                                         List.of(PackageStatusEnum.ACTIVE.name()),
                                         learnerPackageFilterDTO.getPackageTypes(),
                                         List.of(PackageSessionStatusEnum.ACTIVE.name(),

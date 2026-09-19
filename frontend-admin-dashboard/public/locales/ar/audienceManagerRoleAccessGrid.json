@@ -1,0 +1,11 @@
+{
+    "roleLabels": {
+        "admin": "مسؤول",
+        "student": "طالب",
+        "parent": "ولي أمر"
+    },
+    "actions": {
+        "view": "عرض",
+        "edit": "تعديل"
+    }
+}

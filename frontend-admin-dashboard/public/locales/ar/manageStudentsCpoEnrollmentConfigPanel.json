@@ -1,0 +1,49 @@
+{
+    "header": {
+        "title": "إعداد الرسوم",
+        "totalLabel": "الإجمالي:",
+        "afterDiscountLabel": "بعد الخصم:"
+    },
+    "loading": "جارٍ تحميل الأقساط…",
+    "loadError": "تعذر تحميل تفاصيل خطة الدفع المخصصة.",
+    "table": {
+        "index": "#",
+        "feeType": "نوع الرسوم",
+        "startDate": "تاريخ البدء",
+        "dueDate": "تاريخ الاستحقاق",
+        "default": "الافتراضي",
+        "amount": "المبلغ (₹)",
+        "discount": "الخصم",
+        "amountOverrideTitle": "مبلغ معدَّل يدويًا",
+        "effectiveTitle": "الفعلي: {{effective}} (النموذج {{template}} بعد الخصومات)",
+        "discountOptions": {
+            "none": "بدون",
+            "percentage": "%",
+            "flat": "₹"
+        }
+    },
+    "cpoDiscount": {
+        "heading": "الخصم (اختياري)",
+        "typeLabel": "النوع",
+        "options": {
+            "none": "بدون",
+            "percentage": "% من الإجمالي",
+            "flat": "خصم ثابت ₹"
+        },
+        "valueLabel": "القيمة",
+        "reasonLabel": "السبب",
+        "reasonPlaceholder": "مثال: خصم الأشقاء",
+        "offSuffix": "= خصم {{amount}}"
+    },
+    "payment": {
+        "heading": "الدفعة الأولية (اختياري)",
+        "skipLabelBold": "عدم تسجيل أي دفعة الآن.",
+        "skipLabelRest": "سيدفع المتعلم كل قسط عبر الإنترنت لاحقًا.",
+        "offlineLabelBold": "تسجيل دفعة غير متصلة بالإنترنت.",
+        "offlineLabelRest": "تُطبَّق على الأقساط الأقرب استحقاقًا أولاً.",
+        "amountLabel": "المبلغ (₹)",
+        "netDues": "صافي المستحق: {{amount}}",
+        "referenceLabel": "المرجع (اختياري)",
+        "referencePlaceholder": "مثال: شيك رقم 1234"
+    }
+}

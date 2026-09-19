@@ -1,0 +1,15 @@
+{
+    "uploadQuestionPaper": "تحميل ورقة الأسئلة",
+    "uploadFromDevice": "التحميل من الجهاز",
+    "uploadQuestionPaperFromDevice": "تحميل ورقة الأسئلة من الجهاز",
+    "createManually": "الإنشاء يدويًا",
+    "createQuestionPaperManually": "إنشاء ورقة الأسئلة يدويًا",
+    "marksPerQuestion": "الدرجات لكل سؤال",
+    "defaultLabel": "(افتراضي)",
+    "adaptiveMarkingRules": "قواعد التصحيح التكيفي",
+    "columnQNo": "رقم السؤال",
+    "columnQuestion": "السؤال",
+    "columnMarks": "الدرجات",
+    "columnCriteria": "المعايير",
+    "totalMarks": "إجمالي الدرجات"
+}

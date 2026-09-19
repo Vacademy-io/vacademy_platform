@@ -2,8 +2,11 @@
 // for social media crawlers (WhatsApp, Facebook, Twitter, etc.)
 // by fetching institute branding from the domain-routing API.
 
+// Search Console's URL-inspection and site-verification fetchers do not call
+// themselves Googlebot; without them here a verification meta tag we inject
+// is never seen and "Test live URL" shows the bare SPA shell.
 const CRAWLER_UA_REGEX =
-  /WhatsApp|facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|TelegramBot|Googlebot|bingbot|Applebot|Pinterest|Viber|Skype/i;
+  /WhatsApp|facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|TelegramBot|Googlebot|Google-InspectionTool|Google-Site-Verification|Storebot-Google|bingbot|BingPreview|Applebot|DuckDuckBot|YandexBot|Baiduspider|PetalBot|Pinterest|Viber|Skype/i;
 
 // Domain-specific backend mappings (same as src/config/baseUrl.ts)
 const DOMAIN_BACKEND_MAP: Record<string, string> = {
@@ -38,6 +41,8 @@ interface DomainRoutingResponse {
   tabIconFileId?: string | null;
   playStoreAppLink?: string | null;
   appStoreAppLink?: string | null;
+  // Set when the host serves a catalogue at "/" (pages at /{route}, no tag prefix).
+  rootCatalogueTag?: string | null;
 }
 
 async function resolveLogoUrl(fileId: string, backendBase: string): Promise<string> {
@@ -101,59 +106,314 @@ interface PageSeo {
   ogImage?: string;
 }
 
+interface CataloguePage {
+  id?: string;
+  route?: string;
+  title?: string;
+  enabled?: boolean;
+  seo?: { metaTitle?: string; metaDescription?: string; ogImage?: string };
+}
+
 /**
- * Per-page SEO. The page editor collects seo.metaTitle / metaDescription /
- * ogImage on every catalogue page — but until now crawlers only ever saw
- * institute-level branding, so every page shared and ranked as the same
- * generic card. Resolve the catalogue JSON for /{tag} and /{tag}/{page}
- * routes and let the page speak for itself; anything missing falls back to
- * branding exactly as before.
+ * Site-level SEO the page editor stores under globalSettings.seo. Every key is
+ * optional; the crawler branch only emits what is present.
  */
-async function fetchPageSeo(
+interface CatalogueSeo {
+  keywords?: string[] | string;
+  googleSiteVerification?: string;
+  organization?: {
+    name?: string;
+    legalName?: string;
+    description?: string;
+    founder?: string;
+    foundingDate?: string;
+    /** Absolute URL of a clean logo (Google wants ≥112px on a plain background). */
+    logo?: string;
+    email?: string;
+    telephone?: string;
+    address?: string;
+    sameAs?: string[];
+  };
+}
+
+interface CatalogueConfig {
+  pages: CataloguePage[];
+  seo: CatalogueSeo;
+  /** Social profile URLs from the site footer — feed Organization.sameAs. */
+  socials: string[];
+}
+
+/**
+ * Resolve the catalogue JSON for one tag. Edge-cached briefly: crawlers arrive
+ * in bursts (WhatsApp fetches per recipient) and the JSON changes rarely.
+ */
+async function fetchCatalogue(
   backendBase: string,
   instituteId: string,
-  tagName: string,
-  pageSlug: string | undefined
-): Promise<PageSeo | null> {
+  tagName: string
+): Promise<CatalogueConfig | null> {
   try {
     const url =
       `${backendBase}/admin-core-service/public/course-catalogue/v1/institute/get/by-tag` +
       `?instituteId=${encodeURIComponent(instituteId)}&tagName=${encodeURIComponent(tagName)}`;
     const res = await fetch(url, {
       headers: { accept: "application/json" },
-      // Edge-cache the catalogue JSON briefly: crawlers arrive in bursts
-      // (WhatsApp fetches per recipient) and the JSON changes rarely.
       cf: { cacheTtl: 300, cacheEverything: true },
     } as RequestInit);
     if (!res.ok) return null;
     const data = (await res.json()) as { catalogue_json?: string };
     if (!data?.catalogue_json) return null;
     const cfg = JSON.parse(data.catalogue_json) as {
-      pages?: Array<{
-        id?: string;
-        route?: string;
-        title?: string;
-        seo?: { metaTitle?: string; metaDescription?: string; ogImage?: string };
-      }>;
+      pages?: CataloguePage[];
+      globalSettings?: {
+        seo?: CatalogueSeo;
+        layout?: {
+          footer?: {
+            props?: {
+              socials?: Array<{ url?: string }>;
+              // The footer template files them under leftSection.
+              leftSection?: { socials?: Array<{ url?: string }> };
+            };
+          };
+        };
+      };
     };
-    const pages = cfg?.pages || [];
-    const norm = (r?: string) => (r || "").replace(/^\//, "").toLowerCase();
-    const page = pageSlug
-      ? pages.find((p) => norm(p.route) === norm(pageSlug))
-      : pages.find(
-          (p) =>
-            p.id === "home" ||
-            ["", "/", "home", "homepage"].includes(norm(p.route))
-        ) || pages[0];
-    if (!page) return null;
-    return {
-      title: page.seo?.metaTitle || page.title || undefined,
-      description: page.seo?.metaDescription || undefined,
-      ogImage: page.seo?.ogImage || undefined,
-    };
+    const footer = cfg?.globalSettings?.layout?.footer?.props;
+    const socials = [...(footer?.socials || []), ...(footer?.leftSection?.socials || [])]
+      .map((s) => nonEmpty(s?.url))
+      .filter((u) => /^https?:\/\//i.test(u));
+    return { pages: cfg?.pages || [], seo: cfg?.globalSettings?.seo || {}, socials };
   } catch {
     return null;
   }
+}
+
+const normRoute = (r?: string) => (r || "").replace(/^\//, "").toLowerCase();
+
+// First path segments the APP owns (src/routes/* — what reserved-app-routes.ts
+// registers at runtime). Never a catalogue tag, and on a root-mounted host
+// never a catalogue page either: the app's own route wins there, so its SEO
+// must not be borrowed from a same-named catalogue page.
+const APP_ROUTE_SEGMENTS = new Set([
+  "account-deletion", "admission", "ai-settings", "assessment", "assignment", "audience-response",
+  "auth-transfer", "booking-manage", "booking-response", "change-password", "chat", "courses",
+  "dashboard", "delete-user", "downloads", "enquiry-response", "homework", "institute-selection",
+  "kyc-complete", "leaderboard", "learner-invitation-response", "learning-centre", "live-class-guest",
+  "login", "logout", "m", "my-files", "my-mentors", "my-reports", "parent", "pay", "payment-result",
+  "planning", "privacy-policy", "product-pages", "profile", "referral", "register", "reports",
+  "session-terminated", "signup", "study-library", "sub-org-learners", "sub-org-registration",
+  "subscriptions", "terms-and-conditions", "try", "un", "user-profile", "verify",
+  "branding-image", "assets", "icons", "images", "svgs", "vendor",
+]);
+
+const isHomePage = (p: CataloguePage) =>
+  p.id === "home" || ["", "/", "home", "homepage"].includes(normRoute(p.route));
+
+function findPage(pages: CataloguePage[], pageSlug: string | undefined): CataloguePage | undefined {
+  return pageSlug
+    ? pages.find((p) => normRoute(p.route) === normRoute(pageSlug))
+    : pages.find(isHomePage) || pages[0];
+}
+
+/**
+ * Which catalogue + page does this path address? Two shapes:
+ *   /{tag}/{page?}         — the usual mount
+ *   /{page?}               — a host whose catalogue is root-mounted
+ * The root-mounted shape used to be misread as /{tag}: "/about" was looked up
+ * as a catalogue called "about", failed, and every inner page of a root-mounted
+ * site was handed the bare institute name as its title.
+ */
+async function resolveCataloguePage(
+  backendBase: string,
+  branding: DomainRoutingResponse,
+  segs: string[]
+): Promise<{ tag: string; rootMounted: boolean; page: CataloguePage; catalogue: CatalogueConfig } | null> {
+  const first = (segs[0] || "").toLowerCase();
+  if (first && APP_ROUTE_SEGMENTS.has(first)) return null;
+  const rootTag = nonEmpty(branding.rootCatalogueTag);
+  if (rootTag && segs.length <= 1) {
+    const catalogue = await fetchCatalogue(backendBase, branding.instituteId, rootTag);
+    const page = catalogue ? findPage(catalogue.pages, segs[0]) : undefined;
+    if (catalogue && page) return { tag: rootTag, rootMounted: true, page, catalogue };
+  }
+  if (segs.length >= 1 && segs.length <= 2) {
+    const catalogue = await fetchCatalogue(backendBase, branding.instituteId, segs[0]);
+    const page = catalogue ? findPage(catalogue.pages, segs[1]) : undefined;
+    if (catalogue && page) return { tag: segs[0], rootMounted: false, page, catalogue };
+  }
+  return null;
+}
+
+/**
+ * Per-page SEO. The page editor collects seo.metaTitle / metaDescription /
+ * ogImage on every catalogue page — but until now crawlers only ever saw
+ * institute-level branding, so every page shared and ranked as the same
+ * generic card. Let the page speak for itself; anything missing falls back to
+ * branding exactly as before.
+ */
+function pageSeoOf(page: CataloguePage): PageSeo {
+  return {
+    title: page.seo?.metaTitle || page.title || undefined,
+    description: page.seo?.metaDescription || undefined,
+    ogImage: page.seo?.ogImage || undefined,
+  };
+}
+
+/** Public URL of a catalogue page on this host. */
+function pageUrl(origin: string, tag: string, rootMounted: boolean, page: CataloguePage): string {
+  const route = isHomePage(page) ? "" : normRoute(page.route);
+  const base = rootMounted ? origin : `${origin}/${tag}`;
+  return route ? `${base}/${route}` : `${base}${rootMounted ? "/" : ""}`;
+}
+
+// Template pages that only make sense with a runtime binding (course details
+// is rendered per course) — not sitemap entries in their own right.
+const NON_INDEXABLE_ROUTES = new Set(["course-details"]);
+
+/**
+ * /sitemap.xml (root-mounted catalogue) and /{tag}/sitemap.xml (any catalogue).
+ * One <url> per enabled page. No <lastmod>: the public payload carries no
+ * timestamp, and a wrong one is worse than none.
+ */
+async function serveSitemap(
+  context: Parameters<PagesFunction>[0],
+  url: URL,
+  tagFromPath: string | undefined
+): Promise<Response> {
+  const hostname = url.hostname;
+  const backendBase = getBackendBase(hostname);
+  const { domain, subdomain } = parseDomainParts(hostname);
+  const branding = await fetchBranding(domain, subdomain, backendBase);
+  const xml = (body: string, status = 200) =>
+    new Response(body, {
+      status,
+      headers: {
+        "content-type": "application/xml; charset=utf-8",
+        "cache-control": "public, max-age=600, must-revalidate",
+      },
+    });
+  const empty = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>';
+  if (!branding) {
+    if (isVacademyHost(hostname)) return context.next();
+    return xml(empty, 404);
+  }
+  const rootTag = nonEmpty(branding.rootCatalogueTag);
+  const tag = tagFromPath || rootTag;
+  if (!tag) return xml(empty, 404);
+  const catalogue = await fetchCatalogue(backendBase, branding.instituteId, tag);
+  if (!catalogue) return xml(empty, 404);
+  const rootMounted = !tagFromPath || tag === rootTag;
+  const entries = catalogue.pages
+    .filter((p) => p.enabled !== false && !NON_INDEXABLE_ROUTES.has(normRoute(p.route)))
+    .map((p) => ({ loc: pageUrl(url.origin, tag, rootMounted, p), home: isHomePage(p) }));
+  const body =
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    entries
+      .map(
+        (e) =>
+          `  <url><loc>${escapeHtml(e.loc)}</loc><changefreq>${e.home ? "daily" : "weekly"}</changefreq><priority>${e.home ? "1.0" : "0.7"}</priority></url>`
+      )
+      .join("\n") +
+    "\n</urlset>";
+  return xml(body);
+}
+
+/**
+ * Per-host /robots.txt. The static file could not name a sitemap (it is the
+ * same file on every domain), and the app's authenticated routes only ever
+ * render a login form to a crawler — keep its budget on the public site.
+ */
+async function serveRobots(
+  context: Parameters<PagesFunction>[0],
+  url: URL
+): Promise<Response> {
+  const hostname = url.hostname;
+  if (isVacademyHost(hostname)) return context.next();
+  const backendBase = getBackendBase(hostname);
+  const { domain, subdomain } = parseDomainParts(hostname);
+  const branding = await fetchBranding(domain, subdomain, backendBase);
+  // Only the sign-in gates and the logged-in shell. NOT /branding-image: the
+  // og:image and the Organization logo are served through it, and Google's
+  // image fetcher honours robots — disallowing it would hide the brand mark.
+  const lines = [
+    "User-agent: *",
+    "Allow: /",
+    "Disallow: /login",
+    "Disallow: /signup",
+    "Disallow: /register",
+    "Disallow: /dashboard",
+    "Disallow: /study-library",
+  ];
+  if (branding && nonEmpty(branding.rootCatalogueTag)) {
+    lines.push("", `Sitemap: ${url.origin}/sitemap.xml`);
+  }
+  return new Response(lines.join("\n") + "\n", {
+    status: 200,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "public, max-age=600, must-revalidate",
+    },
+  });
+}
+
+/**
+ * Organization + WebSite structured data for a catalogue site. This is what
+ * lets a search engine tie the brand name, logo and social profiles together
+ * (knowledge panel, sitelinks) instead of ranking the page as an anonymous
+ * SPA. Built from data the site already carries; globalSettings.seo.organization
+ * adds what the JSON cannot infer (founder, contact, legal name).
+ */
+function buildStructuredData(
+  origin: string,
+  siteUrl: string,
+  pageUrlAbs: string,
+  branding: DomainRoutingResponse,
+  catalogue: CatalogueConfig,
+  logoUrl: string,
+  pageTitle: string,
+  pageDescription: string
+): string {
+  const org = catalogue.seo.organization || {};
+  const name = nonEmpty(org.name) || nonEmpty(branding.instituteName) || nonEmpty(branding.tabText);
+  const sameAs = Array.from(new Set([...(org.sameAs || []), ...catalogue.socials].map(nonEmpty).filter(Boolean)));
+  const orgId = `${siteUrl}#organization`;
+  const organization: Record<string, unknown> = {
+    "@type": "EducationalOrganization",
+    "@id": orgId,
+    name,
+    url: siteUrl,
+    ...(nonEmpty(org.logo) || logoUrl
+      ? { logo: { "@type": "ImageObject", url: nonEmpty(org.logo) || logoUrl } }
+      : {}),
+    ...(nonEmpty(org.legalName) ? { legalName: org.legalName } : {}),
+    ...(nonEmpty(org.description) ? { description: org.description } : {}),
+    ...(nonEmpty(org.founder) ? { founder: { "@type": "Person", name: org.founder } } : {}),
+    ...(nonEmpty(org.foundingDate) ? { foundingDate: org.foundingDate } : {}),
+    ...(nonEmpty(org.email) ? { email: org.email } : {}),
+    ...(nonEmpty(org.telephone) ? { telephone: org.telephone } : {}),
+    ...(nonEmpty(org.address) ? { address: org.address } : {}),
+    ...(sameAs.length ? { sameAs } : {}),
+  };
+  const website = {
+    "@type": "WebSite",
+    "@id": `${siteUrl}#website`,
+    name,
+    url: siteUrl,
+    publisher: { "@id": orgId },
+  };
+  const webpage = {
+    "@type": "WebPage",
+    "@id": pageUrlAbs,
+    url: pageUrlAbs,
+    name: pageTitle,
+    ...(pageDescription ? { description: pageDescription } : {}),
+    isPartOf: { "@id": `${siteUrl}#website` },
+    about: { "@id": orgId },
+  };
+  const graph = { "@context": "https://schema.org", "@graph": [organization, website, webpage] };
+  // "</" inside a JSON string would end the script element early.
+  return JSON.stringify(graph).replace(/<\//g, "<\\/");
 }
 
 function parseDomainParts(hostname: string): {
@@ -318,6 +578,67 @@ async function serveManifest(
   });
 }
 
+/**
+ * Per-institute /favicon.ico.
+ *
+ * The crawler branch below rewrites the icon <link> tags in the HTML, but that
+ * only helps consumers that (a) send a crawler UA we recognise and (b) read the
+ * markup at all. Google's favicon fetcher does neither reliably, and a browser
+ * with no icon link requests /favicon.ico by convention. That path used to be
+ * excluded from Functions in public/_routes.json, so every white-labelled
+ * domain served the static Vacademy "V" — which is what Google indexed and
+ * showed next to e.g. readonrent.in.
+ *
+ * Resolve the institute from the hostname and redirect to its own mark instead.
+ * A redirect (rather than proxying the bytes) reuses /branding-image, which
+ * already fixes the wrong content-type S3 hands back for branding uploads.
+ */
+async function serveFavicon(
+  context: Parameters<PagesFunction>[0],
+  url: URL
+): Promise<Response> {
+  const hostname = url.hostname;
+  const backendBase = getBackendBase(hostname);
+  const { domain, subdomain } = parseDomainParts(hostname);
+  const branding = await fetchBranding(domain, subdomain, backendBase);
+
+  // Prefer the dedicated tab icon for the same reason the manifest does: the
+  // main logo is often a wide lockup, and a favicon slot is square.
+  const iconFileId = branding
+    ? nonEmpty(branding.tabIconFileId) || nonEmpty(branding.instituteLogoFileId)
+    : "";
+  const iconSource = iconFileId ? await resolveLogoUrl(iconFileId, backendBase) : "";
+
+  if (iconSource) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `${url.origin}/branding-image?u=${encodeURIComponent(iconSource)}`,
+        // Short enough that a branding change propagates the same day. The old
+        // immutable year-long rule on *.ico pinned the wrong mark for far longer
+        // than any fix could undo.
+        "cache-control": "public, max-age=3600, must-revalidate",
+      },
+    });
+  }
+
+  // Vacademy's own hosts legitimately want the Vacademy mark.
+  if (isVacademyHost(hostname)) return context.next();
+
+  // Unresolved white-label host: no icon beats someone else's icon. Same
+  // reasoning as the cold-cache branch of the inline script in index.html.
+  return new Response(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>',
+    {
+      status: 200,
+      headers: {
+        "content-type": "image/svg+xml",
+        "cache-control": "public, max-age=300, must-revalidate",
+      },
+    }
+  );
+}
+
 export const onRequest: PagesFunction = async (context) => {
   const { request } = context;
   const ua = request.headers.get("user-agent") || "";
@@ -327,6 +648,23 @@ export const onRequest: PagesFunction = async (context) => {
   // one is for real browsers, not bots.
   if (url.pathname === "/manifest.webmanifest") {
     return serveManifest(context, url);
+  }
+
+  // Per-institute favicon. Also handled before the crawler check: the whole
+  // point is that the callers that ask for it (browsers, Google's favicon
+  // fetcher) do not identify as crawlers.
+  if (url.pathname === "/favicon.ico") {
+    return serveFavicon(context, url);
+  }
+
+  // Per-host robots.txt and sitemaps — also for real browsers and search
+  // engines' non-crawler fetchers, hence before the UA check.
+  if (url.pathname === "/robots.txt") {
+    return serveRobots(context, url);
+  }
+  const sitemapMatch = url.pathname.match(/^\/(?:([^/]+)\/)?sitemap\.xml$/);
+  if (sitemapMatch) {
+    return serveSitemap(context, url, sitemapMatch[1]);
   }
 
   // Only intercept for crawlers
@@ -360,16 +698,15 @@ export const onRequest: PagesFunction = async (context) => {
     return response;
   }
 
-  // Try page-level SEO for catalogue routes (/{tag} or /{tag}/{page}); every
-  // other route — and any failure — keeps the branding fallback.
+  // Try page-level SEO for catalogue routes (/{tag}, /{tag}/{page}, or /{page}
+  // on a root-mounted host); every other route — and any failure — keeps the
+  // branding fallback.
   const segs = url.pathname.split("/").filter(Boolean);
-  const looksLikeCatalogue =
-    segs.length >= 1 &&
-    segs.length <= 2 &&
-    !["login", "signup", "register", "product-pages", "audience-response", "enquiry-response", "study-library", "assessment", "booking-response"].includes(segs[0]);
-  const pageSeo = looksLikeCatalogue
-    ? await fetchPageSeo(backendBase, branding.instituteId, segs[0], segs[1])
+  const looksLikeCatalogue = segs.length <= 2 && !APP_ROUTE_SEGMENTS.has((segs[0] || "").toLowerCase());
+  const resolved = looksLikeCatalogue
+    ? await resolveCataloguePage(backendBase, branding, segs)
     : null;
+  const pageSeo = resolved ? pageSeoOf(resolved.page) : null;
 
   const title = escapeHtml(
     pageSeo?.title || branding.tabText || branding.instituteName || ""
@@ -420,6 +757,36 @@ export const onRequest: PagesFunction = async (context) => {
     .filter(Boolean)
     .join("\n    ");
 
+  // Canonical: the request URL without query/hash (cache-busters and tracking
+  // params must not fork the page into several indexed copies). On the day a
+  // site moves to its own apex the canonical follows the host automatically.
+  const canonical = `${url.origin}${url.pathname.replace(/\/+$/, "") || "/"}`;
+  const seoTags: string[] = [`<link rel="canonical" href="${escapeHtml(canonical)}" />`];
+  if (resolved) {
+    const siteSeo = resolved.catalogue.seo;
+    const keywords = Array.isArray(siteSeo.keywords)
+      ? siteSeo.keywords.map(nonEmpty).filter(Boolean).join(", ")
+      : nonEmpty(siteSeo.keywords as string | undefined);
+    if (keywords) seoTags.push(`<meta name="keywords" content="${escapeHtml(keywords)}" />`);
+    if (nonEmpty(siteSeo.googleSiteVerification)) {
+      seoTags.push(
+        `<meta name="google-site-verification" content="${escapeHtml(siteSeo.googleSiteVerification!)}" />`
+      );
+    }
+    const siteUrl = resolved.rootMounted ? `${url.origin}/` : `${url.origin}/${resolved.tag}`;
+    const ld = buildStructuredData(
+      url.origin,
+      siteUrl,
+      canonical,
+      branding,
+      resolved.catalogue,
+      ogImageProxied,
+      pageSeo?.title || branding.instituteName || "",
+      pageSeo?.description || ""
+    );
+    seoTags.push(`<script type="application/ld+json">${ld}</script>`);
+  }
+
   let html = await response.text();
 
   // Replace the static description with institute-specific one
@@ -431,8 +798,8 @@ export const onRequest: PagesFunction = async (context) => {
   // Replace the static title (matches both empty and "Course Catalogue").
   html = html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
 
-  // Inject OG tags before </head>
-  html = html.replace("</head>", `    ${ogTags}\n  </head>`);
+  // Inject OG + SEO tags before </head>
+  html = html.replace("</head>", `    ${ogTags}\n    ${seoTags.join("\n    ")}\n  </head>`);
 
   // Replace existing apple-touch-icon and favicon with the institute icon for crawlers
   if (favicon) {
@@ -447,8 +814,16 @@ export const onRequest: PagesFunction = async (context) => {
       /<link\s+rel="(?:shortcut )?icon"[^>]*\/>/g,
       `<link rel="icon" href="${escapedLogo}" />`
     );
-    // Also add a favicon link if none existed
-    if (!html.includes('rel="icon"')) {
+    // Also add a favicon link if none existed.
+    //
+    // This MUST test for a real <link> tag, not the bare substring `rel="icon"`.
+    // index.html has no icon link at all (only apple-touch-icon), but its inline
+    // branding script contains the selector string 'link[rel="icon"]' — so a
+    // substring check matched the JS source and silently skipped the injection
+    // on every white-labelled domain. Crawlers then found no icon link, fell
+    // back to /favicon.ico, and Google listed those domains with the Vacademy
+    // mark.
+    if (!/<link[^>]+rel="(?:shortcut )?icon"/.test(html)) {
       html = html.replace(
         "</head>",
         `    <link rel="icon" href="${escapedLogo}" />\n  </head>`

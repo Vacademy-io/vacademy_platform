@@ -32,8 +32,13 @@ _LISTING_COLUMNS = """
     l.id, l.knowledge_base_id, l.title, l.summary, l.description,
     l.cover_file_id, l.cover_alt, l.subject, l.level, l.board, l.language,
     l.tags, l.status, l.sort_weight, l.published_at, l.published_by,
-    l.created_at, l.updated_at
+    l.created_at, l.updated_at, l.collection
 """
+
+# knowledge_base_listing.collection value for pre-loaded curriculum libraries
+# (V517). Access runs through the institute setting, not an entitlement, and
+# they are kept out of the paid catalogue.
+CURRICULUM = "CURRICULUM"
 
 
 def _row(r: Any) -> Dict[str, Any]:
@@ -57,6 +62,7 @@ def _row(r: Any) -> Dict[str, Any]:
         "board": m["board"],
         "language": m["language"],
         "tags": tags or [],
+        "collection": m["collection"] if "collection" in m.keys() else None,
         "status": m["status"],
         "sort_weight": m["sort_weight"],
         "published_at": m["published_at"].isoformat() if m["published_at"] else None,
@@ -84,14 +90,25 @@ def list_catalogue(
     language: Optional[str] = None,
     query: Optional[str] = None,
     limit: int = 60,
+    collection: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Published libraries, each flagged with whether this institute owns it.
 
     UNLISTED rows are excluded: withdrawn from sale, but an institute that
     already unlocked one keeps using it through the normal KB list.
+
+    Curriculum listings are ordinary free platform libraries and appear beside
+    other published libraries, such as STEM.
     """
     where = ["l.status = 'PUBLISHED'"]
+    if collection:
+        where.append("l.collection = :collection")
+        params_collection = collection
+    else:
+        params_collection = None
     params: Dict[str, Any] = {"institute_id": institute_id, "limit": limit}
+    if params_collection:
+        params["collection"] = params_collection
 
     for facet, value in (
         ("subject", subject), ("level", level),
@@ -119,11 +136,13 @@ def list_catalogue(
                    (SELECT COALESCE(SUM(s.page_count), 0)
                       FROM knowledge_base_source s
                      WHERE s.knowledge_base_id = l.knowledge_base_id) AS pages,
-                   EXISTS (
+                   -- The Library is free: a published listing is "unlocked" for
+                   -- everyone; an entitlement still counts for withdrawn ones.
+                   (l.status = 'PUBLISHED' OR EXISTS (
                        SELECT 1 FROM knowledge_base_entitlement e
                         WHERE e.knowledge_base_id = l.knowledge_base_id
                           AND e.institute_id = :institute_id
-                   ) AS unlocked
+                   )) AS unlocked
             FROM knowledge_base_listing l
             JOIN knowledge_base kb ON kb.id = l.knowledge_base_id
             WHERE {' AND '.join(where)}
@@ -169,11 +188,13 @@ def get_listing(
                    (SELECT COALESCE(SUM(s.page_count), 0)
                       FROM knowledge_base_source s
                      WHERE s.knowledge_base_id = l.knowledge_base_id) AS pages,
-                   EXISTS (
+                   -- The Library is free: a published listing is "unlocked" for
+                   -- everyone; an entitlement still counts for withdrawn ones.
+                   (l.status = 'PUBLISHED' OR EXISTS (
                        SELECT 1 FROM knowledge_base_entitlement e
                         WHERE e.knowledge_base_id = l.knowledge_base_id
                           AND e.institute_id = :institute_id
-                   ) AS unlocked
+                   )) AS unlocked
             FROM knowledge_base_listing l
             WHERE l.knowledge_base_id = :kb_id
             """
@@ -203,9 +224,13 @@ def upsert_listing(
     tags: Optional[List[str]] = None,
     sort_weight: int = 0,
     created_by: Optional[str] = None,
+    collection: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create or edit the catalogue entry. Never changes status — publishing is
-    a separate, deliberate act."""
+    a separate, deliberate act.
+
+    `collection` None on an existing listing leaves the stored value alone
+    (see the UPDATE); it is set by the curriculum loader, not by the dialog."""
     existing = db.execute(
         text("SELECT id FROM knowledge_base_listing WHERE knowledge_base_id = :kb_id"),
         {"kb_id": kb_id},
@@ -217,6 +242,7 @@ def upsert_listing(
         "cover_alt": cover_alt, "subject": subject, "level": level,
         "board": board, "language": language,
         "tags": json.dumps(tags or []), "sort_weight": sort_weight,
+        "collection": collection,
     }
 
     if existing:
@@ -229,6 +255,12 @@ def upsert_listing(
                        subject = :subject, level = :level, board = :board,
                        language = :language, tags = CAST(:tags AS JSONB),
                        sort_weight = :sort_weight,
+                       -- NULL means "not mentioned", never "clear it": the
+                       -- publisher's Edit dialog does not know about
+                       -- collection, and an ordinary cover/summary edit that
+                       -- nulled it would turn a curriculum textbook into a paid
+                       -- library and revoke every institute's access.
+                       collection = COALESCE(CAST(:collection AS VARCHAR), collection),
                        updated_at = CURRENT_TIMESTAMP
                  WHERE knowledge_base_id = :kb_id
                 """
@@ -244,11 +276,11 @@ def upsert_listing(
                 INSERT INTO knowledge_base_listing (
                     id, knowledge_base_id, title, summary, description,
                     cover_file_id, cover_alt, subject, level, board, language,
-                    tags, sort_weight, created_by
+                    tags, sort_weight, created_by, collection
                 ) VALUES (
                     :id, :kb_id, :title, :summary, :description,
                     :cover_file_id, :cover_alt, :subject, :level, :board, :language,
-                    CAST(:tags AS JSONB), :sort_weight, :created_by
+                    CAST(:tags AS JSONB), :sort_weight, :created_by, :collection
                 )
                 """
             ),
@@ -339,7 +371,7 @@ def list_all_for_publisher(db: Session, institute_id: str) -> List[Dict[str, Any
                    l.id, l.title, l.summary, l.description, l.cover_file_id,
                    l.cover_alt, l.subject, l.level, l.board, l.language,
                    l.tags, l.status, l.sort_weight, l.published_at,
-                   l.published_by, l.created_at, l.updated_at
+                   l.published_by, l.created_at, l.updated_at, l.collection
               FROM knowledge_base kb
               LEFT JOIN knowledge_base_listing l ON l.knowledge_base_id = kb.id
              WHERE kb.institute_id = :institute_id

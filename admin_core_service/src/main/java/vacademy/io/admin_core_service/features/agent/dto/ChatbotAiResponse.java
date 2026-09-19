@@ -14,4 +14,12 @@ public class ChatbotAiResponse {
     private int promptTokens;
     private int completionTokens;
     private boolean exitIntent;
+
+    /**
+     * True when the institute cannot pay for this turn — no model was called and
+     * {@code assistantMessage} is null. The caller must NOT send this to the learner as
+     * an answer; it hands the conversation to a human instead. Distinct from a failure:
+     * retrying will not help until the institute tops up.
+     */
+    private boolean insufficientCredits;
 }

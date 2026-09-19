@@ -9,7 +9,16 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.server.ResponseStatusException;
+import vacademy.io.common.exceptions.ConflictException;
+import vacademy.io.common.exceptions.ForbiddenException;
+import vacademy.io.common.exceptions.InvalidRequestException;
+import vacademy.io.common.exceptions.ResourceNotFoundException;
+import vacademy.io.common.exceptions.UserNotFoundException;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.health.service.SlowQueryRegistry;
 
 import java.util.Arrays;
@@ -116,7 +125,14 @@ public class SlowQueryLogger {
     /**
      * Log method execution if it exceeded the slow threshold
      */
-    private void logIfSlow(String methodName, String type, long durationMs, Object[] args, Throwable error) {
+    private void logIfSlow(String methodName, String type, long durationMs, Object[] args, Throwable thrown) {
+        // A deliberate 4xx is the method doing its job -- rejecting a request the rules forbid --
+        // not a failure. Treating it as one made every business rule (chat's CHAT_DISABLED for an
+        // institute that never enabled chat, a missing required field, a 404) an ERROR log, and
+        // error logs become Sentry issues. Drop it back to the normal path so it is still reported
+        // when SLOW, never as an error. RequestTracingFilter already applies this rule to statuses.
+        Throwable error = isExpectedClientError(thrown) ? null : thrown;
+
         if (durationMs < tracingProperties.getSlowQueryThresholdMs() && error == null) {
             return;
         }
@@ -143,6 +159,35 @@ public class SlowQueryLogger {
             captureSlowMethodEvent(methodName, type, durationMs, argsString, "warning");
             slowQueryRegistry.record(methodName, type, durationMs, "warning", null);
         }
+    }
+
+    /**
+     * Is this throwable a business rejection the endpoint chose to return (a 4xx), rather than
+     * something that went wrong? Covers the four ways this codebase declares one: a
+     * {@link ResponseStatusException}, a {@link VacademyException} carrying its own status, one of
+     * the shared exceptions GlobalExceptionHandler maps to a fixed 4xx, and a custom exception
+     * annotated {@code @ResponseStatus}. 5xx keeps its error treatment in every case -- including
+     * EnrollmentConflictException, which deliberately keeps VacademyException's 510.
+     */
+    private boolean isExpectedClientError(Throwable error) {
+        if (error == null) {
+            return false;
+        }
+        if (error instanceof ResponseStatusException rse) {
+            return rse.getStatusCode().is4xxClientError();
+        }
+        if (error instanceof VacademyException ve) {
+            return ve.getStatus() != null && ve.getStatus().is4xxClientError();
+        }
+        if (error instanceof UserNotFoundException
+                || error instanceof ResourceNotFoundException
+                || error instanceof ForbiddenException
+                || error instanceof ConflictException
+                || error instanceof InvalidRequestException) {
+            return true;
+        }
+        ResponseStatus annotation = AnnotatedElementUtils.findMergedAnnotation(error.getClass(), ResponseStatus.class);
+        return annotation != null && annotation.value().is4xxClientError();
     }
 
     /**

@@ -26,6 +26,9 @@ interface UserDetails {
     profile_pic_file_id: string;
     roles: string[];
     root_user: boolean;
+    /** Optional author-profile metadata (subtitle / description). */
+    author_subtitle?: string;
+    author_description?: string;
 }
 
 interface GroupDetails {
@@ -70,6 +73,13 @@ export interface FormattedCourseData {
     contain_levels: boolean;
     sessions: SessionDetails[];
     /**
+     * Authors for a course with no sessions/levels. The backend ignores
+     * `sessions` entirely when `contain_levels` is false and reads its
+     * authors from here instead (CourseService.addCourse ->
+     * createPackageSessionForDefaultLevelAndSession).
+     */
+    add_faculty_to_course?: AddFacultyToCourse[];
+    /**
      * Optional subgroup configuration for the course.
      * When true, the backend will create child batches (package_session rows)
      * for each provided subgroup under the first active parent batch.
@@ -108,9 +118,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
     const topLevelSubgroupNames: string[] = Array.isArray(
         (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups
     )
-        ? (
-              (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? []
-          )
+        ? ((formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? [])
               .map((sg) => (sg.subgroupName || '').trim())
               .filter(Boolean)
         : [];
@@ -137,7 +145,14 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
             ? topLevelSubgroupNames.map((name) => ({ name }))
             : undefined;
 
-    const mapUser = (user: { id: string; name: string; email: string; profilePicId: string }) => ({
+    const mapUser = (user: {
+        id: string;
+        name: string;
+        email: string;
+        profilePicId: string;
+        authorSubtitle?: string;
+        authorDescription?: string;
+    }) => ({
         user: {
             id: user.id || '',
             username: '',
@@ -154,6 +169,10 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
             profile_pic_file_id: user.profilePicId,
             roles: [],
             root_user: true,
+            ...(user.authorSubtitle !== undefined ? { author_subtitle: user.authorSubtitle } : {}),
+            ...(user.authorDescription !== undefined
+                ? { author_description: user.authorDescription }
+                : {}),
         },
         new_user: false,
     });
@@ -313,6 +332,16 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         }
     }
 
+    // A simple course (no sessions, no levels) sends contain_levels=false, and
+    // the backend then never looks inside `sessions` -- so the authors nested
+    // under the DEFAULT level above were silently dropped on every create and
+    // the course fell back to showing its creator. Mirror them at the top
+    // level, which is the field that path actually reads.
+    const defaultAuthors =
+        !hasLevels && !hasSessions && Array.isArray(formData.instructors)
+            ? formData.instructors.map(mapUser)
+            : undefined;
+
     return {
         id: '',
         new_course: true,
@@ -320,6 +349,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         thumbnail_file_id: '',
         contain_levels: hasLevels || hasSessions,
         sessions,
+        ...(defaultAuthors ? { add_faculty_to_course: defaultAuthors } : {}),
         contains_subgroup: containsSubgroup,
         subgroups: formattedSubgroups,
         is_course_published_to_catalaouge: formData.publishToCatalogue,
@@ -357,9 +387,7 @@ export const convertToApiCourseFormatUpdate = (
     const topLevelSubgroupNames: string[] = Array.isArray(
         (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups
     )
-        ? (
-              (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? []
-          )
+        ? ((formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? [])
               .map((sg) => (sg.subgroupName || '').trim())
               .filter(Boolean)
         : [];
@@ -389,6 +417,8 @@ export const convertToApiCourseFormatUpdate = (
         name: string;
         email: string;
         profilePicId: string;
+        authorSubtitle?: string;
+        authorDescription?: string;
     };
 
     type Level = {
@@ -412,26 +442,34 @@ export const convertToApiCourseFormatUpdate = (
             const currentUsers: User[] = current?.userIds || [];
             const previousUsers: User[] = previous?.userIds || [];
 
+            const toUserPayload = (user: User) => ({
+                id: user.id || '',
+                username: '',
+                email: user.email || '',
+                full_name: user.name || '',
+                address_line: '',
+                city: '',
+                region: '',
+                pin_code: '',
+                mobile_number: '',
+                date_of_birth: '',
+                gender: '',
+                password: '',
+                profile_pic_file_id: user.profilePicId || '',
+                roles: [],
+                root_user: true,
+                ...(user.authorSubtitle !== undefined
+                    ? { author_subtitle: user.authorSubtitle }
+                    : {}),
+                ...(user.authorDescription !== undefined
+                    ? { author_description: user.authorDescription }
+                    : {}),
+            });
+
             const deletedUsers = previousUsers
                 .filter((oldUser) => !currentUsers.some((newUser) => newUser.id === oldUser.id))
                 .map((user) => ({
-                    user: {
-                        id: user.id || '',
-                        username: '',
-                        email: user.email || '',
-                        full_name: user.name || '',
-                        address_line: '',
-                        city: '',
-                        region: '',
-                        pin_code: '',
-                        mobile_number: '',
-                        date_of_birth: '',
-                        gender: '',
-                        password: '',
-                        profile_pic_file_id: user.profilePicId || '',
-                        roles: [],
-                        root_user: true,
-                    },
+                    user: toUserPayload(user),
                     status: 'DELETED',
                     new_user: false,
                 }));
@@ -439,23 +477,7 @@ export const convertToApiCourseFormatUpdate = (
             const addedUsers = currentUsers
                 .filter((newUser) => !previousUsers.some((oldUser) => oldUser.id === newUser.id))
                 .map((user) => ({
-                    user: {
-                        id: user.id || '',
-                        username: '',
-                        email: user.email || '',
-                        full_name: user.name || '',
-                        address_line: '',
-                        city: '',
-                        region: '',
-                        pin_code: '',
-                        mobile_number: '',
-                        date_of_birth: '',
-                        gender: '',
-                        password: '',
-                        profile_pic_file_id: user.profilePicId || '',
-                        roles: [],
-                        root_user: true,
-                    },
+                    user: toUserPayload(user),
                     status: 'ACTIVE',
                     new_user: false,
                 }));
@@ -463,36 +485,28 @@ export const convertToApiCourseFormatUpdate = (
             const existingUsers = currentUsers
                 .filter((newUser) => previousUsers.some((oldUser) => oldUser.id === newUser.id))
                 .map((user) => ({
-                    user: {
-                        id: user.id || '',
-                        username: '',
-                        email: user.email || '',
-                        full_name: user.name || '',
-                        address_line: '',
-                        city: '',
-                        region: '',
-                        pin_code: '',
-                        mobile_number: '',
-                        date_of_birth: '',
-                        gender: '',
-                        password: '',
-                        profile_pic_file_id: user.profilePicId || '',
-                        roles: [],
-                        root_user: true,
-                    },
+                    user: toUserPayload(user),
                     status: 'ACTIVE',
                     new_user: false,
                 }));
 
             const add_faculty_to_course = [...deletedUsers, ...addedUsers, ...existingUsers];
 
-            const subgroupList = Array.isArray((current as unknown as { subgroups?: { id?: string; subgroupName?: string; name?: string }[] })?.subgroups)
-                ? (current as unknown as { subgroups: { id?: string; subgroupName?: string; name?: string }[] })
-                      .subgroups.map((sg) => {
+            const subgroupList = Array.isArray(
+                (
+                    current as unknown as {
+                        subgroups?: { id?: string; subgroupName?: string; name?: string }[];
+                    }
+                )?.subgroups
+            )
+                ? (
+                      current as unknown as {
+                          subgroups: { id?: string; subgroupName?: string; name?: string }[];
+                      }
+                  ).subgroups
+                      .map((sg) => {
                           const name = (sg.subgroupName ?? sg.name ?? '').trim();
-                          return name.length > 0
-                              ? { ...(sg.id ? { id: sg.id } : {}), name }
-                              : null;
+                          return name.length > 0 ? { ...(sg.id ? { id: sg.id } : {}), name } : null;
                       })
                       .filter((n): n is { id?: string; name: string } => n !== null)
                 : undefined;
@@ -643,16 +657,21 @@ export function transformCourseData(course: CourseDetailsFormValues) {
                     email: inst.email,
                     profilePicId: inst.profilePicId,
                     roles: inst.roles,
+                    authorSubtitle: inst.authorSubtitle,
+                    authorDescription: inst.authorDescription,
                 })),
                 newLevel: level.newLevel ?? false,
-                subgroups: Array.isArray((level as { subgroups?: { id?: string; name: string }[] }).subgroups)
-                    ? (level as { subgroups: { id?: string; name: string }[] }).subgroups.map((s) => ({
-                          ...(s.id ? { id: s.id } : {}),
-                          subgroupName: s.name ?? '',
-                      }))
+                subgroups: Array.isArray(
+                    (level as { subgroups?: { id?: string; name: string }[] }).subgroups
+                )
+                    ? (level as { subgroups: { id?: string; name: string }[] }).subgroups.map(
+                          (s) => ({
+                              ...(s.id ? { id: s.id } : {}),
+                              subgroupName: s.name ?? '',
+                          })
+                      )
                     : undefined,
-                containsSubgroup:
-                    ((level as { subgroups?: unknown[] }).subgroups?.length ?? 0) > 0,
+                containsSubgroup: ((level as { subgroups?: unknown[] }).subgroups?.length ?? 0) > 0,
             })),
         })),
         containsSubgroup:
@@ -684,6 +703,8 @@ function extractInstructors(data: Session[]) {
                         email: instructor.email,
                         profilePicId: instructor.profilePicId,
                         roles: instructor.roles,
+                        authorSubtitle: instructor.authorSubtitle,
+                        authorDescription: instructor.authorDescription,
                     });
                 }
             }

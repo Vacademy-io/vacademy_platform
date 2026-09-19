@@ -15,6 +15,8 @@ interface DueLearnersTableProps {
     error: unknown;
     currentPage: number;
     onPageChange: (page: number) => void;
+    /** Opens the balance breakdown for one learner. */
+    onSelectLearner?: (learner: OutstandingLearner) => void;
 }
 
 const initialsOf = (name?: string | null): string => {
@@ -49,12 +51,13 @@ const isOverdue = (date?: string | null): boolean => {
 };
 
 /**
- * Who owes what — the drill-down behind the "Due payment" card.
+ * Who owes what — the drill-down behind the "Due" card.
  *
  * The payments table below can't answer this: a learner part-way through an instalment plan shows
  * only the instalments they HAVE paid, and one who has never paid shows nothing at all. This lists
- * the balance itself (billed minus paid, per learner), the fee type it sits under, and for custom
- * instalment plans how many instalments are outstanding and when the next one is due.
+ * what is overdue right now (per learner), what falls due next, the fee type it sits under, and for
+ * custom instalment plans how many instalments are outstanding and when the next one is due. A
+ * learner is here only while something is overdue — an upcoming instalment alone does not list them.
  */
 export function DueLearnersTable({
     data,
@@ -62,6 +65,7 @@ export function DueLearnersTable({
     error,
     currentPage,
     onPageChange,
+    onSelectLearner,
 }: DueLearnersTableProps) {
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
 
@@ -101,8 +105,8 @@ export function DueLearnersTable({
                             {row.original.course_name || '—'}
                         </div>
                         {row.original.plan_count > 1 && (
-                            <div className="text-xs text-neutral-500">
-                                +{row.original.plan_count - 1} more
+                            <div className="text-xs text-primary-500">
+                                +{row.original.plan_count - 1} more · view all
                             </div>
                         )}
                     </div>
@@ -152,6 +156,20 @@ export function DueLearnersTable({
                     </span>
                 ),
                 size: 120,
+            },
+            {
+                id: 'upcoming',
+                header: 'Upcoming',
+                accessorFn: (row) => row.upcoming,
+                cell: ({ row }) =>
+                    row.original.upcoming > 0 ? (
+                        <span className="tabular-nums text-neutral-600">
+                            {money(row.original.upcoming, row.original.currency)}
+                        </span>
+                    ) : (
+                        <span className="text-neutral-400">—</span>
+                    ),
+                size: 110,
             },
             {
                 id: 'installments',
@@ -220,9 +238,10 @@ export function DueLearnersTable({
         <div className="space-y-4">
             {isEmpty ? (
                 <div className="rounded-lg border border-border bg-card p-12 text-center">
-                    <p className="text-title font-medium text-neutral-700">Nothing outstanding</p>
+                    <p className="text-title font-medium text-neutral-700">Nothing overdue</p>
                     <p className="mt-2 text-body text-neutral-500">
-                        Every enrolment in this view is paid up.
+                        No learner with access in this view has an unpaid instalment, renewal or
+                        invoice past its date.
                     </p>
                 </div>
             ) : (
@@ -235,6 +254,8 @@ export function DueLearnersTable({
                     scrollable={true}
                     enableColumnResizing={true}
                     enableColumnPinning={false}
+                    onCellClick={(row) => onSelectLearner?.(row)}
+                    className={onSelectLearner ? '[&_tbody_tr]:cursor-pointer' : undefined}
                 />
             )}
 

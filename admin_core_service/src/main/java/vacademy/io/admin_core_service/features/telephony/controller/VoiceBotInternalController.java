@@ -275,6 +275,9 @@ public class VoiceBotInternalController {
             if (!conditions.isEmpty()) base.put("sendConditions", conditions);
         }
         if (a.getTemperature() != null) base.put("temperature", a.getTemperature());
+        // V504: consumed by the bot's ProsodyShaper (app/prosody.py). Absent = the
+        // bot's global PROSODY_EXPAND, which defaults to off.
+        if (a.getVoiceModulation() != null) base.put("voiceModulation", a.getVoiceModulation());
         // V421 — snake_case ON PURPOSE: the bot reads agent.get("tts_model"). The
         // neighbours here are camelCase, so this looks like a typo and is not.
         // Always emitted (never conditional on non-null) because the bot's own

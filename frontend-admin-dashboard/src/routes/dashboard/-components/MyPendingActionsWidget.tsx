@@ -4,6 +4,8 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CaretRight, CheckCircle, CurrencyDollar, Stamp, Bell } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     getPendingActionsQuery,
     type PendingAction,
@@ -16,42 +18,53 @@ interface MyPendingActionsWidgetProps {
     onOpenAllAlerts?: () => void;
 }
 
-const TYPE_META: Record<
-    PendingActionType,
-    { Icon: typeof CurrencyDollar; iconClass: string; label: string }
-> = {
+// Translated factory (instead of a static module-level constant) so icon labels update with
+// the active locale. Not exported — nothing outside this file references the metadata.
+const buildTypeMeta = (
+    t: TFunction
+): Record<PendingActionType, { Icon: typeof CurrencyDollar; iconClass: string; label: string }> => ({
     OVERDUE_PAYMENT: {
         Icon: CurrencyDollar,
         iconClass: 'text-red-600',
-        label: 'Overdue payment',
+        label: t('actionType.overduePayment'),
     },
     PENDING_APPROVAL: {
         Icon: Stamp,
         iconClass: 'text-amber-600',
-        label: 'Pending approval',
+        label: t('actionType.pendingApproval'),
     },
     UNREAD_ALERT: {
         Icon: Bell,
         iconClass: 'text-neutral-600',
-        label: 'Unread alert',
+        label: t('actionType.unreadAlert'),
     },
-};
+});
 
-const formatAge = (hours: number): string => {
-    if (hours <= 0) return 'now';
-    if (hours < 1) return '<1h';
-    if (hours < 24) return `${hours}h`;
-    const days = Math.round(hours / 24);
-    return `${days}d`;
-};
+const buildFormatAge =
+    (t: TFunction) =>
+    (hours: number): string => {
+        if (hours <= 0) return t('age.now');
+        if (hours < 1) return t('age.lessThanHour');
+        if (hours < 24) return t('age.hoursFormat', { hours });
+        const days = Math.round(hours / 24);
+        return t('age.daysFormat', { days });
+    };
 
 export default function MyPendingActionsWidget({
     instituteId,
     userId,
     onOpenAllAlerts,
 }: MyPendingActionsWidgetProps) {
+    const { t, i18n } = useTranslation([
+        'dashboardMyPendingActionsWidget',
+        'dashboardPendingActionsService',
+    ]);
     const navigate = useNavigate();
-    const { data, isLoading, isError } = useQuery(getPendingActionsQuery({ instituteId, userId }));
+    const { data, isLoading, isError } = useQuery(
+        getPendingActionsQuery({ instituteId, userId, t, language: i18n.language })
+    );
+    const typeMeta = buildTypeMeta(t);
+    const formatAge = buildFormatAge(t);
 
     const handleClick = (action: PendingAction) => {
         if (action.type === 'UNREAD_ALERT' && onOpenAllAlerts) {
@@ -66,16 +79,16 @@ export default function MyPendingActionsWidget({
             <CardHeader className="p-4 pb-2">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <CardTitle className="text-sm font-semibold">Pending Actions</CardTitle>
+                        <CardTitle className="text-sm font-semibold">{t('heading.title')}</CardTitle>
                         {!isLoading && data && data.length > 0 && (
-                            <Badge className="rounded-full border border-primary-200 bg-primary-50 px-1.5 py-0 text-[10px] font-medium text-primary-700 shadow-none">
+                            <Badge className="rounded-full border border-primary-200 bg-primary-50 px-1.5 py-0 text-2xs font-medium text-primary-700 shadow-none">
                                 {data.length}
                             </Badge>
                         )}
                     </div>
                 </div>
-                <CardDescription className="mt-0.5 text-[11px] text-neutral-500 sm:text-xs">
-                    Items waiting on you right now
+                <CardDescription className="mt-0.5 text-2xs text-neutral-500 sm:text-xs">
+                    {t('heading.description')}
                 </CardDescription>
             </CardHeader>
 
@@ -93,21 +106,21 @@ export default function MyPendingActionsWidget({
                         ))}
                     </ul>
                 ) : isError ? (
-                    <div className="px-2 py-3 text-xs text-neutral-500">
-                        Couldn&apos;t load pending actions.
-                    </div>
+                    <div className="px-2 py-3 text-xs text-neutral-500">{t('error')}</div>
                 ) : !data || data.length === 0 ? (
                     <div className="flex flex-col items-center gap-1.5 py-6 text-center">
                         <CheckCircle size={28} weight="duotone" className="text-emerald-500" />
-                        <div className="text-xs font-medium text-neutral-700">All clear</div>
-                        <div className="text-[11px] text-neutral-500">
-                            Nothing needs your attention right now.
+                        <div className="text-xs font-medium text-neutral-700">
+                            {t('empty.title')}
+                        </div>
+                        <div className="text-2xs text-neutral-500">
+                            {t('empty.description')}
                         </div>
                     </div>
                 ) : (
                     <ul className="space-y-0.5">
                         {data.map((action) => {
-                            const meta = TYPE_META[action.type];
+                            const meta = typeMeta[action.type];
                             const Icon = meta.Icon;
                             return (
                                 <li key={action.id}>
@@ -126,12 +139,12 @@ export default function MyPendingActionsWidget({
                                                 {action.title}
                                             </span>
                                             {action.subtitle && (
-                                                <span className="line-clamp-1 w-full text-[11px] text-neutral-500">
+                                                <span className="line-clamp-1 w-full text-2xs text-neutral-500">
                                                     {action.subtitle}
                                                 </span>
                                             )}
                                         </span>
-                                        <span className="shrink-0 text-[10px] tabular-nums text-neutral-400">
+                                        <span className="shrink-0 text-2xs tabular-nums text-neutral-400">
                                             {formatAge(action.ageHours)}
                                         </span>
                                         <CaretRight

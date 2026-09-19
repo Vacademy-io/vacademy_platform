@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Input } from '@/components/ui/input';
 import { StudentFeePaymentRowDTO, StudentFeeDueDTO } from '@/types/manage-finances';
 import { allocateSelectedPayment, AllocatePaymentResponse, getStudentDuesQueryKey } from '@/services/manage-finances';
@@ -14,12 +16,12 @@ import { ConfirmPaymentDialog } from './ConfirmPaymentDialog';
 
 type PaymentMode = 'CASH' | 'ONLINE' | 'UPI' | 'CARD' | 'CHEQUE';
 
-const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
-    { value: 'CASH', label: 'Cash' },
-    { value: 'ONLINE', label: 'Online' },
-    { value: 'UPI', label: 'UPI' },
-    { value: 'CARD', label: 'Card' },
-    { value: 'CHEQUE', label: 'Cheque' },
+const buildPaymentModes = (t: TFunction): { value: PaymentMode; label: string }[] => [
+    { value: 'CASH', label: t('paymentMode.cash') },
+    { value: 'ONLINE', label: t('paymentMode.online') },
+    { value: 'UPI', label: t('paymentMode.upi') },
+    { value: 'CARD', label: t('paymentMode.card') },
+    { value: 'CHEQUE', label: t('paymentMode.cheque') },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -43,6 +45,8 @@ export function PaymentDetailsStep({
     onSuccess,
 }: PaymentDetailsStepProps) {
     const queryClient = useQueryClient();
+    const { t } = useTranslation('financialManagementPaymentDetailsStep');
+    const PAYMENT_MODES = useMemo(() => buildPaymentModes(t), [t]);
 
     const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
     const [transactionId, setTransactionId] = useState('');
@@ -80,11 +84,11 @@ export function PaymentDetailsStep({
     const mutation = useMutation<AllocatePaymentResponse, unknown>({
         mutationFn: () => {
             const instituteId = getInstituteId();
-            if (!instituteId) throw new Error('Institute ID not found');
+            if (!instituteId) throw new Error(t('errors.instituteIdNotFound'));
 
             const remarkParts: string[] = [];
-            remarkParts.push(`Mode: ${paymentMode}`);
-            if (transactionId.trim()) remarkParts.push(`Txn ID: ${transactionId.trim()}`);
+            remarkParts.push(`${t('remarks.modePrefix')}: ${paymentMode}`);
+            if (transactionId.trim()) remarkParts.push(`${t('remarks.txnIdPrefix')}: ${transactionId.trim()}`);
             if (remarks.trim()) remarkParts.push(remarks.trim());
 
             return allocateSelectedPayment(student.student_id, {
@@ -95,14 +99,14 @@ export function PaymentDetailsStep({
             });
         },
         onSuccess: (data) => {
-            toast.success('Payment submitted successfully');
+            toast.success(t('toast.paymentSubmitted'));
             queryClient.invalidateQueries({
                 queryKey: getStudentDuesQueryKey(student.student_id),
             });
             onSuccess(parsedAmount, data);
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.ex || err?.message || 'Payment failed');
+            toast.error(err?.response?.data?.ex || err?.message || t('toast.paymentFailed'));
         },
     });
 
@@ -125,7 +129,7 @@ export function PaymentDetailsStep({
                     className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors"
                 >
                     <ArrowLeft size={16} />
-                    Back to Installments
+                    {t('backToInstallments')}
                 </button>
                 <div className="h-5 w-px bg-gray-200" />
                 <div>
@@ -141,7 +145,7 @@ export function PaymentDetailsStep({
                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
                         <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
-                            Selected Installments ({selectedDues.length})
+                            {t('selectedInstallments', { count: selectedDues.length })}
                         </h3>
                     </div>
                     <div className="overflow-auto max-h-[400px]">
@@ -149,30 +153,30 @@ export function PaymentDetailsStep({
                             <thead className="sticky top-0 z-10">
                                 <tr className="border-b border-gray-200 bg-gray-50/95">
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                        Fee Type
+                                        {t('table.feeType')}
                                     </th>
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                        CPO / Plan
+                                        {t('table.cpoPlan')}
                                     </th>
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
-                                        Expected
+                                        {t('table.expected')}
                                     </th>
                                     {showAdjustmentColumn && (
                                         <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
-                                            Adjustment
+                                            {t('table.adjustment')}
                                         </th>
                                     )}
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
-                                        Paid
+                                        {t('table.paid')}
                                     </th>
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
-                                        Outstanding
+                                        {t('table.outstanding')}
                                     </th>
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                        Due Date
+                                        {t('table.dueDate')}
                                     </th>
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                        Status
+                                        {t('table.status')}
                                     </th>
                                 </tr>
                             </thead>
@@ -196,11 +200,11 @@ export function PaymentDetailsStep({
                                             <td className="py-2.5 px-4 text-right">
                                                 {isConcession ? (
                                                     <span className={cn('text-xs font-semibold text-emerald-600')}>
-                                                        - {formatCurrency(inst.adjustment_amount || 0)} <span className="font-normal">(Concession)</span>
+                                                        - {formatCurrency(inst.adjustment_amount || 0)} <span className="font-normal">({t('adjustmentType.concession')})</span>
                                                     </span>
                                                 ) : isPenalty ? (
                                                     <span className={cn('text-xs font-semibold text-red-600')}>
-                                                        + {formatCurrency(inst.adjustment_amount || 0)} <span className="font-normal">(Penalty)</span>
+                                                        + {formatCurrency(inst.adjustment_amount || 0)} <span className="font-normal">({t('adjustmentType.penalty')})</span>
                                                     </span>
                                                 ) : (
                                                     <span className="text-gray-400">{'\u2014'}</span>
@@ -222,12 +226,12 @@ export function PaymentDetailsStep({
                                             {inst.is_overdue ? (
                                                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase bg-red-50 text-red-700">
                                                     <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                                                    Overdue
+                                                    {t('status.overdue')}
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase bg-amber-50 text-amber-700">
                                                     <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                                    {inst.status === 'PARTIAL_PAID' ? 'Partial' : 'Pending'}
+                                                    {inst.status === 'PARTIAL_PAID' ? t('status.partial') : t('status.pending')}
                                                 </span>
                                             )}
                                         </td>
@@ -239,7 +243,7 @@ export function PaymentDetailsStep({
                                 {showAdjustmentColumn && totalConcession > 0 && (
                                     <tr className="bg-gray-50/40">
                                         <td colSpan={3} className="py-1.5 px-4 text-xs font-semibold text-gray-500 text-right uppercase tracking-wide">
-                                            Total Concession
+                                            {t('totals.totalConcession')}
                                         </td>
                                         <td className="py-1.5 px-4 text-sm font-semibold text-emerald-600 text-right">
                                             - {formatCurrency(totalConcession)}
@@ -250,7 +254,7 @@ export function PaymentDetailsStep({
                                 {showAdjustmentColumn && totalPenalty > 0 && (
                                     <tr className="bg-gray-50/40">
                                         <td colSpan={3} className="py-1.5 px-4 text-xs font-semibold text-gray-500 text-right uppercase tracking-wide">
-                                            Total Penalty
+                                            {t('totals.totalPenalty')}
                                         </td>
                                         <td className="py-1.5 px-4 text-sm font-semibold text-red-600 text-right">
                                             + {formatCurrency(totalPenalty)}
@@ -263,7 +267,7 @@ export function PaymentDetailsStep({
                                         colSpan={showAdjustmentColumn ? 5 : 4}
                                         className="py-3 px-4 text-sm font-bold text-gray-700 text-right"
                                     >
-                                        Total Outstanding:
+                                        {t('totals.totalOutstanding')}
                                     </td>
                                     <td className="py-3 px-4 text-base font-extrabold text-red-600 text-right">
                                         {formatCurrency(totalDue)}
@@ -278,13 +282,13 @@ export function PaymentDetailsStep({
                 {/* ── Right: Payment Form ── */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5 h-fit">
                     <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
-                        Payment Details
+                        {t('paymentDetails')}
                     </h3>
 
                     {/* Payment Mode */}
                     <div className="space-y-2">
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            Payment Mode
+                            {t('paymentModeLabel')}
                         </label>
                         <div className="grid grid-cols-2 gap-2">
                             {PAYMENT_MODES.map((mode) => (
@@ -307,12 +311,12 @@ export function PaymentDetailsStep({
                     {/* Transaction ID */}
                     <div className="space-y-2">
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            Transaction ID <span className="text-gray-400 normal-case">(optional)</span>
+                            {t('transactionId')} <span className="text-gray-400 normal-case">({t('optional')})</span>
                         </label>
                         <Input
                             value={transactionId}
                             onChange={(e) => setTransactionId(e.target.value)}
-                            placeholder="e.g. TXN123456"
+                            placeholder={t('placeholders.transactionId')}
                             className="text-sm"
                         />
                     </div>
@@ -320,7 +324,7 @@ export function PaymentDetailsStep({
                     {/* Amount */}
                     <div className="space-y-2">
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            Amount
+                            {t('amount')}
                         </label>
                         <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
@@ -335,7 +339,7 @@ export function PaymentDetailsStep({
                         </div>
                         {parsedAmount > totalDue && (
                             <p className="text-xs text-amber-600">
-                                Amount exceeds total due. Excess will remain unallocated.
+                                {t('amountExceedsDue')}
                             </p>
                         )}
                     </div>
@@ -343,12 +347,12 @@ export function PaymentDetailsStep({
                     {/* Remarks */}
                     <div className="space-y-2">
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            Remarks <span className="text-gray-400 normal-case">(optional)</span>
+                            {t('remarksLabel')} <span className="text-gray-400 normal-case">({t('optional')})</span>
                         </label>
                         <Input
                             value={remarks}
                             onChange={(e) => setRemarks(e.target.value)}
-                            placeholder="e.g. Cash collected at counter"
+                            placeholder={t('placeholders.remarks')}
                             className="text-sm"
                         />
                     </div>
@@ -359,7 +363,7 @@ export function PaymentDetailsStep({
                         disabled={parsedAmount <= 0 || mutation.isPending}
                         className="w-full px-5 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                        {mutation.isPending ? 'Processing...' : `Submit Payment \u2014 ${formatCurrency(parsedAmount || 0)}`}
+                        {mutation.isPending ? t('processing') : `${t('submitPayment')} \u2014 ${formatCurrency(parsedAmount || 0)}`}
                     </button>
                 </div>
             </div>

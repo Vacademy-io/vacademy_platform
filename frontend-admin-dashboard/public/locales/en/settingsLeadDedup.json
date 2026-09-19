@@ -1,0 +1,86 @@
+{
+    "header": {
+        "title": "Deduplication",
+        "description": "Control what happens when a new lead submission matches one that already exists. Off by default — turning this on does not affect leads already captured."
+    },
+    "loading": "Loading deduplication settings…",
+    "enabled": {
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+    },
+    "fields": {
+        "matchBy": {
+            "label": "Match leads by",
+            "hint": "Which identifier counts as a duplicate.",
+            "placeholder": "Select field",
+            "options": {
+                "email": "Email address",
+                "phone": "Phone number"
+            }
+        },
+        "scope": {
+            "label": "Applies to",
+            "hint": "Check only the lead list being submitted to, a specific set of lead lists, or every lead list in the institute.",
+            "placeholder": "Select scope",
+            "options": {
+                "campaign": "This lead list only",
+                "selected": "Specific lead lists",
+                "institute": "All lead lists in this institute"
+            }
+        },
+        "audienceLists": {
+            "label": "Lead lists",
+            "hint": "Duplicates are checked across only the lead lists picked here. Selecting all of them switches this to institute-wide automatically.",
+            "placeholder": "Select lead lists",
+            "placeholderLoading": "Loading lead lists…"
+        },
+        "action": {
+            "label": "When a duplicate is found",
+            "hint": "Block the submission, or let it through and apply the repeat-lead rules below.",
+            "placeholder": "Select action",
+            "options": {
+                "reject": "Reject the submission",
+                "allowReassign": "Allow it through and reassign"
+            }
+        }
+    },
+    "repeatLead": {
+        "title": "Repeat lead handling",
+        "counsellorMode": {
+            "label": "Assign a counsellor?",
+            "placeholder": "Select",
+            "options": {
+                "none": "Don't assign one",
+                "sameAsPrevious": "Keep their previous counsellor",
+                "specific": "Always assign a specific counsellor",
+                "roundRobin": "Use round-robin, same as new leads"
+            }
+        },
+        "counsellorPicker": {
+            "label": "Counsellor"
+        },
+        "statusMode": {
+            "label": "Lead status",
+            "placeholder": "Select",
+            "options": {
+                "keepExisting": "Keep their current status",
+                "resetToNew": "Reset to New"
+            }
+        }
+    },
+    "counsellorPicker": {
+        "clearAriaLabel": "Clear selected counsellor",
+        "searchPlaceholder": "Type to search counsellors…",
+        "searching": "Searching…"
+    },
+    "toasts": {
+        "saved": "Deduplication settings saved",
+        "saveFailed": "Failed to save deduplication settings",
+        "pickLeadList": "Pick at least one lead list, or choose a different scope",
+        "pickCounsellor": "Pick a counsellor, or choose a different repeat-lead counsellor option"
+    },
+    "footer": {
+        "save": "Save deduplication settings",
+        "saving": "Saving…"
+    }
+}

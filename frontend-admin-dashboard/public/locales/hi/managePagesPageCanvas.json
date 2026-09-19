@@ -1,0 +1,97 @@
+{
+    "globalSettings": {
+        "title": "वैश्विक सेटिंग्स",
+        "description": "हेडर, फ़ुटर और वैश्विक गुण कॉन्फ़िगर करें",
+        "header": "हेडर",
+        "footer": "फ़ुटर",
+        "selectedIndicator": "● चयनित",
+        "overview": {
+            "title": "कॉन्फ़िगरेशन का अवलोकन",
+            "catalogueType": "कैटलॉग प्रकार",
+            "notAvailable": "उपलब्ध नहीं",
+            "themeMode": "थीम मोड",
+            "fontFamily": "फ़ॉन्ट फ़ैमिली",
+            "defaultFont": "डिफ़ॉल्ट",
+            "payment": "भुगतान",
+            "leadCollection": "लीड संग्रह",
+            "enquiry": "पूछताछ",
+            "enabledBadge": "✓ सक्षम",
+            "disabledBadge": "✗ अक्षम"
+        }
+    },
+    "page": {
+        "notFound": "पेज नहीं मिला",
+        "componentsCount_one": "पेज घटक • {{count}} घटक",
+        "componentsCount_other": "पेज घटक • {{count}} घटक",
+        "duplicateComponentTitle": "घटक डुप्लिकेट करें",
+        "deleteComponentTitle": "घटक हटाएँ",
+        "confirmDeleteComponent": "क्या इस घटक को हटाना है?",
+        "selected": "चयनित",
+        "empty": {
+            "title": "इस पेज पर कोई घटक नहीं है",
+            "hint": "घटकों को जोड़ने के लिए लाइब्रेरी से खींचें"
+        }
+    },
+    "summary": {
+        "hero": {
+            "fallbackTitle": "हीरो सेक्शन"
+        },
+        "catalogue": {
+            "fallbackTitle": "कोर्स कैटलॉग",
+            "layoutLine": "लेआउट: {{layout}} • फ़िल्टर: {{filters}}",
+            "filtersEnabled": "सक्षम",
+            "filtersDisabled": "अक्षम",
+            "filterCountSuffix_one": " • {{count}} फ़िल्टर",
+            "filterCountSuffix_other": " • {{count}} फ़िल्टर"
+        },
+        "courseDetails": {
+            "title": "कोर्स विवरण पेज",
+            "enquirySuffix": "पूछताछ • ",
+            "paymentSuffix": "भुगतान • ",
+            "addToCart": "कार्ट में जोड़ें"
+        },
+        "cart": {
+            "title": "शॉपिंग कार्ट",
+            "quantityControlsSuffix": "मात्रा नियंत्रण • ",
+            "pricingEnabled": "मूल्य निर्धारण सक्षम"
+        },
+        "mediaShowcase": {
+            "title": "मीडिया शोकेस",
+            "layoutSlides_one": "लेआउट: {{layout}} • {{count}} स्लाइड",
+            "layoutSlides_other": "लेआउट: {{layout}} • {{count}} स्लाइड्स",
+            "autoplaySuffix": " • ऑटोप्ले"
+        },
+        "buyRent": {
+            "fallbackTitle": "खरीदें/किराए पर लें अनुभाग",
+            "buyFallback": "खरीदें",
+            "rentFallback": "किराए पर लें",
+            "buyRentLine": "{{buy}} • {{rent}}"
+        },
+        "stats": {
+            "title": "आँकड़े हाइलाइट्स",
+            "count_one": "{{count}} आँकड़ा",
+            "count_other": "{{count}} आँकड़े"
+        },
+        "testimonials": {
+            "fallbackTitle": "प्रशंसापत्र",
+            "countLayout_one": "{{count}} प्रशंसापत्र • लेआउट: {{layout}}",
+            "countLayout_other": "{{count}} प्रशंसापत्र • लेआउट: {{layout}}"
+        },
+        "policy": {
+            "fallbackTitle": "नीति सामग्री",
+            "subtitle": "नीति पेज"
+        },
+        "header": {
+            "fallbackTitle": "हेडर",
+            "navItems_one": "{{count}} नेविगेशन आइटम",
+            "navItems_other": "{{count}} नेविगेशन आइटम"
+        },
+        "footer": {
+            "title": "फ़ुटर",
+            "layout": "लेआउट: {{layout}}"
+        },
+        "hideDetails": "विवरण छुपाएँ",
+        "showDetails": "विवरण दिखाएँ",
+        "fullConfigurationLabel": "पूर्ण कॉन्फ़िगरेशन:"
+    }
+}

@@ -18,6 +18,7 @@ from typing import Optional, Dict, Any, AsyncIterator, List, Tuple
 from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
+from .timeline_coverage import _frame_is_substantive, _timeline_coverage
 from ..db import db_session as _fresh_db_session
 from .s3_service import S3Service
 from .s3_url_utils import extract_s3_key
@@ -304,6 +305,7 @@ def _assign_capture_ids(captured_files: List[Dict[str, Any]]) -> None:
         else:
             f["id"] = f"inline_{inline_idx}"
             inline_idx += 1
+
 
 
 class VideoGenerationService:
@@ -1227,6 +1229,22 @@ class VideoGenerationService:
                 gen_metadata["visual_style"] = visual_style
             if quality_tier and quality_tier != "ultra":
                 gen_metadata["quality_tier"] = quality_tier
+            # Which model the user asked for. Neither field was recorded, so a
+            # finished run carried no trace of the choice and the only way to
+            # answer "what model ran this?" was to guess. Worse, reading the
+            # absent key returned None, which reads exactly like "no override
+            # was set" — the run looks like it used defaults when it did not.
+            if model:
+                gen_metadata["model"] = model
+            if model_overrides is not None:
+                try:
+                    gen_metadata["model_overrides"] = (
+                        model_overrides.model_dump(exclude_none=True)
+                        if hasattr(model_overrides, "model_dump")
+                        else dict(model_overrides)
+                    )
+                except Exception:
+                    gen_metadata["model_overrides"] = str(model_overrides)
             # Normalize: singular → list (backward compat)
             if input_video_id and not input_video_ids:
                 input_video_ids = [input_video_id]
@@ -2556,10 +2574,25 @@ class VideoGenerationService:
 
                 loaded_contexts = []
                 source_video_urls = []
+                # The schema-level cap is a shared ceiling across both kinds.
+                # Videos carry the real cost (a large download plus an index
+                # job each) and the splice constraints, so they keep the
+                # original limit of 5; images are bounded only by prompt size.
+                from ..schemas.video_generation import MAX_INPUT_VIDEOS
+                _video_count = 0
                 for idx, iv_record in enumerate(iv_records):
                     # Polymorphic asset table: kind ∈ {video, image}. Old rows
                     # default to 'video' since the column was backfilled there.
                     iv_kind = getattr(iv_record, "kind", "video") or "video"
+
+                    if iv_kind != "image":
+                        _video_count += 1
+                        if _video_count > MAX_INPUT_VIDEOS:
+                            logger.warning(
+                                f"[VideoGenService] Input video {iv_record.id} skipped — "
+                                f"more than {MAX_INPUT_VIDEOS} videos selected"
+                            )
+                            continue
 
                     # Pick the metadata-URL field that corresponds to the kind.
                     if iv_kind == "image":
@@ -4085,6 +4118,35 @@ class VideoGenerationService:
                             logger.info(f"[VideoGenService] Uploaded cost_breakdown.json for {video_id}")
                     except Exception as _cb_err:
                         logger.warning(f"[VideoGenService] Failed to upload cost_breakdown.json: {_cb_err}")
+
+                # Coverage gate — a run that shipped a fraction of its shots is
+                # not COMPLETED. A real run planned 28 shots and delivered 20:
+                # 8 generated fine, failed at timeline placement, and were
+                # dropped, while 2 more shipped as empty fallback frames. The
+                # run reported COMPLETED with an empty error_message, so the
+                # only way to discover a film missing its certificate reveal
+                # and its closing shot was to open the editor and look.
+                if stage_name == "HTML":
+                    try:
+                        _cov = _timeline_coverage(run_dir)
+                        if _cov and _cov["missing"]:
+                            _msg = (
+                                f"Shipped {_cov['present']} of {_cov['planned']} shots — "
+                                f"missing/blank: {_cov['missing']}"
+                            )
+                            logger.error(f"[VideoGenService] {video_id}: {_msg}")
+                            # Status stays COMPLETED — the film is watchable, and
+                            # PARTIAL is a value the frontend does not handle. The
+                            # point is that the shortfall stops being invisible.
+                            self.repository.record_warning(video_id, _msg)
+                            try:
+                                self.repository.update_metadata(
+                                    video_id, {"shot_coverage": _cov}
+                                )
+                            except Exception:
+                                pass
+                    except Exception as _cov_err:
+                        logger.warning(f"[VideoGenService] coverage check failed: {_cov_err}")
 
                 # Update stage status — wrap in try/except so a stale-session error
                 # doesn't abort the entire pipeline after files were already uploaded.

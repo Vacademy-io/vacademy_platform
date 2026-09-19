@@ -8,6 +8,7 @@ import {
 import { DialogDescription, DialogTitle } from '@radix-ui/react-dialog';
 import React, { ReactNode } from 'react';
 import { X } from '@phosphor-icons/react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface DialogProps {
     trigger?: ReactNode;
@@ -22,6 +23,13 @@ interface DialogProps {
     dialogId?: string;
     headerActions?: React.ReactNode;
     className?: string;
+    /**
+     * Hover hint for the trigger. Callers cannot add this themselves: the trigger is
+     * rendered here inside `<DialogTrigger asChild>`, and a Radix Tooltip root emits no
+     * DOM of its own, so wrapping the trigger outside this component breaks `asChild`.
+     * Nesting has to happen here — DialogTrigger > TooltipTrigger > the element.
+     */
+    triggerTooltip?: string;
 }
 
 export const MyDialog = ({
@@ -37,10 +45,20 @@ export const MyDialog = ({
     dialogId,
     headerActions,
     className,
+    triggerTooltip,
 }: DialogProps) => {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogTrigger asChild>{trigger}</DialogTrigger>
+            {triggerTooltip ? (
+                <Tooltip>
+                    <DialogTrigger asChild>
+                        <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+                    </DialogTrigger>
+                    <TooltipContent side="bottom">{triggerTooltip}</TooltipContent>
+                </Tooltip>
+            ) : (
+                <DialogTrigger asChild>{trigger}</DialogTrigger>
+            )}
             <DialogContent
                 data-dialog-id={dialogId}
                 className={`${dialogWidth || 'max-w-2xl'} dialog-no-close-icon flex max-h-[85vh] w-full flex-col overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl ${className || ''}`}

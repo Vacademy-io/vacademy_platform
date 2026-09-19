@@ -25,6 +25,8 @@ import { Loader2, Mail } from 'lucide-react';
 import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services';
 import { toast } from 'sonner';
 import { MyDialog } from '@/components/design-system/dialog';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 interface ISummary {
     evaluation_result: {
@@ -71,15 +73,17 @@ interface IEvaluationData {
 // demo; otherwise this is empty. (The old token/EmailJS keys must be rotated.)
 const DEFAULT_ACCESS_TOKEN = import.meta.env.VITE_EVALUATOR_DEMO_TOKEN ?? '';
 
-const reportSchema = z.object({
-    email: z.string().email('Invalid email address'),
-    subject: z.string().optional(),
-    remarks: z.string().optional(),
-});
+const buildReportSchema = (t: TFunction) =>
+    z.object({
+        email: z.string().email(t('validation.invalidEmail')),
+        subject: z.string().optional(),
+        remarks: z.string().optional(),
+    });
 
-type ReportFormValues = z.infer<typeof reportSchema>;
+type ReportFormValues = z.infer<ReturnType<typeof buildReportSchema>>;
 
 export default function EvaluationSummary() {
+    const { t } = useTranslation('evaluatorAiEvaluationSummaryStudent');
     const { toPDF, targetRef } = usePDF({ filename: 'report.pdf' });
     const [studentSummary, setSummaryData] = useState<IEvaluationData>();
     const [open, setOpen] = useState(false);
@@ -120,7 +124,7 @@ export default function EvaluationSummary() {
         handleSubmit,
         formState: { errors },
     } = useForm<ReportFormValues>({
-        resolver: zodResolver(reportSchema),
+        resolver: zodResolver(buildReportSchema(t)),
     });
 
     const onSubmit = async (data: ReportFormValues) => {
@@ -160,8 +164,8 @@ export default function EvaluationSummary() {
                 import.meta.env.VITE_EMAILJS_TEMPLATE_ID ?? '',
                 {
                     to_email: data.email,
-                    subject: data.subject || 'Evaluation Report',
-                    name: studentSummary?.name || 'Student',
+                    subject: data.subject || t('email.defaultSubject'),
+                    name: studentSummary?.name || t('email.defaultStudentName'),
                     message:
                         data.remarks ||
                         studentSummary?.summary.evaluation_result.overall_description,
@@ -171,9 +175,9 @@ export default function EvaluationSummary() {
             );
 
             console.log('Email sent with PDF link:', fileUrl);
-            toast.success('Email sent successfully');
+            toast.success(t('toast.emailSent'));
         } catch (err) {
-            toast.error('Error sending mail');
+            toast.error(t('toast.emailFailed'));
             console.error('Error uploading PDF or sending email:', err);
         } finally {
             setSendlingMail(false);
@@ -186,11 +190,11 @@ export default function EvaluationSummary() {
                 <div className="flex w-80 flex-col items-center gap-4 rounded-lg bg-white p-6 shadow-xl">
                     <Loader2 className="size-12 animate-spin text-primary-500" />
                     <h2 className="text-lg font-semibold">
-                        {isUploading && 'Generating Pdf...'}
-                        {sendingMail && 'Sending Mail...'}
+                        {isUploading && t('loading.generatingPdf')}
+                        {sendingMail && t('loading.sendingMail')}
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                        This might take a while, please wait.
+                        {t('loading.pleaseWait')}
                     </p>
                 </div>
             </div>
@@ -208,9 +212,9 @@ export default function EvaluationSummary() {
                             router.history.back();
                         }}
                     >
-                        ← Back
+                        {t('header.back')}
                     </Button>
-                    <h1 className="text-base font-bold text-gray-800">Evaluation Summary</h1>
+                    <h1 className="text-base font-bold text-gray-800">{t('header.title')}</h1>
                 </div>
                 <span className="flex items-center gap-2">
                     <Button
@@ -219,24 +223,24 @@ export default function EvaluationSummary() {
                             toPDF();
                         }}
                     >
-                        Export Report
+                        {t('header.exportReport')}
                     </Button>
                     <Dialog open={open} onOpenChange={setOpen}>
                         <DialogTrigger asChild>
                             <Button variant={'outline'}>
                                 <Mail className="size-4" />
-                                Send Report
+                                {t('header.sendReport')}
                             </Button>
                         </DialogTrigger>
                         <DialogContent>
                             <DialogHeader>
-                                <DialogTitle>Send Evaluation Report</DialogTitle>
+                                <DialogTitle>{t('sendDialog.title')}</DialogTitle>
                             </DialogHeader>
                             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                                 <div>
                                     <Input
                                         type="email"
-                                        placeholder="Recipient Email"
+                                        placeholder={t('sendDialog.recipientEmailPlaceholder')}
                                         {...register('email')}
                                     />
                                     {errors.email && (
@@ -248,18 +252,18 @@ export default function EvaluationSummary() {
                                 <div>
                                     <Input
                                         type="text"
-                                        placeholder="Subject (optional)"
+                                        placeholder={t('sendDialog.subjectPlaceholder')}
                                         {...register('subject')}
                                     />
                                 </div>
                                 <div>
                                     <Textarea
-                                        placeholder="Remarks (optional)"
+                                        placeholder={t('sendDialog.remarksPlaceholder')}
                                         {...register('remarks')}
                                     />
                                 </div>
                                 <DialogFooter>
-                                    <Button type="submit">Send</Button>
+                                    <Button type="submit">{t('sendDialog.sendButton')}</Button>
                                 </DialogFooter>
                             </form>
                         </DialogContent>
@@ -271,47 +275,51 @@ export default function EvaluationSummary() {
             <div className="mx-auto space-y-6 bg-white p-5" ref={targetRef}>
                 <div className="rounded-md border border-[#e6e3d8]">
                     <div className="rounded-t-md border-b border-[#e6e3d8] bg-[#faf9f5] px-4 py-2">
-                        <h2 className="text-sm font-medium text-gray-700">Student Information</h2>
+                        <h2 className="text-sm font-medium text-gray-700">
+                            {t('sections.studentInformation')}
+                        </h2>
                     </div>
                 </div>
 
                 <div className="-mt-4 flex flex-wrap justify-between px-1 text-sm">
                     <div className="flex gap-2">
-                        <span className="text-gray-600">Name:</span>
+                        <span className="text-gray-600">{t('fields.name')}</span>
                         <span>{studentSummary?.name}</span>
                     </div>
                     <div className="flex gap-2">
-                        <span className="text-gray-600">LEARNER ID:</span>
+                        <span className="text-gray-600">{t('fields.learnerId')}</span>
                         <span>{studentSummary?.id}</span>
                     </div>
                 </div>
 
                 {/* Evaluation Summary */}
-                <h2 className="mt-8 text-base font-bold text-gray-800">Evaluation Summary</h2>
+                <h2 className="mt-8 text-base font-bold text-gray-800">{t('header.title')}</h2>
 
                 {/* Evaluation Details */}
                 <div className="rounded-md border border-[#e6e3d8]">
                     <div className="rounded-t-md border-b border-[#e6e3d8] bg-[#faf9f5] px-4 py-2">
-                        <h3 className="text-sm font-medium text-gray-700">Evaluation Details</h3>
+                        <h3 className="text-sm font-medium text-gray-700">
+                            {t('sections.evaluationDetails')}
+                        </h3>
                     </div>
                 </div>
 
                 <div className="-mt-4 space-y-4 px-1">
                     <div className="flex flex-wrap gap-2 text-sm">
-                        <span className="text-gray-600">Assessment:</span>
+                        <span className="text-gray-600">{t('fields.assessment')}</span>
                         <span>{studentSummary?.assessment}</span>
                     </div>
 
                     <div className="flex flex-wrap items-start gap-2 text-sm">
-                        <span className="w-16 text-gray-600">Summary:</span>
+                        <span className="w-16 text-gray-600">{t('fields.summary')}</span>
                         <span className="flex-1">
                             {studentSummary?.summary.evaluation_result.overall_description}
                         </span>
                     </div>
                 </div>
 
-                <div className="absolute right-14 mt-[-100px]">
-                    <div className="text-xs text-gray-600">Total Marks:</div>
+                <div className="absolute end-14 mt-[-100px]">
+                    <div className="text-xs text-gray-600">{t('fields.totalMarks')}</div>
                     <div className="text-center text-2xl font-bold text-orange-500">
                         {studentSummary?.marks}
                     </div>
@@ -319,13 +327,17 @@ export default function EvaluationSummary() {
 
                 {/* Performance Breakdown */}
                 <div className="mt-8 flex items-center justify-between">
-                    <h2 className="text-base font-bold text-gray-800">Performance Breakdown</h2>
+                    <h2 className="text-base font-bold text-gray-800">
+                        {t('sections.performanceBreakdown')}
+                    </h2>
                 </div>
 
                 {/* Question-wise Marking */}
                 <div className="rounded-md border border-[#e6e3d8]">
                     <div className="rounded-t-md border-b border-[#e6e3d8] bg-[#faf9f5] px-4 py-2">
-                        <h3 className="text-sm font-medium text-gray-700">Question-wise Marking</h3>
+                        <h3 className="text-sm font-medium text-gray-700">
+                            {t('sections.questionWiseMarking')}
+                        </h3>
                     </div>
                 </div>
 
@@ -333,23 +345,23 @@ export default function EvaluationSummary() {
                     <table className="w-full border-collapse text-sm">
                         <thead>
                             <tr className="bg-[#f8f4e8]">
-                                <th className="border border-[#e6e3d8] p-2 text-left font-medium">
-                                    Q No.
+                                <th className="border border-[#e6e3d8] p-2 text-start font-medium">
+                                    {t('table.questionNo')}
                                 </th>
-                                <th className="border border-[#e6e3d8] p-2 text-left font-medium">
-                                    Question
+                                <th className="border border-[#e6e3d8] p-2 text-start font-medium">
+                                    {t('table.question')}
                                 </th>
-                                <th className="border border-[#e6e3d8] p-2 text-left font-medium">
-                                    Answer
+                                <th className="border border-[#e6e3d8] p-2 text-start font-medium">
+                                    {t('table.answer')}
                                 </th>
-                                <th className="border border-[#e6e3d8] p-2 text-left font-medium">
-                                    Marks
+                                <th className="border border-[#e6e3d8] p-2 text-start font-medium">
+                                    {t('table.marks')}
                                 </th>
-                                <th className="border border-[#e6e3d8] p-2 text-left font-medium">
-                                    Feedback
+                                <th className="border border-[#e6e3d8] p-2 text-start font-medium">
+                                    {t('table.feedback')}
                                 </th>
-                                <th className="border border-[#e6e3d8] p-2 text-left font-medium">
-                                    Description
+                                <th className="border border-[#e6e3d8] p-2 text-start font-medium">
+                                    {t('table.description')}
                                 </th>
                             </tr>
                         </thead>
@@ -417,7 +429,7 @@ export default function EvaluationSummary() {
                                                                         setOpenPreview(true);
                                                                     }}
                                                                 >
-                                                                    View More
+                                                                    {t('table.viewMore')}
                                                                 </button>
                                                             </>
                                                         )}
@@ -451,18 +463,18 @@ export default function EvaluationSummary() {
                             });
                             setOpenPreview(false);
                         }}
-                        heading="View Question"
+                        heading={t('previewDialog.heading')}
                         dialogWidth="min-w-fit"
                     >
                         <div className="space-y-4 p-5">
                             <p>
-                                <strong>Question </strong>
+                                <strong>{t('previewDialog.questionLabel')} </strong>
                                 <br />
 
                                 {previewText.first}
                             </p>
                             <p>
-                                <strong>Extracted Answer </strong>
+                                <strong>{t('previewDialog.extractedAnswerLabel')} </strong>
                                 <br />
                                 <div
                                     className="list-item"

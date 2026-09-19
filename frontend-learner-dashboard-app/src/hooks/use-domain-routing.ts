@@ -7,6 +7,7 @@ import {
   DomainRoutingResponse,
   setCachedInstituteBranding,
   setCachedPreferredCountries,
+  setCachedPhoneCountryGeoMode,
 } from "@/services/domain-routing";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -31,7 +32,39 @@ export interface DomainRoutingState {
   logoWidthPx: number | null;
   logoHeightPx: number | null;
   stackNameBelowLogo: boolean | null;
+  // Pre-login policy for this portal, straight from domain routing. The login
+  // screen must read these from here and NOT from Preferences/localStorage:
+  // on a fresh native install neither store has anything yet, and the
+  // Preferences read raced the write on every first launch. Null = the
+  // backend did not say, callers fall back to their own default.
+  allowSignup: boolean | null;
+  allowGoogleAuth: boolean | null;
+  allowGithubAuth: boolean | null;
+  allowEmailOtpAuth: boolean | null;
+  allowUsernamePasswordAuth: boolean | null;
+  allowPhoneAuth: boolean | null;
 }
+
+const NO_AUTH_POLICY = {
+  allowSignup: null,
+  allowGoogleAuth: null,
+  allowGithubAuth: null,
+  allowEmailOtpAuth: null,
+  allowUsernamePasswordAuth: null,
+  allowPhoneAuth: null,
+} as const;
+
+const boolOrNull = (v: unknown): boolean | null =>
+  typeof v === "boolean" ? v : null;
+
+const authPolicyFrom = (data: DomainRoutingResponse) => ({
+  allowSignup: boolOrNull(data.allowSignup),
+  allowGoogleAuth: boolOrNull(data.allowGoogleAuth),
+  allowGithubAuth: boolOrNull(data.allowGithubAuth),
+  allowEmailOtpAuth: boolOrNull(data.allowEmailOtpAuth),
+  allowUsernamePasswordAuth: boolOrNull(data.allowUsernamePasswordAuth),
+  allowPhoneAuth: boolOrNull(data.allowPhoneAuth),
+});
 
 // Global state to prevent multiple simultaneous domain routing calls
 let isResolvingGlobally = false;
@@ -65,6 +98,7 @@ export const useDomainRouting = () => {
       logoWidthPx: null,
       logoHeightPx: null,
       stackNameBelowLogo: null,
+      ...NO_AUTH_POLICY,
     };
   });
 
@@ -117,6 +151,19 @@ export const useDomainRouting = () => {
             ? data.stackNameBelowLogo
             : null,
       });
+
+      // Hand the app/portal links to the sidebar directly as well. The cache
+      // write above is not enough on its own: the sidebar fills itself from the
+      // navbar's institute-details query, which can resolve before this one and
+      // does not look again afterwards.
+      try {
+        const { default: useSidebarStore } = await import(
+          "@/components/common/layout-container/sidebar/useSidebar"
+        );
+        useSidebarStore.getState().setAppLinks(data as unknown as Record<string, unknown>);
+      } catch {
+        // Best-effort: the cache write above still covers the common ordering.
+      }
 
       // Store per-institute learner settings for quick access
       // Key: LEARNER_<instituteId>, Values: privacyPolicyUrl, termsAndConditionUrl
@@ -231,6 +278,8 @@ export const useDomainRouting = () => {
 
       // Cache preferred countries for synchronous access by phone inputs
       setCachedPreferredCountries(data.commaSeparatedPreferredCountry ?? null);
+      // ...and the portal's rule for when the visitor's own country may win.
+      setCachedPhoneCountryGeoMode(data.phoneCountryGeoMode ?? null);
 
       // Update global state
       setInstituteId(data.instituteId);
@@ -333,6 +382,7 @@ export const useDomainRouting = () => {
             typeof apiResult.stackNameBelowLogo === "boolean"
               ? apiResult.stackNameBelowLogo
               : null,
+          ...authPolicyFrom(apiResult),
         };
 
         // Cache the result globally
@@ -362,6 +412,7 @@ export const useDomainRouting = () => {
           logoWidthPx: null,
           logoHeightPx: null,
           stackNameBelowLogo: null,
+          ...NO_AUTH_POLICY,
         };
 
         globalDomainRoutingState = newState;
@@ -386,6 +437,7 @@ export const useDomainRouting = () => {
         hideInstituteName: null,
         logoWidthPx: null,
         logoHeightPx: null,
+        ...NO_AUTH_POLICY,
       };
 
       globalDomainRoutingState = newState;
@@ -413,6 +465,7 @@ export const useDomainRouting = () => {
             hideInstituteName: null,
             logoWidthPx: null,
             logoHeightPx: null,
+            ...NO_AUTH_POLICY,
           };
 
           globalDomainRoutingState = newState;
@@ -440,6 +493,7 @@ export const useDomainRouting = () => {
         hideInstituteName: null,
         logoWidthPx: null,
         logoHeightPx: null,
+        ...NO_AUTH_POLICY,
       };
 
       globalDomainRoutingState = newState;

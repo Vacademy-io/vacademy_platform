@@ -13,6 +13,7 @@ import {
   useMemo,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { useTranslation } from "react-i18next";
 import { useTrackingStore } from "@/stores/study-library/youtube-video-tracking-store";
 import { getEpochTimeInMillis } from "./utils";
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
@@ -81,6 +82,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   enableConcentrationScore = true,
   concentrationSettings,
 }) => {
+  const { t } = useTranslation("libraryCommonB");
   const { activeItem } = useContentStore();
   const addActivity = useTrackingStore((state) => state.addActivity);
   const activityId = useRef(uuidv4());
@@ -998,13 +1000,13 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
       {/* Video Unavailable Overlay */}
       {loadError && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black px-4">
-          <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl bg-white p-6 text-center shadow-2xl">
+          <div className="flex max-w-sm flex-col items-center gap-stack rounded-xl bg-white p-6 text-center shadow-2xl">
             <WarningCircle weight="fill" className="size-10 text-danger-500" />
             <p className="text-base font-semibold text-neutral-700">
-              This video is unavailable
+              {t("vimeoPlayer.unavailable.title")}
             </p>
             <p className="text-sm text-neutral-500">
-              It could not be loaded. Please contact your admin.
+              {t("vimeoPlayer.unavailable.body")}
             </p>
           </div>
         </div>
@@ -1024,10 +1026,10 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="rounded-xl bg-white p-6 text-center shadow-2xl">
             <p className="mb-2 text-sm text-gray-500">
-              Select the middle number to continue
+              {t("vimeoPlayer.verification.selectMiddleNumber")}
             </p>
             <p className="mb-4 text-xs text-gray-400">
-              Time remaining: {verificationCountdown}s
+              {t("vimeoPlayer.verification.timeRemaining", { seconds: verificationCountdown })}
             </p>
             <div className="flex gap-4">
               {verificationNumbers.map((num, index) => (

@@ -1,5 +1,9 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_USER_PLANS } from '@/constants/urls';
+import {
+    GET_USER_PLANS,
+    GET_USER_PLAN_CHANGE_OPTIONS,
+    CHANGE_USER_PLAN,
+} from '@/constants/urls';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import type { PolicyDetails } from '@/types/membership-expiry';
@@ -246,4 +250,80 @@ export const getActivePlans = async (userId: string): Promise<UserPlansResponse>
  */
 export const getActiveAndExpiredPlans = async (userId: string): Promise<UserPlansResponse> => {
     return getUserPlans(1, 100, ['ACTIVE', 'EXPIRED'], userId);
+};
+
+// ── Plan change (admin) ─────────────────────────────────────────────────────
+
+/** One plan an admin could move this learner onto, priced for information. */
+export interface PlanChangeTarget {
+    plan_id: string;
+    plan_name?: string | null;
+    payment_option_id: string;
+    option_name?: string | null;
+    option_type?: string | null;
+    enroll_invite_id?: string | null;
+    price?: number | null;
+    currency?: string | null;
+    validity_in_days?: number | null;
+    feature_json?: string | null;
+    description?: string | null;
+    /** UPGRADE | DOWNGRADE | LATERAL */
+    direction: string;
+    /** IMMEDIATE | END_OF_CYCLE */
+    effective_type: string;
+    proration_credit?: number | null;
+    amount_due_now?: number | null;
+    effective_from?: string | null;
+    requires_mandate_reauth?: boolean;
+    /** Also moves the learner to a different payment option + enroll invite. */
+    cross_option?: boolean;
+}
+
+export interface PlanChangeOptions {
+    user_plan_id: string;
+    current_plan_id?: string | null;
+    current_plan_name?: string | null;
+    current_plan_price?: number | null;
+    current_option_name?: string | null;
+    currency?: string | null;
+    current_end_date?: string | null;
+    targets: PlanChangeTarget[];
+    can_change_plan: boolean;
+    blocked_reason?: string | null;
+}
+
+export const PLAN_CHANGE_OPTIONS_QUERY_KEY = 'ADMIN_PLAN_CHANGE_OPTIONS';
+
+/**
+ * Plans this learner could be moved onto. Same eligibility rules as the learner-facing
+ * list — an admin cannot move someone onto a plan the institute has not flagged as
+ * switchable.
+ */
+export const getPlanChangeOptions = async (
+    userPlanId: string,
+    instituteId: string
+): Promise<PlanChangeOptions> => {
+    const response = await authenticatedAxiosInstance.get(
+        GET_USER_PLAN_CHANGE_OPTIONS(userPlanId),
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+/**
+ * Admin override: move the learner onto another plan immediately, with no payment.
+ * The access window is left as-is — nothing was paid, so the new price bills at the next
+ * renewal rather than resetting what the learner already has.
+ */
+export const changeUserPlan = async (
+    userPlanId: string,
+    instituteId: string,
+    body: { target_plan_id: string; reason?: string; notify_learner?: boolean }
+): Promise<UserPlan> => {
+    const response = await authenticatedAxiosInstance.post(
+        CHANGE_USER_PLAN(userPlanId),
+        body,
+        { params: { instituteId } }
+    );
+    return response.data;
 };

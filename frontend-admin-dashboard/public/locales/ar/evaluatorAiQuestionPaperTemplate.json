@@ -1,0 +1,12 @@
+{
+    "common": {
+        "save": "حفظ",
+        "exit": "خروج",
+        "addQuestion": "إضافة سؤال",
+        "questionIncomplete": "السؤال غير مكتمل",
+        "noQuestionExists": "لا يوجد أي سؤال."
+    },
+    "toast": {
+        "questionPaperUpdated": "تم تحديث ورقة الأسئلة بنجاح"
+    }
+}

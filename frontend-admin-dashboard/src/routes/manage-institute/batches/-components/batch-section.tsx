@@ -17,6 +17,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms } from '@/routes/settings/-components/NamingSettings';
 import { convertCapitalToTitleCase } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 // Locally defined type based on observed structure from useInstituteDetailsStore
 interface BatchForSessionStoreType {
@@ -40,6 +41,7 @@ interface batchCardProps {
 }
 
 const BatchCard = ({ batch }: batchCardProps) => {
+    const { t } = useTranslation('manageInstituteBatchSection');
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const navigate = useNavigate();
     const { levelName, packageName } = useGetStudentBatch(batch.package_session_id);
@@ -62,11 +64,11 @@ const BatchCard = ({ batch }: batchCardProps) => {
             { packageSessionIds: [batch.package_session_id] },
             {
                 onSuccess: () => {
-                    toast.success('Batch deleted successfully');
+                    toast.success(t('toast.batchDeletedSuccess'));
                     setOpenDeleteDialog(false);
                 },
                 onError: () => {
-                    toast.error('Failed to delete batch');
+                    toast.error(t('toast.batchDeleteFailed'));
                 },
             }
         );
@@ -78,7 +80,7 @@ const BatchCard = ({ batch }: batchCardProps) => {
             instituteDetails?.learner_portal_base_url
         );
         navigator.clipboard.writeText(fullInviteLink);
-        toast.success('Invite link copied to clipboard');
+        toast.success(t('toast.inviteLinkCopied'));
     };
 
     return (
@@ -102,12 +104,14 @@ const BatchCard = ({ batch }: batchCardProps) => {
                     <div className="flex items-center gap-2 text-neutral-600">
                         <Users size={20} />
                         <p className="text-sm font-medium">
-                            {batch.count_students} {getTerminology(RoleTerms.Learner, 'Learner')}
-                            {batch.count_students !== 1 ? 's' : ''}
+                            {t('batchCard.studentCount', {
+                                count: batch.count_students,
+                                term: getTerminology(RoleTerms.Learner, 'Learner'),
+                            })}
                         </p>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-neutral-500">
-                        <p className="font-medium">Invite Code:</p>
+                        <p className="font-medium">{t('batchCard.inviteCodeLabel')}</p>
                         <span className="rounded bg-neutral-100 px-2 py-1 font-mono text-xs text-neutral-700">
                             {batch.invite_code}
                         </span>
@@ -132,7 +136,9 @@ const BatchCard = ({ batch }: batchCardProps) => {
                                 className="w-full text-neutral-700 hover:text-primary-600 sm:w-auto"
                             >
                                 <Plus size={18} className="mr-1" />
-                                Enroll {getTerminology(RoleTerms.Learner, 'Learner')}
+                                {t('batchCard.enrollButton', {
+                                    term: getTerminology(RoleTerms.Learner, 'Learner'),
+                                })}
                             </MyButton>
                         }
                     />
@@ -143,12 +149,12 @@ const BatchCard = ({ batch }: batchCardProps) => {
                         onClick={handleViewBatch}
                         className="w-full bg-neutral-100 text-neutral-700 hover:bg-neutral-200 sm:w-auto"
                     >
-                        View Batch
+                        {t('batchCard.viewBatchButton')}
                     </MyButton>
                 </div>
             </div>
             <MyDialog
-                heading="Delete Batch"
+                heading={t('deleteDialog.heading')}
                 open={openDeleteDialog}
                 onOpenChange={() => setOpenDeleteDialog(!openDeleteDialog)}
                 dialogWidth="w-[400px]"
@@ -159,21 +165,20 @@ const BatchCard = ({ batch }: batchCardProps) => {
                             onClick={() => setOpenDeleteDialog(false)}
                             className="hover:bg-neutral-100"
                         >
-                            Cancel
+                            {t('deleteDialog.cancel')}
                         </MyButton>
                         <MyButton
                             buttonType="secondary"
                             onClick={handleDeleteBatch}
                             className="border-danger-300 text-danger-600 hover:border-danger-500 hover:bg-danger-50"
                         >
-                            Yes, Delete
+                            {t('deleteDialog.confirm')}
                         </MyButton>
                     </div>
                 }
             >
                 <p className="text-neutral-600">
-                    Are you sure you want to delete the batch &quot;{batch.batch_name}&quot;? This
-                    action cannot be undone.
+                    {t('deleteDialog.confirmMessage', { batchName: batch.batch_name })}
                 </p>
             </MyDialog>
         </>
@@ -186,6 +191,7 @@ interface BatchSectionProps {
 }
 
 export const BatchSection = ({ batch, currentSessionId }: BatchSectionProps) => {
+    const { t } = useTranslation('manageInstituteBatchSection');
     const { instituteDetails } = useInstituteDetailsStore();
 
     const filteredBatches =
@@ -218,8 +224,9 @@ export const BatchSection = ({ batch, currentSessionId }: BatchSectionProps) => 
                         {convertCapitalToTitleCase(batch.package_dto.package_name)}
                     </p>
                     <p className="text-neutral-500">
-                        No batches found for this package
-                        {currentSessionId ? ' in the selected session' : ''}.
+                        {currentSessionId
+                            ? t('section.noBatchesInSession')
+                            : t('section.noBatches')}
                     </p>
                 </div>
             )}

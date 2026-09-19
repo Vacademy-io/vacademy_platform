@@ -32,7 +32,7 @@ from ..services import ai_task_service
 from ..services.ai_billing import preflight_tool_credits
 from ..services.ai_task_service import AiTaskService
 from ..services.kb import ingest as kb_ingest
-from ..services.kb.repository import KbRepository
+from ..services.kb.repository import KbRepository, is_curriculum_kb
 from ..services.kb.retrieval import KbRetrievalService
 
 logger = logging.getLogger(__name__)
@@ -115,6 +115,12 @@ class KbCreate(BaseModel):
     purpose: str = "general"
     language_hint: Optional[str] = Field(None, max_length=20)
     institute_id: Optional[str] = None  # INTERNAL callers only
+    # Free-form per-base metadata (V517). The curriculum loader sets
+    # {topic_tree_mode: "AUTHORED", curriculum: {...}} here.
+    meta: Optional[Dict[str, Any]] = None
+    # A registered embedder id (kb_embedding_model). Default = the platform
+    # default; the curriculum loader picks the in-process BAAI/bge-base-en-v1.5.
+    embedding_model: Optional[str] = Field(None, max_length=100)
 
 
 class KbUpdate(BaseModel):
@@ -129,17 +135,21 @@ class SourceCreate(BaseModel):
     source_kind: str
     title: Optional[str] = Field(None, max_length=500)
     file_id: Optional[str] = None       # PDF (media_service fileId)
-    source_url: Optional[str] = None    # URL / YOUTUBE
+    source_url: Optional[str] = None    # URL / YOUTUBE — or a public PDF URL
     raw_text: Optional[str] = None      # TEXT
     # Client-side page count (pdfjs) used ONLY to pre-flight the credit check
     # fast. The charge is always computed from the server-parsed page count.
     expected_pages: Optional[int] = Field(None, ge=0)
     institute_id: Optional[str] = None  # INTERNAL callers only
+    # Per-source metadata, merged into meta_json. The curriculum loader tags
+    # chapters here ({chapter_no, chapter_title, book_code, ...}).
+    meta: Optional[Dict[str, Any]] = None
 
 
 class SourceUpdate(BaseModel):
     is_active: Optional[bool] = None
     title: Optional[str] = Field(None, max_length=500)
+    meta: Optional[Dict[str, Any]] = None   # merged into meta_json
 
 
 class EstimateRequest(BaseModel):
@@ -296,6 +306,8 @@ async def create_base(
             purpose=body.purpose,
             language_hint=body.language_hint,
             created_by=caller.user_id,
+            meta=body.meta,
+            embedding_model=body.embedding_model,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Knowledge base creation failed")
@@ -533,12 +545,14 @@ async def add_source(
     expected_pages = body.expected_pages or 0
 
     if kind == "PDF":
-        if not body.file_id:
-            raise HTTPException(400, "file_id is required for a PDF source")
+        if not body.file_id and not body.source_url:
+            raise HTTPException(400, "file_id (upload) or source_url (public PDF) is required")
         # ONE download yields both the dedup hash and the page count. Fetching
         # them separately meant pulling a 100MB textbook twice per request.
         try:
-            expected_pages, content_hash = await kb_ingest.probe_pdf(body.file_id)
+            expected_pages, content_hash = await kb_ingest.probe_pdf(
+                body.file_id, source_url=None if body.file_id else body.source_url
+            )
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(400, f"Could not read that PDF: {exc}") from exc
 
@@ -567,10 +581,11 @@ async def add_source(
                 f"{kb_ingest.parsing.MAX_PAGES_PER_SOURCE}. Please split it.",
             )
         title = title or "Untitled document"
-        _preflight_or_402(
-            db, tool_key="kb_ingest_page",
-            tool_params={"num_pages": expected_pages}, institute_id=resolved,
-        )
+        if not is_curriculum_kb(kb):
+            _preflight_or_402(
+                db, tool_key="kb_ingest_page",
+                tool_params={"num_pages": expected_pages}, institute_id=resolved,
+            )
 
     elif kind in ("URL", "YOUTUBE"):
         if not body.source_url:
@@ -578,7 +593,8 @@ async def add_source(
         if kind == "YOUTUBE" and not kb_ingest.parsing.youtube_video_id(body.source_url):
             raise HTTPException(400, "That does not look like a YouTube video URL")
         title = title or body.source_url[:200]
-        _preflight_or_402(db, tool_key="kb_ingest_url", tool_params={}, institute_id=resolved)
+        if not is_curriculum_kb(kb):
+            _preflight_or_402(db, tool_key="kb_ingest_url", tool_params={}, institute_id=resolved)
 
     else:  # TEXT
         if not (body.raw_text or "").strip():
@@ -592,6 +608,7 @@ async def add_source(
         kb_id=kb_id, institute_id=resolved, source_kind=kind, title=title,
         file_id=body.file_id, source_url=body.source_url, raw_text=body.raw_text,
         content_hash=content_hash, page_count=expected_pages, created_by=caller.user_id,
+        meta=body.meta,
     )
     task_id = _start_ingest_task(
         db, source_id=source_id, institute_id=resolved,
@@ -652,8 +669,11 @@ async def update_source(
                 db, source_id=source_id, institute_id=resolved,
                 user_id=caller.user_id, source_kind=source["source_kind"],
             )
-    if body.title:
-        repo.update_source_fields(source_id, resolved, title=body.title.strip())
+    if body.title or body.meta:
+        repo.update_source_fields(
+            source_id, resolved,
+            title=body.title.strip() if body.title else None, meta=body.meta,
+        )
     return repo.get_source(source_id, resolved)
 
 

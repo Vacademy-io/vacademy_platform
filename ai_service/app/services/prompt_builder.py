@@ -29,8 +29,15 @@ class CourseOutlinePromptBuilder:
 
         # Extract generation options (with defaults for backward compatibility)
         gen_options = request.generation_options or {}
-        num_slides_spec = gen_options.num_slides if hasattr(gen_options, 'num_slides') and gen_options.num_slides else None
-        num_chapters_spec = gen_options.num_chapters if hasattr(gen_options, 'num_chapters') and gen_options.num_chapters else None
+        # A knowledge base decides the SHAPE of the course: its topic tree is the
+        # chapter list and its sections are the slides. "EXACTLY N chapters" on
+        # top of that made the model merge or pad sections to hit a number the
+        # teacher never chose (the UI used to copy the KB's own suggestion into
+        # these fields). Counts are therefore ignored whenever the request is
+        # KB-grounded, whatever the client sent.
+        kb_bound = bool(getattr(getattr(request, "kb_grounding", None), "knowledge_base_id", None))
+        num_slides_spec = gen_options.num_slides if not kb_bound and hasattr(gen_options, 'num_slides') and gen_options.num_slides else None
+        num_chapters_spec = gen_options.num_chapters if not kb_bound and hasattr(gen_options, 'num_chapters') and gen_options.num_chapters else None
         course_timing = gen_options.course_timing if hasattr(gen_options, 'course_timing') and gen_options.course_timing else None
         generate_images = gen_options.generate_images if hasattr(gen_options, 'generate_images') else False
         language = gen_options.language if hasattr(gen_options, 'language') and gen_options.language else "English"
@@ -43,6 +50,12 @@ class CourseOutlinePromptBuilder:
             generation_requirements += f"\n- Course timing specified: {course_timing} minutes total. YOU MUST determine optimal slide count based on content complexity, slide types (videos take more time), and institute AI settings context."
         if num_chapters_spec:
             generation_requirements += f"\n- User specifies exact chapter count: EXACTLY {num_chapters_spec} chapters"
+        if kb_bound:
+            generation_requirements += (
+                "\n- Structure follows the knowledge base: one chapter per selected topic and "
+                "at least one slide per selected section, in the material's order. Do NOT target "
+                "a fixed number of chapters or slides."
+            )
         if course_timing:
             generation_requirements += f"\n- TIMING CONSIDERATIONS: Factor in slide type duration - VIDEO/AI_VIDEO slides typically take 5-8 minutes, DOCUMENT slides take 3-5 minutes, ASSESSMENT slides take 10-15 minutes."
         if generate_images:

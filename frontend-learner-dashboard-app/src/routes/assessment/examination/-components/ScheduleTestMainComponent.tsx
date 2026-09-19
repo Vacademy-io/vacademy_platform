@@ -8,12 +8,14 @@ import { AssessmentCard } from "../-components/AssessmentCard";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { EmptyState } from "@/components/design-system/states";
 import { Exam } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 
 export const ScheduleTestMainComponent = ({
   assessment_types,
 }: {
   assessment_types: "HOMEWORK" | "ASSESSMENT";
 }) => {
+  const { t } = useTranslation("assessment");
   const setNavHeading = useNavHeadingStore((s) => s.setNavHeading);
   const [selectedTab, setSelectedTab] = useState<assessmentTypes>(
     assessmentTypes.LIVE
@@ -132,10 +134,13 @@ export const ScheduleTestMainComponent = ({
   }, [fetchMoreData]);
 
   useEffect(() => {
-    const nextHeading = assessment_types === "ASSESSMENT" ? "Assessment" : "Homework";
+    const nextHeading =
+      assessment_types === "ASSESSMENT"
+        ? t("scheduleTest.navHeading.assessment")
+        : t("scheduleTest.navHeading.homework");
     setNavHeading(nextHeading);
     fetchAllTabsData();
-  }, [assessment_types, fetchAllTabsData, setNavHeading]);
+  }, [assessment_types, fetchAllTabsData, setNavHeading, t]);
 
   const lastElementRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -201,22 +206,22 @@ export const ScheduleTestMainComponent = ({
               icon={Exam}
               title={
                 selectedTab === assessmentTypes.LIVE
-                  ? "Nothing live right now"
+                  ? t("scheduleTest.empty.live.title")
                   : selectedTab === assessmentTypes.UPCOMING
-                    ? "Nothing scheduled yet"
-                    : "No past attempts yet"
+                    ? t("scheduleTest.empty.upcoming.title")
+                    : t("scheduleTest.empty.past.title")
               }
               description={
                 selectedTab === assessmentTypes.LIVE
-                  ? "When a test opens for your batch, it appears here with a Join button."
+                  ? t("scheduleTest.empty.live.description")
                   : selectedTab === assessmentTypes.UPCOMING
-                    ? "Tests scheduled by your institute will show up here with their start time."
-                    : "Once a test you attempted closes, it appears here with its report."
+                    ? t("scheduleTest.empty.upcoming.description")
+                    : t("scheduleTest.empty.past.description")
               }
               action={
                 selectedTab === assessmentTypes.LIVE
                   ? {
-                      label: "See upcoming",
+                      label: t("scheduleTest.empty.live.action"),
                       onClick: () => setSelectedTab(assessmentTypes.UPCOMING),
                     }
                   : undefined
@@ -225,13 +230,13 @@ export const ScheduleTestMainComponent = ({
           )}
 
           {loading && (
-            <div className="text-center text-muted-foreground py-8">Loading assessments...</div>
+            <div className="text-center text-muted-foreground py-8">{t("scheduleTest.loading.assessments")}</div>
           )}
 
           {loadingMore && (
             <div className="py-4 flex flex-col items-center gap-2">
               <div className="text-sm text-muted-foreground">
-                Loading more...
+                {t("scheduleTest.loading.more")}
               </div>
               <DashboardLoader />
             </div>

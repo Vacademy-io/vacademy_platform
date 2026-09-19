@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { useSignupAvailability } from "@/hooks/use-signup-availability";
 import { usePublicDoubtConfig } from "@/services/public-doubt-config";
 import { GuestQueryDialog } from "@/components/common/queries/GuestQueryDialog";
 import { AuthPageBranding } from "@/components/common/institute-branding";
@@ -127,8 +128,29 @@ export function LoginForm({
     allowUsernamePasswordAuth: true,
     allowPhoneAuth: false,
   });
+  // Third-party buttons stay hidden until the institute's real policy is known.
+  // The defaults above are permissive so a portal with no policy keeps working,
+  // but rendering them before resolution flashed Google/GitHub — and, through
+  // the Apple 4.8 pairing rule, Sign in with Apple — on portals that have all
+  // three switched off. Apple tapped that phantom button and rejected the build.
+  const [providersResolved, setProvidersResolved] = useState(false);
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
+  const routedInstituteId = domainRouting?.instituteId ?? null;
+  // "Sign up here" is offered only when BOTH the portal (domain routing) and
+  // the institute's signup settings say so. Routing alone is not enough: a
+  // portal can carry allowSignup=true while the admin has switched signup off
+  // or left it with no provider the signup screen can render, and the link
+  // would open on an empty dialog. Unknown from routing → undefined so the
+  // forms keep their legacy fallback.
+  const signupAvailability = useSignupAvailability(routedInstituteId);
+  const signupOffered: boolean | undefined =
+    domainRouting.allowSignup === null
+      ? undefined
+      : domainRouting.allowSignup &&
+        signupAvailability.resolved &&
+        signupAvailability.enabled &&
+        signupAvailability.hasProvider;
 
   // Logged-out query intake ("Need help?"): gated per-institute via the open doubt-config
   // endpoint, using the institute already resolved by domain routing. Fetch failure → hidden.
@@ -138,11 +160,16 @@ export function LoginForm({
   const [guestDialogOpen, setGuestDialogOpen] = useState(false);
 
   // Pre-login theme and font from Preferences if present (external-first branding)
+  // Re-runs once domain routing resolves: on a fresh install InstituteId is
+  // empty at mount, so a mount-only read returned early and left the defaults
+  // in place for the whole session.
   useEffectTheme(() => {
     (async () => {
       try {
         const instituteId =
-          (await Preferences.get({ key: "InstituteId" })).value || "";
+          routedInstituteId ||
+          (await Preferences.get({ key: "InstituteId" })).value ||
+          "";
         if (!instituteId) return;
         const stored = await Preferences.get({ key: `LEARNER_${instituteId}` });
         if (!stored?.value) return;
@@ -150,6 +177,7 @@ export function LoginForm({
         if (parsed?.theme) {
           setPrimaryColor(parsed.theme);
         }
+        setProvidersResolved(true);
         // Update provider flags from preferences
         setProviderFlags({
           allowGoogleAuth: parsed?.allowGoogleAuth !== false,
@@ -183,7 +211,33 @@ export function LoginForm({
         // ignore
       }
     })();
-  }, [setPrimaryColor]);
+  }, [setPrimaryColor, routedInstituteId]);
+
+  // Domain routing is the source of truth for the login policy. It arrives
+  // over the network, so it cannot lose the race the Preferences read above
+  // could; a null flag means the backend did not say, so the prior value
+  // (the permissive default) is kept rather than silently removing a login.
+  useEffect(() => {
+    if (!routedInstituteId) return;
+    setProviderFlags((prev) => ({
+      allowGoogleAuth: domainRouting.allowGoogleAuth ?? prev.allowGoogleAuth,
+      allowGithubAuth: domainRouting.allowGithubAuth ?? prev.allowGithubAuth,
+      allowEmailOtpAuth:
+        domainRouting.allowEmailOtpAuth ?? prev.allowEmailOtpAuth,
+      allowUsernamePasswordAuth:
+        domainRouting.allowUsernamePasswordAuth ??
+        prev.allowUsernamePasswordAuth,
+      allowPhoneAuth: domainRouting.allowPhoneAuth ?? prev.allowPhoneAuth,
+    }));
+    setProvidersResolved(true);
+  }, [
+    routedInstituteId,
+    domainRouting.allowGoogleAuth,
+    domainRouting.allowGithubAuth,
+    domainRouting.allowEmailOtpAuth,
+    domainRouting.allowUsernamePasswordAuth,
+    domainRouting.allowPhoneAuth,
+  ]);
   // Providers from stored flags
   // Apple 4.8: the Mac App Store build offers no third-party login at all (the
   // Sign in with Apple plugin is iOS-only, so it cannot be paired with them
@@ -192,8 +246,10 @@ export function LoginForm({
   // where allowGoogleAuth/allowGithubAuth default to TRUE.
   const hideThirdPartyLogin = shouldHideThirdPartyLogin();
   const authProviders = {
-    google: !hideThirdPartyLogin && providerFlags.allowGoogleAuth,
-    github: !hideThirdPartyLogin && providerFlags.allowGithubAuth,
+    google:
+      providersResolved && !hideThirdPartyLogin && providerFlags.allowGoogleAuth,
+    github:
+      providersResolved && !hideThirdPartyLogin && providerFlags.allowGithubAuth,
   };
 
   useEffect(() => {
@@ -1052,7 +1108,7 @@ export function LoginForm({
                   initial={{ y: 10, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.7 }}
-                  className="grid grid-cols-1 gap-3"
+                  className="grid grid-cols-1 gap-stack"
                 >
                   {/* Apple Guideline 4.8: on native iOS, an app offering
                       third-party social login (Google/GitHub) MUST also offer
@@ -1145,6 +1201,7 @@ export function LoginForm({
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
+                              allowSignup={signupOffered}
                             />
                           </motion.div>
                         );
@@ -1167,6 +1224,7 @@ export function LoginForm({
                               onSwitchToSignup={onSwitchToSignup}
                               allowUsernamePasswordAuth={allowUserPass}
                               allowPhoneAuth={allowPhone}
+                              allowSignup={signupOffered}
                             />
                           </motion.div>
                         );
@@ -1186,6 +1244,7 @@ export function LoginForm({
                               onSwitchToPhone={() => setAuthMethod("PHONE")}
                               allowEmailOtpAuth={allowEmail}
                               allowPhoneAuth={allowPhone}
+                              allowSignup={signupOffered}
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}

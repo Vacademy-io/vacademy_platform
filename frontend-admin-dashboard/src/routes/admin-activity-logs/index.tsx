@@ -2,6 +2,12 @@ import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
+/**
+ * The three list filters are multi-select but travel as ONE comma-separated
+ * value each (`?actorId=a,b`). Keeping them as scalars means every link that
+ * was already shared with a single value still resolves, and it sidesteps the
+ * ingress rejecting bracketed `actorId[]=` array params with a 400.
+ */
 export interface AdminActivityLogsSearchParams {
     page?: number;
     size?: number;

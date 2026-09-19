@@ -8,6 +8,7 @@ import {
     TRIGGER_EVALUATION_URL,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { DEFAULT_EVALUATION_MODEL } from '@/routes/ai-center/-types/ai-models';
 
 // Types
 export interface TriggerEvaluationRequest {
@@ -98,6 +99,10 @@ export interface EvaluationProgress {
     };
     completed_questions: QuestionProgress[];
     pending_questions: QuestionProgress[];
+    /** The checked copy THIS run rendered (marks drawn into the PDF), from the
+     *  run's own complete payload — null while in flight, or when the run produced
+     *  no copy. Not the attempt's latest evaluated_file_id. */
+    file_id?: string | null;
     layout_map_url?: string | null;
     rubric_version?: number | null;
     ai_service_job_id?: string | null;
@@ -106,12 +111,12 @@ export interface EvaluationProgress {
 /**
  * Trigger AI evaluation for one or more student attempts
  * @param attempt_ids - Array of student attempt IDs
- * @param preferred_model - Optional AI model to use (default: mistralai/devstral-2512:free)
+ * @param preferred_model - Optional AI model to use (default: DEFAULT_EVALUATION_MODEL)
  * @returns Array of process IDs for tracking evaluation progress
  */
 export const triggerAIEvaluation = async (
     attempt_ids: string[],
-    preferred_model: string = 'mistralai/devstral-2512:free'
+    preferred_model: string = DEFAULT_EVALUATION_MODEL
 ): Promise<string[]> => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',

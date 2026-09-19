@@ -1,6 +1,7 @@
 import { getInstituteId } from '@/constants/helper';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     handleGenerateAssessmentQuestions,
     handleQueryGetListIndividualTopics,
@@ -41,6 +42,10 @@ const GenerateAiQuestionPaperComponent = ({
     form?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
 }) => {
+    const { t } = useTranslation([
+        'aiCenterVsmartExtractGenerateQuestionPaper',
+        'aiCenterQuestionConfigPanel',
+    ]);
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
     const { setLoader, setKey } = useAICenter();
@@ -73,13 +78,13 @@ const GenerateAiQuestionPaperComponent = ({
     useEffect(() => {
         if (!pendingTaskId || !Array.isArray(recentTasksData)) return;
         const match = recentTasksData.find(
-            (t: AITaskIndividualListInterface) => t.id === pendingTaskId
+            (task: AITaskIndividualListInterface) => task.id === pendingTaskId
         );
         if (!match) return;
         if (match.status === 'COMPLETED') {
             setReadyTask(match);
         } else if (match.status === 'FAILED') {
-            setErrorMessage("We couldn't finish this extraction. Want to try again?");
+            setErrorMessage(t('errors.extractionFailed'));
             setPendingTaskId(null);
         }
     }, [recentTasksData, pendingTaskId]);
@@ -123,7 +128,7 @@ const GenerateAiQuestionPaperComponent = ({
             console.log(error);
             setLoader(false);
             setPhase('idle');
-            setErrorMessage("We couldn't pull questions out of this file. Try a different one?");
+            setErrorMessage(t('errors.generateFailed'));
         },
     });
 
@@ -148,7 +153,7 @@ const GenerateAiQuestionPaperComponent = ({
         setPhase('generating');
         pollGenerateAssessment(
             uploadedFilePDFId,
-            buildQuestionPrompt(numQuestions, questionType, difficulty, language),
+            buildQuestionPrompt(t, numQuestions, questionType, difficulty, language),
             ''
         );
     };
@@ -156,7 +161,7 @@ const GenerateAiQuestionPaperComponent = ({
     const processFile = async (file: File) => {
         const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
         if (!ACCEPTED_EXTENSIONS.includes(ext)) {
-            setErrorMessage(`We can't read .${ext} files yet. Try PDF, Word, or PowerPoint.`);
+            setErrorMessage(t('errors.unsupportedFormat', { ext }));
             return;
         }
         setErrorMessage(null);
@@ -172,7 +177,7 @@ const GenerateAiQuestionPaperComponent = ({
                 sourceId: 'STUDENTS',
             });
             if (!fileId) {
-                setErrorMessage("Upload didn't complete. Want to try again?");
+                setErrorMessage(t('errors.uploadFailed'));
                 resetFile();
                 return;
             }
@@ -182,12 +187,12 @@ const GenerateAiQuestionPaperComponent = ({
                 setUploadedFilePDFId(response.pdf_id);
                 setPhase('ready');
             } else {
-                setErrorMessage("We couldn't read this file. Try a different one?");
+                setErrorMessage(t('errors.processFailed'));
                 resetFile();
             }
         } catch (err) {
             console.error(err);
-            setErrorMessage('Something went wrong while reading your file. Try again?');
+            setErrorMessage(t('errors.readFailed'));
             resetFile();
         }
     };
@@ -223,23 +228,20 @@ const GenerateAiQuestionPaperComponent = ({
         phase === 'uploading' || phase === 'processing' || phase === 'generating';
     const workingLabel =
         phase === 'uploading'
-            ? 'Reading your file…'
+            ? t('workingLabel.uploading')
             : phase === 'processing'
-              ? 'Getting your document ready…'
+              ? t('workingLabel.processing')
               : phase === 'generating'
-                ? 'Pulling questions out — usually takes ~30 seconds.'
+                ? t('workingLabel.generating')
                 : '';
 
     return (
         <div className="flex w-full flex-col gap-8 px-4 pb-12 sm:px-8">
             <header className="flex flex-col gap-1">
                 <h1 className="text-2xl font-semibold text-gray-900 sm:text-3xl">
-                    Reuse Existing Questions
+                    {t('header.title')}
                 </h1>
-                <p className="text-sm text-gray-500">
-                    Drop a question paper (PDF, Word, or PowerPoint). We&apos;ll pull the
-                    questions out and turn them into an editable set.
-                </p>
+                <p className="text-sm text-gray-500">{t('header.subtitle')}</p>
             </header>
 
             {!fileChosen ? (
@@ -259,11 +261,9 @@ const GenerateAiQuestionPaperComponent = ({
                     </div>
                     <div className="flex flex-col gap-1">
                         <p className="text-base font-medium text-gray-900">
-                            Drop your question paper here, or click to choose
+                            {t('dropzone.instruction')}
                         </p>
-                        <p className="text-xs text-neutral-500">
-                            PDF, Word, or PowerPoint with existing questions inside.
-                        </p>
+                        <p className="text-xs text-neutral-500">{t('dropzone.hint')}</p>
                     </div>
                 </div>
             ) : (
@@ -278,11 +278,11 @@ const GenerateAiQuestionPaperComponent = ({
                                     {fileName}
                                 </span>
                                 <span className="text-xs text-neutral-500">
-                                    {phase === 'uploading' && 'Uploading…'}
-                                    {phase === 'processing' && 'Reading…'}
-                                    {phase === 'ready' && 'Ready to extract'}
-                                    {phase === 'generating' && 'Extracting questions'}
-                                    {phase === 'done' && 'Done'}
+                                    {phase === 'uploading' && t('fileCard.status.uploading')}
+                                    {phase === 'processing' && t('fileCard.status.processing')}
+                                    {phase === 'ready' && t('fileCard.status.ready')}
+                                    {phase === 'generating' && t('fileCard.status.generating')}
+                                    {phase === 'done' && t('fileCard.status.done')}
                                 </span>
                             </div>
                         </div>
@@ -291,7 +291,7 @@ const GenerateAiQuestionPaperComponent = ({
                                 type="button"
                                 onClick={resetFile}
                                 className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
-                                aria-label="Remove file"
+                                aria-label={t('fileCard.removeAriaLabel')}
                             >
                                 <X size={18} />
                             </button>
@@ -303,7 +303,7 @@ const GenerateAiQuestionPaperComponent = ({
                             readyTask={readyTask}
                             openPreview={openPreviewDialog}
                             setOpenPreview={setOpenPreviewDialog}
-                            heading="Vsmart Extract"
+                            heading={t('productName')}
                             sectionsForm={form}
                             currentSectionIndex={currentSectionIndex}
                             onDraftAnother={() => {
@@ -319,8 +319,8 @@ const GenerateAiQuestionPaperComponent = ({
                         />
                     ) : phase === 'generating' || (pendingTaskId && !readyTask) ? (
                         <GeneratingState
-                            title="Pulling questions out"
-                            subtitle="Reading the paper and digitizing each question. Usually ~30 seconds."
+                            title={t('generatingState.title')}
+                            subtitle={t('generatingState.subtitle')}
                         />
                     ) : isWorking ? (
                         <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
@@ -338,7 +338,7 @@ const GenerateAiQuestionPaperComponent = ({
                             language={language}
                             setLanguage={setLanguage}
                             onSubmit={handleGenerate}
-                            ctaLabel="Extract questions"
+                            ctaLabel={t('questionConfig.ctaLabel')}
                         />
                     ) : null}
                 </div>
@@ -360,14 +360,14 @@ const GenerateAiQuestionPaperComponent = ({
 
             <RecentFilesPanel
                 tasks={recentTasks}
-                title="Your recent extractions"
-                fallbackLabel="Untitled extraction"
-                emptyHint="Your extractions will appear here. Drop a question paper above to start."
+                title={t('recentFiles.title')}
+                fallbackLabel={t('recentFiles.fallbackLabel')}
+                emptyHint={t('recentFiles.emptyHint')}
                 onOpenAll={() => setEnableTasksDialog(true)}
             />
 
             <AITasksList
-                heading="Vsmart Extract"
+                heading={t('productName')}
                 enableDialog={enableTasksDialog}
                 setEnableDialog={setEnableTasksDialog}
                 sectionsForm={form}

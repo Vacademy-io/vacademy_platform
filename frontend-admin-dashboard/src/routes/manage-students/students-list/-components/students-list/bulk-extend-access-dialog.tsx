@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
@@ -26,20 +28,15 @@ type Step = 'CONFIG' | 'PREVIEW' | 'RESULTS';
  * "Set total days from enrollment" is deliberately absent: each learner enrolled on a
  * different date, so it would silently hand them different end dates.
  */
-const MODE_LABELS: Record<Exclude<AccessChangeMode, 'set_from_enrollment'>, string> = {
-    extend: 'Extend by days',
-    set_date: 'Set the same expiry date for everyone',
-    unlimited: 'Give unlimited access',
-};
-
-const MODE_HINTS: Record<Exclude<AccessChangeMode, 'set_from_enrollment'>, string> = {
-    extend: 'Each learner is extended from their own current expiry, so nobody loses time they already had. Already-expired learners are counted from today.',
-    set_date: 'Every selected learner ends on this exact date, whatever they have now.',
-    unlimited: 'Removes the expiry entirely for every selected learner.',
-};
-
-const formatExpiry = (value: string | null | undefined) =>
-    value ? format(new Date(value), 'd MMM yyyy') : 'Unlimited';
+/** Mode labels/hints are display-only — the record key itself stays the untranslated
+ *  AccessChangeMode value used for dispatch/comparison/payload logic below. */
+const buildModeConfig = (
+    t: TFunction
+): Record<Exclude<AccessChangeMode, 'set_from_enrollment'>, { label: string; hint: string }> => ({
+    extend: { label: t('modes.extend.label'), hint: t('modes.extend.hint') },
+    set_date: { label: t('modes.setDate.label'), hint: t('modes.setDate.hint') },
+    unlimited: { label: t('modes.unlimited.label'), hint: t('modes.unlimited.hint') },
+});
 
 export const BulkExtendAccessDialog = ({
     open,
@@ -48,6 +45,7 @@ export const BulkExtendAccessDialog = ({
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) => {
+    const { t } = useTranslation('manageStudentsBulkExtendAccessDialog');
     const instituteId = getInstituteId() || '';
     const { bulkActionInfo, closeAllDialogs } = useDialogStore();
 
@@ -61,6 +59,11 @@ export const BulkExtendAccessDialog = ({
     const [finalResults, setFinalResults] = useState<LearnerAccessChangeResponse | null>(null);
 
     const { mutateAsync: changeAccess, isPending } = useChangeLearnerAccessMutation();
+
+    const modeConfig = useMemo(() => buildModeConfig(t), [t]);
+
+    const formatExpiry = (value: string | null | undefined) =>
+        value ? format(new Date(value), 'd MMM yyyy') : t('unlimitedLabel');
 
     const learners = (bulkActionInfo?.selectedStudents ?? []).filter((s) => s?.user_id);
     const userIds = Array.from(new Set(learners.map((s) => s.user_id)));
@@ -115,7 +118,7 @@ export const BulkExtendAccessDialog = ({
             setPreviewData(await changeAccess(buildRequest(true)));
             setStep('PREVIEW');
         } catch (err) {
-            toast.error(errorMessage(err, 'Preview failed'));
+            toast.error(errorMessage(err, t('toasts.previewFailed')));
         }
     };
 
@@ -125,24 +128,31 @@ export const BulkExtendAccessDialog = ({
             setFinalResults(result);
             setStep('RESULTS');
             if (result.summary.updated > 0) {
-                toast.success(`Access updated for ${result.summary.updated} enrollment(s)`);
+                toast.success(t('toasts.accessUpdated', { count: result.summary.updated }));
             } else {
-                toast.warning('No enrollments were changed.');
+                toast.warning(t('toasts.noChanges'));
             }
         } catch (err) {
-            toast.error(errorMessage(err, 'Access change failed'));
+            toast.error(errorMessage(err, t('toasts.accessChangeFailed')));
         }
     };
 
     const renderConfig = () => (
         <div className="flex flex-col gap-5">
             <p className="text-sm text-neutral-600">
-                Change course access for <strong>{userIds.length}</strong> selected learner(s).
+                <Trans
+                    t={t}
+                    i18nKey="config.changePrompt"
+                    count={userIds.length}
+                    components={{ strong: <strong /> }}
+                />
             </p>
 
             <div className="flex flex-col gap-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                <p className="text-caption font-medium text-neutral-600">What to change</p>
-                {(Object.keys(MODE_LABELS) as Array<keyof typeof MODE_LABELS>).map((m) => (
+                <p className="text-caption font-medium text-neutral-600">
+                    {t('config.whatToChange')}
+                </p>
+                {(Object.keys(modeConfig) as Array<keyof typeof modeConfig>).map((m) => (
                     <label key={m} className="flex items-start gap-2">
                         <input
                             type="radio"
@@ -152,8 +162,10 @@ export const BulkExtendAccessDialog = ({
                             className="mt-0.5 text-primary-500"
                         />
                         <span className="text-caption text-neutral-700">
-                            <strong>{MODE_LABELS[m]}</strong>
-                            <span className="block text-2xs text-neutral-500">{MODE_HINTS[m]}</span>
+                            <strong>{modeConfig[m].label}</strong>
+                            <span className="block text-2xs text-neutral-500">
+                                {modeConfig[m].hint}
+                            </span>
                         </span>
                     </label>
                 ))}
@@ -164,7 +176,7 @@ export const BulkExtendAccessDialog = ({
                             htmlFor="bulk-days"
                             className="text-2xs font-medium text-neutral-600"
                         >
-                            Days to add
+                            {t('config.daysToAdd')}
                         </label>
                         <Input
                             id="bulk-days"
@@ -173,9 +185,7 @@ export const BulkExtendAccessDialog = ({
                             onChange={(e) => setDays(e.target.value)}
                             className="h-8 w-36 text-caption"
                         />
-                        <p className="text-2xs text-neutral-500">
-                            Use a negative number to shorten access.
-                        </p>
+                        <p className="text-2xs text-neutral-500">{t('config.negativeHint')}</p>
                     </div>
                 )}
 
@@ -185,7 +195,7 @@ export const BulkExtendAccessDialog = ({
                             htmlFor="bulk-expiry"
                             className="text-2xs font-medium text-neutral-600"
                         >
-                            New expiry date
+                            {t('config.newExpiryDate')}
                         </label>
                         <Input
                             id="bulk-expiry"
@@ -205,28 +215,29 @@ export const BulkExtendAccessDialog = ({
                     className="mt-0.5"
                 />
                 <span className="text-caption text-neutral-700">
-                    Apply to <strong>every course</strong> these learners are enrolled in
+                    <Trans
+                        t={t}
+                        i18nKey="config.applyToEveryCourse"
+                        components={{ strong: <strong /> }}
+                    />
                     <span className="block text-2xs text-neutral-500">
-                        Off by default — only the {packageSessionIds.length} batch(es) shown in this
-                        list are changed.
+                        {t('config.batchesHint', { count: packageSessionIds.length })}
                     </span>
                 </span>
             </label>
 
             <div className="flex flex-col gap-1">
                 <label htmlFor="bulk-reason" className="text-caption font-medium text-neutral-600">
-                    Reason (optional)
+                    {t('config.reasonLabel')}
                 </label>
                 <Textarea
                     id="bulk-reason"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. Extending everyone after the schedule change"
+                    placeholder={t('config.reasonPlaceholder')}
                     className="min-h-16 text-caption"
                 />
-                <p className="text-2xs text-neutral-500">
-                    Stored on every access-history row this change writes.
-                </p>
+                <p className="text-2xs text-neutral-500">{t('config.reasonHint')}</p>
             </div>
         </div>
     );
@@ -263,8 +274,10 @@ export const BulkExtendAccessDialog = ({
                             </span>
                             {r.days_delta != null && (
                                 <span className="text-neutral-500">
-                                    ({r.days_delta > 0 ? '+' : ''}
-                                    {r.days_delta}d)
+                                    {t('resultList.daysDelta', {
+                                        count: r.days_delta,
+                                        sign: r.days_delta > 0 ? '+' : '',
+                                    })}
                                 </span>
                             )}
                         </div>
@@ -276,16 +289,18 @@ export const BulkExtendAccessDialog = ({
         </div>
     );
 
-    const summaryLine = (d: LearnerAccessChangeResponse | null, verb: string) =>
-        `${d?.summary.updated ?? 0} enrollment(s) ${verb}, ${d?.summary.skipped ?? 0} skipped, ${
-            d?.summary.failed ?? 0
-        } failed.`;
+    const summaryLine = (d: LearnerAccessChangeResponse | null, ns: 'preview' | 'results') =>
+        t(`${ns}.summaryLine`, {
+            count: d?.summary.updated ?? 0,
+            skipped: d?.summary.skipped ?? 0,
+            failed: d?.summary.failed ?? 0,
+        });
 
     const footer = (
         <div className="flex items-center gap-2">
             {step === 'CONFIG' && (
                 <MyButton scale="medium" disable={!isValid || isPending} onClick={handlePreview}>
-                    {isPending ? 'Checking…' : 'Preview changes'}
+                    {isPending ? t('footer.checking') : t('footer.previewChanges')}
                 </MyButton>
             )}
             {step === 'PREVIEW' && (
@@ -295,14 +310,14 @@ export const BulkExtendAccessDialog = ({
                         scale="medium"
                         onClick={() => setStep('CONFIG')}
                     >
-                        Back
+                        {t('footer.back')}
                     </MyButton>
                     <MyButton
                         scale="medium"
                         disable={isPending || (previewData?.summary.updated ?? 0) === 0}
                         onClick={handleConfirm}
                     >
-                        {isPending ? 'Applying…' : 'Apply changes'}
+                        {isPending ? t('footer.applying') : t('footer.applyChanges')}
                     </MyButton>
                 </>
             )}
@@ -314,7 +329,7 @@ export const BulkExtendAccessDialog = ({
                         closeAllDialogs();
                     }}
                 >
-                    Done
+                    {t('footer.done')}
                 </MyButton>
             )}
         </div>
@@ -322,7 +337,7 @@ export const BulkExtendAccessDialog = ({
 
     return (
         <MyDialog
-            heading="Extend Course Access"
+            heading={t('dialogTitle')}
             open={open}
             onOpenChange={handleOpenChange}
             dialogWidth="max-w-lg"
@@ -332,7 +347,7 @@ export const BulkExtendAccessDialog = ({
             {step === 'PREVIEW' && (
                 <div className="flex flex-col gap-4">
                     <p className="text-sm text-neutral-600">
-                        {summaryLine(previewData, 'will change')} Nothing has been saved yet.
+                        {summaryLine(previewData, 'preview')} {t('preview.notSaved')}
                     </p>
                     {previewData && renderResultList(previewData)}
                 </div>
@@ -340,7 +355,7 @@ export const BulkExtendAccessDialog = ({
             {step === 'RESULTS' && (
                 <div className="flex flex-col gap-4">
                     <p className="text-sm text-neutral-600">
-                        {summaryLine(finalResults, 'updated')}
+                        {summaryLine(finalResults, 'results')}
                     </p>
                     {finalResults && renderResultList(finalResults)}
                 </div>

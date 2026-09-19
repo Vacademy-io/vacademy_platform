@@ -1,0 +1,13 @@
+{
+    "loadingGoogleAccounts": "Chargement des comptes Google…",
+    "notSetUpMessage": "L'intégration Google Meet n'est pas configurée pour cet établissement. Connectez un compte Google Workspace sous <strong>Paramètres → Session en direct → Intégration Google Meet</strong>, ou collez un lien de réunion dans le champ Lien du cours en direct ci-dessous.",
+    "googleMeetSettings": "Paramètres Google Meet",
+    "googleAccountOrganizer": "Compte Google (organisateur)",
+    "defaultSuffix": "(par défaut)",
+    "linkCreatedOnAccount": "Un lien Google Meet est créé sur ce compte.",
+    "anyoneWithLinkJoins": "Toute personne disposant du lien peut rejoindre directement (sans frapper) — idéal pour les apprenants.",
+    "guestsMustKnock": "Les invités doivent frapper et l'hôte doit admettre chacun d'eux.",
+    "autoRecordingOn": "L'enregistrement automatique est ACTIVÉ — un enseignant connecté au Workspace de l'établissement doit être présent.",
+    "autoRecordingOff": "L'enregistrement automatique est DÉSACTIVÉ.",
+    "manageJoinAccessAndRecording": "Gérez l'accès et l'enregistrement par compte sous Paramètres → Session en direct → Intégration Google Meet."
+}

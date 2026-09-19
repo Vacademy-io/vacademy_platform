@@ -28,6 +28,7 @@ import { useRefetchStore } from '@/routes/assessment/question-papers/-global-sta
 import { QuestionType } from '@/constants/dummy-data';
 import { z } from 'zod';
 import { uploadQuestionPaperFormSchema } from '../../-utils/upload-question-paper-form-schema';
+import { useTranslation } from 'react-i18next';
 
 type QuestionPaperForm = z.infer<typeof uploadQuestionPaperFormSchema>;
 export interface QuestionPaperTemplateProps {
@@ -52,6 +53,7 @@ export function QuestionPaperTemplate({
     currentQuestionIndex,
     setCurrentQuestionIndex,
 }: QuestionPaperTemplateProps) {
+    const { t } = useTranslation('evaluatorAiQuestionPaperTemplate');
     const [isQuestionPaperTemplateDialog, setIsQuestionPaperTemplateDialog] = useState(false);
     const { handleRefetchData } = useRefetchStore();
     const queryClient = useQueryClient();
@@ -142,7 +144,7 @@ export function QuestionPaperTemplate({
         onSuccess: () => {
             setCurrentQuestionIndex(0);
             handleRefetchData();
-            toast.success('Question Paper updated successfully', {
+            toast.success(t('toast.questionPaperUpdated'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -251,7 +253,7 @@ export function QuestionPaperTemplate({
                                             : handleTriggerForm
                                     }
                                 >
-                                    Save
+                                    {t('common.save')}
                                 </Button>
                                 <DialogClose>
                                     <Button
@@ -259,7 +261,7 @@ export function QuestionPaperTemplate({
                                         variant="outline"
                                         className="w-44 bg-transparent shadow-none hover:bg-transparent"
                                     >
-                                        Exit
+                                        {t('common.exit')}
                                     </Button>
                                 </DialogClose>
                             </div>
@@ -271,7 +273,7 @@ export function QuestionPaperTemplate({
                                     className="max-w-sm bg-primary-500 text-xs text-white shadow-none"
                                     onClick={handleAddNewQuestion}
                                 >
-                                    Add Question
+                                    {t('common.addQuestion')}
                                 </Button>
 
                                 <div className="flex h-[325vh] w-40 flex-col items-start justify-between gap-4 overflow-x-hidden overflow-y-scroll p-2">
@@ -345,8 +347,9 @@ export function QuestionPaperTemplate({
                                                                             side="right"
                                                                         >
                                                                             <p>
-                                                                                Question isn&apos;t
-                                                                                complete
+                                                                                {t(
+                                                                                    'common.questionIncomplete'
+                                                                                )}
                                                                             </p>
                                                                         </TooltipContent>
                                                                     )}
@@ -363,7 +366,7 @@ export function QuestionPaperTemplate({
                             <Separator orientation="vertical" className="min-h-screen" />
                             {questions.length === 0 ? (
                                 <div className="flex h-screen w-screen items-center justify-center">
-                                    <h1>No Question Exists.</h1>
+                                    <h1>{t('common.noQuestionExists')}</h1>
                                 </div>
                             ) : (
                                 <MainViewComponentFactory

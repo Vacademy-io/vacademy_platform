@@ -1,0 +1,25 @@
+{
+    "batchDialog": {
+        "moreLink_one": "+{{count}} more",
+        "moreLink_other": "+{{count}} more",
+        "title": "Assessment Batches"
+    },
+    "info": {
+        "createdOn": "Created on: {{date}}",
+        "subject": "{{label}}: {{name}}",
+        "startDateTime": "Start Date and Time: {{date}}",
+        "endDateTime": "End Date and Time: {{date}}",
+        "duration": {
+            "label": "Duration: ",
+            "hours_one": "{{count}} hr",
+            "hours_other": "{{count}} hrs",
+            "minutes_one": "{{count}} min",
+            "minutes_other": "{{count}} min"
+        },
+        "totalParticipants_one": "Total Participants: {{count}}",
+        "totalParticipants_other": "Total Participants: {{count}}"
+    },
+    "joinLink": {
+        "label": "Join Link:"
+    }
+}

@@ -9,8 +9,16 @@ import {
     PROVIDER_MEETING_AVAILABILITY_FOR_SESSION,
     // GET_LIVE_SESSIONS,
 } from '@/constants/urls';
+import i18next from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { LiveSessionStep1RequestDTO, LiveSessionStep2RequestDTO } from '../../-constants/helper';
+
+// This module has no React context of its own (its exports are called from
+// callers' event handlers, not rendered), so read the current locale off the
+// shared i18next instance instead of useTranslation — same pattern as
+// Payment/utils/utils.ts.
+const t = (key: string, options?: Record<string, unknown>): string =>
+    i18next.t(`studyLibraryLiveSessionScheduleUtils:${key}`, options) as string;
 
 export interface BulkLiveSessionRequest {
     sessions: LiveSessionStep1RequestDTO[];
@@ -29,6 +37,11 @@ export interface BulkLiveSessionRowResult {
     title?: string;
     error?: string;
     step2_applied: boolean;
+    /**
+     * Non-fatal problems with a row that still succeeded — currently
+     * instructor identifiers from the CSV that matched nobody in the institute.
+     */
+    warnings?: string[];
 }
 
 export interface BulkLiveSessionResponse {
@@ -114,7 +127,7 @@ export const createLiveSessionsChunked = async (
                     await sleep(retryBackoffMs); // one quick retry
                     continue;
                 }
-                const message = err instanceof Error ? err.message : 'Request failed';
+                const message = err instanceof Error ? err.message : t('requestFailed');
                 return chunkSessions.map((s, i) => ({
                     index: start + i,
                     success: false,

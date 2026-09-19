@@ -76,6 +76,30 @@ public class ReportExportExecutorConfig {
         return executor;
     }
 
+    /**
+     * Dedicated pool for post-submit LLM-analytics enrichment
+     * ({@code AssessmentLLMAnalyticsService}). Found at the 1000-VU load test
+     * (2026-08-27): the method was named Async but ran synchronously on the
+     * Tomcat thread — per submit it built the enriched payload, ran the
+     * comparison/rank query and called admin-core over HTTP, which serialized
+     * the whole request pool during the submit wave (p95 submit 60s, plain
+     * syncs starved to 16s). Analytics is documented fire-and-forget, so under
+     * overload dropping the oldest job is correct; the deep queue means drops
+     * only start past ~1000 pending submits' worth of work.
+     */
+    @Bean("assessmentAnalyticsExecutor")
+    public ThreadPoolTaskExecutor assessmentAnalyticsExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(3);
+        executor.setMaxPoolSize(3);
+        executor.setQueueCapacity(1000);
+        executor.setThreadNamePrefix("assessment-analytics-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardOldestPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.initialize();
+        return executor;
+    }
+
     @Bean("reportExportExecutor")
     public ThreadPoolTaskExecutor reportExportExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

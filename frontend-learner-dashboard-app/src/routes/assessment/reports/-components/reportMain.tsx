@@ -21,6 +21,7 @@ import { FileText, Eye } from "@phosphor-icons/react";
 import { getFileDetail } from "@/services/upload_file";
 import { toast } from "sonner";
 import { EvaluatedReportDialog } from "@/components/common/student-test-records/evaluated-report-dialog";
+import { useTranslation } from "react-i18next";
 
 interface EvaluatedPreview {
   url: string;
@@ -29,12 +30,12 @@ interface EvaluatedPreview {
   title: string;
 }
 
-const PLAY_MODE_LABELS: Record<string, string> = {
-  EXAM: "Exam",
-  MOCK: "Mock",
-  PRACTICE: "Practice",
-  SURVEY: "Survey",
-  MANUAL_UPLOAD_EXAM: "Offline exam",
+const PLAY_MODE_KEYS: Record<string, string> = {
+  EXAM: "card.playMode.exam",
+  MOCK: "card.playMode.mock",
+  PRACTICE: "card.playMode.practice",
+  SURVEY: "card.playMode.survey",
+  MANUAL_UPLOAD_EXAM: "card.playMode.offlineExam",
 };
 
 export const viewStudentReport = async (
@@ -75,6 +76,7 @@ const AssessmentReportList = ({
 }: {
   assessment_types: "HOMEWORK" | "ASSESSMENT";
 }) => {
+  const { t } = useTranslation("assessment");
   const navigate = useNavigate();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
@@ -96,7 +98,7 @@ const AssessmentReportList = ({
   const { setNavHeading } = useNavHeadingStore();
 
   useEffect(() => {
-    setNavHeading("Reports");
+    setNavHeading(t("reportList.navHeading"));
   }, []);
 
   useEffect(() => {
@@ -152,7 +154,7 @@ const AssessmentReportList = ({
       });
       const fileId = res.data?.evaluated_file_id;
       if (!fileId) {
-        toast.error("Evaluated copy is not available yet.");
+        toast.error(t("reportList.toast.evaluatedNotAvailable"));
         return;
       }
       const detail = await getFileDetail(fileId);
@@ -161,15 +163,17 @@ const AssessmentReportList = ({
           url: detail.url,
           fileName:
             detail.fileName ||
-            `${report.assessment_name || "assessment"} - evaluated`,
+            t("reportList.evaluatedFileName", {
+              name: report.assessment_name || t("reportList.fallback.assessmentName"),
+            }),
           fileType: detail.fileType,
-          title: `${report.assessment_name || "Evaluated copy"}`,
+          title: `${report.assessment_name || t("reportList.fallback.evaluatedCopy")}`,
         });
       } else {
-        toast.error("Could not open the evaluated copy.");
+        toast.error(t("reportList.toast.evaluatedOpenFailed"));
       }
     } catch {
-      toast.error("Could not open the evaluated copy.");
+      toast.error(t("reportList.toast.evaluatedOpenFailed"));
     } finally {
       setLoadingEvaluatedFor(null);
     }
@@ -223,7 +227,7 @@ const AssessmentReportList = ({
       setHasMore(!response.data.last);
     } catch (err) {
       console.error("Error fetching reports:", err);
-      setError("Failed to load reports. Please try again later.");
+      setError(t("reportList.error.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -272,7 +276,7 @@ const AssessmentReportList = ({
     return (
       <div className="p-4 md:p-6 lg:p-8">
         <ErrorState
-          title="Could not load reports"
+          title={t("reportList.error.loadTitle")}
           message={error}
           onRetry={() => fetchReports()}
         />
@@ -308,14 +312,14 @@ const AssessmentReportList = ({
             ref={index === reports.length - 1 ? lastReportElementRef : null}
           >
             <Card className="w-full transition-shadow hover:shadow-sm [.ui-play_&]:rounded-2xl">
-              <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-5 sm:p-5">
+              <CardContent className="flex flex-col gap-4 p-card sm:flex-row sm:items-center sm:gap-5 sm:p-5">
                 {/* Score first: the figure the learner came for */}
                 <div className="flex w-fit shrink-0 items-baseline gap-1.5 rounded-lg bg-primary-50 px-4 py-2 sm:w-24 sm:flex-col sm:items-center sm:gap-0 sm:py-3 [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-gold-soft [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300">
                   <span className="text-h2 font-bold tabular-nums text-primary-500 [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">
                     {score != null ? score : "-"}
                   </span>
                   <span className="text-3xs font-medium uppercase tracking-wide text-muted-foreground [.ui-play_&]:text-play-ink/70">
-                    marks
+                    {t("reportList.meta.marksLabel")}
                   </span>
                 </div>
 
@@ -327,8 +331,8 @@ const AssessmentReportList = ({
                     {report.evaluation_type && (
                       <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-2xs font-medium text-slate-700">
                         {report.evaluation_type === "MANUAL"
-                          ? "Manual"
-                          : "Auto"}
+                          ? t("reportList.status.manual")
+                          : t("reportList.status.auto")}
                       </span>
                     )}
                     <span
@@ -338,11 +342,15 @@ const AssessmentReportList = ({
                           : "inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-2xs font-medium text-amber-700"
                       }
                     >
-                      {released ? "Released" : "Pending evaluation"}
+                      {released
+                        ? t("reportList.status.released")
+                        : t("reportList.status.pendingEvaluation")}
                     </span>
                     {assessment_types !== "HOMEWORK" && (
                       <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
-                        {PLAY_MODE_LABELS[report.play_mode] ?? report.play_mode}
+                        {PLAY_MODE_KEYS[report.play_mode]
+                          ? t(PLAY_MODE_KEYS[report.play_mode])
+                          : report.play_mode}
                       </span>
                     )}
                   </div>
@@ -360,7 +368,7 @@ const AssessmentReportList = ({
                       onClick={() => handleViewAIReport(report)}
                       disable={!released}
                     >
-                      View AI Report
+                      {t("reportList.button.viewAiReport")}
                     </MyButton>
                   )}
                   <MyButton
@@ -369,7 +377,7 @@ const AssessmentReportList = ({
                     onClick={() => handleViewComparison(report)}
                     disable={!released}
                   >
-                    Report
+                    {t("reportList.button.report")}
                   </MyButton>
                   {isManualReport(report) && (
                     <MyButton
@@ -381,8 +389,8 @@ const AssessmentReportList = ({
                       <span className="inline-flex items-center gap-1.5">
                         <Eye className="size-4" />
                         {loadingEvaluatedFor === report.attempt_id
-                          ? "Opening…"
-                          : "View Evaluated"}
+                          ? t("reportList.button.opening")
+                          : t("reportList.button.viewEvaluated")}
                       </span>
                     </MyButton>
                   )}
@@ -401,17 +409,20 @@ const AssessmentReportList = ({
 
       {!hasMore && reports.length > 0 && (
         <p className="text-center text-caption text-muted-foreground py-4">
-          No more reports to load
+          {t("reportList.meta.noMore")}
         </p>
       )}
 
       {reports.length === 0 && !loading && (
         <EmptyState
           icon={FileText}
-          title="No reports yet"
-          description="Reports appear here once you finish a test and its results are released."
+          title={t("reportList.empty.title")}
+          description={t("reportList.empty.description")}
           action={{
-            label: assessment_types === "HOMEWORK" ? "Go to homework" : "Go to tests",
+            label:
+              assessment_types === "HOMEWORK"
+                ? t("reportList.empty.actionHomework")
+                : t("reportList.empty.actionAssessment"),
             onClick: () =>
               navigate({
                 to:
@@ -433,7 +444,7 @@ const AssessmentReportList = ({
         fileUrl={evaluatedPreview?.url ?? null}
         fileName={evaluatedPreview?.fileName}
         fileType={evaluatedPreview?.fileType}
-        title={evaluatedPreview?.title || "Evaluated copy"}
+        title={evaluatedPreview?.title || t("reportList.fallback.evaluatedCopy")}
       />
     </div>
   );

@@ -1,0 +1,14 @@
+{
+    "evaluatingStudents": "Please wait we are Evaluating students...",
+    "evaluatedStudentsSuccess_one": "Successfully evaluated {{count}} student",
+    "evaluatedStudentsSuccess_other": "Successfully evaluated {{count}} students",
+    "fileProcessingRetry": "File is processing please try again",
+    "evaluationFailedFor": "Evaluation failed for {{assessment}}",
+    "failedToEvaluateStudents": "Failed to evaluate students",
+    "evaluationList": "Evaluation list",
+    "evaluationListForAssessment": "Evaluation list for {{assessment}}",
+    "evaluateStudents": "Evaluate Students",
+    "noEvaluatedStudents": "No Evaluated Students",
+    "noEvaluatedStudentsDescription": "You haven't evaluated any students yet. Click the \"Evaluate Student\" button to select students for evaluation.",
+    "selectStudentsForAssignment": "Select Students for Assignment"
+}

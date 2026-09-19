@@ -1,0 +1,8 @@
+{
+    "view": "عرض",
+    "markingCriteriaFor": "معايير التقييم لـ {{marks}} درجة",
+    "selectedCriteria": "المعايير المحددة:",
+    "criteriaColumn": "المعيار",
+    "marksColumn": "الدرجات",
+    "noCriteriaSelected": "لم يتم تحديد أي معايير، يرجى اختيار المعايير من القائمة المتاحة"
+}

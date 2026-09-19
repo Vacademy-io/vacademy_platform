@@ -1,0 +1,10 @@
+{
+    "selectionLabel": "{{session}} चयन",
+    "selectExisting": "मौजूदा {{session}} चुनें",
+    "createNew": "नया {{session}} बनाएं",
+    "selectPlaceholder": "एक {{session}} चुनें",
+    "startDate": "प्रारंभ तिथि: {{date}}",
+    "validation": {
+        "selectSession": "कृपया एक सेशन चुनें"
+    }
+}

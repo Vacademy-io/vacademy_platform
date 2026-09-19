@@ -1,0 +1,17 @@
+{
+    "overduePayment": {
+        "title": "{{name}} — {{amount}} en retard",
+        "subtitle_one": "{{count}} jour de retard · {{feeType}}",
+        "subtitle_many": "{{count}} jours de retard · {{feeType}}",
+        "subtitle_other": "{{count}} jours de retard · {{feeType}}",
+        "defaultFeeType": "Frais"
+    },
+    "pendingApproval": {
+        "title": "Approuver l'ajustement pour {{name}}",
+        "subtitle": "{{type}} · {{amount}}",
+        "defaultType": "Ajustement"
+    },
+    "unreadAlert": {
+        "defaultTitle": "Notification"
+    }
+}

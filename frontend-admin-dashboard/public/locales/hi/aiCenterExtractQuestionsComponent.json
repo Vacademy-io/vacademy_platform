@@ -1,0 +1,14 @@
+{
+    "trigger": {
+        "label": "प्रश्न निकालें"
+    },
+    "dialog": {
+        "title": "प्रश्न निकालें",
+        "promptLabel": "प्रॉम्प्ट",
+        "promptPlaceholder": "अपना प्रॉम्प्ट यहाँ दर्ज करें",
+        "extractButton": "निकालें"
+    },
+    "tasksList": {
+        "heading": "वीस्मार्ट एक्सट्रैक्ट"
+    }
+}

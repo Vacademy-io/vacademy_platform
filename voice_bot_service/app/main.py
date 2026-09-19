@@ -30,6 +30,7 @@ from fastapi import APIRouter, FastAPI, Query, Request, Response, WebSocket
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from . import admin_core
+from .ambience import build_ambience_mixer
 from .bot import CallOutcome, run_bot
 from . import ttscache, ttswarm
 from .config import get_settings
@@ -330,7 +331,7 @@ async def tts_cache_warm(request: Request):
             model=(body.get("model") or "").strip(),
             voice=(body.get("voice") or "").strip(),
             pace=body.get("pace"), temperature=body.get("temperature"),
-            texts=texts)
+            texts=texts, language=body.get("language"))
     except Exception:
         logger.exception("tts-cache warm failed")
         return JSONResponse({"error": "warm failed"}, status_code=502)
@@ -547,7 +548,8 @@ async def _edge_tts_mp3(text: str, voice: str, pace: float) -> bytes:
     return out
 
 
-async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> bytes:
+async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float,
+                            language: str | None = None) -> bytes:
     """One-shot Smallest.ai Lightning synthesis over its websocket -> WAV bytes.
 
     Protocol probe-verified 2026-08-05: one JSON message with flush=True returns
@@ -561,6 +563,7 @@ async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> b
     except ImportError:
         logger.error("preview: websockets missing for smallest")
         return b""
+    from .speech_language import smallest_language_code
     pcm = bytearray()
     try:
         async with websockets.connect(
@@ -569,7 +572,7 @@ async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> b
                 open_timeout=15) as ws:
             await ws.send(json.dumps({
                 "text": text, "voice_id": (voice or s.smallest_voice).strip(),
-                "model": model, "language": "hi",
+                "model": model, "language": smallest_language_code(language),
                 "sample_rate": s.smallest_sample_rate, "output_format": "pcm",
                 "speed": max(0.5, min(2.0, pace)), "continue": False, "flush": True,
             }))
@@ -608,7 +611,11 @@ async def preview(
     lang: str = Query("hi-IN", max_length=8),
     pace: float = Query(1.0, ge=0.5, le=2.0),
     temperature: float | None = Query(None, ge=0.01, le=2.0),
-    model: str = Query("sarvam", max_length=24),
+    # 24 was too short for the one form that needs it: "smallest:lightning_v3.1_pro"
+    # is 27 chars, so the documented per-model escape hatch 422'd before reaching
+    # any vendor. Still capped - this is a public endpoint - just not below the
+    # length of its own longest legitimate value.
+    model: str = Query("sarvam", max_length=48),
 ):
     """Voice tester for the admin AI-Agents editor: speak a short sample text in any
     Bulbul speaker at a chosen pace/expressiveness, so admins can A/B voices before
@@ -662,18 +669,17 @@ async def preview(
         if not s.smallest_api_key:
             logger.warning("preview: smallest requested but SMALLEST_API_KEY unset")
             return Response(status_code=503)
-        sm_model = s.smallest_model
-        if ":" in engine:
-            cand = engine.split(":", 1)[1].strip()
-            if cand:
-                sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
+        from .providers import smallest_model_for
+        sm_model = smallest_model_for(engine)
+        from .speech_language import smallest_language_code
+        language = smallest_language_code(lang)
         key = hashlib.sha1(
-            f"pv|{sm_model}|{voice}|{pace}|{text}".encode("utf-8")).hexdigest()
+            f"pv|{sm_model}|{voice}|{pace}|{language}|{text}".encode("utf-8")).hexdigest()
         # Lightning streams raw PCM over its websocket; wrap as WAV (same reason
         # as the Rumik path — no mp3 encoder in this image).
         path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
         if not os.path.exists(path):
-            raw = await _smallest_tts_wav(text, voice, sm_model, pace)
+            raw = await _smallest_tts_wav(text, voice, sm_model, pace, language)
             if not raw:
                 return Response(status_code=502)
             if not _cache_write(path, raw):
@@ -1083,6 +1089,9 @@ async def ws_endpoint(websocket: WebSocket):
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
+                # Room tone under every call — started by the transport on its
+                # StartFrame, i.e. before the greeting (app/ambience.py).
+                audio_out_mixer=build_ambience_mixer(s),
                 # pipecat 1.4: NO vad_analyzer here — the VAD (with the telephony
                 # min_volume=0.35 tuning from live call 8e1e00ad) lives on the
                 # user aggregator in bot.run_bot, alongside Smart Turn v3.

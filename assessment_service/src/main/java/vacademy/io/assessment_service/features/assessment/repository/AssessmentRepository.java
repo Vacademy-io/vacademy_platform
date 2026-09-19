@@ -233,6 +233,10 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, sa.report_release_status, " +
             "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY CASE WHEN sa.status = 'LIVE' THEN 0 ELSE 1 END, sa.start_time DESC, sa.created_at DESC, sa.id DESC) AS rn , COUNT(*) FILTER (WHERE sa.status IN ('LIVE', 'ENDED')) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
             "FROM public.student_attempt sa " +
+            // See note on the count query below: restricts the window to this learner's
+            // registrations. Semantically identical, and turns a full-table ranking that is
+            // re-scanned per row into an indexed lookup.
+            "WHERE (:checkUserIds IS NULL OR sa.registration_id IN (SELECT aur2.id FROM public.assessment_user_registration aur2 WHERE aur2.user_id IN :userIds)) " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
             "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
@@ -255,6 +259,10 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, sa.report_release_status, " +
             "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY CASE WHEN sa.status = 'LIVE' THEN 0 ELSE 1 END, sa.start_time DESC, sa.created_at DESC, sa.id DESC) AS rn , COUNT(*) FILTER (WHERE sa.status IN ('LIVE', 'ENDED')) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
             "FROM public.student_attempt sa " +
+            // See note on the count query below: restricts the window to this learner's
+            // registrations. Semantically identical, and turns a full-table ranking that is
+            // re-scanned per row into an indexed lookup.
+            "WHERE (:checkUserIds IS NULL OR sa.registration_id IN (SELECT aur2.id FROM public.assessment_user_registration aur2 WHERE aur2.user_id IN :userIds)) " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +
@@ -275,6 +283,13 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, sa.report_release_status, " +
                             "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY CASE WHEN sa.status = 'LIVE' THEN 0 ELSE 1 END, sa.start_time DESC, sa.created_at DESC, sa.id DESC) AS rn , COUNT(*) FILTER (WHERE sa.status IN ('LIVE', 'ENDED')) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
                             "FROM public.student_attempt sa " +
+                            // Restrict the window to this learner's own registrations. Without it
+                            // Postgres ranks EVERY attempt in the table and re-runs that scan per
+                            // matching row, which is what made the learner exam list take seconds
+                            // during an arrival burst. The outer join already requires
+                            // aur.id = registration_id with aur.user_id IN :userIds, so this filter
+                            // cannot change the result set.
+                            "WHERE (:checkUserIds IS NULL OR sa.registration_id IN (SELECT aur2.id FROM public.assessment_user_registration aur2 WHERE aur2.user_id IN :userIds)) " +
                             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
                             "AND (:checkBatches IS NULL OR abr.batch_id IN :batchIds) " +
@@ -293,6 +308,13 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, sa.report_release_status, " +
                             "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY CASE WHEN sa.status = 'LIVE' THEN 0 ELSE 1 END, sa.start_time DESC, sa.created_at DESC, sa.id DESC) AS rn , COUNT(*) FILTER (WHERE sa.status IN ('LIVE', 'ENDED')) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
                             "FROM public.student_attempt sa " +
+                            // Restrict the window to this learner's own registrations. Without it
+                            // Postgres ranks EVERY attempt in the table and re-runs that scan per
+                            // matching row, which is what made the learner exam list take seconds
+                            // during an arrival burst. The outer join already requires
+                            // aur.id = registration_id with aur.user_id IN :userIds, so this filter
+                            // cannot change the result set.
+                            "WHERE (:checkUserIds IS NULL OR sa.registration_id IN (SELECT aur2.id FROM public.assessment_user_registration aur2 WHERE aur2.user_id IN :userIds)) " +
                             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
                             "AND (:checkUserIds IS NULL OR aur.user_id IN :userIds) " +

@@ -1,0 +1,17 @@
+{
+    "export": {
+        "exporting": "Exporting...",
+        "button": "Export {{format}}"
+    },
+    "setLabel": " (Set {{letter}})",
+    "fileName": {
+        "base": "Paper",
+        "withSet": "Paper {{letter}}"
+    },
+    "progress": {
+        "title": "Generating PDF",
+        "subtitle": "This might take a while",
+        "cancelAriaLabel": "Cancel PDF Generation",
+        "percentComplete": "{{progress}}% Complete"
+    }
+}

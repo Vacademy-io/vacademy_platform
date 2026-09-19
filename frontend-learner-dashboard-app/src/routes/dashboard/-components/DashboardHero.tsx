@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   BookOpen,
   VideoCamera,
@@ -152,6 +153,9 @@ const firstRunBand = cn(
   "relative w-full overflow-hidden rounded-2xl border border-primary/15 p-5 sm:p-8",
   "bg-gradient-to-br from-primary/5 via-background to-background",
   "[.ui-vibrant_&]:from-primary-50 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
+  // Corporate: flat surface, hairline border. A brand-tinted band is exactly
+  // the "brand as fill" treatment this skin exists to avoid.
+  "[.ui-corporate_&]:bg-none [.ui-corporate_&]:border-border",
 );
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -165,6 +169,7 @@ export function DashboardHero({
   onJoinSession,
   showGettingStarted = true,
 }: DashboardHeroProps): JSX.Element | null {
+  const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -192,8 +197,8 @@ export function DashboardHero({
   // 4. LOADING — skeleton matching the band's shape.
   if (!studyLibraryLoaded) {
     return (
-      <section aria-busy="true" aria-label="Loading" className={bandClassName}>
-        <div className="flex flex-col gap-3">
+      <section aria-busy="true" aria-label={t("dashboardHero.loadingAria")} className={bandClassName}>
+        <div className="flex flex-col gap-stack">
           <Skeleton className="h-3 w-32" />
           <Skeleton className="h-9 w-full max-w-md" />
           <Skeleton className="h-4 w-56" />
@@ -236,16 +241,18 @@ export function DashboardHero({
             : "text-muted-foreground",
         )}
       >
-        {banner.isLive ? "Live now" : `Starts in ${banner.minutesUntilStart}m`}
+        {banner.isLive
+          ? t("dashboardHero.liveNow")
+          : t("dashboardHero.startsInMinutes", { minutes: banner.minutesUntilStart })}
       </span>
       <Button
         size="sm"
         onClick={() => onJoinSession(banner.session)}
-        aria-label={`Join ${banner.session.title || liveClassLabel}`}
+        aria-label={t("dashboardHero.joinAria", { title: banner.session.title || liveClassLabel })}
         className="gap-1.5"
       >
         <VideoCamera size={14} weight="fill" />
-        Join
+        {t("hero.join")}
       </Button>
     </div>
   ) : null;
@@ -258,22 +265,24 @@ export function DashboardHero({
     const steps = [
       {
         icon: BookOpen,
-        label: `Browse your ${coursesPlural.toLocaleLowerCase()}`,
-        hint: `Open a topic and start your first ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()}`,
+        label: t("dashboardHero.browseCoursesLabel", { courses: coursesPlural.toLocaleLowerCase() }),
+        hint: t("dashboardHero.browseCoursesHint", {
+          slide: getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase(),
+        }),
         onClick: goToCourses,
         primary: true,
       },
       {
         icon: ClipboardText,
-        label: "Try an assessment",
-        hint: "Check what you know with a quick quiz",
+        label: t("dashboardHero.tryAssessmentLabel"),
+        hint: t("dashboardHero.tryAssessmentHint"),
         onClick: () => navigate({ to: "/assessment/examination" }),
         primary: false,
       },
       {
         icon: UserCircle,
-        label: "Complete your profile",
-        hint: "Add your details to personalize learning",
+        label: t("dashboardHero.completeProfileLabel"),
+        hint: t("dashboardHero.completeProfileHint"),
         onClick: () => navigate({ to: "/user-profile" }),
         primary: false,
       },
@@ -288,22 +297,22 @@ export function DashboardHero({
         />
         <div className="relative">
           {liveBanner}
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-section lg:flex-row lg:items-center lg:justify-between">
             {/* Left: greeting + checklist */}
-            <div className="min-w-0 flex-1">
-              <div className="mb-5 flex items-start gap-3">
+            <div className="min-w-0 flex-1 space-y-5">
+              <div className="flex items-start gap-3">
                 <span className="hidden size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex">
                   <Sparkle size={22} weight="fill" />
                 </span>
                 <div className="min-w-0 space-y-1">
                   <p className="text-caption font-semibold uppercase tracking-wider text-primary">
-                    {userName ? `Welcome, ${userName}` : "Welcome"}
+                    {userName ? t("dashboardHero.welcomeWithName", { name: userName }) : t("dashboardHero.welcome")}
                   </p>
                   <h2 className="text-display-sm tracking-tight text-foreground">
-                    Let's get you started
+                    {t("dashboardHero.getStartedTitle")}
                   </h2>
                   <p className="text-body text-muted-foreground">
-                    A few quick steps to make the most of your learning.
+                    {t("dashboardHero.getStartedSubtitle")}
                   </p>
                 </div>
               </div>
@@ -352,9 +361,13 @@ export function DashboardHero({
 
             {/* Right: signature illustration fills the whitespace (currentColor
                 follows the tenant primary). Desktop only. */}
+            {/* Decorative only, so Corporate drops it rather than swapping in a
+                different illustration — a restrained enterprise surface is
+                typographic, and the honest corporate treatment of a spot
+                illustration is none. */}
             <playIllustrations.OnlineLearning
               aria-hidden="true"
-              className="hidden h-44 w-auto max-w-xs shrink-0 object-contain text-primary/70 lg:block"
+              className="hidden h-44 w-auto max-w-xs shrink-0 object-contain text-primary/70 lg:block [.ui-corporate_&]:lg:hidden"
             />
           </div>
         </div>

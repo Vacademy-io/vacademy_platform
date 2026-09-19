@@ -1,0 +1,73 @@
+{
+    "status": {
+        "paid": "مدفوع",
+        "partialPaid": "مدفوع جزئيًا",
+        "overdue": "متأخر",
+        "waived": "معفى"
+    },
+    "row": {
+        "updateSuccessToast": "تم تحديث القسط",
+        "updateErrorToast": "فشل التحديث",
+        "discountOptionNone": "بدون",
+        "discountOptionPercentage": "%",
+        "discountOptionFlat": "₹",
+        "reasonPlaceholder": "السبب",
+        "save": "حفظ"
+    },
+    "cpoDiscount": {
+        "heading": "الخصم",
+        "typeLabel": "النوع",
+        "discountOptionNone": "بدون",
+        "discountOptionPercentage": "% من الإجمالي",
+        "discountOptionFlat": "خصم ثابت ₹",
+        "valueLabel": "القيمة",
+        "reasonLabel": "السبب",
+        "reasonPlaceholder": "مثال: خصم الأشقاء",
+        "removeSuccessToast": "تمت إزالة خصم خطة الدفع المخصصة",
+        "applySuccessToast": "تم تطبيق خصم خطة الدفع المخصصة",
+        "applyErrorToast": "تعذر تطبيق خصم خطة الدفع المخصصة",
+        "applying": "جارٍ التطبيق…",
+        "apply": "تطبيق",
+        "remove": "إزالة"
+    },
+    "offlinePayment": {
+        "amountRequiredError": "أدخل مبلغًا موجبًا",
+        "recordedSuccessToast": "تم تسجيل دفعة غير متصلة بقيمة {{amount}}",
+        "recordErrorToast": "فشل تسجيل الدفعة",
+        "addPaymentButton": "+ إضافة دفعة",
+        "heading": "إضافة دفعة",
+        "amountLabel": "المبلغ (₹)",
+        "dateLabel": "التاريخ",
+        "referenceLabel": "المرجع",
+        "referencePlaceholder": "رقم الشيك، مرجع UPI…",
+        "generateInvoiceLabel": "إنشاء فاتورة",
+        "saving": "جارٍ الحفظ…",
+        "saveAndAllocate": "حفظ وتوزيع FIFO",
+        "cancel": "إلغاء"
+    },
+    "card": {
+        "installmentCount_zero": "لا توجد أقساط ({{count}})",
+        "installmentCount_one": "قسط واحد ({{count}})",
+        "installmentCount_two": "قسطان ({{count}})",
+        "installmentCount_few": "{{count}} أقساط",
+        "installmentCount_many": "{{count}} قسطًا",
+        "installmentCount_other": "{{count}} قسط",
+        "net": "الصافي {{amount}}",
+        "paid": "المدفوع {{amount}}",
+        "outstanding": "المتبقي {{amount}}",
+        "loadingInstallments": "جارٍ تحميل الأقساط…",
+        "loadInstallmentsError": "تعذر تحميل الأقساط.",
+        "tableHeaders": {
+            "index": "#",
+            "startDate": "تاريخ البدء",
+            "dueDate": "تاريخ الاستحقاق",
+            "default": "الافتراضي",
+            "amount": "المبلغ",
+            "discount": "الخصم",
+            "paid": "المدفوع",
+            "status": "الحالة"
+        }
+    },
+    "loadingPlans": "جارٍ تحميل خطط الدفع المخصصة…",
+    "loadPlansError": "تعذر تحميل خطط الدفع المخصصة."
+}

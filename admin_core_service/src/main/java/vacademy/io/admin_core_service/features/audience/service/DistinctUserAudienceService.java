@@ -66,6 +66,9 @@ public class DistinctUserAudienceService {
     private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver utmListFilterResolver;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     public CombinedUserAudienceResponseDTO getCombinedUsersWithCustomFields(CombinedUserAudienceRequestDTO request) {
@@ -114,6 +117,19 @@ public class DistinctUserAudienceService {
                         vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.CONTACT);
         if (cfResolution.shortCircuitsToEmpty()) {
             return emptyResponse(request, audienceIds);
+        }
+        // Campaign (UTM) filter: resolve touches → user ids (either-match across
+        // the learner row and the person's leads) and AND with the custom-field
+        // set, so the paging query stays unchanged.
+        if (vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver
+                .hasFilter(request.getUtmFilters())) {
+            cfResolution = cfResolution.and(utmListFilterResolver.resolve(
+                    request.getUtmFilters(),
+                    vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.CONTACT,
+                    request.getInstituteId()));
+            if (cfResolution.shortCircuitsToEmpty()) {
+                return emptyResponse(request, audienceIds);
+            }
         }
 
         Page<String> userPage = instituteStudentRepository.findPagedCombinedUserIds(

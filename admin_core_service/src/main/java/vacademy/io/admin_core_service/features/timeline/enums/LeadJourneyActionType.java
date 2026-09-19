@@ -24,6 +24,14 @@ public enum LeadJourneyActionType {
     /** A soft-deleted lead was restored, by an admin or by the person re-submitting. */
     LEAD_RESTORED,
 
+    /**
+     * An admin moved this lead from one lead list to another (metadata: from/to audience id and
+     * campaign name, and whether the target list's workflow anchor was reset). Together these
+     * events are the full ordered history of a lead's list membership; the queryable "where did
+     * it start" lives on {@code audience_response.original_audience_id}.
+     */
+    LEAD_LIST_CHANGED,
+
     // ── Assignment ───────────────────────────────────────────────────────────
     /** A counselor was assigned (or reassigned) to this lead. */
     COUNSELOR_ASSIGNED,

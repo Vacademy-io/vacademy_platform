@@ -1,0 +1,15 @@
+{
+    "evaluatingStudents": "Veuillez patienter, nous évaluons les étudiants...",
+    "evaluatedStudentsSuccess_one": "{{count}} étudiant évalué avec succès",
+    "evaluatedStudentsSuccess_many": "{{count}} d'étudiants évalués avec succès",
+    "evaluatedStudentsSuccess_other": "{{count}} étudiants évalués avec succès",
+    "fileProcessingRetry": "Le fichier est en cours de traitement, veuillez réessayer",
+    "evaluationFailedFor": "Échec de l'évaluation pour {{assessment}}",
+    "failedToEvaluateStudents": "Échec de l'évaluation des étudiants",
+    "evaluationList": "Liste des évaluations",
+    "evaluationListForAssessment": "Liste des évaluations pour {{assessment}}",
+    "evaluateStudents": "Évaluer les étudiants",
+    "noEvaluatedStudents": "Aucun étudiant évalué",
+    "noEvaluatedStudentsDescription": "Vous n'avez encore évalué aucun étudiant. Cliquez sur le bouton \"Évaluer les étudiants\" pour sélectionner des étudiants à évaluer.",
+    "selectStudentsForAssignment": "Sélectionner les étudiants pour l'affectation"
+}

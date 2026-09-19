@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Table,
     TableBody,
@@ -56,6 +57,7 @@ export default function StudentEvaluationTable({
     data: Student[];
     isProcessing?: boolean;
 }) {
+    const { t } = useTranslation('evaluatorAiStudentEvaluation');
     const router = useRouter();
     const [enrolledStudents, setEnrolledStudents] = useState<EnrolledStudent[]>([]);
     const [loadingPdf, setLoadingPdf] = useState<Record<string, boolean>>({});
@@ -83,7 +85,7 @@ export default function StudentEvaluationTable({
         const fileId = findFileIdByEnrollmentId(enrollmentId);
 
         if (!fileId) {
-            toast.error('No PDF submission found for this student');
+            toast.error(t('noPdfSubmissionFound'));
             return;
         }
 
@@ -95,11 +97,11 @@ export default function StudentEvaluationTable({
                 // Open in new tab
                 window.open(url, '_blank');
             } else {
-                toast.error('Could not retrieve PDF URL');
+                toast.error(t('couldNotRetrievePdfUrl'));
             }
         } catch (error) {
             console.error('Error fetching PDF URL:', error);
-            toast.error('Failed to retrieve PDF');
+            toast.error(t('failedToRetrievePdf'));
         } finally {
             setLoadingPdf((prev) => ({ ...prev, [enrollmentId]: false }));
         }
@@ -111,17 +113,17 @@ export default function StudentEvaluationTable({
                 <Table>
                     <TableHeader className="bg-[#f9f7f0]">
                         <TableRow>
-                            <TableHead>Id</TableHead>
+                            <TableHead>{t('columnId')}</TableHead>
                             <TableHead>
                                 <div className="flex items-center gap-1">
-                                    Name
+                                    {t('columnName')}
                                     <ArrowUpDown className="size-4" />
                                 </div>
                             </TableHead>
-                            <TableHead>Submission</TableHead>
-                            <TableHead>Marks</TableHead>
-                            <TableHead className="w-24">Details</TableHead>
-                            <TableHead>Status</TableHead>
+                            <TableHead>{t('columnSubmission')}</TableHead>
+                            <TableHead>{t('columnMarks')}</TableHead>
+                            <TableHead className="w-24">{t('columnDetails')}</TableHead>
+                            <TableHead>{t('columnStatus')}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -138,7 +140,7 @@ export default function StudentEvaluationTable({
                                         {loadingPdf[student.enrollmentId] ? (
                                             <div className="flex items-center gap-1 text-orange-500">
                                                 <Loader2 className="size-3.5 animate-spin" />
-                                                <span>Loading...</span>
+                                                <span>{t('loading')}</span>
                                             </div>
                                         ) : hasSubmission ? (
                                             <div
@@ -148,12 +150,12 @@ export default function StudentEvaluationTable({
                                                 }
                                             >
                                                 <FileText className="size-3.5" />
-                                                <span>Preview</span>
+                                                <span>{t('preview')}</span>
                                             </div>
                                         ) : (
                                             //TODO: revert this to no submission handling after demo
                                             <span className="cursor-pointer text-primary-500 hover:underline">
-                                                Preview
+                                                {t('preview')}
                                             </span>
                                         )}
                                     </TableCell>
@@ -175,7 +177,7 @@ export default function StudentEvaluationTable({
                                                 }}
                                             >
                                                 <span className="cursor-pointer text-orange-500 hover:underline">
-                                                    Details
+                                                    {t('details')}
                                                 </span>
                                             </div>
                                         ) : (
@@ -221,7 +223,7 @@ export default function StudentEvaluationTable({
                         setOpenPreview(false);
                         setExtracted([]);
                     }}
-                    heading={`Extracted Responses of ${previewStudent}`}
+                    heading={t('extractedResponsesOf', { student: previewStudent })}
                     dialogWidth="w-[600px]"
                 >
                     <div className="mt-4">
@@ -271,12 +273,12 @@ export default function StudentEvaluationTable({
                 <MyDialog
                     open={openConfirmRevaluate}
                     onOpenChange={() => setOpenConfirmRevaluate(false)}
-                    heading="Confirm Re-evaluation"
+                    heading={t('confirmReEvaluation')}
                     dialogWidth="w-[400px]"
                 >
                     <div className="mt-4">
                         <p className="text-muted-foreground">
-                            Are you sure you want to re-evaluate this student?
+                            {t('confirmReEvaluateStudent')}
                         </p>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -285,7 +287,7 @@ export default function StudentEvaluationTable({
                                 setOpenConfirmRevaluate(false);
                             }}
                         >
-                            Go ahead
+                            {t('goAhead')}
                         </MyButton>
                     </div>
                 </MyDialog>

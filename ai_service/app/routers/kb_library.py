@@ -29,8 +29,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import db_dependency
-from ..models.ai_token_usage import RequestType
-from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.kb import library as kb_library
 from ..services.kb.repository import KbRepository
 from .knowledge_base import Caller, get_caller
@@ -66,6 +64,9 @@ class ListingUpsert(BaseModel):
     tags: List[str] = Field(default_factory=list)
     sort_weight: int = 0
     institute_id: Optional[str] = None
+    # NULL = paid library. "CURRICULUM" = pre-loaded textbook library (V517):
+    # hidden from the catalogue, granted by the institute setting.
+    collection: Optional[str] = Field(None, max_length=30)
 
 
 class StatusChange(BaseModel):
@@ -106,6 +107,7 @@ async def catalogue(
     language: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
     limit: int = Query(60, ge=1, le=200),
+    collection: Optional[str] = Query(None, description="e.g. CURRICULUM; default = paid libraries only"),
     institute_id: Optional[str] = Query(None),
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
@@ -115,7 +117,7 @@ async def catalogue(
     return {
         "libraries": kb_library.list_catalogue(
             db, resolved, subject=subject, level=level, board=board,
-            language=language, query=q, limit=limit,
+            language=language, query=q, limit=limit, collection=collection,
         ),
         "unlock_credits": _unlock_price(db, resolved),
     }
@@ -192,6 +194,7 @@ async def upsert_listing(
         subject=body.subject, level=body.level, board=body.board,
         language=body.language, tags=body.tags, sort_weight=body.sort_weight,
         created_by=caller.user_id,
+        collection=(body.collection or "").strip().upper() or None,
     )
 
 
@@ -237,16 +240,9 @@ async def change_status(
 # ---------------------------------------------------------------------------
 
 def _unlock_price(db: Session, institute_id: str) -> float:
-    """The flat rate, read from ai_tool_pricing so it can be retuned with an
-    UPDATE rather than a deploy."""
-    try:
-        estimate = preflight_tool_credits(
-            db, tool_key=UNLOCK_TOOL_KEY, tool_params={}, institute_id=institute_id,
-        )
-        return float(estimate.get("estimated_credits") or 0)
-    except Exception:  # noqa: BLE001
-        logger.warning("Could not read the library unlock price", exc_info=True)
-        return 0.0
+    """The Library is free (2026-09-16). Kept so older clients that still read
+    unlock_credits render 0 rather than break."""
+    return 0.0
 
 
 @router.post("/library/{kb_id}/unlock")
@@ -256,73 +252,24 @@ async def unlock(
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
 ):
-    """Buy permanent access to a library.
-
-    Order matters here. The entitlement row is written FIRST and the wallet is
-    charged only if that insert won the race: the unique constraint is what
-    makes a double-clicked button impossible to charge twice, and it can only do
-    that job if nothing is billed before it has spoken.
-    """
+    """Kept for older clients. The Library is free: every PUBLISHED library is
+    already usable (KbRepository.is_usable), so this records a zero-credit
+    GRANT so the institute keeps the library even if it is later withdrawn,
+    and never bills."""
     resolved = caller.require_institute(body.institute_id)
     listing = _listing_or_404(db, kb_id, resolved)
 
     if listing["status"] != "PUBLISHED":
         raise HTTPException(400, "This library is not available")
 
-    # The catalogue already hides archived bases, but a direct link would still
-    # reach here — and charging for an archived corpus is a refund waiting to
-    # happen.
     kb = KbRepository(db).get_kb(kb_id, resolved)
     if not kb or kb["status"] != "ACTIVE":
         raise HTTPException(400, "This library is not available")
 
     if kb_library.is_entitled(db, kb_id, resolved):
-        # Already theirs. Answering 200 keeps a double-submit harmless.
         return {"unlocked": True, "credits_charged": 0, "already_owned": True}
 
-    estimate = preflight_tool_credits(
-        db, tool_key=UNLOCK_TOOL_KEY, tool_params={}, institute_id=resolved,
+    kb_library.grant(
+        db, kb_id, resolved, source="GRANT", credits_charged=0, granted_by=caller.user_id,
     )
-    price = float(estimate.get("estimated_credits") or 0)
-    if estimate.get("sufficient") is False:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": "Not enough credits to unlock this library",
-                "required": price,
-                "current_balance": estimate.get("current_balance"),
-            },
-        )
-
-    won = kb_library.grant(
-        db, kb_id, resolved,
-        source="PURCHASE", credits_charged=price, granted_by=caller.user_id,
-    )
-    if not won:
-        # Another request unlocked it a moment ago. Nothing to charge.
-        return {"unlocked": True, "credits_charged": 0, "already_owned": True}
-
-    try:
-        record_tool_billing(
-            tool_key=UNLOCK_TOOL_KEY,
-            tool_params={},
-            request_type=RequestType.KNOWLEDGE_BASE,
-            model="none",
-            prompt_tokens=0,
-            completion_tokens=0,
-            institute_id=resolved,
-            user_id=caller.user_id,
-            user_role="ADMIN",
-            # Keyed on the pair, so a retry of this call cannot double-charge
-            # even if the entitlement row was written by an earlier attempt.
-            idempotency_key=f"kb_unlock:{kb_id}:{resolved}",
-        )
-    except Exception:  # noqa: BLE001
-        # The institute already has access. Losing the billing record is a
-        # revenue problem we can reconcile; revoking access they just bought is
-        # a trust problem we cannot.
-        logger.exception(
-            "Library %s unlocked for %s but billing failed", kb_id, resolved
-        )
-
-    return {"unlocked": True, "credits_charged": price, "already_owned": False}
+    return {"unlocked": True, "credits_charged": 0, "already_owned": False}

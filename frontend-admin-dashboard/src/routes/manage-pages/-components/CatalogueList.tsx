@@ -29,6 +29,15 @@ import { useCataloguePermissions } from '../-hooks/use-catalogue-permissions';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInstituteDetails';
 import { getCatalogueSiteUrl } from '../-utils/learner-site-url';
+import { DotsThreeVertical } from '@phosphor-icons/react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { UtmLinkMenuItem } from '@/components/common/utm/utm-link-menu-item';
+import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
+import { useUtmBuilderEnabled } from '@/hooks/use-utm-builder-enabled';
 
 // Deterministic gradient from tag name
 const GRADIENTS = [
@@ -67,6 +76,10 @@ export const CatalogueList = () => {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [deletingTag, setDeletingTag] = useState<string | null>(null);
     const [deleteConfirmTag, setDeleteConfirmTag] = useState<string | null>(null);
+    const [utmTagName, setUtmTagName] = useState<string | null>(null);
+    // One action in the ⋮ menu today, so hide the trigger entirely rather
+    // than opening an empty popover for institutes that never enabled it.
+    const { enabled: utmEnabled } = useUtmBuilderEnabled();
     const { canWrite, canDelete } = useCataloguePermissions();
     const { instituteDetails, setInstituteDetails } = useInstituteDetailsStore();
 
@@ -288,6 +301,26 @@ export const CatalogueList = () => {
                                             </a>
                                         </Button>
 
+                                        {utmEnabled && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="size-8 p-0 text-gray-400 hover:text-gray-700"
+                                                        title="More actions"
+                                                    >
+                                                        <DotsThreeVertical className="size-3.5" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <UtmLinkMenuItem
+                                                        onSelect={() => setUtmTagName(tag.tagName)}
+                                                    />
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
+
                                         <Button
                                             size="sm"
                                             variant="outline"
@@ -322,6 +355,18 @@ export const CatalogueList = () => {
                     )}
                 </div>
             )}
+
+            <UtmBuilderDialog
+                open={!!utmTagName}
+                onOpenChange={(open) => !open && setUtmTagName(null)}
+                baseUrl={
+                    utmTagName
+                        ? getCatalogueSiteUrl(utmTagName, instituteDetails?.learner_portal_base_url)
+                        : ''
+                }
+                sourceType="CATALOGUE"
+                entityName={utmTagName ?? undefined}
+            />
 
             <CreateCatalogueDialog
                 open={isCreateDialogOpen}

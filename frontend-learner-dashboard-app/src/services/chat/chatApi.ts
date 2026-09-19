@@ -24,6 +24,9 @@ export interface ChatConversationResponse {
   memberRole?: string;
   rulesVersion?: number;
   canPost: boolean;
+  /** Institute setting (students only): may the caller edit/delete a message THEY sent? */
+  canEditOwnMessages?: boolean;
+  canDeleteOwnMessages?: boolean;
 }
 
 export interface ChatMessageResponse {
@@ -212,6 +215,23 @@ export async function sendMessage(
 }
 
 /** DELETE /conversations/{id}/messages/{messageId} — soft-delete (tombstone) a message. */
+export interface EditChatMessageRequest {
+  text: string;
+}
+
+/** Rewrite the body of a message you sent. Sender-only server-side. */
+export async function editMessage(
+  conversationId: string,
+  messageId: string,
+  body: EditChatMessageRequest,
+): Promise<ChatMessageResponse> {
+  const res = await authenticatedAxiosInstance.patch<ChatMessageResponse>(
+    `${CHAT_BASE}/conversations/${conversationId}/messages/${messageId}`,
+    body,
+  );
+  return res.data;
+}
+
 export async function deleteMessage(
   conversationId: string,
   messageId: string,

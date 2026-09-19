@@ -49,18 +49,32 @@ public class RenewalChargeService {
     private final PaymentService paymentService;
     private final UserInstitutePaymentGatewayMappingService mandateService;
     private final RenewalPaymentService renewalPaymentService;
+    private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final AuthService authService;
+    private final RenewalGracePolicy gracePolicy;
 
     /** Default dunning ceiling when the plan/policy doesn't specify one. */
     private static final int DEFAULT_MAX_ATTEMPTS = 3;
+
+    /**
+     * Upper bound on {@code AUTOPAY_SETTING.CHARGE_LEAD_DAYS}. The sweep fetches every
+     * plan due within this many days and then applies each invite's own lead, so a
+     * misconfigured invite can never pull a charge more than this far forward.
+     */
+    private static final int MAX_CHARGE_LEAD_DAYS = 3;
 
     public void processDueRenewals() {
         Date now = new Date();
         // next_charge_at carries the enrollment's time-of-day, so a plan due "today" at
         // 15:00 would be missed by this morning's run and only charge tomorrow. Sweep the
         // whole day so a plan is always charged on the date it falls due.
-        List<UserPlan> due = userPlanRepository.findDueForRenewal(endOfDay(now));
+        //
+        // Fetch out to the widest lead any invite may configure, then let each plan's own
+        // invite decide whether it is due yet (see isDueWithLead). Invites without
+        // CHARGE_LEAD_DAYS keep the exact behaviour they had: due on the date itself.
+        List<UserPlan> due = userPlanRepository.findDueForRenewal(endOfDay(plusDays(now, MAX_CHARGE_LEAD_DAYS)));
+        due = due.stream().filter(plan -> isDueWithLead(plan, now)).toList();
         if (due.isEmpty()) {
             log.info("[RenewalCharge] No autopay plans due");
             return;
@@ -69,6 +83,17 @@ public class RenewalChargeService {
         int charged = 0, failed = 0, skipped = 0;
         for (UserPlan plan : due) {
             try {
+                // A plan still unpaid after its grace window is closed here, on the sweep,
+                // not left to whenever the gateway's next failure webhook happens to
+                // arrive — the async path adds a day per attempt, which would stretch a
+                // 2-day grace into 4. No charge is presented for it.
+                if (gracePolicy.isPastGrace(plan, now)) {
+                    // isPastGrace is only ever true with an invite present (grace lives on it).
+                    expirePlan(plan, "grace period over");
+                    renewalPaymentService.emitRenewalPaymentFailed(plan, plan.getEnrollInvite().getInstituteId(), true);
+                    failed++;
+                    continue;
+                }
                 Outcome outcome = processOne(plan, now);
                 switch (outcome) {
                     case CHARGED -> charged++;
@@ -133,10 +158,6 @@ public class RenewalChargeService {
         return readAutopayInt(invite, "TOTAL_DURATION_MONTHS");
     }
 
-    private Integer readGracePeriodDays(EnrollInvite invite) {
-        return readAutopayInt(invite, "GRACE_PERIOD_DAYS");
-    }
-
     /** Reads an integer AUTOPAY_SETTING key off the invite's settingJson; null if absent. */
     private Integer readAutopayInt(EnrollInvite invite, String key) {
         if (invite == null || !StringUtils.hasText(invite.getSettingJson())) {
@@ -153,6 +174,38 @@ public class RenewalChargeService {
                     key, invite.getId(), e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * A plan is due for this run when its next_charge_at falls on or before today +
+     * the invite's {@code AUTOPAY_SETTING.CHARGE_LEAD_DAYS} (0 when unset, capped at
+     * {@link #MAX_CHARGE_LEAD_DAYS}). A lead of 1 presents the charge the day before the
+     * due date — for UPI Autopay the bank then debits ~24 h later, ON the due date, and
+     * the learner has had the pre-debit notification in between. The cycle does not
+     * drift: a successful renewal extends from the plan's end_date, not from the charge
+     * time (see RenewalPaymentService.calculateNewEndDate).
+     */
+    private boolean isDueWithLead(UserPlan plan, Date now) {
+        if (plan.getNextChargeAt() == null) {
+            return false;
+        }
+        int lead = resolveChargeLeadDays(plan.getEnrollInvite());
+        return !plan.getNextChargeAt().after(endOfDay(plusDays(now, lead)));
+    }
+
+    private int resolveChargeLeadDays(EnrollInvite invite) {
+        Integer lead = readAutopayInt(invite, "CHARGE_LEAD_DAYS");
+        if (lead == null || lead < 0) {
+            return 0;
+        }
+        return Math.min(lead, MAX_CHARGE_LEAD_DAYS);
+    }
+
+    private static Date plusDays(Date date, int days) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.add(Calendar.DAY_OF_MONTH, days);
+        return cal.getTime();
     }
 
     /** Last instant of the given day, so "due today" means due by this run. */
@@ -224,7 +277,6 @@ public class RenewalChargeService {
         // The daily scheduler fires on every replica, so only the replica whose
         // UPDATE flips next_charge_at→null (rows-affected = 1) proceeds; the rest
         // skip. This is the multi-replica double-charge guard.
-        Date reArmAt = plan.getNextChargeAt();
         if (userPlanRepository.claimForRenewal(plan.getId(), now) == 0) {
             log.info("[RenewalCharge] Plan {} already claimed by another replica — skipping", plan.getId());
             return Outcome.SKIPPED;
@@ -242,6 +294,18 @@ public class RenewalChargeService {
         request.setEmail(user.getEmail());
         request.setInstituteId(instituteId);
         request.setPaymentType(PaymentType.RENEWAL);
+        // Razorpay's recurring-payment API requires a contact, and it must be a real
+        // phone number (digits and + only). It used to be filled from vendorId -- the
+        // invite's gateway id, literally "RAZORPAY" -- so every auto-charge was rejected
+        // with "Contact number contains invalid characters" before it ever reached the
+        // mandate, and the failure took its own payment_log down with it (PaymentService
+        // is @Transactional), leaving only a rising renewal_attempt_count as evidence.
+        vacademy.io.common.payment.dto.RazorpayRequestDTO razorpayRequest =
+                new vacademy.io.common.payment.dto.RazorpayRequestDTO();
+        if (StringUtils.hasText(user.getMobileNumber())) {
+            razorpayRequest.setContact(user.getMobileNumber().replaceAll("[^0-9+]", ""));
+        }
+        request.setRazorpayRequest(razorpayRequest);
 
         try {
             PaymentResponseDTO response = paymentService.handleRecurringCharge(
@@ -261,7 +325,7 @@ public class RenewalChargeService {
         } catch (Exception e) {
             log.warn("[RenewalCharge] Plan {} charge failed (attempt {}): {}",
                     plan.getId(), plan.getRenewalAttemptCount(), e.getMessage());
-            applyDunning(plan, reArmAt, now, instituteId);
+            applyDunning(plan, now, instituteId);
             return Outcome.FAILED;
         }
     }
@@ -271,34 +335,15 @@ public class RenewalChargeService {
      * deactivate access. Reuses the same EXPIRED semantics as the enrolment
      * processor.
      */
-    private void applyDunning(UserPlan plan, Date reArmAt, Date now, String instituteId) {
+    private void applyDunning(UserPlan plan, Date now, String instituteId) {
         int maxAttempts = resolveMaxAttempts(plan);
         // Access is retained while we retry. The grace period (AUTOPAY_SETTING.
         // GRACE_PERIOD_DAYS) extends that window: keep access and keep retrying until
-        // the due date + grace has passed, THEN revoke. With no grace configured we fall
-        // back to the attempt ceiling alone.
-        Integer graceDays = readGracePeriodDays(plan.getEnrollInvite());
-        boolean graceConfigured = graceDays != null && graceDays > 0 && reArmAt != null;
-        boolean exhausted;
-        if (graceConfigured) {
-            // Grace governs: retry daily throughout the window, revoke only once the due
-            // date + grace has passed — regardless of attempt count.
-            Calendar deadline = Calendar.getInstance();
-            deadline.setTime(reArmAt);
-            deadline.add(Calendar.DAY_OF_MONTH, graceDays);
-            exhausted = !now.before(deadline.getTime());
-        } else {
-            exhausted = plan.getRenewalAttemptCount() >= maxAttempts;
-        }
+        // end_date + grace has fully passed, THEN revoke — see RenewalGracePolicy. With
+        // no grace configured we fall back to the attempt ceiling alone.
+        boolean exhausted = gracePolicy.isExhausted(plan, now, plan.getRenewalAttemptCount(), maxAttempts);
         if (exhausted) {
-            plan.setStatus(UserPlanStatusEnum.EXPIRED.name());
-            plan.setNextChargeAt(null);
-            userPlanRepository.save(plan);
-            deactivateMappings(plan);
-            // Failure notification (dunning) — reuse the confirmation handler's FAILED path.
-            String vendor = plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendor() : null;
-            log.warn("[RenewalCharge] Plan {} exhausted {} attempts — expired (vendor={})",
-                    plan.getId(), maxAttempts, vendor);
+            expirePlan(plan, "exhausted " + plan.getRenewalAttemptCount() + " attempts");
         } else {
             // Retry tomorrow.
             Calendar c = Calendar.getInstance();
@@ -310,6 +355,15 @@ public class RenewalChargeService {
         }
         // Let workflows react (dunning WhatsApp/email, admin alerts). Never blocks the money path.
         renewalPaymentService.emitRenewalPaymentFailed(plan, instituteId, exhausted);
+    }
+
+    private void expirePlan(UserPlan plan, String reason) {
+        plan.setStatus(UserPlanStatusEnum.EXPIRED.name());
+        plan.setNextChargeAt(null);
+        userPlanRepository.save(plan);
+        deactivateMappings(plan);
+        String vendor = plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendor() : null;
+        log.warn("[RenewalCharge] Plan {} expired — {} (vendor={})", plan.getId(), reason, vendor);
     }
 
     private void deactivateMappings(UserPlan plan) {
@@ -335,7 +389,19 @@ public class RenewalChargeService {
                 || "captured".equalsIgnoreCase(status.toString()));
     }
 
+    /**
+     * What to charge this cycle. A downgrade booked for the end of the cycle lands at
+     * exactly this renewal, so the learner is billed the plan they are moving TO — charging
+     * the old price here would take money for a plan they will not be on the moment the
+     * charge settles.
+     */
     private double resolveAmount(UserPlan plan) {
+        PaymentPlan pending = planChangeService.pendingTargetPlan(plan);
+        if (pending != null) {
+            log.info("[RenewalCharge] Plan {} has a scheduled change — charging target plan {} ({})",
+                    plan.getId(), pending.getId(), pending.getActualPrice());
+            return pending.getActualPrice();
+        }
         PaymentPlan pp = plan.getPaymentPlan();
         return pp != null ? pp.getActualPrice() : 0.0;
     }

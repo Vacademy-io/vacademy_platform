@@ -1,0 +1,127 @@
+{
+    "assignmentModes": {
+        "roundRobin": "Round robin",
+        "timeBased": "On-shift only",
+        "manual": "Manual"
+    },
+    "provider": {
+        "fallbackLabel": "Provider",
+        "aavtaar": {
+            "label": "Aavtaar",
+            "companyCodeLabel": "Company Code",
+            "companyCodePlaceholder": "Your provider company code",
+            "tokenLabel": "Bearer Token",
+            "tokenPlaceholder": "Paste the API token",
+            "campaignPlaceholder": "Campaign ID from your provider",
+            "campaignHelp": "The campaign that defines the AI script/persona for outbound calls. Provided by your AI-calling provider."
+        },
+        "vacademyAi": {
+            "label": "Vacademy AI Agent",
+            "companyCodeLabel": "Account Code",
+            "companyCodePlaceholder": "Not needed — calls run on your Vacademy Voice number",
+            "tokenLabel": "API Token",
+            "tokenPlaceholder": "Not needed for Vacademy AI",
+            "campaignPlaceholder": "Pick an agent from the AI Agents section below",
+            "campaignHelp": "Vacademy AI agents are authored in the \"AI Agents\" section below — saving one registers it here automatically (its id is the campaign id)."
+        },
+        "fallback": {
+            "companyCodeLabel": "Account / Company Code",
+            "companyCodePlaceholder": "Your provider account code",
+            "tokenLabel": "API Token",
+            "tokenPlaceholder": "Paste the API token",
+            "campaignPlaceholder": "Campaign / agent ID",
+            "campaignHelp": "The campaign or agent that defines the AI script for outbound calls."
+        }
+    },
+    "toast": {
+        "settingsSaved": "AI calling settings saved",
+        "settingsSaveFailed": "Failed to save AI calling settings",
+        "credentialsSaved": "Credentials saved",
+        "credentialsSaveFailed": "Failed to save credentials",
+        "fieldRequired": "{{field}} is required.",
+        "campaignIdRequired": "A default Campaign ID is required to enable AI calling."
+    },
+    "enableCard": {
+        "title": "AI Calling",
+        "description": "When enabled, leads are first called by the AI voice agent. The recording and AI summary appear on the lead profile, and a counsellor is assigned only when the outcome rules below say so.",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "showInLeadList": "Show the AI-call button on lead rows",
+        "showInLeadListHint": "Controls only the manual robot button in lead lists. Automated AI workflows run regardless of this toggle.",
+        "inboundLeadCapture": "Capture inbound callers as leads",
+        "inboundLeadCaptureHint": "For an inbound AI helpline: when someone calls and isn't already a lead, a lead is created (matched by phone, so repeat callers aren't duplicated) and the call attaches to it — so it shows in Recent Leads and the Call Log, and you can follow up. Off means unknown callers' calls are recorded but no lead is made.",
+        "providerLabel": "AI voice provider",
+        "providerPlaceholder": "Select a provider",
+        "providerHint": "The AI calling agent used for this institute. The credentials and campaign below are for the selected provider.",
+        "defaultCampaignIdLabel": "Default Campaign ID"
+    },
+    "campaigns": {
+        "title": "Campaigns / Agents",
+        "description": {
+            "part1": "Register each AI campaign id and give it an agent",
+            "nameWord": "name",
+            "part2": "(e.g. “Class Feedback”). Workflows reference the",
+            "part3": ", not the raw id — pick the same name once per provider and switching provider resolves to the right id automatically. Tag each Outbound (you dial) or Inbound (they dial your AI line); Inbound ids classify incoming webhooks (matched to the lead by phone)."
+        },
+        "agentNamePlaceholder": "Agent name (e.g. Class Feedback)",
+        "campaignIdPlaceholder": "Campaign ID",
+        "providerPlaceholder": "Provider",
+        "outbound": "Outbound",
+        "inbound": "Inbound",
+        "empty": "No campaigns registered yet. Add one and tag it Inbound to enable inbound-call detection.",
+        "addCampaign": "Add campaign"
+    },
+    "credentials": {
+        "title": "Credentials",
+        "description": "API credentials for this institute's AI calling provider. The token and webhook secret are stored encrypted and never shown again.",
+        "webhookSecretLabel": "Webhook Secret",
+        "savedPlaceholder": "•••••••• (saved — leave blank to keep)",
+        "webhookSecretPlaceholder": "Secret for the webhook URL ?token=",
+        "webhookHelp": "Authenticates the provider's end-of-call webhook. Hand your AI provider the URL {{webhookPath}}?instituteId=…&token=<this secret>.",
+        "save": "Save credentials",
+        "saving": "Saving…"
+    },
+    "retryCard": {
+        "title": "Retries & Calling Shifts",
+        "description": "If a lead doesn't answer, the AI retries within these limits before giving up. Retries are only placed inside the shifts below.",
+        "maxRetries": "Max retries",
+        "maxPerDay": "Max calls per day (per lead)",
+        "retryGap": "Minutes between retries",
+        "retryGapHint": "How long the bot waits before re-dialing a no-answer lead.",
+        "callingShifts": "Calling shifts",
+        "callingShiftsHint": "Time windows the bot may (re)dial in. Add multiple shifts (e.g. morning + evening). Applies to the timed retry re-dialer; immediate new-lead, manual and bulk calls fire right away.",
+        "shiftTo": "to",
+        "addShift": "Add shift",
+        "timezone": "Timezone",
+        "connectThreshold": "Min connect seconds",
+        "connectThresholdHint": "Shorter calls count as “not connected” and are retried."
+    },
+    "outcomeAction": {
+        "title": "Outcome → Action",
+        "description": "For each AI-call outcome, choose what happens. Outcomes left off both lists are retried until max retries, then assigned to a human. Add custom outcomes below for the dispositions your own AI agent returns.",
+        "dispositionHeader": "Disposition",
+        "assignHeader": "Assign counsellor",
+        "stopHeader": "Stop (no retry)",
+        "removeAria": "Remove {{disposition}}",
+        "addOutcomePlaceholder": "Add a custom outcome (e.g. Wrong Number)",
+        "addOutcome": "Add outcome"
+    },
+    "assignmentCard": {
+        "title": "Counsellor Assignment",
+        "description": "How a counsellor is picked when a lead qualifies (or when retries are exhausted).",
+        "modeLabel": "Assignment mode",
+        "assignExhausted": "Assign no-answer leads to a human after retries are exhausted"
+    },
+    "save": {
+        "saving": "Saving…",
+        "save": "Save AI calling settings"
+    },
+    "carrierStrip": {
+        "readyLine": "AI calls go out on {{line}}{{callerIdSuffix}}.",
+        "dedicatedLine": "a dedicated Vacademy Voice line",
+        "providerLine": "your {{provider}} account",
+        "defaultProviderWord": "calling",
+        "notReadyFallback": "AI calls can't be placed yet.",
+        "manageLink": "Manage the AI calling line"
+    }
+}

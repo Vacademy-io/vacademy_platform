@@ -38,6 +38,7 @@ import {
 import AssessmentRegistrationCompleted from "./AssessmentRegistrationCompleted";
 import AssessmentClosedExpiredComponent from "./AssessmentClosedExpiredComponent";
 import { useNavigate } from "@tanstack/react-router";
+import { classifyRequestError } from "../-utils/request-error";
 import { useTranslation } from "react-i18next";
 
 const checkCloseTestTimeCondition = (serverTime: number, endDate: string) => {
@@ -180,7 +181,19 @@ const CheckEmailStatusAlertDialog = ({
       toast.success(t("checkEmailDialog.toast.otpSent"));
       setUserAlreadyRegistered(false);
     },
-    onError: async () => {
+    onError: async (error) => {
+      // Only the backend's own rejection (511 "User not found!") means the
+      // email is unknown. Offline / 5xx must not be read as "not registered"
+      // — that would log the learner out and dump them on the blank form.
+      const { kind } = classifyRequestError(error);
+      if (kind === "network" || kind === "server" || kind === "unknown") {
+        console.error("[register] request-otp failed:", error);
+        toast.error(t("checkEmailDialog.toast.otpSendFailedTitle"), {
+          description: t("checkEmailDialog.toast.otpSendFailedDescription"),
+          duration: 3000,
+        });
+        return;
+      }
       await removeTokensAndLogout();
       toast.error(t("checkEmailDialog.toast.notRegisteredTitle"), {
         description: t("checkEmailDialog.toast.notRegisteredDescription"),
@@ -219,19 +232,59 @@ const CheckEmailStatusAlertDialog = ({
       const userId = decodedData?.user;
       const assessmentId = registrationData.assessment_public_dto.assessment_id;
       const instituteId = registrationData.institute_id;
-      const getAllStudentDetails =
-        await handleGetStudentDetailsOfInstitute(instituteId);
-      const userDetails = getOpenRegistrationUserDetailsByEmail(
-        getAllStudentDetails,
-        email,
-      );
-      const psIds = userDetails?.package_session_id;
-      const getTestDetailsOfParticipants = await handleGetParticipantsTest(
-        assessmentId,
-        instituteId,
-        userId,
-        psIds,
-      );
+
+      // The OTP is already accepted at this point. If the follow-up lookups
+      // fail (network blip, backend hiccup) say so — a throw here would
+      // otherwise fall into onError and be reported as "Invalid OTP".
+      let getAllStudentDetails: unknown;
+      let getTestDetailsOfParticipants: {
+        is_already_registered: boolean;
+        remaining_attempts: number;
+      };
+      let userDetails: ReturnType<typeof getOpenRegistrationUserDetailsByEmail>;
+      try {
+        getAllStudentDetails =
+          await handleGetStudentDetailsOfInstitute(instituteId);
+        userDetails = getOpenRegistrationUserDetailsByEmail(
+          getAllStudentDetails,
+          email,
+        );
+        const psIds = userDetails?.package_session_id;
+        getTestDetailsOfParticipants = await handleGetParticipantsTest(
+          assessmentId,
+          instituteId,
+          userId,
+          psIds,
+        );
+      } catch (lookupError) {
+        console.error(
+          "[register] post-OTP registration lookup failed:",
+          lookupError,
+        );
+        toast.error(t("checkEmailDialog.toast.statusLookupFailedTitle"), {
+          description: t(
+            "checkEmailDialog.toast.statusLookupFailedDescription",
+          ),
+          duration: 4000,
+        });
+        return;
+      }
+      if (
+        !getTestDetailsOfParticipants ||
+        typeof getTestDetailsOfParticipants.is_already_registered !== "boolean"
+      ) {
+        console.error(
+          "[register] unexpected participant-status payload:",
+          getTestDetailsOfParticipants,
+        );
+        toast.error(t("checkEmailDialog.toast.statusLookupFailedTitle"), {
+          description: t(
+            "checkEmailDialog.toast.statusLookupFailedDescription",
+          ),
+          duration: 4000,
+        });
+        return;
+      }
       if (userDetails) {
         setParticipantsDto({
           username: userDetails.username,
@@ -323,11 +376,30 @@ const CheckEmailStatusAlertDialog = ({
         handleCloseAlertDialog();
       }
     },
-    onError: () => {
-      toast.error(t("checkEmailDialog.toast.invalidOtpTitle"), {
-        description: t("checkEmailDialog.toast.invalidOtpDescription"),
-        duration: 3000,
-      });
+    onError: (error) => {
+      const { kind, message } = classifyRequestError(error);
+      console.error("[register] login-otp failed:", kind, error);
+      if (kind === "network" || kind === "server" || kind === "unknown") {
+        toast.error(t("checkEmailDialog.toast.verificationFailedTitle"), {
+          description: t("checkEmailDialog.toast.verificationFailedDescription"),
+          duration: 3000,
+        });
+        return;
+      }
+      // 510/511: the backend explained why ("OTP has expired. Please request a
+      // new one.") — show that sentence rather than a generic "Invalid OTP".
+      toast.error(
+        kind === "business" && message
+          ? t("checkEmailDialog.toast.otpExpiredOrInvalidTitle")
+          : t("checkEmailDialog.toast.invalidOtpTitle"),
+        {
+          description:
+            kind === "business" && message
+              ? message
+              : t("checkEmailDialog.toast.invalidOtpDescription"),
+          duration: 4000,
+        },
+      );
     },
   });
 

@@ -115,8 +115,15 @@ async def render_branded_pdf(
     set_label: Optional[str] = None,
     logo_placement: str = "watermark",
     candidate_line: bool = False,
+    theme: str = "classic",
+    exam_date: Optional[str] = None,
+    grade_line: Optional[str] = None,
 ) -> bytes:
     branding = await institute_branding(db, institute_id)
+    curriculum = kb.get("curriculum") or {}
+    if not grade_line and curriculum.get("class"):
+        cls = str(curriculum["class"])
+        grade_line = f"Class - {cls}th" if cls.isdigit() else cls
     return await paper_pdf.render_paper_pdf(
         blueprint,
         questions,
@@ -129,6 +136,9 @@ async def render_branded_pdf(
         set_label=(set_label or "").strip() or None,
         logo_placement=logo_placement,
         candidate_line=candidate_line,
+        theme=theme,
+        exam_date=(exam_date or "").strip() or None,
+        grade_line=(grade_line or "").strip() or None,
     )
 
 
@@ -192,11 +202,15 @@ async def publish_paper(
     show_marks: bool = True,
     set_label: Optional[str] = None,
     generation_id: Optional[str] = None,
+    theme: str = "classic",
+    exam_date: Optional[str] = None,
+    grade_line: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Render, upload, shorten, remember. Returns the link record."""
     pdf = await render_branded_pdf(
         db, kb, institute_id, blueprint, questions,
         include_answer_key=include_answer_key, show_marks=show_marks, set_label=set_label,
+        theme=theme, exam_date=exam_date, grade_line=grade_line,
     )
     variant = variant_for(include_answer_key)
     filename = paper_pdf.paper_filename(blueprint.title, with_key=include_answer_key)
@@ -210,6 +224,7 @@ async def publish_paper(
     )
     link = {
         "variant": variant,
+        "theme": theme,
         "title": blueprint.title,
         "file_url": file_url,
         "short_url": short_url,

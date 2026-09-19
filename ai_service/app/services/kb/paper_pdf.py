@@ -239,24 +239,36 @@ figure img { max-height: 65mm; }
 
 
 def _katex_head() -> str:
+    """KaTeX loaded WITHOUT blocking the page.
+
+    The scripts are injected one after the other (auto-render needs katex
+    first) and a poll typesets as soon as they are there; if the CDN has not
+    delivered within _ASSET_WAIT_MS the page is declared ready anyway and the
+    raw `$…$` prints. Nothing here is on the document's load path, so a slow
+    CDN can never time out the whole render.
+    """
     return (
         f'<link rel="stylesheet" href="{_KATEX_CDN}/katex.min.css">\n'
-        f'<script defer src="{_KATEX_CDN}/katex.min.js"></script>\n'
-        f'<script defer src="{_KATEX_CDN}/contrib/auto-render.min.js"></script>\n'
         "<script>\n"
         "window.__paperReady = false;\n"
-        "function __done(){ window.__paperReady = true; }\n"
-        "document.addEventListener('DOMContentLoaded', function(){\n"
-        "  if (typeof renderMathInElement !== 'function') { __done(); return; }\n"
-        "  try {\n"
-        "    renderMathInElement(document.body, {\n"
-        "      delimiters: [{left:'$$', right:'$$', display:true}, {left:'$', right:'$', display:false}],\n"
-        "      throwOnError: false, strict: false\n"
-        "    });\n"
-        "  } catch (e) {}\n"
-        "  __done();\n"
-        "});\n"
-        f"setTimeout(__done, {_ASSET_WAIT_MS});\n"
+        "(function(){\n"
+        f"  var deadline = Date.now() + {_ASSET_WAIT_MS};\n"
+        "  function done(){ window.__paperReady = true; }\n"
+        "  function load(src, next){ var s = document.createElement('script'); s.src = src; s.async = true;\n"
+        "    s.onload = next; s.onerror = done; document.head.appendChild(s); }\n"
+        "  function typeset(){\n"
+        "    if (typeof renderMathInElement === 'function') {\n"
+        "      try { renderMathInElement(document.body, {\n"
+        "        delimiters: [{left:'$$', right:'$$', display:true}, {left:'$', right:'$', display:false}],\n"
+        "        throwOnError: false, strict: false }); } catch (e) {}\n"
+        "      done(); return;\n"
+        "    }\n"
+        "    if (Date.now() > deadline) { done(); return; }\n"
+        "    setTimeout(typeset, 100);\n"
+        "  }\n"
+        f"  load('{_KATEX_CDN}/katex.min.js', function(){{ load('{_KATEX_CDN}/contrib/auto-render.min.js', typeset); }});\n"
+        "  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', typeset); else typeset();\n"
+        "})();\n"
         "</script>\n"
     )
 
@@ -518,13 +530,52 @@ def build_paper_html(
     contact_line: Optional[str] = None,
     logo_placement: str = "watermark",
     candidate_line: bool = False,
+    theme: str = "classic",
+    exam_date: Optional[str] = None,
+    grade_line: Optional[str] = None,
 ) -> str:
-    """The whole document. Pure: same inputs, same HTML."""
+    """The whole document. Pure: same inputs, same HTML.
+
+    `theme` picks the layout: "classic" (this module), or one of the
+    institute-style layouts in paper_themes ("compact", "coaching")."""
+    from . import paper_themes
+
     sections = _group_by_section(blueprint, questions)
     delivered = sum(len(e["questions"]) for b in sections for e in b["rows"])
     total_marks = sum(
         _question_marks(q, e["row"]) for b in sections for e in b["rows"] for q in e["questions"]
     )
+    if theme not in paper_themes.THEMES:
+        theme = "classic"
+    lang = "hi" if (blueprint.language or "").lower().startswith("hi") else "en"
+    head_script = _katex_head() if _needs_math(questions) else "<script>window.__paperReady = true;</script>"
+
+    if theme != "classic":
+        placement = logo_placement if logo_placement in LOGO_PLACEMENTS else "watermark"
+        if theme == "compact":
+            themed = paper_themes.render_compact(
+                blueprint, sections, delivered=delivered, total_marks=total_marks,
+                institute_name=institute_name, subtitle=subtitle,
+                include_answer_key=include_answer_key, show_marks=show_marks,
+                set_label=set_label, logo_url=logo_url, logo_placement=placement,
+                exam_date=exam_date,
+            )
+            theme_css = paper_themes.COMPACT_CSS
+        else:
+            themed = paper_themes.render_coaching(
+                blueprint, sections, delivered=delivered, total_marks=total_marks,
+                institute_name=institute_name, subtitle=subtitle, grade_line=grade_line,
+                include_answer_key=include_answer_key, show_marks=show_marks,
+                set_label=set_label, logo_url=logo_url, exam_date=exam_date,
+            )
+            theme_css = paper_themes.COACHING_CSS
+        return (
+            "<!DOCTYPE html>\n"
+            f'<html lang="{lang}"><head><meta charset="utf-8">'
+            f"<title>{html.escape(blueprint.title)}</title>"
+            f"<style>{_CSS}{theme_css}</style>{head_script}</head>"
+            f'<body class="theme-{theme}">{themed}</body></html>'
+        )
 
     body = [
         _render_header(
@@ -542,8 +593,6 @@ def build_paper_html(
     if include_answer_key:
         body.append(_render_key(sections, show_marks, blueprint.title))
 
-    lang = "hi" if (blueprint.language or "").lower().startswith("hi") else "en"
-    head_script = _katex_head() if _needs_math(questions) else "<script>window.__paperReady = true;</script>"
     return (
         "<!DOCTYPE html>\n"
         f'<html lang="{lang}"><head><meta charset="utf-8">'
@@ -570,20 +619,35 @@ def _footer_template(title: str) -> str:
     )
 
 
-async def render_pdf(document_html: str, *, footer_title: str = "") -> bytes:
-    """HTML → A4 PDF bytes through headless Chromium.
+async def render_pdf(
+    document_html: str,
+    *,
+    footer_title: str = "",
+    print_settings: Optional[Dict[str, Any]] = None,
+) -> bytes:
+    """HTML → PDF bytes through headless Chromium.
 
     Waits for KaTeX (and images) up to _ASSET_WAIT_MS, then prints whatever is
     on the page: a slow CDN costs a raw formula, never the whole download.
+    `print_settings` (paper size, margins, header/footer) come from the theme;
+    the classic sheet is A4 with a plain footer.
     """
     from playwright.async_api import async_playwright  # heavy import; only when used
+
+    settings = {
+        "format": "A4",
+        "margin": {"top": "15mm", "right": "14mm", "bottom": "17mm", "left": "14mm"},
+        "header_template": "<span></span>",
+        "footer_template": _footer_template(footer_title),
+        **(print_settings or {}),
+    }
 
     async with _RENDER_CONCURRENCY:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
             try:
                 page = await browser.new_page()
-                await page.set_content(document_html, wait_until="load", timeout=_ASSET_WAIT_MS + 5_000)
+                await page.set_content(document_html, wait_until="domcontentloaded", timeout=_ASSET_WAIT_MS + 5_000)
                 try:
                     await page.wait_for_function("window.__paperReady === true", timeout=_ASSET_WAIT_MS)
                 except Exception:  # noqa: BLE001 — print what we have
@@ -593,13 +657,13 @@ async def render_pdf(document_html: str, *, footer_title: str = "") -> bytes:
                 except Exception:  # noqa: BLE001 — a straggling image is not worth a failed download
                     logger.debug("paper_pdf: network still busy after 4s; printing anyway")
                 return await page.pdf(
-                    format="A4",
+                    format=settings["format"],
                     print_background=True,
                     prefer_css_page_size=True,
                     display_header_footer=True,
-                    header_template="<span></span>",
-                    footer_template=_footer_template(footer_title),
-                    margin={"top": "15mm", "right": "14mm", "bottom": "17mm", "left": "14mm"},
+                    header_template=settings["header_template"],
+                    footer_template=settings["footer_template"],
+                    margin=settings["margin"],
                 )
             finally:
                 await browser.close()
@@ -610,12 +674,24 @@ async def render_paper_pdf(
     questions: Sequence[Dict[str, Any]],
     **options: Any,
 ) -> bytes:
+    from . import paper_themes
+
     document = build_paper_html(blueprint, questions, **options)
     footer = " · ".join(
         t for t in (options.get("institute_name"), blueprint.title) if t
     )
+    theme = options.get("theme") or "classic"
+    print_settings = (
+        paper_themes.page_settings(
+            theme, institute_name=options.get("institute_name"),
+            title=blueprint.title, subtitle=options.get("subtitle"),
+        )
+        if theme in paper_themes.THEMES and theme != "classic"
+        else None
+    )
     return await asyncio.wait_for(
-        render_pdf(document, footer_title=footer), timeout=_RENDER_TIMEOUT_S
+        render_pdf(document, footer_title=footer, print_settings=print_settings),
+        timeout=_RENDER_TIMEOUT_S,
     )
 
 

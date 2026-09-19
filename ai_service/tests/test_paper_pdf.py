@@ -171,3 +171,44 @@ def test_logo_is_a_watermark_by_default_and_name_line_is_off():
     assert 'class="watermark"' not in paper_pdf.build_paper_html(
         _blueprint(), [_mcq(1)], logo_url="https://x/l.png", logo_placement="none"
     )
+
+
+def test_compact_theme_two_columns_band_and_columned_key():
+    from app.services.kb import paper_themes
+
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1), _long(1)], theme="compact",
+        institute_name="Elevate", subtitle="Business Laws", exam_date="06-08-2026",
+        include_answer_key=True,
+    )
+    assert 'class="theme-compact"' in html and 'class="c-body"' in html
+    assert "Instructions for students" in html and "<b>Subject:</b> Business Laws" in html
+    assert "<b>Date:</b> 06-08-2026" in html and "<b>Maximum Marks:</b> 4" in html
+    assert 'class="c-key"' in html and "(b) It decreases" in html      # key in its own columned block
+    assert 'class="ans"' not in html                                   # never inline in this theme
+    settings = paper_themes.page_settings("compact", institute_name="Elevate", title="t", subtitle="Business Laws")
+    assert settings["format"] == "Letter" and "Elevate | Business Laws" in settings["footer_template"]
+    assert "pageNumber" in settings["footer_template"]
+
+
+def test_coaching_theme_boxed_sections_inline_key_and_meta():
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1), _long(1)], theme="coaching",
+        institute_name="Shri Saidas Classes", logo_url="https://cdn.example.com/logo.png",
+        grade_line="Class - 9th", exam_date="26-08-2026", include_answer_key=True,
+    )
+    assert 'class="theme-coaching"' in html and 'class="k-body"' in html
+    assert "CLASS - 9TH" in html and "(Answer Key)" in html and "Date : <span>26-08-2026" in html
+    assert 'class="box">SECTION A (MCQ\'s) (1M)' in html.replace("&#x27;", "'")
+    assert 'class="box">SECTION B (Subjective) (3M)' in html
+    assert '<div class="ans">Ans. (b) It decreases' in html            # inline under the MCQ
+    assert "Ans. It shows different colours at different pH." in html # inline for the subjective one
+    assert "Colour change" in html                                     # steps follow the answer
+    assert 'class="logo" src="https://cdn.example.com/logo.png"' in html and 'class="watermark"' in html
+    assert "Time : <span>1 hr 30 min" in html
+    assert "Answer Key &amp; Marking Scheme" not in html               # no separate key pages
+
+
+def test_unknown_theme_falls_back_to_classic():
+    html = paper_pdf.build_paper_html(_blueprint(), [_mcq(1)], theme="nope")
+    assert 'class="theme-' not in html and 'class="section-head"' in html

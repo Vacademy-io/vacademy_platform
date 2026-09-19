@@ -129,6 +129,13 @@ class PaperPdfRequest(BaseModel):
     # The "Name / Roll No. / Date" line under the marks strip. Off by default:
     # most institutes hand the paper out digitally, not as an answer booklet.
     candidate_line: bool = False
+    # Layout: "classic" (board sheet), "compact" (two-column, footer band) or
+    # "coaching" (bordered two-column with inline answers). See paper_themes.
+    theme: str = "classic"
+    # Printed in the header where the layout has a Date field (dd-mm-yyyy or free text).
+    exam_date: Optional[str] = Field(None, max_length=40)
+    # "Class - 10th" line for the coaching layout; defaults from the curriculum book.
+    grade_line: Optional[str] = Field(None, max_length=60)
     institute_id: Optional[str] = None
 
 
@@ -141,6 +148,9 @@ class GenerationPublishRequest(BaseModel):
     include_answer_key: bool = False
     show_marks: bool = True
     set_label: Optional[str] = Field(None, max_length=8)
+    theme: str = "classic"
+    exam_date: Optional[str] = Field(None, max_length=40)
+    grade_line: Optional[str] = Field(None, max_length=60)
     institute_id: Optional[str] = None
 
 
@@ -837,6 +847,9 @@ async def _render_paper(
     set_label: Optional[str],
     logo_placement: str = "watermark",
     candidate_line: bool = False,
+    theme: str = "classic",
+    exam_date: Optional[str] = None,
+    grade_line: Optional[str] = None,
 ) -> Response:
     if not questions:
         raise HTTPException(400, "There are no questions to print")
@@ -847,6 +860,7 @@ async def _render_paper(
             include_answer_key=include_answer_key, show_marks=show_marks,
             institute_name=institute_name, set_label=set_label,
             logo_placement=logo_placement, candidate_line=candidate_line,
+            theme=theme, exam_date=exam_date, grade_line=grade_line,
         )
     except Exception as exc:  # noqa: BLE001 — surface as a 503, keep the trace
         logger.exception("paper PDF render failed for kb %s", kb.get("id"))
@@ -878,6 +892,9 @@ async def _publish(
     show_marks: bool,
     set_label: Optional[str],
     generation_id: Optional[str],
+    theme: str = "classic",
+    exam_date: Optional[str] = None,
+    grade_line: Optional[str] = None,
 ) -> Dict[str, Any]:
     if not questions:
         raise HTTPException(400, "There are no questions to publish")
@@ -886,6 +903,7 @@ async def _publish(
             db, kb, institute_id, kb_paper.Blueprint.from_dict(blueprint_raw), questions,
             include_answer_key=include_answer_key, show_marks=show_marks,
             set_label=(set_label or "").strip() or None, generation_id=generation_id,
+            theme=theme, exam_date=exam_date, grade_line=grade_line,
         )
     except HTTPException:
         raise
@@ -912,6 +930,7 @@ async def paper_pdf(
         include_answer_key=body.include_answer_key, show_marks=body.show_marks,
         institute_name=body.institute_name, set_label=body.set_label,
         logo_placement=body.logo_placement, candidate_line=body.candidate_line,
+        theme=body.theme, exam_date=body.exam_date, grade_line=body.grade_line,
     )
 
 
@@ -923,6 +942,9 @@ async def generation_paper_pdf(
     set_label: Optional[str] = Query(None, max_length=8),
     logo_placement: str = Query("watermark"),
     candidate_line: bool = Query(False),
+    theme: str = Query("classic"),
+    exam_date: Optional[str] = Query(None, max_length=40),
+    grade_line: Optional[str] = Query(None, max_length=60),
     institute_id: Optional[str] = Query(None),
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
@@ -937,6 +959,7 @@ async def generation_paper_pdf(
         include_answer_key=include_answer_key, show_marks=show_marks,
         institute_name=None, set_label=set_label,
         logo_placement=logo_placement, candidate_line=candidate_line,
+        theme=theme, exam_date=exam_date, grade_line=grade_line,
     )
 
 
@@ -958,6 +981,7 @@ async def publish_paper(
         db, kb, resolved, body.blueprint, body.questions,
         include_answer_key=body.include_answer_key, show_marks=body.show_marks,
         set_label=body.set_label, generation_id=body.generation_id,
+        theme=body.theme, exam_date=body.exam_date, grade_line=body.grade_line,
     )
 
 
@@ -976,6 +1000,7 @@ async def publish_generation_paper(
         db, kb, resolved, blueprint_raw, questions,
         include_answer_key=body.include_answer_key, show_marks=body.show_marks,
         set_label=body.set_label, generation_id=generation_id,
+        theme=body.theme, exam_date=body.exam_date, grade_line=body.grade_line,
     )
 
 

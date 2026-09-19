@@ -32,5 +32,11 @@
         "rendering": "Mise en page du sujet…",
         "failed": "Impossible d’afficher le sujet.",
         "retry": "Réessayer"
+    },
+    "theme": {
+        "label": "Mise en page",
+        "classic": "Classique (style examen)",
+        "compact": "Compacte deux colonnes",
+        "coaching": "Cours privés (réponses en ligne)"
     }
 }

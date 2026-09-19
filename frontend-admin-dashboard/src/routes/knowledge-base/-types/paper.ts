@@ -196,6 +196,8 @@ export interface PaperJob {
 /** A PDF of a paper published behind a public link. */
 export interface PublishedPaperLink {
     variant: 'question_paper' | 'with_answer_key';
+    /** Layout it was printed in (classic | compact | coaching). */
+    theme?: string;
     title: string;
     /** Long public-bucket URL; always present. */
     file_url: string;

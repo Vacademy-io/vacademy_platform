@@ -222,7 +222,11 @@ export interface StudentCourseDetailsSettings {
     ratingsAndReviewsVisible: boolean;
     /** Hide the "Author" row in the course-details Course Overview panel. Default false (author shown). */
     hideAuthorName?: boolean;
-    /** Show the Teachers/Instructors section on the course-details page. Default false (hidden). */
+    /**
+     * List EVERY teacher of the batch on the course-details page. Default false:
+     * only the first author is shown (with photo, subtitle and bio). Learners
+     * never see email addresses either way.
+     */
     showInstructors?: boolean;
     // New toggles
     showCourseConfiguration: boolean;

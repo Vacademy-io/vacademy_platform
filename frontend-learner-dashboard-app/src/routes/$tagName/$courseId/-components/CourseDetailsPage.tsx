@@ -40,6 +40,12 @@ import {
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { cn, sanitizeHtml } from "@/lib/utils";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import {
+  type CourseAuthor as CourseInstructor,
+  mapCourseAuthors,
+  visibleCourseAuthors,
+} from "../../-utils/course-authors";
 import {
   BookOpen,
   CaretDown,
@@ -71,15 +77,49 @@ const displayLevelName = (raw?: string | null): string => {
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
-// One author as the course page shows it. `subtitle` / `description` are the
-// author-profile fields an admin fills in under Add Course > Add Authors;
-// both are optional and older courses have neither.
-type CourseInstructor = {
-  name: string;
-  email: string;
-  subtitle?: string;
-  /** Sanitised-on-render HTML from the admin's rich-text editor. */
-  description?: string;
+// Profile photo resolved through the public media endpoint (no login on this
+// page); the author's initial stands in while it loads or when there is none.
+const AuthorAvatar: React.FC<{ author: CourseInstructor; sizeClass: string }> = ({
+  author,
+  sizeClass,
+}) => {
+  const [url, setUrl] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    setUrl("");
+    if (!author.profilePicId) return;
+    getPublicUrlWithoutLogin(author.profilePicId)
+      .then((resolved) => {
+        if (!cancelled && resolved) setUrl(resolved);
+      })
+      .catch(() => {
+        /* fall back to the initial */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [author.profilePicId]);
+  const initial = author.name ? author.name.charAt(0).toUpperCase() : "I";
+  return url ? (
+    <img
+      src={url}
+      alt={author.name}
+      className={cn(
+        "shrink-0 rounded-full object-cover bg-catalogue-bg-subtle",
+        sizeClass,
+      )}
+    />
+  ) : (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white",
+        sizeClass,
+      )}
+    >
+      {initial}
+    </span>
+  );
 };
 
 const hasContent = (htmlString: string | undefined | null): boolean => {
@@ -204,7 +244,7 @@ const CourseHighlightDialog: React.FC<{
 // "What you'll learn / About / Who should learn / Instructors" sections
 // so they appear compactly at the top of the course page instead of
 // stacking as separate cards below.
-const CourseHighlightsAccordion: React.FC<{
+export const CourseHighlightsAccordion: React.FC<{
   whyLearn: string;
   aboutCourse: string | null;
   whoShouldLearn: string;
@@ -224,14 +264,15 @@ const CourseHighlightsAccordion: React.FC<{
   const hasWhy = hasContent(whyLearn);
   const hasAbout = hasContent(aboutCourse);
   const hasWho = hasContent(whoShouldLearn);
-  // The overview has always shown the first instructor. Keep that existing
-  // visibility when the detailed-instructor display setting is off, but do
-  // not expose the rest of the roster or email addresses in that case.
-  const visibleInstructors = showInstructors
-    ? instructors
-    : primaryInstructor
-      ? [{ name: primaryInstructor, email: "" }]
-      : [];
+  // Student Display Settings > "Show Teachers" decides whether the WHOLE
+  // roster is listed. Off (the default) still shows the first author -- the
+  // overview always has -- and now with the profile the admin wrote for them
+  // (photo, subtitle, description), not just the bare name.
+  const visibleInstructors = visibleCourseAuthors(
+    instructors,
+    showInstructors,
+    primaryInstructor,
+  );
   const hasInstructors = visibleInstructors.length > 0;
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
@@ -367,12 +408,10 @@ const CourseHighlightsAccordion: React.FC<{
                 <ul className="space-y-1.5">
                   {visibleInstructors.map((inst, idx) => (
                     <li
-                      key={`${inst.email}-${idx}`}
+                      key={`${inst.id}-${idx}`}
                       className="flex items-center gap-2.5"
                     >
-                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white">
-                        {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
-                      </span>
+                      <AuthorAvatar author={inst} sizeClass="size-7" />
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-catalogue-text-primary">
                           {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
@@ -392,24 +431,19 @@ const CourseHighlightsAccordion: React.FC<{
                   <div className="space-y-2">
                     {visibleInstructors.map((inst, idx) => (
                       <div
-                        key={`${inst.email}-${idx}`}
+                        key={`${inst.id}-${idx}`}
                         className="flex items-start gap-3 rounded-catalogue-md bg-catalogue-bg-subtle/80 p-2.5"
                       >
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white">
-                          {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
-                        </div>
+                        <AuthorAvatar author={inst} sizeClass="size-10" />
                         <div className="min-w-0 flex-1">
                           <h4 className="text-sm font-semibold text-catalogue-text-primary">
                             {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
                           </h4>
-                          {/* The author's own subtitle ("Historian, IIT Bombay")
-                              replaces the email line when one is set; the
-                              email stays as the fallback for legacy authors. */}
-                          <p className="text-xs text-catalogue-text-secondary">
-                            {inst.subtitle ||
-                              inst.email ||
-                              t("courseDetails.noEmailProvided")}
-                          </p>
+                          {inst.subtitle && (
+                            <p className="text-xs text-catalogue-text-secondary">
+                              {inst.subtitle}
+                            </p>
+                          )}
                           {/* The admin writes the bio in a rich-text editor,
                               so this is HTML: sanitise and render it, the way
                               the About / What-you'll-learn sections do. */}
@@ -1038,34 +1072,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             rawHtmlContent(course.about_the_course) ||
             rawHtmlContent(course.course_html_description) ||
             null,
-          instructors:
-            courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.map(
-              (inst: any) => ({
-                name:
-                  inst.full_name ||
-                  t("courseDetails.unknownTeacher", {
-                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
-                  }),
-                email: inst.email || t("courseDetails.noEmailProvided"),
-                subtitle: inst.author_subtitle?.trim() || undefined,
-                // An untouched editor saves "<p></p>": treat that as empty.
-                description: hasContent(inst.author_description)
-                  ? inst.author_description.trim()
-                  : undefined,
-              }),
-            ) || [
-              {
-                name:
-                  courseResponse.sessions?.[0]?.level_with_details?.[0]
-                    ?.instructors?.[0]?.full_name ||
-                  t("courseDetails.unknownTeacher", {
-                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
-                  }),
-                email:
-                  courseResponse.sessions?.[0]?.level_with_details?.[0]
-                    ?.instructors?.[0]?.email || t("courseDetails.noEmailProvided"),
-              },
-            ],
+          // Authors = the batch's faculty, each with the profile fields the
+          // admin wrote (subtitle, rich-text bio, photo). Email is not carried
+          // to the page at all. No faculty -> no authors; the hero's author
+          // line (`instructor`) has its own fallback.
+          instructors: mapCourseAuthors(
+            courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors,
+            t("courseDetails.unknownTeacher", {
+              teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+            }),
+          ),
           rating: course.rating || 5,
           tags: parseTags(course.tags || ""),
           curriculum: [], // No curriculum data available from API yet

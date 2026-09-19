@@ -18,9 +18,6 @@ import {
   ParticipantsDataInterface,
 } from "@/types/assessment-open-registration";
 import { trackUtmAttribution } from "@/lib/utm-attribution";
-import { isTransientRequestError } from "../-utils/request-error";
-
-export const OPEN_REGISTRATION_DETAILS_QUERY_KEY = "GET_OPEN_REGISTRATION_DETAILS";
 
 const handleGetOpenTestRegistrationDetails = async (code: string | number) => {
   const response = await axios({
@@ -34,14 +31,9 @@ const handleGetOpenTestRegistrationDetails = async (code: string | number) => {
 };
 export const getOpenTestRegistrationDetails = (code: string | number) => {
   return {
-    queryKey: [OPEN_REGISTRATION_DETAILS_QUERY_KEY, code],
+    queryKey: ["GET_OPEN_REGISTRATION_DETAILS", code],
     queryFn: () => handleGetOpenTestRegistrationDetails(code),
     staleTime: 3600000,
-    // A dropped connection or a pod mid-restart deserves a couple of quiet
-    // retries before the learner sees an error screen; a bad share code or a
-    // backend rejection (510/511) is final and should surface immediately.
-    retry: (failureCount: number, error: unknown) =>
-      isTransientRequestError(error) && failureCount < 2,
   };
 };
 

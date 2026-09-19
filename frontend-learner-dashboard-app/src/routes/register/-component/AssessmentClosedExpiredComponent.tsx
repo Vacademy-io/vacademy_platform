@@ -5,57 +5,22 @@ import {
   type InstituteBranding,
 } from "@/components/common/institute-branding";
 import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
-import { MyButton } from "@/components/design-system/button";
-import {
-  ArrowClockwise,
-  Clock,
-  LinkBreak,
-  Lock,
-  Warning,
-  WifiSlash,
-  XCircle,
-} from "@phosphor-icons/react";
+import { Clock, Lock, XCircle } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 
-/**
- * `expired` / `closed` / `accessDenied` describe the assessment's own state.
- * `notFound` / `network` / `error` describe a failure to LOAD it — they are
- * rendered by the route's errorComponent and must never claim the assessment
- * is over, because we don't actually know.
- */
-export type AssessmentStatusVariant =
-  | "expired"
-  | "closed"
-  | "accessDenied"
-  | "notFound"
-  | "network"
-  | "error";
-
 const AssessmentClosedExpiredComponent = ({
-  isExpired = false,
+  isExpired,
   assessmentName,
   isPrivate = false,
   externalBranding,
-  variant,
-  detail,
-  onRetry,
 }: {
-  isExpired?: boolean;
-  /** Omit on load failures — the name is unknown and the box is hidden. */
-  assessmentName?: string;
+  isExpired: boolean;
+  assessmentName: string;
   isPrivate?: boolean;
   externalBranding?: InstituteBranding | null;
-  /** Explicit state; falls back to the legacy isPrivate/isExpired flags. */
-  variant?: AssessmentStatusVariant;
-  /** Backend-provided sentence to show under the description (error variants). */
-  detail?: string;
-  /** Shown as a "Try again" button when provided. */
-  onRetry?: () => void;
 }) => {
   const { t } = useTranslation("registrationA");
-  const resolvedVariant: AssessmentStatusVariant =
-    variant ?? (isPrivate ? "accessDenied" : isExpired ? "expired" : "closed");
   const { data: instituteDetails } = useInstituteDetails();
 
   const branding: InstituteBranding = externalBranding || {
@@ -66,75 +31,41 @@ const AssessmentClosedExpiredComponent = ({
     homeIconClickRoute: instituteDetails?.homeIconClickRoute ?? null,
   };
 
-  const configByVariant = {
-    accessDenied: {
-      Icon: Lock,
-      iconBg: "bg-amber-50",
-      iconColor: "text-amber-500",
-      ringColor: "ring-amber-100",
-      badgeVariant: "secondary" as const,
-      badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
-      badgeText: t("closedExpired.accessDenied.badge"),
-      title: t("closedExpired.accessDenied.title"),
-      description: t("closedExpired.accessDenied.description"),
-    },
-    expired: {
-      Icon: XCircle,
-      iconBg: "bg-red-50",
-      iconColor: "text-red-500",
-      ringColor: "ring-red-100",
-      badgeVariant: "destructive" as const,
-      badgeClass: "bg-red-50 text-red-700 border-red-200",
-      badgeText: t("closedExpired.expired.badge"),
-      title: t("closedExpired.expired.title"),
-      description: t("closedExpired.expired.description"),
-    },
-    closed: {
-      Icon: Clock,
-      iconBg: "bg-orange-50",
-      iconColor: "text-orange-500",
-      ringColor: "ring-orange-100",
-      badgeVariant: "secondary" as const,
-      badgeClass: "bg-orange-50 text-orange-700 border-orange-200",
-      badgeText: t("closedExpired.closed.badge"),
-      title: t("closedExpired.closed.title"),
-      description: t("closedExpired.closed.description"),
-    },
-    notFound: {
-      Icon: LinkBreak,
-      iconBg: "bg-amber-50",
-      iconColor: "text-amber-500",
-      ringColor: "ring-amber-100",
-      badgeVariant: "secondary" as const,
-      badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
-      badgeText: t("loadError.notFound.badge"),
-      title: t("loadError.notFound.title"),
-      description: t("loadError.notFound.description"),
-    },
-    network: {
-      Icon: WifiSlash,
-      iconBg: "bg-slate-100",
-      iconColor: "text-slate-500",
-      ringColor: "ring-slate-50",
-      badgeVariant: "secondary" as const,
-      badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
-      badgeText: t("loadError.network.badge"),
-      title: t("loadError.network.title"),
-      description: t("loadError.network.description"),
-    },
-    error: {
-      Icon: Warning,
-      iconBg: "bg-orange-50",
-      iconColor: "text-orange-500",
-      ringColor: "ring-orange-100",
-      badgeVariant: "secondary" as const,
-      badgeClass: "bg-orange-50 text-orange-700 border-orange-200",
-      badgeText: t("loadError.unknown.badge"),
-      title: t("loadError.unknown.title"),
-      description: t("loadError.unknown.description"),
-    },
-  } satisfies Record<AssessmentStatusVariant, unknown>;
-  const config = configByVariant[resolvedVariant];
+  const config = isPrivate
+    ? {
+        Icon: Lock,
+        iconBg: "bg-amber-50",
+        iconColor: "text-amber-500",
+        ringColor: "ring-amber-100",
+        badgeVariant: "secondary" as const,
+        badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
+        badgeText: t("closedExpired.accessDenied.badge"),
+        title: t("closedExpired.accessDenied.title"),
+        description: t("closedExpired.accessDenied.description"),
+      }
+    : isExpired
+      ? {
+          Icon: XCircle,
+          iconBg: "bg-red-50",
+          iconColor: "text-red-500",
+          ringColor: "ring-red-100",
+          badgeVariant: "destructive" as const,
+          badgeClass: "bg-red-50 text-red-700 border-red-200",
+          badgeText: t("closedExpired.expired.badge"),
+          title: t("closedExpired.expired.title"),
+          description: t("closedExpired.expired.description"),
+        }
+      : {
+          Icon: Clock,
+          iconBg: "bg-orange-50",
+          iconColor: "text-orange-500",
+          ringColor: "ring-orange-100",
+          badgeVariant: "secondary" as const,
+          badgeClass: "bg-orange-50 text-orange-700 border-orange-200",
+          badgeText: t("closedExpired.closed.badge"),
+          title: t("closedExpired.closed.title"),
+          description: t("closedExpired.closed.description"),
+        };
 
   const { Icon } = config;
 
@@ -200,40 +131,17 @@ const AssessmentClosedExpiredComponent = ({
               <p className="text-sm text-slate-600 leading-relaxed">
                 {config.description}
               </p>
-              {detail && (
-                <p className="text-xs text-slate-500 leading-relaxed break-words">
-                  {detail}
-                </p>
-              )}
             </div>
 
-            {/* Assessment name — only when we actually know it */}
-            {assessmentName && (
-              <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-1">
-                <p className="text-caption font-medium text-slate-500 uppercase tracking-wider">
-                  {t("closedExpired.assessmentLabel")}
-                </p>
-                <p className="text-sm font-medium text-slate-900 truncate">
-                  {assessmentName}
-                </p>
-              </div>
-            )}
-
-            {onRetry && (
-              <div className="mt-6 flex justify-center">
-                <MyButton
-                  type="button"
-                  buttonType="primary"
-                  scale="large"
-                  layoutVariant="default"
-                  className="w-full sm:w-auto gap-2"
-                  onClick={onRetry}
-                >
-                  <ArrowClockwise size={16} weight="bold" />
-                  {t("loadError.retry")}
-                </MyButton>
-              </div>
-            )}
+            {/* Assessment name */}
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-1">
+              <p className="text-caption font-medium text-slate-500 uppercase tracking-wider">
+                {t("closedExpired.assessmentLabel")}
+              </p>
+              <p className="text-sm font-medium text-slate-900 truncate">
+                {assessmentName}
+              </p>
+            </div>
           </CardContent>
         </Card>
       </motion.div>

@@ -77,8 +77,7 @@
         "resetForm": "Reset Form",
         "toast": {
             "registeredSuccess": "You have been registered successfully!",
-            "accountUnresolved": "We couldn't resolve your account. Please try again.",
-            "networkError": "Couldn't reach the server. Check your connection and try again."
+            "accountUnresolved": "We couldn't resolve your account. Please try again."
         }
     },
     "checkEmailDialog": {
@@ -97,14 +96,7 @@
             "attemptsOverDescription": "Your attempts are over!",
             "invalidOtpTitle": "Invalid OTP",
             "invalidOtpDescription": "Please try again",
-            "fillAllOtp": "Please fill all OTP fields",
-            "otpSendFailedTitle": "Couldn't send the OTP",
-            "otpSendFailedDescription": "Please check your connection and try again",
-            "otpExpiredOrInvalidTitle": "OTP not accepted",
-            "verificationFailedTitle": "Couldn't verify right now",
-            "verificationFailedDescription": "Please check your connection and try again",
-            "statusLookupFailedTitle": "Email verified, but we couldn't check your registration",
-            "statusLookupFailedDescription": "Please press Verify & Continue again"
+            "fillAllOtp": "Please fill all OTP fields"
         }
     },
     "otpVerify": {
@@ -215,23 +207,5 @@
             "registrationFailedRetry": "Registration failed. Please try again.",
             "markAttendanceFailed": "Failed to mark attendance"
         }
-    },
-    "loadError": {
-        "notFound": {
-            "badge": "Invalid link",
-            "title": "Assessment not found",
-            "description": "This registration link is not valid or the assessment has been removed. Please check the link you received."
-        },
-        "network": {
-            "badge": "Connection problem",
-            "title": "Couldn't load the assessment",
-            "description": "We couldn't reach the server. Check your internet connection and try again."
-        },
-        "unknown": {
-            "badge": "Something went wrong",
-            "title": "Couldn't load the assessment",
-            "description": "An unexpected error occurred while loading this page. Please try again."
-        },
-        "retry": "Try again"
     }
 }

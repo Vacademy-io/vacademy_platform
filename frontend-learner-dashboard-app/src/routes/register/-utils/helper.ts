@@ -114,16 +114,10 @@ export const getDynamicSchema = (
 };
 
 export const getOpenRegistrationUserDetailsByEmail = (
-  users: unknown,
+  users: UserDetailsOpenTest[],
   email: string | undefined
 ): UserDetailsOpenTest | null => {
-  // The learner-details call can answer with an error envelope instead of a
-  // list (expired token, wrong institute); `.find` on that would throw.
-  if (!Array.isArray(users)) return null;
-  return (
-    (users as UserDetailsOpenTest[]).find((user) => user.email === email) ||
-    null
-  );
+  return users.find((user) => user.email === email) || null;
 };
 
 export function transformIntoCustomFieldRequestListData(

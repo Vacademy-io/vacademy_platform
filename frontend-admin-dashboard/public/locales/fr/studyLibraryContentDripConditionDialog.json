@@ -29,7 +29,7 @@
     "heading": "Règle de déverrouillage — {{item}}",
     "alerts": {
         "dripDisabled": "Les conditions de diffusion progressive sont désactivées pour cet établissement, donc rien de ce qui est enregistré ici ne verrouillera de contenu pour l'instant. Activez-les dans Paramètres → Cours → Conditions de diffusion progressive.",
-        "previewOnly": "Les règles sont en aperçu : ceci est enregistré, mais les apprenants ne sont pas affectés tant que « Appliquer les règles de déverrouillage aux apprenants » n'est pas activé dans Paramètres → Cours → Conditions de diffusion progressive.",
+        "previewOnly": "Cette règle dépend de la progression de l'apprenant, elle reste donc en aperçu : elle est enregistrée, mais les apprenants ne sont pas affectés tant que « Appliquer les règles de progression aux apprenants » n'est pas activé dans Paramètres → Cours → Conditions de diffusion progressive. Les règles par date et par jour s'appliquent dès leur enregistrement.",
         "courseWideHeading": "Une règle valable pour tout le cours couvre déjà chaque {{level}}",
         "courseWideFootnote": "Une règle enregistrée ici prend le pas pour ce/cette {{level}}."
     },

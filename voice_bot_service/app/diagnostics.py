@@ -230,6 +230,9 @@ class CallDiagnostics:
     # frame was swallowed by the vendor socket reconnecting after the
     # interruption (call 3b5fb592). Evidence, not a fault.
     resume_respoken: int = 0
+    # Resumed words that never reached the line at all and were handed back to
+    # the model (call b41b481f). A fault symptom, not a fault by itself.
+    resume_lost: int = 0
     # From the PLAYED transcript at report time (report._played_invariants):
     # the opening said again after a substantive caller turn; 5+-word
     # sentences played twice without a caller "hello?"/"say again" between.
@@ -912,6 +915,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "emptyRunsBlocked": d.empty_runs_blocked,
                 "shortAnswerHolds": d.short_answer_holds,
                 "resumeRespoken": d.resume_respoken,
+                "resumeLost": d.resume_lost,
                 "openingReplays": d.opening_replays,
                 "repeatedLines": d.repeated_lines,
                 "repeatedLineSamples": d.repeated_line_samples[:3],

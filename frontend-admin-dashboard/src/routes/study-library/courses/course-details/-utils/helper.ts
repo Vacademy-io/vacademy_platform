@@ -337,6 +337,8 @@ export function getInstructorsBySessionAndLevel(
                         name: inst.full_name,
                         email: inst.email,
                         profilePicId: inst.profile_pic_file_id || '',
+                        authorSubtitle: inst.author_subtitle,
+                        authorDescription: inst.author_description,
                     }));
                 }
             }

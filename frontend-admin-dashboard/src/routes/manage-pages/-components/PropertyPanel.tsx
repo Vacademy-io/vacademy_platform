@@ -2296,6 +2296,54 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
     };
 
     const sortLabels = buildCourseCatalogSortLabels(t);
+    const catalogueFilters = [
+        {
+            id: 'level',
+            field: 'level_name',
+            label: getTerminology(ContentTerms.Level, SystemTerms.Level),
+        },
+        {
+            id: 'session',
+            field: 'session_name',
+            label: getTerminology(ContentTerms.Session, SystemTerms.Session),
+        },
+        {
+            id: 'tags',
+            field: 'comma_separeted_tags',
+            label: getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag),
+        },
+        // The public catalogue already renders an "Authors" section for an
+        // `instructors` entry; it just could not be switched on from here.
+        {
+            id: 'instructors',
+            field: 'instructors',
+            label: t('bookCatalogue.filterAuthors'),
+        },
+    ] as const;
+    const selectedFilterIds = new Set(
+        Array.isArray(props.filtersConfig)
+            ? props.filtersConfig.map((filter: { id?: string }) => filter.id)
+            : catalogueFilters.map((filter) => filter.id),
+    );
+    const toggleCatalogueFilter = (filter: (typeof catalogueFilters)[number]) => {
+        const next = new Set(selectedFilterIds);
+        if (next.has(filter.id)) next.delete(filter.id);
+        else next.add(filter.id);
+        // Only the checkbox filters above are managed here. Anything else in
+        // filtersConfig (the price range, a hand-authored
+        // filter) must survive a toggle — rebuilding the array from those
+        // alone silently deleted a catalogue's Price Range on the first click.
+        const managedIds = new Set<string>(catalogueFilters.map((item) => item.id));
+        const unmanaged = (Array.isArray(props.filtersConfig) ? props.filtersConfig : []).filter(
+            (item: { id?: string }) => !item.id || !managedIds.has(item.id)
+        );
+        updateProp('filtersConfig', [
+            ...catalogueFilters
+                .filter((item) => next.has(item.id))
+                .map(({ id, field }) => ({ id, type: 'checkbox', field })),
+            ...unmanaged,
+        ]);
+    };
 
     return (
         <div className="space-y-4">
@@ -2322,6 +2370,28 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                     onCheckedChange={(c) => updateProp('showFilters', c)}
                 />
             </div>
+
+            {component.type === 'courseCatalog' && (
+                <div className="space-y-2 rounded border p-3">
+                    <Label>
+                        {t('bookCatalogue.filterOptions', {
+                            defaultValue: 'Filter options',
+                        })}
+                    </Label>
+                    {catalogueFilters.map((filter) => (
+                        <label
+                            key={filter.id}
+                            className="flex cursor-pointer items-center gap-2 text-sm"
+                        >
+                            <Checkbox
+                                checked={selectedFilterIds.has(filter.id)}
+                                onCheckedChange={() => toggleCatalogueFilter(filter)}
+                            />
+                            {filter.label}
+                        </label>
+                    ))}
+                </div>
+            )}
 
             {/* How a preview image sits in the card's image band. `cover` fills
                 it but crops the edges — which eats the logo/headline on wide

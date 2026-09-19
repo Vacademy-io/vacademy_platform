@@ -4684,11 +4684,15 @@ async def test_a_restatement_only_reply_asks_for_the_next_step_twice_then_speaks
     rec.text.clear()
     await _reply(g, "Okay, so you are taking offline classes.")
     assert asked == [("restatement", 1)] and rec.text == [], (asked, rec.text)
+    # SAME caller turn: one request is the limit (call b41b481f burned two in
+    # 1.6 s and produced the same sentence three times), so this one is spoken.
     await _reply(g, "You are not taking any online classes right now.")
-    assert asked == [("restatement", 1), ("restatement", 2)] and rec.text == [], (asked, rec.text)
+    assert asked == [("restatement", 1)], asked
+    assert [t.strip() for t in rec.text] == ["You are not taking any online classes right now."], rec.text
+    rec.text.clear()
+    caller["t"] = "Offline only, yes."        # a NEW turn earns the second request
     await _reply(g, "You only take offline classes.")
-    assert len(asked) == 2 and [t.strip() for t in rec.text] == ["You only take offline classes."], \
-        "budget spent: better a weak line than silence"
+    assert asked == [("restatement", 1), ("restatement", 2)] and rec.text == [], (asked, rec.text)
 
 
 @pytest.mark.asyncio
@@ -5003,6 +5007,25 @@ async def test_a_second_backchannel_after_the_resume_was_cut_still_gets_a_cue():
 
 
 @pytest.mark.asyncio
+async def test_a_backchannel_during_the_settle_window_still_gets_no_cue():
+    """The 0.6 s teardown settle must not re-open the two-voices window: while
+    a resume is scheduled but not yet audible, a backchannel still generates
+    nothing."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "बाकी बात यह है कि आगे क्या करना है।",
+                           resume_settle_secs=0.4)
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    assert tc._resume_pending(), "the settle window should count as in-flight"
+    tc._outcome.transcript.append({"role": "assistant", "text": "जी सर, तो बताइए।"})
+    await _feed(tc, "हम्म।")                     # arrives inside the settle
+    assert not any(("carry on" in c) or ("NEXT step" in c) for c in rec.cues()), rec.cues()
+    tc._cancel_resume_check(stale=True)
+
+
+@pytest.mark.asyncio
 async def test_a_backchannel_after_an_early_resume_says_nothing_more():
     """bot_speaking=True: the words resumed at their VAD stop are still
     playing, so a second "ठीक है" over them needs no cue at all."""
@@ -5093,26 +5116,100 @@ async def test_a_blip_that_killed_a_reply_asks_for_the_reply_again_not_for_a_rep
 
 
 @pytest.mark.asyncio
-async def test_resumed_words_are_said_again_when_the_vendor_socket_ate_them():
-    """pipecat tears the TTS websocket down on every interruption; a frame
-    pushed in that instant never reaches run_tts and the caller hears nothing
-    (call 3b5fb592). Verify against the played transcript and re-send once."""
+async def test_the_resume_waits_out_the_teardown_then_proves_it_was_heard():
+    """pipecat clears the TTS queue and reconnects the socket while handling an
+    interruption, so a frame pushed into that window is dropped with no error
+    (3 of the first 4 live resumes). Wait, send, then judge by what PLAYED:
+    say it once more if it never arrived, and finally give the words back to
+    the model rather than leave them counted as said (call b41b481f)."""
     rec = _Rec()
     tail = "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?"
+    forgotten = {"n": 0}
+
+    def forget():
+        forgotten["n"] += 1
+        return True
     tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
-                           resume_unplayed=lambda n=600: tail)
+                           resume_unplayed=lambda n=600: tail, forget_resume=forget,
+                           resume_settle_secs=0.02)
     tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
     b.FrameProcessor.process_frame = _noop_super
     assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
-    assert _spoken_texts(rec) == [tail]
-    await asyncio.sleep(0.05)
-    # nothing ever played → said again
-    await tc._speak_again_if_lost(tail, b.FrameDirection.DOWNSTREAM, wait=0.01)
-    assert _spoken_texts(rec) == [tail, tail], "the lost words were never re-sent"
-    # once it IS in the played transcript, no repeat
-    tc._outcome.transcript.append({"role": "assistant", "text": tail})
-    await tc._speak_again_if_lost(tail, b.FrameDirection.DOWNSTREAM, wait=0.01)
-    assert _spoken_texts(rec) == [tail, tail], "re-sent words that had actually played"
+    assert _spoken_texts(rec) == [], "spoke into the teardown window"
+    await asyncio.sleep(0.06)
+    assert _spoken_texts(rec) == [tail], "never sent after the settle"
+    # nothing ever plays: one more attempt, then hand the words back
+    await asyncio.wait_for(tc._resume_check, timeout=6)
+    assert _spoken_texts(rec) == [tail, tail], _spoken_texts(rec)
+    assert forgotten["n"] == 1, "words that were never heard stayed marked as said"
+
+
+@pytest.mark.asyncio
+async def test_a_resume_that_did_play_is_neither_repeated_nor_handed_back():
+    rec = _Rec()
+    tail = "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?"
+    forgotten = {"n": 0}
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: tail,
+                           forget_resume=lambda: forgotten.__setitem__("n", forgotten["n"] + 1),
+                           resume_settle_secs=0.02)
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    await asyncio.sleep(0.06)
+    tc._outcome.transcript.append({"role": "assistant", "text": tail})   # it played
+    await asyncio.wait_for(tc._resume_check, timeout=6)
+    assert _spoken_texts(rec) == [tail], "said the same words twice"
+    assert forgotten["n"] == 0, "un-recorded words the caller actually heard"
+
+
+@pytest.mark.asyncio
+async def test_forget_resumed_puts_the_words_back_in_play():
+    """The gate's side of the same contract."""
+    from pipecat.frames.frames import InterruptionFrame
+    rec = _NRRec()
+    played = {"t": ""}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "",
+                       played_text=lambda: played["t"])
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    D = b.FrameDirection.DOWNSTREAM
+    Q = "क्या मैं जान सकती हूँ कि आकाश के previous class में कितने marks आए थे?"
+    await _reply(g, "जी सर। ", Q)
+    played["t"] = "जी सर।"
+    await g.process_frame(InterruptionFrame(), D)
+    assert g.take_unplayed_tail().strip() == Q
+    assert normalize_spoken(Q) in g._spoken
+    assert g.forget_resumed() is True
+    assert normalize_spoken(Q) not in g._spoken, "still counted as said"
+    assert g.forget_resumed() is False, "nothing left to give back"
+    rec.text.clear()
+    await _reply(g, Q)
+    assert [t.strip() for t in rec.text] == [Q], f"the model's copy was suppressed: {rec.text}"
+
+
+@pytest.mark.asyncio
+async def test_one_next_step_request_per_caller_turn():
+    """Call b41b481f: three generations in 1.6 s, each tripping the restatement
+    rule and asking for a next step again, all producing the same sentence."""
+    rec = _NRRec()
+    asked = []
+    caller = {"t": "अच्छा।"}
+
+    async def _next_step(held, kind="", attempt=0):
+        asked.append(kind)
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "नाम क्या है और अभी किस class में पढ़ रहा है?")
+    rec.text.clear()
+    for _ in range(3):                       # the model keeps restating, same turn
+        await _reply(g, "नाम क्या है और अभी किस class में पढ़ रहा है?")
+    assert len(asked) == 1, f"burned the budget on one turn: {asked}"
+    caller["t"] = "हाँ जी बोलिए।"             # a NEW turn earns another
+    await _reply(g, "नाम क्या है और अभी किस class में पढ़ रहा है?")
+    assert len(asked) == 2, asked
 
 
 # ── call 0c42d3a6 (2026-09-18): "समझ नहीं आया" and the stale re-send ────────
@@ -5147,27 +5244,37 @@ async def test_a_barge_in_cancels_the_pending_re_send_of_resumed_words():
     "हाँ जी?"."""
     rec = _Rec()
     tail = "आपको एक online dashboard मिलता है — schedule, link, recordings, सब एक जगह।"
+    forgotten = {"n": 0}
     tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
-                           resume_unplayed=lambda n=600: tail)
+                           resume_unplayed=lambda n=600: tail, resume_settle_secs=0.3,
+                           forget_resume=lambda: forgotten.__setitem__("n", 1) or True)
     tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
     b.FrameProcessor.process_frame = _noop_super
     assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
     assert tc._resume_check is not None and not tc._resume_check.done()
     await _feed(tc, "हाँ जी clear है।")          # a real barge-in: they took the turn
     assert tc._resume_check is None, "the stale re-send was left armed"
-    await asyncio.sleep(0.05)
-    assert _spoken_texts(rec) == [tail], "the stale words were sent again"
+    await asyncio.sleep(0.4)
+    assert _spoken_texts(rec) == [], "said stale words over the turn they had just taken"
+    assert forgotten["n"] == 1, "the abandoned words still count as said"
 
 
 @pytest.mark.asyncio
 async def test_no_re_send_while_the_model_is_already_writing():
     rec = _Rec()
+    forgotten = {"n": 0}
     tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
-                           resume_unplayed=lambda n=600: "x y z")
+                           resume_unplayed=lambda n=600: "x y z", resume_settle_secs=0.01,
+                           forget_resume=lambda: forgotten.__setitem__("n", 1) or True)
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
     tc._reply_in_flight = lambda: True
     b.FrameProcessor.process_frame = _noop_super
-    await tc._speak_again_if_lost("x y z", b.FrameDirection.DOWNSTREAM, wait=0.01)
-    assert _spoken_texts(rec) == [], "spoke over a reply that was on its way"
+    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    await asyncio.wait_for(tc._resume_check, timeout=6)
+    # sent once, never repeated over the model, and handed back so the model
+    # is free to say them itself
+    assert _spoken_texts(rec) == ["x y z"], _spoken_texts(rec)
+    assert forgotten["n"] == 1, "left marked as said while the model was writing"
 
 
 @pytest.mark.asyncio

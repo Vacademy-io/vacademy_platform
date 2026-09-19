@@ -184,6 +184,9 @@
   "jsonRenderer": {
     "video": "Vidéo",
     "noVideoUrlConfigured": "Aucune URL vidéo configurée",
+    "play": "Lecture",
+    "pause": "Pause",
+    "videoTagUnsupported": "Votre navigateur ne prend pas en charge la lecture vidéo.",
     "recommended": "Recommandé",
     "includeEmailAddress": "Veuillez indiquer votre adresse e-mail.",
     "formNotConnected": "Ce formulaire n'est pas encore connecté — veuillez réessayer plus tard.",

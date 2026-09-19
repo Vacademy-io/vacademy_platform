@@ -23,7 +23,6 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..db import db_dependency, db_session
@@ -36,6 +35,7 @@ from ..services.ai_task_service import AiTaskService
 from ..services.kb import generations as kb_generations
 from ..services.kb import paper as kb_paper
 from ..services.kb import paper_pdf as kb_paper_pdf
+from ..services.kb import paper_publish as kb_paper_publish
 from ..services.kb.repository import KbRepository
 from .knowledge_base import Caller, get_caller, require_usable
 
@@ -61,6 +61,15 @@ class PaperSpec(BaseModel):
     grade: Optional[str] = None
     language: Optional[str] = None
     exam_style: Optional[str] = None          # e.g. "CBSE board pattern"
+    # The teacher's own title; blank lets the planner name the paper.
+    title: Optional[str] = Field(None, max_length=200)
+    # Fixed mix, in paper order: [{question_type, count, marks_each, label?,
+    # instruction?, difficulty?}]. Counts/marks are enforced, not suggested.
+    type_plan: Optional[List[Dict[str, Any]]] = None
+    # Optional share per chapter/topic id, e.g. {"<node_id>": 30}. Guidance only.
+    weightage: Optional[Dict[str, float]] = None
+    # The teacher's own "General Instructions" lines; replace the planner's.
+    instructions: Optional[List[str]] = None
 
 
 class BlueprintRequest(BaseModel):
@@ -75,6 +84,10 @@ class BlueprintRequest(BaseModel):
 class GenerateRequest(BaseModel):
     blueprint: Dict[str, Any]
     grade: Optional[str] = None
+    # Draw a figure for questions the writer marks as needing one and the book
+    # does not provide (slow: ~1 min per figure; billed per image). Off unless
+    # the teacher asks — a wrong diagram on an exam is worse than none.
+    generate_diagrams: bool = False
     institute_id: Optional[str] = None
 
 
@@ -92,6 +105,13 @@ class ValidateRequest(BaseModel):
     institute_id: Optional[str] = None
 
 
+class FormatRequest(BaseModel):
+    """One question the teacher edited by hand, in the raw (review-board) shape."""
+    raw_question: Dict[str, Any]
+    generation_id: Optional[str] = None
+    institute_id: Optional[str] = None
+
+
 class PaperPdfRequest(BaseModel):
     """The paper as it is on the review board right now — including questions
     rewritten since generation, which only the client holds."""
@@ -103,6 +123,34 @@ class PaperPdfRequest(BaseModel):
     institute_name: Optional[str] = None
     # "A", "B"… for parallel sets; printed in a box at the top right.
     set_label: Optional[str] = Field(None, max_length=8)
+    # Where the institute logo goes: faint watermark behind every page
+    # (default), beside the name as a letterhead, or nowhere.
+    logo_placement: str = "watermark"
+    # The "Name / Roll No. / Date" line under the marks strip. Off by default:
+    # most institutes hand the paper out digitally, not as an answer booklet.
+    candidate_line: bool = False
+    # Layout: "classic" (board sheet), "compact" (two-column, footer band) or
+    # "coaching" (bordered two-column with inline answers). See paper_themes.
+    theme: str = "classic"
+    # Printed in the header where the layout has a Date field (dd-mm-yyyy or free text).
+    exam_date: Optional[str] = Field(None, max_length=40)
+    # "Class - 10th" line for the coaching layout; defaults from the curriculum book.
+    grade_line: Optional[str] = Field(None, max_length=60)
+    institute_id: Optional[str] = None
+
+
+class PaperPublishRequest(PaperPdfRequest):
+    """PaperPdfRequest plus the history row to remember the link on."""
+    generation_id: Optional[str] = None
+
+
+class GenerationPublishRequest(BaseModel):
+    include_answer_key: bool = False
+    show_marks: bool = True
+    set_label: Optional[str] = Field(None, max_length=8)
+    theme: str = "classic"
+    exam_date: Optional[str] = Field(None, max_length=40)
+    grade_line: Optional[str] = Field(None, max_length=60)
     institute_id: Optional[str] = None
 
 
@@ -285,6 +333,7 @@ async def generate_paper(
     task_id = str(task.id)
     user_id = caller.user_id
     grade = body.grade
+    generate_diagrams = body.generate_diagrams
 
     # Record the run BEFORE it starts, so a generation that fails or that the
     # user navigates away from is still visible and resumable. input_json keeps
@@ -296,7 +345,10 @@ async def generate_paper(
         artifact_type="QUESTION_PAPER",
         title=blueprint.title,
         status="GENERATING",
-        input_payload={"blueprint": blueprint.to_dict(), "grade": grade},
+        input_payload={
+            "blueprint": blueprint.to_dict(), "grade": grade,
+            "generate_diagrams": body.generate_diagrams,
+        },
         ai_task_id=task_id,
         items_planned=blueprint.total_questions,
         created_by=user_id,
@@ -323,6 +375,7 @@ async def generate_paper(
             generated = await kb_paper.generate_questions(
                 job_db, kb_id=kb_id, institute_id=resolved,
                 blueprint=blueprint, grade=grade,
+                generate_diagrams=generate_diagrams,
             )
             issues = kb_paper.validate_paper(blueprint, generated.questions)
 
@@ -340,6 +393,17 @@ async def generate_paper(
                 institute_id=resolved, user_id=user_id,
                 # Keyed on the task, so a retry of the same job cannot double-charge.
                 idempotency_key=f"kb_paper:{task_id}",
+            )
+        # Drawn figures are real image-model spend, priced like document
+        # illustrations (same tool key, per image that actually came back).
+        if generated.diagrams_drawn:
+            _bill(
+                "html_document_image",
+                {"num_images": generated.diagrams_drawn},
+                model="image",
+                usage={"prompt_tokens": 0, "completion_tokens": 0},
+                institute_id=resolved, user_id=user_id,
+                idempotency_key=f"kb_paper_diagrams:{task_id}",
             )
 
         # Paired so `questions[i]` always describes `raw_questions[i]`. The review
@@ -730,31 +794,34 @@ async def delete_generation(
 
 
 # ---------------------------------------------------------------------------
-# 3b. PDF — the paper as a sheet (free — no model call)
+# 3a. Format — a hand-edited question back into the shape the bank stores
 # ---------------------------------------------------------------------------
 
-def _institute_name(db: Session, institute_id: str) -> Optional[str]:
-    row = db.execute(
-        text("SELECT name FROM institutes WHERE id = :id"), {"id": institute_id}
-    ).fetchone()
-    return (row[0] or "").strip() or None if row else None
+@router.post("/bases/{kb_id}/paper/format")
+async def format_edited_question(
+    kb_id: str,
+    body: FormatRequest,
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """The review board lets a teacher edit a question's text, options, answer
+    and marking scheme. The formatted QuestionDTO the bank stores must follow
+    that edit, and the only safe way is the same formatter generation uses —
+    hand-building the DTO on the client is how MCQ answers went missing before.
+    Not metered: no model call."""
+    resolved = caller.require_institute(body.institute_id)
+    _assert_kb(db, kb_id, resolved)
+    raw_kept, formatted, _ = kb_paper.pair_with_formatted(
+        [body.raw_question], kb_id=kb_id, generation_id=body.generation_id
+    )
+    if not formatted:
+        raise HTTPException(422, "That question could not be converted. Check its options and answer.")
+    return {"question": formatted[0], "raw_question": raw_kept[0]}
 
 
-def _paper_subtitle(kb: Dict[str, Any]) -> Optional[str]:
-    """'Class 10 · Science · NCERT' for a curriculum library; nothing otherwise."""
-    curriculum = kb.get("curriculum") or {}
-    if not curriculum:
-        return None
-    bits = []
-    if curriculum.get("class"):
-        cls = str(curriculum["class"])
-        bits.append(f"Class {cls}" if cls.isdigit() else cls)
-    if curriculum.get("subject"):
-        bits.append(str(curriculum["subject"]))
-    if curriculum.get("board"):
-        bits.append(str(curriculum["board"]))
-    return " · ".join(bits) or None
-
+# ---------------------------------------------------------------------------
+# 3b. PDF — the paper as a sheet (free — no model call)
+# ---------------------------------------------------------------------------
 
 def _pdf_response(pdf: bytes, filename: str) -> Response:
     return Response(
@@ -778,24 +845,71 @@ async def _render_paper(
     show_marks: bool,
     institute_name: Optional[str],
     set_label: Optional[str],
+    logo_placement: str = "watermark",
+    candidate_line: bool = False,
+    theme: str = "classic",
+    exam_date: Optional[str] = None,
+    grade_line: Optional[str] = None,
 ) -> Response:
     if not questions:
         raise HTTPException(400, "There are no questions to print")
     blueprint = kb_paper.Blueprint.from_dict(blueprint_raw)
     try:
-        pdf = await kb_paper_pdf.render_paper_pdf(
-            blueprint,
-            questions,
-            institute_name=(institute_name or "").strip() or _institute_name(db, institute_id),
-            subtitle=_paper_subtitle(kb),
-            include_answer_key=include_answer_key,
-            show_marks=show_marks,
-            set_label=(set_label or "").strip() or None,
+        pdf = await kb_paper_publish.render_branded_pdf(
+            db, kb, institute_id, blueprint, questions,
+            include_answer_key=include_answer_key, show_marks=show_marks,
+            institute_name=institute_name, set_label=set_label,
+            logo_placement=logo_placement, candidate_line=candidate_line,
+            theme=theme, exam_date=exam_date, grade_line=grade_line,
         )
     except Exception as exc:  # noqa: BLE001 — surface as a 503, keep the trace
         logger.exception("paper PDF render failed for kb %s", kb.get("id"))
         raise HTTPException(503, "Could not render the PDF right now. Please try again.") from exc
     return _pdf_response(pdf, kb_paper_pdf.paper_filename(blueprint.title, with_key=include_answer_key))
+
+
+def _generation_paper(db: Session, generation_id: str, institute_id: str):
+    """(record, blueprint_raw, raw_questions) for a finished paper, or 404/409."""
+    record = kb_generations.get(db, generation_id, institute_id)
+    if not record:
+        raise HTTPException(404, "Not found")
+    result = record.get("result") or {}
+    questions = result.get("raw_questions") or []
+    blueprint_raw = (record.get("input") or {}).get("blueprint") or result.get("blueprint") or {}
+    if not questions or not blueprint_raw:
+        raise HTTPException(409, "This paper has no generated questions to print yet")
+    return record, blueprint_raw, questions
+
+
+async def _publish(
+    db: Session,
+    kb: Dict[str, Any],
+    institute_id: str,
+    blueprint_raw: Dict[str, Any],
+    questions: List[Dict[str, Any]],
+    *,
+    include_answer_key: bool,
+    show_marks: bool,
+    set_label: Optional[str],
+    generation_id: Optional[str],
+    theme: str = "classic",
+    exam_date: Optional[str] = None,
+    grade_line: Optional[str] = None,
+) -> Dict[str, Any]:
+    if not questions:
+        raise HTTPException(400, "There are no questions to publish")
+    try:
+        return await kb_paper_publish.publish_paper(
+            db, kb, institute_id, kb_paper.Blueprint.from_dict(blueprint_raw), questions,
+            include_answer_key=include_answer_key, show_marks=show_marks,
+            set_label=(set_label or "").strip() or None, generation_id=generation_id,
+            theme=theme, exam_date=exam_date, grade_line=grade_line,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("paper publish failed for kb %s", kb.get("id"))
+        raise HTTPException(503, "Could not publish the paper right now. Please try again.") from exc
 
 
 @router.post("/bases/{kb_id}/paper/pdf")
@@ -815,6 +929,8 @@ async def paper_pdf(
         db, kb, resolved, body.blueprint, body.questions,
         include_answer_key=body.include_answer_key, show_marks=body.show_marks,
         institute_name=body.institute_name, set_label=body.set_label,
+        logo_placement=body.logo_placement, candidate_line=body.candidate_line,
+        theme=body.theme, exam_date=body.exam_date, grade_line=body.grade_line,
     )
 
 
@@ -824,6 +940,11 @@ async def generation_paper_pdf(
     include_answer_key: bool = Query(False),
     show_marks: bool = Query(True),
     set_label: Optional[str] = Query(None, max_length=8),
+    logo_placement: str = Query("watermark"),
+    candidate_line: bool = Query(False),
+    theme: str = Query("classic"),
+    exam_date: Optional[str] = Query(None, max_length=40),
+    grade_line: Optional[str] = Query(None, max_length=60),
     institute_id: Optional[str] = Query(None),
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
@@ -831,19 +952,55 @@ async def generation_paper_pdf(
     """A finished paper from the history, straight to PDF — no need to reopen
     it on the review board first."""
     resolved = caller.require_institute(institute_id)
-    record = kb_generations.get(db, generation_id, resolved)
-    if not record:
-        raise HTTPException(404, "Not found")
-    result = record.get("result") or {}
-    questions = result.get("raw_questions") or []
-    blueprint_raw = (record.get("input") or {}).get("blueprint") or result.get("blueprint") or {}
-    if not questions or not blueprint_raw:
-        raise HTTPException(409, "This paper has no generated questions to print yet")
+    record, blueprint_raw, questions = _generation_paper(db, generation_id, resolved)
     kb = _assert_kb(db, record["knowledge_base_id"], resolved)
     return await _render_paper(
         db, kb, resolved, blueprint_raw, questions,
         include_answer_key=include_answer_key, show_marks=show_marks,
         institute_name=None, set_label=set_label,
+        logo_placement=logo_placement, candidate_line=candidate_line,
+        theme=theme, exam_date=exam_date, grade_line=grade_line,
+    )
+
+
+@router.post("/bases/{kb_id}/paper/publish")
+async def publish_paper(
+    kb_id: str,
+    body: PaperPublishRequest,
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """Put the paper on screen behind a link anyone can open (public media
+    bucket + short link), and remember it on the history row when one is
+    given. Not metered."""
+    resolved = caller.require_institute(body.institute_id)
+    kb = _assert_kb(db, kb_id, resolved)
+    if body.generation_id and not kb_generations.get(db, body.generation_id, resolved):
+        raise HTTPException(404, "Not found")
+    return await _publish(
+        db, kb, resolved, body.blueprint, body.questions,
+        include_answer_key=body.include_answer_key, show_marks=body.show_marks,
+        set_label=body.set_label, generation_id=body.generation_id,
+        theme=body.theme, exam_date=body.exam_date, grade_line=body.grade_line,
+    )
+
+
+@router.post("/generations/{generation_id}/paper/publish")
+async def publish_generation_paper(
+    generation_id: str,
+    body: GenerationPublishRequest,
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """Publish a finished paper straight from the history."""
+    resolved = caller.require_institute(body.institute_id)
+    record, blueprint_raw, questions = _generation_paper(db, generation_id, resolved)
+    kb = _assert_kb(db, record["knowledge_base_id"], resolved)
+    return await _publish(
+        db, kb, resolved, blueprint_raw, questions,
+        include_answer_key=body.include_answer_key, show_marks=body.show_marks,
+        set_label=body.set_label, generation_id=generation_id,
+        theme=body.theme, exam_date=body.exam_date, grade_line=body.grade_line,
     )
 
 

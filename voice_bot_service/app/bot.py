@@ -206,7 +206,8 @@ class TranscriptCollector(FrameProcessor):
                  diag=None, in_machine_window=None, reply_in_flight=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
-                 resume_max_chars: int = 600,
+                 resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
+                 forget_resume=None,
                  voice_live=None, resay_opening=None):
         super().__init__()
         self._outcome = outcome
@@ -234,10 +235,16 @@ class TranscriptCollector(FrameProcessor):
         self._resume_unplayed = resume_unplayed
         self._resume_on_stop_secs = resume_on_stop_secs
         self._resume_max_chars = resume_max_chars
+        # pipecat clears the TTS queue and reconnects the vendor socket while it
+        # handles an interruption; a frame pushed into that window is dropped
+        # silently. Wait it out before speaking the cut words.
+        self._resume_settle_secs = resume_settle_secs
+        self._forget_resume = forget_resume
         self._vad_started_t = 0.0
         self._resumed_t = 0.0
         self._reran_for = ""
         self._resume_check = None
+        self._resume_stale = False
         # True only while an operator/voicemail recording is still plausible.
         # This was a LATCH ("have we heard a real caller yet?") and the latch is
         # what broke on call 14029bd6: Sarvam rendered "…after the tone" as the
@@ -684,11 +691,13 @@ class TranscriptCollector(FrameProcessor):
                         messages=[{"role": "user", "content": text}]), direction)
                     await self._on_absorb(text)
                     if (self._resumed_t and time.time() - self._resumed_t < 8.0
-                            and self._is_bot_speaking()):
-                        # The words they missed are already playing (resumed at
-                        # their VAD stop). Their "हम्म" is in the context; there
-                        # is nothing to generate. If that resume was itself cut,
-                        # the bot is quiet and we fall through to the cues.
+                            and (self._is_bot_speaking() or self._resume_pending())):
+                        # The words they missed are already playing — or are
+                        # about to, once the TTS teardown settles. Their "हम्म"
+                        # is in the context; there is nothing to generate, and
+                        # generating anyway is how two voices ended up on the
+                        # line. If that resume was cut or abandoned, the task is
+                        # done and the bot is quiet, so we fall through.
                         logger.info("turn-gate: already resuming the cut words — "
                                     "no cue for %r", text[:20])
                         self._resumed_t = 0.0
@@ -829,7 +838,7 @@ class TranscriptCollector(FrameProcessor):
                 logger.info("turn-gate: real barge-in %r — interrupting reply "
                             "(ducked=%s)", text[:40], ducked)
                 # They took the turn: the words we were resuming are stale.
-                self._cancel_resume_check()
+                self._cancel_resume_check(stale=True)
                 await self.broadcast_interruption()
             elif ducked:
                 # The reply finished while we were ducked (nothing held, bot
@@ -965,57 +974,95 @@ class TranscriptCollector(FrameProcessor):
         if not tail:
             return False
         self._resumed_t = time.time()
+        self._resume_stale = False
         logger.info("turn-gate: %s — resuming the %d unheard words verbatim: %r",
                     why, len(tail.split()), tail[:60])
-        await self.push_frame(TTSSpeakFrame(tail, append_to_context=True), direction)
-        # VERIFY IT WAS ACTUALLY SPOKEN. pipecat tears the TTS websocket down on
-        # every interruption (call 3b5fb592, 2026-09-18: "Disconnecting from
-        # Smallest TTS" 0.2 s before this push, and the frame never reached
-        # run_tts at all — the caller heard nothing and then got an apology).
-        # A frame handed to a reconnecting vendor is lost silently, so check the
-        # played transcript and say it once more if it never arrived.
         self._cancel_resume_check()
         try:
-            self._resume_check = self.create_task(self._speak_again_if_lost(tail, direction))
+            self._resume_check = self.create_task(self._deliver_resume(tail, direction))
         except Exception:
-            # No task manager (a bare unit harness, or teardown): the words were
-            # still pushed — only the did-it-play check is skipped.
-            logger.debug("turn-gate: no task manager for the resume re-check")
+            # No task manager (a bare unit harness, or teardown): say it now and
+            # skip the settle and the did-it-play check.
+            logger.debug("turn-gate: no task manager — sending the resume unchecked")
+            await self.push_frame(TTSSpeakFrame(tail, append_to_context=True), direction)
         return True
 
-    def _cancel_resume_check(self):
-        """The caller has taken the turn (or a newer resume replaced this one):
-        whatever was cut is stale, and re-sending it would fight the reply the
-        model is already writing."""
-        t, self._resume_check = self._resume_check, None
-        if t is not None and not t.done():
-            t.cancel()
+    async def _deliver_resume(self, text: str, direction):
+        """Get the cut words to the caller, or give them back to the model.
 
-    async def _speak_again_if_lost(self, text: str, direction, wait: float = 1.2):
+        pipecat's InterruptibleTTSService handles an interruption by clearing
+        its serialisation queue and its frame sequencer and then reconnecting
+        the vendor socket. Anything pushed into that window is discarded with
+        no error: the resume was lost that way on 3 of its first 4 production
+        attempts (calls 0c42d3a6, b41b481f), and on b41b481f it cost the parent
+        a 66-word explanation — he answered "sorry एक बार समझा नहीं… मेरे को बस
+        ये समझ आया कि नाम". So wait the teardown out, then judge by what
+        actually PLAYED, and if the words never arrived give them back to the
+        model instead of leaving them marked as said."""
         try:
-            await asyncio.sleep(wait)
-            if self._is_bot_speaking():
+            await asyncio.sleep(self._resume_settle_secs)
+            if self._resume_stale:
                 return
-            if self._reply_in_flight():
-                # The model is already writing the next line; two voices is
-                # what broke call 0c42d3a6.
-                logger.info("turn-gate: not re-sending the resumed words — a reply is on its way")
-                return
-            key = spoken_key(text)[:60]
-            played = spoken_key(" ".join(e.get("text") or "" for e in self._outcome.transcript[-4:]
-                                         if e.get("role") == "assistant"))
-            if key and key in played:
-                return
-            logger.warning("turn-gate: the resumed words never reached the line "
-                           "(the vendor socket was reconnecting) — saying them again")
-            if self._diag is not None:
-                self._diag.bump("resume_respoken")
-            self._resumed_t = time.time()
             await self.push_frame(TTSSpeakFrame(text, append_to_context=True), direction)
+            for attempt in (1, 2):
+                await asyncio.sleep(1.2)
+                if self._resume_stale or self._heard_in_played(text):
+                    return
+                if self._is_bot_speaking():
+                    return                      # it is on the line right now
+                if self._reply_in_flight():
+                    break                       # the model is writing; never two voices
+                if attempt == 1:
+                    logger.warning("turn-gate: the resumed words never reached the line "
+                                   "(the vendor socket was reconnecting) — saying them again")
+                    if self._diag is not None:
+                        self._diag.bump("resume_respoken")
+                    self._resumed_t = time.time()
+                    await self.push_frame(TTSSpeakFrame(text, append_to_context=True), direction)
+            if not self._heard_in_played(text):
+                # Never heard: they must stop counting as "already said", or the
+                # model's own copy is suppressed and the words leave the call
+                # altogether (call b41b481f).
+                self._forget_resumed()
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("turn-gate: resume re-check failed")
+            logger.exception("turn-gate: resume delivery failed")
+
+    def _resume_pending(self) -> bool:
+        """A resume is scheduled but not audible yet (the settle window)."""
+        t = self._resume_check
+        return t is not None and not t.done() and not self._resume_stale
+
+    def _heard_in_played(self, text: str) -> bool:
+        key = spoken_key(text)[:60]
+        played = spoken_key(" ".join(e.get("text") or "" for e in self._outcome.transcript[-4:]
+                                     if e.get("role") == "assistant"))
+        return bool(key) and key in played
+
+    def _forget_resumed(self):
+        if self._forget_resume is None:
+            return
+        try:
+            if self._forget_resume():
+                logger.warning("turn-gate: the resumed words never played — un-recording them "
+                               "so the model may say them")
+                if self._diag is not None:
+                    self._diag.bump("resume_lost")
+        except Exception:
+            logger.exception("turn-gate: could not un-record the lost resume")
+
+    def _cancel_resume_check(self, stale: bool = False):
+        """The caller has taken the turn (or a newer resume replaced this one):
+        whatever was cut is stale, and re-sending it would fight the reply the
+        model is already writing. `stale` also un-records the words — the
+        caller is never going to hear them now."""
+        t, self._resume_check = self._resume_check, None
+        if t is not None and not t.done():
+            if stale:
+                self._resume_stale = True
+                self._forget_resumed()
+            t.cancel()
 
     def _heard_tail(self, words: int = 12) -> str:
         """The last words of what the caller actually heard (played transcript)."""
@@ -1234,17 +1281,13 @@ class TtfbObserver:
                                 # from the UI instead of docker logs.
                                 proc = (d.processor or "").lower()
                                 if outer._diag is not None:
-                                    # ORDER MATTERS: "ResilientSarvamSTTService"
-                                    # lowercases to "...sarvamsttservice", which
-                                    # CONTAINS the substring "tts" (s-TTS-ervice).
-                                    # Testing "tts" first filed every STT latency
-                                    # into the TTS bucket and produced a false
-                                    # SLOW_TTS on a live call. "ttsservice" never
-                                    # contains "stt", so checking stt first is
-                                    # unambiguous both ways.
-                                    if "stt" in proc:
+                                    # Match the service suffix, not overlapping substrings:
+                                    # SmallestTTSService contains "stt", while
+                                    # SarvamSTTService contains "tts".
+                                    service = proc.split("#", 1)[0]
+                                    if service.endswith("sttservice"):
                                         outer._diag.sample("stt_ttfb", d.value)
-                                    elif "tts" in proc:
+                                    elif service.endswith("ttsservice"):
                                         outer._diag.sample("tts_ttfb", d.value)
                                     elif "llm" in proc or "vertex" in proc or "google" in proc:
                                         outer._diag.sample("llm_ttfb", d.value)
@@ -1329,6 +1372,9 @@ class NoRepeatGate(FrameProcessor):
         # turn-gate actually resumes them.
         self._unplayed_tail: str = ""
         self._unplayed_entries: list = []
+        # What take_unplayed_tail last handed to the turn-gate, so it can be
+        # given back if the caller never actually heard it.
+        self._resumed_entries: list = []
         self._buf = ""
         self._emitted = 0
         self._held_tail = ""
@@ -1350,6 +1396,12 @@ class NoRepeatGate(FrameProcessor):
         # per call: a second one would be a regeneration loop.
         self._request_next_step = request_next_step
         self._next_steps = 0
+        # Which caller turn the last next-step request was for. Call b41b481f
+        # (2026-09-19): three generations in 1.6 s, each producing the same
+        # sentence, because every one of them tripped the restatement rule and
+        # asked for a "next step" again. The budget is per CALL; this is per
+        # TURN — the caller has to have said something new to earn another.
+        self._next_step_for = None
         # "Just a second." queued while the model composed, arriving at the TTS
         # AFTER the reply's audio began (the LLM processor holds frames during a
         # generation): call dd5eb5cc heard the question, then "Just a second."
@@ -1438,6 +1490,16 @@ class NoRepeatGate(FrameProcessor):
         r"^\W*(good\s+(morning|afternoon|evening)|hello|hi|hey|namaste|namaskar|"
         r"नमस्ते|नमस्कार|हेलो|हैलो)(\s+(ji|जी|sir|ma'?am|madam))?\W*$", re.I)
 
+    def _may_ask_next_step(self) -> bool:
+        """At most two per call AND at most one per caller turn."""
+        if self._next_steps >= 2:
+            return False
+        turn = normalize_spoken(self._last_caller_text() or "")
+        if turn and turn == self._next_step_for:
+            logger.info("no-repeat: already asked for a next step on this turn — not again")
+            return False
+        return True
+
     def take_unplayed_tail(self, max_chars: int = 600) -> str:
         """The exact sentences cut off by the last interruption, once. Empty
         when the reply had finished, when everything was heard, or when it is
@@ -1462,7 +1524,35 @@ class NoRepeatGate(FrameProcessor):
             if topic:
                 self._asked[topic] = norm
             self._pending.append((norm, topic, prev_exemplar, said))
+        self._resumed_entries = entries
         return tail
+
+    def forget_resumed(self) -> bool:
+        """Undo the last hand-over: the caller never heard those words, so they
+        are not "already said" and the model must be free to say them itself.
+        Without this a resume lost to the vendor socket deleted its sentences
+        from the call — the model's copy was suppressed as a repeat and the
+        parent was left with a bare question (call b41b481f, 2026-09-19)."""
+        entries, self._resumed_entries = self._resumed_entries, []
+        if not entries:
+            return False
+        for norm, topic, prev_exemplar, _said in entries:
+            for i in range(len(self._spoken) - 1, -1, -1):
+                if self._spoken[i] == norm:
+                    del self._spoken[i]
+                    break
+            if topic and self._asked.get(topic) == norm:
+                if prev_exemplar is None:
+                    self._asked.pop(topic, None)
+                else:
+                    self._asked[topic] = prev_exemplar
+            for i in range(len(self._pending) - 1, -1, -1):
+                if self._pending[i][0] == norm:
+                    del self._pending[i]
+                    break
+        if self._diag is not None:
+            self._diag.bump("unsaid_reverted", len(entries))
+        return True
 
     def _keep(self, sentence: str) -> bool:
         if not self._enabled():
@@ -1838,10 +1928,11 @@ class NoRepeatGate(FrameProcessor):
             # said something to move on from (call 612f5e37, 2026-09-13).
             if (not self._real_this_reply and self._emitted and not self._held_tail
                     and not self._end_forced()
-                    and self._request_next_step is not None and self._next_steps < 2
+                    and self._request_next_step is not None and self._may_ask_next_step()
                     and (self._last_caller_text() or "").strip()
                     and not (self._last_caller_text() or "").startswith("[")):
                 self._next_steps += 1
+                self._next_step_for = normalize_spoken(self._last_caller_text() or "")
                 logger.info("no-repeat: reply was only a filler after the caller spoke "
                             "— asking for the next step")
                 if self._diag is not None:
@@ -1865,7 +1956,7 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("repeat_escalations")
                     await self._emit(self._held_tail, direction)
-                elif (self._request_next_step is not None and self._next_steps < 2
+                elif (self._request_next_step is not None and self._may_ask_next_step()
                       and (self._last_caller_text() or "").strip()
                       and not (self._last_caller_text() or "").startswith("[")):
                     # The caller ANSWERED and the model's whole reply was that
@@ -1877,6 +1968,7 @@ class NoRepeatGate(FrameProcessor):
                     # at two per call, and the escalation above takes over once
                     # a content-free turn has been counted, so it cannot loop.
                     self._next_steps += 1
+                    self._next_step_for = normalize_spoken(self._last_caller_text() or "")
                     logger.info("no-repeat: whole reply repeated what they just answered "
                                 "— asking for the next step instead of handing back")
                     if self._diag is not None:
@@ -1906,7 +1998,7 @@ class NoRepeatGate(FrameProcessor):
                     await self._emit(line, direction)
             if self._emitted == 0 and self._echo_held:
                 held, self._echo_held = self._echo_held, ""
-                if (self._request_next_step is not None and self._next_steps < 2
+                if (self._request_next_step is not None and self._may_ask_next_step()
                         and not self._end_forced()):
                     # Speaking it is how call 71e8f39b looped: "You are taking
                     # offline classes." / "You are not taking any online classes
@@ -1915,6 +2007,7 @@ class NoRepeatGate(FrameProcessor):
                     # for the next line instead; the second request offers a
                     # polite goodbye as the way out.
                     self._next_steps += 1
+                    self._next_step_for = normalize_spoken(self._last_caller_text() or "")
                     logger.info("no-echo: restatement was the whole reply — asking for "
                                 "the next step (%d/2)", self._next_steps)
                     if self._diag is not None:
@@ -3872,7 +3965,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["unplayed_pending_t"] = 0.0
         if speaking and not flags["bot_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
-            if _last:
+            if _last and not flags["user_speaking"]:
                 _gap = max(0.0, time.time() - _last)
                 diag.sample("dead_air", _gap)
                 _why = _silence_cause(_gap)
@@ -3896,7 +3989,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     def set_user_speaking(speaking: bool):
         if speaking and not flags["user_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
-            if _last:
+            if _last and not flags["bot_speaking"]:
                 _gap = max(0.0, time.time() - _last)
                 _why = _silence_cause(_gap)
                 # THE CALLER'S OWN RESPONSE TIME IS NOT OUR DEAD AIR.
@@ -4071,7 +4164,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     # ── TTS speech cache ────────────────────────────────────────────────────
     # Replay audio we already paid to synthesize, on an EXACT sha256 match of
-    # (engine, model, voice, pace, temperature, rate, term-map, sentence). One
+    # (engine, model, voice, pace, temperature, rate, term-map, sentence,
+    # and Smallest language). One
     # differing character is a miss and goes to the vendor.
     #
     # engine_of(tts), not _agent_tts_model(agent): build_tts silently falls back
@@ -4109,6 +4203,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         voice=_agent_voice(agent) or "",
         pace=_as_float(agent.get("pace")),
         temperature=_as_float(agent.get("temperature")),
+        language=agent.get("language"),
         term_map_version=(rumik_term_map_version() if _cache_engine == "rumik" else ""),
         fixed_lines=_fixed_lines,
         # Per-agent rollout gate — one agent first, then widen (TTS_CACHE_AGENTS).
@@ -4331,6 +4426,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                          if settings.backchannel_resume_verbatim else None),
                                      resume_on_stop_secs=settings.backchannel_resume_on_stop_secs,
                                      resume_max_chars=settings.backchannel_resume_max_chars,
+                                     resume_settle_secs=settings.backchannel_resume_settle_secs,
+                                     forget_resume=lambda: no_repeat.forget_resumed(),
                                      resay_opening=_resay_opening)
     played_transcript = PlayedTranscriptRecorder(outcome)
 

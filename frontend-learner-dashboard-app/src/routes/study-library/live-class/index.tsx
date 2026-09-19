@@ -8,6 +8,7 @@ import { usePastSessions } from "./-hooks/usePastSessions";
 import { useCalendarPastSessions } from "./-hooks/useCalendarPastSessions";
 import { SessionDetails, PastSessionDetails } from "./-types/types";
 import { PastSessionCard } from "./-components/PastSessionCard";
+import { InstructorLine } from "./-components/InstructorLine";
 
 import { useNavigate } from "@tanstack/react-router";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
@@ -571,6 +572,8 @@ function RouteComponent() {
               </div>
             )}
 
+            <InstructorLine instructors={session.instructors} className="mb-2" />
+
             {/* Date - Display only for Upcoming sessions */}
             {!isLive && (
               <div className="flex items-center gap-1 text-sm text-neutral-600 mb-2">
@@ -684,6 +687,8 @@ function RouteComponent() {
                 </span>
               </div>
             )}
+
+            <InstructorLine instructors={session.instructors} className="mb-2" />
 
             {/* Date - Display only for Upcoming sessions */}
             {!isLive && (
@@ -914,6 +919,10 @@ function RouteComponent() {
                                   </span>
                                 </div>
                               )}
+                              <InstructorLine
+                                instructors={session.instructors}
+                                iconSize={14}
+                              />
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-2 shrink-0 ms-4">

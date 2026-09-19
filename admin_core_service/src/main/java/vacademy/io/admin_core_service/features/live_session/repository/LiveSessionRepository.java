@@ -110,8 +110,29 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
       AND ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
       AND s.institute_id = :instituteId
       AND ss.status != 'DELETED'
+      AND (
+            :restrictVisibility = FALSE
+            OR s.created_by_user_id = :callerUserId
+            OR EXISTS (
+                SELECT 1 FROM live_session_instructors lsi
+                WHERE lsi.session_id = s.id
+                  AND lsi.status = 'ACTIVE'
+                  AND lsi.user_id IN (:allowedUserIds)
+            )
+            OR (
+                NOT EXISTS (
+                    SELECT 1 FROM live_session_instructors lsi2
+                    WHERE lsi2.session_id = s.id
+                      AND lsi2.status = 'ACTIVE'
+                )
+                AND s.created_by_user_id IN (:allowedUserIds)
+            )
+          )
 """, nativeQuery = true)
-    List<LiveSessionRepository.LiveSessionListProjection> findCurrentlyLiveSessions(@Param("instituteId") String instituteId);
+    List<LiveSessionRepository.LiveSessionListProjection> findCurrentlyLiveSessions(@Param("instituteId") String instituteId,
+                                                                                     @Param("restrictVisibility") boolean restrictVisibility,
+                                                                                     @Param("callerUserId") String callerUserId,
+                                                                                     @Param("allowedUserIds") java.util.Collection<String> allowedUserIds);
 
 
     @Query(value = """
@@ -143,9 +164,30 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
           )
     AND s.institute_id = :instituteId
     AND ss.status != 'DELETED'
+      AND (
+            :restrictVisibility = FALSE
+            OR s.created_by_user_id = :callerUserId
+            OR EXISTS (
+                SELECT 1 FROM live_session_instructors lsi
+                WHERE lsi.session_id = s.id
+                  AND lsi.status = 'ACTIVE'
+                  AND lsi.user_id IN (:allowedUserIds)
+            )
+            OR (
+                NOT EXISTS (
+                    SELECT 1 FROM live_session_instructors lsi2
+                    WHERE lsi2.session_id = s.id
+                      AND lsi2.status = 'ACTIVE'
+                )
+                AND s.created_by_user_id IN (:allowedUserIds)
+            )
+          )
     ORDER BY ss.meeting_date ASC, ss.start_time ASC
 """, nativeQuery = true)
-    List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessions(@Param("instituteId") String instituteId);
+    List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessions(@Param("instituteId") String instituteId,
+                                                                                     @Param("restrictVisibility") boolean restrictVisibility,
+                                                                                     @Param("callerUserId") String callerUserId,
+                                                                                     @Param("allowedUserIds") java.util.Collection<String> allowedUserIds);
 
     @Query(value = """
     SELECT
@@ -176,9 +218,30 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
           )
       AND s.institute_id = :instituteId
       AND ss.status != 'DELETED'
+      AND (
+            :restrictVisibility = FALSE
+            OR s.created_by_user_id = :callerUserId
+            OR EXISTS (
+                SELECT 1 FROM live_session_instructors lsi
+                WHERE lsi.session_id = s.id
+                  AND lsi.status = 'ACTIVE'
+                  AND lsi.user_id IN (:allowedUserIds)
+            )
+            OR (
+                NOT EXISTS (
+                    SELECT 1 FROM live_session_instructors lsi2
+                    WHERE lsi2.session_id = s.id
+                      AND lsi2.status = 'ACTIVE'
+                )
+                AND s.created_by_user_id IN (:allowedUserIds)
+            )
+          )
     ORDER BY ss.meeting_date ASC, ss.start_time ASC
     """, nativeQuery = true)
-    List<LiveSessionRepository.LiveSessionListProjection> findPreviousSessions(@Param("instituteId") String instituteId);
+    List<LiveSessionRepository.LiveSessionListProjection> findPreviousSessions(@Param("instituteId") String instituteId,
+                                                                                     @Param("restrictVisibility") boolean restrictVisibility,
+                                                                                     @Param("callerUserId") String callerUserId,
+                                                                                     @Param("allowedUserIds") java.util.Collection<String> allowedUserIds);
 
     @Query(value = """
     SELECT
@@ -204,8 +267,29 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     WHERE s.status = 'DRAFT'
     AND s.institute_id = :instituteId
     AND ss.status != 'DELETED'
+      AND (
+            :restrictVisibility = FALSE
+            OR s.created_by_user_id = :callerUserId
+            OR EXISTS (
+                SELECT 1 FROM live_session_instructors lsi
+                WHERE lsi.session_id = s.id
+                  AND lsi.status = 'ACTIVE'
+                  AND lsi.user_id IN (:allowedUserIds)
+            )
+            OR (
+                NOT EXISTS (
+                    SELECT 1 FROM live_session_instructors lsi2
+                    WHERE lsi2.session_id = s.id
+                      AND lsi2.status = 'ACTIVE'
+                )
+                AND s.created_by_user_id IN (:allowedUserIds)
+            )
+          )
     """, nativeQuery = true)
-    List<LiveSessionRepository.LiveSessionListProjection> findDraftedSessions(@Param("instituteId") String instituteId);
+    List<LiveSessionRepository.LiveSessionListProjection> findDraftedSessions(@Param("instituteId") String instituteId,
+                                                                                     @Param("restrictVisibility") boolean restrictVisibility,
+                                                                                     @Param("callerUserId") String callerUserId,
+                                                                                     @Param("allowedUserIds") java.util.Collection<String> allowedUserIds);
 
     @Query(value = """
         SELECT DISTINCT

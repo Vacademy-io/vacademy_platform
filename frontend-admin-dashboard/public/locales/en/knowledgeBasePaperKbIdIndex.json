@@ -20,7 +20,8 @@
     "toasts": {
         "topicMapRebuilt": "Topic map rebuilt",
         "questionRewritten": "Question rewritten",
-        "savedToQuestionBank": "Saved to your question bank"
+        "savedToQuestionBank": "Saved to your question bank",
+        "questionEdited": "Question updated"
     },
     "resumingMessage": "Reopening your paper…",
     "scope": {
@@ -83,6 +84,43 @@
         "needFixing_other": "{{count}} need fixing",
         "allChecksPassed": "All checks passed",
         "saveButton": "Save to question bank",
-        "savingButton": "Saving…"
+        "savingButton": "Saving…",
+        "heading": "Review and generate",
+        "description": "Check the configuration, then generate. The planner spreads your question mix across the selected material; you can adjust that plan before anything is written.",
+        "wholeBook": "Whole book — nothing narrowed",
+        "chaptersSelected_one": "{{count}} chapter · {{subtopics}} subtopics",
+        "chaptersSelected_other": "{{count}} chapters · {{subtopics}} subtopics",
+        "totals": "{{questions}} questions · {{marks}} marks",
+        "autoTitle": "Title chosen by the planner",
+        "detailsLine": "{{minutes}} min · {{difficulty}} · {{language}}",
+        "generateButton": "Generate question paper",
+        "adjustPlanButton": "Adjust plan first",
+        "generateHint": "Generate plans the sections and writes every question in one go. Adjust plan first shows the section plan for editing before anything is written.",
+        "noMixHint": "No question types configured — the planner will choose a mix.",
+        "editInstructions": "Edit instructions",
+        "done": "Done",
+        "createOfflineTest": "Save & create offline test"
+    },
+    "wizard": {
+        "heading": "Generate question paper",
+        "syllabus": "Syllabus & weightage",
+        "types": "Question types & marks",
+        "details": "Test details",
+        "review": "Review & generate",
+        "back": "Go back",
+        "continue": "Continue"
+    },
+    "syllabus": {
+        "heading": "Configure syllabus and weightage",
+        "description": "Tick the chapters, topics or subtopics the paper should cover. Leave everything unticked to draw from the whole book. Weightage is optional — what you leave blank, the planner balances.",
+        "weightageHint": "Set a % weightage on a ticked chapter to steer how many questions it gets. Totals need not add up to 100."
+    },
+    "types": {
+        "heading": "Configure question types and marks",
+        "description": "Tick the kinds of questions you want, then set how many and how many marks each. The totals in the header are exactly what the paper will carry."
+    },
+    "details": {
+        "heading": "Configure test details",
+        "description": "Name the paper, set its duration and difficulty, and the class and language the questions are written for."
     }
 }

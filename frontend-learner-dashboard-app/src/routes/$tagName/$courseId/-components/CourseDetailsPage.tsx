@@ -13,13 +13,20 @@ import { JsonRenderer } from "../../-components/JsonRenderer";
 import { CourseCatalogueService } from "../../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { resolveCourseView } from "../../-utils/course-page-routing";
+import { useInstituteNamingSettings } from "../../-utils/institute-naming-seed";
 import {
   resolveLearnerStructureVariant,
   type LearnerCourseDetailsSettings,
 } from "../../-utils/learner-course-details-settings";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { InviteUnavailableMessage } from "@/components/common/enroll-by-invite/-components/InviteUnavailableMessage";
 import {
   resolveInviteAvailability,
@@ -33,6 +40,12 @@ import {
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { cn, sanitizeHtml } from "@/lib/utils";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import {
+  type CourseAuthor as CourseInstructor,
+  mapCourseAuthors,
+  visibleCourseAuthors,
+} from "../../-utils/course-authors";
 import {
   BookOpen,
   CaretDown,
@@ -64,6 +77,51 @@ const displayLevelName = (raw?: string | null): string => {
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
+// Profile photo resolved through the public media endpoint (no login on this
+// page); the author's initial stands in while it loads or when there is none.
+const AuthorAvatar: React.FC<{ author: CourseInstructor; sizeClass: string }> = ({
+  author,
+  sizeClass,
+}) => {
+  const [url, setUrl] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    setUrl("");
+    if (!author.profilePicId) return;
+    getPublicUrlWithoutLogin(author.profilePicId)
+      .then((resolved) => {
+        if (!cancelled && resolved) setUrl(resolved);
+      })
+      .catch(() => {
+        /* fall back to the initial */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [author.profilePicId]);
+  const initial = author.name ? author.name.charAt(0).toUpperCase() : "I";
+  return url ? (
+    <img
+      src={url}
+      alt={author.name}
+      className={cn(
+        "shrink-0 rounded-full object-cover bg-catalogue-bg-subtle",
+        sizeClass,
+      )}
+    />
+  ) : (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white",
+        sizeClass,
+      )}
+    >
+      {initial}
+    </span>
+  );
+};
+
 const hasContent = (htmlString: string | undefined | null): boolean => {
   if (!htmlString) return false;
   // Strip HTML tags and decode HTML entities
@@ -156,24 +214,66 @@ const HighlightSectionCard: React.FC<{
   </div>
 );
 
+const CourseHighlightDialog: React.FC<{
+  title: string;
+  children: React.ReactNode;
+}> = ({ title, children }) => {
+  const { t } = useTranslation("coursePlayerB");
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="mt-3 text-sm font-medium text-primary-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 rounded"
+        >
+          {t("common.viewMore")}
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        {children}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // Course highlights panel — collapsible accordion that wraps the
 // "What you'll learn / About / Who should learn / Instructors" sections
 // so they appear compactly at the top of the course page instead of
 // stacking as separate cards below.
-const CourseHighlightsAccordion: React.FC<{
+export const CourseHighlightsAccordion: React.FC<{
   whyLearn: string;
   aboutCourse: string | null;
   whoShouldLearn: string;
-  instructors: Array<{ name: string; email: string }>;
+  instructors: Array<CourseInstructor>;
   showInstructors: boolean;
-}> = ({ whyLearn, aboutCourse, whoShouldLearn, instructors, showInstructors }) => {
+  primaryInstructor?: string | null;
+}> = ({
+  whyLearn,
+  aboutCourse,
+  whoShouldLearn,
+  instructors,
+  showInstructors,
+  primaryInstructor,
+}) => {
   const { t } = useTranslation("coursePlayerB");
   const [open, setOpen] = useState(true);
   const hasWhy = hasContent(whyLearn);
   const hasAbout = hasContent(aboutCourse);
   const hasWho = hasContent(whoShouldLearn);
-  // Instructors only render when the institute opts in (default hidden).
-  const hasInstructors = showInstructors && instructors && instructors.length > 0;
+  // Student Display Settings > "Show Teachers" decides whether the WHOLE
+  // roster is listed. Off (the default) still shows the first author -- the
+  // overview always has -- and now with the profile the admin wrote for them
+  // (photo, subtitle, description), not just the bare name.
+  const visibleInstructors = visibleCourseAuthors(
+    instructors,
+    showInstructors,
+    primaryInstructor,
+  );
+  const hasInstructors = visibleInstructors.length > 0;
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
   return (
@@ -223,6 +323,16 @@ const CourseHighlightsAccordion: React.FC<{
                 html={aboutCourse || ""}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
+              <CourseHighlightDialog
+                title={t("courseDetails.accordion.aboutThisCourse", {
+                  course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                })}
+              >
+                <div
+                  className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(aboutCourse || "") }}
+                />
+              </CourseHighlightDialog>
             </HighlightSectionCard>
           )}
           {hasWhy && (
@@ -242,6 +352,12 @@ const CourseHighlightsAccordion: React.FC<{
                 html={whyLearn}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
+              <CourseHighlightDialog title={t("courseDetails.accordion.whatYoullLearn")}>
+                <div
+                  className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(whyLearn) }}
+                />
+              </CourseHighlightDialog>
             </HighlightSectionCard>
           )}
           {hasWho && (
@@ -261,6 +377,12 @@ const CourseHighlightsAccordion: React.FC<{
                 html={whoShouldLearn}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
+              <CourseHighlightDialog title={t("courseDetails.accordion.whoShouldJoin")}>
+                <div
+                  className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(whoShouldLearn) }}
+                />
+              </CourseHighlightDialog>
             </HighlightSectionCard>
           )}
           {hasInstructors && (
@@ -280,25 +402,64 @@ const CourseHighlightsAccordion: React.FC<{
               overlayClass="from-primary-500/5 to-transparent"
             >
               <div className="space-y-2">
-                {instructors.map((inst, idx) => (
-                  <div
-                    key={`${inst.email}-${idx}`}
-                    className="flex items-center gap-3 p-2.5 bg-catalogue-bg-subtle/80 rounded-catalogue-md hover:bg-catalogue-bg-muted/80 transition-all duration-300"
-                  >
-                    <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
-                      {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-catalogue-text-primary">
-                        {inst.name ||
-                          getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
-                      </h4>
-                      <p className="text-xs text-catalogue-text-secondary">
-                        {inst.email || t("courseDetails.noEmailProvided")}
-                      </p>
-                    </div>
+                {/* Name + subtitle inline, so an author is recognisable without
+                    a click; the dialog below carries the full description. A
+                    bare "1 teachers" count used to be all that showed here. */}
+                <ul className="space-y-1.5">
+                  {visibleInstructors.map((inst, idx) => (
+                    <li
+                      key={`${inst.id}-${idx}`}
+                      className="flex items-center gap-2.5"
+                    >
+                      <AuthorAvatar author={inst} sizeClass="size-7" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-catalogue-text-primary">
+                          {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
+                        </span>
+                        {inst.subtitle && (
+                          <span className="block truncate text-xs text-catalogue-text-secondary">
+                            {inst.subtitle}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <CourseHighlightDialog
+                  title={getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
+                >
+                  <div className="space-y-2">
+                    {visibleInstructors.map((inst, idx) => (
+                      <div
+                        key={`${inst.id}-${idx}`}
+                        className="flex items-start gap-3 rounded-catalogue-md bg-catalogue-bg-subtle/80 p-2.5"
+                      >
+                        <AuthorAvatar author={inst} sizeClass="size-10" />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-semibold text-catalogue-text-primary">
+                            {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
+                          </h4>
+                          {inst.subtitle && (
+                            <p className="text-xs text-catalogue-text-secondary">
+                              {inst.subtitle}
+                            </p>
+                          )}
+                          {/* The admin writes the bio in a rich-text editor,
+                              so this is HTML: sanitise and render it, the way
+                              the About / What-you'll-learn sections do. */}
+                          {inst.description && (
+                            <div
+                              className="richtext-content mt-1 text-xs leading-relaxed text-catalogue-text-secondary"
+                              dangerouslySetInnerHTML={{
+                                __html: sanitizeHtml(inst.description),
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </CourseHighlightDialog>
               </div>
             </HighlightSectionCard>
           )}
@@ -346,10 +507,7 @@ interface CourseData {
   whoShouldLearn: string;
   whyLearn: string;
   aboutCourse: string | null;
-  instructors: Array<{
-    name: string;
-    email: string;
-  }>;
+  instructors: Array<CourseInstructor>;
   rating: number;
   tags: string[];
   curriculum: Array<{
@@ -388,6 +546,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   productPageCode,
 }) => {
   const { t } = useTranslation("coursePlayerB");
+  // Institute terminology must be seeded before the first paint — see
+  // institute-naming-seed.ts.
+  const namingReady = useInstituteNamingSettings(instituteId);
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === "android";
@@ -898,14 +1059,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             "Internet connection",
             "Motivation to learn",
           ],
-          whoShouldLearn:
-            rawHtmlContent(course.who_should_learn) ||
-            t("courseDetails.defaultWhoShouldLearn", {
-              subject: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
-            }),
-          whyLearn:
-            rawHtmlContent(course.why_learn) ||
-            t("courseDetails.defaultWhyLearn"),
+          // No canned fallback copy: the overview hides "What you'll learn" /
+          // "Who should learn" when the admin left them blank. The generic
+          // "Gain valuable skills and knowledge" placeholder used to make the
+          // section appear on every course, filled or not.
+          whoShouldLearn: rawHtmlContent(course.who_should_learn),
+          whyLearn: rawHtmlContent(course.why_learn),
           // "About this course" must show the dedicated About field (rich text),
           // falling back to the course description. Previously read the wrong field
           // (course_html_description) and stripped all formatting.
@@ -913,29 +1072,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             rawHtmlContent(course.about_the_course) ||
             rawHtmlContent(course.course_html_description) ||
             null,
-          instructors:
-            courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.map(
-              (inst: any) => ({
-                name:
-                  inst.full_name ||
-                  t("courseDetails.unknownTeacher", {
-                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
-                  }),
-                email: inst.email || t("courseDetails.noEmailProvided"),
-              }),
-            ) || [
-              {
-                name:
-                  courseResponse.sessions?.[0]?.level_with_details?.[0]
-                    ?.instructors?.[0]?.full_name ||
-                  t("courseDetails.unknownTeacher", {
-                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
-                  }),
-                email:
-                  courseResponse.sessions?.[0]?.level_with_details?.[0]
-                    ?.instructors?.[0]?.email || t("courseDetails.noEmailProvided"),
-              },
-            ],
+          // Authors = the batch's faculty, each with the profile fields the
+          // admin wrote (subtitle, rich-text bio, photo). Email is not carried
+          // to the page at all. No faculty -> no authors; the hero's author
+          // line (`instructor`) has its own fallback.
+          instructors: mapCourseAuthors(
+            courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors,
+            t("courseDetails.unknownTeacher", {
+              teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+            }),
+          ),
           rating: course.rating || 5,
           tags: parseTags(course.tags || ""),
           curriculum: [], // No curriculum data available from API yet
@@ -1090,7 +1236,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     setShowLeadCollection(false);
   };
 
-  if (isLoading) {
+  if (isLoading || !namingReady) {
     return <DashboardLoader />;
   }
 
@@ -1299,6 +1445,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     whoShouldLearn={courseData.whoShouldLearn}
                     instructors={courseData.instructors || []}
                     showInstructors={showInstructors}
+                    primaryInstructor={courseData.instructor}
                   />
                 )}
 
@@ -1397,21 +1544,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         </div>
                       )}
 
-                      {/* Instructor */}
-                      {courseData.instructor && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
-                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
-                            <ChalkboardTeacher size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            {getTerminology(
-                              RoleTerms.Teacher,
-                              SystemTerms.Teacher,
-                            )}
-                          </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm max-w-32 truncate">
-                            {courseData.instructor}
-                          </span>
-                        </div>
-                      )}
                     </div>
 
                     {/* Enroll Button */}
@@ -1540,21 +1672,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         </div>
                       )}
 
-                      {/* Instructor */}
-                      {courseData.instructor && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
-                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
-                            <ChalkboardTeacher size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            {getTerminology(
-                              RoleTerms.Teacher,
-                              SystemTerms.Teacher,
-                            )}
-                          </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm max-w-32 truncate">
-                            {courseData.instructor}
-                          </span>
-                        </div>
-                      )}
                     </div>
 
                     {/* Enroll Button */}

@@ -29,7 +29,7 @@
     "heading": "Unlock rule — {{item}}",
     "alerts": {
         "dripDisabled": "Drip conditions are switched off for this institute, so nothing saved here will lock content yet. Turn them on in Settings → Course → Drip Conditions.",
-        "previewOnly": "Rules are in preview: this saves, but learners are unaffected until \"Apply unlock rules to learners\" is switched on in Settings → Course → Drip Conditions.",
+        "previewOnly": "This rule depends on learner progress, so it stays in preview: it saves, but learners are unaffected until \"Apply progress rules to learners\" is switched on in Settings → Course → Drip Conditions. Date and day-wise rules apply as soon as they are saved.",
         "courseWideHeading": "A course-wide rule already covers every {{level}}",
         "courseWideFootnote": "A rule saved here takes precedence for this {{level}}."
     },

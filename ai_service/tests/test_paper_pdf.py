@@ -121,3 +121,149 @@ def test_filename_is_a_safe_slug():
     assert paper_pdf.paper_filename("Class 10: Science / Unit Test", with_key=True) == \
         "Class-10-Science-Unit-Test-with-answer-key.pdf"
     assert paper_pdf.paper_filename("", with_key=False) == "question-paper.pdf"
+
+
+def test_letterhead_has_logo_and_contact_and_footer_names_institute():
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)],
+        institute_name="Oriental Group Of Institution",
+        logo_url="https://cdn.example.com/logo.png",
+        contact_line="www.oriental.edu · info@oriental.edu",
+        logo_placement="header",
+    )
+    assert 'class="logo" src="https://cdn.example.com/logo.png"' in html
+    assert "www.oriental.edu · info@oriental.edu" in html
+    assert 'class="brand"' in html            # logo + text side by side
+    assert 'class="rule"' in html
+    # No logo → the name is centred on its own; no brand block without either.
+    assert 'class="brand centered"' in paper_pdf.build_paper_html(_blueprint(), [_mcq(1)], institute_name="X")
+    assert 'class="brand' not in paper_pdf.build_paper_html(_blueprint(), [_mcq(1)])
+
+
+def test_publish_variant_and_subtitle():
+    from app.services.kb import paper_publish
+
+    assert paper_publish.variant_for(True) == "with_answer_key"
+    assert paper_publish.variant_for(False) == "question_paper"
+    assert paper_publish.paper_subtitle({"curriculum": {"board": "NCERT", "class": "10", "subject": "Science"}}) \
+        == "Class 10 · Science · NCERT"
+    assert paper_publish.paper_subtitle({"curriculum": None}) is None
+
+
+def test_logo_is_a_watermark_by_default_and_name_line_is_off():
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)],
+        institute_name="Oriental Group Of Institution",
+        logo_url="https://cdn.example.com/logo.png",
+    )
+    assert 'class="watermark" style="background-image:url(https://cdn.example.com/logo.png)"' in html
+    assert 'class="logo"' not in html                    # not in the header
+    assert "Roll No.:" not in html                        # candidate line off
+    assert html.index("ORIENTAL GROUP OF INSTITUTION".title()) < html.index("Time Allowed")
+    # The letterhead and the name line come back on request.
+    header = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)], institute_name="X", logo_url="https://cdn.example.com/logo.png",
+        logo_placement="header", candidate_line=True,
+    )
+    assert 'class="logo" src="https://cdn.example.com/logo.png"' in header
+    assert 'class="watermark"' not in header
+    assert "Roll No.:" in header
+    assert 'class="watermark"' not in paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)], logo_url="https://x/l.png", logo_placement="none"
+    )
+
+
+def test_compact_theme_two_columns_band_and_columned_key():
+    from app.services.kb import paper_themes
+
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1), _long(1)], theme="compact",
+        institute_name="Elevate", subtitle="Business Laws", exam_date="06-08-2026",
+        include_answer_key=True,
+    )
+    assert 'class="theme-compact"' in html and 'class="c-body"' in html
+    assert "Instructions for students" in html and "<b>Subject:</b> Business Laws" in html
+    assert "<b>Date:</b> 06-08-2026" in html and "<b>Maximum Marks:</b> 4" in html
+    assert 'class="c-key"' in html and "(b) It decreases" in html      # key in its own columned block
+    assert 'class="ans"' not in html                                   # never inline in this theme
+    assert "column-rule" in html                                       # divider between the two columns
+    assert 'class="c-head"' in html and 'class="logo"' not in html       # no logo → plain letterhead
+    settings = paper_themes.page_settings("compact", institute_name="Elevate", title="t", subtitle="Business Laws")
+    assert settings["format"] == "Letter" and "Elevate | Business Laws" in settings["footer_template"]
+    assert "pageNumber" in settings["footer_template"]
+
+
+def test_compact_theme_letterhead_logo_and_watermark():
+    logo = "https://cdn.example.com/logo.png"
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)], theme="compact", institute_name="Elevate", logo_url=logo,
+    )
+    # Default placement: small mark top-left AND the faint watermark behind every page.
+    assert 'class="c-head with-logo"' in html and f'<img class="logo" src="{logo}"' in html
+    assert 'class="watermark"' in html
+    # The logo carries the name, so the header does not repeat it.
+    assert 'class="institute"' not in html
+    header_only = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)], theme="compact", institute_name="Elevate", logo_url=logo,
+        logo_placement="header",
+    )
+    assert 'class="logo"' in header_only and 'class="watermark"' not in header_only
+    none = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)], theme="compact", institute_name="Elevate", logo_url=logo,
+        logo_placement="none",
+    )
+    assert 'class="logo"' not in none and 'class="watermark"' not in none
+    assert '<div class="institute">Elevate</div>' in none            # no logo → name in print
+
+
+def test_coaching_theme_boxed_sections_inline_key_and_meta():
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1), _long(1)], theme="coaching",
+        institute_name="Shri Saidas Classes", logo_url="https://cdn.example.com/logo.png",
+        grade_line="Class - 9th", exam_date="26-08-2026", include_answer_key=True,
+    )
+    assert 'class="theme-coaching"' in html and 'class="k-body"' in html
+    assert "CLASS - 9TH" in html and "(Answer Key)" in html and "Date : <span>26-08-2026" in html
+    assert 'class="box">SECTION A (MCQ\'s) (1M)' in html.replace("&#x27;", "'")
+    assert 'class="box">SECTION B (Subjective) (3M)' in html
+    assert '<div class="ans">Ans. (b) It decreases' in html            # inline under the MCQ
+    assert "Ans. It shows different colours at different pH." in html # inline for the subjective one
+    assert "Colour change" in html                                     # steps follow the answer
+    assert 'class="logo" src="https://cdn.example.com/logo.png"' in html and 'class="watermark"' in html
+    assert "Time : <span>1 hr 30 min" in html
+    assert "Answer Key &amp; Marking Scheme" not in html               # no separate key pages
+
+
+def test_unknown_theme_falls_back_to_classic():
+    html = paper_pdf.build_paper_html(_blueprint(), [_mcq(1)], theme="nope")
+    assert 'class="theme-' not in html and 'class="section-head"' in html
+
+
+def test_compact_theme_brand_colour_only_on_the_footer_band():
+    from app.services.kb import paper_themes
+
+    # Preset codes, raw hex (with or without '#'), and junk → default blue.
+    assert paper_themes.resolve_accent("primary") == "#ED7424"
+    assert paper_themes.resolve_accent("Blue") == "#1E88E5"
+    assert paper_themes.resolve_accent("#9b2242") == "#9B2242"
+    assert paper_themes.resolve_accent("9B2242") == "#9B2242"
+    assert paper_themes.resolve_accent(None) == paper_themes.DEFAULT_ACCENT
+    assert paper_themes.resolve_accent("not-a-colour") == paper_themes.DEFAULT_ACCENT
+    # Light accents get dark text on the band.
+    assert paper_themes.accent_text_color("#FFB300") == "#111111"
+    assert paper_themes.accent_text_color("#1A237E") == "#FFFFFF"
+
+    settings = paper_themes.page_settings(
+        "compact", institute_name="Oriental", title="t", subtitle=None, accent="#ED7424",
+    )
+    assert "background:#ED7424;color:#FFFFFF" in settings["footer_template"]
+    # The sheet itself never picks up the brand colour: no tinted bands,
+    # headings, rules and the column divider stay black — only the logo (and
+    # its watermark, un-greyed on this layout) is in colour.
+    html = paper_pdf.build_paper_html(
+        _blueprint(), [_mcq(1)], theme="compact", institute_name="Oriental",
+        logo_url="https://cdn.example.com/logo.png",
+    )
+    assert "#ED7424" not in html and "color-mix" not in html
+    assert "column-rule: 0.6pt solid #000" in html and 'class="logo"' in html
+    assert ".watermark { filter: none; opacity: 0.07; }" in html

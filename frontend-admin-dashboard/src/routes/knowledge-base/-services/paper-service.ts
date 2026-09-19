@@ -15,6 +15,7 @@ import type {
     RawPaperQuestion,
     KbGeneration,
     KbGenerationDetail,
+    PublishedPaperLink,
 } from '../-types/paper';
 
 const BASE = `${AI_SERVICE_BASE_URL}/knowledge-base/v1`;
@@ -67,7 +68,7 @@ export const buildBlueprint = async (
 
 export const startGeneration = async (
     kbId: string,
-    payload: { blueprint: Blueprint; grade?: string }
+    payload: { blueprint: Blueprint; grade?: string; generate_diagrams?: boolean }
 ): Promise<{ task_id: string; planned: number; generation_id: string | null }> => {
     const { data } = await authenticatedAxiosInstance.post<{
         task_id: string;
@@ -133,16 +134,68 @@ export const validatePaper = async (
     return data;
 };
 
+/**
+ * A hand-edited question, run through the same formatter as generated ones so
+ * the QuestionDTO the bank stores follows the edit. Not metered.
+ */
+export const formatEditedQuestion = async (
+    kbId: string,
+    rawQuestion: RawPaperQuestion,
+    generationId?: string | null
+): Promise<{ question: PaperQuestion; raw_question: RawPaperQuestion }> => {
+    const { data } = await authenticatedAxiosInstance.post<{
+        question: PaperQuestion;
+        raw_question: RawPaperQuestion;
+    }>(`${BASE}/bases/${kbId}/paper/format`, {
+        raw_question: rawQuestion,
+        generation_id: generationId ?? null,
+    });
+    return data;
+};
+
 // ---- PDF: the paper as a sheet ---------------------------------------------
 
+export type PaperTheme = 'classic' | 'compact' | 'coaching';
+export const PAPER_THEMES: PaperTheme[] = ['classic', 'compact', 'coaching'];
+const THEME_STORAGE_KEY = 'kb-paper-theme';
+
+/** The layout last chosen in this browser; institutes tend to have one house style. */
+export const loadPaperTheme = (): PaperTheme => {
+    try {
+        const stored = localStorage.getItem(THEME_STORAGE_KEY);
+        return PAPER_THEMES.includes(stored as PaperTheme) ? (stored as PaperTheme) : 'classic';
+    } catch {
+        return 'classic';
+    }
+};
+export const savePaperTheme = (theme: PaperTheme): void => {
+    try {
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+        /* private mode — the choice just does not persist */
+    }
+};
+
 export interface PaperPdfOptions {
-    /** Answer key + marking scheme on pages of their own after the paper. */
+    /** Answer key + marking scheme: own pages (classic/compact) or inline (coaching). */
     includeAnswerKey?: boolean;
     /** Marks in the right margin and per-section totals. */
     showMarks?: boolean;
     /** "A", "B"… printed in a box at the top right for parallel sets. */
     setLabel?: string;
+    /** Print layout; see paper_themes.py. Default classic. */
+    theme?: PaperTheme;
+    /** Printed in the header's Date field where the layout has one. */
+    examDate?: string;
+    /** "Class - 10th" line for the coaching layout; defaults from the book. */
+    gradeLine?: string;
 }
+
+const layoutFields = (options: PaperPdfOptions) => ({
+    theme: options.theme ?? 'classic',
+    exam_date: options.examDate || null,
+    grade_line: options.gradeLine || null,
+});
 
 const pdfFileName = (headers: Record<string, unknown>, fallback: string): string => {
     const disposition = String(headers['content-disposition'] ?? '');
@@ -150,7 +203,13 @@ const pdfFileName = (headers: Record<string, unknown>, fallback: string): string
     return match?.[1] ?? fallback;
 };
 
-const saveBlob = (blob: Blob, fileName: string): void => {
+/** A rendered PDF plus the name the server chose for it. */
+export interface PdfFile {
+    blob: Blob;
+    fileName: string;
+}
+
+export const saveBlob = (blob: Blob, fileName: string): void => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -162,17 +221,19 @@ const saveBlob = (blob: Blob, fileName: string): void => {
 };
 
 /**
- * Download the paper currently on the review board as a print-ready PDF.
+ * Render the paper on the review board as a print-ready PDF.
  *
  * Sends the client's copy of the questions: a rewritten question exists only
  * here until the paper is saved, and the printout must match what the teacher
  * just reviewed. Not metered — the server lays out, it does not generate.
+ * The same bytes back the preview and the download, so what is shown is what
+ * is saved.
  */
-export const downloadPaperPdf = async (
+export const fetchPaperPdf = async (
     kbId: string,
     payload: { blueprint: Blueprint; questions: RawPaperQuestion[] },
     options: PaperPdfOptions = {}
-): Promise<void> => {
+): Promise<PdfFile> => {
     const response = await authenticatedAxiosInstance.post<Blob>(
         `${BASE}/bases/${kbId}/paper/pdf`,
         {
@@ -181,20 +242,21 @@ export const downloadPaperPdf = async (
             include_answer_key: Boolean(options.includeAnswerKey),
             show_marks: options.showMarks ?? true,
             set_label: options.setLabel || null,
+            ...layoutFields(options),
         },
         { responseType: 'blob' }
     );
-    saveBlob(
-        response.data,
-        pdfFileName(response.headers as Record<string, unknown>, 'question-paper.pdf')
-    );
+    return {
+        blob: response.data,
+        fileName: pdfFileName(response.headers as Record<string, unknown>, 'question-paper.pdf'),
+    };
 };
 
 /** The same PDF for a finished paper in the history, without reopening it. */
-export const downloadGenerationPdf = async (
+export const fetchGenerationPdf = async (
     generationId: string,
     options: PaperPdfOptions = {}
-): Promise<void> => {
+): Promise<PdfFile> => {
     const response = await authenticatedAxiosInstance.get<Blob>(
         `${BASE}/generations/${generationId}/paper.pdf`,
         {
@@ -202,14 +264,61 @@ export const downloadGenerationPdf = async (
                 include_answer_key: Boolean(options.includeAnswerKey),
                 show_marks: options.showMarks ?? true,
                 ...(options.setLabel ? { set_label: options.setLabel } : {}),
+                theme: options.theme ?? 'classic',
+                ...(options.examDate ? { exam_date: options.examDate } : {}),
+                ...(options.gradeLine ? { grade_line: options.gradeLine } : {}),
             },
             responseType: 'blob',
         }
     );
-    saveBlob(
-        response.data,
-        pdfFileName(response.headers as Record<string, unknown>, 'question-paper.pdf')
+    return {
+        blob: response.data,
+        fileName: pdfFileName(response.headers as Record<string, unknown>, 'question-paper.pdf'),
+    };
+};
+
+/**
+ * Publish the paper behind a link anyone can open (public bucket + short
+ * link) so it can be sent on WhatsApp instead of attached everywhere. The
+ * answer-key variant is its own link. Remembered on the history row when
+ * `generationId` is given.
+ */
+export const publishPaperLink = async (
+    kbId: string,
+    payload: { blueprint: Blueprint; questions: RawPaperQuestion[] },
+    options: PaperPdfOptions = {},
+    generationId?: string
+): Promise<PublishedPaperLink> => {
+    const { data } = await authenticatedAxiosInstance.post<PublishedPaperLink>(
+        `${BASE}/bases/${kbId}/paper/publish`,
+        {
+            blueprint: payload.blueprint,
+            questions: payload.questions,
+            include_answer_key: Boolean(options.includeAnswerKey),
+            show_marks: options.showMarks ?? true,
+            set_label: options.setLabel || null,
+            generation_id: generationId ?? null,
+            ...layoutFields(options),
+        }
     );
+    return data;
+};
+
+/** Publish a finished paper straight from the history. */
+export const publishGenerationLink = async (
+    generationId: string,
+    options: PaperPdfOptions = {}
+): Promise<PublishedPaperLink> => {
+    const { data } = await authenticatedAxiosInstance.post<PublishedPaperLink>(
+        `${BASE}/generations/${generationId}/paper/publish`,
+        {
+            include_answer_key: Boolean(options.includeAnswerKey),
+            show_marks: options.showMarks ?? true,
+            set_label: options.setLabel || null,
+            ...layoutFields(options),
+        }
+    );
+    return data;
 };
 
 /**

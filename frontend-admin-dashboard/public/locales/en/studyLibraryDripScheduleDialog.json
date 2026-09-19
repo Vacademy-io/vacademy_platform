@@ -1,8 +1,7 @@
 {
     "heading": "Schedule day-wise unlock",
     "alerts": {
-        "dripDisabled": "Drip conditions are switched off for this institute. The schedule will save but nothing locks until you enable them in Settings → Course → Drip Conditions.",
-        "previewMode": "Preview mode: the schedule saves, but nothing locks for learners until “Apply unlock rules to learners” is switched on in Settings → Course → Drip Conditions."
+        "dripDisabled": "Drip conditions are switched off for this institute. The schedule will save but nothing locks until you enable them in Settings → Course → Drip Conditions."
     },
     "emptyState": "This course has no content to schedule yet.",
     "form": {

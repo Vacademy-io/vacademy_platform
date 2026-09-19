@@ -363,6 +363,8 @@
     "heading": "Catalogue Settings",
     "title": "Title",
     "showFilters": "Show Filters",
+    "filterOptions": "Filter options",
+    "filterAuthors": "Authors",
     "courseImageFit": "Course Image Fit",
     "imageFitCover": "Fill (crops edges)",
     "imageFitContain": "Fit whole image",

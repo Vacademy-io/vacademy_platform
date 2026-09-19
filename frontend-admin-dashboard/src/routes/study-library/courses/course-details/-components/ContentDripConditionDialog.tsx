@@ -30,6 +30,7 @@ import {
     generateDripConditionId,
     getLevelDisplayName,
     getRuleTypeDisplayName,
+    isProgressRule,
 } from '@/utils/drip-conditions';
 
 const RULE_TYPES = [
@@ -69,7 +70,10 @@ export interface ContentDripConditionDialogProps {
     siblings?: Array<{ id: string; name: string }>;
     /** Institute master switch — surfaced so an admin isn't editing a dead rule. */
     dripEnabled?: boolean;
-    /** Whether saved rules are actually applied to learners yet. */
+    /**
+     * Whether progress rules are applied to learners yet. Date and day-wise
+     * rules apply regardless, so this only changes the hint for the others.
+     */
     enforcing?: boolean;
 }
 
@@ -409,7 +413,7 @@ export function ContentDripConditionDialog({
                     </Alert>
                 )}
 
-                {dripEnabled && !enforcing && (
+                {dripEnabled && !enforcing && isProgressRule(rule) && (
                     <Alert className="border-neutral-200 bg-neutral-50">
                         <Info className="size-4 text-neutral-500" />
                         <AlertDescription className="text-sm">

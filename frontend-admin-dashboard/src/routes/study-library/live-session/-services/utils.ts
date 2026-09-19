@@ -273,6 +273,14 @@ export interface LiveSessionReport {
     feedbackDetails: string | null;
 }
 
+/** One instructor of a live session, as the detail endpoint returns them. */
+export interface LiveSessionInstructor {
+    user_id: string;
+    full_name?: string | null;
+    email?: string | null;
+    profile_pic_file_id?: string | null;
+}
+
 export interface SessionBySessionIdResponse {
     schedule: Schedule;
     notifications: Notifications;
@@ -295,6 +303,12 @@ export interface SessionBySessionIdResponse {
         enabled?: boolean | null;
         audience_ids?: string[] | null;
     } | null;
+    /**
+     * Instructors / presenters of the session (camelCase wrapper key, snake
+     * inner keys). Never empty for an existing session: the backend falls back
+     * to the creator for sessions scheduled before instructors existed.
+     */
+    instructors?: LiveSessionInstructor[] | null;
 }
 
 export const getLiveSessions = async (instituteId: string) => {

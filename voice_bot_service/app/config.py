@@ -625,6 +625,12 @@ class Settings:
     # Sarvam in that call.
     backchannel_resume_on_stop_secs: float = field(
         default_factory=lambda: float(_env("BACKCHANNEL_RESUME_ON_STOP_SECS", "1.0")))
+    # pipecat clears the TTS queue and reconnects the vendor socket while it
+    # handles an interruption, and anything pushed into that window is dropped
+    # with no error — the resume was lost that way on 3 of its first 4 live
+    # attempts. Wait this long after the cut before speaking the words.
+    backchannel_resume_settle_secs: float = field(
+        default_factory=lambda: float(_env("BACKCHANNEL_RESUME_SETTLE_SECS", "0.6")))
     backchannel_resume_max_chars: int = field(
         default_factory=lambda: int(_env("BACKCHANNEL_RESUME_MAX_CHARS", "600")))
     short_answer_grace_secs: float = field(

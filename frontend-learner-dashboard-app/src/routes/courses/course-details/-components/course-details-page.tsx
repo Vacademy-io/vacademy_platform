@@ -378,9 +378,16 @@ export const CourseDetailsPage = () => {
         return undefined; // Change null to undefined to match the expected type
     }, [form, courseData, searchParams.courseId]);
 
-    const getInitials = (email: string) => {
-        const name = email.split("@")[0];
-        return name?.slice(0, 2).toUpperCase();
+    // Initials from the author's NAME. This used to take the email's local
+    // part, and the avatar's alt text was the email itself -- a staff address
+    // must not reach the learner's DOM at all.
+    const getInitials = (name: string) => {
+        const parts = name.trim().split(/\s+/).filter(Boolean);
+        const initials =
+            parts.length >= 2
+                ? `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`
+                : (parts[0] ?? "").slice(0, 2);
+        return initials.toUpperCase() || "?";
     };
 
     const [levelOptions, setLevelOptions] = useState<
@@ -1073,14 +1080,14 @@ export const CourseDetailsPage = () => {
                                                         >
                                                             <Avatar className="size-6 sm:size-8 flex-shrink-0">
                                                                 <AvatarImage
-                                                                    src=""
+                                                                    src={instructor.profilePicUrl || ""}
                                                                     alt={
-                                                                        instructor.email
+                                                                        instructor.name
                                                                     }
                                                                 />
                                                                 <AvatarFallback className="bg-info-500 text-xs font-medium text-white">
                                                                     {getInitials(
-                                                                        instructor.email
+                                                                        instructor.name
                                                                     )}
                                                                 </AvatarFallback>
                                                             </Avatar>

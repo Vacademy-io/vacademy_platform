@@ -1,8 +1,14 @@
 {
     "nudges": {
-        "harder": { "label": "Make it harder" },
-        "easier": { "label": "Make it easier" },
-        "moreApplication": { "label": "More application" }
+        "harder": {
+            "label": "Make it harder"
+        },
+        "easier": {
+            "label": "Make it easier"
+        },
+        "moreApplication": {
+            "label": "More application"
+        }
     },
     "emptyState": {
         "title": "No questions could be written from the selected material.",
@@ -21,9 +27,14 @@
     "diagramsFromBook_other": "{{count}} diagrams from the book",
     "actions": {
         "rewrite": "Rewrite",
-        "rewriting": "Rewriting…"
+        "rewriting": "Rewriting…",
+        "edit": "Edit",
+        "delete": "Remove",
+        "moveUp": "Move up",
+        "moveDown": "Move down"
     },
     "errors": {
         "sectionRemoved": "This question's section is no longer in the plan."
-    }
+    },
+    "diagramMissing": "Needs a diagram that could not be drawn: {{description}}. Add one by hand, or rewrite the question."
 }

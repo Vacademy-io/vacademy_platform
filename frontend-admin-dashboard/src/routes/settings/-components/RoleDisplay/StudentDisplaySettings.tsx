@@ -1014,18 +1014,25 @@ export default function StudentDisplaySettings(): JSX.Element {
                         <Label className="text-xs">{t('courseDetails.hideAuthorName')}</Label>
                     </div>
 
-                    {/* Show Teachers/Instructors section on the course-details page (default off = hidden) */}
-                    <div className="flex items-center gap-2">
-                        <Switch
-                            checked={settings.courseDetails.showInstructors ?? false}
-                            onCheckedChange={(v) =>
-                                update('courseDetails', {
-                                    ...settings.courseDetails,
-                                    showInstructors: v,
-                                })
-                            }
-                        />
-                        <Label className="text-xs">{t('courseDetails.showTeachers')}</Label>
+                    {/* Off (default): the course page still shows the first author with
+                        the profile the admin wrote (photo, subtitle, bio). On: the whole
+                        roster. Learners never see email addresses either way. */}
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                checked={settings.courseDetails.showInstructors ?? false}
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        showInstructors: v,
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">{t('courseDetails.showTeachers')}</Label>
+                        </div>
+                        <p className="max-w-prose text-xs text-muted-foreground">
+                            {t('courseDetails.showTeachersHint')}
+                        </p>
                     </div>
 
                     {/* General visibility toggles */}

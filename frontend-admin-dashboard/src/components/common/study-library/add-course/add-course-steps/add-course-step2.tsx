@@ -426,7 +426,10 @@ export const AddCourseStep2 = ({
 
     // Add state to track used existing batches
     const [usedExistingBatchIds, setUsedExistingBatchIds] = useState<Set<string>>(new Set());
-    const [showAdvanced, setShowAdvanced] = useState(false);
+    // Collapsed on create, where the basics matter first. Open when editing:
+    // Add Authors lives in here, and an admin who comes back to assign an
+    // author or fill a subtitle/description otherwise finds nothing on screen.
+    const [showAdvanced, setShowAdvanced] = useState(Boolean(isEdit));
 
     const allowAdvancedSettings = courseCreationDisplay?.showAdvancedSettings !== false;
     const limitLevelsToOne = courseCreationDisplay?.limitToSingleLevel === true;
@@ -1592,8 +1595,17 @@ export const AddCourseStep2 = ({
     return (
         <>
             <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleSubmit)} className="flex h-full flex-col">
-                    <div className="flex-1 overflow-y-auto pb-24">
+                {/* The form is a flex child of the dialog column, so it must be
+                    flex-1/min-h-0 (not h-full, which ignored the dialog header and
+                    overflowed) and the footer a normal shrink-0 child. It used to be
+                    position:fixed, which inside the translated DialogContent is
+                    resolved against that box and floated over the scrolling body --
+                    a long author description rendered straight through it. */}
+                <form
+                    onSubmit={form.handleSubmit(handleSubmit)}
+                    className="flex min-h-0 flex-1 flex-col"
+                >
+                    <div className="min-h-0 flex-1 overflow-y-auto pb-6">
                         <Card className="w-full rounded-none border-none bg-white shadow-sm">
                             <div className="flex items-center justify-between border-b border-gray-100 p-5">
                                 <div>
@@ -3321,6 +3333,19 @@ export const AddCourseStep2 = ({
                                                         />
                                                     )}
 
+                                                    {/* No assignment yet: say so, because the public
+                                                        catalogue meanwhile shows the course creator as a
+                                                        fallback and the two can look contradictory. */}
+                                                    {isEdit &&
+                                                        (!selectedInstructors ||
+                                                            selectedInstructors.length === 0) && (
+                                                            <p className="text-sm text-gray-600">
+                                                                No authors assigned yet. Select one below to
+                                                                add a subtitle and description; until then the
+                                                                catalogue shows the course creator.
+                                                            </p>
+                                                        )}
+
                                                     <div className="flex flex-col gap-4">
                                                         <MultiSelectDropdown
                                                             options={instructors?.map(
@@ -3575,6 +3600,73 @@ export const AddCourseStep2 = ({
                                                                                                 instructor
                                                                                             );
                                                                                         }
+                                                                                    }
+                                                                                );
+                                                                            }
+                                                                        } else {
+                                                                            // Neither sessions nor levels: the course has
+                                                                            // exactly one DEFAULT session/level and every
+                                                                            // author belongs to it. This branch was missing,
+                                                                            // so on a simple course a newly picked author
+                                                                            // never reached level.userIds and the update
+                                                                            // payload went out with add_faculty_to_course: [].
+                                                                            // (Create reads formData.instructors instead
+                                                                            // and was unaffected.)
+                                                                            const defaultLevel = {
+                                                                                id: 'DEFAULT',
+                                                                                name: '',
+                                                                                userIds: [instructor],
+                                                                                batchId: 'DEFAULT',
+                                                                                newLevel: true,
+                                                                                containsSubgroup: false,
+                                                                                subgroups: [],
+                                                                            };
+                                                                            if (
+                                                                                updatedSessions.length ===
+                                                                                0
+                                                                            ) {
+                                                                                updatedSessions.push({
+                                                                                    id: 'DEFAULT',
+                                                                                    name: '',
+                                                                                    startDate: '',
+                                                                                    levels: [defaultLevel],
+                                                                                });
+                                                                            } else {
+                                                                                updatedSessions.forEach(
+                                                                                    (
+                                                                                        session: Session
+                                                                                    ) => {
+                                                                                        if (
+                                                                                            session
+                                                                                                .levels
+                                                                                                .length ===
+                                                                                            0
+                                                                                        ) {
+                                                                                            session.levels =
+                                                                                                [
+                                                                                                    defaultLevel,
+                                                                                                ];
+                                                                                            return;
+                                                                                        }
+                                                                                        session.levels.forEach(
+                                                                                            (
+                                                                                                level: Level
+                                                                                            ) => {
+                                                                                                if (
+                                                                                                    !level.userIds.some(
+                                                                                                        (
+                                                                                                            i: Instructor
+                                                                                                        ) =>
+                                                                                                            i.id ===
+                                                                                                            instructor.id
+                                                                                                    )
+                                                                                                ) {
+                                                                                                    level.userIds.push(
+                                                                                                        instructor
+                                                                                                    );
+                                                                                                }
+                                                                                            }
+                                                                                        );
                                                                                     }
                                                                                 );
                                                                             }
@@ -4481,8 +4573,8 @@ export const AddCourseStep2 = ({
                         )}
                     </div>
 
-                    {/* Fixed Footer */}
-                    <div className="fixed inset-x-0 bottom-0 border-t bg-white px-8 py-4">
+                    {/* Footer */}
+                    <div className="shrink-0 border-t bg-white px-8 py-4">
                         <div className="flex justify-between">
                             <MyButton
                                 type="button"

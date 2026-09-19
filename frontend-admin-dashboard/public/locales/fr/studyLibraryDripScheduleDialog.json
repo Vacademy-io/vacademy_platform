@@ -1,8 +1,7 @@
 {
     "heading": "Planifier un déverrouillage progressif",
     "alerts": {
-        "dripDisabled": "Les conditions de diffusion progressive sont désactivées pour cet établissement. Le calendrier sera enregistré, mais rien ne se verrouillera tant que vous ne l'activez pas dans Paramètres → Cours → Conditions de diffusion progressive.",
-        "previewMode": "Mode aperçu : le calendrier est enregistré, mais rien ne se verrouille pour les apprenants tant que « Apply unlock rules to learners » n'est pas activé dans Paramètres → Cours → Conditions de diffusion progressive."
+        "dripDisabled": "Les conditions de diffusion progressive sont désactivées pour cet établissement. Le calendrier sera enregistré, mais rien ne se verrouillera tant que vous ne l'activez pas dans Paramètres → Cours → Conditions de diffusion progressive."
     },
     "emptyState": "Ce cours n'a pas encore de contenu à planifier.",
     "form": {

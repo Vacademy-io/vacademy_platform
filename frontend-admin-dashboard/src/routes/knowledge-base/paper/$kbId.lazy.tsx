@@ -6,10 +6,12 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
     ArrowLeft,
+    ArrowRight,
     CheckCircle,
     Coins,
     FloppyDisk,
     ListChecks,
+    NotePencil,
     PaperPlaneTilt,
     Sparkle,
     Spinner,
@@ -21,19 +23,14 @@ import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { useKnowledgeBase } from '../-hooks';
 import { getTopics, rebuildTopics } from '../-services/paper-service';
 import {
     buildBlueprint,
-    downloadPaperPdf,
+    fetchPaperPdf,
+    formatEditedQuestion,
     getGeneration,
+    publishPaperLink,
     markGenerationSaved,
     getPaperJob,
     regenerateQuestion,
@@ -42,9 +39,19 @@ import {
     validatePaper,
 } from '../-services/paper-service';
 import { BlueprintTable } from '../-components/paper/BlueprintTable';
+import { EditQuestionDialog } from '../-components/paper/EditQuestionDialog';
+import { DEFAULT_INSTRUCTIONS, InstructionsEditor } from '../-components/paper/InstructionsEditor';
+import { MyDialog } from '@/components/design-system/dialog';
 import { PaperDownloadMenu } from '../-components/paper/PaperDownloadMenu';
+import {
+    QuestionTypesStep,
+    planTotals,
+    toSpecTypePlan,
+} from '../-components/paper/QuestionTypesStep';
+import { TestDetailsStep } from '../-components/paper/TestDetailsStep';
 import { TopicPicker, toSelectedNodeIds } from '../-components/paper/TopicPicker';
 import { ReviewBoard } from '../-components/paper/ReviewBoard';
+import { WizardStepper } from '../-components/paper/WizardStepper';
 import type {
     Blueprint,
     KbTopic,
@@ -53,17 +60,22 @@ import type {
     PaperResult,
     PaperSpec,
     RawPaperQuestion,
+    TypePlanEntry,
 } from '../-types/paper';
 
 export const Route = createLazyFileRoute('/knowledge-base/paper/$kbId')({
     component: PaperBuilderPage,
 });
 
-type Step = 'scope' | 'blueprint' | 'generating' | 'review';
+/**
+ * The four configuration steps a teacher walks through (syllabus → types →
+ * details → review), then the two states after "Generate": the wait, and the
+ * editor where the paper is reviewed, edited, previewed and saved.
+ */
+type Step = 'syllabus' | 'types' | 'details' | 'review' | 'generating' | 'editor';
+const WIZARD: Step[] = ['syllabus', 'types', 'details', 'review'];
 
 const POLL_MS = 3000;
-
-const DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD', 'MIXED'];
 
 function errorMessage(t: TFunction, error: unknown, fallback: string): string {
     const response = (error as { response?: { status?: number; data?: { detail?: unknown } } })
@@ -78,44 +90,6 @@ function errorMessage(t: TFunction, error: unknown, fallback: string): string {
     return typeof detail === 'string' ? detail : fallback;
 }
 
-function StepHeader({ step, t }: { step: Step; t: TFunction }) {
-    const steps: Array<{ key: Step; label: string }> = [
-        { key: 'scope', label: t('steps.chooseMaterial') },
-        { key: 'blueprint', label: t('steps.planPaper') },
-        { key: 'review', label: t('steps.reviewQuestions') },
-    ];
-    const activeIndex = step === 'generating' ? 1 : steps.findIndex((s) => s.key === step);
-    return (
-        <div className="flex flex-wrap items-center gap-2">
-            {steps.map((s, i) => (
-                <div key={s.key} className="flex items-center gap-2">
-                    <span
-                        className={
-                            i <= activeIndex
-                                ? 'flex items-center gap-1.5 text-caption font-semibold text-primary-500'
-                                : 'flex items-center gap-1.5 text-caption text-neutral-400'
-                        }
-                    >
-                        <span
-                            className={
-                                i < activeIndex
-                                    ? 'flex size-5 items-center justify-center rounded-full bg-primary-500 text-caption text-white'
-                                    : i === activeIndex
-                                      ? 'flex size-5 items-center justify-center rounded-full border border-primary-500 text-caption text-primary-500'
-                                      : 'flex size-5 items-center justify-center rounded-full border border-neutral-300 text-caption text-neutral-400'
-                            }
-                        >
-                            {i < activeIndex ? '✓' : i + 1}
-                        </span>
-                        {s.label}
-                    </span>
-                    {i < steps.length - 1 && <span className="text-neutral-300">→</span>}
-                </div>
-            ))}
-        </div>
-    );
-}
-
 function PaperBuilderPage() {
     const { t, i18n } = useTranslation('knowledgeBasePaperKbIdIndex');
     const { kbId } = Route.useParams();
@@ -124,17 +98,23 @@ function PaperBuilderPage() {
     const { setNavHeading } = useNavHeadingStore();
     const { data: kb } = useKnowledgeBase(kbId);
 
-    const [step, setStep] = useState<Step>('scope');
+    const [step, setStep] = useState<Step>('syllabus');
     const [topics, setTopics] = useState<KbTopic[] | null>(null);
     const [selectedLeafIds, setSelectedLeafIds] = useState<Set<string>>(new Set());
+    const [weightage, setWeightage] = useState<Record<string, number>>({});
     const [rebuilding, setRebuilding] = useState(false);
 
+    const [typePlan, setTypePlan] = useState<TypePlanEntry[]>([]);
     const [spec, setSpec] = useState<PaperSpec>({
-        total_questions: 20,
         duration_minutes: 90,
         difficulty: 'MIXED',
         grade: '',
+        language: 'English',
+        title: '',
+        instructions: [...DEFAULT_INSTRUCTIONS],
+        generate_diagrams: false,
     });
+    const [instructionsOpen, setInstructionsOpen] = useState(false);
 
     const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
     const [estimate, setEstimate] = useState<CreditEstimate | null>(null);
@@ -145,6 +125,7 @@ function PaperBuilderPage() {
     const [result, setResult] = useState<PaperResult | null>(null);
     const [issues, setIssues] = useState<PaperIssue[]>([]);
     const [regenNumber, setRegenNumber] = useState<number | null>(null);
+    const [editIndex, setEditIndex] = useState<number | null>(null);
     const [saving, setSaving] = useState(false);
     const [generationId, setGenerationId] = useState<string | null>(null);
     const [resuming, setResuming] = useState(Boolean(resume));
@@ -154,7 +135,7 @@ function PaperBuilderPage() {
     }, [setNavHeading, t]);
 
     // Reopen a previous run: its plan always, its questions when it produced
-    // any. A FAILED run lands back on the blueprint so it can simply be re-run.
+    // any. A FAILED run lands on the review step with its plan, ready to re-run.
     useEffect(() => {
         if (!resume) return;
         let cancelled = false;
@@ -169,9 +150,9 @@ function PaperBuilderPage() {
                 if (record.result?.questions?.length) {
                     setResult(record.result);
                     setIssues(record.result.issues ?? []);
-                    setStep('review');
+                    setStep('editor');
                 } else if (record.input?.blueprint) {
-                    setStep('blueprint');
+                    setStep('review');
                 }
             })
             .catch(() => toast.error(t('errors.reopenFailed')))
@@ -193,6 +174,7 @@ function PaperBuilderPage() {
         () => toSelectedNodeIds(topics ?? [], selectedLeafIds),
         [topics, selectedLeafIds]
     );
+    const totals = planTotals(typePlan);
 
     const handleRebuildTopics = async () => {
         setRebuilding(true);
@@ -207,36 +189,80 @@ function PaperBuilderPage() {
     };
 
     // ---- Plan -------------------------------------------------------------
+    // The spec the planner sees: the mix the teacher fixed (enforced
+    // server-side), the weightage they set on selected chapters, and the
+    // test details. Returns the blueprint so "Generate" can chain on it.
     const plan = useCallback(
-        async (instruction?: string) => {
+        async (instruction?: string): Promise<Blueprint | null> => {
             setPlanning(true);
             try {
+                const selectedWeightage = Object.fromEntries(
+                    Object.entries(weightage).filter(
+                        ([id, pct]) =>
+                            pct > 0 &&
+                            (topics ?? []).some(
+                                (topic) =>
+                                    topic.id === id &&
+                                    (topic.subtopics?.length
+                                        ? topic.subtopics.some((s) => selectedLeafIds.has(s.id))
+                                        : selectedLeafIds.has(topic.id))
+                            )
+                    )
+                );
                 const response = await buildBlueprint(kbId, {
-                    spec,
+                    spec: {
+                        ...spec,
+                        title: spec.title?.trim() || undefined,
+                        grade: spec.grade?.trim() || undefined,
+                        exam_style: spec.exam_style?.trim() || undefined,
+                        total_questions: totals.questions || undefined,
+                        instructions: (spec.instructions ?? [])
+                            .map((l) => l.trim())
+                            .filter(Boolean),
+                        // FE-only switch; it rides the generate call, not the plan.
+                        generate_diagrams: undefined,
+                        type_plan: typePlan.length ? toSpecTypePlan(typePlan) : undefined,
+                        weightage: Object.keys(selectedWeightage).length
+                            ? selectedWeightage
+                            : undefined,
+                    },
                     selected_node_ids: selectedNodeIds.length ? selectedNodeIds : undefined,
                     current_blueprint: instruction ? blueprint ?? undefined : undefined,
                     instruction,
                 });
                 setBlueprint(response.blueprint);
                 setEstimate(response.generation_estimate);
-                setStep('blueprint');
                 setRefineText('');
+                return response.blueprint;
             } catch (error) {
                 toast.error(errorMessage(t, error, t('errors.planFailed')));
+                return null;
             } finally {
                 setPlanning(false);
             }
         },
-        [kbId, spec, selectedNodeIds, blueprint, t]
+        [
+            kbId,
+            spec,
+            totals.questions,
+            typePlan,
+            weightage,
+            topics,
+            selectedLeafIds,
+            selectedNodeIds,
+            blueprint,
+            t,
+        ]
     );
 
     // ---- Generate ---------------------------------------------------------
-    const generate = async () => {
-        if (!blueprint) return;
+    const generate = async (plannedBlueprint: Blueprint | null = blueprint) => {
+        if (!plannedBlueprint) return;
         try {
             const { task_id } = await startGeneration(kbId, {
-                blueprint,
+                blueprint: plannedBlueprint,
                 grade: spec.grade || undefined,
+                generate_diagrams: Boolean(spec.generate_diagrams),
             });
             setTaskId(task_id);
             // A fresh run supersedes whatever we resumed from.
@@ -245,6 +271,14 @@ function PaperBuilderPage() {
         } catch (error) {
             toast.error(errorMessage(t, error, t('errors.startGenerationFailed')));
         }
+    };
+
+    // "Generate" on the review step: plan and write in one go, the way a
+    // teacher expects — the plan is still there afterwards for anyone who
+    // wants to inspect it, and "Adjust plan first" shows it before writing.
+    const planAndGenerate = async () => {
+        const planned = await plan();
+        if (planned) await generate(planned);
     };
 
     useEffect(() => {
@@ -257,12 +291,12 @@ function PaperBuilderPage() {
                 if (job.status === 'COMPLETED' && job.result) {
                     setResult(job.result);
                     setIssues(job.result.issues);
-                    setStep('review');
+                    setStep('editor');
                     return;
                 }
                 if (job.status === 'FAILED') {
                     toast.error(job.status_message || t('errors.generationFailed'));
-                    setStep('blueprint');
+                    setStep('review');
                     return;
                 }
                 setTimeout(tick, POLL_MS);
@@ -277,7 +311,33 @@ function PaperBuilderPage() {
         };
     }, [step, taskId, t]);
 
-    // ---- Regenerate one ---------------------------------------------------
+    // ---- Editing the generated paper -------------------------------------
+    const revalidate = async (rawQuestions: RawPaperQuestion[]) => {
+        if (!blueprint) return;
+        // Re-validate: an edit or rewrite can introduce a duplicate or change
+        // the marks total. Keep the previous issues rather than clearing them
+        // if the check itself fails.
+        try {
+            const revalidated = await validatePaper(kbId, { blueprint, questions: rawQuestions });
+            setIssues(revalidated.issues);
+        } catch {
+            /* keep previous issues */
+        }
+    };
+
+    const replaceAt = (
+        index: number,
+        rawQuestion: RawPaperQuestion,
+        question: PaperResult['questions'][number]
+    ) => {
+        if (!result) return null;
+        const rawQuestions = result.raw_questions.map((q, i) => (i === index ? rawQuestion : q));
+        const questions = result.questions.map((q, i) => (i === index ? question : q));
+        const next = { ...result, raw_questions: rawQuestions, questions };
+        setResult(next);
+        return next;
+    };
+
     const regenerate = async (raw: RawPaperQuestion, instruction?: string) => {
         if (!blueprint || !result) return;
         const rowId = raw.kb_meta?.row_id;
@@ -286,6 +346,7 @@ function PaperBuilderPage() {
             toast.error(t('errors.sectionMissing'));
             return;
         }
+        const index = result.raw_questions.indexOf(raw);
         const num = raw.question_number ?? 0;
         setRegenNumber(num);
         try {
@@ -300,25 +361,8 @@ function PaperBuilderPage() {
                 question_number: num,
                 kb_meta: { ...(raw_question.kb_meta ?? {}), row_id: row.id },
             };
-            const rawQuestions = result.raw_questions.map((q) =>
-                (q.question_number ?? 0) === num ? replacement : q
-            );
-            const questions = result.questions.map((q, i) =>
-                (result.raw_questions[i]?.question_number ?? 0) === num ? question : q
-            );
-            const next = { ...result, raw_questions: rawQuestions, questions };
-            setResult(next);
-            // Re-validate: a rewritten question can introduce a duplicate that
-            // did not exist before.
-            try {
-                const revalidated = await validatePaper(kbId, {
-                    blueprint,
-                    questions: rawQuestions,
-                });
-                setIssues(revalidated.issues);
-            } catch {
-                /* keep the previous issues rather than clearing them */
-            }
+            const next = replaceAt(index, replacement, question);
+            if (next) await revalidate(next.raw_questions);
             toast.success(t('toasts.questionRewritten'));
         } catch (error) {
             toast.error(errorMessage(t, error, t('errors.rewriteFailed')));
@@ -327,8 +371,47 @@ function PaperBuilderPage() {
         }
     };
 
+    const applyEdit = async (edited: RawPaperQuestion) => {
+        if (editIndex === null || !result) return;
+        const { raw_question, question } = await formatEditedQuestion(kbId, edited, generationId);
+        const next = replaceAt(editIndex, raw_question, question);
+        if (next) await revalidate(next.raw_questions);
+        toast.success(t('toasts.questionEdited'));
+    };
+
+    const deleteQuestion = async (index: number) => {
+        if (!result) return;
+        const next = {
+            ...result,
+            raw_questions: result.raw_questions.filter((_, i) => i !== index),
+            questions: result.questions.filter((_, i) => i !== index),
+            delivered: Math.max(0, result.delivered - 1),
+        };
+        setResult(next);
+        await revalidate(next.raw_questions);
+    };
+
+    const moveQuestion = (index: number, direction: -1 | 1) => {
+        if (!result) return;
+        const target = index + direction;
+        if (target < 0 || target >= result.raw_questions.length) return;
+        const swap = <T,>(list: T[]) => {
+            const copy = [...list];
+            [copy[index], copy[target]] = [copy[target]!, copy[index]!];
+            return copy;
+        };
+        setResult({
+            ...result,
+            raw_questions: swap(result.raw_questions),
+            questions: swap(result.questions),
+        });
+    };
+
     // ---- Save -------------------------------------------------------------
-    const save = async () => {
+    // `next` = where to go once the paper is in the bank: the list, or straight
+    // into creating a Manual Upload Exam (students download the paper, solve
+    // offline, upload their answer sheet; teachers or AI check it).
+    const save = async (next: 'list' | 'offline-test' = 'list') => {
         if (!result || !blueprint) return;
         setSaving(true);
         try {
@@ -344,7 +427,15 @@ function PaperBuilderPage() {
                 );
             }
             toast.success(t('toasts.savedToQuestionBank'));
-            navigate({ to: '/assessment/question-papers' });
+            if (next === 'offline-test') {
+                navigate({
+                    to: '/assessment/create-assessment/$assessmentId/$examtype',
+                    params: { assessmentId: 'defaultId', examtype: 'MANUAL_UPLOAD_EXAM' },
+                    search: { currentStep: 0 },
+                });
+            } else {
+                navigate({ to: '/assessment/question-papers' });
+            }
         } catch (error) {
             toast.error(errorMessage(t, error, t('errors.saveFailed')));
         } finally {
@@ -364,6 +455,26 @@ function PaperBuilderPage() {
     const paperLevelIssues = issues.filter((i) => i.question_number == null);
     const errorCount = issues.filter((i) => i.severity === 'error').length;
 
+    // ---- Wizard chrome ----------------------------------------------------
+    const wizardIndex = WIZARD.indexOf(step);
+    const inWizard = wizardIndex >= 0;
+    const stepLabels = [
+        { key: 'syllabus', label: t('wizard.syllabus') },
+        { key: 'types', label: t('wizard.types') },
+        { key: 'details', label: t('wizard.details') },
+        { key: 'review', label: t('wizard.review') },
+    ];
+    const canContinue =
+        step === 'syllabus' ? topics !== null : step === 'types' ? typePlan.length > 0 : true;
+    const goBack = () => setStep(WIZARD[Math.max(0, wizardIndex - 1)]!);
+    const goNext = () => setStep(WIZARD[Math.min(WIZARD.length - 1, wizardIndex + 1)]!);
+
+    const selectedChapters = (topics ?? []).filter((topic) =>
+        topic.subtopics?.length
+            ? topic.subtopics.some((s) => selectedLeafIds.has(s.id))
+            : selectedLeafIds.has(topic.id)
+    );
+
     return (
         <LayoutContainer>
             <Helmet>
@@ -381,11 +492,10 @@ function PaperBuilderPage() {
                         <ArrowLeft className="mr-1 size-4" />
                         {kb?.name ?? t('fallbackKnowledgeBase')}
                     </MyButton>
-                    <StepHeader step={step} t={t} />
                 </div>
 
                 {/* Reopening a saved run: hold the step UI until its plan lands,
-                    otherwise the scope form flashes before being replaced. */}
+                    otherwise the syllabus step flashes before being replaced. */}
                 {resuming && (
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">
                         <Spinner className="size-6 animate-spin text-primary-500" />
@@ -393,277 +503,355 @@ function PaperBuilderPage() {
                     </Card>
                 )}
 
-                {/* ---------------- Step 1: scope + intake ---------------- */}
-                {!resuming && step === 'scope' && (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                        <Card className="flex flex-col gap-3 p-4">
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                    <p className="text-subtitle font-semibold text-neutral-700">
-                                        {t('scope.materialHeading')}
-                                    </p>
-                                    <p className="text-caption text-neutral-500">
-                                        {t('scope.materialDescription')}
-                                    </p>
-                                </div>
-                                {topics !== null && topics.length > 0 && (
-                                    <MyButton
-                                        buttonType="text"
-                                        scale="medium"
-                                        onClick={handleRebuildTopics}
-                                        disable={rebuilding}
-                                    >
-                                        {rebuilding
-                                            ? t('scope.rebuildingButton')
-                                            : t('scope.rebuildButton')}
-                                    </MyButton>
-                                )}
-                            </div>
-
-                            {topics === null && <Skeleton className="h-40 w-full rounded-md" />}
-                            {topics !== null && topics.length === 0 && (
-                                <div className="flex flex-col items-start gap-2">
-                                    <p className="text-body text-neutral-500">
-                                        {t('scope.noTopicMap')}
-                                    </p>
-                                    <MyButton
-                                        buttonType="secondary"
-                                        scale="medium"
-                                        onClick={handleRebuildTopics}
-                                        disable={rebuilding}
-                                    >
-                                        {rebuilding
-                                            ? t('scope.buildingButton')
-                                            : t('scope.buildTopicMapButton')}
-                                    </MyButton>
-                                </div>
-                            )}
-                            {topics !== null && topics.length > 0 && (
-                                <TopicPicker
-                                    topics={topics}
-                                    selectedLeafIds={selectedLeafIds}
-                                    onChange={setSelectedLeafIds}
-                                />
-                            )}
+                {/* ---------------- Steps 1–4 ---------------- */}
+                {!resuming && inWizard && (
+                    <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
+                        <Card className="h-fit p-5">
+                            <p className="mb-5 text-h3 font-semibold text-neutral-700">
+                                {t('wizard.heading')}
+                            </p>
+                            <WizardStepper
+                                steps={stepLabels}
+                                activeIndex={wizardIndex}
+                                onSelect={(i) => setStep(WIZARD[i]!)}
+                            />
                         </Card>
 
-                        <Card className="flex flex-col gap-4 p-4">
-                            <p className="text-subtitle font-semibold text-neutral-700">
-                                {t('scope.paperKindHeading')}
-                            </p>
-                            <div className="grid grid-cols-2 gap-3">
-                                <MyInput
-                                    label={t('scope.numQuestionsLabel')}
-                                    inputType="number"
-                                    input={String(spec.total_questions ?? '')}
-                                    onChangeFunction={(e) =>
-                                        setSpec({
-                                            ...spec,
-                                            total_questions: Number(e.target.value),
-                                        })
-                                    }
-                                    inputPlaceholder={t('scope.numQuestionsPlaceholder')}
-                                    className="w-full"
-                                />
-                                <MyInput
-                                    label={t('scope.durationLabel')}
-                                    inputType="number"
-                                    input={String(spec.duration_minutes ?? '')}
-                                    onChangeFunction={(e) =>
-                                        setSpec({
-                                            ...spec,
-                                            duration_minutes: Number(e.target.value),
-                                        })
-                                    }
-                                    inputPlaceholder={t('scope.durationPlaceholder')}
-                                    className="w-full"
-                                />
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <span className="text-subtitle font-regular text-neutral-600">
-                                    {t('scope.difficultyLabel')}
-                                </span>
-                                <Select
-                                    value={spec.difficulty}
-                                    onValueChange={(v) => setSpec({ ...spec, difficulty: v })}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {DIFFICULTIES.map((d) => (
-                                            <SelectItem key={d} value={d}>
-                                                {t(`scope.difficulty.${d.toLowerCase()}`)}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <MyInput
-                                label={t('scope.gradeLabel')}
-                                inputType="text"
-                                input={spec.grade ?? ''}
-                                onChangeFunction={(e) =>
-                                    setSpec({ ...spec, grade: e.target.value })
-                                }
-                                inputPlaceholder={t('scope.gradePlaceholder')}
-                                className="w-full"
-                            />
-                            <MyInput
-                                label={t('scope.examStyleLabel')}
-                                inputType="text"
-                                input={spec.exam_style ?? ''}
-                                onChangeFunction={(e) =>
-                                    setSpec({ ...spec, exam_style: e.target.value })
-                                }
-                                inputPlaceholder={t('scope.examStylePlaceholder')}
-                                className="w-full"
-                            />
-
-                            <MyButton
-                                buttonType="primary"
-                                scale="large"
-                                onClick={() => void plan()}
-                                disable={planning}
-                            >
-                                {planning ? (
-                                    <>
-                                        <Spinner className="mr-1 size-4 animate-spin" />
-                                        {t('scope.planningButton')}
-                                    </>
-                                ) : (
-                                    <>
-                                        <ListChecks className="mr-1 size-4" />
-                                        {t('scope.planPaperButton')}
-                                    </>
-                                )}
-                            </MyButton>
-                            <p className="text-caption text-neutral-400">
-                                {t('scope.planHint')}
-                            </p>
-                        </Card>
-                    </div>
-                )}
-
-                {/* ---------------- Step 2: blueprint ---------------- */}
-                {!resuming && step === 'blueprint' && blueprint && (
-                    <div className="flex flex-col gap-4">
-                        <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-                            <div className="min-w-0">
-                                <p className="truncate text-subtitle font-semibold text-neutral-700">
-                                    {blueprint.title}
+                        <Card className="flex min-w-0 flex-col">
+                            <div className="border-b border-neutral-200 px-5 py-4">
+                                <p className="text-subtitle font-semibold text-neutral-700">
+                                    {t(`${step}.heading`)}
                                 </p>
                                 <p className="text-caption text-neutral-500">
-                                    {t('blueprint.questionsCount', {
-                                        count: blueprint.total_questions,
-                                    })}{' '}
-                                    ·{' '}
-                                    {t('blueprint.marksCount', {
-                                        count: blueprint.total_marks,
-                                        formatted: blueprint.total_marks.toLocaleString(
-                                            i18n.language
-                                        ),
-                                    })}
-                                    {blueprint.duration_minutes
-                                        ? t('blueprint.durationSuffix', {
-                                              minutes: blueprint.duration_minutes,
-                                          })
-                                        : ''}
+                                    {t(`${step}.description`)}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2">
+
+                            <div className="flex flex-col gap-4 p-5">
+                                {step === 'syllabus' && (
+                                    <>
+                                        {topics === null && (
+                                            <Skeleton className="h-40 w-full rounded-md" />
+                                        )}
+                                        {topics !== null && topics.length === 0 && (
+                                            <div className="flex flex-col items-start gap-2">
+                                                <p className="text-body text-neutral-500">
+                                                    {t('scope.noTopicMap')}
+                                                </p>
+                                                <MyButton
+                                                    buttonType="secondary"
+                                                    scale="medium"
+                                                    onClick={handleRebuildTopics}
+                                                    disable={rebuilding}
+                                                >
+                                                    {rebuilding
+                                                        ? t('scope.buildingButton')
+                                                        : t('scope.buildTopicMapButton')}
+                                                </MyButton>
+                                            </div>
+                                        )}
+                                        {topics !== null && topics.length > 0 && (
+                                            <>
+                                                <TopicPicker
+                                                    topics={topics}
+                                                    selectedLeafIds={selectedLeafIds}
+                                                    onChange={setSelectedLeafIds}
+                                                    toolbar
+                                                    weightage={weightage}
+                                                    onWeightageChange={setWeightage}
+                                                />
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-caption text-neutral-400">
+                                                        {t('syllabus.weightageHint')}
+                                                    </p>
+                                                    <MyButton
+                                                        buttonType="text"
+                                                        scale="small"
+                                                        onClick={handleRebuildTopics}
+                                                        disable={rebuilding}
+                                                    >
+                                                        {rebuilding
+                                                            ? t('scope.rebuildingButton')
+                                                            : t('scope.rebuildButton')}
+                                                    </MyButton>
+                                                </div>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+
+                                {step === 'types' && (
+                                    <QuestionTypesStep value={typePlan} onChange={setTypePlan} />
+                                )}
+
+                                {step === 'details' && (
+                                    <TestDetailsStep
+                                        value={spec}
+                                        onChange={setSpec}
+                                        defaultTitle={kb?.name}
+                                    />
+                                )}
+
+                                {step === 'review' && (
+                                    <div className="flex flex-col gap-4">
+                                        <div className="grid gap-3 md:grid-cols-3">
+                                            <Card className="flex flex-col gap-1 p-3">
+                                                <p className="text-caption font-semibold text-neutral-500">
+                                                    {t('wizard.syllabus')}
+                                                </p>
+                                                <p className="text-body text-neutral-700">
+                                                    {selectedChapters.length === 0
+                                                        ? t('review.wholeBook')
+                                                        : t('review.chaptersSelected', {
+                                                              count: selectedChapters.length,
+                                                              subtopics: selectedLeafIds.size,
+                                                          })}
+                                                </p>
+                                                {selectedChapters.length > 0 && (
+                                                    <p className="line-clamp-3 text-caption text-neutral-500">
+                                                        {selectedChapters
+                                                            .map((c) =>
+                                                                weightage[c.id]
+                                                                    ? `${c.title} (${weightage[c.id]}%)`
+                                                                    : c.title
+                                                            )
+                                                            .join(' · ')}
+                                                    </p>
+                                                )}
+                                            </Card>
+                                            <Card className="flex flex-col gap-1 p-3">
+                                                <p className="text-caption font-semibold text-neutral-500">
+                                                    {t('wizard.types')}
+                                                </p>
+                                                <p className="text-body text-neutral-700">
+                                                    {t('review.totals', {
+                                                        questions: totals.questions,
+                                                        marks: totals.marks,
+                                                    })}
+                                                </p>
+                                                <p className="line-clamp-3 text-caption text-neutral-500">
+                                                    {typePlan
+                                                        .map(
+                                                            (e) =>
+                                                                `${e.count} × ${e.label} (${e.marks_each})`
+                                                        )
+                                                        .join(' · ')}
+                                                </p>
+                                            </Card>
+                                            <Card className="flex flex-col gap-1 p-3">
+                                                <p className="text-caption font-semibold text-neutral-500">
+                                                    {t('wizard.details')}
+                                                </p>
+                                                <p className="text-body text-neutral-700">
+                                                    {spec.title?.trim() || t('review.autoTitle')}
+                                                </p>
+                                                <p className="text-caption text-neutral-500">
+                                                    {t('review.detailsLine', {
+                                                        minutes: spec.duration_minutes ?? 0,
+                                                        difficulty: t(
+                                                            `scope.difficulty.${(spec.difficulty ?? 'mixed').toLowerCase()}`
+                                                        ),
+                                                        language: spec.language ?? 'English',
+                                                    })}
+                                                    {spec.grade ? ` · ${spec.grade}` : ''}
+                                                </p>
+                                            </Card>
+                                        </div>
+
+                                        {estimate?.sufficient === false && (
+                                            <Card className="flex items-center gap-2 border-danger-200 bg-danger-50 p-3">
+                                                <Coins className="size-4 text-danger-500" />
+                                                <p className="text-caption text-danger-600">
+                                                    {t('blueprint.insufficientCredits', {
+                                                        needed: Math.round(
+                                                            estimate.estimated_credits
+                                                        ),
+                                                        available: Math.round(
+                                                            estimate.current_balance ?? 0
+                                                        ),
+                                                    })}
+                                                </p>
+                                            </Card>
+                                        )}
+
+                                        {!blueprint && (
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <MyButton
+                                                    buttonType="primary"
+                                                    scale="large"
+                                                    onClick={() => void planAndGenerate()}
+                                                    disable={planning}
+                                                >
+                                                    {planning ? (
+                                                        <Spinner className="mr-1 size-4 animate-spin" />
+                                                    ) : (
+                                                        <PaperPlaneTilt className="mr-1 size-4" />
+                                                    )}
+                                                    {planning
+                                                        ? t('scope.planningButton')
+                                                        : t('review.generateButton')}
+                                                </MyButton>
+                                                <MyButton
+                                                    buttonType="secondary"
+                                                    scale="large"
+                                                    onClick={() => void plan()}
+                                                    disable={planning}
+                                                >
+                                                    <ListChecks className="mr-1 size-4" />
+                                                    {t('review.adjustPlanButton')}
+                                                </MyButton>
+                                                <p className="basis-full text-caption text-neutral-400">
+                                                    {t('review.generateHint')}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {blueprint && (
+                                            <div className="flex flex-col gap-4">
+                                                <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-subtitle font-semibold text-neutral-700">
+                                                            {blueprint.title}
+                                                        </p>
+                                                        <p className="text-caption text-neutral-500">
+                                                            {t('blueprint.questionsCount', {
+                                                                count: blueprint.total_questions,
+                                                            })}{' '}
+                                                            ·{' '}
+                                                            {t('blueprint.marksCount', {
+                                                                count: blueprint.total_marks,
+                                                                formatted:
+                                                                    blueprint.total_marks.toLocaleString(
+                                                                        i18n.language
+                                                                    ),
+                                                            })}
+                                                            {blueprint.duration_minutes
+                                                                ? t('blueprint.durationSuffix', {
+                                                                      minutes:
+                                                                          blueprint.duration_minutes,
+                                                                  })
+                                                                : ''}
+                                                        </p>
+                                                    </div>
+                                                    <MyButton
+                                                        buttonType="primary"
+                                                        scale="medium"
+                                                        onClick={() => void generate()}
+                                                        disable={
+                                                            planning ||
+                                                            blueprint.total_questions === 0
+                                                        }
+                                                    >
+                                                        <PaperPlaneTilt className="mr-1 size-4" />
+                                                        {t('blueprint.generateButton', {
+                                                            count: blueprint.total_questions,
+                                                        })}
+                                                        {estimate
+                                                            ? t('blueprint.generateCreditsSuffix', {
+                                                                  credits: Math.round(
+                                                                      estimate.estimated_credits
+                                                                  ),
+                                                              })
+                                                            : ''}
+                                                    </MyButton>
+                                                </Card>
+
+                                                <BlueprintTable
+                                                    blueprint={blueprint}
+                                                    onChange={setBlueprint}
+                                                    disabled={planning}
+                                                />
+
+                                                <Card className="flex flex-col gap-2 p-4">
+                                                    <p className="flex items-center gap-2 text-caption font-semibold text-neutral-600">
+                                                        <Sparkle className="size-4 text-primary-500" />
+                                                        {t('blueprint.askForChangeHeading')}
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {[
+                                                            t('blueprint.suggestions.numericals'),
+                                                            t(
+                                                                'blueprint.suggestions.harderSectionB'
+                                                            ),
+                                                            t(
+                                                                'blueprint.suggestions.moreApplicationBased'
+                                                            ),
+                                                        ].map((s) => (
+                                                            <button
+                                                                key={s}
+                                                                type="button"
+                                                                disabled={planning}
+                                                                onClick={() => void plan(s)}
+                                                                className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-caption text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-50"
+                                                            >
+                                                                {s}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <div className="flex items-end gap-2">
+                                                        <MyInput
+                                                            label=""
+                                                            inputType="text"
+                                                            input={refineText}
+                                                            onChangeFunction={(e) =>
+                                                                setRefineText(e.target.value)
+                                                            }
+                                                            inputPlaceholder={t(
+                                                                'blueprint.refinePlaceholder'
+                                                            )}
+                                                            className="w-full flex-1"
+                                                        />
+                                                        <MyButton
+                                                            buttonType="secondary"
+                                                            scale="medium"
+                                                            disable={planning || !refineText.trim()}
+                                                            onClick={() =>
+                                                                void plan(refineText.trim())
+                                                            }
+                                                        >
+                                                            {planning
+                                                                ? t('blueprint.updatingButton')
+                                                                : t('blueprint.updatePlanButton')}
+                                                        </MyButton>
+                                                    </div>
+                                                </Card>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-auto flex items-center justify-between gap-2 border-t border-neutral-200 px-5 py-3">
                                 <MyButton
                                     buttonType="secondary"
                                     scale="medium"
-                                    onClick={() => setStep('scope')}
-                                    disable={planning}
+                                    onClick={goBack}
+                                    disable={wizardIndex === 0 || planning}
                                 >
-                                    {t('blueprint.changeMaterialButton')}
+                                    <ArrowLeft className="mr-1 size-4" />
+                                    {t('wizard.back')}
                                 </MyButton>
-                                <MyButton
-                                    buttonType="primary"
-                                    scale="medium"
-                                    onClick={generate}
-                                    disable={planning || blueprint.total_questions === 0}
-                                >
-                                    <PaperPlaneTilt className="mr-1 size-4" />
-                                    {t('blueprint.generateButton', {
-                                        count: blueprint.total_questions,
-                                    })}
-                                    {estimate
-                                        ? t('blueprint.generateCreditsSuffix', {
-                                              credits: Math.round(estimate.estimated_credits),
-                                          })
-                                        : ''}
-                                </MyButton>
-                            </div>
-                        </Card>
-
-                        {estimate?.sufficient === false && (
-                            <Card className="flex items-center gap-2 border-danger-200 bg-danger-50 p-3">
-                                <Coins className="size-4 text-danger-500" />
-                                <p className="text-caption text-danger-600">
-                                    {t('blueprint.insufficientCredits', {
-                                        needed: Math.round(estimate.estimated_credits),
-                                        available: Math.round(estimate.current_balance ?? 0),
-                                    })}
-                                </p>
-                            </Card>
-                        )}
-
-                        <BlueprintTable
-                            blueprint={blueprint}
-                            onChange={setBlueprint}
-                            disabled={planning}
-                        />
-
-                        <Card className="flex flex-col gap-2 p-4">
-                            <p className="flex items-center gap-2 text-caption font-semibold text-neutral-600">
-                                <Sparkle className="size-4 text-primary-500" />
-                                {t('blueprint.askForChangeHeading')}
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    t('blueprint.suggestions.numericals'),
-                                    t('blueprint.suggestions.harderSectionB'),
-                                    t('blueprint.suggestions.moreApplicationBased'),
-                                ].map((s) => (
-                                    <button
-                                        key={s}
-                                        type="button"
-                                        disabled={planning}
-                                        onClick={() => void plan(s)}
-                                        className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-caption text-neutral-600 transition-colors hover:border-primary-200 hover:bg-primary-50"
+                                {step !== 'review' ? (
+                                    <MyButton
+                                        buttonType="primary"
+                                        scale="medium"
+                                        onClick={goNext}
+                                        disable={!canContinue}
                                     >
-                                        {s}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="flex items-end gap-2">
-                                <MyInput
-                                    label=""
-                                    inputType="text"
-                                    input={refineText}
-                                    onChangeFunction={(e) => setRefineText(e.target.value)}
-                                    inputPlaceholder={t('blueprint.refinePlaceholder')}
-                                    className="w-full flex-1"
-                                />
-                                <MyButton
-                                    buttonType="secondary"
-                                    scale="medium"
-                                    disable={planning || !refineText.trim()}
-                                    onClick={() => void plan(refineText.trim())}
-                                >
-                                    {planning
-                                        ? t('blueprint.updatingButton')
-                                        : t('blueprint.updatePlanButton')}
-                                </MyButton>
+                                        {t('wizard.continue')}
+                                        <ArrowRight className="ml-1 size-4" />
+                                    </MyButton>
+                                ) : (
+                                    <span className="text-caption text-neutral-400">
+                                        {typePlan.length === 0 ? t('review.noMixHint') : ''}
+                                    </span>
+                                )}
                             </div>
                         </Card>
                     </div>
                 )}
 
-                {/* ---------------- Step 3: generating ---------------- */}
+                {/* ---------------- Generating ---------------- */}
                 {!resuming && step === 'generating' && (
                     <Card className="flex flex-col items-center gap-3 p-12 text-center">
                         <Spinner className="size-7 animate-spin text-primary-500" />
@@ -678,8 +866,8 @@ function PaperBuilderPage() {
                     </Card>
                 )}
 
-                {/* ---------------- Step 4: review ---------------- */}
-                {!resuming && step === 'review' && result && blueprint && (
+                {/* ---------------- Editor ---------------- */}
+                {!resuming && step === 'editor' && result && blueprint && (
                     <div className="flex flex-col gap-4">
                         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
                             <div className="min-w-0">
@@ -689,7 +877,7 @@ function PaperBuilderPage() {
                                 <p className="flex flex-wrap items-center gap-x-3 text-caption text-neutral-500">
                                     <span>
                                         {t('review.deliveredCount', {
-                                            delivered: result.delivered,
+                                            delivered: result.raw_questions.length,
                                             planned: result.planned,
                                         })}
                                     </span>
@@ -707,24 +895,50 @@ function PaperBuilderPage() {
                                 </p>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => setInstructionsOpen(true)}
+                                    disable={saving}
+                                >
+                                    <NotePencil className="mr-1 size-4" />
+                                    {t('review.editInstructions')}
+                                </MyButton>
                                 {/* The sheet a teacher hands out — available before
                                     saving, since most papers are printed, not
                                     delivered online. Sends the on-screen questions
-                                    so rewrites are in the printout. */}
+                                    so edits and rewrites are in the printout. */}
                                 <PaperDownloadMenu
                                     disabled={saving || result.raw_questions.length === 0}
-                                    onDownload={(options) =>
-                                        downloadPaperPdf(
+                                    title={blueprint.title}
+                                    fetchPdf={(options) =>
+                                        fetchPaperPdf(
                                             kbId,
                                             { blueprint, questions: result.raw_questions },
-                                            options
+                                            { ...options, gradeLine: spec.grade || undefined }
+                                        )
+                                    }
+                                    onPublish={(options) =>
+                                        publishPaperLink(
+                                            kbId,
+                                            { blueprint, questions: result.raw_questions },
+                                            { ...options, gradeLine: spec.grade || undefined },
+                                            generationId ?? undefined
                                         )
                                     }
                                 />
                                 <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => void save('offline-test')}
+                                    disable={saving || result.questions.length === 0}
+                                >
+                                    {t('review.createOfflineTest')}
+                                </MyButton>
+                                <MyButton
                                     buttonType="primary"
                                     scale="medium"
-                                    onClick={save}
+                                    onClick={() => void save('list')}
                                     disable={saving || result.questions.length === 0}
                                 >
                                     <FloppyDisk className="mr-1 size-4" />
@@ -756,6 +970,42 @@ function PaperBuilderPage() {
                             issuesByQuestion={issuesByQuestion}
                             regeneratingNumber={regenNumber}
                             onRegenerate={regenerate}
+                            onEdit={setEditIndex}
+                            onDelete={(index) => void deleteQuestion(index)}
+                            onMove={moveQuestion}
+                        />
+
+                        <MyDialog
+                            heading={t('review.editInstructions')}
+                            open={instructionsOpen}
+                            onOpenChange={setInstructionsOpen}
+                            dialogWidth="max-w-xl"
+                        >
+                            <div className="flex flex-col gap-3 p-6">
+                                <InstructionsEditor
+                                    value={blueprint.instructions ?? []}
+                                    onChange={(instructions) =>
+                                        setBlueprint({ ...blueprint, instructions })
+                                    }
+                                />
+                                <MyButton
+                                    buttonType="primary"
+                                    scale="medium"
+                                    className="self-end"
+                                    onClick={() => setInstructionsOpen(false)}
+                                >
+                                    {t('review.done')}
+                                </MyButton>
+                            </div>
+                        </MyDialog>
+
+                        <EditQuestionDialog
+                            open={editIndex !== null}
+                            onOpenChange={(open) => !open && setEditIndex(null)}
+                            question={
+                                editIndex !== null ? result.raw_questions[editIndex] ?? null : null
+                            }
+                            onSave={applyEdit}
                         />
                     </div>
                 )}

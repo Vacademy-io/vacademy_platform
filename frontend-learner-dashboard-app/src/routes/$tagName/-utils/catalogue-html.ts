@@ -71,6 +71,8 @@ const SVG_ATTR = [
 const HOOK_ATTR = [
     'data-vacademy', 'data-route', 'data-target', 'data-href',
     'data-audience', 'data-course',
+    // data-vacademy="video" placeholder → PlainVideoPlayer (see collectVideoMounts)
+    'data-src', 'data-poster', 'data-aspect',
 ];
 const MAX_PAGE_HTML = 200000;
 const MAX_PAGE_CSS = 150000;
@@ -85,6 +87,9 @@ const MAX_PAGE_CSS = 150000;
  *  the rule exists to close. */
 const MEDIA_HOST_RE =
     /^https:\/\/(([a-z0-9-]+\.)*vacademy\.io|vacademy-media-storage-public\.s3\.amazonaws\.com|d1om4dxj9e7kkd\.cloudfront\.net)\//i;
+
+/** True for an asset on our own media hosts (the same allowlist CSS url() uses). */
+export const isOwnMediaUrl = (url: string): boolean => MEDIA_HOST_RE.test(url || '');
 
 const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
 // The WHOLE statement, not just the keyword. Removing only `@import` left
@@ -234,6 +239,57 @@ export const bindHtmlActions = (
     };
     root.addEventListener('click', handler);
     return () => root.removeEventListener('click', handler);
+};
+
+/* ─── Video placeholders ─────────────────────────────────────────────────── */
+
+/**
+ * `<video>` is not in the allowlist (a raw tag gives the visitor the browser's
+ * stock controls, download menu included, and lets markup pull media from any
+ * host). Pasted pages instead mark a spot for the site's own play/pause-only
+ * player:
+ *
+ *   <div data-vacademy="video" data-src="https://<our cdn>/clip.mp4"
+ *        data-poster="https://<our cdn>/clip.jpg" data-aspect="9:16"
+ *        aria-label="Aptitude session"></div>
+ *
+ * The host app mounts a player into each placeholder. Both URLs must be on
+ * our media hosts (same rule as CSS url()); anything else is skipped, so the
+ * placeholder simply stays empty. Children are left alone here — an author
+ * can put a poster <img> inside as the preview/fallback and the host app
+ * decides whether to clear it.
+ */
+export interface HtmlVideoMount {
+    el: HTMLElement;
+    src: string;
+    poster?: string;
+    /** padding-bottom percentage for the aspect box, e.g. "56.25%" */
+    paddingBottom: string;
+    title?: string;
+}
+
+const VIDEO_ASPECT_PADDING: Record<string, string> = {
+    '16:9': '56.25%', '4:3': '75%', '1:1': '100%', '9:16': '177.78%',
+};
+const DEFAULT_VIDEO_PADDING = '56.25%'; // 16:9 — also the admin build's noUncheckedIndexedAccess fallback
+
+export const collectVideoMounts = (root: ParentNode): HtmlVideoMount[] => {
+    const out: HtmlVideoMount[] = [];
+    root.querySelectorAll('[data-vacademy="video"]').forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        const src = node.getAttribute('data-src') || '';
+        if (!isOwnMediaUrl(src)) return;
+        const poster = node.getAttribute('data-poster') || '';
+        const aspect = node.getAttribute('data-aspect') || '16:9';
+        out.push({
+            el: node,
+            src,
+            poster: isOwnMediaUrl(poster) ? poster : undefined,
+            paddingBottom: VIDEO_ASPECT_PADDING[aspect] ?? DEFAULT_VIDEO_PADDING,
+            title: node.getAttribute('aria-label') || node.getAttribute('title') || undefined,
+        });
+    });
+    return out;
 };
 
 /**

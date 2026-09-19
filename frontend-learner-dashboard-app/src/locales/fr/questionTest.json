@@ -41,6 +41,10 @@
                 "timeIncrease": "Demander plus de temps"
             }
         },
+        "questionPanel": {
+            "hide": "Masquer le panneau des questions",
+            "show": "Afficher le panneau des questions"
+        },
         "pdf": {
             "preview": "Aperçu du PDF",
             "upload": "Téléverser",
@@ -176,7 +180,8 @@
         "questionCount_many": "{{count}} questions",
         "questionCount_other": "{{count}} questions",
         "legendAriaLabel": "Légende du statut des questions",
-        "submitPaper": "Soumettre la copie"
+        "submitPaper": "Soumettre la copie",
+        "hidePanel": "Masquer le panneau des questions"
     },
     "questionPassage": {
         "label": "Passage",

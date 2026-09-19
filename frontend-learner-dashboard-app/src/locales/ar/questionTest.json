@@ -41,6 +41,10 @@
                 "timeIncrease": "طلب زيادة الوقت"
             }
         },
+        "questionPanel": {
+            "hide": "إخفاء لوحة الأسئلة",
+            "show": "إظهار لوحة الأسئلة"
+        },
         "pdf": {
             "preview": "معاينة ملف PDF",
             "upload": "رفع",
@@ -182,7 +186,8 @@
         "questionCount_many": "{{count}} سؤالاً",
         "questionCount_other": "{{count}} سؤال",
         "legendAriaLabel": "مفتاح حالة الأسئلة",
-        "submitPaper": "إرسال الورقة"
+        "submitPaper": "إرسال الورقة",
+        "hidePanel": "إخفاء لوحة الأسئلة"
     },
     "questionPassage": {
         "label": "النص",

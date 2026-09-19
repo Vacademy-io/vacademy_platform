@@ -37,6 +37,11 @@ export interface BulkLiveSessionRowResult {
     title?: string;
     error?: string;
     step2_applied: boolean;
+    /**
+     * Non-fatal problems with a row that still succeeded — currently
+     * instructor identifiers from the CSV that matched nobody in the institute.
+     */
+    warnings?: string[];
 }
 
 export interface BulkLiveSessionResponse {

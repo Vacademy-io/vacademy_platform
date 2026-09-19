@@ -37,6 +37,9 @@ import vacademy.io.admin_core_service.features.live_session.repository.LiveSessi
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 
+import vacademy.io.admin_core_service.features.live_session.client.LiveSessionUserDirectoryClient;
+import vacademy.io.admin_core_service.features.live_session.service.LiveSessionInstructorService;
+
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -65,6 +68,8 @@ public class LiveSessionNotificationProcessor {
     private final LiveSessionNotificationConfigRepository notificationConfigRepository;
     private final LiveClassTemplateService liveClassTemplateService;
     private final WorkflowTriggerService workflowTriggerService;
+    private final LiveSessionInstructorService liveSessionInstructorService;
+    private final LiveSessionUserDirectoryClient userDirectoryClient;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
@@ -166,7 +171,7 @@ public class LiveSessionNotificationProcessor {
                 SessionSchedule schedule = scheduleOpt.orElse(null);
                 
                 // Fetch students from both batch and individual user participants
-                List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId());
+                List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId(), session.getId());
 
                 if (!rows.isEmpty()) {
                     Set<String> channels = parseChannels(sn.getChannel());
@@ -323,7 +328,9 @@ public class LiveSessionNotificationProcessor {
         return new ArrayList<>(batchIds);
     }
 
-    private List<Object[]> getStudentsForNotification(List<LiveSessionParticipants> participants, String instituteId) {
+    private List<Object[]> getStudentsForNotification(List<LiveSessionParticipants> participants,
+                                                     String instituteId,
+                                                     String sessionId) {
         List<Object[]> allStudents = new ArrayList<>();
         
         // Separate batch and individual user participants
@@ -353,8 +360,57 @@ public class LiveSessionNotificationProcessor {
             List<Object[]> individualStudents = mappingRepository.findStudentContactsByUserIds(individualUserIds);
             allStudents.addAll(individualStudents);
         }
-        
+
+        allStudents.addAll(getInstructorRecipients(sessionId));
+
         return allStudents;
+    }
+
+    /**
+     * The session's instructors, as notification rows (V524), so a teacher is
+     * told about their own class the same way the learners are.
+     *
+     * <p>Their contacts come from auth_service, not from the {@code student}
+     * table the learner rows come from: staff have no row there, so the
+     * existing contact query returns nothing for them.
+     *
+     * <p>Shaped as the 5-element "individual user" row
+     * {@code [user_id, full_name, mobile_number, email, region]} that every
+     * notification builder in this class already understands, which is what
+     * makes instructors work across all of them (on-create, before-live,
+     * on-live, delete, attendance) without touching each builder.
+     *
+     * <p>Never throws: a directory hiccup must not stop the learners' mail.
+     */
+    private List<Object[]> getInstructorRecipients(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            List<String> instructorIds = liveSessionInstructorService
+                    .getExplicitInstructorUserIds(sessionId);
+            if (instructorIds.isEmpty()) {
+                return Collections.emptyList();
+            }
+            Map<String, LiveSessionUserDirectoryClient.DirectoryUser> directory =
+                    userDirectoryClient.findUsersByIds(instructorIds);
+
+            List<Object[]> rows = new ArrayList<>();
+            for (String userId : instructorIds) {
+                LiveSessionUserDirectoryClient.DirectoryUser user = directory.get(userId);
+                // No resolvable email means nothing to send to; skip rather than
+                // emit a row the mailer would reject.
+                if (user == null || user.email() == null || user.email().isBlank()) {
+                    continue;
+                }
+                rows.add(new Object[]{userId, user.fullName(), user.mobileNumber(), user.email(), null});
+            }
+            return rows;
+        } catch (Exception e) {
+            System.out.println("Instructor notification recipients skipped for session "
+                    + sessionId + ": " + e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     private NotificationDTO buildOnLiveEmailNotification(LiveSession session, ScheduleNotification sn, SessionSchedule schedule, List<Object[]> rows) {
@@ -520,7 +576,7 @@ public class LiveSessionNotificationProcessor {
             SessionSchedule schedule = schedules.isEmpty() ? null : schedules.get(0);
 
             // Fetch students from both batch and individual user participants
-            List<Object[]> rows = getStudentsForNotification(participants, instituteId);
+            List<Object[]> rows = getStudentsForNotification(participants, instituteId, sessionId);
 
             if (!rows.isEmpty()) {
                 NotificationDTO notification = buildDeleteEmailNotification(session, schedule, rows);
@@ -565,7 +621,7 @@ public class LiveSessionNotificationProcessor {
                 scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));
 
                 // Fetch students
-                List<Object[]> rows = getStudentsForNotification(participants, instituteId);
+                List<Object[]> rows = getStudentsForNotification(participants, instituteId, sessionId);
 
                 if (!rows.isEmpty()) {
                     NotificationDTO notification = buildDeleteEmailNotification(session, schedule, rows);
@@ -657,7 +713,7 @@ public class LiveSessionNotificationProcessor {
                 return;
             }
 
-            List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId());
+            List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId(), session.getId());
             if (rows.isEmpty()) {
                 System.out.println("No students found for notification for session: " + sessionId);
                 return;
@@ -752,7 +808,7 @@ public class LiveSessionNotificationProcessor {
             }
 
             // Fetch students from both batch and individual user participants
-            List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId());
+            List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId(), session.getId());
             if (rows.isEmpty()) {
                 System.out.println("No students found for notification for session: " + sessionId);
                 return;

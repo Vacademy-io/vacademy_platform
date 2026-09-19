@@ -31,6 +31,27 @@ export type ZoomAudioOption = 'both' | 'telephony' | 'voip';
 /** Zoom automatic-recording options. */
 export type ZoomAutoRecordingOption = 'cloud' | 'local' | 'none';
 
+/** How much of the institute's live-session list one role may see. */
+export type LiveSessionVisibilityMode = 'ALL' | 'OWN' | 'SPECIFIC_ROLES';
+
+export interface LiveSessionRoleVisibilityRule {
+    mode: LiveSessionVisibilityMode;
+    /**
+     * Role names whose sessions this role may also see. Read only when
+     * `mode === 'SPECIFIC_ROLES'`; the user's own sessions are always included
+     * on top of these.
+     */
+    roles: string[];
+}
+
+/** A session's instructor as the backend returns it. */
+export interface LiveSessionInstructor {
+    user_id: string;
+    full_name?: string | null;
+    email?: string | null;
+    profile_pic_file_id?: string | null;
+}
+
 export interface LiveSessionSettings {
     /** Per-platform allow-list. Missing key is treated as `true` (allowed). */
     allowedPlatforms: Partial<Record<PlatformKey, boolean>>;
@@ -140,6 +161,20 @@ export interface LiveSessionSettings {
         enabled: boolean;
         minDurationPercent: number;
     };
+    /**
+     * Who can see which live sessions, keyed by role name (upper-case, custom
+     * roles included).
+     *
+     * A role with no entry — which is every role until an admin configures one
+     * — means ALL, i.e. exactly the behaviour that existed before this setting:
+     * one institute-wide list. A user holding several roles gets the most
+     * permissive of their rules, so restricting one role cannot accidentally
+     * restrict an admin who also holds it.
+     *
+     * Enforced server-side on the lists, search, detail, edit and delete — this
+     * is access control, not just a filtered view.
+     */
+    roleVisibility: Record<string, LiveSessionRoleVisibilityRule>;
     /**
      * "LMS Connection" — bridges live classes into course content (the LMS).
      * `recordingAddToCourseEnabled` shows/hides the per-recording "Add to
@@ -319,6 +354,8 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
         enabled: false,
         minDurationPercent: 60,
     },
+    // Empty = every role sees every session, which is the pre-existing behaviour.
+    roleVisibility: {},
     lmsConnection: {
         recordingAddToCourseEnabled: false,
         classMaterialsEnabled: false,
@@ -401,6 +438,9 @@ export const getLiveSessionSettings = async (): Promise<LiveSessionSettings> => 
                 ...DEFAULT_LIVE_SESSION_SETTINGS.defaultAttendanceCriteria,
                 ...(partial.defaultAttendanceCriteria ?? {}),
             },
+            // Replaced wholesale, not merged: a removed rule must actually be
+            // removed. Merging would make a role impossible to reset to ALL.
+            roleVisibility: partial.roleVisibility ?? {},
         };
     } catch (err) {
         console.error('Failed to load live-session settings, using defaults', err);

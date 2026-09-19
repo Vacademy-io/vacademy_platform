@@ -72,12 +72,15 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { LiveSessionParticipantsTab } from './LiveSessionParticipantsTab';
 import { SectionCard } from './SectionCard';
+import { InstructorPicker } from '../../-components/InstructorPicker';
+import { getUserId } from '@/utils/userDetails';
 import {
     LiveSessionPreviewDialog,
     type PreviewSessionRow,
     type PreviewRecurrenceBanner,
 } from './LiveSessionPreviewDialog';
 import {
+    Chalkboard,
     LockKey,
     UsersThree,
     Article,
@@ -360,6 +363,10 @@ export default function ScheduleStep2() {
             batchSelectionType: 'batch',
             selectedLevels: [],
             selectedLearners: [],
+            // Pre-fill the scheduler as the instructor. The backend seeds the
+            // same person on create, but seeding it here too means the admin
+            // sees an accurate, editable list instead of an empty one.
+            instructorUserIds: [getUserId()].filter(Boolean),
             joinLink: '',
             notifyBy: {
                 mail: liveSessionSettings.defaultNotifyByEmail ?? false,
@@ -419,6 +426,16 @@ export default function ScheduleStep2() {
         form.setValue('requireEmailVerification', !!sessionDetails.requireEmailVerification);
         form.setValue('requirePhoneVerification', !!sessionDetails.requirePhoneVerification);
         form.setValue('whatsappOtpTemplateName', sessionDetails.whatsappOtpTemplateName ?? '');
+
+        // Prefill instructors (edit mode). The backend already applies the
+        // creator fallback, so an older session without an instructor row comes
+        // back carrying its creator rather than an empty list.
+        if (Array.isArray(sessionDetails.instructors)) {
+            form.setValue(
+                'instructorUserIds',
+                sessionDetails.instructors.map((i) => i?.user_id).filter((id): id is string => !!id)
+            );
+        }
 
         // Prefill "save registrants to audience list(s)" (edit mode)
         form.setValue('audiencePushEnabled', !!sessionDetails.audiencePushConfig?.enabled);
@@ -1425,6 +1442,24 @@ export default function ScheduleStep2() {
                             </span>
                         </div>
                     )}
+
+                    <SectionCard
+                        icon={<Chalkboard size={18} />}
+                        title="Instructors"
+                        description="Who is taking this class. Defaults to you. Instructors receive this session's notification emails and are shown to learners on the class card."
+                    >
+                        <FormField
+                            control={control}
+                            name="instructorUserIds"
+                            render={({ field }) => (
+                                <InstructorPicker
+                                    instituteId={instituteDetails?.id ?? ''}
+                                    value={field.value ?? []}
+                                    onChange={field.onChange}
+                                />
+                            )}
+                        />
+                    </SectionCard>
 
                     <SectionCard
                         icon={<LockKey size={18} />}

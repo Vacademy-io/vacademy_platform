@@ -51,6 +51,14 @@ export const bulkSessionRowSchema = z
             )
             .default([]),
 
+        /**
+         * Instructors for THIS row, as typed in the CSV's `instructors` column
+         * — user id, email or username. Resolved server-side against the
+         * institute directory; entries that match nobody come back as a row
+         * warning rather than a failure, so one typo doesn't cost the import.
+         */
+        instructorIdentifiers: z.array(z.string()).default([]),
+
         // === Waiting-room per-row overrides ===
         // Each is OPTIONAL on purpose: an undefined value means "use the
         // shared default from sharedOptions". The submit logic (resolveWaiting

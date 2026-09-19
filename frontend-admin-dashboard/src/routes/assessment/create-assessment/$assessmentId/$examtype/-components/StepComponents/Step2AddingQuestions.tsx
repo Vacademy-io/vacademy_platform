@@ -185,7 +185,15 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
     const isSectionWiseCheck = watch('testDuration.sectionWiseDuration');
     const isQuestionWiseCheck = watch('testDuration.questionWiseDuration');
 
+    // Only when the backend lists a duration field for this step — the same test the
+    // duration inputs below render on. A Manual Upload Exam has none (learners solve on
+    // paper and upload the sheet), so demanding one here kept Next disabled for it with
+    // nothing on screen to fill in.
+    const durationIsAField = Boolean(
+        getStepKey({ assessmentDetails, currentStep, key: 'duration' })
+    );
     const isAssessmentDurationMissing =
+        durationIsAField &&
         isAssessWiseCheck &&
         (!entireTestDuration?.hrs || entireTestDuration?.hrs === '0') &&
         (!entireTestDuration?.min || entireTestDuration?.min === '0');

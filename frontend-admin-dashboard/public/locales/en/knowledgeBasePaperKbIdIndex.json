@@ -21,7 +21,11 @@
         "topicMapRebuilt": "Topic map rebuilt",
         "questionRewritten": "Question rewritten",
         "savedToQuestionBank": "Saved to your question bank",
-        "questionEdited": "Question updated"
+        "questionEdited": "Question updated",
+        "offlineTestPrefilled_one": "Offline test pre-filled: {{count}} section, the paper attached for learners. Pick the dates and who sits it.",
+        "offlineTestPrefilled_other": "Offline test pre-filled: {{count}} sections, the paper attached for learners. Pick the dates and who sits it.",
+        "offlinePaperNotAttached": "Could not publish the paper PDF — attach it to the instructions yourself in Step 1.",
+        "offlineTestNotPrefilled": "Could not pre-fill the test from this paper — pick it under “Choose Saved Paper” in Step 2."
     },
     "resumingMessage": "Reopening your paper…",
     "scope": {

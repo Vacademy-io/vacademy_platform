@@ -78,6 +78,7 @@ type CourseInstructor = {
   name: string;
   email: string;
   subtitle?: string;
+  /** Sanitised-on-render HTML from the admin's rich-text editor. */
   description?: string;
 };
 
@@ -409,10 +410,16 @@ const CourseHighlightsAccordion: React.FC<{
                               inst.email ||
                               t("courseDetails.noEmailProvided")}
                           </p>
+                          {/* The admin writes the bio in a rich-text editor,
+                              so this is HTML: sanitise and render it, the way
+                              the About / What-you'll-learn sections do. */}
                           {inst.description && (
-                            <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-catalogue-text-secondary">
-                              {inst.description}
-                            </p>
+                            <div
+                              className="richtext-content mt-1 text-xs leading-relaxed text-catalogue-text-secondary"
+                              dangerouslySetInnerHTML={{
+                                __html: sanitizeHtml(inst.description),
+                              }}
+                            />
                           )}
                         </div>
                       </div>
@@ -1041,7 +1048,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                   }),
                 email: inst.email || t("courseDetails.noEmailProvided"),
                 subtitle: inst.author_subtitle?.trim() || undefined,
-                description: inst.author_description?.trim() || undefined,
+                // An untouched editor saves "<p></p>": treat that as empty.
+                description: hasContent(inst.author_description)
+                  ? inst.author_description.trim()
+                  : undefined,
               }),
             ) || [
               {

@@ -30,6 +30,7 @@ import {
     fetchPaperPdf,
     formatEditedQuestion,
     getGeneration,
+    loadPaperTheme,
     publishPaperLink,
     markGenerationSaved,
     getPaperJob,
@@ -38,6 +39,13 @@ import {
     startGeneration,
     validatePaper,
 } from '../-services/paper-service';
+import { getQuestionPaperById } from '@/routes/assessment/question-papers/-utils/question-paper-services';
+import { transformResponseDataToMyQuestionsSchema } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    offlineTestInstructionsHtml,
+    sectionsFromKbPaper,
+    seedOfflineTestWizard,
+} from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/kb-paper-sections';
 import { BlueprintTable } from '../-components/paper/BlueprintTable';
 import { EditQuestionDialog } from '../-components/paper/EditQuestionDialog';
 import { DEFAULT_INSTRUCTIONS, InstructionsEditor } from '../-components/paper/InstructionsEditor';
@@ -76,6 +84,16 @@ type Step = 'syllabus' | 'types' | 'details' | 'review' | 'generating' | 'editor
 const WIZARD: Step[] = ['syllabus', 'types', 'details', 'review'];
 
 const POLL_MS = 3000;
+
+/** Last path segment, decoded when it can be; never throws on odd escapes. */
+function fileNameFromUrl(url: string): string {
+    const last = url.split('?')[0]?.split('/').pop() || 'question-paper.pdf';
+    try {
+        return decodeURIComponent(last);
+    } catch {
+        return last;
+    }
+}
 
 function errorMessage(t: TFunction, error: unknown, fallback: string): string {
     const response = (error as { response?: { status?: number; data?: { detail?: unknown } } })
@@ -428,6 +446,7 @@ function PaperBuilderPage() {
             }
             toast.success(t('toasts.savedToQuestionBank'));
             if (next === 'offline-test') {
+                await handOffToOfflineTest(saved?.saved_question_paper_id);
                 navigate({
                     to: '/assessment/create-assessment/$assessmentId/$examtype',
                     params: { assessmentId: 'defaultId', examtype: 'MANUAL_UPLOAD_EXAM' },
@@ -440,6 +459,42 @@ function PaperBuilderPage() {
             toast.error(errorMessage(t, error, t('errors.saveFailed')));
         } finally {
             setSaving(false);
+        }
+    };
+
+    /**
+     * Pre-fill the offline-test wizard so the teacher does not rebuild by hand what
+     * was just generated: the saved questions become Step 2's sections (marks from
+     * the plan), and the paper is published and attached to the instructions so
+     * learners can open and download it from the test page. The wizard still opens
+     * without the pre-fill if any of that fails — the paper is in the bank either way.
+     */
+    const handOffToOfflineTest = async (savedPaperId: string | undefined) => {
+        if (!result || !blueprint || !savedPaperId) return;
+        try {
+            const stored = await getQuestionPaperById(savedPaperId);
+            const questions = transformResponseDataToMyQuestionsSchema(stored.question_dtolist);
+            const sections = sectionsFromKbPaper(blueprint, result.raw_questions, questions);
+            let paperFile: { url: string; fileName: string } | null = null;
+            try {
+                const link = await publishPaperLink(
+                    kbId,
+                    { blueprint, questions: result.raw_questions },
+                    { theme: loadPaperTheme(), gradeLine: spec.grade || undefined },
+                    generationId ?? undefined
+                );
+                paperFile = { url: link.file_url, fileName: fileNameFromUrl(link.file_url) };
+            } catch {
+                toast.warning(t('toasts.offlinePaperNotAttached'));
+            }
+            seedOfflineTestWizard({
+                blueprint,
+                sections,
+                instructionsHtml: offlineTestInstructionsHtml(blueprint, paperFile),
+            });
+            toast.success(t('toasts.offlineTestPrefilled', { count: sections.length }));
+        } catch {
+            toast.warning(t('toasts.offlineTestNotPrefilled'));
         }
     };
 

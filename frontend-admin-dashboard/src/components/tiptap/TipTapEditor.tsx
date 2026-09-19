@@ -267,9 +267,13 @@ export function TipTapEditor({
         };
       },
       parseHTML() {
+        // Rule priority above the default 50: ProseMirror tries mark rules first
+        // at equal priority, so Link's `a[href]` otherwise claims every saved
+        // `<a data-attachment>` and an attachment reopened for editing came back
+        // as a plain link without its chip.
         return [
-          { tag: 'a[data-attachment]' },
-          { tag: 'div[data-attachment]' },
+          { tag: 'a[data-attachment]', priority: 60 },
+          { tag: 'div[data-attachment]', priority: 60 },
         ];
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

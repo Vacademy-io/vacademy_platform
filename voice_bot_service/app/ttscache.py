@@ -296,7 +296,7 @@ UNATTRIBUTED_NAME = "(before per-agent tracking)"
 
 def cache_key(*, engine: str, model: str, voice: str, pace, temperature,
               sample_rate: int, term_map_version: str, text: str,
-              salt: Optional[str] = None) -> str:
+              salt: Optional[str] = None, language: str | None = None) -> str:
     """sha256 over everything that changes the rendered audio.
 
     `text` must already be the exact string the vendor would receive (Rumik's
@@ -313,6 +313,10 @@ def cache_key(*, engine: str, model: str, voice: str, pace, temperature,
     parts = (salt, (engine or "").lower(), model or "", voice or "",
              _num(pace), _num(temperature), str(sample_rate),
              term_map_version or "", text)
+    if (engine or "").lower() == "smallest":
+        from .speech_language import smallest_language_code
+        # A new namespace: pre-language blobs may contain the wrong speech.
+        parts += ("language-v1", smallest_language_code(language))
     return hashlib.sha256(_SEP.join(parts).encode("utf-8")).hexdigest()
 
 
@@ -361,6 +365,7 @@ class Candidate:
     agent_id: str = ""
     agent_name: str = ""
     institute_id: str = ""
+    language: str = ""
 
 
 _DDL = """
@@ -371,7 +376,14 @@ CREATE TABLE IF NOT EXISTS seen(
   text        TEXT, chars INTEGER,
   count       INTEGER NOT NULL DEFAULT 0,
   fixed       INTEGER NOT NULL DEFAULT 0,
-  first_seen  REAL, last_seen REAL
+  first_seen  REAL, last_seen REAL,
+  language    TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS render_failure(
+  key TEXT PRIMARY KEY,
+  attempts INTEGER NOT NULL,
+  next_retry_at REAL NOT NULL,
+  error TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS blob(
   key         TEXT PRIMARY KEY,
@@ -440,6 +452,9 @@ class SpeechCache:
                     db.execute("ALTER TABLE seen ADD COLUMN fixed INTEGER NOT NULL DEFAULT 0")
                 except sqlite3.OperationalError:
                     pass
+                columns = {r[1] for r in db.execute("PRAGMA table_info(seen)")}
+                if "language" not in columns:
+                    db.execute("ALTER TABLE seen ADD COLUMN language TEXT NOT NULL DEFAULT ''")
                 rows = db.execute(
                     "SELECT key, nbytes, duration_ms, text FROM blob").fetchall()
             idx: dict[str, Entry] = {}
@@ -614,7 +629,7 @@ class SpeechCache:
                 "key": cand.key, "engine": cand.engine, "model": cand.model,
                 "voice": cand.voice, "pace": cand.pace,
                 "temperature": cand.temperature, "sampleRate": SAMPLE_RATE,
-                "text": cand.text, "chars": cand.chars,
+                "text": cand.text, "chars": cand.chars, "language": cand.language,
                 "bytes": len(pcm), "durationMs": duration_ms,
                 "createdAt": time.time(),
             }
@@ -631,6 +646,7 @@ class SpeechCache:
                     " ON CONFLICT(key) DO UPDATE SET nbytes=excluded.nbytes,"
                     " duration_ms=excluded.duration_ms, text=excluded.text",
                     (cand.key, len(pcm), duration_ms, cand.text, now, now))
+                db.execute("DELETE FROM render_failure WHERE key = ?", (cand.key,))
             self._index[cand.key] = Entry(cand.key, path, len(pcm), duration_ms, cand.text)
             logger.info("tts-cache: stored {}ms ({} chars) {}/{} {!r}",
                         duration_ms, cand.chars, cand.engine, cand.voice, cand.text[:48])
@@ -695,12 +711,12 @@ class SpeechCache:
                 for c in rows:
                     db.execute(
                         "INSERT INTO seen(key, engine, model, voice, pace, temperature,"
-                        " text, chars, count, fixed, first_seen, last_seen)"
-                        " VALUES(?,?,?,?,?,?,?,?,1,?,?,?)"
+                        " text, chars, language, count, fixed, first_seen, last_seen)"
+                        " VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?)"
                         " ON CONFLICT(key) DO UPDATE SET count = count + 1,"
                         " fixed = MAX(seen.fixed, excluded.fixed), last_seen = ?",
                         (c.key, c.engine, c.model, c.voice, c.pace, c.temperature,
-                         c.text, c.chars, 1 if c.fixed else 0, now, now, now))
+                         c.text, c.chars, c.language, 1 if c.fixed else 0, now, now, now))
                     if c.agent_id:
                         db.execute(
                             "INSERT INTO seen_agent(key, agent_id, agent_name,"
@@ -740,17 +756,50 @@ class SpeechCache:
             with self._connect() as db:
                 rows = db.execute(
                     "SELECT s.key, s.text, s.chars, s.engine, s.model, s.voice,"
-                    " s.pace, s.temperature FROM seen s"
+                    " s.pace, s.temperature, s.language FROM seen s"
                     " LEFT JOIN blob b ON b.key = s.key"
+                    " LEFT JOIN render_failure f ON f.key = s.key"
                     " WHERE b.key IS NULL AND (s.fixed = 1 OR s.count >= ?)"
+                    " AND (f.key IS NULL OR (f.attempts < 3 AND f.next_retry_at <= ?))"
+                    # Legacy Smallest rows have no trustworthy language or key.
+                    # Live calls ladder fresh entries under the new namespace.
+                    " AND (s.engine != 'smallest' OR s.language IN ('en', 'hi'))"
                     " ORDER BY s.fixed DESC, s.count DESC, s.last_seen DESC LIMIT ?",
-                    (min_seen, limit)).fetchall()
+                    (min_seen, time.time(), limit)).fetchall()
             return [Candidate(key=r[0], text=r[1], chars=r[2], engine=r[3],
-                              model=r[4], voice=r[5], pace=r[6], temperature=r[7])
+                              model=r[4], voice=r[5], pace=r[6], temperature=r[7], language=r[8])
                     for r in rows]
         except Exception:
             logger.exception("tts-cache: due query failed")
             return []
+
+    def can_render(self, key: str) -> bool:
+        """Persistent retry budget, also respected by repeated warm-on-save requests."""
+        try:
+            with self._connect() as db:
+                row = db.execute("SELECT attempts, next_retry_at FROM render_failure WHERE key = ?",
+                                 (key,)).fetchone()
+            return row is None or (row[0] < 3 and row[1] <= time.time())
+        except Exception:
+            logger.exception("tts-cache: retry state unreadable — deferring render")
+            return False
+
+    def render_failed(self, key: str, error: str) -> None:
+        """Retry twice (after 5 and 30 minutes), then quarantine until forgotten.
+
+        A voice/model/language/text change creates a new key with a fresh budget.
+        No network or retry work ever runs on the live audio path.
+        """
+        try:
+            with self._connect() as db:
+                db.execute(
+                    "INSERT INTO render_failure(key, attempts, next_retry_at, error) VALUES(?,1,?,?)"
+                    " ON CONFLICT(key) DO UPDATE SET attempts = attempts + 1,"
+                    " next_retry_at = ?, error = excluded.error",
+                    (key, time.time() + 300, error[:300], time.time() + 1800))
+            logger.warning("tts-cache: render deferred for {}: {}", key[:12], error[:100])
+        except Exception:
+            logger.exception("tts-cache: could not persist render failure")
 
     def export_for_report(self, limit: int = 2000) -> list:
         """The ledger joined to its provenance, shaped for admin-core.
@@ -845,6 +894,7 @@ class SpeechCache:
                     self._index.pop(k, None)
                     self._discard_sync(k)
                     db.execute("DELETE FROM seen WHERE key = ?", (k,))
+                    db.execute("DELETE FROM render_failure WHERE key = ?", (k,))
                 if agent_id:
                     db.execute("DELETE FROM seen_agent WHERE agent_id = ?", (agent_id,))
                 elif cache_key:
@@ -1115,7 +1165,7 @@ def make_turn_watcher_processor(watcher: TtsTurnWatcher):
 
 
 def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
-                      temperature, term_map_version: str = "",
+                      temperature, term_map_version: str = "", language: str | None = None,
                       fixed_lines: Optional[set] = None,
                       agent_id: str = "", agent_name: str = "",
                       institute_id: str = "", cache_mode: str = MODE_OFF,
@@ -1145,6 +1195,8 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
     watcher = watcher or TtsTurnWatcher()
     fixed = {t for t in (fixed_lines or set()) if t}
     engine_l = (engine or "").strip().lower()
+    from .speech_language import smallest_language_code
+    render_language = smallest_language_code(language) if engine_l == "smallest" else ""
     async_arrival = is_async_arrival(engine_l)
     original = tts.run_tts
     # Resolved ONCE per call, not per sentence: the allowlist cannot change
@@ -1251,7 +1303,7 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
         try:
             key = cache_key(engine=engine_l, model=model, voice=voice, pace=pace,
                             temperature=temperature, sample_rate=SAMPLE_RATE,
-                            term_map_version=term_map_version, text=norm)
+                            term_map_version=term_map_version, text=norm, language=render_language)
         except Exception:
             logger.exception("tts-cache: key derivation failed — bypassing cache")
 
@@ -1451,7 +1503,7 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                 candidates.add(Candidate(
                     key=key, text=norm, chars=len(norm), engine=engine_l,
                     model=model or "", voice=voice or "", pace=pace,
-                    temperature=temperature, fixed=is_fixed,
+                    temperature=temperature, fixed=is_fixed, language=render_language,
                     agent_id=agent_id, agent_name=agent_name,
                     institute_id=institute_id))
 

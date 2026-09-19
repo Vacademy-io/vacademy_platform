@@ -1234,17 +1234,13 @@ class TtfbObserver:
                                 # from the UI instead of docker logs.
                                 proc = (d.processor or "").lower()
                                 if outer._diag is not None:
-                                    # ORDER MATTERS: "ResilientSarvamSTTService"
-                                    # lowercases to "...sarvamsttservice", which
-                                    # CONTAINS the substring "tts" (s-TTS-ervice).
-                                    # Testing "tts" first filed every STT latency
-                                    # into the TTS bucket and produced a false
-                                    # SLOW_TTS on a live call. "ttsservice" never
-                                    # contains "stt", so checking stt first is
-                                    # unambiguous both ways.
-                                    if "stt" in proc:
+                                    # Match the service suffix, not overlapping substrings:
+                                    # SmallestTTSService contains "stt", while
+                                    # SarvamSTTService contains "tts".
+                                    service = proc.split("#", 1)[0]
+                                    if service.endswith("sttservice"):
                                         outer._diag.sample("stt_ttfb", d.value)
-                                    elif "tts" in proc:
+                                    elif service.endswith("ttsservice"):
                                         outer._diag.sample("tts_ttfb", d.value)
                                     elif "llm" in proc or "vertex" in proc or "google" in proc:
                                         outer._diag.sample("llm_ttfb", d.value)
@@ -3872,7 +3868,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["unplayed_pending_t"] = 0.0
         if speaking and not flags["bot_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
-            if _last:
+            if _last and not flags["user_speaking"]:
                 _gap = max(0.0, time.time() - _last)
                 diag.sample("dead_air", _gap)
                 _why = _silence_cause(_gap)
@@ -3896,7 +3892,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     def set_user_speaking(speaking: bool):
         if speaking and not flags["user_speaking"]:
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
-            if _last:
+            if _last and not flags["bot_speaking"]:
                 _gap = max(0.0, time.time() - _last)
                 _why = _silence_cause(_gap)
                 # THE CALLER'S OWN RESPONSE TIME IS NOT OUR DEAD AIR.
@@ -4071,7 +4067,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     # ── TTS speech cache ────────────────────────────────────────────────────
     # Replay audio we already paid to synthesize, on an EXACT sha256 match of
-    # (engine, model, voice, pace, temperature, rate, term-map, sentence). One
+    # (engine, model, voice, pace, temperature, rate, term-map, sentence,
+    # and Smallest language). One
     # differing character is a miss and goes to the vendor.
     #
     # engine_of(tts), not _agent_tts_model(agent): build_tts silently falls back
@@ -4109,6 +4106,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         voice=_agent_voice(agent) or "",
         pace=_as_float(agent.get("pace")),
         temperature=_as_float(agent.get("temperature")),
+        language=agent.get("language"),
         term_map_version=(rumik_term_map_version() if _cache_engine == "rumik" else ""),
         fixed_lines=_fixed_lines,
         # Per-agent rollout gate — one agent first, then widen (TTS_CACHE_AGENTS).

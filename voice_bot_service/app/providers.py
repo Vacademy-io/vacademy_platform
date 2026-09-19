@@ -582,6 +582,17 @@ def _apply_speech_term_map(svc):
     return svc
 
 
+def smallest_model_for(engine: str) -> str:
+    """Resolve the agent's Smallest selection identically on every synthesis path."""
+    selected = (engine or "").strip().lower()
+    model = "lightning_v3.1_pro" if "pro" in selected else get_settings().smallest_model
+    if ":" in selected:
+        explicit = selected.split(":", 1)[1].strip()
+        if explicit:
+            model = explicit if explicit.startswith("lightning") else f"lightning_{explicit}"
+    return model
+
+
 def default_engine_model(engine: str, voice: str = "") -> str:
     """The model string _tag_engine stamps for an engine, resolved from settings.
 
@@ -596,8 +607,8 @@ def default_engine_model(engine: str, voice: str = "") -> str:
     e = (engine or "").strip().lower()
     if e == "sarvam":
         return s.sarvam_tts_model
-    if e == "smallest":
-        return s.smallest_model
+    if e.startswith("smallest") or e.startswith("lightning"):
+        return smallest_model_for(e)
     if e == "google":
         return "chirp3-hd"
     if e == "edge":
@@ -702,28 +713,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         if not s.smallest_api_key:
             logger.error("tts: SMALLEST_API_KEY unset — falling back to Sarvam bulbul")
         else:
-            sm_model = s.smallest_model
-            # "smallest_pro" is its own engine id (TtsVoiceCatalog.MODEL_SMALLEST_PRO),
-            # NOT a colon variant — without this it would fall through to the env
-            # default (lightning_v3.1) and send pro voices to the standard model,
-            # which the API rejects outright: a silent call.
-            if "pro" in model:
-                sm_model = "lightning_v3.1_pro"
-            # An explicit "smallest:<model>" still wins over both, so one
-            # agent can run pro while others run standard.
-            if ":" in model:
-                cand = model.split(":", 1)[1].strip()
-                if cand:
-                    sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
-            elif model.endswith("_pro") or model.endswith("-pro"):
-                # The engine key stored on an agent is "smallest_pro", not the
-                # "smallest:<model>" form this parser was written for, so the two
-                # conventions never met and a _pro agent silently got the STANDARD
-                # model. Smallest hard-rejects a cross-model voice, so every _pro
-                # voice (mrunal, manasi, ketaki, meher) was being sent somewhere it
-                # does not exist - proven by /preview.mp3 returning 502 for
-                # smallest_pro/mrunal while smallest/devansh returns audio.
-                sm_model = sm_model if sm_model.endswith("_pro") else sm_model + "_pro"
+            sm_model = smallest_model_for(model)
             sm_voice = (voice or s.smallest_voice).strip() or s.smallest_voice
             try:
                 return _tag_engine(
@@ -855,10 +845,8 @@ def _smallest_language(agent_language: str | None = None):
     natively, so `hi` is right for mixed text."""
     try:
         from pipecat.transcriptions.language import Language
-        raw = (agent_language or "").strip().lower()
-        if raw.startswith("en"):
-            return Language.EN
-        return Language.HI
+        from .speech_language import smallest_language_code
+        return Language.EN if smallest_language_code(agent_language) == "en" else Language.HI
     except Exception:
         return None
 

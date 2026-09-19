@@ -331,7 +331,7 @@ async def tts_cache_warm(request: Request):
             model=(body.get("model") or "").strip(),
             voice=(body.get("voice") or "").strip(),
             pace=body.get("pace"), temperature=body.get("temperature"),
-            texts=texts)
+            texts=texts, language=body.get("language"))
     except Exception:
         logger.exception("tts-cache warm failed")
         return JSONResponse({"error": "warm failed"}, status_code=502)
@@ -548,7 +548,8 @@ async def _edge_tts_mp3(text: str, voice: str, pace: float) -> bytes:
     return out
 
 
-async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> bytes:
+async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float,
+                            language: str | None = None) -> bytes:
     """One-shot Smallest.ai Lightning synthesis over its websocket -> WAV bytes.
 
     Protocol probe-verified 2026-08-05: one JSON message with flush=True returns
@@ -562,6 +563,7 @@ async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> b
     except ImportError:
         logger.error("preview: websockets missing for smallest")
         return b""
+    from .speech_language import smallest_language_code
     pcm = bytearray()
     try:
         async with websockets.connect(
@@ -570,7 +572,7 @@ async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float) -> b
                 open_timeout=15) as ws:
             await ws.send(json.dumps({
                 "text": text, "voice_id": (voice or s.smallest_voice).strip(),
-                "model": model, "language": "hi",
+                "model": model, "language": smallest_language_code(language),
                 "sample_rate": s.smallest_sample_rate, "output_format": "pcm",
                 "speed": max(0.5, min(2.0, pace)), "continue": False, "flush": True,
             }))
@@ -667,27 +669,17 @@ async def preview(
         if not s.smallest_api_key:
             logger.warning("preview: smallest requested but SMALLEST_API_KEY unset")
             return Response(status_code=503)
-        sm_model = s.smallest_model
-        if ":" in engine:
-            cand = engine.split(":", 1)[1].strip()
-            if cand:
-                sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
-        elif engine.endswith("_pro") or engine.endswith("-pro"):
-            # The engine key stored on an agent is "smallest_pro", not the
-            # "smallest:<model>" form this parser was written for, so the two
-            # conventions never met and a _pro agent silently got the STANDARD
-            # model. Smallest hard-rejects a cross-model voice, so every _pro
-            # voice (mrunal, manasi, ketaki, meher) was being sent somewhere it
-            # does not exist - proven by /preview.mp3 returning 502 for
-            # smallest_pro/mrunal while smallest/devansh returns audio.
-            sm_model = sm_model if sm_model.endswith("_pro") else sm_model + "_pro"
+        from .providers import smallest_model_for
+        sm_model = smallest_model_for(engine)
+        from .speech_language import smallest_language_code
+        language = smallest_language_code(lang)
         key = hashlib.sha1(
-            f"pv|{sm_model}|{voice}|{pace}|{text}".encode("utf-8")).hexdigest()
+            f"pv|{sm_model}|{voice}|{pace}|{language}|{text}".encode("utf-8")).hexdigest()
         # Lightning streams raw PCM over its websocket; wrap as WAV (same reason
         # as the Rumik path — no mp3 encoder in this image).
         path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
         if not os.path.exists(path):
-            raw = await _smallest_tts_wav(text, voice, sm_model, pace)
+            raw = await _smallest_tts_wav(text, voice, sm_model, pace, language)
             if not raw:
                 return Response(status_code=502)
             if not _cache_write(path, raw):

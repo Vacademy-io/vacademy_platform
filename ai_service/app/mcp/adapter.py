@@ -22,7 +22,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
+from mcp.types import CallToolResult, ImageContent, TextContent, Tool, ToolAnnotations
 from sqlalchemy.orm import Session
 
 from ..schemas.auth import PinnedPrincipal
@@ -186,6 +186,18 @@ async def call_tool(
             ok=ok,
             error_code=error_code,
             duration_ms=duration_ms,
+        )
+
+    # A tool may hand back a rendered image (website preview): send it as image
+    # content so the model can SEE it, with the rest of the result as text.
+    if isinstance(payload, dict) and isinstance(payload.get("image_png_base64"), str):
+        image = payload.pop("image_png_base64")
+        return CallToolResult(
+            content=[
+                ImageContent(type="image", data=image, mime_type="image/jpeg"),
+                TextContent(type="text", text=json.dumps(payload, ensure_ascii=False, default=str)),
+            ],
+            is_error=not ok,
         )
 
     return CallToolResult(

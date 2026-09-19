@@ -443,3 +443,133 @@ async def test_authored_padding_and_site_settings_survive(backend):
     out = await run({"action": "set_site_settings", "tag_name": "main-site", "site_settings": {"back_to_top": False, "lead_popup": {"enabled": True}}})
     gs = backend.saved[-1]["config"]["globalSettings"]
     assert gs["backToTop"] is False and gs["leadCollection"]["enabled"] is True and gs["leadCollection"]["mandatory"] is False
+
+
+# ── HTML pages ───────────────────────────────────────────────────────────
+FULL_DOC = """<!doctype html><html><head><title>Summer Camp 2027</title>
+<link rel="stylesheet" href="https://cdn.example.com/site.css">
+<style>:root{--brand:#0F766E} body{font-family:Inter,sans-serif} .hero{background:url(https://evil.example/bg.jpg)} h1{color:var(--brand)}</style>
+<script>alert('x')</script></head>
+<body>
+<header class="nav"><a href="index.html">Home</a> <a href="about.html">About</a> <a href="#dates">Dates</a></header>
+<section class="hero"><h1>Summer Camp 2027</h1><p>Three weeks of maths, robotics and swimming.</p>
+<img src="https://d1om4dxj9e7kkd.cloudfront.net/SYSTEM_FILES/x/camp.jpg" alt="camp">
+<img src="https://images.unsplash.com/photo-9" alt="stock">
+<a data-vacademy="lead-form" data-audience="" class="btn">Reserve a seat</a>
+<button onclick="pay()">Pay now</button></section>
+<section id="dates"><h2>Dates</h2><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>
+<form><input name="email"><textarea></textarea></form>
+<a href="http://example.com/brochure">Brochure</a></section>
+</body></html>"""
+
+
+def test_build_html_page_applies_the_page_contract():
+    from app.services.assistant_tools_website_edit import build_html_page
+    page, report = build_html_page("camp", FULL_DOC, ".extra{margin:0;background:url(https://evil.example/a.png)}", None, {"metaDescription": "Camp"})
+    comp = page["components"][0]
+    html, css = comp["props"]["html"], comp["props"]["css"]
+    assert comp["type"] == "htmlPage" and page["hideSiteChrome"] is True and page["title"] == "Summer Camp 2027"
+    assert page["seo"] == {"metaDescription": "Camp"}
+    assert "<script" not in html and "onclick" not in html and "<head>" not in html and "<style" not in html
+    assert "<link" not in html and "<title" not in html
+    assert "cloudfront.net/SYSTEM_FILES/x/camp.jpg" in html and "unsplash" not in html          # foreign img removed
+    assert "<svg" in html and "<circle" in html                                                  # page allowlist keeps SVG
+    assert "<input" not in html and "<form" not in html
+    assert 'data-route="about"' in html and 'data-vacademy="route"' in html and 'data-route=""' in html   # index.html → home
+    assert 'data-target="dates"' in html and 'data-vacademy="scroll"' in html
+    assert 'data-vacademy="lead-form"' in html
+    assert 'href="https://example.com/brochure"' in html                                        # http upgraded
+    assert "h1{color:var(--brand)}" in css and ".extra{margin:0" in css
+    assert "evil.example" not in css
+    assert report["scripts_removed"] == 1 and report["stylesheets_inlined"] == 1
+    assert report["external_stylesheets"] == ["https://cdn.example.com/site.css"]
+    assert report["interactive_removed"] == {"input": 1, "textarea": 1, "form": 1}
+    assert report["images_removed"] == 1 and report["lead_form_hooks"] == 1
+    assert report["headings"][:2] == ["Summer Camp 2027", "Dates"]
+
+
+@pytest.mark.asyncio
+async def test_add_html_page_saves_a_draft_and_audit_flags_unwired_hook(backend):
+    out = await run({"action": "add_html_page", "tag_name": "main-site", "route": "Summer Camp!", "html": FULL_DOC})
+    assert out["saved_as"] == "draft" and out["page_route"] == "summer-camp"
+    saved = backend.saved[-1]["config"]["pages"][-1]
+    assert saved["route"] == "summer-camp" and saved["hideSiteChrome"] is True
+    assert saved["components"][0]["type"] == "htmlPage"
+    assert out["import_report"]["scripts_removed"] == 1
+    assert any(e["title"] == "An HTML page button opens a form but no campaign is selected" for e in out["audit"]["errors"])
+    # get_page never dumps the HTML, but says what is on it
+    from app.services.catalogue_summary import summarize_page
+    summary = summarize_page(saved, include_copy=True)
+    sec = summary["sections"][0]
+    assert sec["type"] == "htmlPage" and sec["headings"][0] == "Summer Camp 2027" and "copy" not in sec
+    assert "NO campaign selected" in sec["data_binding"] and sec["html_bytes"] > 100
+
+
+@pytest.mark.asyncio
+async def test_link_lead_form_wires_html_hooks(backend, monkeypatch):
+    await run({"action": "add_html_page", "tag_name": "main-site", "route": "camp", "html": FULL_DOC})
+    page = backend.saved[-1]["config"]["pages"][-1]
+    _with_draft(monkeypatch, backend.saved[-1]["config"])          # the next load sees the draft we just wrote
+    out = await run({"action": "link_lead_form", "tag_name": "main-site", "page_route": "camp", "section_id": page["components"][0]["id"], "audience_id": "camp-1"})
+    assert "1 lead-form hook(s)" in out["summary_of_change"]
+    html = backend.saved[-1]["config"]["pages"][-1]["components"][0]["props"]["html"]
+    assert 'data-audience="camp-1"' in html
+    assert not any("HTML page button" in e["title"] for e in out["audit"]["errors"])
+
+
+@pytest.mark.asyncio
+async def test_add_html_page_replace_and_route_conflict(backend, monkeypatch):
+    await run({"action": "add_html_page", "tag_name": "main-site", "route": "camp", "html": "<h1>v1</h1><p>one</p>"})
+    _with_draft(monkeypatch, backend.saved[-1]["config"])
+    out = await run({"action": "add_html_page", "tag_name": "main-site", "route": "camp", "html": "<h1>v2</h1><p>two</p>", "replace_existing": True})
+    assert out["summary_of_change"] == "Replaced HTML page 'camp'."
+    pages = backend.saved[-1]["config"]["pages"]
+    assert [p["route"] for p in pages].count("camp") == 1 and "v2" in pages[-1]["components"][0]["props"]["html"]
+    out = await run({"action": "add_html_page", "tag_name": "main-site", "route": "home", "html": "<h1>x</h1><p>y</p>"})
+    assert "was taken" in out["summary_of_change"] and out["page_route"] == "home-2"      # a component page is never replaced
+
+
+@pytest.mark.asyncio
+async def test_html_page_inside_create_page_uses_the_page_contract(backend):
+    page = {"route": "static", "components": [
+        {"id": "raw", "type": "htmlPage", "props": {"html": "<h1>Hi</h1><script>x()</script><svg><path d='M0 0'/></svg>", "css": "h1{color:red}"}},
+        {"id": "t", "type": "textBlock", "props": {"content": "<p>after</p>"}}]}
+    out = await run({"action": "create_page", "tag_name": "main-site", "page": page})
+    comps = backend.saved[-1]["config"]["pages"][-1]["components"]
+    assert comps[0]["type"] == "htmlPage" and "<script" not in comps[0]["props"]["html"] and "<svg" in comps[0]["props"]["html"]
+    assert comps[0]["props"]["css"] == "h1{color:red}"
+    assert any("removed 1 script" in w for w in out["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_create_page_finishes_the_hero_and_scores_it(backend, monkeypatch):
+    from app.services import assistant_tools_website as w
+    async def media(ctx_, kind, limit):
+        return [{"url": "https://d1om4dxj9e7kkd.cloudfront.net/x/campus.jpg", "name": "campus.jpg", "kind_guess": "photo", "hero_worthy": True}]
+    monkeypatch.setattr(w, "_load_media", media)
+    page = authored_page()
+    page["components"][0]["props"]["right"] = {}            # split hero, no image
+    out = await run({"action": "create_page", "tag_name": "main-site", "page_type": "admissions", "page": page})
+    hero = next(c for c in backend.saved[-1]["config"]["pages"][-1]["components"] if c["type"] == "heroSection")
+    assert hero["props"]["right"]["image"].endswith("campus.jpg") and hero["props"]["layout"] == "split"
+    assert any("Placed the institute photo" in w_ for w_ in out["warnings"])
+    assert 0 <= out["quality"]["score"] <= 100 and "top_issues" in out["quality"]
+
+    async def no_media(ctx_, kind, limit):
+        return []
+    monkeypatch.setattr(w, "_load_media", no_media)
+    page = authored_page()
+    page["components"][0]["props"]["right"] = {}
+    out = await run({"action": "create_page", "tag_name": "main-site", "page_type": "admissions", "page": page})
+    hero = next(c for c in backend.saved[-1]["config"]["pages"][-1]["components"] if c["type"] == "heroSection")
+    assert hero["props"]["layout"] == "centered"
+
+
+@pytest.mark.asyncio
+async def test_import_image_accepts_a_batch(backend, monkeypatch):
+    from app.services import assistant_tools_website_edit as m
+    async def one(args, ctx_):
+        return {"url": "https://cdn/" + args["url"].rsplit("/", 1)[-1], "source": args["url"]} if "bad" not in args["url"] else {"error": "fetch_failed"}
+    monkeypatch.setattr(m, "_import_one_image", one)
+    out = await run({"action": "import_image", "urls": ["https://a.com/1.png", "https://a.com/bad.png", "https://a.com/2.png"]})
+    assert [r["url"] for r in out["imported"]] == ["https://cdn/1.png", "https://cdn/2.png"] and len(out["failed"]) == 1

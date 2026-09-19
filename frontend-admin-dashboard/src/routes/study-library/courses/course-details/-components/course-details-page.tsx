@@ -1023,12 +1023,15 @@ export const CourseDetailsPage = () => {
                         try {
                             const batchesList = await fetchCourseBatches(currentCourseId);
                             const courseName = (courseDetailsData.course.package_name ?? '').trim();
-                            // Backend may not always populate `is_parent`. Prefer it when present,
-                            // but fall back to `parent_id === null` to identify parent rows.
+                            // A batch is a parent (or a plain, un-grouped batch) unless it
+                            // points at a parent. The backend stores is_parent=false on every
+                            // ordinary batch, so the earlier `is_parent !== false` guard left
+                            // this map EMPTY for almost every course; the edit payload then
+                            // carried package_session_id='' and the backend silently skipped
+                            // the batch, dropping author (and status) changes.
                             const parents = batchesList.filter(
                                 (b: { is_parent?: boolean; parent_id?: string | null }) =>
-                                    b.is_parent === true ||
-                                    (b.parent_id == null && b.is_parent !== false)
+                                    b.is_parent === true || b.parent_id == null
                             );
                             parents.forEach(
                                 (p: {
@@ -1042,11 +1045,10 @@ export const CourseDetailsPage = () => {
                                 }
                             );
 
-                            // Child rows: either explicitly marked, or anything with a parent_id.
+                            // Child rows: anything that points at a parent.
                             const children = batchesList.filter(
                                 (b: { is_parent?: boolean; parent_id?: string | null }) =>
-                                    b.is_parent === false ||
-                                    (b.parent_id != null && b.is_parent !== true)
+                                    b.parent_id != null && b.is_parent !== true
                             );
                             children.forEach(
                                 (child: {

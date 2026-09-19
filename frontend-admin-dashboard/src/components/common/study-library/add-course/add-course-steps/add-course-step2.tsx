@@ -3594,6 +3594,73 @@ export const AddCourseStep2 = ({
                                                                                     }
                                                                                 );
                                                                             }
+                                                                        } else {
+                                                                            // Neither sessions nor levels: the course has
+                                                                            // exactly one DEFAULT session/level and every
+                                                                            // author belongs to it. This branch was missing,
+                                                                            // so on a simple course a newly picked author
+                                                                            // never reached level.userIds and the update
+                                                                            // payload went out with add_faculty_to_course: [].
+                                                                            // (Create reads formData.instructors instead
+                                                                            // and was unaffected.)
+                                                                            const defaultLevel = {
+                                                                                id: 'DEFAULT',
+                                                                                name: '',
+                                                                                userIds: [instructor],
+                                                                                batchId: 'DEFAULT',
+                                                                                newLevel: true,
+                                                                                containsSubgroup: false,
+                                                                                subgroups: [],
+                                                                            };
+                                                                            if (
+                                                                                updatedSessions.length ===
+                                                                                0
+                                                                            ) {
+                                                                                updatedSessions.push({
+                                                                                    id: 'DEFAULT',
+                                                                                    name: '',
+                                                                                    startDate: '',
+                                                                                    levels: [defaultLevel],
+                                                                                });
+                                                                            } else {
+                                                                                updatedSessions.forEach(
+                                                                                    (
+                                                                                        session: Session
+                                                                                    ) => {
+                                                                                        if (
+                                                                                            session
+                                                                                                .levels
+                                                                                                .length ===
+                                                                                            0
+                                                                                        ) {
+                                                                                            session.levels =
+                                                                                                [
+                                                                                                    defaultLevel,
+                                                                                                ];
+                                                                                            return;
+                                                                                        }
+                                                                                        session.levels.forEach(
+                                                                                            (
+                                                                                                level: Level
+                                                                                            ) => {
+                                                                                                if (
+                                                                                                    !level.userIds.some(
+                                                                                                        (
+                                                                                                            i: Instructor
+                                                                                                        ) =>
+                                                                                                            i.id ===
+                                                                                                            instructor.id
+                                                                                                    )
+                                                                                                ) {
+                                                                                                    level.userIds.push(
+                                                                                                        instructor
+                                                                                                    );
+                                                                                                }
+                                                                                            }
+                                                                                        );
+                                                                                    }
+                                                                                );
+                                                                            }
                                                                         }
                                                                         form.setValue(
                                                                             'sessions',

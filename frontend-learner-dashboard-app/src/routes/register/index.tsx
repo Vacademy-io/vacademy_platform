@@ -17,8 +17,11 @@ export const Route = createFileRoute("/register/")({
   // The open-registration lookup throws when the assessment row is missing
   // (deleted, never existed, or the share code is wrong). Render the
   // same expired UI instead of bubbling up to the generic catch boundary.
-  errorComponent: () => {
+  errorComponent: ({ error }) => {
     const { t } = useTranslation("registrationA");
+    // Any render error in the route lands here and is shown as "Expired".
+    // Log it so a real bug is not mistaken for a closed assessment.
+    console.error("[register] route error rendered as Expired:", error);
     return (
       <AssessmentClosedExpiredComponent
         isExpired={true}

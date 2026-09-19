@@ -1052,6 +1052,11 @@ const AssessmentRegistrationForm = () => {
               <FormProvider {...form}>
                 <form className="w-full flex flex-col gap-section mt-5 sm:max-h-screen-70 sm:overflow-auto pe-1">
                   {Object.entries(form.getValues()).map(([key, value]) => {
+                    // A value without `name` is not a real form field (e.g. a
+                    // key injected by a reset for a field this form doesn't
+                    // have). Rendering it throws on `capitalise(value.name)`
+                    // and the route's errorComponent shows "Expired".
+                    if (!value || typeof value.name !== "string") return null;
                     if (key === "phone_number") {
                       return (
                         <FormField

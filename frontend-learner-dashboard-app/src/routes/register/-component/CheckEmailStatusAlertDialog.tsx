@@ -188,12 +188,18 @@ const CheckEmailStatusAlertDialog = ({
       });
       setUserAlreadyRegistered(true);
       handleCloseAlertDialog();
+      // The email field is optional on the admin side (built-in fields can be
+      // removed per form). Only prefill it when it exists — injecting a
+      // half-formed `{ value }` object makes the form's render loop crash on
+      // `value.name`, and the route then shows "Assessment Expired".
       registrationForm.reset({
         ...registrationForm.getValues(),
-        email: {
-          ...registrationForm.getValues("email"),
-          value: form.getValues("email"),
-        },
+        ...(registrationForm.getValues("email") && {
+          email: {
+            ...registrationForm.getValues("email"),
+            value: form.getValues("email"),
+          },
+        }),
       });
     },
   });
@@ -268,22 +274,33 @@ const CheckEmailStatusAlertDialog = ({
           },
         );
       } else {
+        // Same guard as gender/state/city below: the built-in email/name/phone
+        // fields can be removed from a form by the admin (Edzumo's coding
+        // challenges have none). Resetting a key that isn't in the form injects
+        // `{ value }` without `name`/`type`, and the form's render loop throws
+        // on `capitalise(value.name)` — surfacing as "Assessment Expired".
         registrationForm.reset((prevValues) => ({
           ...prevValues,
-          email: {
-            ...registrationForm.getValues("email"),
-            // Fall back to the just-verified email when the user exists in auth
-            // but isn't yet an institute learner (userDetails is null).
-            value: userDetails?.email || email,
-          },
-          full_name: {
-            ...registrationForm.getValues("full_name"),
-            value: userDetails?.full_name || "",
-          },
-          phone_number: {
-            ...registrationForm.getValues("phone_number"),
-            value: userDetails?.mobile_number || "",
-          },
+          ...(registrationForm.getValues("email") && {
+            email: {
+              ...registrationForm.getValues("email"),
+              // Fall back to the just-verified email when the user exists in auth
+              // but isn't yet an institute learner (userDetails is null).
+              value: userDetails?.email || email,
+            },
+          }),
+          ...(registrationForm.getValues("full_name") && {
+            full_name: {
+              ...registrationForm.getValues("full_name"),
+              value: userDetails?.full_name || "",
+            },
+          }),
+          ...(registrationForm.getValues("phone_number") && {
+            phone_number: {
+              ...registrationForm.getValues("phone_number"),
+              value: userDetails?.mobile_number || "",
+            },
+          }),
           ...(registrationForm.getValues("gender") && {
             gender: {
               ...registrationForm.getValues("gender"),

@@ -676,6 +676,8 @@ async def render_paper_pdf(
 ) -> bytes:
     from . import paper_themes
 
+    # Only the running footer band carries the institute colour; the document itself stays black.
+    accent_color = options.pop("accent_color", None)
     document = build_paper_html(blueprint, questions, **options)
     footer = " · ".join(
         t for t in (options.get("institute_name"), blueprint.title) if t
@@ -685,6 +687,7 @@ async def render_paper_pdf(
         paper_themes.page_settings(
             theme, institute_name=options.get("institute_name"),
             title=blueprint.title, subtitle=options.get("subtitle"),
+            accent=paper_themes.resolve_accent(accent_color),
         )
         if theme in paper_themes.THEMES and theme != "classic"
         else None

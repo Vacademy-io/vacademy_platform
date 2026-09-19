@@ -56,6 +56,7 @@ class Branding:
     name: Optional[str] = None
     logo_url: Optional[str] = None
     contact: Optional[str] = None
+    theme_code: Optional[str] = None
 
 
 def variant_for(include_answer_key: bool) -> str:
@@ -66,14 +67,14 @@ async def institute_branding(db: Session, institute_id: str) -> Branding:
     """Name, logo URL and a 'website · email · phone' line for the header."""
     row = db.execute(
         text(
-            "SELECT name, logo_file_id, website_url, email, mobile_number "
+            "SELECT name, logo_file_id, website_url, email, mobile_number, institute_theme_code "
             "FROM institutes WHERE id = :id"
         ),
         {"id": institute_id},
     ).fetchone()
     if not row:
         return Branding()
-    name, logo_file_id, website, email, phone = row
+    name, logo_file_id, website, email, phone, theme_code = row
     contact = " · ".join(
         str(v).strip() for v in (website, email, phone) if v and str(v).strip()
     ) or None
@@ -83,7 +84,10 @@ async def institute_branding(db: Session, institute_id: str) -> Branding:
             logo_url = await get_public_file_url(str(logo_file_id), expiry_days=1)
         except Exception:  # noqa: BLE001 — a paper without a logo beats no paper
             logger.warning("Could not resolve logo %s for institute %s", logo_file_id, institute_id)
-    return Branding(name=(name or "").strip() or None, logo_url=logo_url, contact=contact)
+    return Branding(
+        name=(name or "").strip() or None, logo_url=logo_url, contact=contact,
+        theme_code=(theme_code or "").strip() or None,
+    )
 
 
 def paper_subtitle(kb: Dict[str, Any]) -> Optional[str]:
@@ -139,6 +143,7 @@ async def render_branded_pdf(
         theme=theme,
         exam_date=(exam_date or "").strip() or None,
         grade_line=(grade_line or "").strip() or None,
+        accent_color=branding.theme_code,
     )
 
 

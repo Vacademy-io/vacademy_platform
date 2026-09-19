@@ -7,11 +7,19 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { saveBlob } from '../../-services/paper-service';
-import type { PaperPdfOptions, PdfFile } from '../../-services/paper-service';
+import {
+    PAPER_THEMES,
+    loadPaperTheme,
+    savePaperTheme,
+    saveBlob,
+} from '../../-services/paper-service';
+import type { PaperPdfOptions, PaperTheme, PdfFile } from '../../-services/paper-service';
 import type { PublishedPaperLink } from '../../-types/paper';
 import { PaperPreviewDialog } from './PaperPreviewDialog';
 import { PaperShareDialog } from './PaperShareDialog';
@@ -54,11 +62,17 @@ export const PaperDownloadMenu = ({
     const [busy, setBusy] = useState(false);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [shareOpen, setShareOpen] = useState(false);
+    // The institute's house layout, remembered per browser.
+    const [theme, setThemeState] = useState<PaperTheme>(() => loadPaperTheme());
+    const setTheme = (next: PaperTheme) => {
+        setThemeState(next);
+        savePaperTheme(next);
+    };
 
     const download = async (options: PaperPdfOptions) => {
         setBusy(true);
         try {
-            const file = await fetchPdf(options);
+            const file = await fetchPdf({ ...options, theme });
             saveBlob(file.blob, file.fileName);
         } catch {
             toast.error(t('failed'));
@@ -117,6 +131,20 @@ export const PaperDownloadMenu = ({
                             </DropdownMenuItem>
                         </>
                     )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-caption font-normal text-neutral-500">
+                        {t('theme.label')}
+                    </DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                        value={theme}
+                        onValueChange={(v) => setTheme(v as PaperTheme)}
+                    >
+                        {PAPER_THEMES.map((key) => (
+                            <DropdownMenuRadioItem key={key} value={key} disabled={busy}>
+                                {t(`theme.${key}`)}
+                            </DropdownMenuRadioItem>
+                        ))}
+                    </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
             </DropdownMenu>
             <PaperPreviewDialog
@@ -126,12 +154,14 @@ export const PaperDownloadMenu = ({
                 fetchPdf={fetchPdf}
                 onPublish={onPublish}
                 published={published}
+                theme={theme}
+                onThemeChange={setTheme}
             />
             {onPublish && (
                 <PaperShareDialog
                     open={shareOpen}
                     onOpenChange={setShareOpen}
-                    onPublish={onPublish}
+                    onPublish={(options) => onPublish({ ...options, theme })}
                     existing={published}
                     shareTitle={title}
                 />

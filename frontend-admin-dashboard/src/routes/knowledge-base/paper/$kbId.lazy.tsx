@@ -915,14 +915,14 @@ function PaperBuilderPage() {
                                         fetchPaperPdf(
                                             kbId,
                                             { blueprint, questions: result.raw_questions },
-                                            options
+                                            { ...options, gradeLine: spec.grade || undefined }
                                         )
                                     }
                                     onPublish={(options) =>
                                         publishPaperLink(
                                             kbId,
                                             { blueprint, questions: result.raw_questions },
-                                            options,
+                                            { ...options, gradeLine: spec.grade || undefined },
                                             generationId ?? undefined
                                         )
                                     }

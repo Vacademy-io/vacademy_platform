@@ -32,5 +32,11 @@
         "rendering": "Laying out the paper…",
         "failed": "Could not render the paper.",
         "retry": "Try again"
+    },
+    "theme": {
+        "label": "Layout",
+        "classic": "Classic (board style)",
+        "compact": "Compact two-column",
+        "coaching": "Coaching classes (inline answers)"
     }
 }

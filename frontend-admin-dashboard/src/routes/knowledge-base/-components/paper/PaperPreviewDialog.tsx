@@ -11,12 +11,19 @@ import {
 import { MyButton } from '@/components/design-system/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { SpecialZoomLevel, Viewer, Worker } from '@react-pdf-viewer/core';
 import { PDF_WORKER_URL } from '@/constants/urls';
 import { cn } from '@/lib/utils';
 import '@react-pdf-viewer/core/lib/styles/index.css';
-import { saveBlob } from '../../-services/paper-service';
-import type { PaperPdfOptions, PdfFile } from '../../-services/paper-service';
+import { PAPER_THEMES, saveBlob } from '../../-services/paper-service';
+import type { PaperPdfOptions, PaperTheme, PdfFile } from '../../-services/paper-service';
 import type { PublishedPaperLink } from '../../-types/paper';
 import { PaperShareDialog } from './PaperShareDialog';
 
@@ -30,6 +37,9 @@ interface PaperPreviewDialogProps {
     fetchPdf: (options: PaperPdfOptions) => Promise<PdfFile>;
     onPublish?: (options: PaperPdfOptions) => Promise<PublishedPaperLink>;
     published?: Partial<Record<Variant, PublishedPaperLink>>;
+    /** Print layout, shared with the download menu so both stay in step. */
+    theme: PaperTheme;
+    onThemeChange: (theme: PaperTheme) => void;
 }
 
 /**
@@ -49,10 +59,15 @@ export const PaperPreviewDialog = ({
     fetchPdf,
     onPublish,
     published,
+    theme,
+    onThemeChange,
 }: PaperPreviewDialogProps) => {
     const { t } = useTranslation('knowledgeBasePaperDownload');
     const [variant, setVariant] = useState<Variant>('question_paper');
-    const [files, setFiles] = useState<Partial<Record<Variant, PdfFile>>>({});
+    // Cached per variant AND layout: switching layouts re-renders, switching
+    // back is instant.
+    const [files, setFiles] = useState<Record<string, PdfFile>>({});
+    const cacheKey = `${variant}:${theme}`;
     const [objectUrl, setObjectUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [failed, setFailed] = useState(false);
@@ -72,15 +87,15 @@ export const PaperPreviewDialog = ({
 
     useEffect(() => {
         if (!open) return;
-        const cached = files[variant];
+        const cached = files[cacheKey];
         if (cached) return;
         const request = ++requestRef.current;
         setLoading(true);
         setFailed(false);
-        fetchPdf({ includeAnswerKey: variant === 'with_answer_key' })
+        fetchPdf({ includeAnswerKey: variant === 'with_answer_key', theme })
             .then((file) => {
                 if (request !== requestRef.current) return;
-                setFiles((prev) => ({ ...prev, [variant]: file }));
+                setFiles((prev) => ({ ...prev, [cacheKey]: file }));
             })
             .catch(() => {
                 if (request === requestRef.current) setFailed(true);
@@ -90,11 +105,11 @@ export const PaperPreviewDialog = ({
             });
         // `files` is read, not depended on: a cache hit must not re-trigger.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, variant, attempt, fetchPdf]);
+    }, [open, variant, theme, attempt, fetchPdf]);
 
     // One object URL per shown blob; revoke the previous one so a long review
     // session does not pin every render in memory.
-    const current = files[variant];
+    const current = files[cacheKey];
     useEffect(() => {
         if (!current) {
             setObjectUrl(null);
@@ -120,6 +135,18 @@ export const PaperPreviewDialog = ({
                         <p className="truncate text-caption text-neutral-500">{title}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        <Select value={theme} onValueChange={(v) => onThemeChange(v as PaperTheme)}>
+                            <SelectTrigger className="w-48" aria-label={t('theme.label')}>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {PAPER_THEMES.map((key) => (
+                                    <SelectItem key={key} value={key}>
+                                        {t(`theme.${key}`)}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Tabs value={variant} onValueChange={(v) => setVariant(v as Variant)}>
                             <TabsList>
                                 <TabsTrigger value="question_paper">
@@ -193,7 +220,7 @@ export const PaperPreviewDialog = ({
                     <PaperShareDialog
                         open={shareOpen}
                         onOpenChange={setShareOpen}
-                        onPublish={onPublish}
+                        onPublish={(options) => onPublish({ ...options, theme })}
                         existing={published}
                         shareTitle={title}
                     />

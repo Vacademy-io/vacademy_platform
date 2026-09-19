@@ -155,14 +155,47 @@ export const formatEditedQuestion = async (
 
 // ---- PDF: the paper as a sheet ---------------------------------------------
 
+export type PaperTheme = 'classic' | 'compact' | 'coaching';
+export const PAPER_THEMES: PaperTheme[] = ['classic', 'compact', 'coaching'];
+const THEME_STORAGE_KEY = 'kb-paper-theme';
+
+/** The layout last chosen in this browser; institutes tend to have one house style. */
+export const loadPaperTheme = (): PaperTheme => {
+    try {
+        const stored = localStorage.getItem(THEME_STORAGE_KEY);
+        return PAPER_THEMES.includes(stored as PaperTheme) ? (stored as PaperTheme) : 'classic';
+    } catch {
+        return 'classic';
+    }
+};
+export const savePaperTheme = (theme: PaperTheme): void => {
+    try {
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+        /* private mode — the choice just does not persist */
+    }
+};
+
 export interface PaperPdfOptions {
-    /** Answer key + marking scheme on pages of their own after the paper. */
+    /** Answer key + marking scheme: own pages (classic/compact) or inline (coaching). */
     includeAnswerKey?: boolean;
     /** Marks in the right margin and per-section totals. */
     showMarks?: boolean;
     /** "A", "B"… printed in a box at the top right for parallel sets. */
     setLabel?: string;
+    /** Print layout; see paper_themes.py. Default classic. */
+    theme?: PaperTheme;
+    /** Printed in the header's Date field where the layout has one. */
+    examDate?: string;
+    /** "Class - 10th" line for the coaching layout; defaults from the book. */
+    gradeLine?: string;
 }
+
+const layoutFields = (options: PaperPdfOptions) => ({
+    theme: options.theme ?? 'classic',
+    exam_date: options.examDate || null,
+    grade_line: options.gradeLine || null,
+});
 
 const pdfFileName = (headers: Record<string, unknown>, fallback: string): string => {
     const disposition = String(headers['content-disposition'] ?? '');
@@ -209,6 +242,7 @@ export const fetchPaperPdf = async (
             include_answer_key: Boolean(options.includeAnswerKey),
             show_marks: options.showMarks ?? true,
             set_label: options.setLabel || null,
+            ...layoutFields(options),
         },
         { responseType: 'blob' }
     );
@@ -230,6 +264,9 @@ export const fetchGenerationPdf = async (
                 include_answer_key: Boolean(options.includeAnswerKey),
                 show_marks: options.showMarks ?? true,
                 ...(options.setLabel ? { set_label: options.setLabel } : {}),
+                theme: options.theme ?? 'classic',
+                ...(options.examDate ? { exam_date: options.examDate } : {}),
+                ...(options.gradeLine ? { grade_line: options.gradeLine } : {}),
             },
             responseType: 'blob',
         }
@@ -261,6 +298,7 @@ export const publishPaperLink = async (
             show_marks: options.showMarks ?? true,
             set_label: options.setLabel || null,
             generation_id: generationId ?? null,
+            ...layoutFields(options),
         }
     );
     return data;
@@ -277,6 +315,7 @@ export const publishGenerationLink = async (
             include_answer_key: Boolean(options.includeAnswerKey),
             show_marks: options.showMarks ?? true,
             set_label: options.setLabel || null,
+            ...layoutFields(options),
         }
     );
     return data;

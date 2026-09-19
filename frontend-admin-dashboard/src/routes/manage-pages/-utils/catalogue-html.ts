@@ -271,6 +271,7 @@ export interface HtmlVideoMount {
 const VIDEO_ASPECT_PADDING: Record<string, string> = {
     '16:9': '56.25%', '4:3': '75%', '1:1': '100%', '9:16': '177.78%',
 };
+const DEFAULT_VIDEO_PADDING = '56.25%'; // 16:9 — also the admin build's noUncheckedIndexedAccess fallback
 
 export const collectVideoMounts = (root: ParentNode): HtmlVideoMount[] => {
     const out: HtmlVideoMount[] = [];
@@ -284,7 +285,7 @@ export const collectVideoMounts = (root: ParentNode): HtmlVideoMount[] => {
             el: node,
             src,
             poster: isOwnMediaUrl(poster) ? poster : undefined,
-            paddingBottom: VIDEO_ASPECT_PADDING[aspect] || VIDEO_ASPECT_PADDING['16:9'],
+            paddingBottom: VIDEO_ASPECT_PADDING[aspect] ?? DEFAULT_VIDEO_PADDING,
             title: node.getAttribute('aria-label') || node.getAttribute('title') || undefined,
         });
     });

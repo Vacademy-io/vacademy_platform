@@ -183,6 +183,9 @@
   "jsonRenderer": {
     "video": "वीडियो",
     "noVideoUrlConfigured": "कोई वीडियो URL कॉन्फ़िगर नहीं है",
+    "play": "चलाएँ",
+    "pause": "रोकें",
+    "videoTagUnsupported": "आपका ब्राउज़र वीडियो प्लेबैक का समर्थन नहीं करता।",
     "recommended": "अनुशंसित",
     "includeEmailAddress": "कृपया अपना ईमेल पता शामिल करें।",
     "formNotConnected": "यह फ़ॉर्म अभी कनेक्ट नहीं हुआ है — कृपया बाद में फिर से प्रयास करें।",

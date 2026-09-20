@@ -626,11 +626,22 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         const isAdmin = safeRoles.includes('ADMIN');
         const hideInReviewTab =
             !isAdmin && !!roleDisplay && roleDisplay.coursePage?.requireCourseApproval === false;
+        // Role guard on top of the saved visibility. The Course Approval
+        // dashboard is admin-only and Courses In Review is for non-admins;
+        // the Settings page shows the other role's tab as locked-off, but an
+        // older save / copy-to-roles can still leave `visible: true` in the
+        // stored blob (Oui Académie teacher settings, 2026-09-20), so the
+        // stored flag alone must never surface the wrong role's tab.
+        const isTabAllowedForRole = (id: string) => {
+            if (id === 'CourseApproval') return isAdmin;
+            if (id === 'CourseInReview') return !isAdmin && !hideInReviewTab;
+            return true;
+        };
 
         if (roleDisplay?.courseList?.tabs && roleDisplay.courseList.tabs.length > 0) {
             return roleDisplay.courseList.tabs
                 .filter((t) => t.visible !== false)
-                .filter((t) => !(hideInReviewTab && t.id === 'CourseInReview'))
+                .filter((t) => isTabAllowedForRole(t.id))
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
                 .map((t) => ({ key: t.id, label: labelFor(t.id as CourseListTabId), show: true }));
         }
@@ -650,12 +661,12 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             {
                 key: 'CourseInReview',
                 label: t('tabs.termInReview', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) }),
-                show: !isAdmin && !hideInReviewTab,
+                show: isTabAllowedForRole('CourseInReview'),
             },
             {
                 key: 'CourseApproval',
                 label: t('tabs.termApproval', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
-                show: isAdmin,
+                show: isTabAllowedForRole('CourseApproval'),
             },
         ];
         return tabs.filter((t) => t.show);

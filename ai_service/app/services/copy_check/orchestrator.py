@@ -90,6 +90,39 @@ async def grade_copy(process_id: Optional[str] = None) -> str:
     return job_id
 
 
+def _mark_label_blocks(questions: list[dict[str, Any]]) -> None:
+    """Tell repeated printed numbers apart.
+
+    A paper with two passages under one section prints 1-10 twice; the student
+    writes both runs. `label_block` = which run this question belongs to (1, 2…)
+    and `label_blocks` = how many runs that section has, worked out from paper
+    order: a printed number that is <= the previous one in the same section
+    starts a new run. Without this "Section A · 1" named two questions and the
+    grader marked one passage's answers against the other's key (2026-09-21).
+    """
+    import re as _re
+
+    def _num(label: Any) -> int | None:
+        m = _re.match(r"\s*(\d+)", str(label or ""))
+        return int(m.group(1)) if m else None
+
+    runs: dict[str, int] = {}
+    last: dict[str, int] = {}
+    for q in questions:
+        section = str(q.get("section") or "").strip()
+        n = _num(q.get("paper_label"))
+        if n is None:
+            q["label_block"] = 1
+            continue
+        if section in last and n <= last[section]:
+            runs[section] = runs.get(section, 1) + 1
+        runs.setdefault(section, 1)
+        last[section] = n
+        q["label_block"] = runs[section]
+    for q in questions:
+        q["label_blocks"] = runs.get(str(q.get("section") or "").strip(), 1)
+
+
 async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     """The actual pipeline. Designed to never raise out of the BG task — any
     failure ends in a callbacks.failed() POST so Java can surface it."""
@@ -258,6 +291,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         # exist on the sheet so "2." under Section B is not mistaken for "2." under
         # Passage I. Labels only reached us from 2026-09-21; before that this list
         # would have been ids and was not sent at all.
+        _mark_label_blocks(questions)
         all_labels = [paper_label_for(q) for q in questions]
         verdicts: list[dict[str, Any]] = []
         for index, q in enumerate(questions):

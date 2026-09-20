@@ -203,7 +203,8 @@ Rules:
 5. Answers. If the paper prints an answer key, use it and set answer_source "paper". Otherwise, for MCQS/MCQM/TRUE_FALSE/ONE_WORD/NUMERIC give your best answer with answer_source "model" (the teacher will verify). For LONG_ANSWER leave ans empty unless printed, but ALWAYS fill marking_points with what a full-mark answer must contain.
 6. Types. Single correct option → MCQS; "choose all that apply" → MCQM; true/false → TRUE_FALSE; a numeric result → NUMERIC; a word/phrase → ONE_WORD; everything else (explain, describe, prove, draw, solve with steps) → LONG_ANSWER. For TRUE_FALSE always give options [{{"preview_id":"1","content":"True"}},{{"preview_id":"2","content":"False"}}] and correct_options ["1"] or ["2"]. If an answer cannot be determined (a table or figure is missing), leave it empty and set answer_source "none" — never write "model" for an empty answer.
 7. Keep every <img …> tag and every <!--DS_TAG:…--> comment exactly where it appears in the source.
-8. Valid JSON only. No markdown fences, no commentary outside the JSON.
+8. If the numbering restarts inside a section (a second passage or part printed 1, 2, 3… again), give that block its own section name — the printed heading if there is one ("Passage II", "Part B"), else "<Section> · Block 2" — so no two questions share the same section AND number.
+9. Valid JSON only. No markdown fences, no commentary outside the JSON.
 """
 
 _CONTINUATION = (

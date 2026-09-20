@@ -215,6 +215,17 @@ public class AiEvaluationService {
                 process.setStatus(AiEvaluationStatusEnum.PENDING.name());
                 process.setStartedAt(new Date());
                 process.setTriggeredBy(triggeredBy);
+                if (!queueOnly) {
+                        // The immediate dispatch runs in one transaction, so the row stays a
+                        // visible PENDING for the seconds it takes to build the payload and
+                        // call the AI service. The queue poller claims exactly such rows: on
+                        // 2026-09-20 it dispatched a teacher's check a second time 12 s after
+                        // the first — duplicate tracking rows, every per-question callback
+                        // failing with "2 results". Claiming here keeps the poller off it; a
+                        // stale claim (15 min) still lets it rescue a dispatch that died.
+                        process.setClaimedBy("direct");
+                        process.setClaimedAt(new Date());
+                }
 
                 AiEvaluationProcess savedProcess = aiEvaluationProcessRepository.save(process);
                 aiEvaluationProcessRepository.flush(); // Ensure the process is inserted before async call

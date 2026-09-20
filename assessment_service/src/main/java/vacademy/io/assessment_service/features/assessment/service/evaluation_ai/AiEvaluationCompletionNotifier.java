@@ -32,6 +32,7 @@ import vacademy.io.assessment_service.features.auth_service.service.AuthService;
 import vacademy.io.assessment_service.features.notification.dto.NotificationDTO;
 import vacademy.io.assessment_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.assessment_service.features.notification.service.NotificationService;
+import vacademy.io.assessment_service.features.notification.service.StaffNoticeEmails;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 
 /**
@@ -288,14 +289,14 @@ public class AiEvaluationCompletionNotifier {
     }
 
     static String emailBody(String assessmentName, long checked, long failed, String link) {
-        return "<p>Hi,</p>"
-                + "<p>The AI has finished checking copies for <b>" + esc(assessmentName) + "</b>.</p>"
-                + "<p>" + checked + (checked == 1 ? " copy" : " copies") + " checked"
-                + (failed > 0 ? "; " + failed + " could not be checked and " + (failed == 1 ? "needs" : "need") + " a teacher." : ".")
-                + "</p>"
-                + "<p>Learners see nothing yet. Review the marks (and the checked copies), then press "
-                + "<b>Release Result</b> to publish them.</p>"
-                + "<p><a href=\"" + link + "\">Open the submissions</a></p>";
+        java.util.Map<String, Long> counts = StaffNoticeEmails.counts();
+        counts.put("Copies checked", checked + failed);
+        counts.put("Checked by AI", checked);
+        counts.put("Could not be checked", failed);
+        String note = failed > 0
+                ? failed + (failed == 1 ? " copy" : " copies") + " could not be checked by the AI and need a teacher."
+                : null;
+        return StaffNoticeEmails.aiCheckFinished(null, assessmentName, counts, note, link);
     }
 
     private static String esc(String s) {

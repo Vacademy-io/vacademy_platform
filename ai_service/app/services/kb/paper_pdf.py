@@ -435,6 +435,7 @@ def _render_header(
     contact_line: Optional[str] = None,
     logo_placement: str = "watermark",
     candidate_line: bool = False,
+    exam_date: Optional[str] = None,
 ) -> str:
     parts = [_render_watermark(logo_url, logo_placement)]
     parts.append('<header class="head" style="position:relative">')
@@ -453,10 +454,15 @@ def _render_header(
         f"<span>Maximum Marks: {_fmt_marks(total_marks)}</span></div>"
     )
     if candidate_line:
+        # The exam date, when the teacher set one, is printed rather than left
+        # for the student to fill in.
+        date_cell = f"Date: {html.escape(exam_date)}" if exam_date else "Date:"
         parts.append(
             '<div class="candidate"><span>Name:</span><span class="short">Roll No.:</span>'
-            '<span class="short">Date:</span></div>'
+            f'<span class="short">{date_cell}</span></div>'
         )
+    elif exam_date:
+        parts.append(f'<div class="candidate"><span class="short">Date: {html.escape(exam_date)}</span></div>')
     if blueprint.instructions:
         items = "".join(
             f"<li>({_roman(i)}) {html.escape(text)}</li>" for i, text in enumerate(blueprint.instructions)
@@ -583,7 +589,7 @@ def build_paper_html(
             institute_name=institute_name, subtitle=subtitle, set_label=set_label,
             logo_url=logo_url, contact_line=contact_line,
             logo_placement=logo_placement if logo_placement in LOGO_PLACEMENTS else "watermark",
-            candidate_line=candidate_line,
+            candidate_line=candidate_line, exam_date=exam_date,
         )
     ]
     number = 0

@@ -267,3 +267,18 @@ def test_compact_theme_brand_colour_only_on_the_footer_band():
     assert "#ED7424" not in html and "color-mix" not in html
     assert "column-rule: 0.6pt solid #000" in html and 'class="logo"' in html
     assert ".watermark { filter: none; opacity: 0.07; }" in html
+
+
+def test_exam_date_is_printed_on_every_layout_and_left_blank_otherwise():
+    # Neeraj 2026-09-20: the date is asked for with the class/title and must show
+    # on the sheet — the printed "Date: ______" is for the teacher to set, not
+    # the student to fill.
+    for theme in ("classic", "compact", "coaching"):
+        with_date = paper_pdf.build_paper_html(_blueprint(), [_mcq(1)], theme=theme, exam_date="25 Sep 2026")
+        assert "25 Sep 2026" in with_date, theme
+        without = paper_pdf.build_paper_html(_blueprint(), [_mcq(1)], theme=theme)
+        assert "25 Sep 2026" not in without
+    # classic: the candidate line carries it when present
+    classic = paper_pdf.build_paper_html(_blueprint(), [_mcq(1)], theme="classic", exam_date="25 Sep 2026",
+                                         candidate_line=True)
+    assert "Date: 25 Sep 2026" in classic and "Roll No.:" in classic

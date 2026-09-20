@@ -177,7 +177,7 @@ export const offlineTestInstructionsHtml = (
 };
 
 /**
- * Pre-fill the Manual Upload Exam wizard from a saved KB paper.
+ * Pre-fill the assessment wizard (opened as EXAM) from a saved KB paper.
  *
  * The wizard's steps read their initial values from these stores on mount, so
  * seeding them before navigating is what makes Step 1 open with the name and

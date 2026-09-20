@@ -13,6 +13,8 @@ import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStat
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.core.exception.VacademyException;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -40,6 +42,7 @@ public class AiEvaluationService {
         private final AiEvaluationCancellationService cancellationService;
         private final EvaluationAccessValidator accessValidator;
         private final QuestionAssessmentSectionMappingRepository questionMappingRepository;
+        private final QuestionWiseMarksRepository questionWiseMarksRepository;
 
         /**
          * The question the slide-level "create assessment" form provisions when a
@@ -114,6 +117,48 @@ public class AiEvaluationService {
                 return PLACEHOLDER_QUESTION_TEXT.equalsIgnoreCase(content);
         }
 
+        /**
+         * The checker grades one {@code question_wise_marks} row per question, and a
+         * learner's submit is what normally creates those rows. An attempt made by
+         * staff — a single offline upload, a bulk-intake copy — never goes through a
+         * submit, so it reached the checker with no rows and failed with "no
+         * questions found for attempt" (every bulk copy, 2026-09-20). Give such an
+         * attempt one PENDING zero-mark row per active question; an attempt that
+         * already has rows (learner submit, retrofit backfill) is left exactly as is.
+         */
+        void ensureQuestionRows(StudentAttempt attempt) {
+                if (attempt == null || attempt.getRegistration() == null
+                                || attempt.getRegistration().getAssessment() == null) {
+                        return;
+                }
+                if (!questionWiseMarksRepository.findByStudentAttemptId(attempt.getId()).isEmpty()) {
+                        return;
+                }
+                Assessment assessment = attempt.getRegistration().getAssessment();
+                List<QuestionWiseMarks> rows = new ArrayList<>();
+                for (QuestionAssessmentSectionMapping mapping : questionMappingRepository
+                                .getQuestionAssessmentSectionMappingByAssessmentId(assessment.getId())) {
+                        if (mapping.getQuestion() == null || mapping.getSection() == null
+                                        || "DELETED".equalsIgnoreCase(mapping.getStatus())
+                                        || "DELETED".equalsIgnoreCase(mapping.getSection().getStatus())) {
+                                continue;
+                        }
+                        rows.add(QuestionWiseMarks.builder()
+                                        .assessment(assessment)
+                                        .studentAttempt(attempt)
+                                        .question(mapping.getQuestion())
+                                        .section(mapping.getSection())
+                                        .status("PENDING")
+                                        .marks(0)
+                                        .build());
+                }
+                if (!rows.isEmpty()) {
+                        questionWiseMarksRepository.saveAll(rows);
+                        log.info("Created {} pending question rows for attempt {} before its AI check",
+                                        rows.size(), attempt.getId());
+                }
+        }
+
         /** Refuse to queue an AI check that has nothing real to grade against. */
         public void requireGradableQuestions(Assessment assessment) {
                 if (isPlaceholderOnly(assessment)) {
@@ -150,6 +195,8 @@ public class AiEvaluationService {
                                         existingId, attemptId);
                         return existingId;
                 }
+
+                ensureQuestionRows(attempt);
 
                 AiEvaluationProcess process = new AiEvaluationProcess();
                 // Remove manual ID setting - let @UuidGenerator handle it

@@ -46,7 +46,8 @@
         "canEditCourseStructure": "يمكنه تعديل المادة / الوحدة / الفصل",
         "canDeleteCourseStructure": "يمكنه حذف المادة / الوحدة / الفصل",
         "showBulkUpload": "إظهار زر الرفع الجماعي (ZIP)",
-        "canDeleteCourse": "يمكنه حذف الدورة"
+        "canDeleteCourse": "يمكنه حذف الدورة",
+        "requireCourseApproval": "يتطلب موافقة المشرف قبل نشر الدورات الجديدة (إرسال للمراجعة)"
     },
     "authoredCoursesCard": {
         "title": "بطاقة الدورات التي أنشأها",

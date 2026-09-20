@@ -615,16 +615,27 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             }
         };
 
+        // "Courses In Review" only makes sense when the role's drafts go
+        // through admin approval. When the admin turns that off for the role
+        // the teacher publishes directly and the tab would never populate,
+        // so hide it.
+        // Decided only once settings are loaded — deciding on the null
+        // first paint would bounce a deep link to ?selectedTab=CourseInReview
+        // before the (possibly on) toggle arrives.
+        const safeRoles = Array.isArray(roles) ? roles : [];
+        const isAdmin = safeRoles.includes('ADMIN');
+        const hideInReviewTab =
+            !isAdmin && !!roleDisplay && roleDisplay.coursePage?.requireCourseApproval === false;
+
         if (roleDisplay?.courseList?.tabs && roleDisplay.courseList.tabs.length > 0) {
             return roleDisplay.courseList.tabs
                 .filter((t) => t.visible !== false)
+                .filter((t) => !(hideInReviewTab && t.id === 'CourseInReview'))
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
                 .map((t) => ({ key: t.id, label: labelFor(t.id as CourseListTabId), show: true }));
         }
 
         // Fallback to original role-based defaults
-        const safeRoles = Array.isArray(roles) ? roles : [];
-        const isAdmin = safeRoles.includes('ADMIN');
         const tabs: { key: string; label: string; show: boolean }[] = [
             {
                 key: 'AuthoredCourses',
@@ -639,7 +650,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             {
                 key: 'CourseInReview',
                 label: t('tabs.termInReview', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) }),
-                show: !isAdmin,
+                show: !isAdmin && !hideInReviewTab,
             },
             {
                 key: 'CourseApproval',
@@ -648,7 +659,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             },
         ];
         return tabs.filter((t) => t.show);
-    }, [roles, roleDisplay?.courseList, instituteDetails?.id, t]);
+    }, [roles, roleDisplay?.courseList, roleDisplay?.coursePage?.requireCourseApproval, instituteDetails?.id, t]);
 
     // Apply default tab from role settings when appropriate
     useEffect(() => {

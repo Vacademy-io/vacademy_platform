@@ -1123,14 +1123,13 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
                             .sort((a, b) => a.order - b.order);
 
                         return sorted.map((cfg, idx) => {
-                            const isForcedVisible = cfg.id === 'CourseApproval';
+                            // The tab that belongs to the OTHER role stays hidden; the
+                            // review/approval tab for this role is a normal toggle so an
+                            // institute that does not use the approval flow can hide it
+                            // (Neeraj, 2026-09-19).
                             const isForcedHidden = cfg.id === 'CourseInReview';
-                            const disabledToggle = isForcedVisible || isForcedHidden;
-                            const enforcedVisible = isForcedVisible
-                                ? true
-                                : isForcedHidden
-                                  ? false
-                                  : cfg.visible;
+                            const disabledToggle = isForcedHidden;
+                            const enforcedVisible = isForcedHidden ? false : cfg.visible;
                             return (
                                 <div
                                     key={cfg.id}

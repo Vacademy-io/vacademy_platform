@@ -54,7 +54,8 @@
             "editStructure": "يمكن تعديل المادة / الوحدة / الفصل",
             "deleteStructure": "يمكن حذف المادة / الوحدة / الفصل",
             "showBulkUpload": "إظهار زر الرفع الجماعي (ZIP)",
-            "deleteCourse": "يمكن حذف الدورة"
+            "deleteCourse": "يمكن حذف الدورة",
+            "requireCourseApproval": "يتطلب موافقة المشرف قبل نشر الدورات الجديدة (إرسال للمراجعة)"
         },
         "authoredCoursesCard": {
             "title": "بطاقة الدورات المؤلَّفة",

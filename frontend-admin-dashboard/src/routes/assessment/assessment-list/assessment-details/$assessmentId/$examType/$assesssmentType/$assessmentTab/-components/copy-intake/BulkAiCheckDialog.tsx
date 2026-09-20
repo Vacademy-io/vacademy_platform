@@ -27,8 +27,9 @@ const MAX_FILES = 200;
 const MAX_MB = 60;
 
 /**
- * Upload a pile of scanned copies at once. Each file is counted (the check is
- * priced per page), uploaded to storage, then the batch is started: the
+ * Upload a pile of scanned copies at once. Each file is page-counted (shown in
+ * the quote; the check itself is billed per graded question, so the quote is
+ * copies x questions), uploaded to storage, then the batch is started: the
  * server reads the student's name off every copy, matches it to the
  * assessment's students and queues the AI check. Progress lives in the batch
  * panel; the admin is told by email, bell and toast when it settles.
@@ -38,12 +39,15 @@ export const BulkAiCheckDialog = ({
     onOpenChange,
     assessmentId,
     instituteId,
+    questionsPerCopy,
     onStarted,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     assessmentId: string;
     instituteId: string;
+    /** Questions on the paper — the unit the AI check is billed in. */
+    questionsPerCopy: number;
     onStarted: (batch: CopyIntakeBatch) => void;
 }) => {
     const { t } = useTranslation('assessmentCopyIntake');
@@ -56,9 +60,12 @@ export const BulkAiCheckDialog = ({
 
     const totalPages = useMemo(() => files.reduce((sum, f) => sum + (f.pages ?? 1), 0), [files]);
     const counting = files.some((f) => f.state === 'counting');
+    // Mirrors the charge the orchestrator records per completed copy
+    // (num_questions = graded questions). num_pages is not a unit the
+    // estimator knows for this tool and previewed as 0 credits.
     const cost = useToolCostPreview(
         'copy_check_evaluation',
-        { num_pages: totalPages },
+        { num_questions: files.length * questionsPerCopy },
         files.length > 0 && !counting
     );
 

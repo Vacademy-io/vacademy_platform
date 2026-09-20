@@ -22,7 +22,7 @@ import logging
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,8 @@ from ..services.ai_billing import charge_tool, preflight_tool_credits
 from ..services.ai_task_service import AiTaskService
 from ..services.model_selection import resolve_models
 from ..services.question_gen_service import QUESTIONS_USE_CASE
-from ..services.staff_notify import system_alert
+from ..core.security import decode_access_token
+from ..services import staff_notify
 from .knowledge_base import Caller, get_caller
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,19 @@ class StartRequest(EstimateRequest):
     )
     return_path: Optional[str] = Field(
         None, description="Dashboard path to open from the alert (relative, e.g. /study-library/...)"
+    )
+
+
+def _notice_email_html(name: Optional[str], title: str, text: str, return_url: Optional[str]) -> str:
+    """Plain, brand-neutral note (no platform names — the institute's sender is
+    what the teacher sees), linking back to the test on their own portal."""
+    from html import escape
+    greeting = f"Hi {escape(name)}," if name else "Hi,"
+    link = (f'<p><a href="{escape(return_url)}">Open the test</a></p>'
+            if return_url and return_url.startswith("https://") else "")
+    return (
+        f"<p>{greeting}</p><p><strong>{escape(title)}</strong></p><p>{escape(text)}</p>{link}"
+        "<p>Learners see nothing until you review and release.</p>"
     )
 
 
@@ -144,14 +158,31 @@ async def estimate(
     }
 
 
+def _caller_contact(authorization: Optional[str]) -> Dict[str, Optional[str]]:
+    """Email + name from the dashboard JWT, for the notice when the read settles."""
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    claims = decode_access_token(token) or {} if token else {}
+    return {"email": claims.get("email") or None, "name": claims.get("fullname") or None}
+
+
 @router.post("/start", status_code=status.HTTP_202_ACCEPTED)
 async def start(
     body: StartRequest,
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
+    authorization: Optional[str] = Header(None),
+    origin: Optional[str] = Header(None),
 ):
     """Read the paper in the background. Poll GET /jobs/{task_id}."""
     resolved = caller.require_institute(body.institute_id)
+    contact = _caller_contact(authorization)
+    # The email needs an absolute link; the dashboard's own origin (white-label
+    # portals differ per institute) + the relative path the page sent.
+    return_url = (
+        f"{origin.rstrip('/')}{body.return_path}"
+        if origin and origin.startswith("https://") and body.return_path and body.return_path.startswith("/")
+        else None
+    )
     try:
         pdf = await paper_digitise.fetch_paper_pdf(body.pdf_url)
     except paper_digitise.PaperPdfError as exc:
@@ -175,6 +206,7 @@ async def start(
                 # For the lookup by test and for the alert when the read settles.
                 "assessment_id": body.assessment_id,
                 "started_by": caller.user_id,
+                "started_by_email": contact["email"],
                 "return_path": body.return_path,
             },
         },
@@ -225,7 +257,8 @@ async def start(
         )
 
     async def _tell_teacher(final_status: Any, result_json: Optional[str], message: Optional[str]) -> None:
-        # The bell is how a teacher who left the page learns the read is done.
+        # Bell + email, like the copy-check notice: the teacher who pressed the
+        # button has usually moved on by the time a read settles.
         if not user_id:
             return
         link = {"assessmentId": body.assessment_id or "", "taskId": task_id, "path": body.return_path or ""}
@@ -235,21 +268,21 @@ async def start(
                 count = len(((json.loads(result_json or "{}") or {}).get("digitised") or {}).get("questions") or [])
             except ValueError:
                 pass
-            await system_alert(
-                resolved, [user_id],
-                f"Question paper read for {test_name}",
-                f"{count} questions with their marks are ready. Review them on the test to turn on AI checking "
-                "of the answer sheets.",
-                source_id=task_id, data=link,
-            )
+            title = f"Question paper read for {test_name}"
+            text = (f"{count} questions with their marks are ready. Review them on the test to turn on "
+                    "AI checking of the answer sheets.")
         else:
-            await system_alert(
-                resolved, [user_id],
-                f"Could not read the question paper for {test_name}",
-                (message or "The paper could not be read.") + " Nothing was charged. You can try again "
-                "from the test, or check the sheets by hand.",
-                source_id=task_id, data=link,
-            )
+            title = f"Could not read the question paper for {test_name}"
+            text = ((message or "The paper could not be read.") + " Nothing was charged. You can try again "
+                    "from the test, or check the sheets by hand.")
+        await staff_notify.system_alert(resolved, [user_id], title, text, source_id=task_id, data=link)
+        await staff_notify.email(
+            resolved,
+            [{"email": contact["email"], "name": contact["name"], "userId": user_id}],
+            title,
+            _notice_email_html(contact["name"], title, text, return_url),
+            source_id=task_id,
+        )
 
     ai_task_service.schedule(task_id, _work, on_done=_tell_teacher)
     logger.info("paper_digitise started task=%s pages=%s institute=%s assessment=%s",

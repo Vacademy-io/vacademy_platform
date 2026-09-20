@@ -424,3 +424,21 @@ def test_title_loses_printed_line_breaks():
     assert paper.title == "ENGLISH GRAMMAR - Part Test-04 - Class IX"
     assert pd.clean_title("<b>Maths</b>") == "Maths"
     assert pd.clean_title(None) == ""
+
+
+def test_a_flattened_question_shape_is_repaired_not_fatal():
+    # 2026-09-20: one `"question": "text"` (a bare string) failed the whole read
+    # with `'str' object has no attribute 'get'` in _dedupe_key.
+    rounds = [{"questions": [
+        {"question_number": "1", "question": "State Newton's first law.", "question_type": "LONG_ANSWER",
+         "marks": 2, "marking_points": "inertia", "tags": "laws"},
+        {"question_number": "2", "question": {"type": "HTML", "content": "Pick one"}, "question_type": "MCQS",
+         "options": ["Red", "Blue"], "correct_options": "2", "marks": 1, "answer_source": "model"},
+    ]}]
+    paper = pd.build_paper(rounds, pdf_url="u", file_name="f.pdf", expected_total=None)
+    assert [q["text"]["content"] for q in paper.questions] == ["State Newton's first law.", "Pick one"]
+    mcq = json.loads(paper.questions[1]["auto_evaluation_json"])["data"]
+    assert mcq["correct_option_ids"] == ["2"]
+    assert paper.questions[1]["options"][1]["text"]["content"] == "Blue"
+    rubric = json.loads(paper.questions[0]["evaluation_criteria_json"])["rubric"]
+    assert rubric[0]["evaluation_guidelines"] == "inertia"

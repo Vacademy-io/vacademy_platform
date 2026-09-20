@@ -185,7 +185,18 @@ async def start(
     test_name = (body.title or pdf.file_name)[:120]
 
     async def _work() -> str:
-        paper = await paper_digitise.digitise(pdf, models, expected_total=expected_total)
+        try:
+            paper = await paper_digitise.digitise(pdf, models, expected_total=expected_total)
+        except RuntimeError:
+            raise  # already worded for the teacher
+        except Exception as exc:  # noqa: BLE001
+            # The message becomes the card text and the bell body: a Python
+            # error string helps nobody there. The traceback stays in the log.
+            logger.exception("paper_digitise task=%s crashed", task_id)
+            raise RuntimeError(
+                "The paper could not be read this time because of an internal error. "
+                "Nothing was charged — please try again in a minute."
+            ) from exc
         if not paper.questions:
             # Nothing usable → the job FAILS and nothing is charged (MathPix cost is ours).
             raise RuntimeError(

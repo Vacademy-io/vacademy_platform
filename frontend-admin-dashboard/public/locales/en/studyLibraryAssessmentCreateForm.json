@@ -152,6 +152,11 @@
         "failedInline": "The last read failed: {{reason}} Nothing was charged.",
         "readyToast": "Question paper read for {{name}} — {{count}} questions. Review them to turn on AI checking.",
         "failedToast": "Could not read the question paper for {{name}}: {{reason}}",
-        "review": "Review"
+        "review": "Review",
+        "viewProgress": "View progress",
+        "continueButton": "Continue in background",
+        "continuing": "The paper is still being read. You will get an alert — and a Review button here — when it is ready.",
+        "stayNote": "Stay on this dialog and the review opens by itself the moment the read finishes.",
+        "leaveNote": "Or continue in the background: you can leave this page, and an alert will tell you when it is ready. The read is charged either way once it finishes."
     }
 }

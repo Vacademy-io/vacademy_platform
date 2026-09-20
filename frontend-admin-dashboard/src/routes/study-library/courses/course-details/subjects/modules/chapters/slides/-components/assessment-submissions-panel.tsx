@@ -299,6 +299,7 @@ const AssessmentSubmissionsPanel = ({
         <div className="rounded-md border border-neutral-200 bg-white">
             <EnableAiChecking
                 assessmentId={assessmentId}
+                assessmentName={assessmentDetails?.[0]?.saved_data?.name ?? undefined}
                 instructionsHtml={instructionsHtml}
                 totalMarks={maxMarksTotal > 0 ? maxMarksTotal : null}
             />

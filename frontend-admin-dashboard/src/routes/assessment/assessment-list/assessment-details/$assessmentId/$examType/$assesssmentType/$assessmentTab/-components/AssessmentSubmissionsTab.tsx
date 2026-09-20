@@ -1285,6 +1285,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                 {isManualEvaluation && (
                     <EnableAiChecking
                         assessmentId={assessmentId}
+                        assessmentName={assessmentDetailsData?.[0]?.saved_data?.name ?? undefined}
                         instructionsHtml={savedInstructionsHtml}
                         totalMarks={savedTotalMarks > 0 ? savedTotalMarks : null}
                         framed

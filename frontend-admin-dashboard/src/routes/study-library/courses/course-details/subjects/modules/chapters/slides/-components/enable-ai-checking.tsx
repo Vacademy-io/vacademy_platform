@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Coins, FilePdf, Sparkle, Spinner, WarningCircle } from '@phosphor-icons/react';
+import { CheckCircle, Coins, FilePdf, Sparkle, Spinner, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyDropdown } from '@/components/design-system/dropdown';
@@ -15,6 +15,8 @@ import {
     estimatePaperDigitise,
     findPdfAttachments,
     getAiGradability,
+    getPaperDigitiseJobForAssessment,
+    isJobRunning,
     paperDigitiseErrorMessage,
     type AdoptQuestionsResult,
     type DigitisedPaper,
@@ -39,16 +41,25 @@ type Step =
  * attempt points at changes), turns AI checking on, and readies every sheet
  * already uploaded. Sheets the teacher graded by hand are left alone.
  *
+ * The read takes minutes and runs on the server, so this never blocks: the
+ * card shows "reading…" from the job the server holds for this test (a test
+ * created with AI checking on arrives here with that read already running),
+ * the root watcher toasts once when it settles, and "Review & enable" opens
+ * the result whenever the teacher comes back — from any tab or device.
+ *
  * Rendered only while the test is placeholder-only; disappears once enabled.
  */
 export const EnableAiChecking = ({
     assessmentId,
+    assessmentName,
     instructionsHtml,
     totalMarks,
     framed = false,
     onEnabled,
 }: {
     assessmentId: string;
+    /** What the toast / bell call the test. */
+    assessmentName?: string;
     /** The test's saved instructions — where the paper PDF was attached. */
     instructionsHtml: string | null | undefined;
     /** The placeholder's marks, i.e. the paper's total as the teacher typed it. */
@@ -59,7 +70,7 @@ export const EnableAiChecking = ({
 }) => {
     const { t } = useTranslation('studyLibraryAssessmentCreateForm');
     const queryClient = useQueryClient();
-    const { state, starting, start, abandon } = usePaperDigitise();
+    const { state, starting, start, attach, abandon } = usePaperDigitise();
     const [step, setStep] = useState<Step>({ kind: 'closed' });
     const [checking, setChecking] = useState(false);
     // Bank ids already saved for this exact set — a retry after the adopt call
@@ -73,11 +84,29 @@ export const EnableAiChecking = ({
         staleTime: 60 * 1000,
     });
 
+    const placeholderOnly = Boolean(gradability?.placeholder_only);
+
+    // The read the server holds for this test — polled only while it is running.
+    const { data: job } = useQuery({
+        queryKey: ['PAPER_READ', assessmentId],
+        queryFn: () => getPaperDigitiseJobForAssessment(assessmentId),
+        enabled: Boolean(assessmentId) && placeholderOnly,
+        staleTime: 5 * 1000,
+        refetchInterval: (query) => (isJobRunning(query.state.data) ? 10 * 1000 : false),
+    });
+
     const pdfs = useMemo(() => findPdfAttachments(instructionsHtml || ''), [instructionsHtml]);
     const [selectedUrl, setSelectedUrl] = useState('');
     const pdfUrl = pdfs.some((p) => p.url === selectedUrl) ? selectedUrl : (pdfs[0]?.url ?? '');
 
-    if (!gradability?.placeholder_only) return null;
+    if (!placeholderOnly) return null;
+
+    const reading = isJobRunning(job);
+    const ready = job?.status === 'COMPLETED' && job.result && job.result.questions.length > 0 ? job.result : null;
+    const readFailed = job?.status === 'FAILED' || (job?.status === 'COMPLETED' && !ready);
+    const startedAgoMin = job?.created_at
+        ? Math.max(0, Math.round((Date.now() - new Date(job.created_at).getTime()) / 60000))
+        : null;
 
     const openConfirm = async (url: string) => {
         setStep({ kind: 'confirm', loading: true });
@@ -96,10 +125,15 @@ export const EnableAiChecking = ({
     const beginRead = async () => {
         if (!pdfUrl) return;
         setStep({ kind: 'closed' });
-        await start({
+        const started = await start({
             pdfUrl,
             expectedTotalMarks: totalMarks && totalMarks > 0 ? totalMarks : undefined,
+            title: assessmentName,
+            assessmentId,
+            name: assessmentName || t('retrofit.thisTest'),
+            returnPath: `${window.location.pathname}${window.location.search}`,
         });
+        if (started) toast.info(t('background.started', { credits: started.estimate.estimated_credits }));
     };
 
     const adopt = async (paper: DigitisedPaper, accepted: ReviewedQuestion[]) => {
@@ -193,25 +227,61 @@ export const EnableAiChecking = ({
                 )}
             >
                 <div className="flex items-start gap-2">
-                    <Sparkle className="mt-0.5 size-4 shrink-0 text-primary-500" weight="bold" />
+                    {reading ? (
+                        <Spinner className="mt-0.5 size-4 shrink-0 animate-spin text-primary-500" />
+                    ) : ready ? (
+                        <CheckCircle className="mt-0.5 size-4 shrink-0 text-success-600" weight="bold" />
+                    ) : (
+                        <Sparkle className="mt-0.5 size-4 shrink-0 text-primary-500" weight="bold" />
+                    )}
                     <div className="flex min-w-0 flex-1 flex-col">
                         <span className="text-xs font-semibold text-neutral-800">
-                            {t('retrofit.title')}
+                            {reading
+                                ? t('background.readingTitle')
+                                : ready
+                                  ? t('background.readyTitle', { count: ready.questions.length })
+                                  : t('retrofit.title')}
                         </span>
                         <span className="text-2xs text-neutral-500">
-                            {pdfs.length > 0 ? t('retrofit.description') : t('retrofit.noPdf')}
+                            {reading
+                                ? startedAgoMin != null
+                                    ? t('background.readingSince', { count: startedAgoMin })
+                                    : t('background.readingHint')
+                                : ready
+                                  ? t('background.readyHint')
+                                  : readFailed
+                                    ? t('background.failedInline', {
+                                          reason: job?.status_message || t('aiCheck.noQuestions'),
+                                      })
+                                    : pdfs.length > 0
+                                      ? t('retrofit.description')
+                                      : t('retrofit.noPdf')}
                         </span>
                     </div>
-                    <MyButton
-                        buttonType="primary"
-                        scale="small"
-                        disable={pdfs.length === 0 || starting || state.phase === 'running'}
-                        onClick={() => void openConfirm(pdfUrl)}
-                    >
-                        <span className="text-xs">{t('retrofit.enableButton')}</span>
-                    </MyButton>
+                    {ready ? (
+                        <MyButton buttonType="primary" scale="small" onClick={() => attach(ready)}>
+                            <span className="text-xs">{t('background.reviewButton')}</span>
+                        </MyButton>
+                    ) : (
+                        <MyButton
+                            buttonType="primary"
+                            scale="small"
+                            disable={pdfs.length === 0 || starting || reading}
+                            onClick={() => void openConfirm(pdfUrl)}
+                        >
+                            <span className="text-xs">
+                                {readFailed ? t('aiCheck.tryAgain') : t('retrofit.enableButton')}
+                            </span>
+                        </MyButton>
+                    )}
                 </div>
-                {pdfs.length > 1 && (
+                {state.phase === 'failed' && (
+                    <p className="flex items-start gap-1.5 text-2xs text-danger-600">
+                        <WarningCircle className="mt-0.5 size-3 shrink-0" />
+                        {state.message}
+                    </p>
+                )}
+                {pdfs.length > 1 && !reading && !ready && (
                     <MyDropdown
                         currentValue={pdfs.find((p) => p.url === pdfUrl)?.name ?? ''}
                         dropdownList={pdfs.map((p) => ({ label: p.name, value: p.url }))}
@@ -295,58 +365,6 @@ export const EnableAiChecking = ({
                                 )}
                             </>
                         )}
-                    </div>
-                )}
-            </MyDialog>
-
-            {/* Reading / failed */}
-            <MyDialog
-                heading={
-                    state.phase === 'failed' ? t('aiCheck.failedHeading') : t('aiCheck.readingHeading')
-                }
-                open={state.phase === 'running' || state.phase === 'failed'}
-                onOpenChange={(next) => {
-                    if (!next && state.phase === 'failed') abandon();
-                }}
-                dialogWidth="max-w-lg"
-                footer={
-                    state.phase === 'failed' ? (
-                        <>
-                            <MyButton buttonType="secondary" scale="medium" onClick={abandon}>
-                                {t('form.cancel')}
-                            </MyButton>
-                            <MyButton
-                                buttonType="primary"
-                                scale="medium"
-                                disable={starting}
-                                onClick={() => void beginRead()}
-                            >
-                                {t('aiCheck.tryAgain')}
-                            </MyButton>
-                        </>
-                    ) : (
-                        <MyButton buttonType="secondary" scale="medium" onClick={abandon}>
-                            {t('retrofit.stopWaiting')}
-                        </MyButton>
-                    )
-                }
-            >
-                {state.phase === 'failed' ? (
-                    <div className="flex flex-col gap-3">
-                        <p className="flex items-start gap-2 text-body text-danger-600">
-                            <WarningCircle className="mt-0.5 size-5 shrink-0" />
-                            {state.message}
-                        </p>
-                        <p className="text-caption text-neutral-500">{t('retrofit.failedHint')}</p>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-3">
-                        <p className="flex items-center gap-3 text-body text-neutral-700">
-                            <Spinner className="size-5 shrink-0 animate-spin text-primary-500" />
-                            {t('retrofit.readingBody')}
-                        </p>
-                        <p className="text-caption text-neutral-500">{t('aiCheck.readingHint')}</p>
-                        <p className="text-caption text-neutral-500">{t('aiCheck.skipNote')}</p>
                     </div>
                 )}
             </MyDialog>

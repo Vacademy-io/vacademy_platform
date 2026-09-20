@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { Coins, FilePdf, ListChecks, Sparkle, Spinner, WarningCircle } from '@phosphor-icons/react';
 
 import { MyButton } from '@/components/design-system/button';
-import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { MyDropdown } from '@/components/design-system/dropdown';
@@ -18,13 +17,9 @@ import {
     findPdfAttachments,
     hasNonPdfAttachment,
     paperDigitiseErrorMessage,
-    type DigitisedPaper,
     type PaperDigitiseEstimate,
 } from '@/services/paper-digitise';
 import { usePaperDigitise } from '../-hooks/use-paper-digitise';
-import { savePaperToQuestionBank } from '@/routes/knowledge-base/-services/paper-service';
-import { getQuestionPaperById } from '@/routes/assessment/question-papers/-utils/question-paper-services';
-import { PaperDigitiseReviewDialog, type ReviewedQuestion } from './paper-digitise-review-dialog';
 import {
     STEP1_ASSESSMENT_URL,
     STEP2_ASSESSMENT_URL,
@@ -164,7 +159,7 @@ const AssessmentCreateForm = () => {
         | { status: 'ready'; data: PaperDigitiseEstimate }
         | { status: 'error'; message: string }
     >({ status: 'idle' });
-    const { state: digitise, starting, start: startRead, abandon: abandonRead } = usePaperDigitise();
+    const { starting, start: startRead } = usePaperDigitise();
     // Why AI checking switched itself off (unreadable PDF, AI service down…). Kept
     // apart from `estimate` so the reason stays on screen after the switch is off.
     const [aiCheckDisabledReason, setAiCheckDisabledReason] = useState<string | null>(null);
@@ -310,14 +305,6 @@ const AssessmentCreateForm = () => {
         return true;
     };
 
-    /**
-     * The questions the assessment is built from. `null` = the classic single
-     * placeholder ("Upload your answer sheet.") carrying every mark, graded by
-     * hand; otherwise the digitised paper's questions, each with its own marks
-     * and rubric, graded by the AI on every upload.
-     */
-    type ProvisionPlan = { paper: DigitisedPaper; accepted: ReviewedQuestion[] } | null;
-
     type ProvisionedQuestion = { id: string; type: string; marks: number; criteria: string | null };
 
     const createPlaceholderQuestion = async (): Promise<ProvisionedQuestion[]> => {
@@ -343,75 +330,15 @@ const AssessmentCreateForm = () => {
     };
 
     /**
-     * Store the digitised questions in the question bank (so the paper is also
-     * reusable from Question Papers) and read their ids back. The bank returns
-     * questions in the order sent, which is the order of `accepted`.
+     * Create the test with the placeholder question, publish it and link it as a
+     * slide. Returns the new assessment id. AI checking is switched on later, by
+     * the read + review on the test's card — the read takes minutes and must not
+     * hold the teacher here.
      */
-    // Ids already saved for this exact set — a retry after a later step failed
-    // must not file the same paper into the bank twice.
-    const savedQuestionsRef = useRef<{ key: string; questions: ProvisionedQuestion[] } | null>(null);
-
-    const saveDigitisedQuestions = async (
-        paper: DigitisedPaper,
-        accepted: ReviewedQuestion[],
-        assessmentName: string
-    ): Promise<ProvisionedQuestion[]> => {
-        const cacheKey = JSON.stringify([paper.file_name, paper.estimate, accepted]);
-        if (savedQuestionsRef.current?.key === cacheKey) return savedQuestionsRef.current.questions;
-
-        const questions = accepted.map(({ index, marks }) => {
-            const dto = paper.questions[index]!;
-            // The teacher may have corrected the marks on review; the rubric's
-            // maximum must follow or the checker caps at the old number.
-            let criteria = dto.evaluation_criteria_json ?? null;
-            try {
-                const parsed = criteria ? JSON.parse(criteria) : null;
-                if (parsed && typeof parsed === 'object' && Number(parsed.max_marks) !== marks) {
-                    const items: Array<{ max_marks?: number }> = Array.isArray(parsed.rubric)
-                        ? parsed.rubric
-                        : [];
-                    const oldTotal = items.reduce((sum, c) => sum + Number(c.max_marks || 0), 0);
-                    const factor = oldTotal > 0 ? marks / oldTotal : 0;
-                    items.forEach((c) => {
-                        c.max_marks = Math.round(Number(c.max_marks || 0) * factor * 100) / 100;
-                    });
-                    parsed.max_marks = marks;
-                    criteria = JSON.stringify(parsed);
-                }
-            } catch {
-                /* keep the rubric as generated */
-            }
-            return { dto: { ...dto, evaluation_criteria_json: criteria }, marks, criteria };
-        });
-
-        const saved = await savePaperToQuestionBank({
-            // The paper's printed title reads far better in the bank than the
-            // upload's UUID-prefixed file name; the test's name is the fallback.
-            title: paper.title || assessmentName,
-            questions: questions.map((q) => q.dto),
-            subjectId: selectedSubjectId || subjectId || undefined,
-        });
-        const savedId = saved?.saved_question_paper_id;
-        if (!savedId) throw new Error(t('errors.questionsNotSaved'));
-        const stored = await getQuestionPaperById(savedId);
-        const ids: string[] = (stored?.question_dtolist ?? []).map((q: { id: string }) => q.id);
-        if (ids.length !== questions.length) {
-            throw new Error(t('errors.questionsNotSaved'));
-        }
-        const provisioned = questions.map((q, i) => ({
-            id: ids[i]!,
-            type: String(q.dto.question_type || 'LONG_ANSWER'),
-            marks: q.marks,
-            criteria: q.criteria,
-        }));
-        savedQuestionsRef.current = { key: cacheKey, questions: provisioned };
-        return provisioned;
-    };
-
-    const provision = async (plan: ProvisionPlan) => {
+    const provision = async (): Promise<string | null> => {
         const trimmed = name.trim();
-        if (!trimmed || isCreating) return;
-        if (!validateForm()) return;
+        if (!trimmed || isCreating) return null;
+        if (!validateForm()) return null;
 
         setIsCreating(true);
         try {
@@ -424,17 +351,13 @@ const AssessmentCreateForm = () => {
             const endIso = hasDateRange
                 ? new Date(endDate).toISOString()
                 : new Date('9999-12-31T23:59:59.999Z').toISOString();
-            const aiGraded = plan !== null;
-
             // Standard learner-facing note appended after the admin's description.
             const noteHtml = t('createLogic.noteHtml', { count: durationMin });
             const instructionsHtml = `${description || ''}${noteHtml}`;
 
-            // Questions first: if the bank refuses them, no half-made assessment
+            // Question first: if it cannot be created, no half-made assessment
             // is left behind in DRAFT.
-            const questions = plan
-                ? await saveDigitisedQuestions(plan.paper, plan.accepted, trimmed)
-                : await createPlaceholderQuestion();
+            const questions = await createPlaceholderQuestion();
             const sectionMarks = questions.reduce((sum, q) => sum + q.marks, 0);
 
             // Step 1 — basic info (DRAFT / INCOMPLETE), always MANUAL.
@@ -458,17 +381,16 @@ const AssessmentCreateForm = () => {
                     default_reattempt_count: reattempts,
                     switch_sections: true,
                     evaluation_type: 'MANUAL',
-                    // PDF = the copy-check reads the uploaded sheet; the manual
-                    // path kept its historical blank.
-                    submission_type: aiGraded ? 'PDF' : '',
+                    // Blank as the manual path always was; adopt-questions sets
+                    // PDF when AI checking is switched on.
+                    submission_type: '',
                     result_type: 'MANUAL',
                     // The attempt count is the hard cap — students can't request
                     // extra re-attempts beyond it.
                     raise_reattempt_request: false,
                     raise_time_increase_request: false,
-                    // Queues an AI check of every upload. Metered per question
-                    // per sheet — stated on the review screen before this runs.
-                    ai_evaluation_enabled: aiGraded,
+                    // Off until the paper has been read and reviewed (adopt-questions).
+                    ai_evaluation_enabled: false,
                 },
             });
 
@@ -566,48 +488,44 @@ const AssessmentCreateForm = () => {
             // Re-attempt is driven solely by the attempt count: only allow it
             // when more than one attempt is permitted.
             await linkAssessmentAsSlide(newAssessmentId, trimmed, reattempts > 1);
-
-            abandonRead();
-            toast.success(
-                aiGraded
-                    ? t('toasts.createdWithAi', { count: questions.length })
-                    : t('toasts.createdAndPublished')
-            );
+            return newAssessmentId as string;
         } catch (err) {
             console.error('Failed to create assessment from slide', err);
             toast.error((err as Error)?.message || t('errors.failedToCreate'));
+            return null;
         } finally {
             setIsCreating(false);
         }
     };
 
-    // ---- Digitise: read the attached paper, then review, then provision -----
-    const startDigitise = async () => {
+    // ---- Create now; read the paper in the background ------------------------
+    const handleCreate = async () => {
         const trimmed = name.trim();
-        if (!trimmed || isCreating || starting || !selectedPdfUrl) return;
-        if (!validateForm()) return;
+        const withAi = aiCheck && Boolean(selectedPdfUrl);
+        const newAssessmentId = await provision();
+        if (!newAssessmentId) return;
+        if (!withAi) {
+            toast.success(t('toasts.createdAndPublished'));
+            return;
+        }
         const expected = parseInt(totalMarks, 10);
-        await startRead({
+        const started = await startRead({
             pdfUrl: selectedPdfUrl,
             expectedTotalMarks: Number.isFinite(expected) && expected > 0 ? expected : undefined,
             title: trimmed,
+            assessmentId: newAssessmentId,
+            name: trimmed,
+            returnPath: `${window.location.pathname}${window.location.search}`,
         });
-    };
-
-    const handleCreate = () => {
-        if (aiCheck && selectedPdfUrl) {
-            void startDigitise();
+        if (started) {
+            toast.success(t('toasts.createdReading', { credits: started.estimate.estimated_credits }), {
+                duration: 10_000,
+            });
         } else {
-            void provision(null);
+            // The test exists; the read did not start (credits, bad PDF…). The
+            // card on the new slide offers to try again.
+            toast.warning(t('toasts.createdReadNotStarted'), { duration: 10_000 });
         }
-    };
-
-    const createWithoutAi = () => {
-        // The read carries on server-side (and its charge stands if it finishes);
-        // the teacher is told so on the dialog before choosing this. Its result is
-        // no longer wanted here — the late poll must not reopen the review.
-        abandonRead();
-        void provision(null);
     };
 
     const estimateData = estimate.status === 'ready' ? estimate.data : null;
@@ -888,19 +806,18 @@ const AssessmentCreateForm = () => {
                     buttonType="secondary"
                     scale="medium"
                     onClick={() => setAssessmentCreateMode(false)}
-                    disable={isCreating || starting || digitise.phase === 'running'}
+                    disable={isCreating || starting}
                 >
                     {t('form.cancel')}
                 </MyButton>
                 <MyButton
                     buttonType="primary"
                     scale="medium"
-                    onClick={handleCreate}
+                    onClick={() => void handleCreate()}
                     disable={
                         !name.trim() ||
                         isCreating ||
                         starting ||
-                        digitise.phase === 'running' ||
                         estimateBlocksCreate
                     }
                 >
@@ -908,97 +825,14 @@ const AssessmentCreateForm = () => {
                         ? t('form.creating')
                         : aiCheck && selectedPdfUrl
                           ? estimateData
-                              ? t('form.readPaperAndCreate', {
+                              ? t('form.createAndReadPaper', {
                                     credits: estimateData.estimate.estimated_credits,
                                 })
-                              : t('form.readPaperAndCreateNoEstimate')
+                              : t('form.createAndReadPaperNoEstimate')
                           : t('form.createAssessment')}
                 </MyButton>
             </div>
 
-            {/* Reading the paper: progress, or why it stopped */}
-            <MyDialog
-                heading={
-                    digitise.phase === 'failed'
-                        ? t('aiCheck.failedHeading')
-                        : t('aiCheck.readingHeading')
-                }
-                open={digitise.phase === 'running' || digitise.phase === 'failed'}
-                onOpenChange={(next) => {
-                    // Closing the failure dialog abandons AI checking for this attempt;
-                    // the running state can only be left through its own buttons.
-                    if (!next && digitise.phase === 'failed') abandonRead();
-                }}
-                dialogWidth="max-w-lg"
-                footer={
-                    digitise.phase === 'failed' ? (
-                        <>
-                            <MyButton
-                                buttonType="secondary"
-                                scale="medium"
-                                onClick={createWithoutAi}
-                                disable={isCreating}
-                            >
-                                {t('review.createWithoutAi')}
-                            </MyButton>
-                            <MyButton
-                                buttonType="primary"
-                                scale="medium"
-                                onClick={() => void startDigitise()}
-                                disable={isCreating || starting}
-                            >
-                                {t('aiCheck.tryAgain')}
-                            </MyButton>
-                        </>
-                    ) : (
-                        <MyButton
-                            buttonType="secondary"
-                            scale="medium"
-                            onClick={createWithoutAi}
-                            disable={isCreating}
-                        >
-                            {t('aiCheck.skipAndCreate')}
-                        </MyButton>
-                    )
-                }
-            >
-                {digitise.phase === 'failed' ? (
-                    <div className="flex flex-col gap-3">
-                        <p className="flex items-start gap-2 text-body text-danger-600">
-                            <WarningCircle className="mt-0.5 size-5 shrink-0" />
-                            {digitise.message}
-                        </p>
-                        <p className="text-caption text-neutral-500">{t('aiCheck.failedHint')}</p>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-3">
-                        <p className="flex items-center gap-3 text-body text-neutral-700">
-                            <Spinner className="size-5 shrink-0 animate-spin text-primary-500" />
-                            {t('aiCheck.readingBody', {
-                                credits: estimateData?.estimate.estimated_credits ?? 0,
-                            })}
-                        </p>
-                        <p className="text-caption text-neutral-500">{t('aiCheck.readingHint')}</p>
-                        <p className="text-caption text-neutral-500">{t('aiCheck.skipNote')}</p>
-                    </div>
-                )}
-            </MyDialog>
-
-            <PaperDigitiseReviewDialog
-                open={digitise.phase === 'review'}
-                paper={digitise.phase === 'review' ? digitise.paper : null}
-                expectedTotal={expectedTotalNumber}
-                busy={isCreating}
-                onConfirm={(accepted) => {
-                    if (digitise.phase !== 'review') return;
-                    void provision({ paper: digitise.paper, accepted });
-                }}
-                onCreateWithoutAi={createWithoutAi}
-                onClose={() => {
-                    abandonRead();
-                    toast.info(t('aiCheck.reviewClosed'));
-                }}
-            />
         </div>
     );
 };

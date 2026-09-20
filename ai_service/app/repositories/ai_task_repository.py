@@ -81,6 +81,20 @@ class AiTaskRepository:
     def get(self, task_id: str) -> Optional[AiTask]:
         return self.db.get(AiTask, task_id)
 
+    def query_for_institute(self, institute_id: str, task_type: Optional[str] = None):
+        """Newest first; callers add their own filters before `.first()`/`.all()`."""
+        q = self.db.query(AiTask).filter(AiTask.institute_id == institute_id)
+        if task_type:
+            q = q.filter(AiTask.task_type == task_type)
+        return q.order_by(AiTask.created_at.desc())
+
+    @staticmethod
+    def dynamic_values_contains(fragment: str):
+        """Filter on the JSON text of dynamic_values_map (a TEXT column, so a
+        substring match — pass a `"key": "value"` fragment exactly as json.dumps
+        writes it)."""
+        return AiTask.dynamic_values_map.like(f"%{fragment}%")
+
     def list_by_institute(
         self, institute_id: str, task_type: Optional[str] = None
     ) -> List[AiTask]:

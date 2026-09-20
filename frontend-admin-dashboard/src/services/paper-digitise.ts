@@ -72,8 +72,13 @@ export interface PaperDigitiseJob {
     task_id: string;
     status: 'PROGRESS' | 'COMPLETED' | 'FAILED' | string;
     status_message: string | null;
+    /** ISO time the read was started; null on older jobs. */
+    created_at?: string | null;
     result: DigitisedPaper | null;
 }
+
+export const isJobRunning = (job: PaperDigitiseJob | null | undefined): boolean =>
+    Boolean(job) && job!.status !== 'COMPLETED' && job!.status !== 'FAILED' && job!.status !== 'CANCELLED';
 
 export const estimatePaperDigitise = async (pdfUrl: string): Promise<PaperDigitiseEstimate> => {
     const { data } = await authenticatedAxiosInstance.post<PaperDigitiseEstimate>(`${BASE}/estimate`, {
@@ -86,11 +91,17 @@ export const startPaperDigitise = async (input: {
     pdfUrl: string;
     expectedTotalMarks?: number;
     title?: string;
+    /** The test the paper belongs to — lets its page find the read later and the alert point at it. */
+    assessmentId?: string;
+    /** Dashboard path to return to from the alert / toast. */
+    returnPath?: string;
 }): Promise<PaperDigitiseStart> => {
     const { data } = await authenticatedAxiosInstance.post<PaperDigitiseStart>(`${BASE}/start`, {
         pdf_url: input.pdfUrl,
         expected_total_marks: input.expectedTotalMarks ?? null,
         title: input.title || null,
+        assessment_id: input.assessmentId || null,
+        return_path: input.returnPath || null,
     });
     return data;
 };
@@ -98,6 +109,76 @@ export const startPaperDigitise = async (input: {
 export const getPaperDigitiseJob = async (taskId: string): Promise<PaperDigitiseJob> => {
     const { data } = await authenticatedAxiosInstance.get<PaperDigitiseJob>(`${BASE}/jobs/${taskId}`);
     return data;
+};
+
+/** The newest read started for a test; null when none was. */
+export const getPaperDigitiseJobForAssessment = async (
+    assessmentId: string
+): Promise<PaperDigitiseJob | null> => {
+    try {
+        const { data } = await authenticatedAxiosInstance.get<PaperDigitiseJob>(
+            `${BASE}/jobs/for-assessment/${assessmentId}`
+        );
+        return data;
+    } catch (error: unknown) {
+        if ((error as { response?: { status?: number } })?.response?.status === 404) return null;
+        throw error;
+    }
+};
+
+// ---- Reads started in this browser: one toast each when they settle ----------
+
+export interface PendingPaperRead {
+    taskId: string;
+    assessmentId: string;
+    /** What to call the test in the toast. */
+    name: string;
+    /** Where "Review" takes the teacher. */
+    path: string;
+    startedAt: number;
+}
+
+const PENDING_KEY = 'paper-reads.pending';
+/** A read older than this is not worth a toast any more (the bell has it). */
+const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
+
+const readPending = (): PendingPaperRead[] => {
+    try {
+        const raw = localStorage.getItem(PENDING_KEY);
+        const list = raw ? (JSON.parse(raw) as PendingPaperRead[]) : [];
+        return Array.isArray(list)
+            ? list.filter((p) => p && p.taskId && Date.now() - Number(p.startedAt || 0) < PENDING_TTL_MS)
+            : [];
+    } catch {
+        return [];
+    }
+};
+
+const writePending = (list: PendingPaperRead[]): void => {
+    try {
+        localStorage.setItem(PENDING_KEY, JSON.stringify(list));
+    } catch {
+        /* private mode — the bell still tells them */
+    }
+};
+
+export const listPendingPaperReads = (): PendingPaperRead[] => readPending();
+
+export const rememberPendingPaperRead = (read: Omit<PendingPaperRead, 'startedAt'>): void => {
+    const rest = readPending().filter((p) => p.taskId !== read.taskId);
+    writePending([...rest, { ...read, startedAt: Date.now() }]);
+};
+
+/**
+ * Drop a read from the list and say whether it was there — the caller toasts
+ * only on true, so two ticks (or two tabs) cannot both announce the same read.
+ */
+export const forgetPendingPaperRead = (taskId: string): boolean => {
+    const before = readPending();
+    const after = before.filter((p) => p.taskId !== taskId);
+    if (after.length === before.length) return false;
+    writePending(after);
+    return true;
 };
 
 /**

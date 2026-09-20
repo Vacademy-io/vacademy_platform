@@ -9,7 +9,9 @@
     "toasts": {
         "createdAndPublished": "Assessment created and published.",
         "createdWithAi_one": "Assessment created and published — {{count}} question, AI checking on for every upload.",
-        "createdWithAi_other": "Assessment created and published — {{count}} questions, AI checking on for every upload."
+        "createdWithAi_other": "Assessment created and published — {{count}} questions, AI checking on for every upload.",
+        "createdReading": "Assessment created and published. Reading the question paper in the background (≈{{credits}} credits) — you will get an alert when it is ready to review.",
+        "createdReadNotStarted": "Assessment created and published, but the paper could not be read. Open the slide to try again or check the sheets by hand."
     },
     "createLogic": {
         "noteHtml_one": "<p>Download the question paper above, and when your answers are ready, click <strong>Start Assessment</strong>.</p><p><strong>Note:</strong> Do not click Start Assessment until you have prepared your answers. After clicking Start Assessment, you will have <strong>{{count}} minute</strong> to upload your answers file.</p>",
@@ -43,7 +45,9 @@
         "creating": "Creating…",
         "createAssessment": "Create assessment",
         "readPaperAndCreate": "Read paper & create (≈{{credits}} credits)",
-        "readPaperAndCreateNoEstimate": "Read paper & create"
+        "readPaperAndCreateNoEstimate": "Read paper & create",
+        "createAndReadPaper": "Create & read paper (≈{{credits}} credits)",
+        "createAndReadPaperNoEstimate": "Create & read paper"
     },
     "aiCheck": {
         "title": "Check answer sheets with AI",
@@ -132,6 +136,22 @@
         "checkNow_other": "Check {{count}} sheets now (≈{{credits}} credits)",
         "checkStarted_one": "AI check started for {{count}} sheet.",
         "checkStarted_other": "AI check started for {{count}} sheets.",
-        "checkFailed": "Could not start the AI check. Use “Evaluate with AI” on the submissions page."
+        "checkFailed": "Could not start the AI check. Use “Evaluate with AI” on the submissions page.",
+        "thisTest": "this test"
+    },
+    "background": {
+        "started": "Reading the question paper in the background (≈{{credits}} credits). You can leave this page — you will get an alert when it is ready.",
+        "readingTitle": "Reading the question paper…",
+        "readingHint": "Usually a few minutes. You can leave this page; you will get an alert when it is ready.",
+        "readingSince_one": "Started {{count}} minute ago. You can leave this page; you will get an alert when it is ready.",
+        "readingSince_other": "Started {{count}} minutes ago. You can leave this page; you will get an alert when it is ready.",
+        "readyTitle_one": "Question paper read — {{count}} question",
+        "readyTitle_other": "Question paper read — {{count}} questions",
+        "readyHint": "Review the questions and marks to turn on AI checking of the answer sheets.",
+        "reviewButton": "Review & enable AI checking",
+        "failedInline": "The last read failed: {{reason}} Nothing was charged.",
+        "readyToast": "Question paper read for {{name}} — {{count}} questions. Review them to turn on AI checking.",
+        "failedToast": "Could not read the question paper for {{name}}: {{reason}}",
+        "review": "Review"
     }
 }

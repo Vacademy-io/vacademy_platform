@@ -289,9 +289,10 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 COALESCE(sa.status, 'PENDING') AS attemptStatus,
                 sa.created_at AS attemptDate,
                 sa.total_time_in_seconds AS durationInSeconds,
-                -- For the learner's own list (:hideHeldManualMarks = true) a manual-result
-                -- attempt shows no score until the teacher releases it: the UI hides it,
-                -- and the API must not hand it out either. Admin views pass false.
+                -- Learner list (hideHeldManualMarks = true) -- a manual-result attempt shows
+                -- no score until the teacher releases it. Admin views pass false.
+                -- NB no apostrophes or colons in these comments -- Spring Data parses the
+                -- whole string for quotes and parameters and cannot see SQL comments.
                 CASE
                     WHEN :hideHeldManualMarks = TRUE
                      AND a.result_type = 'MANUAL'
@@ -369,9 +370,10 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 COALESCE(sa.status, 'PENDING') AS attemptStatus,
                 sa.created_at AS attemptDate,
                 sa.total_time_in_seconds AS durationInSeconds,
-                -- For the learner's own list (:hideHeldManualMarks = true) a manual-result
-                -- attempt shows no score until the teacher releases it: the UI hides it,
-                -- and the API must not hand it out either. Admin views pass false.
+                -- Learner list (hideHeldManualMarks = true) -- a manual-result attempt shows
+                -- no score until the teacher releases it. Admin views pass false.
+                -- NB no apostrophes or colons in these comments -- Spring Data parses the
+                -- whole string for quotes and parameters and cannot see SQL comments.
                 CASE
                     WHEN :hideHeldManualMarks = TRUE
                      AND a.result_type = 'MANUAL'

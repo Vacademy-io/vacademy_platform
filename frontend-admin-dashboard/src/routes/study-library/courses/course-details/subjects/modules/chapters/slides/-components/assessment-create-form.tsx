@@ -1,15 +1,30 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ListChecks } from '@phosphor-icons/react';
+import { Coins, FilePdf, ListChecks, Sparkle, Spinner, WarningCircle } from '@phosphor-icons/react';
 
 import { MyButton } from '@/components/design-system/button';
+import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import { Switch } from '@/components/ui/switch';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { cn } from '@/lib/utils';
+import {
+    estimatePaperDigitise,
+    findPdfAttachments,
+    hasNonPdfAttachment,
+    paperDigitiseErrorMessage,
+    type DigitisedPaper,
+    type PaperDigitiseEstimate,
+} from '@/services/paper-digitise';
+import { usePaperDigitise } from '../-hooks/use-paper-digitise';
+import { savePaperToQuestionBank } from '@/routes/knowledge-base/-services/paper-service';
+import { getQuestionPaperById } from '@/routes/assessment/question-papers/-utils/question-paper-services';
+import { PaperDigitiseReviewDialog, type ReviewedQuestion } from './paper-digitise-review-dialog';
 import {
     STEP1_ASSESSMENT_URL,
     STEP2_ASSESSMENT_URL,
@@ -42,9 +57,19 @@ import {
 // assignment. The admin writes a task description (and embeds the question PDF)
 // in the rich-text editor; we append a standard "download → start → you have N
 // minutes" note, set the per-attempt duration, and auto-provision a complete
-// MANUAL assessment (1 section + 1 placeholder question) so it's ready to
-// publish without the wizard. The learner uploads a PDF answer sheet, which the
-// admin evaluates.
+// MANUAL assessment so it's ready to publish without the wizard. The learner
+// uploads a PDF answer sheet.
+//
+// Two shapes of assessment come out of here:
+//  * AI checking OFF — 1 section + 1 placeholder question carrying every mark;
+//    the admin grades the sheet by hand (quick evaluate on the slide).
+//  * AI checking ON — the PDF attached in the description is read into the
+//    paper's real questions with their marks (paper-digitise), the section is
+//    built from those, and ai_evaluation_enabled queues a per-question AI check
+//    of every uploaded sheet. The checker has nothing to grade against without
+//    this — a placeholder question would be graded as a confident guess.
+
+
 const AssessmentCreateForm = () => {
     const { t } = useTranslation('studyLibraryAssessmentCreateForm');
     const router = useRouter();
@@ -128,6 +153,85 @@ const AssessmentCreateForm = () => {
     const [reattemptCount, setReattemptCount] = useState('2');
     const [isCreating, setIsCreating] = useState(false);
 
+    // ---- AI checking: the paper PDF in the description → real questions ----
+    const pdfAttachments = useMemo(() => findPdfAttachments(description), [description]);
+    const nonPdfAttached = useMemo(() => hasNonPdfAttachment(description), [description]);
+    const [aiCheck, setAiCheck] = useState(false);
+    const [selectedPdfUrl, setSelectedPdfUrl] = useState('');
+    const [estimate, setEstimate] = useState<
+        | { status: 'idle' }
+        | { status: 'loading' }
+        | { status: 'ready'; data: PaperDigitiseEstimate }
+        | { status: 'error'; message: string }
+    >({ status: 'idle' });
+    const { state: digitise, starting, start: startRead, abandon: abandonRead } = usePaperDigitise();
+    // Why AI checking switched itself off (unreadable PDF, AI service down…). Kept
+    // apart from `estimate` so the reason stays on screen after the switch is off.
+    const [aiCheckDisabledReason, setAiCheckDisabledReason] = useState<string | null>(null);
+
+    // Keep the selected paper pointing at something that is still attached, and
+    // switch AI checking on the first time a paper appears: it is the reason the
+    // paper is attached, and the cost is on screen before Create is pressed. A
+    // teacher who turns it off is not overruled when they attach another file.
+    const aiAutoEnabled = useRef(false);
+    useEffect(() => {
+        if (pdfAttachments.length === 0) {
+            if (selectedPdfUrl) setSelectedPdfUrl('');
+            if (aiCheck) setAiCheck(false);
+            return;
+        }
+        if (!pdfAttachments.some((a) => a.url === selectedPdfUrl)) {
+            setSelectedPdfUrl(pdfAttachments[0]!.url);
+            setAiCheckDisabledReason(null);
+        }
+        if (!aiAutoEnabled.current) {
+            aiAutoEnabled.current = true;
+            setAiCheck(true);
+        }
+    }, [pdfAttachments, selectedPdfUrl, aiCheck]);
+
+    // Price the read as soon as there is a paper to price — the teacher should
+    // know the number before pressing Create, not be told after.
+    useEffect(() => {
+        if (!aiCheck || !selectedPdfUrl) {
+            setEstimate({ status: 'idle' });
+            return;
+        }
+        let cancelled = false;
+        setEstimate({ status: 'loading' });
+        const handle = setTimeout(() => {
+            estimatePaperDigitise(selectedPdfUrl)
+                .then((data) => {
+                    if (cancelled) return;
+                    setEstimate({ status: 'ready', data });
+                    setAiCheckDisabledReason(null);
+                })
+                .catch((error: unknown) => {
+                    if (cancelled) return;
+                    // The read cannot happen (bad PDF, AI service unreachable). Switch AI
+                    // checking off rather than hold the whole form hostage — creating the
+                    // test by hand is the teacher's daily path and must never be blocked by
+                    // this feature. The reason stays on the card so they can fix and re-enable.
+                    const message = paperDigitiseErrorMessage(error, t('aiCheck.estimateFailed'));
+                    setEstimate({ status: 'error', message });
+                    setAiCheckDisabledReason(message);
+                    setAiCheck(false);
+                });
+        }, 500);
+        return () => {
+            cancelled = true;
+            clearTimeout(handle);
+        };
+    }, [aiCheck, selectedPdfUrl, t]);
+
+    // Only a deliberate decision blocks Create: not enough credits for the read the
+    // teacher has switched on (turn it off, or top up). A pending estimate merely
+    // waits; a failed one has already switched AI checking off above.
+    const estimateBlocksCreate =
+        aiCheck &&
+        (estimate.status === 'loading' ||
+            (estimate.status === 'ready' && estimate.data.estimate.sufficient === false));
+
     const linkAssessmentAsSlide = async (
         assessmentId: string,
         assessmentName: string,
@@ -194,23 +298,123 @@ const AssessmentCreateForm = () => {
         setActiveItem(newSlide);
     };
 
-    const handleCreate = async () => {
-        const trimmed = name.trim();
-        if (!trimmed || isCreating) return;
+    const validateForm = (): boolean => {
         if (hasDateRange && (!startDate || !endDate)) {
             toast.error(t('errors.enterBothDates'));
-            return;
+            return false;
         }
         if (hasDateRange && new Date(endDate) <= new Date(startDate)) {
             toast.error(t('errors.endDateAfterStart'));
-            return;
+            return false;
         }
+        return true;
+    };
+
+    /**
+     * The questions the assessment is built from. `null` = the classic single
+     * placeholder ("Upload your answer sheet.") carrying every mark, graded by
+     * hand; otherwise the digitised paper's questions, each with its own marks
+     * and rubric, graded by the AI on every upload.
+     */
+    type ProvisionPlan = { paper: DigitisedPaper; accepted: ReviewedQuestion[] } | null;
+
+    type ProvisionedQuestion = { id: string; type: string; marks: number; criteria: string | null };
+
+    const createPlaceholderQuestion = async (): Promise<ProvisionedQuestion[]> => {
+        const questionRes = await authenticatedAxiosInstance({
+            method: 'POST',
+            url: PRIVATE_ADD_QUESTIONS,
+            data: {
+                questions: [
+                    {
+                        question_type: 'LONG_ANSWER',
+                        text: { type: 'HTML', content: 'Upload your answer sheet.' },
+                        auto_evaluation_json:
+                            '{"type":"LONG_ANSWER","data":{"answer":{"type":"HTML","content":""}}}',
+                        explanation_text: { type: 'HTML', content: '' },
+                    },
+                ],
+            },
+        });
+        const questionId = questionRes?.data?.questions?.[0]?.id;
+        if (!questionId) throw new Error('Could not create the question');
+        const marks = Math.max(1, parseInt(totalMarks, 10) || 1);
+        return [{ id: questionId, type: 'LONG_ANSWER', marks, criteria: null }];
+    };
+
+    /**
+     * Store the digitised questions in the question bank (so the paper is also
+     * reusable from Question Papers) and read their ids back. The bank returns
+     * questions in the order sent, which is the order of `accepted`.
+     */
+    // Ids already saved for this exact set — a retry after a later step failed
+    // must not file the same paper into the bank twice.
+    const savedQuestionsRef = useRef<{ key: string; questions: ProvisionedQuestion[] } | null>(null);
+
+    const saveDigitisedQuestions = async (
+        paper: DigitisedPaper,
+        accepted: ReviewedQuestion[],
+        assessmentName: string
+    ): Promise<ProvisionedQuestion[]> => {
+        const cacheKey = JSON.stringify([paper.file_name, paper.estimate, accepted]);
+        if (savedQuestionsRef.current?.key === cacheKey) return savedQuestionsRef.current.questions;
+
+        const questions = accepted.map(({ index, marks }) => {
+            const dto = paper.questions[index]!;
+            // The teacher may have corrected the marks on review; the rubric's
+            // maximum must follow or the checker caps at the old number.
+            let criteria = dto.evaluation_criteria_json ?? null;
+            try {
+                const parsed = criteria ? JSON.parse(criteria) : null;
+                if (parsed && typeof parsed === 'object' && Number(parsed.max_marks) !== marks) {
+                    const items: Array<{ max_marks?: number }> = Array.isArray(parsed.rubric)
+                        ? parsed.rubric
+                        : [];
+                    const oldTotal = items.reduce((sum, c) => sum + Number(c.max_marks || 0), 0);
+                    const factor = oldTotal > 0 ? marks / oldTotal : 0;
+                    items.forEach((c) => {
+                        c.max_marks = Math.round(Number(c.max_marks || 0) * factor * 100) / 100;
+                    });
+                    parsed.max_marks = marks;
+                    criteria = JSON.stringify(parsed);
+                }
+            } catch {
+                /* keep the rubric as generated */
+            }
+            return { dto: { ...dto, evaluation_criteria_json: criteria }, marks, criteria };
+        });
+
+        const saved = await savePaperToQuestionBank({
+            title: `${assessmentName} — ${paper.file_name}`,
+            questions: questions.map((q) => q.dto),
+            subjectId: selectedSubjectId || subjectId || undefined,
+        });
+        const savedId = saved?.saved_question_paper_id;
+        if (!savedId) throw new Error(t('errors.questionsNotSaved'));
+        const stored = await getQuestionPaperById(savedId);
+        const ids: string[] = (stored?.question_dtolist ?? []).map((q: { id: string }) => q.id);
+        if (ids.length !== questions.length) {
+            throw new Error(t('errors.questionsNotSaved'));
+        }
+        const provisioned = questions.map((q, i) => ({
+            id: ids[i]!,
+            type: String(q.dto.question_type || 'LONG_ANSWER'),
+            marks: q.marks,
+            criteria: q.criteria,
+        }));
+        savedQuestionsRef.current = { key: cacheKey, questions: provisioned };
+        return provisioned;
+    };
+
+    const provision = async (plan: ProvisionPlan) => {
+        const trimmed = name.trim();
+        if (!trimmed || isCreating) return;
+        if (!validateForm()) return;
 
         setIsCreating(true);
         try {
             const examtype = 'EXAM';
             const durationMin = Math.max(1, parseInt(duration, 10) || 15);
-            const marks = Math.max(1, parseInt(totalMarks, 10) || 1);
             const reattempts = Math.max(0, parseInt(reattemptCount, 10) || 0);
             const startIso = hasDateRange
                 ? new Date(startDate).toISOString()
@@ -218,10 +422,18 @@ const AssessmentCreateForm = () => {
             const endIso = hasDateRange
                 ? new Date(endDate).toISOString()
                 : new Date('9999-12-31T23:59:59.999Z').toISOString();
+            const aiGraded = plan !== null;
 
             // Standard learner-facing note appended after the admin's description.
             const noteHtml = t('createLogic.noteHtml', { count: durationMin });
             const instructionsHtml = `${description || ''}${noteHtml}`;
+
+            // Questions first: if the bank refuses them, no half-made assessment
+            // is left behind in DRAFT.
+            const questions = plan
+                ? await saveDigitisedQuestions(plan.paper, plan.accepted, trimmed)
+                : await createPlaceholderQuestion();
+            const sectionMarks = questions.reduce((sum, q) => sum + q.marks, 0);
 
             // Step 1 — basic info (DRAFT / INCOMPLETE), always MANUAL.
             const step1Res = await authenticatedAxiosInstance({
@@ -244,39 +456,24 @@ const AssessmentCreateForm = () => {
                     default_reattempt_count: reattempts,
                     switch_sections: true,
                     evaluation_type: 'MANUAL',
-                    submission_type: '',
+                    // PDF = the copy-check reads the uploaded sheet; the manual
+                    // path kept its historical blank.
+                    submission_type: aiGraded ? 'PDF' : '',
                     result_type: 'MANUAL',
                     // The attempt count is the hard cap — students can't request
                     // extra re-attempts beyond it.
                     raise_reattempt_request: false,
                     raise_time_increase_request: false,
+                    // Queues an AI check of every upload. Metered per question
+                    // per sheet — stated on the review screen before this runs.
+                    ai_evaluation_enabled: aiGraded,
                 },
             });
 
             const newAssessmentId = step1Res?.data?.assessment_id;
             if (!newAssessmentId) throw new Error('Could not create assessment');
 
-            // Create one placeholder question (LONG_ANSWER) — a container for the
-            // manual answer upload — and grab its generated id.
-            const questionRes = await authenticatedAxiosInstance({
-                method: 'POST',
-                url: PRIVATE_ADD_QUESTIONS,
-                data: {
-                    questions: [
-                        {
-                            question_type: 'LONG_ANSWER',
-                            text: { type: 'HTML', content: 'Upload your answer sheet.' },
-                            auto_evaluation_json:
-                                '{"type":"LONG_ANSWER","data":{"answer":{"type":"HTML","content":""}}}',
-                            explanation_text: { type: 'HTML', content: '' },
-                        },
-                    ],
-                },
-            });
-            const questionId = questionRes?.data?.questions?.[0]?.id;
-            if (!questionId) throw new Error('Could not create the question');
-
-            // Step 2 — one section with the placeholder question + the duration.
+            // Step 2 — one section with the question(s) + the duration.
             await authenticatedAxiosInstance({
                 method: 'POST',
                 url: STEP2_ASSESSMENT_URL,
@@ -293,29 +490,29 @@ const AssessmentCreateForm = () => {
                             section_description_html: '',
                             section_duration: durationMin,
                             section_order: 1,
-                            total_marks: marks,
+                            total_marks: sectionMarks,
                             cutoff_marks: 0,
                             problem_randomization: false,
-                            question_and_marking: [
-                                {
-                                    question_id: questionId,
-                                    marking_json: JSON.stringify({
-                                        type: 'LONG_ANSWER',
-                                        data: {
-                                            totalMark: String(marks),
-                                            negativeMark: '0',
-                                            negativeMarkingPercentage: '',
-                                        },
-                                    }),
-                                    question_duration_in_min: 0,
-                                    question_order: 1,
-                                    evaluation_criteria_json: null,
-                                    criteria_template_id: null,
-                                    is_added: true,
-                                    is_deleted: false,
-                                    is_updated: false,
-                                },
-                            ],
+                            question_and_marking: questions.map((q, order) => ({
+                                question_id: q.id,
+                                // Same shape the wizard writes (convertStep2Data): the
+                                // type must match the question's, or MCQ marks read wrong.
+                                marking_json: JSON.stringify({
+                                    type: q.type,
+                                    data: {
+                                        totalMark: String(q.marks),
+                                        negativeMark: '0',
+                                        negativeMarkingPercentage: '',
+                                    },
+                                }),
+                                question_duration_in_min: 0,
+                                question_order: order + 1,
+                                evaluation_criteria_json: q.criteria,
+                                criteria_template_id: null,
+                                is_added: true,
+                                is_deleted: false,
+                                is_updated: false,
+                            })),
                         },
                     ],
                     updated_sections: [],
@@ -368,7 +565,12 @@ const AssessmentCreateForm = () => {
             // when more than one attempt is permitted.
             await linkAssessmentAsSlide(newAssessmentId, trimmed, reattempts > 1);
 
-            toast.success(t('toasts.createdAndPublished'));
+            abandonRead();
+            toast.success(
+                aiGraded
+                    ? t('toasts.createdWithAi', { count: questions.length })
+                    : t('toasts.createdAndPublished')
+            );
         } catch (err) {
             console.error('Failed to create assessment from slide', err);
             toast.error((err as Error)?.message || t('errors.failedToCreate'));
@@ -376,6 +578,41 @@ const AssessmentCreateForm = () => {
             setIsCreating(false);
         }
     };
+
+    // ---- Digitise: read the attached paper, then review, then provision -----
+    const startDigitise = async () => {
+        const trimmed = name.trim();
+        if (!trimmed || isCreating || starting || !selectedPdfUrl) return;
+        if (!validateForm()) return;
+        const expected = parseInt(totalMarks, 10);
+        await startRead({
+            pdfUrl: selectedPdfUrl,
+            expectedTotalMarks: Number.isFinite(expected) && expected > 0 ? expected : undefined,
+            title: trimmed,
+        });
+    };
+
+    const handleCreate = () => {
+        if (aiCheck && selectedPdfUrl) {
+            void startDigitise();
+        } else {
+            void provision(null);
+        }
+    };
+
+    const createWithoutAi = () => {
+        // The read carries on server-side (and its charge stands if it finishes);
+        // the teacher is told so on the dialog before choosing this. Its result is
+        // no longer wanted here — the late poll must not reopen the review.
+        abandonRead();
+        void provision(null);
+    };
+
+    const estimateData = estimate.status === 'ready' ? estimate.data : null;
+    const expectedTotalNumber = (() => {
+        const n = parseInt(totalMarks, 10);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    })();
 
     return (
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 rounded-lg border border-neutral-200 bg-white p-6 shadow-sm">
@@ -485,6 +722,99 @@ const AssessmentCreateForm = () => {
                 </div>
             </div>
 
+            {/* AI checking — the paper attached above becomes the questions */}
+            <div
+                className={cn(
+                    'flex flex-col gap-3 rounded-lg border p-4',
+                    aiCheck ? 'border-primary-200 bg-primary-50/40' : 'border-neutral-200 bg-white'
+                )}
+            >
+                <div className="flex items-start gap-3">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <Sparkle className="size-4" weight="bold" />
+                    </div>
+                    <div className="flex flex-1 flex-col gap-0.5">
+                        <span className="text-sm font-semibold text-neutral-800">
+                            {t('aiCheck.title')}
+                        </span>
+                        <span className="text-xs text-neutral-500">{t('aiCheck.description')}</span>
+                    </div>
+                    <Switch
+                        checked={aiCheck}
+                        disabled={pdfAttachments.length === 0 || isCreating}
+                        onCheckedChange={(checked) => {
+                            if (checked) setAiCheckDisabledReason(null);
+                            setAiCheck(checked);
+                        }}
+                    />
+                </div>
+
+                {pdfAttachments.length === 0 && (
+                    <p className="flex items-start gap-2 text-xs text-neutral-600">
+                        <FilePdf className="mt-0.5 size-4 shrink-0 text-neutral-400" />
+                        {nonPdfAttached ? t('aiCheck.attachIsNotPdf') : t('aiCheck.attachPdfFirst')}
+                    </p>
+                )}
+
+                {aiCheck && pdfAttachments.length > 1 && (
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-neutral-600">{t('aiCheck.whichPaper')}</span>
+                        <MyDropdown
+                            currentValue={
+                                pdfAttachments.find((a) => a.url === selectedPdfUrl)?.name ?? ''
+                            }
+                            dropdownList={pdfAttachments.map((a) => ({ label: a.name, value: a.url }))}
+                            placeholder={t('aiCheck.whichPaper')}
+                            handleChange={(value) => setSelectedPdfUrl(value)}
+                            className="w-full"
+                        />
+                    </div>
+                )}
+
+                {aiCheck && pdfAttachments.length === 1 && (
+                    <p className="flex items-center gap-2 text-xs text-neutral-700">
+                        <FilePdf className="size-4 shrink-0 text-danger-500" />
+                        <span className="truncate">{pdfAttachments[0]!.name}</span>
+                    </p>
+                )}
+
+                {aiCheck && estimate.status === 'loading' && (
+                    <p className="flex items-center gap-2 text-xs text-neutral-500">
+                        <Spinner className="size-4 animate-spin" />
+                        {t('aiCheck.estimating')}
+                    </p>
+                )}
+                {!aiCheck && pdfAttachments.length > 0 && aiCheckDisabledReason && (
+                    <p className="flex items-start gap-2 text-xs text-danger-600">
+                        <WarningCircle className="mt-0.5 size-4 shrink-0" />
+                        {t('aiCheck.turnedOffBecause', { reason: aiCheckDisabledReason })}
+                    </p>
+                )}
+                {aiCheck && estimateData && (
+                    <div className="flex flex-col gap-1 text-xs text-neutral-700">
+                        <p className="flex items-center gap-2 font-medium">
+                            <Coins className="size-4 text-primary-500" weight="bold" />
+                            {t('aiCheck.estimateLine', {
+                                credits: estimateData.estimate.estimated_credits,
+                                count: estimateData.pages,
+                            })}
+                            {estimateData.estimate.current_balance != null && (
+                                <span className="font-normal text-neutral-500">
+                                    · {t('aiCheck.balance', { balance: estimateData.estimate.current_balance })}
+                                </span>
+                            )}
+                        </p>
+                        {estimateData.estimate.sufficient === false ? (
+                            <p className="text-danger-600">
+                                {t('aiCheck.insufficientCredits')}
+                            </p>
+                        ) : (
+                            <p className="text-neutral-500">{t('aiCheck.perSheetNote')}</p>
+                        )}
+                    </div>
+                )}
+            </div>
+
             {/* Live Date Range */}
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3">
@@ -556,7 +886,7 @@ const AssessmentCreateForm = () => {
                     buttonType="secondary"
                     scale="medium"
                     onClick={() => setAssessmentCreateMode(false)}
-                    disable={isCreating}
+                    disable={isCreating || starting || digitise.phase === 'running'}
                 >
                     {t('form.cancel')}
                 </MyButton>
@@ -564,11 +894,109 @@ const AssessmentCreateForm = () => {
                     buttonType="primary"
                     scale="medium"
                     onClick={handleCreate}
-                    disable={!name.trim() || isCreating}
+                    disable={
+                        !name.trim() ||
+                        isCreating ||
+                        starting ||
+                        digitise.phase === 'running' ||
+                        estimateBlocksCreate
+                    }
                 >
-                    {isCreating ? t('form.creating') : t('form.createAssessment')}
+                    {isCreating
+                        ? t('form.creating')
+                        : aiCheck && selectedPdfUrl
+                          ? estimateData
+                              ? t('form.readPaperAndCreate', {
+                                    credits: estimateData.estimate.estimated_credits,
+                                })
+                              : t('form.readPaperAndCreateNoEstimate')
+                          : t('form.createAssessment')}
                 </MyButton>
             </div>
+
+            {/* Reading the paper: progress, or why it stopped */}
+            <MyDialog
+                heading={
+                    digitise.phase === 'failed'
+                        ? t('aiCheck.failedHeading')
+                        : t('aiCheck.readingHeading')
+                }
+                open={digitise.phase === 'running' || digitise.phase === 'failed'}
+                onOpenChange={(next) => {
+                    // Closing the failure dialog abandons AI checking for this attempt;
+                    // the running state can only be left through its own buttons.
+                    if (!next && digitise.phase === 'failed') abandonRead();
+                }}
+                dialogWidth="max-w-lg"
+                footer={
+                    digitise.phase === 'failed' ? (
+                        <>
+                            <MyButton
+                                buttonType="secondary"
+                                scale="medium"
+                                onClick={createWithoutAi}
+                                disable={isCreating}
+                            >
+                                {t('review.createWithoutAi')}
+                            </MyButton>
+                            <MyButton
+                                buttonType="primary"
+                                scale="medium"
+                                onClick={() => void startDigitise()}
+                                disable={isCreating || starting}
+                            >
+                                {t('aiCheck.tryAgain')}
+                            </MyButton>
+                        </>
+                    ) : (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            onClick={createWithoutAi}
+                            disable={isCreating}
+                        >
+                            {t('aiCheck.skipAndCreate')}
+                        </MyButton>
+                    )
+                }
+            >
+                {digitise.phase === 'failed' ? (
+                    <div className="flex flex-col gap-3">
+                        <p className="flex items-start gap-2 text-body text-danger-600">
+                            <WarningCircle className="mt-0.5 size-5 shrink-0" />
+                            {digitise.message}
+                        </p>
+                        <p className="text-caption text-neutral-500">{t('aiCheck.failedHint')}</p>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <p className="flex items-center gap-3 text-body text-neutral-700">
+                            <Spinner className="size-5 shrink-0 animate-spin text-primary-500" />
+                            {t('aiCheck.readingBody', {
+                                credits: estimateData?.estimate.estimated_credits ?? 0,
+                            })}
+                        </p>
+                        <p className="text-caption text-neutral-500">{t('aiCheck.readingHint')}</p>
+                        <p className="text-caption text-neutral-500">{t('aiCheck.skipNote')}</p>
+                    </div>
+                )}
+            </MyDialog>
+
+            <PaperDigitiseReviewDialog
+                open={digitise.phase === 'review'}
+                paper={digitise.phase === 'review' ? digitise.paper : null}
+                expectedTotal={expectedTotalNumber}
+                busy={isCreating}
+                onConfirm={(accepted) => {
+                    if (digitise.phase !== 'review') return;
+                    void provision({ paper: digitise.paper, accepted });
+                }}
+                onCreateWithoutAi={createWithoutAi}
+                onClose={() => {
+                    abandonRead();
+                    toast.info(t('aiCheck.reviewClosed'));
+                }}
+            />
         </div>
     );
 };

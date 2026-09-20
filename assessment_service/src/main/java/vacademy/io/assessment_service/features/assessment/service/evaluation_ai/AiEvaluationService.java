@@ -11,6 +11,10 @@ import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationPro
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
+import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
+import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.core.exception.VacademyException;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
@@ -35,6 +39,20 @@ public class AiEvaluationService {
         private final AiEvaluationAsyncService aiEvaluationAsyncService;
         private final AiEvaluationCancellationService cancellationService;
         private final EvaluationAccessValidator accessValidator;
+        private final QuestionAssessmentSectionMappingRepository questionMappingRepository;
+
+        /**
+         * The question the slide-level "create assessment" form provisions when a
+         * teacher attaches the paper as a PDF and grades by hand. It is a container
+         * for the upload, not a question: grading a sheet against it would produce a
+         * confident random score.
+         */
+        static final String PLACEHOLDER_QUESTION_TEXT = "Upload your answer sheet.";
+
+        public static final String PLACEHOLDER_ONLY_MESSAGE =
+                        "This test has no digitised questions - only the 'Upload your answer sheet' placeholder. "
+                        + "Add the question paper's questions (recreate the test with AI checking on, or add "
+                        + "them under Questions) before evaluating with AI.";
 
         @Transactional
         public List<String> triggerEvaluation(AiEvaluationTriggerRequest request, CustomUserDetails user,
@@ -50,8 +68,15 @@ public class AiEvaluationService {
                         // unauthenticated caller) fails the whole batch rather than being
                         // silently skipped.
                         StudentAttempt attempt = accessValidator.requireAttemptAccess(user, instituteId, attemptId);
+                        // Outside the try below on purpose: a test the AI cannot grade must
+                        // fail the request with the reason, not be skipped in silence. An
+                        // attempt with no registration keeps its old fate (skipped inside the try).
+                        if (attempt.getRegistration() != null) {
+                                requireGradableQuestions(attempt.getRegistration().getAssessment());
+                        }
                         try {
-                                String processId = initiateEvaluationForAttempt(attempt, request.getPreferredModel());
+                                String processId = initiateEvaluationForAttempt(attempt, request.getPreferredModel(),
+                                                false, user != null ? user.getUserId() : null);
                                 processIds.add(processId);
                                 log.info("Successfully initiated evaluation for attempt: {} with processId: {}",
                                                 attemptId, processId);
@@ -69,6 +94,33 @@ public class AiEvaluationService {
                 return initiateEvaluationForAttempt(attempt, preferredModel, false);
         }
 
+        /** True when the assessment's only live question is the manual-upload placeholder. */
+        public boolean isPlaceholderOnly(Assessment assessment) {
+                if (assessment == null) {
+                        return false;
+                }
+                List<QuestionAssessmentSectionMapping> mappings = questionMappingRepository
+                                .getQuestionAssessmentSectionMappingByAssessmentId(assessment.getId());
+                List<QuestionAssessmentSectionMapping> live = mappings.stream()
+                                .filter(m -> m.getStatus() == null || !"DELETED".equalsIgnoreCase(m.getStatus()))
+                                .toList();
+                if (live.size() != 1 || live.get(0).getQuestion() == null) {
+                        return false;
+                }
+                var text = live.get(0).getQuestion().getTextData();
+                String content = text != null && text.getContent() != null
+                                ? text.getContent().replaceAll("<[^>]+>", "").trim()
+                                : "";
+                return PLACEHOLDER_QUESTION_TEXT.equalsIgnoreCase(content);
+        }
+
+        /** Refuse to queue an AI check that has nothing real to grade against. */
+        public void requireGradableQuestions(Assessment assessment) {
+                if (isPlaceholderOnly(assessment)) {
+                        throw new VacademyException(PLACEHOLDER_ONLY_MESSAGE);
+                }
+        }
+
         /**
          * @param queueOnly create the row as PENDING and let {@link AiEvaluationQueuePoller}
          *                  dispatch it under the in-flight cap, instead of starting it now.
@@ -77,6 +129,15 @@ public class AiEvaluationService {
          *                  immediate path, so the page it opens shows progress at once.
          */
         public String initiateEvaluationForAttempt(StudentAttempt attempt, String preferredModel, boolean queueOnly) {
+                return initiateEvaluationForAttempt(attempt, preferredModel, queueOnly, null);
+        }
+
+        /**
+         * @param triggeredBy the teacher who asked for this check, so the completion
+         *                    notice reaches them; null for automatic and bulk checks.
+         */
+        public String initiateEvaluationForAttempt(StudentAttempt attempt, String preferredModel, boolean queueOnly,
+                        String triggeredBy) {
                 String attemptId = attempt.getId();
 
                 // Idempotency: reuse an already-running evaluation for this attempt
@@ -98,6 +159,7 @@ public class AiEvaluationService {
                 process.setAssessment(attempt.getRegistration().getAssessment());
                 process.setStatus(AiEvaluationStatusEnum.PENDING.name());
                 process.setStartedAt(new Date());
+                process.setTriggeredBy(triggeredBy);
 
                 AiEvaluationProcess savedProcess = aiEvaluationProcessRepository.save(process);
                 aiEvaluationProcessRepository.flush(); // Ensure the process is inserted before async call

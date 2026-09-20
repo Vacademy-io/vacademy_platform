@@ -241,36 +241,61 @@ def _transcript_for_prompt(layout_map: dict[str, Any]) -> str:
 
 
 def _question_context(question: dict[str, Any]) -> str:
+    """Options (with every way a student may refer to a position) and the key.
+
+    The key is shown whenever there is one — a one-word or numerical question
+    has no options but still has exactly one right answer, and without it the
+    grader was left to decide correctness from its own knowledge.
+    """
     options = question.get("options") or []
-    if not options:
-        return ""
-    rendered: list[str] = []
-    for i, opt in enumerate(options):
-        text = opt.get("text") or opt.get("preview_id") or str(opt)
-        rendered.append(f"  {i + 1}. (position {i + 1} / {chr(65 + i)} / {_roman(i + 1)}): {text}")
-    block = "**Options:**\n" + "\n".join(rendered)
+    parts: list[str] = []
+    if options:
+        rendered: list[str] = []
+        for i, opt in enumerate(options):
+            text = opt.get("text") or opt.get("preview_id") or str(opt)
+            rendered.append(f"  {i + 1}. (position {i + 1} / {chr(65 + i)} / {_roman(i + 1)}): {text}")
+        parts.append("**Options:**\n" + "\n".join(rendered))
     correct = question.get("correct_answer")
     if correct:
-        block += f"\n**Correct answer:** {correct}"
-    return block
+        parts.append(f"**Correct answer:** {correct}")
+    return "\n".join(parts)
 
 
 def _roman(n: int) -> str:
     return ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"][n - 1] if 1 <= n <= 10 else str(n)
 
 
-def _type_instructions(question_type: str) -> str:
+# The platform's own type names for "pick an option" questions. The grading
+# rules below key on these; "MCQ" is the older free-text alias.
+_CHOICE_TYPES = ("MCQ", "MCQS", "MCQM", "TRUE_FALSE")
+
+
+def _type_instructions(question_type: str, has_key: bool = False) -> str:
+    """Per-type grading rule. `has_key` = a correct answer was supplied above;
+    only then is the grader told not to decide the key itself — a legacy
+    question with no stored key must still be gradable on the model's judgement,
+    as it always was."""
     t = (question_type or "").upper()
-    if t == "MCQ":
-        return (
+    key_rule = " Grade ONLY against the correct answer given above; never decide the key yourself." if has_key else ""
+    if t in _CHOICE_TYPES:
+        text = (
             "MCQ: Match the option POSITION (number), not exact text. Accept "
-            "'2', 'B', 'b', 'ii', 'option 2' as equivalent. Award full marks "
-            "if position matches, even if the option text is misspelled."
+            "'2', 'B', 'b', 'ii', 'option 2' as equivalent, and the option's own "
+            "printed label such as '(b)'. Award full marks if position matches, even "
+            "if the option text is misspelled." + key_rule
         )
-    if t in ("ONE_WORD", "SHORT_ANSWER"):
+        if t == "MCQM":
+            text += (
+                " MCQM has several correct options: full marks only when the student "
+                "marked exactly the correct set; a wrong extra option or a missing one "
+                "is a wrong answer."
+            )
+        return text
+    if t in ("ONE_WORD", "SHORT_ANSWER", "NUMERIC"):
         return (
-            "ONE_WORD: Accept spelling variants and close synonyms. Award marks "
-            "if the intent matches the correct answer."
+            "ONE_WORD / NUMERIC: Accept spelling variants, close synonyms and equivalent "
+            "numeric forms (units, decimals, fractions). Award marks if the intent matches "
+            "the correct answer." + key_rule
         )
     if t in ("LONG_ANSWER", "DESCRIPTIVE"):
         return (
@@ -305,7 +330,7 @@ def _annotation_regime(question_type: str, max_marks: float) -> str:
     """One reminder line; the full regime is in the system prompt and is the
     same for every type. The only per-type difference is the tick budget."""
     t = (question_type or "").upper()
-    if t in ("MCQ", "ONE_WORD", "SHORT_ANSWER") or max_marks <= 1:
+    if t in (*_CHOICE_TYPES, "ONE_WORD", "SHORT_ANSWER", "NUMERIC") or max_marks <= 1:
         return (
             "Objective/short answer: `tick` or `cross` on the answer row, plus ONE `score`. "
             "Wrong answer also gets a `margin_note` naming the correct answer. No praise."
@@ -345,7 +370,7 @@ def build_grading_prompt(
 {_transcript_for_prompt(layout_map)}
 
 **Type-specific grading:**
-{_type_instructions(question.get('question_type'))}
+{_type_instructions(question.get('question_type'), bool(question.get('correct_answer')))}
 
 **Annotation regime for this question:**
 {_annotation_regime(question.get('question_type'), max_marks)}

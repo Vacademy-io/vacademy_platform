@@ -128,6 +128,9 @@ public class CopyIntakeService {
         }
         Assessment assessment = assessmentRepository.findById(assessmentId)
                 .orElseThrow(() -> new VacademyException("Assessment not found"));
+        // Before any file is touched: 200 copies graded against the "Upload your
+        // answer sheet" placeholder would be 200 confident random scores.
+        aiEvaluationService.requireGradableQuestions(assessment);
 
         // The same file twice in one upload is a double-click, not two copies.
         Set<String> seen = new HashSet<>();

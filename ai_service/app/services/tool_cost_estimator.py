@@ -320,6 +320,18 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # A question paper PDF (the one a teacher attaches to an offline test) read
+    # into real questions with marks, so an uploaded answer sheet can be checked
+    # question by question. Priced like the other PDF reads: per page for the
+    # MathPix pass, plus a flat base for the extraction call(s). Charged only
+    # when questions actually come back.
+    "paper_digitise": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
+        "params": {},
+    },
     # One-time, permanent unlock of a curated library (V445). Deliberately low:
     # nothing in the catalogue can be sampled before purchase, so the first
     # unlock is bought on faith. Keep in sync with the V445 seed and with

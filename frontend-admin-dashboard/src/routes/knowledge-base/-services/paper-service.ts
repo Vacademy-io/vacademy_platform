@@ -364,6 +364,20 @@ const withJavaEvaluationKeys = (questions: PaperQuestion[]): PaperQuestion[] =>
     });
 
 /**
+ * The bank stores each explanation as its own row with `content NOT NULL`; the
+ * question builder sends `""` for "no explanation". A generator that emits
+ * `null` (a digitised paper has none — 2026-09-20, all 64 questions refused)
+ * must not sink the whole paper, so the empty string is applied here for every
+ * caller rather than in each of them.
+ */
+const withBankSafeExplanation = (questions: PaperQuestion[]): PaperQuestion[] =>
+    questions.map((q) =>
+        q.explanation_text && q.explanation_text.content == null
+            ? { ...q, explanation_text: { ...q.explanation_text, content: '' } }
+            : q
+    );
+
+/**
  * Save to the institute's question bank.
  *
  * Posts AddQuestionPaperDTO directly rather than going through
@@ -388,7 +402,7 @@ export const savePaperToQuestionBank = async (payload: {
         institute_id: instituteId,
         level_id: payload.levelId ?? null,
         subject_id: payload.subjectId ?? null,
-        questions: withJavaEvaluationKeys(payload.questions),
+        questions: withBankSafeExplanation(withJavaEvaluationKeys(payload.questions)),
     });
     return data;
 };

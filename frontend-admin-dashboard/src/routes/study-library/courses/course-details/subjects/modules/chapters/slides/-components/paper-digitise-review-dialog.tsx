@@ -27,6 +27,9 @@ const stripHtml = (html: string | null | undefined): string => {
     return text.replace(/\s+/g, ' ').trim();
 };
 
+/** Types the checker marks against a key; without one it has to judge alone. */
+const KEYED_TYPES = new Set(['MCQS', 'MCQM', 'TRUE_FALSE', 'ONE_WORD', 'NUMERIC']);
+
 const TYPE_LABEL: Record<string, string> = {
     MCQS: 'MCQ',
     MCQM: 'MCQ (multi)',
@@ -249,6 +252,11 @@ export const PaperDigitiseReviewDialog = ({
                                         {guessed && !row.removed && (
                                             <span className="rounded-md bg-warning-50 px-2 py-0.5 text-caption text-warning-700">
                                                 {t('review.marksGuessed')}
+                                            </span>
+                                        )}
+                                        {KEYED_TYPES.has(type) && raw.answer_source === 'none' && !row.removed && (
+                                            <span className="rounded-md bg-danger-50 px-2 py-0.5 text-caption text-danger-700">
+                                                {t('review.noAnswer')}
                                             </span>
                                         )}
                                     </div>

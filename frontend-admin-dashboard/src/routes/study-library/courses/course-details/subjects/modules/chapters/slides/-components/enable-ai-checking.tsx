@@ -134,7 +134,7 @@ export const EnableAiChecking = ({
                 ids = savedRef.current.ids;
             } else {
                 const saved = await savePaperToQuestionBank({
-                    title: `${paper.title} — ${paper.file_name}`,
+                    title: paper.title,
                     questions: questions.map((q) => q.dto),
                 });
                 const savedId = saved?.saved_question_paper_id;

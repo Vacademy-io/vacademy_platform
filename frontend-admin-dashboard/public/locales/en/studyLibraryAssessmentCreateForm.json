@@ -100,7 +100,8 @@
         "createWithoutAi": "Create without AI checking",
         "createWithQuestions_one": "Create test with {{count}} question",
         "createWithQuestions_other": "Create test with {{count}} questions",
-        "creating": "Creating…"
+        "creating": "Creating…",
+        "noAnswer": "No answer found - add one in the question bank"
     },
     "retrofit": {
         "title": "AI checking is off for this test",

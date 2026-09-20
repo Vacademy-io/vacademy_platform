@@ -216,6 +216,13 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const savedTotalMarks: number = (
         (assessmentDetailsData?.[1]?.saved_data?.sections ?? []) as Array<{ total_marks?: number }>
     ).reduce((sum, section) => sum + (Number(section?.total_marks) || 0), 0);
+    // The AI copy check is billed per graded question (tool_cost_estimator
+    // "copy_check_evaluation"), so the bulk quote needs the paper's question count.
+    const questionsPerCopy: number = (
+        (assessmentDetailsData?.[1]?.saved_data?.sections ?? []) as Array<{
+            questions?: unknown[];
+        }>
+    ).reduce((sum, section) => sum + (section?.questions?.length || 0), 0);
 
     // How this assessment was actually handed out. An assessment created against batches
     // has no individually pre-registered learners, so "Individual Selection" could only
@@ -1274,6 +1281,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     onOpenChange={setBulkCheckOpen}
                     assessmentId={assessmentId}
                     instituteId={instituteId}
+                    questionsPerCopy={questionsPerCopy}
                     onStarted={(batch) => {
                         setIntakeBatchId(batch.id);
                         setIntakePanelOpen(true);

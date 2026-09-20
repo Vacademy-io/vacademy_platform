@@ -347,3 +347,80 @@ def test_ai_center_retry_refuses_a_digitise_task_instead_of_rerunning_it_generic
         "PDF_TO_QUESTIONS", {"pdfId": "abc"}, ["m"], institute_id="inst", user_id="u", task_id="t",
     )
     assert callable(work)
+
+
+# ---- 2026-09-20: the first real paper (Class IX English, 64 questions) -------
+# Every question saved to the bank failed with `AssessmentRichTextData.content`
+# NOT NULL, both TRUE_FALSE keys were lost, a NUMERIC with no answer claimed one,
+# and the title carried literal <br>. Each of those is pinned here.
+
+
+def _raw(**over):
+    base = {"question_number": "1", "question": {"type": "HTML", "content": "Q?"}, "marks": 1,
+            "answer_source": "model"}
+    base.update(over)
+    return base
+
+
+def test_explanation_is_empty_string_never_null():
+    paper = pd.build_paper(
+        [{"questions": [_raw(question_type="LONG_ANSWER", marking_points=["a"]),
+                        _raw(question_number="2", question_type="ONE_WORD", ans="x")]}],
+        pdf_url="u", file_name="f.pdf", expected_total=None)
+    assert [q["explanation_text"]["content"] for q in paper.questions] == ["", ""]
+
+
+def test_true_false_key_written_as_the_word_maps_to_the_option():
+    paper = pd.build_paper(
+        [{"questions": [_raw(question_type="TRUE_FALSE", options=[], correct_options=["FALSE"], ans="FALSE"),
+                        _raw(question_number="2", question_type="TRUE_FALSE", options=[], correct_options=["T"])]}],
+        pdf_url="u", file_name="f.pdf", expected_total=None)
+    keys = [json.loads(q["auto_evaluation_json"])["data"]["correct_option_ids"] for q in paper.questions]
+    assert keys == [["2"], ["1"]]
+    assert [r["answer_source"] for r in paper.raw_questions] == ["model", "model"]
+    assert not any(w.startswith("No answer could be read") for w in paper.warnings)
+
+
+def test_mcq_key_written_as_the_option_text_maps_and_letters_still_win():
+    options = [{"preview_id": "1", "content": "Strata"}, {"preview_id": "2", "content": "<b>Parity</b>"}]
+    paper = pd.build_paper(
+        [{"questions": [_raw(question_type="MCQS", options=options, correct_options=["parity"]),
+                        _raw(question_number="2", question_type="MCQS", options=options, correct_options=["A"])]}],
+        pdf_url="u", file_name="f.pdf", expected_total=None)
+    keys = [json.loads(q["auto_evaluation_json"])["data"]["correct_option_ids"] for q in paper.questions]
+    assert keys == [["2"], ["1"]]
+
+
+def test_yes_no_and_t_f_options_match_their_own_words():
+    from app.services.question_format import match_option_text
+    yes_no = [{"preview_id": "1", "text": {"content": "Yes"}}, {"preview_id": "2", "text": {"content": "No"}}]
+    t_f = [{"preview_id": "1", "text": {"content": "T"}}, {"preview_id": "2", "text": {"content": "F"}}]
+    assert match_option_text(["yes"], yes_no) == ["1"]
+    assert match_option_text(["FALSE"], t_f) == ["2"]
+    assert match_option_text(["maybe"], yes_no) == []
+
+
+def test_objective_question_without_a_usable_key_is_flagged_not_pretended():
+    paper = pd.build_paper(
+        [{"questions": [_raw(question_number="2", question_type="NUMERIC", ans="", answer_source="model"),
+                        _raw(question_number="7", question_type="MCQS",
+                           options=[{"preview_id": "1", "content": "a"}], correct_options=["zzz"])]}],
+        pdf_url="u", file_name="f.pdf", expected_total=None)
+    assert [r["answer_source"] for r in paper.raw_questions] == ["none", "none"]
+    for q in paper.questions:
+        meta = json.loads(q["source_meta"])
+        rubric = json.loads(q["evaluation_criteria_json"])["rubric"][0]["evaluation_guidelines"]
+        assert meta["answer_source"] == "none"
+        assert rubric.startswith("No answer key was available")
+    assert any("question(s) 2, 7" in w for w in paper.warnings)
+    # they are not counted among the model's suggested answers either
+    assert not any("suggested answers" in w for w in paper.warnings)
+
+
+def test_title_loses_printed_line_breaks():
+    paper = pd.build_paper(
+        [{"title": "ENGLISH GRAMMAR <br> Part Test-04 &lt;br&gt; Class IX", "questions": [_raw(question_type="ONE_WORD", ans="x")]}],
+        pdf_url="u", file_name="f.pdf", expected_total=None)
+    assert paper.title == "ENGLISH GRAMMAR - Part Test-04 - Class IX"
+    assert pd.clean_title("<b>Maths</b>") == "Maths"
+    assert pd.clean_title(None) == ""

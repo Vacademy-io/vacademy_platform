@@ -385,7 +385,9 @@ const AssessmentCreateForm = () => {
         });
 
         const saved = await savePaperToQuestionBank({
-            title: `${assessmentName} — ${paper.file_name}`,
+            // The paper's printed title reads far better in the bank than the
+            // upload's UUID-prefixed file name; the test's name is the fallback.
+            title: paper.title || assessmentName,
             questions: questions.map((q) => q.dto),
             subjectId: selectedSubjectId || subjectId || undefined,
         });

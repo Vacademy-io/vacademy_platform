@@ -201,7 +201,7 @@ Rules:
 3. "OR" choices. Keep both alternatives inside ONE question, prefixed "Either … OR …", and add a note.
 4. Marks. Use the figure printed next to the question ("[5]", "(2 marks)", "2M"). If none, use the section's "each carries N marks" and set marks_source "section". A block printed as ONE numbered question but made of several scored items (match-the-following pairs, a set of fill-in-the-blanks, "4 × 1") carries the SUM of its items' marks. If nothing is printed anywhere, marks = null and marks_source "none" — never guess a number.
 5. Answers. If the paper prints an answer key, use it and set answer_source "paper". Otherwise, for MCQS/MCQM/TRUE_FALSE/ONE_WORD/NUMERIC give your best answer with answer_source "model" (the teacher will verify). For LONG_ANSWER leave ans empty unless printed, but ALWAYS fill marking_points with what a full-mark answer must contain.
-6. Types. Single correct option → MCQS; "choose all that apply" → MCQM; true/false → TRUE_FALSE; a numeric result → NUMERIC; a word/phrase → ONE_WORD; everything else (explain, describe, prove, draw, solve with steps) → LONG_ANSWER.
+6. Types. Single correct option → MCQS; "choose all that apply" → MCQM; true/false → TRUE_FALSE; a numeric result → NUMERIC; a word/phrase → ONE_WORD; everything else (explain, describe, prove, draw, solve with steps) → LONG_ANSWER. For TRUE_FALSE always give options [{{"preview_id":"1","content":"True"}},{{"preview_id":"2","content":"False"}}] and correct_options ["1"] or ["2"]. If an answer cannot be determined (a table or figure is missing), leave it empty and set answer_source "none" — never write "model" for an empty answer.
 7. Keep every <img …> tag and every <!--DS_TAG:…--> comment exactly where it appears in the source.
 8. Valid JSON only. No markdown fences, no commentary outside the JSON.
 """
@@ -360,13 +360,20 @@ def marking_rubric(raw: Dict[str, Any]) -> Dict[str, Any]:
     points = [str(p).strip() for p in (raw.get("marking_points") or []) if str(p or "").strip()]
     tags = [str(t) for t in (raw.get("tags") or []) if str(t or "").strip()]
     if qtype in ANSWER_TYPES_WITH_KEY or not points:
-        verify = " The key was inferred by the model, not printed on the paper — the teacher should confirm it." \
-            if raw.get("answer_source") == "model" else ""
+        source = raw.get("answer_source")
+        if qtype in ANSWER_TYPES_WITH_KEY and source == "none":
+            # No key at all: say so, or the checker looks for one that is not there.
+            guidelines = ("No answer key was available from the paper. Work out the correct answer from "
+                          "the question itself, then full marks if the student's answer matches it; no partial marks.")
+        else:
+            verify = " The key was inferred by the model, not printed on the paper — the teacher should confirm it." \
+                if source == "model" else ""
+            guidelines = "Full marks for the correct answer as in the key; no partial marks." + verify
         rubric = [{
             "criteria_name": "Correct answer",
             "max_marks": max_marks,
             "keywords": tags,
-            "evaluation_guidelines": "Full marks for the correct answer as in the key; no partial marks." + verify,
+            "evaluation_guidelines": guidelines,
         }]
     else:
         share = round(max_marks / len(points), 2)
@@ -400,6 +407,35 @@ def _provenance(raw: Dict[str, Any], pdf_url: str, file_name: str) -> Dict[str, 
         "section": raw.get("section"),
         "answer_source": raw.get("answer_source"),
     }
+
+
+def clean_title(value: Any) -> str:
+    """One line of plain text: printed papers break titles with <br> (or its escaped
+    twin), which the bank would otherwise show literally."""
+    text = str(value or "")
+    text = re.sub(r"(?i)(?:<br\s*/?>|&lt;br\s*/?&gt;)", " - ", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s*-\s*(?:-\s*)+", " - ", text)
+    return re.sub(r"\s+", " ", text).strip(" -")
+
+
+def has_answer_key(dto: Dict[str, Any]) -> Optional[bool]:
+    """Whether the formatted question carries something the checker can mark against.
+
+    None for types that are marked by rubric rather than key (LONG_ANSWER).
+    """
+    qtype = str(dto.get("question_type") or "")
+    if qtype not in ANSWER_TYPES_WITH_KEY:
+        return None
+    try:
+        data = (json.loads(dto.get("auto_evaluation_json") or "{}") or {}).get("data") or {}
+    except ValueError:
+        return False
+    if qtype in ("MCQS", "MCQM", "TRUE_FALSE"):
+        return bool(data.get("correct_option_ids") or data.get("correctOptionIds"))
+    if qtype == "NUMERIC":
+        return bool(data.get("valid_answers") or data.get("validAnswers"))
+    return bool(str(data.get("answer") or "").strip())
 
 
 def build_paper(
@@ -448,6 +484,7 @@ def build_paper(
     formatted: List[Dict[str, Any]] = []
     kept: List[Dict[str, Any]] = []
     dropped: List[str] = []
+    keyless: List[str] = []
     model_answers = 0
     for raw in raw_questions:
         # format_questions mutates its input; give it a copy so raw stays intact.
@@ -456,6 +493,13 @@ def build_paper(
             dropped.append(str(raw.get("question_number") or "?"))
             continue
         dto = out[0]
+        # An objective question whose key did not survive formatting (the model
+        # wrote nothing, or something no option matches) must not claim a key:
+        # the rubric would tell the checker to mark "as in the key", and the
+        # review would count it among the verified answers.
+        if has_answer_key(dto) is False:
+            raw["answer_source"] = "none"
+            keyless.append(str(raw.get("question_number") or "?"))
         dto["source_type"] = SOURCE_TYPE
         dto["source_meta"] = json.dumps(_provenance(raw, pdf_url, file_name), ensure_ascii=False)
         dto["evaluation_criteria_json"] = json.dumps(marking_rubric(raw), ensure_ascii=False)
@@ -468,6 +512,11 @@ def build_paper(
         warnings.append(
             f"{len(dropped)} question(s) could not be read cleanly and were left out: {', '.join(dropped)}."
         )
+    if keyless:
+        warnings.append(
+            f"No answer could be read or worked out for question(s) {', '.join(keyless)}. "
+            "Add the answer in the question bank before sheets are checked, or the AI will judge those on its own."
+        )
     if model_answers:
         warnings.append(
             f"The paper prints no answer key; the AI suggested answers for {model_answers} "
@@ -476,7 +525,7 @@ def build_paper(
     warnings.extend(dict.fromkeys(notes))  # the model's own notes, deduplicated, order kept
 
     return DigitisedPaper(
-        title=title or file_name.rsplit(".", 1)[0],
+        title=clean_title(title) or file_name.rsplit(".", 1)[0],
         total_marks=total_marks,
         duration_minutes=duration,
         sections=sections,

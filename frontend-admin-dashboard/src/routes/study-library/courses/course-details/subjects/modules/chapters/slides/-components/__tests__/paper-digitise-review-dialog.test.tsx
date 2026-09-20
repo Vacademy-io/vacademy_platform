@@ -77,6 +77,21 @@ describe('PaperDigitiseReviewDialog', () => {
         expect(screen.getByText(/AI suggested answers/)).toBeInTheDocument();
     });
 
+    it('marks an objective question that has no answer, but not a written one', () => {
+        setup({
+            questions: [
+                { question_type: 'NUMERIC', text: { type: 'HTML', content: '<p>How many days?</p>' } },
+                { question_type: 'LONG_ANSWER', text: { type: 'HTML', content: '<p>Explain.</p>' } },
+            ],
+            raw_questions: [
+                { question_number: '2', marks: 1, marks_source: 'section', answer_source: 'none' },
+                { question_number: '7', marks: 3, marks_source: 'printed', answer_source: 'none' },
+            ],
+            warnings: [],
+        });
+        expect(screen.getAllByText('review.noAnswer')).toHaveLength(1);
+    });
+
     it('hands back the accepted questions with the marks as edited', () => {
         const { onConfirm } = setup();
         const inputs = screen.getAllByRole('spinbutton');

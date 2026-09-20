@@ -302,6 +302,48 @@ cp "$SCRIPT_DIR/systemd/bbb-rap-resque-worker.service.d/lowprio.conf" \
    "$WORKER_OVERRIDE_DIR/lowprio.conf"
 echo "  ✓ rap-resque-worker low-priority drop-in"
 
+# (a2) Parallel recording workers.
+# The stock worker is COUNT=1 — one recording at a time, ~7.5 min each. With
+# the box up only ~8h50m/day that caps the pipeline at ~45 recordings/day,
+# which is roughly the number of classes/day, so any backlog is permanent.
+# COUNT>1 does NOT work: resque's own resque:workers task spawns children via
+# `system "rake resque:work"` — bare rake, no bundle exec — hence the bundler
+# LoadError cleaned up just above. Instead run N instances of the SINGULAR
+# resque:work task, each fully under bundler.
+# RAP_WORKERS=4 saturates a 16-vCPU box (load ~16 with ffmpeg -threads 0).
+RAP_WORKERS="${RAP_WORKERS:-4}"
+cp "$SCRIPT_DIR/systemd/bbb-rap-resque-worker@.service" /etc/systemd/system/
+mkdir -p "/etc/systemd/system/bbb-rap-resque-worker@.service.d"
+cp "$SCRIPT_DIR/systemd/bbb-rap-resque-worker@.service.d/lowprio.conf" \
+   "/etc/systemd/system/bbb-rap-resque-worker@.service.d/lowprio.conf"
+systemctl daemon-reload
+# Instance @1..@N-1 run alongside the stock worker, which is instance 0.
+for i in $(seq 1 $((RAP_WORKERS - 1))); do
+    systemctl enable --now "bbb-rap-resque-worker@$i" 2>/dev/null || true
+done
+# Retire any instances above the requested count (e.g. after lowering it).
+for unit in /etc/systemd/system/multi-user.target.wants/bbb-rap-resque-worker@*.service; do
+    [ -e "$unit" ] || continue
+    n=$(basename "$unit" | sed 's/.*@\([0-9]*\)\.service/\1/')
+    if [ "$n" -ge "$RAP_WORKERS" ]; then
+        systemctl disable --now "bbb-rap-resque-worker@$n" 2>/dev/null || true
+    fi
+done
+echo "  ✓ $RAP_WORKERS parallel rap workers (stock + $((RAP_WORKERS - 1)) instances)"
+
+# (a3) Boot-time self-heal for recordings the nightly poweroff strands.
+# The 18:25 UTC shutdown SIGTERMs whatever the workers are mid-job on. Resque
+# does not requeue those — they land in resque:failed and the recording sits
+# at "Awaiting Process" forever with no queue entry (252 such losses as of
+# 2026-09-10). With N parallel workers, N are at risk each night.
+install -m 755 "$SCRIPT_DIR/bbb-rap-requeue-stranded.sh" /usr/local/bin/bbb-rap-requeue-stranded.sh
+cp "$SCRIPT_DIR/systemd/bbb-rap-requeue-stranded.service" /etc/systemd/system/
+touch /var/log/bigbluebutton/vacademy-rap-requeue.log 2>/dev/null || true
+chown bigbluebutton:bigbluebutton /var/log/bigbluebutton/vacademy-rap-requeue.log 2>/dev/null || true
+systemctl daemon-reload
+systemctl enable bbb-rap-requeue-stranded.service 2>/dev/null || true
+echo "  ✓ stranded-recording requeue on boot"
+
 for svc in freeswitch bbb-webrtc-sfu; do
     SRC="$SCRIPT_DIR/systemd/${svc}.service.d/highprio.conf"
     DEST_DIR="/etc/systemd/system/${svc}.service.d"

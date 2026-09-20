@@ -232,7 +232,7 @@ STATUS_DIR = '/var/bigbluebutton/recording/status'
 PIPELINE_STAGES = ('published', 'processed', 'archived', 'recorded', 'sanity')
 QUEUE_FILE = '/var/spool/bbb-recording-queue.txt'
 UPLOADED_DIR = '/var/spool/bbb-recording-uploaded'
-UPLOADING_MARKER = '/var/spool/bbb-recording-uploading'
+UPLOADING_MARKER = '/var/lock/bbb-recording-uploading'  # must match CURRENT_FILE in bbb-recording-drain.sh
 
 # Per-recordId cache for on-demand size lookups (du is expensive).
 _size_cache = {}  # recordId -> (size_bytes, computed_at)
@@ -970,12 +970,14 @@ def get_upload_queue_stats():
     queue_file = '/var/spool/bbb-recording-queue.txt'
     drainer_active = False
     try:
-        # systemctl is-active returns 0 only when the service is currently running
-        rc = subprocess.run(
-            ['systemctl', 'is-active', '--quiet', 'bbb-recording-drain.service'],
-            timeout=2,
-        ).returncode
-        drainer_active = (rc == 0)
+        # The drainer is Type=oneshot, so while it runs systemd reports
+        # "activating" (is-active exit code 3), never "active" — checking the
+        # exit code alone always said idle. Read the state string instead.
+        state = subprocess.run(
+            ['systemctl', 'show', '-p', 'ActiveState', '--value', 'bbb-recording-drain.service'],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.strip()
+        drainer_active = state in ('active', 'activating')
     except Exception:
         pass
 
@@ -1189,10 +1191,18 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .live-banner .pulse { width: 8px; height: 8px; background: var(--orange); border-radius: 50%; animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.6); } }
   .row-active { background: rgba(249,115,22,0.08); }
-  .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 0.85rem; color: var(--muted); }
+  .pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; font-size: 0.85rem; color: var(--muted); }
   .pagination button { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 4px; cursor: pointer; margin: 0 4px; }
   .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
   .pagination button:not(:disabled):hover { border-color: var(--accent); }
+  .pagination .pager { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+  .pagination .pager button { min-width: 34px; padding: 6px 8px; margin: 0 1px; }
+  .pagination .pager button.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; cursor: default; }
+  .pagination .pager .gap { padding: 0 4px; color: var(--muted); }
+  .pagination .goto { display: flex; align-items: center; gap: 6px; }
+  .pagination input, .pagination select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 5px 8px; border-radius: 4px; font-size: 0.85rem; }
+  .pagination input { width: 60px; }
+  .pagination input:focus, .pagination select:focus { outline: none; border-color: var(--accent); }
   .recid { font-family: monospace; font-size: 0.7rem; color: var(--muted); }
   .chk-col { width: 30px; text-align: center; }
   .chk-col input { cursor: pointer; }
@@ -1279,10 +1289,19 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
     <div id="recordingsTableWrap"></div>
     <div class="pagination" id="recordingsPagination" style="display:none">
-      <span id="paginationInfo"></span>
-      <span>
-        <button id="prevPage" onclick="loadRecordings(currentPage - 1)">‹ Prev</button>
-        <button id="nextPage" onclick="loadRecordings(currentPage + 1)">Next ›</button>
+      <span class="goto">
+        <span id="paginationInfo"></span>
+        <select id="pageSizeSelect" onchange="changePageSize(this.value)" title="Rows per page">
+          <option value="25">25 / page</option>
+          <option value="50">50 / page</option>
+          <option value="100">100 / page</option>
+        </select>
+      </span>
+      <span class="pager" id="pageButtons"></span>
+      <span class="goto">
+        <label for="gotoPage">Go to</label>
+        <input id="gotoPage" type="number" min="1" inputmode="numeric" onkeydown="if (event.key === 'Enter') gotoPage()">
+        <button onclick="gotoPage()">Go</button>
       </span>
     </div>
   </div>
@@ -1443,8 +1462,75 @@ function switchTab(name) {
 
 // ── Recordings tab ────────────────────────────────────────
 let currentPage = 1;
+let totalPages = 1;
+const PAGE_SIZES = [25, 50, 100];
+let pageSize = (() => {
+  const saved = parseInt(localStorage.getItem('bbb.recordings.pageSize') || '', 10);
+  return PAGE_SIZES.includes(saved) ? saved : 25;
+})();
 let recordingsLoadedOnce = false;
 let selectedRecordings = new Set();
+
+function changePageSize(value) {
+  const size = parseInt(value, 10);
+  if (!PAGE_SIZES.includes(size) || size === pageSize) return;
+  pageSize = size;
+  localStorage.setItem('bbb.recordings.pageSize', String(size));
+  loadRecordings(1);   // page N at 25/page is a different slice at 100/page
+}
+
+function gotoPage() {
+  const input = document.getElementById('gotoPage');
+  const page = parseInt(input.value, 10);
+  if (isNaN(page) || page < 1 || page > totalPages) {
+    input.value = '';
+    return;
+  }
+  input.value = '';
+  loadRecordings(page);
+}
+
+// Which page numbers to draw: first, last, and a window around the current page, with
+// gaps collapsed to an ellipsis — so any page is at most two clicks away instead of a
+// Next-Next-Next march through a long recordings list.
+function pageItems(page, total) {
+  if (total <= 7) return Array.from({length: total}, (_, i) => i + 1);
+  const items = [1];
+  const start = Math.max(2, page - 1);
+  const end = Math.min(total - 1, page + 1);
+  if (start > 2) items.push('…');
+  for (let p = start; p <= end; p++) items.push(p);
+  if (end < total - 1) items.push('…');
+  items.push(total);
+  return items;
+}
+
+function renderPager(d) {
+  const first = d.total === 0 ? 0 : (d.page - 1) * d.page_size + 1;
+  const last = Math.min(d.page * d.page_size, d.total);
+  document.getElementById('paginationInfo').textContent =
+    `Showing ${first}–${last} of ${d.total} · Page ${d.page} of ${d.total_pages}`;
+  document.getElementById('pageSizeSelect').value = String(d.page_size);
+
+  const items = pageItems(d.page, d.total_pages);
+  let html = `<button id="prevPage" onclick="loadRecordings(currentPage - 1)" ${d.page <= 1 ? 'disabled' : ''}>‹ Prev</button>`;
+  for (const item of items) {
+    if (item === '…') {
+      html += '<span class="gap">…</span>';
+    } else if (item === d.page) {
+      html += `<button class="active" disabled aria-current="page">${item}</button>`;
+    } else {
+      html += `<button onclick="loadRecordings(${item})">${item}</button>`;
+    }
+  }
+  html += `<button id="nextPage" onclick="loadRecordings(currentPage + 1)" ${d.page >= d.total_pages ? 'disabled' : ''}>Next ›</button>`;
+  document.getElementById('pageButtons').innerHTML = html;
+
+  const goto = document.getElementById('gotoPage');
+  goto.max = String(d.total_pages);
+  goto.placeholder = `1–${d.total_pages}`;
+  goto.disabled = d.total_pages <= 1;
+}
 
 function badgeClass(status) {
   // Strip spaces so "Awaiting Process" -> "awaitingprocess" matches CSS.
@@ -1489,7 +1575,7 @@ async function loadRecordings(page) {
   document.getElementById('recordingsPagination').style.display = 'none';
 
   try {
-    const res = await fetch(apiUrl('/api/recordings') + '&page=' + page);
+    const res = await fetch(apiUrl('/api/recordings') + '&page=' + page + '&page_size=' + pageSize);
     const d = await res.json();
 
     const rap = d.rap_queue || {total: 0, stages: {}};
@@ -1642,12 +1728,12 @@ async function loadRecordings(page) {
     wrap.innerHTML = bannerHtml + html;
     updateBulkBar();
 
-    const pag = document.getElementById('recordingsPagination');
-    pag.style.display = 'flex';
-    document.getElementById('paginationInfo').textContent =
-      `Page ${d.page} of ${d.total_pages}`;
-    document.getElementById('prevPage').disabled = d.page <= 1;
-    document.getElementById('nextPage').disabled = d.page >= d.total_pages;
+    // The server clamps an out-of-range page (e.g. page 9 after deletions shrank the
+    // list to 8 pages) — trust what it actually returned, not what was asked for.
+    currentPage = d.page;
+    totalPages = d.total_pages;
+    document.getElementById('recordingsPagination').style.display = 'flex';
+    renderPager(d);
   } catch (e) {
     wrap.innerHTML = '<div style="color:var(--red);padding:20px">Failed to load: ' + e.message + '</div>';
   }

@@ -1,0 +1,12 @@
+[Unit]
+Description=Re-enqueue BBB recordings stranded by the nightly poweroff
+Wants=redis-server.service bbb-rap-resque-worker.service
+After=redis-server.service bbb-rap-resque-worker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bbb-rap-requeue-stranded.sh
+User=root
+
+[Install]
+WantedBy=multi-user.target

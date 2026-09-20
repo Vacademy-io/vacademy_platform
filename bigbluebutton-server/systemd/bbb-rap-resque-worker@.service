@@ -1,0 +1,29 @@
+[Unit]
+# Additional BBB recording-pipeline workers (instance %i).
+#
+# The stock bbb-rap-resque-worker.service runs `rake resque:workers` with
+# COUNT=1. Raising COUNT does NOT work: resque's own resque:workers task
+# spawns children with `system "rake resque:work"` — bare `rake`, no
+# `bundle exec` — so the children die with a bundler LoadError. Resque's
+# own comment says the task "Should only be used in dev mode".
+#
+# Instead we run N independent instances of the SINGULAR `resque:work`
+# task, each fully under bundler. This is the supported way to scale BBB
+# recording processing. Instance %i is arbitrary (1,2,3,...).
+Description=BigBlueButton resque worker for recordings (instance %i)
+Wants=redis-server.service
+After=redis-server.service
+PartOf=bigbluebutton.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bundle exec rake -f Rakefile resque:work
+WorkingDirectory=/usr/local/bigbluebutton/core/scripts
+Environment=QUEUE=rap:archive,rap:publish,rap:process,rap:sanity,rap:captions,rap:events
+User=bigbluebutton
+Restart=always
+RestartSec=3
+Nice=19
+
+[Install]
+WantedBy=multi-user.target bigbluebutton.target

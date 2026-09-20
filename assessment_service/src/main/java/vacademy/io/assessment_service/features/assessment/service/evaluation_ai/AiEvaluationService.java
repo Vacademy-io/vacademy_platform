@@ -136,8 +136,16 @@ public class AiEvaluationService {
                 }
                 Assessment assessment = attempt.getRegistration().getAssessment();
                 List<QuestionWiseMarks> rows = new ArrayList<>();
-                for (QuestionAssessmentSectionMapping mapping : questionMappingRepository
-                                .getQuestionAssessmentSectionMappingByAssessmentId(assessment.getId())) {
+                List<QuestionAssessmentSectionMapping> mappings = new ArrayList<>(questionMappingRepository
+                                .getQuestionAssessmentSectionMappingByAssessmentId(assessment.getId()));
+                // Paper order (section, then question): the checker numbers what it
+                // gets in the order it gets it, and the student numbers as the paper does.
+                mappings.sort(java.util.Comparator
+                                .comparingInt((QuestionAssessmentSectionMapping m) -> m.getSection() != null
+                                                && m.getSection().getSectionOrder() != null
+                                                                ? m.getSection().getSectionOrder() : Integer.MAX_VALUE)
+                                .thenComparingInt(m -> m.getQuestionOrder() != null ? m.getQuestionOrder() : Integer.MAX_VALUE));
+                for (QuestionAssessmentSectionMapping mapping : mappings) {
                         if (mapping.getQuestion() == null || mapping.getSection() == null
                                         || "DELETED".equalsIgnoreCase(mapping.getStatus())
                                         || "DELETED".equalsIgnoreCase(mapping.getSection().getStatus())) {

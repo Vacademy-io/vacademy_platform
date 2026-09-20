@@ -342,6 +342,32 @@ def _annotation_regime(question_type: str, max_marks: float) -> str:
     )
 
 
+def paper_label_for(question: dict[str, Any]) -> str:
+    """What the student wrote before the answer: the printed number, with its
+    section when numbering restarts per section ("Section B · 2"); the overall
+    position when the caller knows no printed number; the id only as a last
+    resort (that was the only value ever sent before 2026-09-21, so the grader
+    was locating answers by wording alone)."""
+    printed = str(question.get("paper_label") or "").strip()
+    section = str(question.get("section") or "").strip()
+    if printed:
+        return f"{section} · {printed}" if section else printed
+    number = question.get("question_number")
+    if number:
+        return f"Q{number}"
+    return str(question["question_id"])
+
+
+def _section_hint(question: dict[str, Any]) -> str:
+    section = str(question.get("section") or "").strip()
+    printed = str(question.get("paper_label") or "").strip()
+    if not (section and printed):
+        return ""
+    return (f"**Where to look:** the student's answer is labelled \"{printed}\" under the heading "
+            f"\"{section}\" (or after that section's earlier answers). The same number may appear "
+            "under other headings - those belong to other questions; do not grade them here.\n")
+
+
 def build_grading_prompt(
     question: dict[str, Any],
     rubric: dict[str, Any],
@@ -350,12 +376,12 @@ def build_grading_prompt(
 ) -> str:
     max_marks = float(rubric.get("max_marks") or question.get("max_marks") or 10)
     rubric_json = json.dumps(rubric, indent=2)
-    label = question.get("paper_label") or question["question_id"]
+    label = paper_label_for(question)
     neighbours = ", ".join(neighbour_question_labels or []) or "none supplied"
     return f"""Mark the student's handwritten answer to the question below.
 
 **Question as numbered on the paper:** {label}
-**Other questions that may appear on the same pages (do NOT grade these):** {neighbours}
+{_section_hint(question)}**Other questions that may appear on the same pages (do NOT grade these):** {neighbours}
 **Question type:** {question.get('question_type')}
 **Question:**
 {question['question_text']}

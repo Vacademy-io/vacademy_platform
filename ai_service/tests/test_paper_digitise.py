@@ -442,3 +442,18 @@ def test_a_flattened_question_shape_is_repaired_not_fatal():
     assert paper.questions[1]["options"][1]["text"]["content"] == "Blue"
     rubric = json.loads(paper.questions[0]["evaluation_criteria_json"])["rubric"]
     assert rubric[0]["evaluation_guidelines"] == "inertia"
+
+
+def test_section_header_count_times_marks_means_marks_each_is_the_second_number():
+    # "(8 × 1 = 8 Marks)" was read as marks_each 8; eight one-mark tense items
+    # became 8/8 each on the first real copy check.
+    rounds = [{"sections": [{"name": "Section B", "marks_each": 8, "question_count": 8, "total_marks": 8}],
+               "questions": [_raw(question_number=str(i), section="Section B", question_type="ONE_WORD",
+                                   ans="x", marks=None) for i in range(1, 4)]}]
+    paper = pd.build_paper(rounds, pdf_url="u", file_name="f.pdf", expected_total=None)
+    assert [r["marks"] for r in paper.raw_questions] == [1.0, 1.0, 1.0]
+    assert paper.sections[0]["marks_each"] == 1.0
+    # a consistent header is left alone; no header figures → the model's value stands
+    assert pd._section_marks_each({"marks_each": 2, "question_count": 5, "total_marks": 10}) == 2
+    assert pd._section_marks_each({"marks_each": 3}) == 3
+    assert pd._section_marks_each({}) is None

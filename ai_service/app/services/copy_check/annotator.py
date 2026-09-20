@@ -3916,6 +3916,77 @@ async def _upload(content: bytes, filename: str) -> Optional[str]:
         return file_id or None
 
 
+# media-service refuses multipart bodies over 20 MB (spring.servlet.multipart.
+# max-file-size). A phone scan of seven pages stored as PNG is ~29 MB before a
+# single mark is drawn, so the checked copy of every such sheet was silently
+# dropped (511 MaxUploadSizeExceeded, 2026-09-20). Stay well under the cap.
+UPLOAD_CAP_BYTES = 18 * 1024 * 1024
+_JPEG_QUALITY = 78
+_MAX_SCAN_SIDE_PX = 2000
+
+
+def shrink_scans(pdf_bytes: bytes, cap_bytes: int = UPLOAD_CAP_BYTES) -> bytes:
+    """Re-encode the page scans so the PDF fits under `cap_bytes`; the vector
+    annotations drawn on top are untouched.
+
+    Each pass converts every raster image to JPEG (capping the longer side at
+    _MAX_SCAN_SIDE_PX, then 75% of that, then 56%) and stops as soon as the file
+    is small enough. Already-small files are returned as they are; a file that
+    cannot be shrunk is returned as its smallest attempt so the caller still
+    tries the upload rather than giving up here.
+    """
+    if len(pdf_bytes) <= cap_bytes:
+        return pdf_bytes
+    import fitz  # noqa: PLC0415  (lazy, as elsewhere in this module)
+
+    best = pdf_bytes
+    for scale in (1.0, 0.75, 0.56):
+        max_side = int(_MAX_SCAN_SIDE_PX * scale)
+        doc = fitz.open(stream=best, filetype="pdf")
+        try:
+            seen: set[int] = set()
+            for page in doc:
+                for img in page.get_images(full=True):
+                    xref = img[0]
+                    if xref in seen:
+                        continue
+                    seen.add(xref)
+                    try:
+                        pix = fitz.Pixmap(doc, xref)
+                        if pix.alpha or pix.n - pix.alpha >= 4:
+                            pix = fitz.Pixmap(fitz.csRGB, pix)
+                        longest = max(pix.width, pix.height)
+                        if longest > max_side:
+                            factor = max_side / longest
+                            pix = _resize(pix, factor)
+                        page.replace_image(xref, stream=pix.tobytes("jpeg", jpg_quality=_JPEG_QUALITY))
+                    except Exception as exc:  # noqa: BLE001 — one odd image must not stop the rest
+                        logger.debug("shrink_scans: xref %s left as is: %s", xref, exc)
+            out = doc.tobytes(garbage=3, deflate=True)
+        finally:
+            doc.close()
+        if len(out) < len(best):
+            best = out
+        if len(best) <= cap_bytes:
+            break
+    logger.info("copy-check annotator: checked copy %.1f MB -> %.1f MB for upload",
+                len(pdf_bytes) / 1e6, len(best) / 1e6)
+    return best
+
+
+def _resize(pix: "fitz.Pixmap", factor: float) -> "fitz.Pixmap":
+    """Downscale a pixmap by rendering it through a matrix (PyMuPDF has no direct resize)."""
+    import fitz  # noqa: PLC0415
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=pix.width, height=pix.height)
+        page.insert_image(page.rect, pixmap=pix)
+        return page.get_pixmap(matrix=fitz.Matrix(factor, factor), alpha=False)
+    finally:
+        doc.close()
+
+
 async def render_and_upload(
     pdf_url: str,
     layout_map: dict[str, Any],
@@ -3931,12 +4002,17 @@ async def render_and_upload(
     try:
         pdf_bytes = await _fetch_pdf(pdf_url)
         annotated = build_annotated_pdf(pdf_bytes, layout_map, verdicts)
+        annotated = shrink_scans(annotated)
         file_id = await _upload(annotated, f"evaluated-copy-{attempt_id}.pdf")
         if not file_id:
             logger.warning("copy-check annotator: media-service returned no id for attempt %s", attempt_id)
             return None
         logger.info("copy-check annotator: uploaded checked copy %s for attempt %s", file_id, attempt_id)
         return file_id
+    except httpx.HTTPStatusError as e:
+        logger.warning("copy-check annotator: upload refused for attempt %s: %s %s", attempt_id,
+                       e.response.status_code, e.response.text[:200])
+        return None
     except Exception as e:
-        logger.warning("copy-check annotator failed for attempt %s: %s", attempt_id, e)
+        logger.warning("copy-check annotator failed for attempt %s: %s: %s", attempt_id, type(e).__name__, e)
         return None

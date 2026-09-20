@@ -54,6 +54,12 @@ class GradeQuestionInput(BaseModel):
     subject: Optional[str] = None     # used by criteria-gen prompt (#22)
     options: Optional[list[dict[str, Any]]] = None
     correct_answer: Optional[str] = None
+    # Where the answer sits on the sheet, from the caller's knowledge of the paper:
+    # 1-based position, the number printed next to the question ("2", "3(a)")
+    # — which repeats across sections — and that section's heading.
+    question_number: Optional[int] = None
+    paper_label: Optional[str] = None
+    section: Optional[str] = None
 
 
 class CopyCheckGradeRequest(BaseModel):

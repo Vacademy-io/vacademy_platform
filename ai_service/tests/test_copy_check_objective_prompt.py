@@ -57,3 +57,22 @@ def test_without_a_stored_key_the_grader_keeps_its_own_judgement():
     assert "Match the option POSITION" in prompt
     assert "never decide the key yourself" not in prompt
     assert "**Correct answer:**" not in prompt
+
+
+# ---- 2026-09-21: the number on the paper ---------------------------------------
+
+def test_prompt_names_the_printed_number_and_section_not_the_uuid():
+    from app.services.copy_check.prompt_builder import build_grading_prompt, paper_label_for
+    layout = {"pages": [{"page": 1, "rows": [{"row_id": "r1", "text": "2. Failed"}]}], "text": ""}
+    rubric = {"max_marks": 1, "rubric": []}
+    q = {"question_id": "0f3c-uuid", "question_type": "ONE_WORD", "question_text": "…(fail)…", "max_marks": 1,
+         "options": [], "correct_answer": "failed", "paper_label": "2", "section": "Section B",
+         "neighbour_labels": ["Passage I · 2", "Section B · 1", "Section B · 3"]}
+    p = build_grading_prompt(q, rubric, layout, neighbour_question_labels=q["neighbour_labels"])
+    assert "**Question as numbered on the paper:** Section B · 2" in p
+    assert "labelled \"2\" under the heading \"Section B\"" in p
+    assert "Passage I · 2, Section B · 1, Section B · 3" in p
+    assert "0f3c-uuid" not in p.split("**Question type:**")[0]  # the id is no longer the "number"
+    # fallbacks: position, then id
+    assert paper_label_for({"question_id": "x", "question_number": 7}) == "Q7"
+    assert paper_label_for({"question_id": "x"}) == "x"

@@ -22,7 +22,8 @@ from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
 from . import annotator, callbacks, cancellation, vision_transcript
-from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
+from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
+from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
 from .rubric import RubricResolver, load_snapshot
@@ -101,7 +102,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     questions: list[dict[str, Any]] = req["questions"]
 
     llm = ChatLLMClient(ApiKeyResolver(db))
-    grader = CopyCheckGrader(llm, institute_id=institute_id)
+    grader = CopyCheckGrader(llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)))
     mathpix = MathpixFallback()
 
     async def _llm_for_criteria(system: str, user: str, model: str | None) -> dict[str, Any]:
@@ -253,8 +254,14 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         evaluated = 0
         # Kept so the annotator can draw every verdict in one pass at the end;
         # the per-question callback already fired for each of these.
+        # Every other question's printed label: the grader is told which numbers
+        # exist on the sheet so "2." under Section B is not mistaken for "2." under
+        # Passage I. Labels only reached us from 2026-09-21; before that this list
+        # would have been ids and was not sent at all.
+        all_labels = [paper_label_for(q) for q in questions]
         verdicts: list[dict[str, Any]] = []
-        for q in questions:
+        for index, q in enumerate(questions):
+            q["neighbour_labels"] = [lbl for i, lbl in enumerate(all_labels) if i != index][:80]
             cancellation.check(job_id, process_id)
             try:
                 rubric = await rubric_resolver.resolve(q, preferred_model)
@@ -329,7 +336,9 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         try:
             questions_meta = [{
                 "question_id": q.get("question_id"),
-                "paper_label": q.get("paper_label") or q.get("label"),
+                # section-qualified so "2" under Section B and "2" under Passage I
+                # stay two different keys inside enforce
+                "paper_label": paper_label_for(q) if (q.get("paper_label") or q.get("label")) else None,
                 "max_marks": q.get("max_marks"),
                 "question_type": q.get("question_type"),
             } for q in questions]

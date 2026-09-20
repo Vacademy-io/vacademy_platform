@@ -26,6 +26,10 @@ import vacademy.io.assessment_service.features.question_core.repository.OptionRe
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Comparator;
+import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
+import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +50,7 @@ public class CopyCheckOrchestratorService {
     private final AiServiceCopyCheckClient aiServiceClient;
     private final ObjectMapper objectMapper;
     private final OptionRepository optionRepository;
+    private final QuestionAssessmentSectionMappingRepository questionMappingRepository;
 
     @Value("${media.service.baseurl}")
     private String mediaServiceUrl;
@@ -87,6 +92,7 @@ public class CopyCheckOrchestratorService {
             failProcess(process, "no questions found for attempt " + attemptId);
             return;
         }
+        marksList = inPaperOrder(marksList, process.getAssessment());
         process.setQuestionsTotal(marksList.size());
         process.setQuestionsCompleted(0);
         processRepository.save(process);
@@ -101,8 +107,9 @@ public class CopyCheckOrchestratorService {
         }
 
         List<CopyCheckGradeRequestDto.QuestionInput> questionPayloads = new ArrayList<>(marksList.size());
+        int position = 0;
         for (QuestionWiseMarks marks : marksList) {
-            questionPayloads.add(buildQuestionInput(marks));
+            questionPayloads.add(buildQuestionInput(marks, ++position));
         }
 
         CopyCheckGradeRequestDto request = CopyCheckGradeRequestDto.builder()
@@ -138,8 +145,9 @@ public class CopyCheckOrchestratorService {
      * The older auto_evaluation_json.options / correctAnswer shapes stay as the
      * fallback for questions created by other tools.
      */
-    private CopyCheckGradeRequestDto.QuestionInput buildQuestionInput(QuestionWiseMarks marks) {
+    private CopyCheckGradeRequestDto.QuestionInput buildQuestionInput(QuestionWiseMarks marks, int position) {
         Question q = marks.getQuestion();
+        String[] printed = printedLabel(q);
         double maxMarks = evaluationUtilityService.extractMaxMarksFromSectionMapping(marks, q);
         String questionText = q.getTextData() != null ? q.getTextData().getContent() : "";
         List<Option> storedOptions = loadOptions(q);
@@ -155,7 +163,32 @@ public class CopyCheckOrchestratorService {
                 .maxMarks(maxMarks)
                 .options(options)
                 .correctAnswer(correctAnswer)
+                .questionNumber(position)
+                .paperLabel(printed[0] != null ? printed[0] : String.valueOf(position))
+                .section(printed[1] != null ? printed[1]
+                        : marks.getSection() != null ? marks.getSection().getName() : null)
                 .build();
+    }
+
+    /**
+     * {printed number, section} from a digitised paper's provenance
+     * ({@code source_meta.question_number} / {@code section}); {null, null} for
+     * questions that did not come off a paper.
+     */
+    String[] printedLabel(Question q) {
+        try {
+            String meta = q.getSourceMeta();
+            if (meta == null || meta.isBlank()) return new String[]{null, null};
+            JsonNode node = objectMapper.readTree(meta);
+            String number = node.path("question_number").isMissingNode() || node.path("question_number").isNull()
+                    ? null : node.path("question_number").asText().trim();
+            String section = node.path("section").isMissingNode() || node.path("section").isNull()
+                    ? null : node.path("section").asText().trim();
+            return new String[]{number != null && !number.isEmpty() ? number : null,
+                    section != null && !section.isEmpty() ? section : null};
+        } catch (Exception e) {
+            return new String[]{null, null};
+        }
     }
 
     /**
@@ -192,8 +225,10 @@ public class CopyCheckOrchestratorService {
      * The key as a sentence the grader can compare a handwritten answer to:
      *  - choice types → "Option 2: (b) Himalayas" (position AND printed text, since a
      *    student writes either "b" or the words), several joined with "; " for MCQM;
-     *  - ONE_WORD → the answer; NUMERIC → every accepted value; LONG_ANSWER → the
-     *    reference answer when one is stored, else null (the rubric carries the scheme).
+     *  - ONE_WORD → the answer; NUMERIC → every accepted value;
+     *  - LONG_ANSWER → null, always. Written answers were never graded against a
+     *    stored reference before 2026-09-20 (the rubric alone carries the scheme),
+     *    and that behaviour is kept exactly: only objective types gained a key.
      */
     String correctAnswerFor(Question q, List<Option> options) {
         try {
@@ -232,10 +267,7 @@ public class CopyCheckOrchestratorService {
                 String text = answer.asText().trim();
                 return text.isEmpty() ? null : text;
             }
-            if (answer.isObject()) {
-                String text = plainText(answer.path("content").asText(null));
-                return text.isEmpty() ? null : text;
-            }
+            // An object-shaped answer is a LONG_ANSWER's reference text: not a key.
             return null;
         } catch (Exception e) {
             return null;
@@ -324,6 +356,38 @@ public class CopyCheckOrchestratorService {
     private String truncate(String message) {
         if (message == null) return "dispatch failed";
         return message.length() <= 2000 ? message : message.substring(0, 2000) + "…";
+    }
+
+    /**
+     * The grader numbers questions in the order it receives them and the student
+     * numbers answers as the paper does; when the two disagree (rows created from
+     * an unordered mapping set — every staff-made attempt) the checker has to match
+     * by content, mislabels callouts and loses answers. Section order, then
+     * question order, is the paper's order. Rows without a mapping keep their
+     * place at the end.
+     */
+    List<QuestionWiseMarks> inPaperOrder(List<QuestionWiseMarks> rows, Assessment assessment) {
+        if (assessment == null || rows.size() < 2) {
+            return rows;
+        }
+        Map<String, Long> rank = new HashMap<>();
+        try {
+            for (QuestionAssessmentSectionMapping m : questionMappingRepository
+                    .getQuestionAssessmentSectionMappingByAssessmentId(assessment.getId())) {
+                if (m.getQuestion() == null || "DELETED".equalsIgnoreCase(m.getStatus())) continue;
+                long section = m.getSection() != null && m.getSection().getSectionOrder() != null
+                        ? m.getSection().getSectionOrder() : Integer.MAX_VALUE;
+                long question = m.getQuestionOrder() != null ? m.getQuestionOrder() : Integer.MAX_VALUE;
+                rank.putIfAbsent(m.getQuestion().getId(), section * 1_000_000L + question);
+            }
+        } catch (Exception e) {
+            log.warn("[copy-check] could not order questions for assessment {}: {}", assessment.getId(), e.getMessage());
+            return rows;
+        }
+        List<QuestionWiseMarks> ordered = new ArrayList<>(rows);
+        ordered.sort(Comparator.comparingLong(r -> r.getQuestion() == null ? Long.MAX_VALUE
+                : rank.getOrDefault(r.getQuestion().getId(), Long.MAX_VALUE)));
+        return ordered;
     }
 
     private void failProcess(AiEvaluationProcess process, String message) {

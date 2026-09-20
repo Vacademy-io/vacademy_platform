@@ -173,7 +173,7 @@ Extract EVERY question exactly as printed, in order. Return ONLY this JSON:
   "title": "string",                       // the paper's own title, e.g. "Half Yearly Mock — Class 7 Social Science"
   "total_marks": number | null,            // the maximum marks the paper states, else null
   "duration_minutes": number | null,       // the time allowed the paper states, else null
-  "sections": [ {{ "name": "Section A", "instruction": "string", "marks_each": number | null }} ],
+  "sections": [ {{ "name": "Section A", "instruction": "string", "marks_each": number | null, "question_count": number | null, "total_marks": number | null }} ],
   "questions": [
     {{
       "question_number": "1",              // as printed: "1", "2(a)", "Q7"
@@ -199,7 +199,7 @@ Rules:
 1. Verbatim. Copy the wording, numbers, units and sub-parts as printed. Do not paraphrase, merge, split or "improve" questions. Instructions, headers, section titles and the marking-scheme lines are NOT questions.
 2. Sub-parts. "3 (a)…(b)…" printed with ONE mark figure is ONE question containing both parts. Sub-parts printed with their OWN marks are separate questions numbered "3(a)", "3(b)".
 3. "OR" choices. Keep both alternatives inside ONE question, prefixed "Either … OR …", and add a note.
-4. Marks. Use the figure printed next to the question ("[5]", "(2 marks)", "2M"). If none, use the section's "each carries N marks" and set marks_source "section". A block printed as ONE numbered question but made of several scored items (match-the-following pairs, a set of fill-in-the-blanks, "4 × 1") carries the SUM of its items' marks. If nothing is printed anywhere, marks = null and marks_source "none" — never guess a number.
+4. Marks. Use the figure printed next to the question ("[5]", "(2 marks)", "2M"). If none, use the section's "each carries N marks" and set marks_source "section". A section header written as "(8 × 1 = 8 Marks)", "8 questions × 1 mark" or "5 x 2 = 10" means COUNT × MARKS-EACH = TOTAL: marks_each is the SECOND number (1, 1, 2 here), never the count and never the total. A block printed as ONE numbered question but made of several scored items (match-the-following pairs, a set of fill-in-the-blanks, "4 × 1") carries the SUM of its items' marks. If nothing is printed anywhere, marks = null and marks_source "none" — never guess a number.
 5. Answers. If the paper prints an answer key, use it and set answer_source "paper". Otherwise, for MCQS/MCQM/TRUE_FALSE/ONE_WORD/NUMERIC give your best answer with answer_source "model" (the teacher will verify). For LONG_ANSWER leave ans empty unless printed, but ALWAYS fill marking_points with what a full-mark answer must contain.
 6. Types. Single correct option → MCQS; "choose all that apply" → MCQM; true/false → TRUE_FALSE; a numeric result → NUMERIC; a word/phrase → ONE_WORD; everything else (explain, describe, prove, draw, solve with steps) → LONG_ANSWER. For TRUE_FALSE always give options [{{"preview_id":"1","content":"True"}},{{"preview_id":"2","content":"False"}}] and correct_options ["1"] or ["2"]. If an answer cannot be determined (a table or figure is missing), leave it empty and set answer_source "none" — never write "model" for an empty answer.
 7. Keep every <img …> tag and every <!--DS_TAG:…--> comment exactly where it appears in the source.
@@ -265,6 +265,23 @@ def _num(value: Any) -> Optional[float]:
             return None
         out = float(match.group(0))
     return out if out > 0 else None
+
+
+def _section_marks_each(section: Dict[str, Any]) -> Optional[float]:
+    """Marks per question for a section, cross-checked against its count and total.
+
+    "(8 × 1 = 8 Marks)" was read as marks_each 8 on the first real paper — eight
+    one-mark tense items became 8/8 each. When the header gives a count and a
+    total, total ÷ count is the truth and wins over whatever the model wrote.
+    """
+    each = _num(section.get("marks_each"))
+    count = _num(section.get("question_count"))
+    total = _num(section.get("total_marks"))
+    if count and total:
+        derived = total / count
+        if derived > 0 and (each is None or abs(each * count - total) > 1e-6):
+            return round(derived, 2)
+    return each
 
 
 def _norm_type(value: Any) -> str:
@@ -505,7 +522,9 @@ def build_paper(
                 str(x.get("name")).lower() == str(s.get("name")).lower() for x in sections
             ):
                 sections.append({"name": str(s.get("name")), "instruction": s.get("instruction") or "",
-                                 "marks_each": _num(s.get("marks_each"))})
+                                 "marks_each": _section_marks_each(s),
+                                 "question_count": _num(s.get("question_count")),
+                                 "total_marks": _num(s.get("total_marks"))})
         notes.extend(str(n) for n in (data.get("notes") or []) if str(n or "").strip())
         for q in data.get("questions") or []:
             if not isinstance(q, dict):

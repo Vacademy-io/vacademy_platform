@@ -55,14 +55,19 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "params": {"image_unit_credits": "0.5"},
     },
     # AI evaluation of one uploaded answer copy (copy-check): OCR + per-question
-    # rubric-grounded grading. Priced per graded question for a predictable
-    # preview ("8 questions = 8 credits"); the actual charge is
+    # rubric-grounded grading. Priced per copy as flat + per graded question so
+    # the quote is known before upload; the actual charge is
     # max(this, real token cost), so premium models (Opus/GPT) add overage on
-    # long answers while flash-lite copies stay at the flat per-question rate.
+    # long answers while flash copies stay at the quoted rate.
+    #
+    # THE LIVE RATE IS THE `copy_check_evaluation` ROW IN ai_tool_pricing —
+    # change prices there (no release); this entry is only the fallback for an
+    # environment without that row and must mirror it (set 2026-09-21: the old
+    # 0 + 1/question made a 64-question one-word paper cost 64 credits/copy).
     "copy_check_evaluation": {
         "request_type": "evaluation",
-        "flat_base_credits": Decimal("0"),
-        "per_unit_credits": Decimal("1"),
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0.2"),
         "unit_field": "questions",
         "params": {},
     },

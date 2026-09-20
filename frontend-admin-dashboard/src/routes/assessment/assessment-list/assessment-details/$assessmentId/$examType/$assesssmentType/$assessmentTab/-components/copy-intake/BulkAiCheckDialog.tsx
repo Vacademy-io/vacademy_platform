@@ -58,16 +58,33 @@ export const BulkAiCheckDialog = ({
     const { uploadFile } = useFileUpload();
     const userId = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken))?.user ?? '';
 
-    const totalPages = useMemo(() => files.reduce((sum, f) => sum + (f.pages ?? 1), 0), [files]);
     const counting = files.some((f) => f.state === 'counting');
     // Mirrors the charge the orchestrator records per completed copy
-    // (num_questions = graded questions). num_pages is not a unit the
-    // estimator knows for this tool and previewed as 0 credits.
+    // (num_questions = graded questions), once per copy: the rate card's flat
+    // base and rounding apply to each copy, so the inputs are NOT summed
+    // across files. The rate itself comes from ai_tool_pricing via the API.
     const cost = useToolCostPreview(
         'copy_check_evaluation',
-        { num_questions: files.length * questionsPerCopy },
-        files.length > 0 && !counting
+        { num_questions: questionsPerCopy },
+        files.length > 0 && !counting,
+        files.length
     );
+    // "1 + 0.2 per question" under the quote, straight from the rate row so a
+    // DB change to the price is explained without a release.
+    const rateLine = useMemo(() => {
+        const row = cost.rate;
+        if (!row) return null;
+        const flat = Number(row.flat_base_credits) || 0;
+        const perUnit = Number(row.per_unit_credits) || 0;
+        const unit =
+            row.unit_field === 'questions'
+                ? t('dialog.unitQuestion')
+                : row.unit_field === 'pages'
+                  ? t('dialog.unitPage')
+                  : null;
+        if (!unit) return null;
+        return t(flat > 0 ? 'dialog.rate' : 'dialog.rateNoBase', { flat, perUnit, unit });
+    }, [cost.rate, t]);
 
     const addFiles = async (picked: FileList | File[]) => {
         // PDF only: the grading pipeline opens the copy as a PDF, so an image
@@ -279,8 +296,8 @@ export const BulkAiCheckDialog = ({
                             : counting || cost.credits == null
                               ? t('dialog.counting')
                               : t('dialog.cost', {
-                                    copies: files.length,
-                                    pages: totalPages,
+                                    count: files.length,
+                                    questions: questionsPerCopy,
                                     credits: cost.credits,
                                 })}
                     </span>
@@ -288,6 +305,9 @@ export const BulkAiCheckDialog = ({
                         <span className="text-caption text-neutral-500">
                             {t('dialog.balance', { count: cost.currentBalance })}
                         </span>
+                    )}
+                    {rateLine && files.length > 0 && !counting && (
+                        <span className="basis-full text-caption text-neutral-500">{rateLine}</span>
                     )}
                 </div>
                 {cost.sufficient === false && (

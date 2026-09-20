@@ -70,7 +70,7 @@
     },
     "courseListTabs": {
         "title": "Onglets de la liste des cours",
-        "description": "Configurez les onglets visibles, leur ordre et l'onglet par défaut. Remarque : l'onglet Cours en revue est toujours visible pour les enseignants ; l'onglet Approbation des cours est masqué."
+        "description": "Configurez les onglets visibles, leur ordre et l'onglet par défaut. Course Approval est réservé aux administrateurs et reste masqué pour ce rôle."
     },
     "courseDetailsTabs": {
         "title": "Onglets des détails du cours",

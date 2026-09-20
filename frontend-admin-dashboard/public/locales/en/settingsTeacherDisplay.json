@@ -78,7 +78,7 @@
         },
         "courseListTabs": {
             "title": "Course List Tabs",
-            "description": "Configure visible tabs, their order, and the default tab. Note: Course In Review is always visible for Teachers; Course Approval is hidden."
+            "description": "Configure visible tabs, their order, and the default tab. Course Approval is admin-only and stays hidden for this role."
         },
         "courseDetailsTabs": {
             "title": "Course Details Tabs",

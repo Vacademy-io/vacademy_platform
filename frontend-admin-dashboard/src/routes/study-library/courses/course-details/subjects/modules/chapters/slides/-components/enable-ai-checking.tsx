@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import {
     getAiGradability,
     getPaperDigitiseJobForAssessment,
     isJobRunning,
+    listPendingPaperReads,
     paperDigitiseErrorMessage,
     type AdoptQuestionsResult,
     type DigitisedPaper,
@@ -73,6 +74,10 @@ export const EnableAiChecking = ({
     const { state, starting, start, attach, abandon } = usePaperDigitise();
     const [step, setStep] = useState<Step>({ kind: 'closed' });
     const [checking, setChecking] = useState(false);
+    // The progress dialog: opens by itself right after a read is started here,
+    // and on "View progress"; "Continue in background" closes it and remembers
+    // that choice for this read so it does not pop up again.
+    const [progressOpen, setProgressOpen] = useState(false);
     // Bank ids already saved for this exact set — a retry after the adopt call
     // failed must not file the same paper into the bank twice.
     const savedRef = useRef<{ key: string; ids: string[] } | null>(null);
@@ -99,14 +104,44 @@ export const EnableAiChecking = ({
     const [selectedUrl, setSelectedUrl] = useState('');
     const pdfUrl = pdfs.some((p) => p.url === selectedUrl) ? selectedUrl : (pdfs[0]?.url ?? '');
 
-    if (!placeholderOnly) return null;
-
     const reading = isJobRunning(job);
     const ready = job?.status === 'COMPLETED' && job.result && job.result.questions.length > 0 ? job.result : null;
     const readFailed = job?.status === 'FAILED' || (job?.status === 'COMPLETED' && !ready);
     const startedAgoMin = job?.created_at
         ? Math.max(0, Math.round((Date.now() - new Date(job.created_at).getTime()) / 60000))
         : null;
+    const taskId = job?.task_id ?? null;
+
+    // A read started from this browser moments ago (the create form, or the
+    // button above) shows its progress without being asked — once per read.
+    useEffect(() => {
+        if (!taskId || !reading || progressOpen) return;
+        if (sessionStorage.getItem(`paper-read-progress-seen:${taskId}`)) return;
+        const mine = listPendingPaperReads().some(
+            (r) => r.taskId === taskId && Date.now() - r.startedAt < 2 * 60 * 1000
+        );
+        if (mine) {
+            sessionStorage.setItem(`paper-read-progress-seen:${taskId}`, '1');
+            setProgressOpen(true);
+        }
+    }, [taskId, reading, progressOpen]);
+
+    // Still watching when it settles: straight into the review (or the reason).
+    useEffect(() => {
+        if (!progressOpen || reading || !job) return;
+        if (ready) {
+            setProgressOpen(false);
+            attach(ready);
+        }
+    }, [progressOpen, reading, job, ready, attach]);
+
+    if (!placeholderOnly) return null;
+
+    const continueInBackground = () => {
+        if (taskId) sessionStorage.setItem(`paper-read-progress-seen:${taskId}`, '1');
+        setProgressOpen(false);
+        toast.info(t('background.continuing'));
+    };
 
     const openConfirm = async (url: string) => {
         setStep({ kind: 'confirm', loading: true });
@@ -133,7 +168,7 @@ export const EnableAiChecking = ({
             name: assessmentName || t('retrofit.thisTest'),
             returnPath: `${window.location.pathname}${window.location.search}`,
         });
-        if (started) toast.info(t('background.started', { credits: started.estimate.estimated_credits }));
+        if (started) setProgressOpen(true);
     };
 
     const adopt = async (paper: DigitisedPaper, accepted: ReviewedQuestion[]) => {
@@ -262,6 +297,10 @@ export const EnableAiChecking = ({
                         <MyButton buttonType="primary" scale="small" onClick={() => attach(ready)}>
                             <span className="text-xs">{t('background.reviewButton')}</span>
                         </MyButton>
+                    ) : reading ? (
+                        <MyButton buttonType="secondary" scale="small" onClick={() => setProgressOpen(true)}>
+                            <span className="text-xs">{t('background.viewProgress')}</span>
+                        </MyButton>
                     ) : (
                         <MyButton
                             buttonType="primary"
@@ -365,6 +404,63 @@ export const EnableAiChecking = ({
                                 )}
                             </>
                         )}
+                    </div>
+                )}
+            </MyDialog>
+
+            {/* Progress — stay and get the review the moment it lands, or go on working */}
+            <MyDialog
+                heading={readFailed ? t('aiCheck.failedHeading') : t('background.readingTitle')}
+                open={progressOpen}
+                onOpenChange={(next) => {
+                    if (next) return;
+                    if (readFailed) setProgressOpen(false);
+                    else continueInBackground();
+                }}
+                dialogWidth="max-w-lg"
+                footer={
+                    readFailed ? (
+                        <>
+                            <MyButton buttonType="secondary" scale="medium" onClick={() => setProgressOpen(false)}>
+                                {t('form.cancel')}
+                            </MyButton>
+                            <MyButton
+                                buttonType="primary"
+                                scale="medium"
+                                disable={starting}
+                                onClick={() => {
+                                    setProgressOpen(false);
+                                    void openConfirm(pdfUrl);
+                                }}
+                            >
+                                {t('aiCheck.tryAgain')}
+                            </MyButton>
+                        </>
+                    ) : (
+                        <MyButton buttonType="primary" scale="medium" onClick={continueInBackground}>
+                            {t('background.continueButton')}
+                        </MyButton>
+                    )
+                }
+            >
+                {readFailed ? (
+                    <div className="flex flex-col gap-3">
+                        <p className="flex items-start gap-2 text-body text-danger-600">
+                            <WarningCircle className="mt-0.5 size-5 shrink-0" />
+                            {job?.status_message || t('aiCheck.noQuestions')}
+                        </p>
+                        <p className="text-caption text-neutral-500">{t('retrofit.failedHint')}</p>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <p className="flex items-center gap-3 text-body text-neutral-700">
+                            <Spinner className="size-5 shrink-0 animate-spin text-primary-500" />
+                            {startedAgoMin != null && startedAgoMin > 0
+                                ? t('background.readingSince', { count: startedAgoMin })
+                                : t('background.readingHint')}
+                        </p>
+                        <p className="text-caption text-neutral-500">{t('background.stayNote')}</p>
+                        <p className="text-caption text-neutral-500">{t('background.leaveNote')}</p>
                     </div>
                 )}
             </MyDialog>

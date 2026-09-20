@@ -274,6 +274,44 @@ def _norm_type(value: Any) -> str:
     return aliases.get(qt, qt)
 
 
+def _coerce_question(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Bring one raw question to the shape the rest of the pipeline assumes.
+
+    The prompt asks for `question: {type, content}` and lists for options,
+    correct_options, marking_points and tags, but a model round can flatten any
+    of them to a bare string (seen 2026-09-20: `"question": "…"` on one question
+    took the whole 7-page read down in `_dedupe_key`). Wrong shapes are repaired,
+    never dropped — the question is still on the paper.
+    """
+    question = q.get("question")
+    if isinstance(question, str):
+        q["question"] = {"type": "HTML", "content": question}
+    elif not isinstance(question, dict):
+        q["question"] = {"type": "HTML", "content": ""}
+    options = q.get("options")
+    if isinstance(options, str):
+        options = [options]
+    if isinstance(options, list):
+        fixed = []
+        for i, opt in enumerate(options):
+            if isinstance(opt, dict):
+                fixed.append(opt)
+            elif opt is not None:
+                fixed.append({"type": "HTML", "preview_id": str(i + 1), "content": str(opt)})
+        q["options"] = fixed
+    else:
+        q["options"] = []
+    for key in ("correct_options", "marking_points", "tags"):
+        value = q.get(key)
+        if isinstance(value, (str, int, float)):
+            q[key] = [str(value)]
+        elif not isinstance(value, list):
+            q[key] = []
+    if isinstance(q.get("ans"), (list, dict)):
+        q["ans"] = json.dumps(q["ans"], ensure_ascii=False) if isinstance(q["ans"], dict) else ", ".join(map(str, q["ans"]))
+    return q
+
+
 def _dedupe_key(q: Dict[str, Any]) -> str:
     number = str(q.get("question_number") or "").strip().lower()
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", str((q.get("question") or {}).get("content") or ""))).strip().lower()
@@ -472,6 +510,7 @@ def build_paper(
         for q in data.get("questions") or []:
             if not isinstance(q, dict):
                 continue
+            _coerce_question(q)
             q["question_type"] = _norm_type(q.get("question_type"))
             key = _dedupe_key(q)
             if key in seen:

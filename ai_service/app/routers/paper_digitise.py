@@ -3,6 +3,12 @@
     POST /paper-digitise/v1/estimate      what reading this PDF will cost (pages, credits, balance)
     POST /paper-digitise/v1/start         202 → task id; 402 when the institute cannot afford it
     GET  /paper-digitise/v1/jobs/{id}     poll; the questions + what was charged once COMPLETED
+    GET  /paper-digitise/v1/jobs/for-assessment/{assessment_id}
+                                          the newest read started for a test (reading / ready / failed)
+
+A read takes minutes, so it is started with the test's id and left to run: when it
+settles, the teacher who started it gets a bell alert and the test's own page picks
+the result up from the lookup above — nobody has to keep a dialog open.
 
 Charged on delivery: the task bills `paper_digitise` (per page + base, floored
 by the parametric estimate the teacher saw) only after questions come back, and
@@ -29,6 +35,7 @@ from ..services.ai_billing import charge_tool, preflight_tool_credits
 from ..services.ai_task_service import AiTaskService
 from ..services.model_selection import resolve_models
 from ..services.question_gen_service import QUESTIONS_USE_CASE
+from ..services.staff_notify import system_alert
 from .knowledge_base import Caller, get_caller
 
 logger = logging.getLogger(__name__)
@@ -47,6 +54,12 @@ class StartRequest(EstimateRequest):
     )
     title: Optional[str] = None
     preferred_model: Optional[str] = None
+    assessment_id: Optional[str] = Field(
+        None, description="The test this paper belongs to; lets its page find the read and the alert link to it"
+    )
+    return_path: Optional[str] = Field(
+        None, description="Dashboard path to open from the alert (relative, e.g. /study-library/...)"
+    )
 
 
 def _pdf_or_400(exc: paper_digitise.PaperPdfError) -> HTTPException:
@@ -155,12 +168,21 @@ async def start(
         institute_id=resolved,
         dynamic_values={
             "model": primary_model,
-            "params": {"pdf_url": body.pdf_url, "pages": pdf.pages, "tool": paper_digitise.TOOL_KEY},
+            "params": {
+                "pdf_url": body.pdf_url,
+                "pages": pdf.pages,
+                "tool": paper_digitise.TOOL_KEY,
+                # For the lookup by test and for the alert when the read settles.
+                "assessment_id": body.assessment_id,
+                "started_by": caller.user_id,
+                "return_path": body.return_path,
+            },
         },
     )
     task_id = task.id
     user_id = caller.user_id
     expected_total = body.expected_total_marks
+    test_name = (body.title or pdf.file_name)[:120]
 
     async def _work() -> str:
         paper = await paper_digitise.digitise(pdf, models, expected_total=expected_total)
@@ -191,14 +213,78 @@ async def start(
             ensure_ascii=False,
         )
 
-    ai_task_service.schedule(task_id, _work)
-    logger.info("paper_digitise started task=%s pages=%s institute=%s", task_id, pdf.pages, resolved)
+    async def _tell_teacher(final_status: Any, result_json: Optional[str], message: Optional[str]) -> None:
+        # The bell is how a teacher who left the page learns the read is done.
+        if not user_id:
+            return
+        link = {"assessmentId": body.assessment_id or "", "taskId": task_id, "path": body.return_path or ""}
+        if str(getattr(final_status, "value", final_status)) == "COMPLETED":
+            count = 0
+            try:
+                count = len(((json.loads(result_json or "{}") or {}).get("digitised") or {}).get("questions") or [])
+            except ValueError:
+                pass
+            await system_alert(
+                resolved, [user_id],
+                f"Question paper read for {test_name}",
+                f"{count} questions with their marks are ready. Review them on the test to turn on AI checking "
+                "of the answer sheets.",
+                source_id=task_id, data=link,
+            )
+        else:
+            await system_alert(
+                resolved, [user_id],
+                f"Could not read the question paper for {test_name}",
+                (message or "The paper could not be read.") + " Nothing was charged. You can try again "
+                "from the test, or check the sheets by hand.",
+                source_id=task_id, data=link,
+            )
+
+    ai_task_service.schedule(task_id, _work, on_done=_tell_teacher)
+    logger.info("paper_digitise started task=%s pages=%s institute=%s assessment=%s",
+                task_id, pdf.pages, resolved, body.assessment_id)
     return {
         "task_id": task_id,
         "file_name": pdf.file_name,
         "pages": pdf.pages,
         "estimate": est,
     }
+
+
+def _job_payload(task: Any) -> Dict[str, Any]:
+    result: Optional[Dict[str, Any]] = None
+    if task.result_json:
+        try:
+            result = (json.loads(task.result_json) or {}).get("digitised")
+        except Exception:  # noqa: BLE001
+            result = None
+    return {
+        "task_id": task.id,
+        "status": task.status,
+        "status_message": task.status_message,
+        "created_at": task.created_at.isoformat() if getattr(task, "created_at", None) else None,
+        "result": result,
+    }
+
+
+@router.get("/jobs/for-assessment/{assessment_id}")
+async def get_job_for_assessment(
+    assessment_id: str,
+    institute_id: Optional[str] = Query(None),
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """The newest read started for this test, or 404 when none was."""
+    resolved = caller.require_institute(institute_id)
+    needle = f'"assessment_id": "{assessment_id}"'
+    task = (
+        AiTaskRepository(db).query_for_institute(resolved, AiTaskType.PDF_TO_QUESTIONS.value)
+        .filter(AiTaskRepository.dynamic_values_contains(needle))
+        .first()
+    )
+    if not task:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No read for this test")
+    return _job_payload(task)
 
 
 @router.get("/jobs/{task_id}")
@@ -213,15 +299,4 @@ async def get_job(
     task = AiTaskRepository(db).get(task_id)
     if not task or task.institute_id != resolved:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
-    result: Optional[Dict[str, Any]] = None
-    if task.result_json:
-        try:
-            result = (json.loads(task.result_json) or {}).get("digitised")
-        except Exception:  # noqa: BLE001
-            result = None
-    return {
-        "task_id": task_id,
-        "status": task.status,
-        "status_message": task.status_message,
-        "result": result,
-    }
+    return _job_payload(task)

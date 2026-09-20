@@ -10,6 +10,7 @@ import { LeadCollectionModal } from "../../-components/LeadCollectionModal";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import axios from "axios";
 import { JsonRenderer } from "../../-components/JsonRenderer";
+import { OPEN_COURSE_ENROLLMENT_EVENT } from "../../-components/components/HtmlPageSection";
 import { CourseCatalogueService } from "../../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { resolveCourseView } from "../../-utils/course-page-routing";
@@ -1212,6 +1213,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     }
   }, [detailsPrimaryColor]);
 
+  // data-vacademy="enrol" inside an html `details` page (HtmlPageSection)
+  // dispatches this; the handler itself is defined after the loading/error
+  // returns below, so reach it through a ref that is refreshed every render.
+  const enrollClickRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const onOpenEnrollment = () => enrollClickRef.current();
+    window.addEventListener(OPEN_COURSE_ENROLLMENT_EVENT, onOpenEnrollment);
+    return () => window.removeEventListener(OPEN_COURSE_ENROLLMENT_EVENT, onOpenEnrollment);
+  }, []);
+
   // Listen for openLeadCollection event from HeaderComponent
   useEffect(() => {
     const handleOpenLeadCollection = () => {
@@ -1310,6 +1321,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       setShowLeadCollection(true);
     }
   };
+  enrollClickRef.current = handleEnrollClick;
 
   // Honor the catalogue's light/dark mode, exactly like CourseCataloguePage.
   // Without this the details page kept light tokens under a dark catalogue:

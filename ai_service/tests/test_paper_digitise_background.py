@@ -135,3 +135,36 @@ def test_system_alert_swallows_transport_failures(monkeypatch):
 def test_lookup_needle_matches_how_the_task_stores_params():
     stored = json.dumps({"model": "m", "params": {"assessment_id": "a-1", "started_by": "u"}})
     assert '"assessment_id": "a-1"' in stored
+
+
+# ---- the email leg ------------------------------------------------------------
+
+def test_email_matches_the_java_payload_and_skips_addressless_recipients(bell):
+    ok = asyncio.run(staff_notify.email(
+        "inst",
+        [{"email": "t@x.io", "name": "Asha", "userId": "u1"}, {"email": None, "name": "Nobody", "userId": "u2"}],
+        "Read done", "<p>body</p>", source_id="task-9",
+    ))
+    assert ok is True
+    _, payload, _ = bell.sent[0]
+    assert payload["channel"] == "EMAIL"
+    assert payload["recipients"] == [{"email": "t@x.io", "name": "Asha", "userId": "u1"}]
+    assert payload["options"]["emailSubject"] == "Read done"
+    assert payload["options"]["emailBody"] == "<p>body</p>"
+    assert payload["options"]["emailType"] == "UTILITY_EMAIL"
+    assert payload["options"]["sourceId"] == "task-9"
+
+
+def test_email_with_no_address_at_all_sends_nothing(bell):
+    assert asyncio.run(staff_notify.email("inst", [{"email": None, "userId": "u1"}], "s", "b")) is False
+    assert bell.sent == []
+
+
+def test_notice_email_escapes_and_links_only_to_https():
+    from app.routers.paper_digitise import _notice_email_html, _caller_contact
+    html = _notice_email_html("A<b>", "T", "1 < 2", "https://dash.example/x?y=1")
+    assert "A&lt;b&gt;" in html and "1 &lt; 2" in html and 'href="https://dash.example/x?y=1"' in html
+    assert "href" not in _notice_email_html(None, "T", "t", "/relative")
+    assert "Hi," in _notice_email_html(None, "T", "t", None)
+    assert _caller_contact(None) == {"email": None, "name": None}
+    assert _caller_contact("Bearer not-a-jwt") == {"email": None, "name": None}

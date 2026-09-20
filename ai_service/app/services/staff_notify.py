@@ -19,6 +19,7 @@ from .internal_auth import internal_auth_headers
 logger = logging.getLogger(__name__)
 
 _UNIFIED_SEND = "/notification-service/internal/v1/send"
+_ANNOUNCEMENTS_MULTIPLE = "/notification-service/v1/announcements/admin/multiple"
 
 
 async def system_alert(
@@ -31,20 +32,40 @@ async def system_alert(
     source_id: Optional[str] = None,
     data: Optional[Dict[str, str]] = None,
 ) -> bool:
-    """One bell entry per user. Best-effort: False (and a log line) on any failure."""
-    recipients = [{"userId": uid} for uid in dict.fromkeys(u for u in user_ids if u)]
-    if not recipients:
+    """One bell entry per user. Best-effort: False (and a log line) on any failure.
+
+    The dashboard bell reads announcement system alerts, not pushes — the
+    unified send's SYSTEM_ALERT channel is FCM only and reached nobody on the
+    web (2026-09-20). So the bell entry is an announcement (same shape
+    admin_core_service creates; createdByRole ADMIN skips the institute's
+    optional approval, as a system notice must), and the push rides alongside
+    for anyone on the app.
+    """
+    ids = [uid for uid in dict.fromkeys(u for u in user_ids if u)]
+    if not ids:
         return False
+    announcement = {
+        "title": title or "Notification",
+        "content": {"type": "text", "content": body or "Open to view details."},
+        "instituteId": institute_id or "",
+        "createdBy": "system",
+        "createdByName": source.replace("_", " ").title() if source else "System",
+        "createdByRole": "ADMIN",
+        "recipients": [{"recipientType": "USER", "recipientId": uid} for uid in ids],
+        "modes": [{"modeType": "SYSTEM_ALERT",
+                   "settings": {"priority": 2, "isDismissible": True, "showBadge": True, "isActive": True}}],
+    }
+    ok = await _post(_ANNOUNCEMENTS_MULTIPLE, [announcement], "bell announcement")
     options: Dict[str, Any] = {"pushTitle": title, "pushBody": body, "source": source, "sourceId": source_id}
     if data:
         options["pushData"] = data
-    payload = {
+    await _send({
         "instituteId": institute_id or "",
         "channel": "SYSTEM_ALERT",
-        "recipients": recipients,
+        "recipients": [{"userId": uid} for uid in ids],
         "options": options,
-    }
-    return await _send(payload, "system_alert")
+    }, "system_alert push")
+    return ok
 
 
 async def email(
@@ -81,7 +102,11 @@ async def email(
 
 
 async def _send(payload: Dict[str, Any], what: str) -> bool:
-    url = f"{get_settings().notification_service_base_url}{_UNIFIED_SEND}"
+    return await _post(_UNIFIED_SEND, payload, what)
+
+
+async def _post(path: str, payload: Any, what: str) -> bool:
+    url = f"{get_settings().notification_service_base_url}{path}"
     try:
         headers = await internal_auth_headers({"Content-Type": "application/json"})
         async with httpx.AsyncClient(timeout=15.0) as client:

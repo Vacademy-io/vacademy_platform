@@ -71,6 +71,20 @@ import type {
     TypePlanEntry,
 } from '../-types/paper';
 
+/**
+ * The date as it should read on the sheet: the field yields YYYY-MM-DD, the
+ * paper prints "25 Sep 2026". Anything unparseable is printed as typed.
+ */
+const printableExamDate = (value: string | undefined): string | undefined => {
+    if (!value) return undefined;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return value;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return Number.isNaN(date.getTime())
+        ? value
+        : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 export const Route = createLazyFileRoute('/knowledge-base/paper/$kbId')({
     component: PaperBuilderPage,
 });
@@ -449,7 +463,10 @@ function PaperBuilderPage() {
                 await handOffToOfflineTest(saved?.saved_question_paper_id);
                 navigate({
                     to: '/assessment/create-assessment/$assessmentId/$examtype',
-                    params: { assessmentId: 'defaultId', examtype: 'MANUAL_UPLOAD_EXAM' },
+                    // EXAM, not MANUAL_UPLOAD_EXAM: the same shape the slide's offline test
+                    // has (MANUAL evaluation, PDF submission, AI check, paper in the
+                    // instructions) — one learner flow and one admin flow for both.
+                    params: { assessmentId: 'defaultId', examtype: 'EXAM' },
                     search: { currentStep: 0 },
                 });
             } else {
@@ -480,7 +497,11 @@ function PaperBuilderPage() {
                 const link = await publishPaperLink(
                     kbId,
                     { blueprint, questions: result.raw_questions },
-                    { theme: loadPaperTheme(), gradeLine: spec.grade || undefined },
+                    {
+                        theme: loadPaperTheme(),
+                        gradeLine: spec.grade || undefined,
+                        examDate: printableExamDate(spec.exam_date),
+                    },
                     generationId ?? undefined
                 );
                 paperFile = { url: link.file_url, fileName: fileNameFromUrl(link.file_url) };
@@ -970,14 +991,22 @@ function PaperBuilderPage() {
                                         fetchPaperPdf(
                                             kbId,
                                             { blueprint, questions: result.raw_questions },
-                                            { ...options, gradeLine: spec.grade || undefined }
+                                            {
+                                                ...options,
+                                                gradeLine: spec.grade || undefined,
+                                                examDate: printableExamDate(spec.exam_date),
+                                            }
                                         )
                                     }
                                     onPublish={(options) =>
                                         publishPaperLink(
                                             kbId,
                                             { blueprint, questions: result.raw_questions },
-                                            { ...options, gradeLine: spec.grade || undefined },
+                                            {
+                                                ...options,
+                                                gradeLine: spec.grade || undefined,
+                                                examDate: printableExamDate(spec.exam_date),
+                                            },
                                             generationId ?? undefined
                                         )
                                     }

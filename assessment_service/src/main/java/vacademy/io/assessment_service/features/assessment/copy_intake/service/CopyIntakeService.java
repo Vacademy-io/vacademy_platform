@@ -38,6 +38,8 @@ import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.assessment_service.features.auth_service.service.AuthService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
@@ -91,6 +93,7 @@ public class CopyIntakeService {
     private final AssessmentAuditClient auditClient;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate tx;
+    private final AuthService authService;
 
     @Value("${media.service.baseurl}")
     private String mediaServiceUrl;
@@ -147,7 +150,7 @@ public class CopyIntakeService {
                 .instituteId(instituteId)
                 .createdBy(user.getUserId())
                 .createdByName(user.getFullName())
-                .createdByEmail(user.getUsername())
+                .createdByEmail(creatorEmail(user))
                 .preferredModel(request.getPreferredModel())
                 .status(AiCopyIntakeBatch.RUNNING)
                 .totalItems(usable.size())
@@ -756,5 +759,25 @@ public class CopyIntakeService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * Where the completion email goes. The principal carries the username, which
+     * is an email only for some institutes (Shiksha Nation logins are "custom11"
+     * style), so the address is looked up; until 2026-09-20 the username was
+     * stored here and the email step was skipped for every such batch.
+     */
+    private String creatorEmail(CustomUserDetails user) {
+        String username = user.getUsername();
+        try {
+            for (UserDTO u : authService.getUsersByIds(List.of(user.getUserId()))) {
+                if (u != null && StringUtils.hasText(u.getEmail()) && u.getEmail().contains("@")) {
+                    return u.getEmail();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[copy-intake] could not resolve email for user {}: {}", user.getUserId(), e.getMessage());
+        }
+        return username != null && username.contains("@") ? username : null;
     }
 }

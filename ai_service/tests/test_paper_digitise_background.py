@@ -105,14 +105,21 @@ def test_system_alert_matches_the_java_payload_and_dedupes_users(bell):
         "inst", ["u1", "u1", "", "u2"], "Read", "Body", source_id="task-9", data={"assessmentId": "a1"}
     ))
     assert ok is True
+    # 1. the announcement the dashboard bell reads
     url, payload, headers = bell.sent[0]
-    assert url.endswith("/notification-service/internal/v1/send")
+    assert url.endswith("/notification-service/v1/announcements/admin/multiple")
     assert headers["clientName"] == "admin_core_service"
+    ann = payload[0]
+    assert ann["title"] == "Read" and ann["content"] == {"type": "text", "content": "Body"}
+    assert ann["instituteId"] == "inst" and ann["createdByRole"] == "ADMIN"
+    assert ann["recipients"] == [{"recipientType": "USER", "recipientId": "u1"}, {"recipientType": "USER", "recipientId": "u2"}]
+    assert ann["modes"][0]["modeType"] == "SYSTEM_ALERT"
+    # 2. the push alongside
+    url, payload, _ = bell.sent[1]
+    assert url.endswith("/notification-service/internal/v1/send")
     assert payload["channel"] == "SYSTEM_ALERT"
-    assert payload["instituteId"] == "inst"
     assert payload["recipients"] == [{"userId": "u1"}, {"userId": "u2"}]
     assert payload["options"]["pushTitle"] == "Read"
-    assert payload["options"]["pushBody"] == "Body"
     assert payload["options"]["sourceId"] == "task-9"
     assert payload["options"]["pushData"] == {"assessmentId": "a1"}
 

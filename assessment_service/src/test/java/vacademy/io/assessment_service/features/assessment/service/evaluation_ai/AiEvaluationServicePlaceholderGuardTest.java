@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import vacademy.io.assessment_service.core.exception.VacademyException;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
@@ -38,7 +39,7 @@ class AiEvaluationServicePlaceholderGuardTest {
                                 mock(AiEvaluationAsyncService.class),
                                 mock(AiEvaluationCancellationService.class),
                                 mock(EvaluationAccessValidator.class),
-                                mappings);
+                                mappings, mock(QuestionWiseMarksRepository.class));
         }
 
         private static Assessment assessment() {

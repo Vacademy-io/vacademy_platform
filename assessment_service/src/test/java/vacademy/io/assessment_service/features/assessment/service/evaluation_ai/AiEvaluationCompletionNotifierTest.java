@@ -132,8 +132,13 @@ class AiEvaluationCompletionNotifierTest {
                 verify(notifications).sendEmailToUsersReporting(mail.capture(), eq("inst"));
                 assertThat(mail.getValue().getUsers()).hasSize(1);
                 assertThat(mail.getValue().getUsers().get(0).getChannelId()).isEqualTo("admin@x.io");
-                assertThat(mail.getValue().getBody()).contains("2 copies checked; 1 could not be checked")
+                // the shared staff layout: numbers in a table, the release reminder, one button
+                assertThat(mail.getValue().getBody()).contains("Checked by AI").contains(">2<")
+                                .contains("Could not be checked").contains(">1<")
+                                .contains("1 copy could not be checked by the AI and need a teacher.")
                                 .contains("Learners see nothing yet")
+                                .contains("Open the results")
+                                .doesNotContain("Vacademy")
                                 .contains("https://dash.example/assessment/assessment-list/assessment-details/a1/EXAM/PRIVATE/submissions");
 
                 @SuppressWarnings("unchecked")

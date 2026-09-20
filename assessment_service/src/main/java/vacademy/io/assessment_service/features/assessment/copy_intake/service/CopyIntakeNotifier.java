@@ -13,6 +13,7 @@ import vacademy.io.assessment_service.features.assessment.service.AssessmentWork
 import vacademy.io.assessment_service.features.notification.dto.NotificationDTO;
 import vacademy.io.assessment_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.assessment_service.features.notification.service.NotificationService;
+import vacademy.io.assessment_service.features.notification.service.StaffNoticeEmails;
 
 import java.util.Date;
 import java.util.HashMap;
@@ -42,7 +43,11 @@ public class CopyIntakeNotifier {
      * Announce a settled batch on every channel. The caller guarantees this
      * runs once per settled status (see CopyIntakeService#finalizeIfDone).
      */
+    /** The counts of the batch being announced; set by batchSettled for sendEmail. */
+    private CopyIntakeService.Counts lastCounts;
+
     public void batchSettled(AiCopyIntakeBatch batch, CopyIntakeService.Counts counts) {
+        this.lastCounts = counts;
         Assessment assessment = assessmentRepository.findById(batch.getAssessmentId()).orElse(null);
         String name = assessment != null ? assessment.getName() : batch.getAssessmentId();
         boolean needsReview = AiCopyIntakeBatch.NEEDS_REVIEW.equals(batch.getStatus());
@@ -115,15 +120,19 @@ public class CopyIntakeNotifier {
     private boolean sendEmail(AiCopyIntakeBatch batch, String assessmentName, String title, String summary, String link,
                               int waiting) {
         try {
-            String body = "<p>Hi " + esc(firstName(batch.getCreatedByName())) + ",</p>"
-                    + "<p>The AI check you started for <b>" + esc(assessmentName) + "</b> has finished.</p>"
-                    + "<p>" + esc(summary) + "</p>"
-                    + (waiting > 0
-                            ? "<p>Some copies could not be matched to a student automatically (no name on the sheet, or two students with that name). "
-                              + "Open the batch to pick the student for each; they will be checked right after.</p>"
-                            : "")
-                    + "<p><a href=\"" + link + "\">Open the results</a></p>"
-                    + "<p>— Vacademy</p>";
+            Map<String, Long> counts = StaffNoticeEmails.counts();
+            counts.put("Copies uploaded", (long) batch.getTotalItems());
+            counts.put("Checked by AI", (long) lastCounts.completed());
+            counts.put("Could not be checked", (long) lastCounts.failed());
+            counts.put("Skipped", (long) lastCounts.skipped());
+            counts.put("Waiting for a student to be picked", (long) waiting);
+            String body = StaffNoticeEmails.aiCheckFinished(
+                    firstName(batch.getCreatedByName()), assessmentName, counts,
+                    waiting > 0
+                            ? "Some copies could not be matched to a student automatically (no name on the sheet, or two students with that name). "
+                              + "Open the batch to pick the student for each; they will be checked right after."
+                            : null,
+                    link);
             NotificationToUserDTO to = NotificationToUserDTO.builder()
                     .userId(batch.getCreatedBy())
                     .channelId(batch.getCreatedByEmail())

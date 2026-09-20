@@ -350,8 +350,10 @@ def paper_label_for(question: dict[str, Any]) -> str:
     was locating answers by wording alone)."""
     printed = str(question.get("paper_label") or "").strip()
     section = str(question.get("section") or "").strip()
+    block = question.get("label_block")  # 2, 3… when the same number repeats in the section
     if printed:
-        return f"{section} · {printed}" if section else printed
+        base = f"{section} · {printed}" if section else printed
+        return f"{base} (block {block})" if block and int(block) > 1 else base
     number = question.get("question_number")
     if number:
         return f"Q{number}"
@@ -363,9 +365,16 @@ def _section_hint(question: dict[str, Any]) -> str:
     printed = str(question.get("paper_label") or "").strip()
     if not (section and printed):
         return ""
-    return (f"**Where to look:** the student's answer is labelled \"{printed}\" under the heading "
-            f"\"{section}\" (or after that section's earlier answers). The same number may appear "
-            "under other headings - those belong to other questions; do not grade them here.\n")
+    block = int(question.get("label_block") or 1)
+    blocks = int(question.get("label_blocks") or 1)
+    where = (f"**Where to look:** the student's answer is labelled \"{printed}\" under the heading "
+             f"\"{section}\" (or after that section's earlier answers). The same number may appear "
+             "under other headings - those belong to other questions; do not grade them here.")
+    if blocks > 1:
+        ordinal = {1: "first", 2: "second", 3: "third"}.get(block, f"{block}th")
+        where += (f" In \"{section}\" the numbering restarts {blocks} times (one run per passage/part); "
+                  f"this question is in the {ordinal} run numbered from 1 - skip the other run(s) with the same number.")
+    return where + "\n"
 
 
 def build_grading_prompt(

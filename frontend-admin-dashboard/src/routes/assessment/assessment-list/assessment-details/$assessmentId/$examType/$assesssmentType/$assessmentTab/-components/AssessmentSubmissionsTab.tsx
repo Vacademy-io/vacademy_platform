@@ -65,6 +65,7 @@ import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDial
 import { AiAssessmentReportDialog } from './AiAssessmentReportDialog';
 import { AssessmentExportCsvDialog } from './AssessmentExportCsvDialog';
 import { BulkAiCheckDialog } from './copy-intake/BulkAiCheckDialog';
+import { EnableAiChecking } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/enable-ai-checking';
 import { CopyIntakeBatchPanel } from './copy-intake/CopyIntakeBatchPanel';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
@@ -208,6 +209,13 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' })
     );
     const isManualEvaluation = assessmentDetailsData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
+    // For the "Enable AI checking" card on a placeholder-only offline test: the paper
+    // PDF sits in the saved instructions, and the placeholder's marks are the section total.
+    const savedInstructionsHtml: string | undefined =
+        assessmentDetailsData?.[0]?.saved_data?.instructions?.content ?? undefined;
+    const savedTotalMarks: number = (
+        (assessmentDetailsData?.[1]?.saved_data?.sections ?? []) as Array<{ total_marks?: number }>
+    ).reduce((sum, section) => sum + (Number(section?.total_marks) || 0), 0);
 
     // How this assessment was actually handed out. An assessment created against batches
     // has no individually pre-registered learners, so "Individual Selection" could only
@@ -1271,6 +1279,20 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         setIntakePanelOpen(true);
                     }}
                 />
+                {/* A manual-upload test still on the "Upload your answer sheet" placeholder
+                    cannot be AI-checked; this reads the attached paper into questions and
+                    switches it on. Renders nothing once the test has real questions. */}
+                {isManualEvaluation && (
+                    <EnableAiChecking
+                        assessmentId={assessmentId}
+                        instructionsHtml={savedInstructionsHtml}
+                        totalMarks={savedTotalMarks > 0 ? savedTotalMarks : null}
+                        framed
+                        onEnabled={() =>
+                            queryClient.invalidateQueries({ queryKey: ['GET_ASSESSMENT_DETAILS'] })
+                        }
+                    />
+                )}
                 {intakePanelOpen && (
                     <div className="px-4">
                         <CopyIntakeBatchPanel

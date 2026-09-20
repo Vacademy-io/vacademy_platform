@@ -194,10 +194,10 @@ public class LearnerReportService {
         Page<StudentReportDto> reports;
         if (StringUtils.hasText(filter.getName())) {
             reports = studentAttemptRepository.findAssessmentForUserWithFilterAndSearch(
-                    filter.getName(), user.getUserId(), instituteId, statusList, releaseStatus, assessmentTypes, pageable);
+                    true, filter.getName(), user.getUserId(), instituteId, statusList, releaseStatus, assessmentTypes, pageable);
         } else {
             reports = studentAttemptRepository.findAssessmentForUserWithFilter(
-                    user.getUserId(), instituteId, statusList, releaseStatus, assessmentTypes, pageable);
+                    true, user.getUserId(), instituteId, statusList, releaseStatus, assessmentTypes, pageable);
         }
 
         return ResponseEntity.ok(reports);

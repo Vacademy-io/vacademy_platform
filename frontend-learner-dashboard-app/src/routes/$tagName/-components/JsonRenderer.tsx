@@ -347,6 +347,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             css={props.css as string}
             siteCss={(globalSettings as any)?.customCss as string | undefined}
             tagName={tagName}
+            courseData={courseData}
           />
         );
 

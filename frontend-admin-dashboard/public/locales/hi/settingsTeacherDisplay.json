@@ -54,7 +54,8 @@
             "editStructure": "विषय / मॉड्यूल / अध्याय संपादित कर सकते हैं",
             "deleteStructure": "विषय / मॉड्यूल / अध्याय हटा सकते हैं",
             "showBulkUpload": "बल्क अपलोड (ZIP) बटन दिखाएं",
-            "deleteCourse": "कोर्स हटा सकते हैं"
+            "deleteCourse": "कोर्स हटा सकते हैं",
+            "requireCourseApproval": "नए कोर्स प्रकाशित करने से पहले एडमिन अनुमोदन आवश्यक (समीक्षा के लिए सबमिट करें)"
         },
         "authoredCoursesCard": {
             "title": "लेखित कोर्स कार्ड",

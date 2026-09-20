@@ -42,5 +42,8 @@
     "auditLogs": "Audit Logs",
     "byActor": "By: {{actor}}",
     "commentLabel": "Comment: {{comment}}",
-    "noHistoryAvailable": "No history available."
+    "noHistoryAvailable": "No history available.",
+    "publish": "Publish",
+    "published": "Course published",
+    "publishFailed": "Failed to publish course"
 }

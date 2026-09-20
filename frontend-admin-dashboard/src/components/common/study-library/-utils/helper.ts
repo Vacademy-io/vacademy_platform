@@ -95,10 +95,13 @@ export interface FormattedCourseData {
     about_the_course_html: string;
     tags: string[];
     course_depth: number;
-    status: string;
-    created_by_user_id: string;
-    original_course_id: string | null;
-    version_number: number;
+    // Approval-workflow fields. Always set on create; on update only `status`
+    // is sent (the course's current value) and the rest are omitted so the
+    // backend keeps ownership / copy linkage as stored.
+    status?: string;
+    created_by_user_id?: string;
+    original_course_id?: string | null;
+    version_number?: number;
     /**
      * Optional per-course advanced settings JSON (package.course_setting envelope).
      * Only set when the wizard's Advanced Settings JSON is present and valid.
@@ -573,15 +576,6 @@ export const convertToApiCourseFormatUpdate = (
         };
     });
 
-    // Get user data for approval workflow
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const tokenData = getTokenDecodedData(accessToken);
-    const isAdmin =
-        tokenData?.authorities &&
-        Object.values(tokenData.authorities).some(
-            (auth: Authority) => Array.isArray(auth?.roles) && auth.roles.includes('ADMIN')
-        );
-
     return {
         id: formData.id || '',
         new_course: false,
@@ -601,11 +595,14 @@ export const convertToApiCourseFormatUpdate = (
         tags: formData.tags || [],
         course_depth: formData.levelStructure || 2,
         course_html_description: formData.description || '',
-        // New fields for teacher approval workflow
-        status: (formData as any).status || (isAdmin ? 'ACTIVE' : 'DRAFT'),
-        created_by_user_id: (formData as any).created_by_user_id || tokenData?.user || '',
-        original_course_id: (formData as any).original_course_id || null,
-        version_number: (formData as any).version_number || 1,
+        // Approval-workflow fields. Send the course's *current* status (carried
+        // in by transformCourseData) so a details edit never changes it, and
+        // leave ownership / copy linkage out entirely — the backend keeps the
+        // stored values when they are absent. Guessing them from the editor's
+        // role used to flip a teacher's published course back to DRAFT, re-own
+        // any course to whoever edited it, and detach editable copies from
+        // their original.
+        status: (formData as any).status || undefined,
     };
 };
 
@@ -683,6 +680,9 @@ export function transformCourseData(course: CourseDetailsFormValues) {
         selectedInstructors: extractInstructors(sessions),
         instructors: [],
         publishToCatalogue: course.courseData.isCoursePublishedToCatalaouge ?? false,
+        // Carried through to convertToApiCourseFormatUpdate so an edit
+        // preserves DRAFT / IN_REVIEW / ACTIVE instead of guessing by role.
+        status: course.courseData.status || undefined,
     };
 }
 

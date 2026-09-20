@@ -46,7 +46,8 @@
         "canEditCourseStructure": "Can edit subject / module / chapter",
         "canDeleteCourseStructure": "Can delete subject / module / chapter",
         "showBulkUpload": "Show Bulk Upload (ZIP) button",
-        "canDeleteCourse": "Can delete course"
+        "canDeleteCourse": "Can delete course",
+        "requireCourseApproval": "Require admin approval before publishing new courses (Submit for Review)"
     },
     "authoredCoursesCard": {
         "title": "Authored Courses Card",

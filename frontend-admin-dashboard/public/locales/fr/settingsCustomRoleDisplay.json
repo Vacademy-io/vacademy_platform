@@ -46,7 +46,8 @@
         "canEditCourseStructure": "Peut modifier la matière / le module / le chapitre",
         "canDeleteCourseStructure": "Peut supprimer la matière / le module / le chapitre",
         "showBulkUpload": "Afficher le bouton de téléversement en masse (ZIP)",
-        "canDeleteCourse": "Peut supprimer le cours"
+        "canDeleteCourse": "Peut supprimer le cours",
+        "requireCourseApproval": "Exiger l'approbation d'un administrateur avant de publier un nouveau cours (Soumettre pour relecture)"
     },
     "authoredCoursesCard": {
         "title": "Carte des cours créés",

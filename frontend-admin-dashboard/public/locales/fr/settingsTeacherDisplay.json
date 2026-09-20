@@ -54,7 +54,8 @@
             "editStructure": "Peut modifier matière / module / chapitre",
             "deleteStructure": "Peut supprimer matière / module / chapitre",
             "showBulkUpload": "Afficher le bouton d'importation groupée (ZIP)",
-            "deleteCourse": "Peut supprimer le cours"
+            "deleteCourse": "Peut supprimer le cours",
+            "requireCourseApproval": "Exiger l'approbation d'un administrateur avant de publier un nouveau cours (Soumettre pour relecture)"
         },
         "authoredCoursesCard": {
             "title": "Carte des cours créés",

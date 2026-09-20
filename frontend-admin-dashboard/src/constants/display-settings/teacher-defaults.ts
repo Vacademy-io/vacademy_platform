@@ -144,6 +144,7 @@ const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
         directEditPublishedCourse: false,
+        requireCourseApproval: true,
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
         showBulkUpload: false,

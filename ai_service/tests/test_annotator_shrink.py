@@ -41,3 +41,27 @@ def test_oversized_scans_are_reencoded_smaller_capped_in_size_and_pages_survive(
     assert max(info["width"], info["height"]) <= annotator._MAX_SCAN_SIDE_PX
     assert "page 1" in doc[0].get_text()  # the drawn text (a stand-in for marks) is intact
     assert annotator.UPLOAD_CAP_BYTES < 20 * 1024 * 1024
+
+
+def test_transparent_pen_layers_survive_the_shrink_with_their_alpha():
+    # The marks are RGBA PNGs laid over the scan; turning them into JPEG paints
+    # their background black behind every tick and note (2026-09-21).
+    import io
+    from PIL import Image, ImageDraw
+    pdf = _scan_pdf(1, 2400)
+    doc = fitz.open(stream=pdf, filetype="pdf")
+    layer = Image.new("RGBA", (120, 60), (0, 0, 0, 0))
+    ImageDraw.Draw(layer).line([(5, 30), (40, 55), (110, 5)], fill=(200, 20, 20, 255), width=6)
+    buf = io.BytesIO(); layer.save(buf, format="PNG")
+    doc[0].insert_image(fitz.Rect(100, 100, 220, 160), stream=buf.getvalue(), overlay=True)
+    pdf = doc.tobytes()
+
+    out = annotator.shrink_scans(pdf, cap_bytes=1_000_000)
+    d2 = fitz.open(stream=out, filetype="pdf")
+    kinds = []
+    for img in d2[0].get_images(full=True):
+        info = d2.extract_image(img[0])
+        kinds.append((info["ext"], bool(img[1]), info["width"]))
+    # the scan became a capped JPEG; the pen layer is still a PNG with its soft mask
+    assert any(ext in ("jpeg", "jpg") and w <= annotator._MAX_SCAN_SIDE_PX for ext, _, w in kinds)
+    assert any(ext == "png" and has_mask for ext, has_mask, _ in kinds), kinds

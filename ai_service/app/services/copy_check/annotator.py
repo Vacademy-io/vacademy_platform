@@ -3923,6 +3923,7 @@ async def _upload(content: bytes, filename: str) -> Optional[str]:
 UPLOAD_CAP_BYTES = 18 * 1024 * 1024
 _JPEG_QUALITY = 78
 _MAX_SCAN_SIDE_PX = 2000
+_MIN_SCAN_BYTES = 300 * 1024  # below this it is a mark layer or a logo, not a page scan
 
 
 def shrink_scans(pdf_bytes: bytes, cap_bytes: int = UPLOAD_CAP_BYTES) -> bytes:
@@ -3947,13 +3948,28 @@ def shrink_scans(pdf_bytes: bytes, cap_bytes: int = UPLOAD_CAP_BYTES) -> bytes:
             seen: set[int] = set()
             for page in doc:
                 for img in page.get_images(full=True):
-                    xref = img[0]
+                    xref, smask = img[0], img[1]
                     if xref in seen:
                         continue
                     seen.add(xref)
+                    # Only the page scans. The pen marks are small transparent
+                    # PNG layers laid over the scan; JPEG has no alpha, so
+                    # re-encoding them paints their background black (seen on
+                    # every tick and note, 2026-09-21). Anything with a soft
+                    # mask, an alpha channel, or under ~300 KB is left as it is.
+                    if smask:
+                        continue
+                    try:
+                        raw_len = doc.xref_stream_raw(xref)
+                        if raw_len is not None and len(raw_len) < _MIN_SCAN_BYTES:
+                            continue
+                    except Exception:  # noqa: BLE001
+                        pass
                     try:
                         pix = fitz.Pixmap(doc, xref)
-                        if pix.alpha or pix.n - pix.alpha >= 4:
+                        if pix.alpha:
+                            continue
+                        if pix.n >= 4:
                             pix = fitz.Pixmap(fitz.csRGB, pix)
                         longest = max(pix.width, pix.height)
                         if longest > max_side:

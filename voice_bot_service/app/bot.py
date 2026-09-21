@@ -207,7 +207,7 @@ class TranscriptCollector(FrameProcessor):
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
-                 forget_resume=None,
+                 forget_resume=None, release_turn=None,
                  voice_live=None, resay_opening=None):
         super().__init__()
         self._outcome = outcome
@@ -240,11 +240,17 @@ class TranscriptCollector(FrameProcessor):
         # silently. Wait it out before speaking the cut words.
         self._resume_settle_secs = resume_settle_secs
         self._forget_resume = forget_resume
+        self._release_turn = release_turn or (lambda: True)
+        # The aggregator's view of the caller's turn (UserStarted/StoppedSpeaking).
+        # Bot speech pushed while it is open never plays — calls 9050a3e1 and
+        # 42106148 (2026-09-21), four resumes lost, three "hello"s unanswered.
+        self._user_turn_open = False
         self._vad_started_t = 0.0
         self._resumed_t = 0.0
         self._reran_for = ""
         self._resume_check = None
         self._resume_stale = False
+        self._rerun_for_resume = ""
         # True only while an operator/voicemail recording is still plausible.
         # This was a LATCH ("have we heard a real caller yet?") and the latch is
         # what broke on call 14029bd6: Sarvam rendered "…after the tone" as the
@@ -355,6 +361,7 @@ class TranscriptCollector(FrameProcessor):
             self._on_voice_tick()         # voice is live RIGHT NOW (acoustics)
         if isinstance(frame, UserStartedSpeakingFrame):
             self._on_voice_tick()
+            self._user_turn_open = True
         if isinstance(frame, (VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame)):
             # The VAD's own onset/stop: the acoustic truth the orphan re-ask
             # keys on. The aggregator's UserStopped comes ~5 s late when no
@@ -393,6 +400,7 @@ class TranscriptCollector(FrameProcessor):
                         # and the caller waited 6 s for an apology instead.
                         await self._answer_never_arrived(direction, _voice)
         elif isinstance(frame, UserStoppedSpeakingFrame):
+            self._user_turn_open = False
             self._set_user_speaking(False)
             self._on_activity(user=True)  # give them thinking time from speech END
         # FINAL transcriptions only. pipecat 1.4's Google STT emits
@@ -436,6 +444,7 @@ class TranscriptCollector(FrameProcessor):
                 logger.info("turn-gate: screener hold line %r — waiting for the person", text[:40])
                 self._on_activity(user=True)
                 self._on_transcript(backchannel=True)
+                await self._release_user_turn(frame, direction)
                 return
             if self._in_machine_window() and (is_carrier_announcement(text) or joined_carrier):
                 self._outcome.transcript.append({"role": "user", "text": text})
@@ -452,6 +461,7 @@ class TranscriptCollector(FrameProcessor):
                 self._on_transcript(backchannel=True)
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
+                await self._release_user_turn(frame, direction)
                 return
             # Once we KNOW the line is playing a recording, the scraps between
             # its recognisable sentences are that same recording. Call 38536b71
@@ -499,6 +509,7 @@ class TranscriptCollector(FrameProcessor):
                 self._on_transcript(backchannel=True)
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
+                await self._release_user_turn(frame, direction)
                 return
             if (self._in_machine_window()
                     and not self._bot_spoke_once()
@@ -523,6 +534,7 @@ class TranscriptCollector(FrameProcessor):
                 self._on_transcript(backchannel=True)
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
+                await self._release_user_turn(frame, direction)
                 return
             ducked = self._duck is not None and self._duck.is_ducked()
             # A final with no letter or digit ("।", "?") is punctuation the engine
@@ -575,7 +587,13 @@ class TranscriptCollector(FrameProcessor):
             # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
             # model can't answer the same hello twice.
             if (text.casefold() == self._last_text and now - self._last_text_t < 4.0
-                    and self._bot_stopped_t() < self._last_text_t):
+                    and self._bot_stopped_t() < self._last_text_t
+                    # …but only while something of ours is on its way. Into our
+                    # SILENCE a second "Hello?" is the caller telling us they
+                    # hear nothing — call 9050a3e1: it was dropped here and the
+                    # third one, 7 s later, got the reply.
+                    and (self._is_bot_speaking() or self._reply_in_flight()
+                         or self._resume_pending() or not self._bot_spoke_once())):
                 logger.info("transcript dedupe: dropping repeat %r", text[:30])
                 self._on_activity(user=True)
                 # The words WERE heard — stamp transcript time so the VAD-orphan
@@ -586,6 +604,7 @@ class TranscriptCollector(FrameProcessor):
                     # A dropped repeat must still release the held reply, or the
                     # duck sits until the watchdog timeout for no reason.
                     await self._on_absorb(None)
+                await self._release_user_turn(frame, direction)
                 return
             self._last_text = text.casefold()
             self._last_text_t = now
@@ -607,6 +626,7 @@ class TranscriptCollector(FrameProcessor):
                 self._on_transcript(backchannel=True)
                 if self._duck is not None and self._duck.is_ducked():
                     await self._on_absorb(None)
+                await self._release_user_turn(frame, direction)
                 return
             # The phone screened us: our opening played to a recorder, and this
             # is the person finally picking up. Whatever the played transcript
@@ -650,6 +670,7 @@ class TranscriptCollector(FrameProcessor):
                     # Synthetic noise cue mid-reply: nothing to answer, nothing
                     # worth interrupting — release any hold and move on.
                     self._on_transcript(backchannel=True)
+                    await self._release_user_turn(frame, direction)
                     await self._on_absorb(None)
                     return
                 if mid_reply_action(
@@ -660,6 +681,7 @@ class TranscriptCollector(FrameProcessor):
                     # aggregator never sees this turn, so pipecat's min-words and
                     # emulated-VAD paths cannot delete it (ANSWER_DELETED).
                     self._on_transcript(backchannel=True)
+                    await self._release_user_turn(frame, direction)
                     # Call 34f258c2 (2026-09-11): "…fees ka follow-up? Is that you?"
                     # → caller "Yes." → the HELD tail "Or does someone help?" resumed
                     # after the answer, twice in one call. A short reply to a question
@@ -834,6 +856,25 @@ class TranscriptCollector(FrameProcessor):
                 # so its played text is committed (prevents the verbatim
                 # re-opening seen on 8e1e00ad). The transcript is then forwarded
                 # below as a fresh, normal turn.
+                if (self._in_machine_window() and self._carrier_seen
+                        and self._prev_final_t and now - self._prev_final_t < 1.0
+                        and len(text.split()) <= 2 and self._human_turns <= 1):
+                    # Call 9050a3e1 (2026-09-21): the operator's "…is not
+                    # available" landed as "The person you're trying to reach."
+                    # / "Not." / "Not available." — the middle piece is
+                    # capitalised, so the scrap rule rightly spares it as a
+                    # possible human "No.", but letting it CUT the opening
+                    # 1.1 s in is a different matter. Keep it in the context
+                    # (a real "No." still gets answered after the opening) and
+                    # let the opening play. Whoever it was hears a complete
+                    # sentence either way.
+                    logger.info("turn-gate: %r right after a carrier line while the opening "
+                                "plays — keeping it, not cutting the opening", text[:20])
+                    self._on_transcript(backchannel=True)
+                    await self.push_frame(LLMMessagesAppendFrame(
+                        messages=[{"role": "user", "content": text}]), direction)
+                    await self._release_user_turn(frame, direction)
+                    return
                 self._audio_checks = 0
                 logger.info("turn-gate: real barge-in %r — interrupting reply "
                             "(ducked=%s)", text[:40], ducked)
@@ -935,6 +976,28 @@ class TranscriptCollector(FrameProcessor):
                 return "?" in (entry.get("text") or "") or "？" in (entry.get("text") or "")
         return True
 
+    async def _release_user_turn(self, frame, direction):
+        """Close the caller's turn in the aggregator after we swallow a final.
+
+        pipecat's TurnAnalyzerUserTurnStopStrategy holds the turn open after
+        Smart Turn says COMPLETE until it has seen a TranscriptionFrame for it;
+        a final we absorb (a backchannel, a carrier line, a scrap, a repeat)
+        never reaches it, so the turn stays open for the whole 5 s
+        user_turn_stop_timeout. Inside that window nothing we push is heard —
+        every lost resume in calls 9050a3e1 and 42106148 was sent there — and
+        the aggregator will not run the model either. A whitespace-only final
+        satisfies the strategy (it only checks that text arrived) while the
+        aggregator ignores it (no content, nothing aggregated, no run), and the
+        strategy resets on every stop, so nothing leaks into the next turn."""
+        if not self._user_turn_open or not self._release_turn():
+            return
+        try:
+            await self.push_frame(TranscriptionFrame(
+                " ", getattr(frame, "user_id", "") or "", getattr(frame, "timestamp", "") or "",
+                language=getattr(frame, "language", None)), direction)
+        except Exception:
+            logger.exception("turn-gate: could not release the caller's turn")
+
     async def _answer_never_arrived(self, direction, voice: float) -> bool:
         """Their turn was answered by a generation that a noise cancelled before
         one word of it played. Ask for that answer again — not for them to
@@ -1001,6 +1064,15 @@ class TranscriptCollector(FrameProcessor):
         model instead of leaving them marked as said."""
         try:
             await asyncio.sleep(self._resume_settle_secs)
+            # And wait for the caller's turn to be closed in the aggregator:
+            # speech pushed while it is open is never heard. With the absorbed
+            # final releasing the turn this is ~0 s; the cap is the aggregator's
+            # own 5 s timeout plus a beat.
+            t0 = time.time()
+            while self._user_turn_open and time.time() - t0 < 6.0:
+                if self._resume_stale:
+                    return
+                await asyncio.sleep(0.05)
             if self._resume_stale:
                 return
             await self.push_frame(TTSSpeakFrame(text, append_to_context=True), direction)
@@ -1024,6 +1096,25 @@ class TranscriptCollector(FrameProcessor):
                 # model's own copy is suppressed and the words leave the call
                 # altogether (call b41b481f).
                 self._forget_resumed()
+                # Handing the words back is inert unless the model is actually
+                # asked to speak — call 42106148: un-recorded at 13.1 s, then
+                # 12 s of nothing until the caller asked "are you using AI?".
+                if (not self._reply_in_flight() and not self._is_bot_speaking()
+                        and self._rerun_for_resume != text):
+                    self._rerun_for_resume = text
+                    heard = self._heard_tail()
+                    logger.warning("turn-gate: the resumed words were lost twice — asking "
+                                   "the model to finish the thought")
+                    await self.push_frame(LLMMessagesAppendFrame(
+                        messages=[{"role": "user", "content":
+                                   ("[The line dropped the end of your last reply; they "
+                                    "heard nothing after: \"" + heard + "\". Say the rest "
+                                    "now, in one or two short sentences. Do not restart, "
+                                    "re-greet or apologise.]") if heard else
+                                   "[The line dropped the end of your last reply. Say the "
+                                   "rest now, in one or two short sentences. Do not "
+                                   "restart, re-greet or apologise.]"}],
+                        run_llm=True), direction)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -4428,6 +4519,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      resume_max_chars=settings.backchannel_resume_max_chars,
                                      resume_settle_secs=settings.backchannel_resume_settle_secs,
                                      forget_resume=lambda: no_repeat.forget_resumed(),
+                                     release_turn=lambda: settings.turn_release_on_absorb,
                                      resay_opening=_resay_opening)
     played_transcript = PlayedTranscriptRecorder(outcome)
 

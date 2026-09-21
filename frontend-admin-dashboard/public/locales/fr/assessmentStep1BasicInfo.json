@@ -141,5 +141,58 @@
     "validation": {
         "cannotSave": "Impossible d'enregistrer",
         "cannotSaveGeneric": "Impossible d'enregistrer — certains détails requis sont manquants ou invalides."
+    },
+    "proctoring": {
+        "title": "Surveillance",
+        "description": "Détecter la triche pendant l'épreuve. Choisissez le niveau de surveillance ; l'apprenant en est informé avant de commencer.",
+        "comingSoon": "Bientôt disponible",
+        "tiers": {
+            "NONE": {
+                "label": "Désactivée",
+                "description": "Pas de caméra. Plein écran et changement d'onglet uniquement.",
+                "price": "Gratuit"
+            },
+            "BASIC": {
+                "label": "Basique",
+                "description": "Enregistrement webcam, détection de visage sur l'appareil, une petite capture toutes les quelques secondes. Aucun flux vidéo.",
+                "price": "Inclus"
+            },
+            "PRO": {
+                "label": "Pro",
+                "description": "Basique plus de courts extraits vidéo de chaque moment signalé et détection de téléphone.",
+                "price": ""
+            },
+            "ULTRA": {
+                "label": "Ultra",
+                "description": "Pro plus une salle de surveillance en direct et une revue IA de chaque tentative.",
+                "price": ""
+            }
+        },
+        "knobs": {
+            "cameraRequired": {
+                "label": "Caméra obligatoire pour démarrer",
+                "description": "L'épreuve ne commence pas tant que l'apprenant n'autorise pas la caméra."
+            },
+            "faceCheck": {
+                "label": "Détection de visage",
+                "description": "Signaler l'absence de visage ou plusieurs visages. S'exécute sur l'appareil de l'apprenant."
+            },
+            "showSelfView": {
+                "label": "Montrer sa caméra à l'apprenant",
+                "description": "Un petit aperçu reste à l'écran pour rappeler l'enregistrement."
+            },
+            "snapshotInterval": {
+                "label": "Capture toutes les",
+                "description": "Images régulières pour la revue. Chaque signalement en prend une.",
+                "off": "Signalements seulement",
+                "every": "{{seconds}} s"
+            },
+            "maxViolations": {
+                "label": "Soumission automatique après",
+                "description": "Nombre de signalements avant soumission automatique. Jamais = enregistrer seulement.",
+                "never": "Jamais",
+                "after": "{{count}} signalements"
+            }
+        }
     }
 }

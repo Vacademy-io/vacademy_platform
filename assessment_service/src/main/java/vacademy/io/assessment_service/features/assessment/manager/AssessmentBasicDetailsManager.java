@@ -41,6 +41,9 @@ public class AssessmentBasicDetailsManager {
     @Autowired
     vacademy.io.assessment_service.features.assessment.service.AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
 
+    @Autowired
+    vacademy.io.assessment_service.features.proctoring.service.ProctoringConfigService proctoringConfigService;
+
     public ResponseEntity<AssessmentSaveResponseDto> saveBasicAssessmentDetails(CustomUserDetails user, BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
 
         if (!StringUtils.hasText(assessmentId))
@@ -80,6 +83,10 @@ public class AssessmentBasicDetailsManager {
                 .ifPresent(assessment::setAiEvaluationEnabled);
         Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationModel())
                 .ifPresent(assessment::setAiEvaluationModel);
+        // Same rule: absent leaves it alone; NONE clears it (stored as NULL).
+        if (basicAssessmentDetailsDTO.getProctoringConfig() != null) {
+            assessment.setProctoringConfig(proctoringConfigService.serialize(basicAssessmentDetailsDTO.getProctoringConfig()));
+        }
 
         // The subject lives on the institute mapping, not the assessment. Load it
         // so subject changes are persisted on edit; without this the mapping is
@@ -131,6 +138,10 @@ public class AssessmentBasicDetailsManager {
                 .ifPresent(assessment::setAiEvaluationEnabled);
         Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationModel())
                 .ifPresent(assessment::setAiEvaluationModel);
+        // Same rule: absent leaves it alone; NONE clears it (stored as NULL).
+        if (basicAssessmentDetailsDTO.getProctoringConfig() != null) {
+            assessment.setProctoringConfig(proctoringConfigService.serialize(basicAssessmentDetailsDTO.getProctoringConfig()));
+        }
         addOrUpdateTestCreationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestCreation());
         addOrUpdateBoundationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestBoundation());
 

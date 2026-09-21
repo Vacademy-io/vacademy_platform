@@ -3,6 +3,8 @@ package vacademy.io.assessment_service.features.assessment.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Filter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 
@@ -61,6 +63,16 @@ public class Assessment {
     /** Preferred model for those runs. NULL falls back to the ai_service default. */
     @Column(name = "ai_evaluation_model")
     private String aiEvaluationModel;
+
+    /**
+     * Proctoring tier + knobs as JSON (V48); see
+     * {@link vacademy.io.assessment_service.features.proctoring.dto.ProctoringConfigDTO}.
+     * NULL means off -- the behaviour of every assessment that predates it. Read and
+     * written only through ProctoringConfigService.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "proctoring_config", columnDefinition = "jsonb")
+    private String proctoringConfig;
 
     @Column(name = "submission_type", nullable = false)
     private String submissionType;

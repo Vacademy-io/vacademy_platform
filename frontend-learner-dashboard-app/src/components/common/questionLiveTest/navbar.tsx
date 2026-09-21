@@ -134,6 +134,7 @@ export function Navbar({
     updateEntireTestTimer,
     tabSwitchCount,
     incrementTabSwitchCount,
+    proctorAutoSubmitRequested,
     entireTestTimer,
     setEntireTestTimer,
     resetAssessment,
@@ -436,11 +437,14 @@ export function Navbar({
     // where `assessment` is still null that const is never initialized — calling
     // it here would throw "Cannot access 'handleSubmit' before initialization".
     if (!assessment) return;
-    if (evaluationType !== "MANUAL" && tabSwitchCount >= 3) {
+    if (
+      evaluationType !== "MANUAL" &&
+      (tabSwitchCount >= 3 || proctorAutoSubmitRequested)
+    ) {
       setShowSubmitModal(true);
       handleSubmit();
     }
-  }, [tabSwitchCount, evaluationType, assessment]);
+  }, [tabSwitchCount, proctorAutoSubmitRequested, evaluationType, assessment]);
 
   useEffect(() => {
     // Native back (Android hardware/gesture). We register a guard rather than our

@@ -44,6 +44,8 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { convertCapitalToTitleCase } from '@/lib/utils';
 import { unresolvedSubjectIds, useSubjectNamesByIds } from '@/services/subject-names';
 import { useTranslation } from 'react-i18next';
+import { DEFAULT_PROCTORING_FORM, proctoringFormFromWire } from '@/types/assessments/proctoring';
+import { ProctoringSettingsCard } from './-components/ProctoringSettingsCard';
 
 // convertDateFormat lives in -utils/helper; Step 3 still imports it from here.
 export { convertDateFormat } from '../../-utils/helper';
@@ -604,6 +606,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             // `??` not `||`: a stored `false` must survive a remount. Off by default
             // because AI evaluation charges institute credits per graded question.
             aiEvaluationEnabled: storeDataStep1.aiEvaluationEnabled ?? false,
+            proctoring: storeDataStep1.proctoring ?? DEFAULT_PROCTORING_FORM,
             switchSections: storeDataStep1.switchSections || true, // Default to false
             raiseReattemptRequest: storeDataStep1.raiseReattemptRequest || true, // Default to true
             raiseTimeIncreaseRequest: storeDataStep1.raiseTimeIncreaseRequest || true, // Default to false
@@ -828,6 +831,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             durationDistribution: savedData?.duration_distribution || '',
             evaluationType: savedData?.evaluation_type || '',
             aiEvaluationEnabled: savedData?.ai_evaluation_enabled ?? false,
+            proctoring: proctoringFormFromWire(savedData?.proctoring_config),
             // 27 older exams carry no result_type; they are all AUTO-evaluated,
             // and preselecting MANUAL for them (the old fallback) flipped a working
             // exam to teacher-checked on any Step 1 edit.
@@ -1271,6 +1275,8 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 </FormItem>
                             )}
                         />
+                        {/* Surveys have nothing to cheat on. */}
+                        {examType !== 'SURVEY' && <ProctoringSettingsCard control={form.control} />}
                         {getStepKey({
                             assessmentDetails,
                             currentStep,

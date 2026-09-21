@@ -1,3 +1,4 @@
+import { DEFAULT_PROCTORING_FORM, proctoringWireFromForm } from '@/types/assessments/proctoring';
 import {
     GET_ASSESSMENT_DETAILS,
     PUBLISH_ASSESSMENT_URL,
@@ -206,6 +207,9 @@ export const handlePostStep1Data = async (
         // Queue an AI evaluation when a learner submits. Metered per graded
         // question, so it is only ever sent as an explicit true/false.
         ai_evaluation_enabled: data.aiEvaluationEnabled ?? false,
+        // Always sent as a full object: tier NONE clears the stored config, so a
+        // save from this build can never leave a stale tier behind.
+        proctoring_config: proctoringWireFromForm(data.proctoring ?? DEFAULT_PROCTORING_FORM),
     };
     const response = await authenticatedAxiosInstance({
         method: 'POST',

@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.assessment_service.features.proctoring.dto.ProctoringConfigDTO;
 
 @Data
 @Builder
@@ -32,6 +33,10 @@ public class BasicAssessmentDetailsDTO {
     // save cannot silently switch credit-spending on or off.
     private Boolean aiEvaluationEnabled;
     private String aiEvaluationModel;
+
+    // Proctoring tier + knobs (V48). Null means "not sent" and leaves the stored
+    // value alone; {"tier":"NONE"} switches it off.
+    private ProctoringConfigDTO proctoringConfig;
     private String source;
     private String sourceId;
 

@@ -574,6 +574,9 @@ export const GET_ASSESSMENT_LISTS = `${BASE_URL}/assessment-service/assessment/a
 export const PUBLISH_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/publish/v1/`;
 export const PRIVATE_ADD_QUESTIONS = `${BASE_URL}/assessment-service/question-paper/public/manage/v1/add-only-question`;
 export const GET_OVERVIEW_URL = `${BASE_URL}/assessment-service/assessment/admin/get-overview`;
+// Proctoring review (V48): per-attempt timeline and per-page flag counts.
+export const PROCTORING_ATTEMPT_REVIEW_URL = `${BASE_URL}/assessment-service/assessment/admin/proctoring/attempt`;
+export const PROCTORING_SUMMARIES_URL = `${BASE_URL}/assessment-service/assessment/admin/proctoring/summaries`;
 export const GET_LEADERBOARD_URL = `${BASE_URL}/assessment-service/assessment/admin/get-leaderboard`;
 export const GET_EXPORT_PDF_URL_LEADERBOARD = `${BASE_URL}/assessment-service/assessment/export/pdf/leaderboard`;
 export const GET_EXPORT_CSV_URL_LEADERBOARD = `${BASE_URL}/assessment-service/assessment/export/csv/leaderboard`;

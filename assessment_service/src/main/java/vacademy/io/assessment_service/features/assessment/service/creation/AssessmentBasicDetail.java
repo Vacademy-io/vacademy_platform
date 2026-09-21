@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.service.creation;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.proctoring.service.ProctoringConfigService;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
@@ -16,6 +18,9 @@ import java.util.*;
 
 @Component
 public class AssessmentBasicDetail extends IStep {
+
+    @Autowired
+    private ProctoringConfigService proctoringConfigService;
 
     @Override
     public void checkStatusAndFetchData(Optional<Assessment> assessment) {
@@ -47,6 +52,9 @@ public class AssessmentBasicDetail extends IStep {
         // silently resetting to the default every time the wizard is reopened.
         savedData.put(AssessmentCreationEnum.AI_EVALUATION_ENABLED.name().toLowerCase(), assessment.get().getAiEvaluationEnabled());
         savedData.put(AssessmentCreationEnum.AI_EVALUATION_MODEL.name().toLowerCase(), assessment.get().getAiEvaluationModel());
+        // Effective config (defaults filled, NONE when unset) so the wizard's picker
+        // and the learner runtime read the same thing.
+        savedData.put(AssessmentCreationEnum.PROCTORING_CONFIG.name().toLowerCase(), proctoringConfigService.effectiveConfig(assessment.get()));
         setSavedData(savedData);
         updateStatusForStep();
     }

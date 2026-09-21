@@ -9,6 +9,8 @@ Note: OpenRouter does not currently support transparent prompt caching for
 arbitrary models — Anthropic's cache_control markers and Gemini's cached_content
 both require provider-specific request shaping. Implementing that lives in a
 future PR; for now the rubric block is resent in full on every grading call.
+The transcript is NOT resent in full: locate.py narrows each call to the pages
+holding that question's answer (see orchestrator step 2b).
 """
 from __future__ import annotations
 
@@ -176,9 +178,12 @@ class CopyCheckGrader:
         rubric: dict[str, Any],
         layout_map: dict[str, Any],
         preferred_model: Optional[str] = None,
+        page_ids: Optional[list[str]] = None,
     ) -> dict[str, Any]:
+        """`page_ids`: only these pages of the transcript go into the prompt
+        (from locate.py). None = the whole copy."""
         model = preferred_model or DEFAULT_MODEL
-        verdict = await self._call(question, rubric, layout_map, model)
+        verdict = await self._call(question, rubric, layout_map, model, page_ids)
         # The model writes "low" or "85%" here often enough; read it the way
         # the validator will, instead of letting float() fail the question.
         if (
@@ -192,7 +197,7 @@ class CopyCheckGrader:
                 coerce_confidence(verdict.get("confidence")),
             )
             try:
-                verdict = await self._call(question, rubric, layout_map, ESCALATION_MODEL)
+                verdict = await self._call(question, rubric, layout_map, ESCALATION_MODEL, page_ids)
             except Exception as e:
                 logger.warning(f"Escalation failed, keeping initial verdict: {e}")
         return verdict
@@ -203,6 +208,7 @@ class CopyCheckGrader:
         rubric: dict[str, Any],
         layout_map: dict[str, Any],
         model: str,
+        page_ids: Optional[list[str]] = None,
     ) -> dict[str, Any]:
         if self._tokens_used >= self.token_budget:
             raise RuntimeError(
@@ -211,6 +217,7 @@ class CopyCheckGrader:
         prompt = build_grading_prompt(
             question, rubric, layout_map,
             neighbour_question_labels=question.get("neighbour_labels"),
+            page_ids=page_ids,
         )
         messages = [
             {"role": "system", "content": GRADING_SYSTEM},

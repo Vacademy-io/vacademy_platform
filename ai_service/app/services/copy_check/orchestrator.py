@@ -21,7 +21,7 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation, vision_transcript
+from . import annotator, callbacks, cancellation, locate, vision_transcript
 from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
 from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
@@ -67,6 +67,25 @@ def describe_failure(exc: BaseException) -> str:
 
 def _new_job_id() -> str:
     return str(uuid.uuid4())
+
+
+def _looks_unattempted(raw: dict[str, Any]) -> bool:
+    """The grader found no answer: the explicit verdict, or the shape the
+    prompt prescribes for one (0 marks, nothing extracted, nothing to draw) for
+    models that leave `verdict` out."""
+    if not isinstance(raw, dict):
+        return False
+    if str(raw.get("verdict") or "").strip().lower() == "unattempted":
+        return True
+    try:
+        marks = float(raw.get("marks_awarded") or 0)
+    except (TypeError, ValueError):
+        return False
+    return (
+        marks == 0
+        and not str(raw.get("extracted_answer") or "").strip()
+        and not raw.get("annotations")
+    )
 
 
 def _render_client() -> CopyCheckRenderClient:
@@ -277,6 +296,20 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         cancellation.check(job_id, process_id)
         layout_map = await mathpix.enrich_layout_for_math(pdf_url, layout_map)
 
+        # 2b. Where is each answer? One call over the page prose so every
+        # grading call below gets only the pages that matter (+1 either side)
+        # instead of the whole copy. Without this, cost was pages × questions:
+        # a 100-question/40-page copy re-sent ~18k tokens of transcript 100
+        # times. Advisory only — {} (call failed, copy too small, locator
+        # unconvincing) means every call sees the full transcript, as before.
+        cancellation.check(job_id, process_id)
+        located = await locate.locate_answers(
+            llm, questions, layout_map, DEFAULT_MODEL,
+            institute_id=institute_id, token_sink=grader,
+        )
+        all_page_ids = [str(p.get("page_id")) for p in layout_map.get("pages") or []]
+        question_order = locate.paper_order(questions)
+
         # 3. Per-question grading.
         # Java flips the process to EVALUATING on this step. Python never sent
         # it, so that branch was dead and the UI showed "OCR done" for most of
@@ -297,9 +330,25 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         for index, q in enumerate(questions):
             q["neighbour_labels"] = [lbl for i, lbl in enumerate(all_labels) if i != index][:80]
             cancellation.check(job_id, process_id)
+            qid = str(q["question_id"])
+            page_ids = locate.pages_for_question(qid, located, question_order, all_page_ids)
+            narrowed = page_ids is not None and len(page_ids) < len(all_page_ids)
             try:
                 rubric = await rubric_resolver.resolve(q, preferred_model)
-                raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
+                raw = await grader.grade_question(q, rubric, layout_map, preferred_model, page_ids)
+                if narrowed and _looks_unattempted(raw) and located.get(qid) != []:
+                    # The locator said the answer is on these pages (or did not
+                    # place it at all) and the grader found nothing there. One
+                    # of them is wrong; a wrong locator must never cost a
+                    # student the marks, so look at the whole copy once. An
+                    # explicit [] from the locator ("not attempted") agreeing
+                    # with the grader is left alone — that is two reads
+                    # saying the same thing.
+                    logger.info(
+                        "Q%s unattempted on located pages %s; re-grading against the full copy",
+                        qid, page_ids,
+                    )
+                    raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
                 verdict = validate_and_cap(raw, q, layout_map)
             except cancellation.Cancelled:
                 raise
@@ -315,7 +364,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 )
                 try:
                     rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
-                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL)
+                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL, page_ids)
                     verdict = validate_and_cap(raw, q, layout_map)
                 except cancellation.Cancelled:
                     raise

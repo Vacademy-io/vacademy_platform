@@ -21,9 +21,26 @@ const formatCount = (n: number) => new Intl.NumberFormat('en-IN').format(n);
 const isNumeric = (value: string | null | undefined): value is string =>
     Boolean(value) && Number.isFinite(Number(value));
 
+/** Exam-level listings carry this instead of a class; it is not worth a chip. */
+const EXAM_LEVEL = 'UG';
+
 /** "Class 10" for a class level, the level itself ("Class 5th to 12th") otherwise. */
 const levelLabel = (t: TFunction, level: string | null): string | null =>
-    level ? (isNumeric(level) ? t('classLabel', { number: level }) : level) : null;
+    level && level !== EXAM_LEVEL
+        ? isNumeric(level)
+            ? t('classLabel', { number: level })
+            : level
+        : null;
+
+/** The board or exam a listing is filed under, by display name rather than key. */
+const boardLabel = (taxonomy: LibraryTaxonomy | undefined, board: string | null): string | null => {
+    if (!board || !taxonomy) return board;
+    return (
+        taxonomy.boards.find((b) => b.key === board)?.name ??
+        taxonomy.exams.find((e) => e.key === board)?.name ??
+        board
+    );
+};
 
 /** One line of honest numbers, skipping anything we don't have. */
 const describeSize = (t: TFunction, library: LibraryListing): string =>
@@ -45,7 +62,15 @@ const describeSize = (t: TFunction, library: LibraryListing): string =>
         .filter(Boolean)
         .join(' · ');
 
-const LibraryGridCard = ({ library, onOpen }: { library: LibraryListing; onOpen: () => void }) => {
+const LibraryGridCard = ({
+    library,
+    taxonomy,
+    onOpen,
+}: {
+    library: LibraryListing;
+    taxonomy?: LibraryTaxonomy;
+    onOpen: () => void;
+}) => {
     const { t } = useTranslation('knowledgeBaseLibraryBrowser');
     return (
         <button
@@ -68,7 +93,11 @@ const LibraryGridCard = ({ library, onOpen }: { library: LibraryListing; onOpen:
                     {library.summary}
                 </p>
                 <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-caption text-neutral-400">
-                    {[library.subject, levelLabel(t, library.level), library.board]
+                    {[
+                        library.subject,
+                        levelLabel(t, library.level),
+                        boardLabel(taxonomy, library.board),
+                    ]
                         .filter(Boolean)
                         .map((chip) => (
                             <span key={chip} className="rounded-sm bg-neutral-50 px-1.5 py-0.5">
@@ -77,13 +106,21 @@ const LibraryGridCard = ({ library, onOpen }: { library: LibraryListing; onOpen:
                         ))}
                 </div>
                 <p className="text-caption text-neutral-400">{describeSize(t, library)}</p>
-                <div className="pt-1">
+                <div className="flex flex-wrap gap-1.5 pt-1">
                     <StatusChip
                         status="SUCCESS"
                         text={t('card.free')}
                         textSize="text-caption"
                         showIcon={false}
                     />
+                    {library.curriculum_kind === 'SYLLABUS' && (
+                        <StatusChip
+                            status="INFO"
+                            text={t('card.syllabus')}
+                            textSize="text-caption"
+                            showIcon={false}
+                        />
+                    )}
                 </div>
             </div>
         </button>
@@ -92,9 +129,11 @@ const LibraryGridCard = ({ library, onOpen }: { library: LibraryListing; onOpen:
 
 const CardGrid = ({
     libraries,
+    taxonomy,
     onOpen,
 }: {
     libraries: LibraryListing[];
+    taxonomy?: LibraryTaxonomy;
     onOpen: (library: LibraryListing) => void;
 }) => (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -102,6 +141,7 @@ const CardGrid = ({
             <LibraryGridCard
                 key={library.knowledge_base_id}
                 library={library}
+                taxonomy={taxonomy}
                 onOpen={() => onOpen(library)}
             />
         ))}
@@ -210,15 +250,28 @@ export const LibraryBrowser = ({ onAddOwn }: LibraryBrowserProps) => {
         if (board) {
             const foreign = sourceBoards.filter((b) => b !== board.key && b !== board.name);
             if (foreign.length === 0) return null;
-            return t('aliasNote.board', { board: board.name, source: foreign.join(', ') });
+            return t(
+                board.alias_kind === 'OVERLAPS' ? 'aliasNote.boardOverlap' : 'aliasNote.board',
+                {
+                    board: board.name,
+                    source: foreign.join(', '),
+                }
+            );
         }
         if (exam) {
+            // The exam's own syllabus / past papers need no explanation; the
+            // note is for the NCERT books it is built on.
+            const borrowed = libraries.filter((l) => l.board && l.board !== exam.key);
+            const foreign = Array.from(
+                new Set(borrowed.map((l) => l.board).filter((b): b is string => Boolean(b)))
+            );
             const classes = Array.from(
-                new Set(libraries.map((l) => l.level).filter(isNumeric))
+                new Set(borrowed.map((l) => l.level).filter(isNumeric))
             ).sort((a, b) => Number(a) - Number(b));
+            if (foreign.length === 0 || classes.length === 0) return null;
             return t('aliasNote.exam', {
                 exam: exam.name,
-                source: sourceBoards.join(', '),
+                source: foreign.join(', '),
                 classes: classes.join(', '),
             });
         }
@@ -359,7 +412,7 @@ export const LibraryBrowser = ({ onAddOwn }: LibraryBrowserProps) => {
                                         : t('otherLibrariesHeading')}
                                 </h3>
                             )}
-                            <CardGrid libraries={items} onOpen={open} />
+                            <CardGrid libraries={items} taxonomy={taxonomy} onOpen={open} />
                         </section>
                     ))}
                 </div>
@@ -370,7 +423,7 @@ export const LibraryBrowser = ({ onAddOwn }: LibraryBrowserProps) => {
                     <h3 className="text-body font-semibold text-neutral-600">
                         {t('otherLibrariesHeading')}
                     </h3>
-                    <CardGrid libraries={otherLibraries} onOpen={open} />
+                    <CardGrid libraries={otherLibraries} taxonomy={taxonomy} onOpen={open} />
                 </section>
             )}
 

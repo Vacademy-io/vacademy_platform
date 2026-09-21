@@ -15,7 +15,8 @@
         "unlocked": "Unlocked",
         "credits_one": "{{count}} credit",
         "credits_other": "{{count}} credits",
-        "free": "Free to use"
+        "free": "Free to use",
+        "syllabus": "Syllabus"
     },
     "intro": "Ready-made textbooks and libraries from Vacademy — free to use. Pick a board or exam, a class and a subject, then build question papers, assessments and courses straight away — no uploading, no waiting for a book to process.",
     "manageLibrary": "Manage library",
@@ -55,6 +56,7 @@
     },
     "aliasNote": {
         "board": "{{board}} prescribes {{source}} textbooks, so these are the {{source}} books.",
-        "exam": "{{exam}} is built on the {{source}} syllabus — these are the Class {{classes}} books."
+        "exam": "{{exam}} is built on the {{source}} syllabus — these are the Class {{classes}} books.",
+        "boardOverlap": "{{board}} publishes no textbooks of its own; the {{source}} books cover most of its syllabus."
     }
 }

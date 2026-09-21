@@ -75,6 +75,9 @@ def _row(r: Any) -> Dict[str, Any]:
         "unlocked": bool(m["unlocked"]) if "unlocked" in m.keys() else None,
         "sources": m["sources"] if "sources" in m.keys() else None,
         "pages": m["pages"] if "pages" in m.keys() else None,
+        # "SYLLABUS" when the base is an official syllabus rather than a
+        # textbook, so the card can say so before the teacher opens it.
+        "curriculum_kind": m["curriculum_kind"] if "curriculum_kind" in m.keys() else None,
     }
 
 
@@ -186,7 +189,8 @@ def list_catalogue(
                        SELECT 1 FROM knowledge_base_entitlement e
                         WHERE e.knowledge_base_id = l.knowledge_base_id
                           AND e.institute_id = :institute_id
-                   )) AS unlocked
+                   )) AS unlocked,
+                   kb.meta_json -> 'curriculum' ->> 'kind' AS curriculum_kind
             FROM knowledge_base_listing l
             JOIN knowledge_base kb ON kb.id = l.knowledge_base_id
             WHERE {' AND '.join(where)}
@@ -268,8 +272,10 @@ def get_listing(
                        SELECT 1 FROM knowledge_base_entitlement e
                         WHERE e.knowledge_base_id = l.knowledge_base_id
                           AND e.institute_id = :institute_id
-                   )) AS unlocked
+                   )) AS unlocked,
+                   kb.meta_json -> 'curriculum' ->> 'kind' AS curriculum_kind
             FROM knowledge_base_listing l
+            JOIN knowledge_base kb ON kb.id = l.knowledge_base_id
             WHERE l.knowledge_base_id = :kb_id
             """
         ),

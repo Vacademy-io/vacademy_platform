@@ -233,6 +233,7 @@ class CallDiagnostics:
     # Resumed words that never reached the line at all and were handed back to
     # the model (call b41b481f). A fault symptom, not a fault by itself.
     resume_lost: int = 0
+    sentences_capped: int = 0
     # From the PLAYED transcript at report time (report._played_invariants):
     # the opening said again after a substantive caller turn; 5+-word
     # sentences played twice without a caller "hello?"/"say again" between.
@@ -916,6 +917,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "shortAnswerHolds": d.short_answer_holds,
                 "resumeRespoken": d.resume_respoken,
                 "resumeLost": d.resume_lost,
+                "sentencesCapped": d.sentences_capped,
                 "openingReplays": d.opening_replays,
                 "repeatedLines": d.repeated_lines,
                 "repeatedLineSamples": d.repeated_line_samples[:3],

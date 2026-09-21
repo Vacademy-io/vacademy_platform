@@ -207,7 +207,7 @@ class TranscriptCollector(FrameProcessor):
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
-                 forget_resume=None, release_turn=None,
+                 forget_resume=None, release_turn=None, noise_reask_wait_secs: float = 1.0,
                  voice_live=None, resay_opening=None):
         super().__init__()
         self._outcome = outcome
@@ -241,6 +241,7 @@ class TranscriptCollector(FrameProcessor):
         self._resume_settle_secs = resume_settle_secs
         self._forget_resume = forget_resume
         self._release_turn = release_turn or (lambda: True)
+        self._noise_reask_wait_secs = noise_reask_wait_secs
         # The aggregator's view of the caller's turn (UserStarted/StoppedSpeaking);
         # _release_user_turn closes it when we swallow the final it is waiting for.
         self._user_turn_open = False
@@ -406,7 +407,7 @@ class TranscriptCollector(FrameProcessor):
                         # turn has no answer at all. Call 3b5fb592: a 0.02 s
                         # blip killed the answer to "मैं बच्चे का पिता बोल रहा हूँ"
                         # and the caller waited 6 s for an apology instead.
-                        await self._answer_never_arrived(_down, _voice)
+                        await self._answer_check_after_stt(_down, _voice)
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._user_turn_open = False
             self._set_user_speaking(False)
@@ -1007,6 +1008,32 @@ class TranscriptCollector(FrameProcessor):
         except Exception:
             logger.exception("turn-gate: could not release the caller's turn")
 
+    async def _answer_check_after_stt(self, direction, voice: float):
+        """A short burst with no transcript YET is not noise until the STT has
+        had its window. Call bd9e6a0d (2026-09-21): "हाँ Ma'am" was declared
+        noise at its VAD stop, 65 ms before its own final arrived; the cue and
+        the answer both ran the model and the parent heard the same question
+        twice — twice in that call. Decide after noise_reask_wait_secs, and
+        only if nothing was transcribed since the stop."""
+        stop_t = time.time()
+
+        async def _later():
+            try:
+                await asyncio.sleep(self._noise_reask_wait_secs)
+                if self._last_text_t > stop_t:
+                    return                      # it was words, and they were handled
+                if self._is_bot_speaking() or self._reply_in_flight():
+                    return
+                await self._answer_never_arrived(direction, voice)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("turn-gate: noise re-ask check failed")
+        try:
+            self.create_task(_later())
+        except Exception:
+            await self._answer_never_arrived(direction, voice)
+
     async def _answer_never_arrived(self, direction, voice: float) -> bool:
         """Their turn was answered by a generation that a noise cancelled before
         one word of it played. Ask for that answer again — not for them to
@@ -1424,9 +1451,18 @@ class NoRepeatGate(FrameProcessor):
 
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
                  no_echo=None, handbacks=None, played_text=None, end_forced=None,
-                 request_next_step=None, drop_stale_bridge=None):
+                 request_next_step=None, drop_stale_bridge=None, max_sentences=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
+        # The most body sentences one reply may put on the line (0 = no cap).
+        # Call bd9e6a0d: a five-sentence pitch became a 30 s monologue
+        # (quiz → programme → fees → "identify हों…"), and the parent came back
+        # with "क्या बोला Ma'am, समझा नहीं". Sentences past the cap are held;
+        # if the reply ENDS on a question, that question is still asked, so the
+        # turn is handed over cleanly. The context only ever holds what was
+        # played, so the model picks up the rest itself next turn.
+        self._max_sentences = max_sentences or (lambda: 0)
+        self._capped: list = []
         self._last_caller_text = last_caller_text or (lambda: "")
         self._diag = diag
         self._no_echo = no_echo or (lambda: True)
@@ -1781,7 +1817,11 @@ class NoRepeatGate(FrameProcessor):
         k = cls._cf_key(text)
         return k in cls._CONTENT_FREE or k in cls._FILLER
 
-    async def _emit(self, text: str, direction):
+    async def _emit(self, text: str, direction, past_cap: bool = False):
+        cap = self._max_sentences()
+        if cap and not past_cap and self._emitted >= cap:
+            self._capped.append(text)
+            return
         if self._echo_held and text is not self._echo_held:
             logger.info("no-echo: dropping restated answer %r — real content followed",
                         self._echo_held.strip()[:48])
@@ -1830,6 +1870,7 @@ class NoRepeatGate(FrameProcessor):
 
         if isinstance(frame, LLMFullResponseStartFrame):
             self._buf, self._emitted, self._held_tail = "", 0, ""
+            self._capped = []
             self._said_real = False
             self._cf_held = ""
             self._cf_this_reply = set()
@@ -2012,6 +2053,17 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", tail[:56])
+            if self._capped:
+                last = self._capped[-1]
+                asks = "?" in last or "？" in last
+                logger.info("no-repeat: reply capped at %d sentence(s) — %d held%s",
+                            self._emitted, len(self._capped),
+                            ", asking its closing question" if asks else "")
+                if self._diag is not None:
+                    self._diag.bump("sentences_capped", len(self._capped))
+                held, self._capped = self._capped, []
+                if asks and self._keep(last):
+                    await self._emit(last, direction, past_cap=True)
             # "Nothing answerable was said" — not "nothing was said". Call
             # 08df7128: "Right." survived, the three real sentences behind it were
             # already-said drops, and the caller got "Right." then 12 s of
@@ -4523,6 +4575,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      resume_settle_secs=settings.backchannel_resume_settle_secs,
                                      forget_resume=lambda: no_repeat.forget_resumed(),
                                      release_turn=lambda: settings.turn_release_on_absorb,
+                                     noise_reask_wait_secs=settings.noise_reask_wait_secs,
                                      resay_opening=_resay_opening)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
@@ -4561,6 +4614,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # the prompt's SCRIPT rule entirely because they never touch the LLM.
         request_next_step=_ask_for_next_step,
         drop_stale_bridge=_bridge_is_stale,
+        max_sentences=lambda: settings.max_sentences_per_reply,
         handbacks=(NoRepeatGate._HANDBACK_EN
                    if _agent_language(agent)[0] == "en-IN" else None),
         # PlayedTranscriptRecorder's record of what the caller actually heard —

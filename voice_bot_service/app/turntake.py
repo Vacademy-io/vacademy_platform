@@ -50,6 +50,9 @@ INTERRUPT = "interrupt"
 _BACKCHANNEL_WORDS = frozenset({
     # Devanagari
     "हाँ", "हां", "हा", "हूँ", "हूं", "हम", "हम्म", "जी", "हाँजी", "हांजी",
+    # The STT writes the nasal grunt as "हं"/"हँ" as often as "हम्म" — it cut
+    # the opening restart in bd9e6a0d as a "real barge-in".
+    "हं", "हँ", "हंजी", "haanji", "hanji", "hmmji",
     "अच्छा", "अच्छे", "अछा", "ठीक", "है", "ओके", "सही", "बिल्कुल", "बिलकुल",
     "बढ़िया", "बढिया", "बहुत",
     "बोलिए", "बोलो", "बताइए", "बताओ", "सर", "मैम", "मैडम", "भैया", "ओ", "के",
@@ -91,7 +94,11 @@ _STRIP = "।॥.,!?？…\"'`~()[]{}:;-–—"
 def _words(text: str) -> list:
     out = []
     for raw in (text or "").split():
-        w = raw.strip(_STRIP).casefold()
+        # An apostrophe inside a word is not a word boundary and not a letter:
+        # "Ma'am." must read as "maam" (call bd9e6a0d, 2026-09-21: every
+        # "हाँ Ma'am" was a real barge-in, 21 of them, and the parent said
+        # "आपकी आवाज़ अटक रही है").
+        w = raw.strip(_STRIP).replace("'", "").replace("\u2019", "").casefold()
         if w:
             out.append(w)
     return out

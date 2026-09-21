@@ -5072,8 +5072,11 @@ async def test_the_re_run_cue_after_a_blip_travels_downstream_too():
     tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
     b.FrameProcessor.process_frame = _noop_super
     UP = b.FrameDirection.UPSTREAM
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    tc._noise_reask_wait_secs = 0.02
     await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
     await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.08)
     cues = [(f, d) for f, d in zip(rec.frames, rec.dirs) if getattr(f, "run_llm", False)]
     assert cues, "no re-run cue"
     assert all(d == b.FrameDirection.DOWNSTREAM for _, d in cues), "the cue went up the pipeline"
@@ -5133,6 +5136,60 @@ async def test_a_second_hello_into_our_silence_is_not_a_duplicate():
 def _released_one(f):
     from pipecat.frames.frames import TranscriptionFrame
     return isinstance(f, TranscriptionFrame) and not f.text.strip()
+
+
+def test_a_grunt_and_a_yes_maam_are_backchannels_not_barge_ins():
+    """Call bd9e6a0d: 21 "real barge-ins" in 4.5 min, most of them "हाँ Ma'am"
+    and "हं" — the apostrophe and the nasal spelling defeated the vocabulary."""
+    from app.turntake import mid_reply_action, ABSORB, INTERRUPT
+    for t in ["हं।", "हँ", "हाँ Ma'am.", "जी Ma'am", "हाँ ma’am", "haanji", "ok sir"]:
+        assert mid_reply_action(t) == ABSORB, t
+    for t in ["हाँ Ma'am जल्दी है।", "हाँ कह सकते हैं ऐसा।", "नहीं Ma'am", "MIP क्या है?"]:
+        assert mid_reply_action(t) == INTERRUPT, t
+
+
+@pytest.mark.asyncio
+async def test_the_noise_re_ask_waits_for_the_stt_and_stands_down_when_words_arrive():
+    """Call bd9e6a0d: "हाँ Ma'am" was called noise 65 ms before its own final
+    arrived; the cue and the answer both ran the model."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "", resume_on_stop_secs=1.0,
+                           noise_reask_wait_secs=0.1)
+    tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], "decided before the STT"
+    await _feed(tc, "हाँ Ma'am जल्दी है।")               # the final lands inside the window
+    await asyncio.sleep(0.2)
+    cues = [c for c in rec.cues() if "noise on the line" in c]
+    assert cues == [], f"called their answer noise: {cues}"
+
+
+@pytest.mark.asyncio
+async def test_a_long_reply_is_capped_but_still_asks_its_closing_question():
+    """Call bd9e6a0d: a five-sentence pitch became a 30 s monologue and the
+    parent said "क्या बोला Ma'am, समझा नहीं"."""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "seventy eight percent.",
+                       max_sentences=lambda: 3)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "अच्छा! ", "ये तो अच्छी बात है सर। ",
+                 "रवि के जो marks आए हैं, that's actually a good performance। ",
+                 "लेकिन इस level पर हमारा focus सिर्फ marks improve करने का नहीं होता। ",
+                 "क्या रवि के साथ भी ऐसा है सर, कि कुछ subjects में वो बहुत अच्छा करता है?")
+    said = [t.strip() for t in rec.text]
+    assert len(said) == 4, said
+    assert said[-1].startswith("क्या रवि के साथ"), said
+    assert not any("focus" in t for t in said), "the fourth sentence should have been held"
+    rec.text.clear()
+    await _reply(g, "जी सर। ", "बताइए।")
+    assert len([t for t in rec.text if t.strip()]) == 2, "a short reply must be untouched"
 
 
 @pytest.mark.asyncio

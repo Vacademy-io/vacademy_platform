@@ -633,6 +633,14 @@ class Settings:
     # final (backchannel, carrier line, scrap, repeat). Otherwise pipecat keeps
     # it open for user_turn_stop_timeout (5 s) and nothing we say in that
     # window is heard. Kill switch only.
+    # A short voice burst with no transcript is judged "noise" only after the
+    # STT has had this long to deliver a final for it (call bd9e6a0d).
+    noise_reask_wait_secs: float = field(
+        default_factory=lambda: float(_env("NOISE_REASK_WAIT_SECS", "1.0")))
+    # Most body sentences one model reply may speak; the closing question is
+    # still asked. 0 disables. (call bd9e6a0d: a 30 s, five-sentence pitch)
+    max_sentences_per_reply: int = field(
+        default_factory=lambda: int(_env("MAX_SENTENCES_PER_REPLY", "3")))
     turn_release_on_absorb: bool = field(
         default_factory=lambda: _env("TURN_RELEASE_ON_ABSORB", "1") not in ("0", "false", "no"))
     backchannel_resume_settle_secs: float = field(

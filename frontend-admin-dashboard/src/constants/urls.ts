@@ -501,6 +501,7 @@ export const GET_DASHBOARD_URL = `${BASE_URL}/admin-core-service/institute/v1/ge
 export const UPDATE_DASHBOARD_URL = `${BASE_URL}/admin-core-service/institute/v1/institute-update`;
 export const UPDATE_ADMIN_DETAILS_URL = `${BASE_URL}/auth-service/v1/user-details/update`;
 export const GET_DASHBOARD_ASSESSMENT_COUNT_URL = `${BASE_URL}/assessment-service/assessment/admin/dashboard/get-count`;
+export const GET_ASSESSMENT_DASHBOARD_OVERVIEW_URL = `${BASE_URL}/assessment-service/assessment/admin/dashboard/overview`;
 export const INIT_INSTITUTE = `${BASE_URL}/admin-core-service/institute/v1/details`;
 export const INIT_INSTITUTE_WITHOUT_BATCHES = `${BASE_URL}/admin-core-service/institute/v1/details-non-batches`;
 export const INIT_INSTITUTE_SETUP = `${BASE_URL}/admin-core-service/institute/v1/setup-without-batches`;

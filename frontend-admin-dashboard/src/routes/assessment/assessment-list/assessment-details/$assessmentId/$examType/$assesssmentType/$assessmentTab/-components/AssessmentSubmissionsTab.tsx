@@ -48,6 +48,7 @@ import {
     Clock,
     Play,
     Sparkle,
+    UploadSimple,
     User,
     UsersThree,
 } from '@phosphor-icons/react';
@@ -68,6 +69,7 @@ import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDial
 import { AiAssessmentReportDialog } from './AiAssessmentReportDialog';
 import { AssessmentExportCsvDialog } from './AssessmentExportCsvDialog';
 import { BulkAiCheckDialog } from './copy-intake/BulkAiCheckDialog';
+import { CheckSubmittedCopiesDialog } from './copy-intake/CheckSubmittedCopiesDialog';
 import { EnableAiChecking } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/enable-ai-checking';
 import { CopyIntakeBatchPanel } from './copy-intake/CopyIntakeBatchPanel';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
@@ -209,7 +211,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     // whether each attempt has a submitted answer-sheet file. Same cached query
     // the row dropdown uses for its menu.
     const { data: assessmentDetailsData } = useSuspenseQuery(
-        getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' })
+        // The route's own type: a MOCK or PRACTICE test must not be described as an EXAM
+        // (the step keys and defaults the wizard answers with differ per type).
+        getAssessmentDetails({ assessmentId, instituteId, type: examType || 'EXAM' })
     );
     const isManualEvaluation = assessmentDetailsData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
     // For the "Enable AI checking" card on a placeholder-only offline test: the paper
@@ -308,6 +312,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         }
     }, []);
     const [bulkCheckOpen, setBulkCheckOpen] = useState(false);
+    // "Check submitted copies": null = closed; [] = every submitted copy on the
+    // assessment (toolbar button); ids = the checked rows (bulk-actions menu).
+    const [submittedCheckScope, setSubmittedCheckScope] = useState<string[] | null>(null);
     const [intakePanelOpen, setIntakePanelOpen] = useState(Boolean(initialIntakeId));
     const [intakeBatchId, setIntakeBatchId] = useState<string | null>(initialIntakeId);
     // Linked batches live on step 3 (index 2) of the details payload, same as
@@ -1301,6 +1308,24 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         setIntakePanelOpen(true);
                     }}
                 />
+                {submittedCheckScope !== null && (
+                    <CheckSubmittedCopiesDialog
+                        open
+                        onOpenChange={(next) => {
+                            if (!next) setSubmittedCheckScope(null);
+                        }}
+                        assessmentId={assessmentId}
+                        instituteId={instituteId}
+                        questionsPerCopy={questionsPerCopy}
+                        attemptIds={submittedCheckScope}
+                        onStarted={(batch) => {
+                            setIntakeBatchId(batch.id);
+                            setIntakePanelOpen(true);
+                            handleResetSelections();
+                            handleRefreshLeaderboard();
+                        }}
+                    />
+                )}
                 {/* A manual-upload test still on the "Upload your answer sheet" placeholder
                     cannot be AI-checked; this reads the attached paper into questions and
                     switches it on. Renders nothing once the test has real questions. */}
@@ -1435,6 +1460,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                         {t('buttons.aiEvaluationsTooltip')}
                                     </TooltipContent>
                                 </Tooltip>
+                                {/* Copies the learners uploaded themselves: nothing to upload
+                                    or match, just queue them all. The upload dialog next to it
+                                    is for a pile of scanned PDFs the admin has. */}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <MyButton
@@ -1442,9 +1470,26 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             scale="small"
                                             buttonType="primary"
                                             className="gap-1.5 font-medium"
-                                            onClick={() => setBulkCheckOpen(true)}
+                                            onClick={() => setSubmittedCheckScope([])}
                                         >
                                             <Sparkle size={16} weight="fill" />
+                                            {t('buttons.checkSubmitted')}
+                                        </MyButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                        {t('buttons.checkSubmittedTooltip')}
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <MyButton
+                                            type="button"
+                                            scale="small"
+                                            buttonType="secondary"
+                                            className="gap-1.5 font-medium"
+                                            onClick={() => setBulkCheckOpen(true)}
+                                        >
+                                            <UploadSimple size={16} />
                                             {t('buttons.bulkAiCheck')}
                                         </MyButton>
                                     </TooltipTrigger>
@@ -1606,6 +1651,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         />
                         <AssessmentExportCsvDialog
                             assessmentId={assessmentId}
+                            examType={examType}
                             instituteId={initData?.id}
                             assessmentType={assesssmentType}
                             registrationSource={getCurrentRegistrationSource()}
@@ -1749,6 +1795,16 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             onReset={handleResetSelections}
                             selectedTab={selectedTab}
                             onExportReports={() => setBulkReportZipOpen(true)}
+                            onCheckWithAi={
+                                isManualEvaluation
+                                    ? () =>
+                                          setSubmittedCheckScope(
+                                              getSelectedStudents()
+                                                  .map((student) => student.attempt_id)
+                                                  .filter((id): id is string => !!id)
+                                          )
+                                    : undefined
+                            }
                         />
                         {/* Controlled instance for the bulk-actions entry — no
                             trigger of its own, scoped to the checked rows. */}

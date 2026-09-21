@@ -183,7 +183,12 @@ export const CopyIntakeBatchPanel = ({
                                     : 'border-neutral-200 bg-white text-neutral-600 hover:border-primary-300'
                             )}
                         >
-                            {new Date(b.created_at).toLocaleString()} · {b.total_items}
+                            {new Date(b.created_at).toLocaleString()} · {b.total_items} ·{' '}
+                            {t(
+                                b.source === 'SUBMITTED'
+                                    ? 'panel.sourceSubmitted'
+                                    : 'panel.sourceUpload'
+                            )}
                         </button>
                     ))}
                 </div>
@@ -209,6 +214,7 @@ export const CopyIntakeBatchPanel = ({
                             <ItemCard
                                 key={item.id}
                                 item={item}
+                                submitted={batch.source === 'SUBMITTED'}
                                 assessmentId={assessmentId}
                                 instituteId={instituteId}
                                 examType={examType}
@@ -235,6 +241,7 @@ export const CopyIntakeBatchPanel = ({
                                     <ItemRow
                                         key={item.id}
                                         item={item}
+                                        submitted={batch.source === 'SUBMITTED'}
                                         assessmentId={assessmentId}
                                         instituteId={instituteId}
                                         examType={examType}
@@ -279,6 +286,16 @@ const BatchSummary = ({ batch }: { batch: CopyIntakeBatch }) => {
                         showIcon={tone !== 'INFO'}
                     />
                 </div>
+                <StatusChip
+                    text={t(
+                        batch.source === 'SUBMITTED'
+                            ? 'panel.sourceSubmitted'
+                            : 'panel.sourceUpload'
+                    )}
+                    textSize="text-caption"
+                    status="INFO"
+                    showIcon={false}
+                />
                 <span className="text-caption text-neutral-500">
                     {t('panel.startedBy', {
                         name: batch.created_by_name || '—',
@@ -322,6 +339,8 @@ const Stat = ({ label, value, tone }: { label: string; value: number; tone?: str
 
 type ItemContext = {
     item: CopyIntakeItem;
+    /** Batch built from the learners' own uploads: no header was read. */
+    submitted?: boolean;
     assessmentId: string;
     instituteId: string;
     examType: string;
@@ -352,8 +371,11 @@ const FileCell = ({ item }: { item: CopyIntakeItem }) => {
     );
 };
 
-const ReadCell = ({ item }: { item: CopyIntakeItem }) => {
+const ReadCell = ({ item, submitted }: { item: CopyIntakeItem; submitted?: boolean }) => {
     const { t } = useTranslation('assessmentCopyIntake');
+    if (submitted) {
+        return <span className="text-caption text-neutral-400">—</span>;
+    }
     if (!item.extracted_name) {
         return (
             <span className="text-caption text-neutral-400">
@@ -526,7 +548,7 @@ const ItemRow = (ctx: ItemContext) => {
                 <FileCell item={item} />
             </td>
             <td className="py-2 pr-3">
-                <ReadCell item={item} />
+                <ReadCell item={item} submitted={ctx.submitted} />
             </td>
             <td className="py-2 pr-3">
                 <StudentCell item={item} />
@@ -563,7 +585,7 @@ const ItemCard = (ctx: ItemContext) => {
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                 <dt className="text-caption text-neutral-500">{t('table.read')}</dt>
                 <dd className="min-w-0">
-                    <ReadCell item={item} />
+                    <ReadCell item={item} submitted={ctx.submitted} />
                 </dd>
                 <dt className="text-caption text-neutral-500">{t('table.student')}</dt>
                 <dd className="min-w-0">

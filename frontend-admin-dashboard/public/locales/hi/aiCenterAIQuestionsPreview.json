@@ -20,7 +20,12 @@
         "saveChanges": "बदलाव सहेजें",
         "close": "बंद करें",
         "moreTagsBadge_one": "+{{count}}",
-        "moreTagsBadge_other": "+{{count}}"
+        "moreTagsBadge_other": "+{{count}}",
+        "extractionSummary": "पेपर से {{questions}} प्रश्न पढ़े · {{keyed}} के उत्तर · {{explained}} के हल",
+        "extractionUnkeyed_one": "{{count}} का उत्तर नहीं मिला — उपयोग से पहले चिह्नित करें",
+        "extractionUnkeyed_other": "{{count}} के उत्तर नहीं मिले — उपयोग से पहले चिह्नित करें",
+        "extractionCredits": "{{count}} क्रेडिट",
+        "extractionCheck": "Q {{numbers}} जाँचें"
     },
     "questionCard": {
         "duplicate": "डुप्लिकेट करें",

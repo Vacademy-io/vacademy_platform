@@ -100,6 +100,10 @@ export type ToolKey =
     | 'html_document_edit'
     | 'html_document_pdf'
     | 'copy_check_evaluation'
+    // Vsmart Extract: a teacher's own paper digitised verbatim (V527);
+    // the _ocr surcharge applies only to scanned PDFs (MathPix, per page)
+    | 'extract_questions'
+    | 'extract_questions_ocr'
     // Knowledge Base (V435)
     | 'kb_ingest_page'
     | 'kb_ingest_url'
@@ -360,7 +364,19 @@ export const computeToolCredits = (
     switch (row.unit_field) {
         case 'questions': {
             const n = Math.max(0, Number(params.num_questions) || 0);
-            total += n * perUnit;
+            const slabs = extra.slabs as
+                | Array<{ upto: number | null; credits: string | number }>
+                | undefined;
+            if (Array.isArray(slabs) && slabs.length > 0) {
+                // Range pricing (Vsmart Extract): the first band whose ceiling
+                // the count does not exceed; a null ceiling catches the rest.
+                const band =
+                    slabs.find((s) => s.upto == null || n <= Number(s.upto)) ??
+                    slabs[slabs.length - 1];
+                total += Number(band?.credits) || 0;
+            } else {
+                total += n * perUnit;
+            }
             // Explicit image_count (charge time) wins; else include_images is the
             // preview upper bound of one image per question.
             let images = 0;

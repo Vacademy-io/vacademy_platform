@@ -43,6 +43,24 @@ export interface AIAssessmentCompleteQuestion {
     level: string;
 }
 
+/** How a paper was digitised (Vsmart Extract only); absent for generated papers. */
+export interface AIExtractionSummary {
+    parts: number;
+    key_parts: number;
+    questions: number;
+    key_found: boolean;
+    keyed: number;
+    unkeyed: number;
+    explained: number;
+    /** Question numbers the teacher should look at (e.g. options the model dropped and the paper text could not restore). */
+    check?: string[];
+    key_source?: 'regex' | 'regex+model' | 'none';
+    ocr_pages?: number;
+    credits: number | null;
+    prompt_tokens: number;
+    completion_tokens: number;
+}
+
 export interface AIAssessmentResponseInterface {
     title: string;
     tags: string[];
@@ -51,6 +69,7 @@ export interface AIAssessmentResponseInterface {
     subjects: string[];
     classes: string[];
     questions: AIAssessmentCompleteQuestion[];
+    extraction?: AIExtractionSummary | null;
 }
 
 export interface AITaskIndividualListInterface {

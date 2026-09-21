@@ -6,10 +6,13 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.engagement.entity.EngagementAttempt;
+import vacademy.io.admin_core_service.features.engagement.entity.EngagementEnums;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementItem;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementNotificationLog;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementPlan;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementSlot;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementAttemptRepository;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementItemRepository;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementNotificationLogRepository;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementPlanRepository;
@@ -52,6 +55,7 @@ public class EngagementNotifyJob {
     private final EngagementPlanRepository planRepository;
     private final EngagementSlotRepository slotRepository;
     private final EngagementItemRepository itemRepository;
+    private final EngagementAttemptRepository attemptRepository;
     private final EngagementNotificationLogRepository notificationLogRepository;
     private final EngagementScheduleResolver scheduleResolver;
     private final StudentSessionInstituteGroupMappingRepository enrollmentRepository;
@@ -72,6 +76,7 @@ public class EngagementNotifyJob {
         for (EngagementPlan plan : plans) {
             try {
                 notifyForPlan(plan);
+                revealForPlan(plan);
             } catch (Exception e) {
                 // One bad plan must not stop the rest of the institutes' pushes.
                 log.error("[engagement-notify] plan {} failed", plan.getId(), e);
@@ -96,7 +101,7 @@ public class EngagementNotifyJob {
         for (EngagementSlot slot : slots) {
             if (!plan.getId().equals(slot.getPlanId())) continue;
             if (!scheduleResolver.runsOn(slot, today)) continue;
-            if (notificationLogRepository.existsBySlotIdAndRunDate(slot.getId(), today)) continue;
+            if (notificationLogRepository.existsBySlotIdAndRunDateAndKind(slot.getId(), today, "NOTIFY")) continue;
 
             List<EngagementItem> items = itemRepository.findActiveBySlot(slot.getId());
             if (items.isEmpty()) continue;
@@ -109,7 +114,7 @@ public class EngagementNotifyJob {
             // Claim the send BEFORE dispatching. If the push then fails, nobody gets a
             // duplicate on the next tick — the opposite order risks sending twice,
             // which is the worse failure for a daily notification.
-            if (!claim(slot, plan, today, userIds.size())) continue;
+            if (!claim(slot, plan, today, userIds.size(), "NOTIFY")) continue;
 
             String title = items.size() == 1
                     ? items.get(0).getTitle()
@@ -129,11 +134,57 @@ public class EngagementNotifyJob {
         }
     }
 
+    /**
+     * The reveal push: "the answer is out". Sent only to learners who completed at
+     * least one task in the slot — a learner who never opened the question has no
+     * answer to come back for, and a push about it would just be noise.
+     */
+    private void revealForPlan(EngagementPlan plan) {
+        ZonedDateTime now = scheduleResolver.nowIn(plan);
+        LocalDate today = now.toLocalDate();
+        LocalTime windowEnd = now.toLocalTime();
+        LocalTime windowStart = windowEnd.minusMinutes(TICK_MINUTES);
+        if (windowStart.isAfter(windowEnd)) return;
+
+        for (EngagementSlot slot : slotRepository.findDueForReveal(today, windowStart, windowEnd)) {
+            if (!plan.getId().equals(slot.getPlanId())) continue;
+            if (!scheduleResolver.runsOn(slot, today)) continue;
+            if (notificationLogRepository.existsBySlotIdAndRunDateAndKind(slot.getId(), today, "REVEAL")) continue;
+
+            List<EngagementItem> items = itemRepository.findActiveBySlot(slot.getId());
+            // Only a graded question has something to reveal.
+            boolean hasReveal = items.stream().anyMatch(i ->
+                    EngagementEnums.ItemType.QUESTION_OF_DAY.name().equals(i.getItemType()));
+            if (!hasReveal) continue;
+
+            java.util.Set<String> recipients = new java.util.HashSet<>();
+            for (EngagementItem item : items) {
+                for (EngagementAttempt a : attemptRepository.findByItem(item.getId())) {
+                    if ("COMPLETED".equals(a.getStatus())) recipients.add(a.getUserId());
+                }
+            }
+            if (recipients.isEmpty()) continue;
+            if (!claim(slot, plan, today, recipients.size(), "REVEAL")) continue;
+
+            String title = items.size() == 1 ? items.get(0).getTitle() : "Today's answers are out";
+            try {
+                notificationService.sendPushViaUnified(
+                        plan.getInstituteId(), new java.util.ArrayList<>(recipients), title,
+                        "The answer is revealed — see how you did and where you rank.",
+                        Map.of("type", "ENGAGEMENT_REVEAL", "slotId", slot.getId()));
+                log.info("[engagement-notify] reveal for slot {} pushed to {} learners", slot.getId(), recipients.size());
+            } catch (Exception e) {
+                log.error("[engagement-notify] reveal push failed for slot {}", slot.getId(), e);
+            }
+        }
+    }
+
     /** Returns false when another replica or an earlier tick already claimed this send. */
-    private boolean claim(EngagementSlot slot, EngagementPlan plan, LocalDate runDate, int recipients) {
+    private boolean claim(EngagementSlot slot, EngagementPlan plan, LocalDate runDate, int recipients, String kind) {
         EngagementNotificationLog entry = new EngagementNotificationLog();
         entry.setSlotId(slot.getId());
         entry.setRunDate(runDate);
+        entry.setKind(kind);
         entry.setInstituteId(plan.getInstituteId());
         entry.setRecipients(recipients);
         entry.setSentAt(new Timestamp(System.currentTimeMillis()));

@@ -115,8 +115,20 @@ Rules:
 
 
 def build_prompt(brief: Dict[str, Any], grounding: str) -> str:
-    enabled = [k for k, v in (brief.get("mix") or {}).items() if v]
+    single = brief.get("single_item_type")
     enabled_types = []
+    if single:
+        # Regenerating ONE task: force the type and ask for exactly one item on one
+        # day, avoiding whatever the teacher just rejected.
+        label = {
+            "QUESTION_OF_DAY": "QUESTION_OF_DAY (format MCQ)",
+            "TEXT_QUESTION": "QUESTION_OF_DAY (format TEXT)",
+            "POLL": "POLL",
+            "READING_HTML": "READING_HTML",
+            "VISUAL_NOTE": "READING_HTML",
+            "GAME": "GAME (FLASHCARDS)",
+        }.get(str(single).upper(), "QUESTION_OF_DAY (format MCQ)")
+        enabled_types = [label]
     if brief.get("mix", {}).get("question_of_day", True):
         enabled_types.append("QUESTION_OF_DAY (format MCQ)")
     if brief.get("mix", {}).get("text_question"):
@@ -130,6 +142,7 @@ def build_prompt(brief: Dict[str, Any], grounding: str) -> str:
     if not enabled_types:
         enabled_types = ["QUESTION_OF_DAY (format MCQ)"]
 
+    avoid = brief.get("avoid_title")
     parts = [
         "You are planning daily engagement tasks for a class. A teacher will review and edit "
         "everything you produce before learners see it.",
@@ -143,6 +156,12 @@ def build_prompt(brief: Dict[str, Any], grounding: str) -> str:
         "",
         f"Topic / instructions from the teacher:\n{brief.get('topic') or '(none given — use the material below)'}",
     ]
+    if single:
+        parts += [
+            "",
+            "Produce EXACTLY ONE day with EXACTLY ONE item of the enabled type. "
+            + (f"Do not reuse this rejected task: \"{avoid}\". Cover a different angle." if avoid else ""),
+        ]
     if grounding:
         parts += [
             "",

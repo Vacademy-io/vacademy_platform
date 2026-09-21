@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { useTranslation } from "react-i18next";
 import type { EngagementItem } from "@/services/engagement";
 import { parseQuestionPayload } from "@/services/engagement";
 import { visualFor } from "./engagement-visuals";
@@ -9,12 +10,13 @@ import { visualFor } from "./engagement-visuals";
  * completed task simply vanished from the feed and the answer was never shown.
  */
 export function RevealedAnswers({ items }: { items: EngagementItem[] }) {
+  const { t } = useTranslation("dashboardEngagement");
   if (items.length === 0) return null;
 
   return (
     <div className="border-t border-neutral-100 bg-gradient-to-b from-amber-50/60 to-transparent px-5 py-4 dark:border-neutral-800 dark:from-amber-950/20">
       <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-        ✨ Revealed
+        {t("card.revealed")}
       </p>
       <ul className="mt-2 space-y-3">
         {items.slice(0, 3).map((item) => {
@@ -52,17 +54,17 @@ export function RevealedAnswers({ items }: { items: EngagementItem[] }) {
                     <div className="mt-2 space-y-1 text-sm">
                       {correct && (
                         <p className="text-emerald-700 dark:text-emerald-300">
-                          <span className="font-semibold">Answer:</span> {correct.text}
+                          <span className="font-semibold">{t("card.answer")}</span> {correct.text}
                         </p>
                       )}
                       {mine && !wasRight && (
                         <p className="text-neutral-600 dark:text-neutral-400">
-                          You picked: {mine.text}
+                          {t("card.youPicked", { text: mine.text })}
                         </p>
                       )}
                       {wasRight && (
                         <p className="text-neutral-600 dark:text-neutral-400">
-                          You got it — +{item.pointsAwarded ?? 0} points
+                          {t("card.gotIt", { count: item.pointsAwarded ?? 0 })}
                         </p>
                       )}
                     </div>

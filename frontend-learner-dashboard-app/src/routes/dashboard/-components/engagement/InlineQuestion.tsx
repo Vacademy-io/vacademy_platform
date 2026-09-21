@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
 import { celebrateCompletion } from "@/lib/play-celebration";
 import {
@@ -23,6 +24,7 @@ export function InlineQuestion({
   item: EngagementItem;
   onCompleted: () => void;
 }) {
+  const { t } = useTranslation("dashboardEngagement");
   const payload = parseQuestionPayload(item);
   const [selected, setSelected] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -51,7 +53,7 @@ export function InlineQuestion({
     } catch (e: unknown) {
       const message =
         (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        "Could not submit that just now.";
+        t("inline.submitError");
       setError(message);
       setSelected(null);
     } finally {
@@ -120,18 +122,16 @@ export function InlineQuestion({
       {result && (
         <p className="animate-in fade-in text-sm font-semibold text-primary-700 dark:text-primary-300">
           {result.resultPending ? (
-            <>🔒 Answer locked in · you&apos;ll find out at the reveal</>
+            <>{t("inline.lockedIn")}</>
           ) : (
             <>
               {result.isCorrect === true
-                ? "Correct!"
+                ? t("inline.correct")
                 : result.isCorrect === false
-                  ? "Not this time —"
-                  : "Answered —"}{" "}
-              +{result.pointsAwarded} points
-              {!result.isRevealed && result.isCorrect === null
-                ? " · the answer drops later today"
-                : ""}
+                  ? t("inline.wrong")
+                  : t("inline.answered")}{" "}
+              {t("inline.points", { count: result.pointsAwarded })}
+              {!result.isRevealed && result.isCorrect === null ? t("inline.revealLater") : ""}
             </>
           )}
         </p>

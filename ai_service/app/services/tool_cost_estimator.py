@@ -155,6 +155,15 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # Regenerate ONE task inside a draft — a small call, priced so a teacher can
+    # reject and retry a few items without it costing as much as the plan.
+    "engagement_item": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     "html_document": {          # first generation (create)
         "request_type": "content",
         "flat_base_credits": Decimal("15"),

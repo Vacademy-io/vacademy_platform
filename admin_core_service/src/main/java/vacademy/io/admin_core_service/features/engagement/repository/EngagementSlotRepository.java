@@ -36,6 +36,18 @@ public interface EngagementSlotRepository extends JpaRepository<EngagementSlot, 
                                      @Param("from") LocalDate from,
                                      @Param("to") LocalDate to);
 
+    /**
+     * Slots whose reveal falls inside a window on a date. reveal_time NULL means
+     * "reveal at end_time", so both columns are consulted.
+     */
+    @Query("SELECT s FROM EngagementSlot s WHERE s.status = 'ACTIVE' " +
+            "AND s.startDate <= :date AND (s.endDate IS NULL OR s.endDate >= :date) " +
+            "AND COALESCE(s.revealTime, s.endTime) >= :fromTime " +
+            "AND COALESCE(s.revealTime, s.endTime) < :toTime")
+    List<EngagementSlot> findDueForReveal(@Param("date") LocalDate date,
+                                          @Param("fromTime") LocalTime fromTime,
+                                          @Param("toTime") LocalTime toTime);
+
     /** Slots whose notify_time falls inside a window on a date — the push job's query. */
     @Query("SELECT s FROM EngagementSlot s WHERE s.status = 'ACTIVE' AND s.notifyTime IS NOT NULL " +
             "AND s.startDate <= :date AND (s.endDate IS NULL OR s.endDate >= :date) " +

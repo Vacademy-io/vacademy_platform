@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Sparkle, Image as ImageIcon, Trash } from '@phosphor-icons/react';
+import { Sparkle, Image as ImageIcon, Trash, ArrowsClockwise } from '@phosphor-icons/react';
 import {
     Dialog,
     DialogContent,
@@ -37,6 +37,7 @@ import {
     newIdempotencyKey,
     DRAFT_CREDITS,
     IMAGE_CREDITS,
+    ITEM_CREDITS,
     type AiPlanBrief,
     type AiPlanDraft,
 } from '../-services/ai-plan-service';
@@ -120,6 +121,9 @@ export function AiPlanWizard({
     const [draftKey, setDraftKey] = useState(() => newIdempotencyKey('engagement-draft'));
     const [selectedDay, setSelectedDay] = useState(0);
     const [illustrating, setIllustrating] = useState<string | null>(null);
+    const [regenerating, setRegenerating] = useState<string | null>(null);
+    // Kept from the last draft so a single-task regeneration is grounded the same way.
+    const [lastGrounding, setLastGrounding] = useState<{ title?: string; text: string }[]>([]);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -193,6 +197,7 @@ export function AiPlanWizard({
         setStep('generating');
         try {
             const grounding_texts = await collectGrounding();
+            setLastGrounding(grounding_texts);
             const result = await draftAiPlan(
                 {
                     title: title.trim() || undefined,
@@ -288,6 +293,72 @@ export function AiPlanWizard({
             );
         } finally {
             setIllustrating(null);
+        }
+    }
+
+    /** Replace one task with a fresh one of the same kind — a small call, not a re-draft. */
+    async function regenerate(slotIndex: number, itemIndex: number) {
+        const slot = draft?.slots[slotIndex];
+        const item = slot?.items?.[itemIndex];
+        if (!slot || !item) return;
+        const key = `${slotIndex}-${itemIndex}`;
+        setRegenerating(key);
+        setError(null);
+        try {
+            let single: string = item.itemType;
+            if (item.itemType === 'QUESTION_OF_DAY') {
+                try {
+                    const fmt = (JSON.parse(item.payloadJson ?? '{}') as { format?: string })
+                        .format;
+                    if (fmt === 'TEXT') single = 'TEXT_QUESTION';
+                } catch {
+                    // keep MCQ
+                }
+            }
+            const res = await draftAiPlan(
+                {
+                    topic: `${topic.trim()}\nDay theme: ${slot.title ?? ''}`.trim() || undefined,
+                    language,
+                    difficulty,
+                    start_date: slot.startDate,
+                    days: 1,
+                    per_day_items: 1,
+                    start_time: startTime,
+                    end_time: endTime,
+                    reveal_time: revealTime || undefined,
+                    notify_time: startTime,
+                    completion_points: item.completionPoints ?? 10,
+                    correct_points: item.correctPoints ?? 20,
+                    mix,
+                    grounding_texts: lastGrounding,
+                    single_item_type: single,
+                    avoid_title: item.title,
+                },
+                newIdempotencyKey(`engagement-item-${slotIndex}-${itemIndex}`)
+            );
+            const fresh = res.slots[0]?.items?.[0];
+            if (!fresh) throw new Error('empty');
+            setDraft((prev) => {
+                if (!prev) return prev;
+                const slots = prev.slots.map((s, si) =>
+                    si !== slotIndex
+                        ? s
+                        : {
+                              ...s,
+                              items: (s.items ?? []).map((it, ii) =>
+                                  ii === itemIndex ? fresh : it
+                              ),
+                          }
+                );
+                return { ...prev, slots };
+            });
+        } catch (e: unknown) {
+            setError(
+                (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+                    'Could not regenerate that task.'
+            );
+        } finally {
+            setRegenerating(null);
         }
     }
 
@@ -722,6 +793,18 @@ export function AiPlanWizard({
                                                 <Trash size={16} />
                                             </button>
                                         </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={regenerating === key}
+                                            onClick={() => regenerate(selectedDay, ii)}
+                                        >
+                                            <ArrowsClockwise size={14} />
+                                            {regenerating === key
+                                                ? 'Regenerating…'
+                                                : `Regenerate (~${ITEM_CREDITS} credits)`}
+                                        </Button>
                                         {placeholders > 0 && (
                                             <Button
                                                 type="button"

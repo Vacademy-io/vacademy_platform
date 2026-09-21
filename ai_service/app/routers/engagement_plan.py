@@ -88,6 +88,10 @@ class DraftRequest(BaseModel):
     grounding_texts: List[GroundingText] = Field(default_factory=list, description="Slide text the teacher selected.")
     kb_id: Optional[str] = Field(None, description="Knowledge base to retrieve from, if any.")
     idempotency_key: Optional[str] = None
+    # Regenerate ONE task instead of a plan: forces days=1, one item of this type,
+    # and a much smaller charge.
+    single_item_type: Optional[str] = None
+    avoid_title: Optional[str] = Field(None, description="The rejected task's title, so the replacement differs.")
 
 
 class DraftResponse(BaseModel):
@@ -185,7 +189,12 @@ async def draft_plan(
     if not (body.topic and body.topic.strip()) and not body.grounding_texts and not body.kb_id:
         raise HTTPException(status_code=400, detail="Give a topic, pick some course content, or choose a knowledge base.")
 
-    _gate(db, "engagement_plan", institute_id, "drafting this plan")
+    is_single = bool(body.single_item_type)
+    tool_key = "engagement_item" if is_single else "engagement_plan"
+    if is_single:
+        body.days = 1
+        body.per_day_items = 1
+    _gate(db, tool_key, institute_id, "regenerating this task" if is_single else "drafting this plan")
 
     # Grounding: teacher-picked slide text first; then KB retrieval keyed on the
     # topic, so the questions come from the institute's own material.
@@ -223,7 +232,7 @@ async def draft_plan(
     # take it away from the teacher.
     try:
         record_tool_billing(
-            tool_key="engagement_plan",
+            tool_key=tool_key,
             tool_params={"days": body.days},
             request_type=RequestType.CONTENT,
             model=model,

@@ -38,6 +38,10 @@ export interface AiPlanBrief {
     mix: AiPlanMix;
     grounding_texts: { title?: string; text: string }[];
     kb_id?: string;
+    /** Regenerate one task of this type instead of a plan. */
+    single_item_type?: string;
+    /** The rejected task's title, so the replacement covers a different angle. */
+    avoid_title?: string;
 }
 
 export interface AiPlanDraft {
@@ -53,6 +57,8 @@ export interface AiPlanDraft {
 export const DRAFT_CREDITS = 10;
 /** Per generated picture; mirrors html_document_image. */
 export const IMAGE_CREDITS = 2;
+/** Regenerating one task; mirrors engagement_item. */
+export const ITEM_CREDITS = 2;
 
 /**
  * Idempotency keys are minted ONCE per attempt by the caller and reused on retry.

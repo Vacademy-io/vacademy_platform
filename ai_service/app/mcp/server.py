@@ -80,7 +80,12 @@ SERVER_INSTRUCTIONS = (
     "items) before telling the admin it is ready. For a change the admin describes from a screenshot, "
     "use get_page (positions + what each section looks like) or find_section (the text they point at) "
     "to locate the exact section and prop, then update_page.\n"
-    "Lead forms: `audience_forms` reads the lead campaigns that website forms submit into."
+    "Lead forms: `audience_forms` reads the lead campaigns that website forms submit into.\n"
+    "Blog: `blog` reads the institute's blog posts and blog(action='placements') tells you which website "
+    "pages show them. `blog_edit` (when enabled) writes articles as DRAFTS — compose the body as clean HTML "
+    "(h2/h3, paragraphs, lists, tables, images only from the institute's media, YouTube/Vimeo embeds), "
+    "give it an excerpt and a meta description, save with create, then hand the admin the editor_url to "
+    "review and publish. Never say a post is live; request_publish only reports readiness and the link."
 )
 
 

@@ -253,5 +253,12 @@
         "heading": "Browse our catalogue",
         "subheading": "Flip through every page right here.",
         "buttonText": "Open the catalogue"
+    },
+    "blog": {
+        "heading": "From the blog",
+        "subheading": "Study tips, exam updates and stories from our classrooms.",
+        "readMoreLabel": "Read more",
+        "backLabel": "All posts",
+        "emptyMessage": "No posts yet — check back soon."
     }
 }

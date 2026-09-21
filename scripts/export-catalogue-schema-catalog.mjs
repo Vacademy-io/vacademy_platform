@@ -44,7 +44,21 @@ async function importTs(relPath) {
     return mod;
 }
 
-const { componentTemplates } = await importTs('src/routes/manage-pages/-utils/component-templates.ts');
+// Templates are built through i18next (`buildComponentTemplates(t)`) so the
+// editor can translate the default copy. The composer prompt wants the ENGLISH
+// defaults as example props, so resolve every key against the English catalog
+// here — a raw key like "blog.heading" would otherwise become example text.
+const { buildComponentTemplates } = await importTs('src/routes/manage-pages/-utils/component-templates.ts');
+const EN_TEMPLATES = JSON.parse(
+    fs.readFileSync(path.join(ADMIN, 'public/locales/en/managePagesComponentTemplates.json'), 'utf8')
+);
+const t = (key, opts) => {
+    const value = key.split('.').reduce((acc, part) => (acc && typeof acc === 'object' ? acc[part] : undefined), EN_TEMPLATES);
+    if (typeof value === 'string') return value;
+    if (opts && typeof opts.defaultValue === 'string') return opts.defaultValue;
+    throw new Error(`Missing English template copy for "${key}"`);
+};
+const componentTemplates = buildComponentTemplates(t);
 const { ORNAMENT_PRESETS } = await importTs('src/routes/manage-pages/-utils/catalogue-decorations.tsx');
 
 /* ─── Which component types the AI may emit ────────────────────────────── */
@@ -176,6 +190,12 @@ const DATA_BOUND = {
     bookDetails: 'Live single-book detail context.',
     buyRentSection: 'Live buy/rent controls.',
     policyRenderer: 'Renders stored policy documents. Placement only.',
+    blog:
+        'Live blog: reads the institute\'s PUBLISHED posts (written in Manage Pages → Blog or by an AI app over ' +
+        'the MCP `blog_edit` tool). Renders the post list on the page it sits on and one article at ' +
+        '/<page>/<post-slug>, so put it on a DEDICATED page (route "blog"), never on the home page. Placement + ' +
+        'look only: heading, subheading, layout grid|list, columns 2|3, pageSize, category ("" = all), show* toggles. ' +
+        'Never invent posts — there are none in the page JSON.',
 };
 
 // Collapse the columnLayout template variants into one canonical entry.

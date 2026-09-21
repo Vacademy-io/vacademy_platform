@@ -793,6 +793,7 @@ def _letterless_guard(cls):
                             text.strip()[:12])
                 return None
             why = self.skip_text_if(text) if self.skip_text_if is not None else None
+            logger.info("tts: to vendor %r%s", text.strip()[:40], f" — SKIPPED: {why}" if why else "")
             if why:
                 logger.info("tts: %r skipped at synthesis — %s", text.strip()[:24], why)
                 return None

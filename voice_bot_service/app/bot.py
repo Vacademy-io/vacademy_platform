@@ -241,9 +241,8 @@ class TranscriptCollector(FrameProcessor):
         self._resume_settle_secs = resume_settle_secs
         self._forget_resume = forget_resume
         self._release_turn = release_turn or (lambda: True)
-        # The aggregator's view of the caller's turn (UserStarted/StoppedSpeaking).
-        # Bot speech pushed while it is open never plays — calls 9050a3e1 and
-        # 42106148 (2026-09-21), four resumes lost, three "hello"s unanswered.
+        # The aggregator's view of the caller's turn (UserStarted/StoppedSpeaking);
+        # _release_user_turn closes it when we swallow the final it is waiting for.
         self._user_turn_open = False
         self._vad_started_t = 0.0
         self._resumed_t = 0.0
@@ -387,10 +386,19 @@ class TranscriptCollector(FrameProcessor):
                 # turn out to be a real turn, its final interrupts us exactly
                 # as any barge-in does.
                 _voice = time.time() - self._vad_started_t
+                # VAD frames are BROADCAST by the aggregator, so this one
+                # arrived travelling UPSTREAM — and every frame we originate
+                # here used to inherit that direction. The resume went up the
+                # pipeline into the STT and vanished, silently: calls
+                # b41b481f, 0c42d3a6, 9050a3e1, 42106148 — every lost resume
+                # and every "hello" left unanswered came through this branch.
+                # (Traced hop by hop in the timing sim, 2026-09-21: pushed by
+                # the turn-gate, never seen by RunGuard.)
+                _down = FrameDirection.DOWNSTREAM
                 if _voice <= self._resume_on_stop_secs and not self._is_bot_speaking():
                     if (not self._played_tail_is_question()
                             and await self._resume_cut_words(
-                                direction, "%.1fs of voice over our reply" % _voice)):
+                                _down, "%.1fs of voice over our reply" % _voice)):
                         pass
                     else:
                         # Nothing played yet to resume: the noise cancelled the
@@ -398,7 +406,7 @@ class TranscriptCollector(FrameProcessor):
                         # turn has no answer at all. Call 3b5fb592: a 0.02 s
                         # blip killed the answer to "मैं बच्चे का पिता बोल रहा हूँ"
                         # and the caller waited 6 s for an apology instead.
-                        await self._answer_never_arrived(direction, _voice)
+                        await self._answer_never_arrived(_down, _voice)
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._user_turn_open = False
             self._set_user_speaking(False)
@@ -991,6 +999,7 @@ class TranscriptCollector(FrameProcessor):
         strategy resets on every stop, so nothing leaks into the next turn."""
         if not self._user_turn_open or not self._release_turn():
             return
+        direction = FrameDirection.DOWNSTREAM
         try:
             await self.push_frame(TranscriptionFrame(
                 " ", getattr(frame, "user_id", "") or "", getattr(frame, "timestamp", "") or "",
@@ -1011,6 +1020,7 @@ class TranscriptCollector(FrameProcessor):
         if self._reran_for == said:
             return False                       # once per turn
         self._reran_for = said
+        direction = FrameDirection.DOWNSTREAM
         logger.info("turn-gate: %.2fs of noise killed the reply before they heard any of it "
                     "— asking for it again (their turn: %r)", voice, said[:40])
         await self.push_frame(LLMMessagesAppendFrame(
@@ -1051,6 +1061,7 @@ class TranscriptCollector(FrameProcessor):
         return True
 
     async def _deliver_resume(self, text: str, direction):
+        direction = FrameDirection.DOWNSTREAM   # never inherit a broadcast's direction
         """Get the cut words to the caller, or give them back to the model.
 
         pipecat's InterruptibleTTSService handles an interruption by clearing
@@ -1064,17 +1075,9 @@ class TranscriptCollector(FrameProcessor):
         model instead of leaving them marked as said."""
         try:
             await asyncio.sleep(self._resume_settle_secs)
-            # And wait for the caller's turn to be closed in the aggregator:
-            # speech pushed while it is open is never heard. With the absorbed
-            # final releasing the turn this is ~0 s; the cap is the aggregator's
-            # own 5 s timeout plus a beat.
-            t0 = time.time()
-            while self._user_turn_open and time.time() - t0 < 6.0:
-                if self._resume_stale:
-                    return
-                await asyncio.sleep(0.05)
             if self._resume_stale:
                 return
+            logger.info("turn-gate: resume → pushing %d words", len(text.split()))
             await self.push_frame(TTSSpeakFrame(text, append_to_context=True), direction)
             for attempt in (1, 2):
                 await asyncio.sleep(1.2)

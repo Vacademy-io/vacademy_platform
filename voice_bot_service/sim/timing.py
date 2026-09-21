@@ -135,7 +135,7 @@ class Line:
 
 
 def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool = False):
-    from pipecat.frames.frames import (Frame, InputAudioRawFrame, InterruptionFrame,
+    from pipecat.frames.frames import (Frame, InputAudioRawFrame, InterruptionFrame, TTSSpeakFrame,
                                        LLMContextFrame, LLMFullResponseEndFrame,
                                        LLMFullResponseStartFrame, LLMTextFrame,
                                        OutputAudioRawFrame, StartFrame, TranscriptionFrame,
@@ -227,6 +227,7 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             self.model_name = "sim-tts"
 
         async def run_tts(self, text: str, context_id: str):
+            log(f"TTS run_tts {text[:40]!r}")
             line.tts_texts.append(text)
             words = max(1, len(text.split()))
             secs = max(0.5, words / 2.8)

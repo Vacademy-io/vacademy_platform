@@ -17,7 +17,7 @@ import org.hibernate.type.SqlTypes;
 import java.util.Date;
 
 /**
- * One signal the learner's device reported during an attempt (V48).
+ * One signal the learner's device reported during an attempt (V50).
  * <p>
  * Append-only. Not joined to {@code StudentAttempt} on purpose: this table must
  * never be loaded by the grading or report paths, and a plain id keeps it that

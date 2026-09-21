@@ -65,7 +65,7 @@ public class Assessment {
     private String aiEvaluationModel;
 
     /**
-     * Proctoring tier + knobs as JSON (V48); see
+     * Proctoring tier + knobs as JSON (V50); see
      * {@link vacademy.io.assessment_service.features.proctoring.dto.ProctoringConfigDTO}.
      * NULL means off -- the behaviour of every assessment that predates it. Read and
      * written only through ProctoringConfigService.

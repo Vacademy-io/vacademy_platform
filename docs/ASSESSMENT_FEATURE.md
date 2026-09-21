@@ -397,7 +397,7 @@ Two-level persistence:
 ### 4.4 Anti-cheat / proctoring
 
 Two layers. The first has always been there and is client-only; the second is the
-per-assessment video proctoring added in V48 (see §4.4A).
+per-assessment video proctoring added in V50 (see §4.4A).
 
 `hooks/proctoring/useProctoring.ts` composes:
 - `forceFullScreen`, `preventTabSwitch`, `preventContextMenu`, `preventUserSelection`, `preventCopy`
@@ -409,10 +409,10 @@ Tab-switch handling in `navbar.tsx`:
 - On 3rd violation (non-MANUAL evaluation) → auto-submit. The same effect also
   submits when the proctoring layer sets `proctorAutoSubmitRequested` (§4.4A).
 
-### 4.4A Video proctoring (V48) — tier BASIC, "on-device AI, snapshots only"
+### 4.4A Video proctoring (V50) — tier BASIC, "on-device AI, snapshots only"
 
 Per-assessment, **off unless chosen**. `assessment.proctoring_config` is JSONB and
-NULL for every assessment that predates V48 (and for any switched back to Off), so
+NULL for every assessment that predates V50 (and for any switched back to Off), so
 nothing changes for an existing exam: no config → no camera prompt, no snapshots,
 no events, and the `ProctorLayer` renders `null`.
 
@@ -675,7 +675,7 @@ question, that means **charging the institute twice for one submission**.
 - `…/question_bank/controller/GetQuestionBankController.java`, `…/manager/GetQuestionBankManager.java`, `…/dto/QuestionBankFilter.java` — question-level browse
 - `…/question_core/repository/QuestionRepository.findQuestionsByFilters`
 - `src/main/resources/db/migration/V42__question_source_and_institute.sql`
-- `…/proctoring/` — `ProctoringConfigDTO`, `ProctoringConfigService`, `ProctorEventService`, `AttemptProctorEvent`, `LearnerProctoringController`, `AdminProctoringController`; `V48__assessment_proctoring.sql`
+- `…/proctoring/` — `ProctoringConfigDTO`, `ProctoringConfigService`, `ProctorEventService`, `AttemptProctorEvent`, `LearnerProctoringController`, `AdminProctoringController`; `V50__assessment_proctoring.sql`
 
 ### ai_service (knowledge base)
 - `ai_service/app/services/kb/` — `paper.py` (blueprint + generation + validation), `repository.py`, `retrieval.py`, `topics.py`, `ingest.py`, `generations.py`
@@ -686,7 +686,7 @@ question, that means **charging the institute twice for one submission**.
 - `frontend-admin-dashboard/src/routes/assessment/create-assessment/$assessmentId/$examtype/`
   - `-components/CreateAssessmentComponent.tsx`
   - `-components/StepComponents/Step1BasicInfo.tsx`
-  - `-components/StepComponents/-components/ProctoringSettingsCard.tsx` — tier picker (V48); types in `src/types/assessments/proctoring.ts`; review dialog in `assessment-list/…/assessment-submissions-dropdown-individual/ProctoringReviewDialog.tsx`, service `src/services/proctoring-review.ts`
+  - `-components/StepComponents/-components/ProctoringSettingsCard.tsx` — tier picker (V50); types in `src/types/assessments/proctoring.ts`; review dialog in `assessment-list/…/assessment-submissions-dropdown-individual/ProctoringReviewDialog.tsx`, service `src/services/proctoring-review.ts`
   - `-components/StepComponents/Step2AddingQuestions.tsx`, `Step2SectionInfo.tsx`
   - `-components/StepComponents/Step3AddingParticipants.tsx`
   - `-components/StepComponents/Step4AccessControl.tsx`
@@ -710,7 +710,7 @@ question, that means **charging the institute twice for one submission**.
   - `otherQuestionTypes/numeric.tsx`, `OneWordInput.tsx`, `LongAnswerInput.tsx`, `paragraph.tsx`
 - `frontend-learner-dashboard-app/src/stores/assessment-store.ts`
 - `frontend-learner-dashboard-app/src/hooks/proctoring/useProctoring.ts`
-- `frontend-learner-dashboard-app/src/hooks/proctoring/useCameraProctor.ts`, `lib/proctoring/face-detector.ts`, `lib/proctoring/capture.ts`, `services/proctoring.ts`, `components/common/proctoring/ProctorCheckIn.tsx`, `ProctorLayer.tsx` — video proctoring (V48)
+- `frontend-learner-dashboard-app/src/hooks/proctoring/useCameraProctor.ts`, `lib/proctoring/face-detector.ts`, `lib/proctoring/capture.ts`, `services/proctoring.ts`, `components/common/proctoring/ProctorCheckIn.tsx`, `ProctorLayer.tsx` — video proctoring (V50)
 - `frontend-learner-dashboard-app/src/routes/assessment/reports/student-report/`
 - `frontend-learner-dashboard-app/src/components/common/student-test-records/test-report-dialog.tsx`
 - `frontend-learner-dashboard-app/src/components/common/student-test-records/question-response-renderer.tsx`

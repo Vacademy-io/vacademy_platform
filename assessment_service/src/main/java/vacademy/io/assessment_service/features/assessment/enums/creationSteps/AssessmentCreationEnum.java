@@ -27,6 +27,6 @@ public enum AssessmentCreationEnum {
     // Automatic AI evaluation on submit (V43).
     AI_EVALUATION_ENABLED,
     AI_EVALUATION_MODEL,
-    // Proctoring tier + knobs (V48).
+    // Proctoring tier + knobs (V50).
     PROCTORING_CONFIG;
 }

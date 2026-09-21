@@ -34,7 +34,7 @@ public class BasicAssessmentDetailsDTO {
     private Boolean aiEvaluationEnabled;
     private String aiEvaluationModel;
 
-    // Proctoring tier + knobs (V48). Null means "not sent" and leaves the stored
+    // Proctoring tier + knobs (V50). Null means "not sent" and leaves the stored
     // value alone; {"tier":"NONE"} switches it off.
     private ProctoringConfigDTO proctoringConfig;
     private String source;

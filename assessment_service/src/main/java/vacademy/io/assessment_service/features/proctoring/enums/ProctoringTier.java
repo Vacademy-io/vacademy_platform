@@ -9,7 +9,7 @@ package vacademy.io.assessment_service.features.proctoring.enums;
  * constant plus its defaults, not a schema change.
  */
 public enum ProctoringTier {
-    /** No camera, no events. The behaviour of every assessment created before V48. */
+    /** No camera, no events. The behaviour of every assessment created before V50. */
     NONE,
     /**
      * On-device AI, snapshots only. The learner's browser runs face detection

@@ -311,6 +311,17 @@ const EnrollByInvite = ({
   const { getDetailsFromPackageSessionId, setInstituteDetails } =
     useInstituteDetailsStore();
 
+  // Login link for an already-registered learner: the institute's own learner
+  // portal (learner_portal_base_url is served host-only, so add the scheme),
+  // falling back to this app's own /login when the institute has none.
+  const learnerLoginUrl = useMemo(() => {
+    const host = (instituteData as { learner_portal_base_url?: string } | undefined)
+      ?.learner_portal_base_url?.trim();
+    if (!host) return "/login";
+    const origin = /^[a-z][a-z0-9+.-]*:\/\//i.test(host) ? host : `https://${host}`;
+    return `${origin.replace(/\/+$/, "")}/login`;
+  }, [instituteData]);
+
   const { data: inviteData, isLoading } = useSuspenseQuery(
     handleGetEnrollInviteData({ instituteId, inviteCode }),
   );
@@ -3550,6 +3561,7 @@ const EnrollByInvite = ({
         dialogType={enrollmentPolicyDialogType}
         policyResponse={enrollmentPolicyResponse}
         serverMessage={enrollmentPolicyServerMessage}
+        loginUrl={learnerLoginUrl}
         courseName={courseData.course || inviteData?.name || t("defaultThisCourse", { course })}
         onContinue={() => {
           // Navigate to dashboard after dialog is closed

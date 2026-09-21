@@ -40,6 +40,7 @@ export const COMPONENT_LABELS: Record<string, string> = {
     leadForm: 'Lead Form',
     teamSection: 'Team',
     announcementFeed: 'Announcements',
+    blog: 'Blog',
     imageGallery: 'Image Gallery',
     columnLayout: 'Column Layout',
     htmlBlock: 'Custom HTML',
@@ -106,6 +107,7 @@ export const COMPONENT_DESCRIPTIONS: Record<string, string> = {
     newsletterSignup: 'Email capture for a mailing list',
     ctaBanner: 'A full-width band with one big call to action',
     announcementFeed: 'Your latest announcements, pulled in live',
+    blog: 'Your blog posts, read live — the list here, each article on its own URL under this page',
 
     // ── Reference ────────────────────────────────────────────────────────────
     faqSection: 'Questions that open and close',

@@ -955,5 +955,30 @@
     "uploadPdf": "رفع PDF",
     "clear": "مسح",
     "openFile": "فتح"
+  },
+  "blog": {
+    "heading": "إعدادات المدونة",
+    "managePostsHint": "تُكتب المقالات وتُنشر بشكل منفصل، لذا لا يحتاج المقال الجديد إلى إعادة نشر الموقع.",
+    "managePosts": "إدارة المقالات",
+    "postCount": "{{count}} مقالًا في مكتبتك (كل الحالات).",
+    "layout": "التخطيط",
+    "layoutGrid": "شبكة بطاقات",
+    "layoutList": "قائمة أفقية",
+    "columns": "الأعمدة",
+    "pageSize": "المقالات في الصفحة",
+    "pageSizeHelp": "تُعرض المقالات الأقدم بأزرار الأحدث / الأقدم.",
+    "category": "عرض هذه الفئة فقط",
+    "allCategories": "كل الفئات",
+    "categoryHelp": "ثبّت القسم على فئة واحدة، مثل صفحة أخبار وصفحة نصائح منفصلة.",
+    "showCoverImage": "عرض صورة الغلاف",
+    "showExcerpt": "عرض المقتطف",
+    "showDate": "عرض التاريخ",
+    "showAuthor": "عرض الكاتب",
+    "showCategory": "عرض الفئة",
+    "showReadingTime": "عرض وقت القراءة",
+    "showCategoryFilter": "شرائح تصفية الفئات",
+    "readMoreLabel": "نص اقرأ المزيد",
+    "backLabel": "نص العودة إلى القائمة",
+    "emptyMessage": "الرسالة عند عدم وجود مقالات"
   }
 }

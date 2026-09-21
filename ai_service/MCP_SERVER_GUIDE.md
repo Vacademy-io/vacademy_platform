@@ -23,6 +23,8 @@ settings tab has one toggle per feature to manage per role:
 | `audience_forms_edit` | WRITE (additive only) | `audience_forms_edits` | `create`, `update_fields` (adds/changes, never removes), `send_test_lead` |
 | `workflows` | READ | `workflows` | `list`, `get`, `runs`, `catalog` (the builder's authoring contract, in sections), `context` (real batches / audiences / templates / sessions / invites to reference) |
 | `workflows_edit` | WRITE (drafts only, no model, no credits) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` — the last two refuse anything whose status is not DRAFT |
+| `blog` | READ | `blog` | `list` (posts of any status, categories, where they are shown), `get` (one post with its HTML body, SEO, public URLs), `placements` (website pages carrying a Blog section) |
+| `blog_edit` | WRITE (drafts only, no model, no credits) | `blog_edits` | `create` (always a DRAFT, `source=MCP`, body nh3-cleaned with the article profile), `update` / `discard` (refuse anything that is not a DRAFT), `request_publish` (readiness audit + the dashboard link; never publishes) |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so
@@ -101,7 +103,11 @@ never touches live data: every action saves a **draft revision**
 (`source=AI_COPILOT`/`AI_WIZARD`, `ai_run_id`) that the admin reviews in Manage
 Pages — where the publish checks run — and publishes themselves.
 `discard_draft` is the undo. `workflows_edit` has the same property — it can
-only create, replace or discard a DRAFT automation. `audience_forms_edit` is
+only create, replace or discard a DRAFT automation, and so does `blog_edit` —
+posts are rows in `catalogue_blog_post` (not page JSON), `create` forces
+`status=DRAFT` (the public endpoint serves PUBLISHED only), `update`/`discard`
+refuse anything else, and publishing is a click in Manage Pages → Blog.
+`audience_forms_edit` is
 allowed on the other safe property: it only **adds** (a campaign, a field, a
 test lead) and never changes or removes what exists. `MCP_ALLOWED_WRITE_TOOLS`
 names each allowed write tool with the property that makes it safe, and

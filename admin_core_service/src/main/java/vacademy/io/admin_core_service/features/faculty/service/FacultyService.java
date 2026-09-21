@@ -79,6 +79,19 @@ public class FacultyService {
                             userDetails.getFullName(),
                             FacultyStatusEnum.ACTIVE.name());
                     updatedMappings.add(newMapping);
+                } else if (subjectId == null) {
+                    // Removing the batch-level (subject-less) instructor row. A plain
+                    // `subject_id = NULL` lookup never matches, so retire every active
+                    // NULL-subject row explicitly. Nothing to retire is fine: the caller
+                    // sends this entry unconditionally on "remove from batch".
+                    for (FacultySubjectPackageSessionMapping batchLevelMapping : facultyRepository
+                            .findAllByUserIdAndPackageSessionIdAndSubjectIdIsNullAndStatusIn(
+                                    updateRequest.getFacultyId(),
+                                    batchId,
+                                    List.of(FacultyStatusEnum.ACTIVE.name()))) {
+                        batchLevelMapping.setStatus(FacultyStatusEnum.DELETED.name());
+                        updatedMappings.add(batchLevelMapping);
+                    }
                 } else {
                     FacultySubjectPackageSessionMapping existingMapping = facultyRepository
                             .findByUserIdAndPackageSessionIdAndSubjectIdAndStatusIn(

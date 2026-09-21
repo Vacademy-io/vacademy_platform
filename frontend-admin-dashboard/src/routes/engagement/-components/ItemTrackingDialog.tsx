@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { CaretLeft, CaretRight, DownloadSimple } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ export function ItemTrackingDialog({
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
+    const { t } = useTranslation('engagement');
     const [page, setPage] = useState(0);
     const [exporting, setExporting] = useState(false);
     const [exportError, setExportError] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export function ItemTrackingDialog({
         try {
             await downloadItemTrackingCsv(item.id, item.title);
         } catch {
-            setExportError('Could not build the export just now.');
+            setExportError(t('tracking.exportError'));
         } finally {
             setExporting(false);
         }
@@ -71,19 +73,25 @@ export function ItemTrackingDialog({
             <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-4xl">
                 <DialogHeader>
                     <DialogTitle className="truncate text-start">
-                        {item?.title ?? 'Task'}
+                        {item?.title ?? t('tracking.task')}
                     </DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap gap-3">
-                            <Stat label="Completed" value={String(data?.completedCount ?? 0)} />
+                            <Stat
+                                label={t('tracking.completed')}
+                                value={String(data?.completedCount ?? 0)}
+                            />
                             {gradable && (
-                                <Stat label="Correct" value={String(data?.correctCount ?? 0)} />
+                                <Stat
+                                    label={t('tracking.correct')}
+                                    value={String(data?.correctCount ?? 0)}
+                                />
                             )}
                             {gradable && accuracy !== null && (
-                                <Stat label="Accuracy" value={`${accuracy}%`} />
+                                <Stat label={t('tracking.accuracy')} value={`${accuracy}%`} />
                             )}
                         </div>
                         <Button
@@ -94,7 +102,7 @@ export function ItemTrackingDialog({
                             onClick={handleExport}
                         >
                             <DownloadSimple size={16} />
-                            {exporting ? 'Preparing…' : 'Export CSV'}
+                            {exporting ? t('tracking.preparing') : t('tracking.export')}
                         </Button>
                     </div>
 
@@ -106,25 +114,41 @@ export function ItemTrackingDialog({
 
                     {(data?.totalRows ?? 0) === 0 && !isFetching ? (
                         <p className="rounded-lg border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500">
-                            Nobody has attempted this yet.
+                            {t('tracking.nobody')}
                         </p>
                     ) : (
                         <div className="overflow-x-auto rounded-lg border border-neutral-200">
                             <table className="w-full text-sm">
                                 <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
                                     <tr>
-                                        <th className="px-3 py-2 text-start">Learner</th>
-                                        <th className="px-3 py-2 text-start">Username</th>
-                                        <th className="px-3 py-2 text-start">Status</th>
+                                        <th className="px-3 py-2 text-start">
+                                            {t('tracking.learner')}
+                                        </th>
+                                        <th className="px-3 py-2 text-start">
+                                            {t('tracking.username')}
+                                        </th>
+                                        <th className="px-3 py-2 text-start">
+                                            {t('tracking.status')}
+                                        </th>
                                         {gradable && (
-                                            <th className="px-3 py-2 text-start">Result</th>
+                                            <th className="px-3 py-2 text-start">
+                                                {t('tracking.result')}
+                                            </th>
                                         )}
                                         {hasAnswers && (
-                                            <th className="px-3 py-2 text-start">Answer</th>
+                                            <th className="px-3 py-2 text-start">
+                                                {t('tracking.answer')}
+                                            </th>
                                         )}
-                                        <th className="px-3 py-2 text-start">Points</th>
-                                        <th className="px-3 py-2 text-start">Time</th>
-                                        <th className="px-3 py-2 text-start">Completed</th>
+                                        <th className="px-3 py-2 text-start">
+                                            {t('tracking.points')}
+                                        </th>
+                                        <th className="px-3 py-2 text-start">
+                                            {t('tracking.time')}
+                                        </th>
+                                        <th className="px-3 py-2 text-start">
+                                            {t('tracking.completedAt')}
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-neutral-100">
@@ -143,9 +167,8 @@ export function ItemTrackingDialog({
 
                     <div className="flex items-center justify-between text-sm text-neutral-500">
                         <span>
-                            {data?.totalRows ?? 0} learner
-                            {(data?.totalRows ?? 0) === 1 ? '' : 's'}
-                            {isFetching ? ' · loading…' : ''}
+                            {t('tracking.learners', { count: data?.totalRows ?? 0 })}
+                            {isFetching ? ` · ${t('tracking.loading')}` : ''}
                         </span>
                         {totalPages > 1 && (
                             <span className="flex items-center gap-2">
@@ -188,6 +211,7 @@ function TrackingRow({
     gradable: boolean;
     showAnswer: boolean;
 }) {
+    const { t } = useTranslation('engagement');
     return (
         <tr>
             <td className="px-3 py-2">
@@ -201,13 +225,17 @@ function TrackingRow({
                 <span className="text-neutral-700">{row.status}</span>
                 {row.isLate && (
                     <span className="ms-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
-                        late
+                        {t('tracking.late')}
                     </span>
                 )}
             </td>
             {gradable && (
                 <td className="px-3 py-2">
-                    {row.isCorrect === true ? 'Correct' : row.isCorrect === false ? 'Wrong' : '—'}
+                    {row.isCorrect === true
+                        ? t('tracking.correct')
+                        : row.isCorrect === false
+                          ? t('tracking.wrong')
+                          : '—'}
                 </td>
             )}
             {showAnswer && (
@@ -231,7 +259,7 @@ function TrackingRow({
                                             if (url) window.open(url, '_blank', 'noopener');
                                         }}
                                     >
-                                        📎 Open file
+                                        📎 {t('tracking.openFile')}
                                     </button>
                                 </li>
                             ))}

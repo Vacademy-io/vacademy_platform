@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -50,6 +51,7 @@ export function BatchPickerDialog({
     const [search, setSearch] = useState('');
     const [debounced, setDebounced] = useState('');
     const [page, setPage] = useState(0);
+    const { t } = useTranslation('engagement');
     const [draft, setDraft] = useState<BatchOption[]>(selected);
 
     // Re-seed the draft each time the dialog opens so Cancel truly discards.
@@ -102,7 +104,7 @@ export function BatchPickerDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-h-screen w-full overflow-hidden sm:max-w-xl">
                 <DialogHeader>
-                    <DialogTitle className="text-start">Select batches</DialogTitle>
+                    <DialogTitle className="text-start">{t('batchPicker.title')}</DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-3">
@@ -114,7 +116,7 @@ export function BatchPickerDialog({
                         <Input
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search batches"
+                            placeholder={t('batchPicker.search')}
                             className="ps-9"
                         />
                     </div>
@@ -129,7 +131,7 @@ export function BatchPickerDialog({
                                         setDraft((prev) => prev.filter((x) => x.id !== b.id))
                                     }
                                     className="rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-700 hover:bg-primary-100"
-                                    title="Remove"
+                                    title={t('batchPicker.remove')}
                                 >
                                     {b.label} ✕
                                 </button>
@@ -140,7 +142,7 @@ export function BatchPickerDialog({
                     <div className="max-h-80 divide-y divide-neutral-100 overflow-y-auto rounded-md border border-neutral-200">
                         {rows.length === 0 && !isFetching && (
                             <p className="p-6 text-center text-sm text-neutral-500">
-                                No batches match that search.
+                                {t('batchPicker.noMatch')}
                             </p>
                         )}
                         {rows.map((batch) => (
@@ -161,8 +163,8 @@ export function BatchPickerDialog({
 
                     <div className="flex items-center justify-between text-sm text-neutral-500">
                         <span>
-                            {draft.length} selected
-                            {isFetching ? ' · loading…' : ''}
+                            {t('batchPicker.selected', { count: draft.length })}
+                            {isFetching ? ` · ${t('batchPicker.loading')}` : ''}
                         </span>
                         <span className="flex items-center gap-2">
                             <Button
@@ -192,7 +194,7 @@ export function BatchPickerDialog({
 
                 <DialogFooter className="gap-2">
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                        Cancel
+                        {t('batchPicker.cancel')}
                     </Button>
                     <MyButton
                         type="button"
@@ -201,7 +203,7 @@ export function BatchPickerDialog({
                             onOpenChange(false);
                         }}
                     >
-                        Use {draft.length} batch{draft.length === 1 ? '' : 'es'}
+                        {t('batchPicker.use', { count: draft.length })}
                     </MyButton>
                 </DialogFooter>
             </DialogContent>

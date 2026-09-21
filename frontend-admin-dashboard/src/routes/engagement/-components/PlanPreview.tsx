@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify';
+import { useTranslation } from 'react-i18next';
 import type { EngagementItemType, MissPolicy } from '../-types/types';
 
 /**
@@ -24,16 +25,6 @@ export interface PreviewTask {
     completionPoints?: number;
     correctPoints?: number;
 }
-
-const TYPE_LABEL: Record<EngagementItemType, string> = {
-    READING_HTML: 'Read',
-    VISUAL_NOTE: 'Visual note',
-    QUESTION_OF_DAY: 'Question of the day',
-    QUIZ: 'Quiz',
-    GAME: 'Game',
-    POLL: 'Poll',
-    COURSE_SLIDE: 'Course content',
-};
 
 const TYPE_ACCENT: Record<EngagementItemType, string> = {
     READING_HTML: 'bg-sky-500',
@@ -67,6 +58,7 @@ export function PlanPreview({
     /** Which task to show expanded; defaults to the first. */
     activeKey?: string | null;
 }) {
+    const { t } = useTranslation('engagement');
     const active = tasks.find((t) => t.key === activeKey) ?? tasks[0];
     const isQuestion = active?.itemType === 'QUESTION_OF_DAY' || active?.itemType === 'POLL';
     const isProse = active?.itemType === 'READING_HTML' || active?.itemType === 'VISUAL_NOTE';
@@ -75,11 +67,11 @@ export function PlanPreview({
         <div className="space-y-4">
             <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                    Learner preview
+                    {t('preview.title')}
                 </p>
                 <p className="mt-0.5 text-xs text-neutral-400">
-                    Open {startTime}–{endTime}
-                    {revealTime ? ` · answers at ${revealTime}` : ''}
+                    {t('preview.open', { start: startTime, end: endTime })}
+                    {revealTime ? ` · ${t('preview.answersAt', { time: revealTime })}` : ''}
                 </p>
             </div>
 
@@ -87,15 +79,19 @@ export function PlanPreview({
             <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
                 <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
                     <div>
-                        <p className="text-sm font-semibold text-neutral-900">Your tasks today</p>
-                        <p className="text-xs text-neutral-500">0 of {tasks.length} done</p>
+                        <p className="text-sm font-semibold text-neutral-900">
+                            {t('preview.cardTitle')}
+                        </p>
+                        <p className="text-xs text-neutral-500">
+                            {t('preview.done', { count: tasks.length })}
+                        </p>
                     </div>
                     <span className="h-2 w-20 overflow-hidden rounded-full bg-neutral-200" />
                 </div>
                 <div className="divide-y divide-neutral-100">
                     {tasks.length === 0 && (
                         <p className="px-4 py-6 text-center text-xs text-neutral-400">
-                            Add a task to see it here.
+                            {t('preview.addTask')}
                         </p>
                     )}
                     {tasks.map((task) => (
@@ -106,20 +102,23 @@ export function PlanPreview({
                             <span className="min-w-0 flex-1">
                                 <span className="flex flex-wrap items-center gap-1.5">
                                     <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-medium text-neutral-600">
-                                        {TYPE_LABEL[task.itemType]}
+                                        {t(`composer.types.${task.itemType}`)}
                                     </span>
                                     {task.isRequired && (
                                         <span className="rounded bg-neutral-900 px-1.5 py-0.5 text-xs font-medium text-white">
-                                            Required
+                                            {t('composer.required')}
                                         </span>
                                     )}
                                 </span>
                                 <span className="mt-1 block truncate text-sm text-neutral-900">
-                                    {task.title || 'Untitled task'}
+                                    {task.title || t('preview.untitled')}
                                 </span>
                                 <span className="block text-xs text-neutral-500">
-                                    up to {(task.completionPoints ?? 0) + (task.correctPoints ?? 0)}{' '}
-                                    pts
+                                    {t('preview.upTo', {
+                                        count:
+                                            (task.completionPoints ?? 0) +
+                                            (task.correctPoints ?? 0),
+                                    })}
                                 </span>
                             </span>
                         </div>
@@ -131,13 +130,12 @@ export function PlanPreview({
             {active && (
                 <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4">
                     <p className="text-sm font-semibold text-neutral-900">
-                        {active.title || 'Untitled task'}
+                        {active.title || t('preview.untitled')}
                     </p>
 
                     {missPolicy === 'CATCH_UP_REDUCED' && (
                         <p className="rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
-                            If they catch up late, this is worth {catchUpPercent ?? 50}% of its
-                            points.
+                            {t('preview.catchUp', { percent: catchUpPercent ?? 50 })}
                         </p>
                     )}
 
@@ -151,14 +149,13 @@ export function PlanPreview({
 
                     {active.itemType === 'COURSE_SLIDE' && (
                         <p className="rounded bg-teal-50 px-2 py-1.5 text-xs text-teal-800">
-                            Opens the lesson in the course library. It completes once the learner
-                            finishes it there.
+                            {t('preview.lesson')}
                         </p>
                     )}
 
                     {active.itemType === 'GAME' && (
                         <p className="rounded bg-neutral-50 px-2 py-1.5 text-xs text-neutral-500">
-                            Runs in a sandboxed frame on the learner&apos;s device.
+                            {t('preview.sandboxed')}
                         </p>
                     )}
 
@@ -183,15 +180,18 @@ export function PlanPreview({
                                     ))}
                                 {(active.options ?? []).every((o) => !o.text.trim()) && (
                                     <p className="text-xs text-neutral-400">
-                                        Options appear here as you type them.
+                                        {t('preview.optionsHint')}
                                     </p>
                                 )}
                             </div>
                             {active.itemType === 'QUESTION_OF_DAY' && (
                                 <p className="rounded bg-neutral-50 px-2 py-1.5 text-xs text-neutral-500">
-                                    The correct answer
-                                    {active.explanation ? ' and explanation are' : ' is'} hidden
-                                    from learners until {revealTime || endTime}.
+                                    {t(
+                                        active.explanation
+                                            ? 'preview.hiddenAnswerExpl'
+                                            : 'preview.hiddenAnswer',
+                                        { time: revealTime || endTime }
+                                    )}
                                 </p>
                             )}
                         </>

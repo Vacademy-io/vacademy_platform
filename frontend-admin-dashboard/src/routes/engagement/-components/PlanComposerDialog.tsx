@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -39,32 +40,18 @@ import type {
  * cannot shift windows under learners who already attempted them.
  */
 
-const ITEM_TYPES: { value: EngagementItemType; label: string; hint: string }[] = [
-    { value: 'READING_HTML', label: 'Reading', hint: 'HTML the learner reads' },
-    { value: 'VISUAL_NOTE', label: 'Visual note', hint: 'A visual explainer' },
-    {
-        value: 'QUESTION_OF_DAY',
-        label: 'Question of the day',
-        hint: 'Graded by the server',
-    },
-    { value: 'GAME', label: 'Game', hint: 'Your HTML, sandboxed' },
-    { value: 'POLL', label: 'Poll', hint: 'No right answer' },
-    {
-        value: 'COURSE_SLIDE',
-        label: 'Course content',
-        hint: 'A lesson from this course',
-    },
+// Labels and hints live in locales/<lng>/engagement.json under composer.types,
+// composer.miss and composer.formats, keyed by these values.
+const ITEM_TYPES: EngagementItemType[] = [
+    'READING_HTML',
+    'VISUAL_NOTE',
+    'QUESTION_OF_DAY',
+    'GAME',
+    'POLL',
+    'COURSE_SLIDE',
 ];
 
-const MISS_POLICIES: { value: MissPolicy; label: string; hint: string }[] = [
-    { value: 'EXPIRES', label: 'Expires', hint: 'Gone when the window closes' },
-    { value: 'CATCH_UP_FULL', label: 'Catch up', hint: 'Late, still full points' },
-    {
-        value: 'CATCH_UP_REDUCED',
-        label: 'Catch up (reduced)',
-        hint: 'Late, for fewer points',
-    },
-];
+const MISS_POLICIES: MissPolicy[] = ['EXPIRES', 'CATCH_UP_FULL', 'CATCH_UP_REDUCED'];
 
 /**
  * The message a teacher's game posts to report its result. Matches the protocol the
@@ -74,11 +61,7 @@ const MISS_POLICIES: { value: MissPolicy; label: string; hint: string }[] = [
  */
 const GAME_SCORE_SNIPPET = "postMessage({ type: 'vacademy:complete', score, maxScore })";
 
-const QUESTION_FORMATS: { value: QuestionFormat; label: string; hint: string }[] = [
-    { value: 'MCQ', label: 'Multiple choice', hint: 'Graded by the server' },
-    { value: 'TEXT', label: 'Written answer', hint: 'You read the replies' },
-    { value: 'UPLOAD', label: 'Upload a file', hint: 'They attach their work' },
-];
+const QUESTION_FORMATS: QuestionFormat[] = ['MCQ', 'TEXT', 'UPLOAD'];
 
 interface DraftItem extends EngagementItemRequest {
     /** Local-only key so rows stay stable before the server assigns ids. */
@@ -133,6 +116,7 @@ export function PlanComposerDialog({
      */
     presetSlide?: PickedSlide | null;
 }) {
+    const { t } = useTranslation('engagement');
     const isEdit = Boolean(planId);
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
@@ -167,7 +151,7 @@ export function PlanComposerDialog({
         setDescription(existing.description ?? '');
         setMissPolicy(existing.defaultMissPolicy ?? 'EXPIRES');
         setPublish(existing.status === 'PUBLISHED');
-        setBatches([{ id: existing.packageSessionId, label: 'This batch' }]);
+        setBatches([{ id: existing.packageSessionId, label: t('composer.thisBatch') }]);
 
         const slot = existing.slots?.[0];
         if (!slot) return;
@@ -227,7 +211,7 @@ export function PlanComposerDialog({
                 };
             })
         );
-    }, [open, existing]);
+    }, [open, existing, t]);
 
     // Seed a course-content task when opened from a slide.
     useEffect(() => {
@@ -249,7 +233,7 @@ export function PlanComposerDialog({
     // A batch passed in by the course page seeds the selection.
     useEffect(() => {
         if (open && defaultPackageSessionId && batches.length === 0) {
-            setBatches([{ id: defaultPackageSessionId, label: 'This batch' }]);
+            setBatches([{ id: defaultPackageSessionId, label: t('composer.thisBatch') }]);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, defaultPackageSessionId]);
@@ -310,20 +294,20 @@ export function PlanComposerDialog({
     }
 
     function validate(): string | null {
-        if (!title.trim()) return 'Give the plan a title.';
-        if (batches.length === 0) return 'Pick at least one batch.';
-        if (endTime <= startTime) return 'The end time must be after the start time.';
-        if (items.length === 0) return 'Add at least one task.';
+        if (!title.trim()) return t('composer.errors.title');
+        if (batches.length === 0) return t('composer.errors.batch');
+        if (endTime <= startTime) return t('composer.errors.time');
+        if (items.length === 0) return t('composer.errors.tasks');
         for (const item of items) {
-            if (!item.title.trim()) return 'Every task needs a title.';
+            if (!item.title.trim()) return t('composer.errors.taskTitle');
             if (item.itemType === 'COURSE_SLIDE' && !item.slide) {
-                return 'Pick the course content for every course-content task.';
+                return t('composer.errors.content');
             }
             if (item.itemType === 'QUESTION_OF_DAY' && (item.format ?? 'MCQ') === 'MCQ') {
                 const filled = (item.options ?? []).filter((o) => o.text.trim().length > 0);
-                if (filled.length < 2) return 'A question needs at least two options.';
+                if (filled.length < 2) return t('composer.errors.options');
                 if (!filled.some((o) => o.id === item.correctOptionId)) {
-                    return 'Mark which option is correct.';
+                    return t('composer.errors.correct');
                 }
             }
         }
@@ -389,7 +373,7 @@ export function PlanComposerDialog({
         } catch (e: unknown) {
             const message =
                 (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-                'Could not save this plan.';
+                t('composer.errors.save');
             setError(message);
         } finally {
             setSaving(false);
@@ -401,7 +385,7 @@ export function PlanComposerDialog({
             <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-5xl">
                 <DialogHeader>
                     <DialogTitle className="text-start">
-                        {isEdit ? 'Edit engagement plan' : 'New engagement plan'}
+                        {isEdit ? t('composer.titleEdit') : t('composer.titleNew')}
                     </DialogTitle>
                 </DialogHeader>
 
@@ -409,16 +393,16 @@ export function PlanComposerDialog({
                     <div className="space-y-6">
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-1.5">
-                                <Label htmlFor="plan-title">Title</Label>
+                                <Label htmlFor="plan-title">{t('composer.title')}</Label>
                                 <Input
                                     id="plan-title"
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="Daily question — Physics"
+                                    placeholder={t('composer.titlePlaceholder')}
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Batches</Label>
+                                <Label>{t('composer.batches')}</Label>
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -429,21 +413,21 @@ export function PlanComposerDialog({
                                     onClick={() => setBatchPickerOpen(true)}
                                 >
                                     {batches.length === 0
-                                        ? 'Select batches'
+                                        ? t('composer.selectBatches')
                                         : batches.length === 1
                                           ? batches[0]!.label
-                                          : `${batches.length} batches selected`}
+                                          : t('composer.batchesSelected', {
+                                                count: batches.length,
+                                            })}
                                 </Button>
                                 {isEdit ? (
                                     <p className="text-xs text-neutral-500">
-                                        A plan belongs to one batch. To run this on another batch,
-                                        create a new plan there.
+                                        {t('composer.editOneBatch')}
                                     </p>
                                 ) : (
                                     batches.length > 1 && (
                                         <p className="text-xs text-neutral-500">
-                                            One plan is created per batch, so each batch keeps its
-                                            own tracking and leaderboard.
+                                            {t('composer.onePerBatch')}
                                         </p>
                                     )
                                 )}
@@ -451,25 +435,25 @@ export function PlanComposerDialog({
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label htmlFor="plan-description">Description</Label>
+                            <Label htmlFor="plan-description">{t('composer.description')}</Label>
                             <Textarea
                                 id="plan-description"
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
-                                placeholder="What this plan is for (learners never see this)"
+                                placeholder={t('composer.descriptionPlaceholder')}
                             />
                         </div>
 
                         <div className="rounded-lg border border-neutral-200 p-4">
                             <p className="text-sm font-medium text-neutral-900">
-                                When learners see it
+                                {t('composer.when')}
                             </p>
-                            <p className="mt-0.5 text-xs text-neutral-500">
-                                Times are in your institute&apos;s timezone.
-                            </p>
+                            <p className="mt-0.5 text-xs text-neutral-500">{t('composer.tz')}</p>
                             <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="plan-start-date">First day</Label>
+                                    <Label htmlFor="plan-start-date">
+                                        {t('composer.firstDay')}
+                                    </Label>
                                     <Input
                                         id="plan-start-date"
                                         type="date"
@@ -478,7 +462,7 @@ export function PlanComposerDialog({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="plan-end-date">Last day (optional)</Label>
+                                    <Label htmlFor="plan-end-date">{t('composer.lastDay')}</Label>
                                     <Input
                                         id="plan-end-date"
                                         type="date"
@@ -487,7 +471,7 @@ export function PlanComposerDialog({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="plan-notify">Notify at</Label>
+                                    <Label htmlFor="plan-notify">{t('composer.notifyAt')}</Label>
                                     <Input
                                         id="plan-notify"
                                         type="time"
@@ -496,7 +480,7 @@ export function PlanComposerDialog({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="plan-start-time">Opens at</Label>
+                                    <Label htmlFor="plan-start-time">{t('composer.opensAt')}</Label>
                                     <Input
                                         id="plan-start-time"
                                         type="time"
@@ -505,7 +489,7 @@ export function PlanComposerDialog({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="plan-end-time">Closes at</Label>
+                                    <Label htmlFor="plan-end-time">{t('composer.closesAt')}</Label>
                                     <Input
                                         id="plan-end-time"
                                         type="time"
@@ -514,7 +498,7 @@ export function PlanComposerDialog({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="plan-reveal">Reveal answers at</Label>
+                                    <Label htmlFor="plan-reveal">{t('composer.revealAt')}</Label>
                                     <Input
                                         id="plan-reveal"
                                         type="time"
@@ -525,24 +509,24 @@ export function PlanComposerDialog({
                             </div>
 
                             <div className="mt-4 space-y-1.5">
-                                <Label>If a learner misses it</Label>
+                                <Label>{t('composer.ifMissed')}</Label>
                                 <div className="flex flex-wrap gap-2">
                                     {MISS_POLICIES.map((policy) => (
                                         <button
-                                            key={policy.value}
+                                            key={policy}
                                             type="button"
-                                            onClick={() => setMissPolicy(policy.value)}
+                                            onClick={() => setMissPolicy(policy)}
                                             className={
-                                                missPolicy === policy.value
+                                                missPolicy === policy
                                                     ? 'rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-start text-xs'
                                                     : 'rounded-lg border border-neutral-200 px-3 py-2 text-start text-xs hover:border-neutral-300'
                                             }
                                         >
                                             <span className="block font-medium text-neutral-900">
-                                                {policy.label}
+                                                {t(`composer.miss.${policy}`)}
                                             </span>
                                             <span className="block text-neutral-500">
-                                                {policy.hint}
+                                                {t(`composer.miss.${policy}_hint`)}
                                             </span>
                                         </button>
                                     ))}
@@ -552,14 +536,16 @@ export function PlanComposerDialog({
 
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-neutral-900">Tasks</p>
+                                <p className="text-sm font-medium text-neutral-900">
+                                    {t('composer.tasks')}
+                                </p>
                                 <Button
                                     type="button"
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setItems((prev) => [...prev, newItem()])}
                                 >
-                                    <Plus size={16} /> Add task
+                                    <Plus size={16} /> {t('composer.addTask')}
                                 </Button>
                             </div>
 
@@ -577,27 +563,28 @@ export function PlanComposerDialog({
                                         <div className="flex flex-wrap gap-1.5">
                                             {ITEM_TYPES.map((type) => (
                                                 <button
-                                                    key={type.value}
+                                                    key={type}
                                                     type="button"
+                                                    title={t(`composer.types.${type}_hint`)}
                                                     onClick={() =>
                                                         patchItem(item.key, {
-                                                            itemType: type.value,
+                                                            itemType: type,
                                                         })
                                                     }
                                                     className={
-                                                        item.itemType === type.value
+                                                        item.itemType === type
                                                             ? 'rounded-md bg-primary-500 px-2.5 py-1 text-xs font-medium text-white'
                                                             : 'rounded-md bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-200'
                                                     }
                                                 >
-                                                    {type.label}
+                                                    {t(`composer.types.${type}`)}
                                                 </button>
                                             ))}
                                         </div>
                                         {items.length > 1 && (
                                             <button
                                                 type="button"
-                                                aria-label="Remove task"
+                                                aria-label={t('composer.removeTask')}
                                                 onClick={() =>
                                                     setItems((prev) =>
                                                         prev.filter((it) => it.key !== item.key)
@@ -611,20 +598,22 @@ export function PlanComposerDialog({
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <Label htmlFor={`item-title-${index}`}>Task title</Label>
+                                        <Label htmlFor={`item-title-${index}`}>
+                                            {t('composer.taskTitle')}
+                                        </Label>
                                         <Input
                                             id={`item-title-${index}`}
                                             value={item.title}
                                             onChange={(e) =>
                                                 patchItem(item.key, { title: e.target.value })
                                             }
-                                            placeholder="Today's question"
+                                            placeholder={t('composer.taskTitlePlaceholder')}
                                         />
                                     </div>
 
                                     {item.itemType === 'COURSE_SLIDE' && (
                                         <div className="space-y-1.5">
-                                            <Label>Course content</Label>
+                                            <Label>{t('composer.courseContent')}</Label>
                                             <Button
                                                 type="button"
                                                 variant="outline"
@@ -635,13 +624,11 @@ export function PlanComposerDialog({
                                                 {item.slide
                                                     ? `🎓 ${item.slide.slideTitle}`
                                                     : batches.length === 0
-                                                      ? 'Pick a batch first'
-                                                      : 'Choose a lesson from this course'}
+                                                      ? t('composer.pickBatchFirst')
+                                                      : t('composer.chooseLesson')}
                                             </Button>
                                             <p className="text-xs text-neutral-500">
-                                                The learner opens it in the course library. It
-                                                counts as done once they finish it there, so nothing
-                                                is tracked twice.
+                                                {t('composer.lessonHint')}
                                             </p>
                                         </div>
                                     )}
@@ -651,7 +638,9 @@ export function PlanComposerDialog({
                                         item.itemType === 'GAME') && (
                                         <div className="space-y-1.5">
                                             <Label htmlFor={`item-html-${index}`}>
-                                                {item.itemType === 'GAME' ? 'Game HTML' : 'Content'}
+                                                {item.itemType === 'GAME'
+                                                    ? t('composer.gameHtml')
+                                                    : t('composer.content')}
                                             </Label>
                                             {item.itemType === 'GAME' ? (
                                                 // A game is a self-contained document with its own
@@ -675,21 +664,17 @@ export function PlanComposerDialog({
                                                     onChange={(html) =>
                                                         patchItem(item.key, { contentHtml: html })
                                                     }
-                                                    placeholder="What should the learner read?"
+                                                    placeholder={t('composer.contentPlaceholder')}
                                                     minHeight={160}
                                                 />
                                             )}
                                             {item.itemType === 'GAME' && (
                                                 <p className="text-xs text-neutral-500">
-                                                    Runs sandboxed, with no access to the learner
-                                                    app. A game reports its score by posting{' '}
+                                                    {t('composer.gameHint')}{' '}
                                                     <code className="rounded bg-neutral-100 px-1">
                                                         {GAME_SCORE_SNIPPET}
                                                     </code>{' '}
-                                                    to its parent. The server clamps that score to
-                                                    the task&apos;s maximum and, because the page
-                                                    reports its own number, caps what it can
-                                                    contribute to the leaderboard.
+                                                    {t('composer.gameHint2')}
                                                 </p>
                                             )}
                                         </div>
@@ -700,29 +685,30 @@ export function PlanComposerDialog({
                                         <div className="space-y-3">
                                             {item.itemType === 'QUESTION_OF_DAY' && (
                                                 <div className="space-y-1.5">
-                                                    <Label>How do they answer?</Label>
+                                                    <Label>{t('composer.howAnswer')}</Label>
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {QUESTION_FORMATS.map((f) => (
                                                             <button
-                                                                key={f.value}
+                                                                key={f}
                                                                 type="button"
                                                                 onClick={() =>
                                                                     patchItem(item.key, {
-                                                                        format: f.value,
+                                                                        format: f,
                                                                     })
                                                                 }
                                                                 className={
-                                                                    (item.format ?? 'MCQ') ===
-                                                                    f.value
-                                                                        ? 'rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-left text-xs'
-                                                                        : 'rounded-lg border border-neutral-200 px-3 py-2 text-left text-xs hover:border-neutral-300'
+                                                                    (item.format ?? 'MCQ') === f
+                                                                        ? 'rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-start text-xs'
+                                                                        : 'rounded-lg border border-neutral-200 px-3 py-2 text-start text-xs hover:border-neutral-300'
                                                                 }
                                                             >
                                                                 <span className="block font-medium text-neutral-900">
-                                                                    {f.label}
+                                                                    {t(`composer.formats.${f}`)}
                                                                 </span>
                                                                 <span className="block text-neutral-500">
-                                                                    {f.hint}
+                                                                    {t(
+                                                                        `composer.formats.${f}_hint`
+                                                                    )}
                                                                 </span>
                                                             </button>
                                                         ))}
@@ -731,13 +717,13 @@ export function PlanComposerDialog({
                                             )}
 
                                             <div className="space-y-1.5">
-                                                <Label>Question</Label>
+                                                <Label>{t('composer.question')}</Label>
                                                 <TipTapEditor
                                                     value={item.prompt ?? ''}
                                                     onChange={(html) =>
                                                         patchItem(item.key, { prompt: html })
                                                     }
-                                                    placeholder="Ask the question"
+                                                    placeholder={t('composer.askPlaceholder')}
                                                     minHeight={90}
                                                     minimalToolbar
                                                 />
@@ -747,7 +733,7 @@ export function PlanComposerDialog({
                                             {(item.itemType === 'POLL' ||
                                                 (item.format ?? 'MCQ') === 'MCQ') && (
                                                 <div className="space-y-2">
-                                                    <Label>Options</Label>
+                                                    <Label>{t('composer.options')}</Label>
                                                     {(item.options ?? []).map(
                                                         (option, optionIndex) => (
                                                             <div
@@ -769,7 +755,12 @@ export function PlanComposerDialog({
                                                                                     option.id,
                                                                             })
                                                                         }
-                                                                        aria-label={`Option ${option.id} is correct`}
+                                                                        aria-label={t(
+                                                                            'composer.optionCorrect',
+                                                                            {
+                                                                                id: option.id.toUpperCase(),
+                                                                            }
+                                                                        )}
                                                                     />
                                                                 )}
                                                                 <Input
@@ -786,7 +777,12 @@ export function PlanComposerDialog({
                                                                             options: next,
                                                                         });
                                                                     }}
-                                                                    placeholder={`Option ${option.id.toUpperCase()}`}
+                                                                    placeholder={t(
+                                                                        'composer.optionPlaceholder',
+                                                                        {
+                                                                            id: option.id.toUpperCase(),
+                                                                        }
+                                                                    )}
                                                                 />
                                                             </div>
                                                         )
@@ -804,7 +800,7 @@ export function PlanComposerDialog({
                                                             patchItem(item.key, { options: next });
                                                         }}
                                                     >
-                                                        <Plus size={14} /> Option
+                                                        <Plus size={14} /> {t('composer.option')}
                                                     </Button>
                                                 </div>
                                             )}
@@ -825,16 +821,10 @@ export function PlanComposerDialog({
                                                         <Label
                                                             htmlFor={`item-hide-result-${index}`}
                                                         >
-                                                            Only show the answer at reveal
+                                                            {t('composer.hideResult')}
                                                         </Label>
                                                         <p className="text-xs text-neutral-500">
-                                                            Learners see that their answer is in,
-                                                            but not whether it was right — so the
-                                                            first to answer can&apos;t pass it
-                                                            around before the reveal. The bonus
-                                                            points land at reveal too, since an
-                                                            early bonus would give it away just as
-                                                            clearly.
+                                                            {t('composer.hideResultHint')}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -842,7 +832,7 @@ export function PlanComposerDialog({
 
                                             {item.itemType === 'QUESTION_OF_DAY' && (
                                                 <div className="space-y-1.5">
-                                                    <Label>Explanation (shown at reveal)</Label>
+                                                    <Label>{t('composer.explanation')}</Label>
                                                     <TipTapEditor
                                                         value={item.explanation ?? ''}
                                                         onChange={(html) =>
@@ -850,7 +840,9 @@ export function PlanComposerDialog({
                                                                 explanation: html,
                                                             })
                                                         }
-                                                        placeholder="Why is that the answer?"
+                                                        placeholder={t(
+                                                            'composer.explanationPlaceholder'
+                                                        )}
                                                         minHeight={90}
                                                         minimalToolbar
                                                     />
@@ -862,7 +854,7 @@ export function PlanComposerDialog({
                                     <div className="grid gap-3 sm:grid-cols-3">
                                         <div className="space-y-1.5">
                                             <Label htmlFor={`item-completion-${index}`}>
-                                                Points for completing
+                                                {t('composer.completionPoints')}
                                             </Label>
                                             <Input
                                                 id={`item-completion-${index}`}
@@ -878,7 +870,7 @@ export function PlanComposerDialog({
                                         {item.itemType === 'QUESTION_OF_DAY' && (
                                             <div className="space-y-1.5">
                                                 <Label htmlFor={`item-correct-${index}`}>
-                                                    Bonus if correct
+                                                    {t('composer.bonus')}
                                                 </Label>
                                                 <Input
                                                     id={`item-correct-${index}`}
@@ -901,7 +893,7 @@ export function PlanComposerDialog({
                                                 }
                                             />
                                             <Label htmlFor={`item-required-${index}`}>
-                                                Required
+                                                {t('composer.required')}
                                             </Label>
                                         </div>
                                     </div>
@@ -934,11 +926,15 @@ export function PlanComposerDialog({
                     <div className="flex items-center gap-2">
                         <Switch id="plan-publish" checked={publish} onCheckedChange={setPublish} />
                         <Label htmlFor="plan-publish">
-                            {isEdit ? 'Published to learners' : 'Publish to learners now'}
+                            {isEdit ? t('composer.published') : t('composer.publishNow')}
                         </Label>
                     </div>
                     <MyButton type="button" onClick={handleSave} disable={saving}>
-                        {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save plan'}
+                        {saving
+                            ? t('composer.saving')
+                            : isEdit
+                              ? t('composer.saveChanges')
+                              : t('composer.savePlan')}
                     </MyButton>
                 </DialogFooter>
             </DialogContent>

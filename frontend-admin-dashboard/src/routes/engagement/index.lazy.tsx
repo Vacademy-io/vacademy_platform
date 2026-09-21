@@ -1,6 +1,7 @@
 import { createLazyFileRoute, getRouteApi } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Plus, Sparkle } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -18,14 +19,15 @@ export const Route = createLazyFileRoute('/engagement/')({
 
 /** Daily engagement plans for a batch: what learners are shown, and when. */
 function EngagementPlans() {
+    const { t } = useTranslation('engagement');
     const { packageSessionId } = routeApi.useSearch();
     const { setNavHeading } = useNavHeadingStore();
     const [composerOpen, setComposerOpen] = useState(false);
     const [aiOpen, setAiOpen] = useState(false);
 
     useEffect(() => {
-        setNavHeading('Daily Engagement');
-    }, [setNavHeading]);
+        setNavHeading(t('page.title'));
+    }, [setNavHeading, t]);
 
     const {
         data: plans,
@@ -41,11 +43,10 @@ function EngagementPlans() {
             <div className="space-y-6 p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                        <h1 className="text-xl font-semibold text-neutral-900">Daily engagement</h1>
-                        <p className="mt-1 text-sm text-neutral-500">
-                            Schedule what a batch sees on their home page — readings, a question of
-                            the day, games — and track how they do.
-                        </p>
+                        <h1 className="text-xl font-semibold text-neutral-900">
+                            {t('page.title')}
+                        </h1>
+                        <p className="mt-1 text-sm text-neutral-500">{t('page.subtitle')}</p>
                     </div>
                     <span className="flex gap-2">
                         <MyButton
@@ -53,10 +54,10 @@ function EngagementPlans() {
                             buttonType="secondary"
                             onClick={() => setAiOpen(true)}
                         >
-                            <Sparkle size={16} /> Plan with AI
+                            <Sparkle size={16} /> {t('page.planWithAi')}
                         </MyButton>
                         <MyButton type="button" onClick={() => setComposerOpen(true)}>
-                            <Plus size={16} /> New plan
+                            <Plus size={16} /> {t('page.newPlan')}
                         </MyButton>
                     </span>
                 </div>
@@ -70,10 +71,8 @@ function EngagementPlans() {
 
                 {!isLoading && (plans?.length ?? 0) === 0 && (
                     <div className="rounded-lg border border-dashed border-neutral-300 p-10 text-center">
-                        <p className="text-sm font-medium text-neutral-900">No plans yet</p>
-                        <p className="mt-1 text-sm text-neutral-500">
-                            Create one to start showing daily tasks on the learner home page.
-                        </p>
+                        <p className="text-sm font-medium text-neutral-900">{t('page.noPlans')}</p>
+                        <p className="mt-1 text-sm text-neutral-500">{t('page.noPlansHint')}</p>
                     </div>
                 )}
 

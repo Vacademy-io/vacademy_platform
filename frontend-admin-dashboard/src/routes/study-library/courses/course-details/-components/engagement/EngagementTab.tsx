@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Plus, Sparkle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { listEngagementPlans } from '@/routes/engagement/-services/engagement-service';
@@ -15,6 +16,7 @@ import { PlanCard } from '@/routes/engagement/-components/PlanCard';
  * allows adding more batches — the selection is seeded, not locked.
  */
 export function EngagementTab({ packageSessionId }: { packageSessionId: string }) {
+    const { t } = useTranslation('engagement');
     const [composerOpen, setComposerOpen] = useState(false);
     const [aiOpen, setAiOpen] = useState(false);
 
@@ -37,7 +39,7 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
     if (!packageSessionId) {
         return (
             <p className="rounded-lg border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500">
-                Pick a session and level to schedule engagement for this batch.
+                {t('page.pickBatch')}
             </p>
         );
     }
@@ -46,18 +48,17 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
         <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 className="text-base font-semibold text-neutral-900">Daily engagement</h2>
-                    <p className="mt-0.5 text-sm text-neutral-500">
-                        What this batch sees on their home page — readings, a question of the day,
-                        games — and how they did.
-                    </p>
+                    <h2 className="text-base font-semibold text-neutral-900">
+                        {t('page.tabTitle')}
+                    </h2>
+                    <p className="mt-0.5 text-sm text-neutral-500">{t('page.tabSubtitle')}</p>
                 </div>
                 <span className="flex gap-2">
                     <MyButton type="button" buttonType="secondary" onClick={() => setAiOpen(true)}>
-                        <Sparkle size={16} /> Plan with AI
+                        <Sparkle size={16} /> {t('page.planWithAi')}
                     </MyButton>
                     <MyButton type="button" onClick={() => setComposerOpen(true)}>
-                        <Plus size={16} /> New plan
+                        <Plus size={16} /> {t('page.newPlan')}
                     </MyButton>
                 </span>
             </div>
@@ -66,9 +67,11 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
 
             {!isLoading && (plans?.length ?? 0) === 0 && (
                 <div className="rounded-lg border border-dashed border-neutral-300 p-10 text-center">
-                    <p className="text-sm font-medium text-neutral-900">Nothing scheduled yet</p>
+                    <p className="text-sm font-medium text-neutral-900">
+                        {t('page.nothingScheduled')}
+                    </p>
                     <p className="mt-1 text-sm text-neutral-500">
-                        Create a plan to start showing daily tasks to this batch.
+                        {t('page.nothingScheduledHint')}
                     </p>
                 </div>
             )}

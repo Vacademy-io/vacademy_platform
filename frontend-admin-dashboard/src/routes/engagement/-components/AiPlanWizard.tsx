@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Sparkle, Image as ImageIcon, Trash, ArrowsClockwise } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -48,11 +49,20 @@ import { PlanPreview, type PreviewTask } from './PlanPreview';
 type Step = 'brief' | 'generating' | 'review';
 
 const DURATIONS = [
-    { days: 1, label: 'Today' },
-    { days: 7, label: 'A week' },
-    { days: 14, label: 'Two weeks' },
-    { days: 30, label: 'A month' },
-];
+    { days: 1, key: 'wizard.today' },
+    { days: 7, key: 'wizard.week' },
+    { days: 14, key: 'wizard.twoWeeks' },
+    { days: 30, key: 'wizard.month' },
+] as const;
+
+const TASK_KINDS = ['question_of_day', 'text_question', 'poll', 'reading', 'game'] as const;
+const KIND_LABEL_KEY: Record<(typeof TASK_KINDS)[number], string> = {
+    question_of_day: 'wizard.kind_question',
+    text_question: 'wizard.kind_text',
+    poll: 'wizard.kind_poll',
+    reading: 'wizard.kind_reading',
+    game: 'wizard.kind_game',
+};
 
 interface ChapterLike {
     id: string;
@@ -87,6 +97,7 @@ export function AiPlanWizard({
     onCreated: () => void;
     defaultPackageSessionId?: string;
 }) {
+    const { t } = useTranslation('engagement');
     const [step, setStep] = useState<Step>('brief');
     const [error, setError] = useState<string | null>(null);
 
@@ -132,7 +143,7 @@ export function AiPlanWizard({
         setError(null);
         setDraft(null);
         if (defaultPackageSessionId)
-            setBatches([{ id: defaultPackageSessionId, label: 'This batch' }]);
+            setBatches([{ id: defaultPackageSessionId, label: t('composer.thisBatch') }]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
 
@@ -188,11 +199,11 @@ export function AiPlanWizard({
     }
 
     async function generate() {
-        if (batches.length === 0) return setError('Pick at least one batch.');
+        if (batches.length === 0) return setError(t('wizard.errors.batch'));
         if (!topic.trim() && chapterIds.length === 0) {
-            return setError('Say what to cover, or pick some chapters.');
+            return setError(t('wizard.errors.topic'));
         }
-        if (enabledCount === 0) return setError('Turn on at least one task type.');
+        if (enabledCount === 0) return setError(t('wizard.errors.kinds'));
         setError(null);
         setStep('generating');
         try {
@@ -228,7 +239,7 @@ export function AiPlanWizard({
                 (e as { response?: { data?: { detail?: string; message?: string } } })?.response
                     ?.data?.detail ??
                 (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-                'The AI could not draft this plan just now.';
+                t('wizard.errors.draft');
             setError(message);
             setStep('brief');
         }
@@ -289,7 +300,7 @@ export function AiPlanWizard({
         } catch (e: unknown) {
             setError(
                 (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-                    'Could not generate the pictures.'
+                    t('wizard.errors.pictures')
             );
         } finally {
             setIllustrating(null);
@@ -355,7 +366,7 @@ export function AiPlanWizard({
         } catch (e: unknown) {
             setError(
                 (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-                    'Could not regenerate that task.'
+                    t('wizard.errors.regenerate')
             );
         } finally {
             setRegenerating(null);
@@ -382,7 +393,7 @@ export function AiPlanWizard({
         } catch (e: unknown) {
             setError(
                 (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-                    'Could not save the plan.'
+                    t('wizard.errors.save')
             );
         } finally {
             setSaving(false);
@@ -427,7 +438,7 @@ export function AiPlanWizard({
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-start">
                         <Sparkle size={18} className="text-primary-500" />
-                        {step === 'review' ? 'Review the plan' : 'Plan with AI'}
+                        {step === 'review' ? t('wizard.review') : t('wizard.title')}
                     </DialogTitle>
                 </DialogHeader>
 
@@ -435,7 +446,7 @@ export function AiPlanWizard({
                     <div className="space-y-5">
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-1.5">
-                                <Label>Batches</Label>
+                                <Label>{t('wizard.batches')}</Label>
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -443,44 +454,46 @@ export function AiPlanWizard({
                                     onClick={() => setBatchPickerOpen(true)}
                                 >
                                     {batches.length === 0
-                                        ? 'Select batches'
+                                        ? t('wizard.selectBatches')
                                         : batches.length === 1
                                           ? batches[0]!.label
-                                          : `${batches.length} batches selected`}
+                                          : t('wizard.batchesSelected', {
+                                                count: batches.length,
+                                            })}
                                 </Button>
                             </div>
                             <div className="space-y-1.5">
-                                <Label htmlFor="ai-title">Plan title (optional)</Label>
+                                <Label htmlFor="ai-title">{t('wizard.planTitle')}</Label>
                                 <Input
                                     id="ai-title"
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="The AI will name it if you leave this blank"
+                                    placeholder={t('wizard.planTitlePlaceholder')}
                                 />
                             </div>
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label htmlFor="ai-topic">What should learners engage with?</Label>
+                            <Label htmlFor="ai-topic">{t('wizard.topic')}</Label>
                             <Textarea
                                 id="ai-topic"
                                 value={topic}
                                 onChange={(e) => setTopic(e.target.value)}
                                 rows={3}
-                                placeholder="e.g. Revise Newton's laws before Friday's test — one question a day, and a short reading on the tricky bits. Keep it light on Sunday."
+                                placeholder={t('wizard.topicPlaceholder')}
                             />
                         </div>
 
                         <div className="rounded-lg border border-neutral-200 p-4">
                             <p className="text-sm font-medium text-neutral-900">
-                                Ground it in your course content
+                                {t('wizard.ground')}
                             </p>
                             <p className="mt-0.5 text-xs text-neutral-500">
-                                Pick chapters and the AI writes only from what is in them.
+                                {t('wizard.groundHint')}
                             </p>
                             <div className="mt-3 grid gap-3 sm:grid-cols-2">
                                 <div className="space-y-1.5">
-                                    <Label>Subject</Label>
+                                    <Label>{t('wizard.subject')}</Label>
                                     <Select
                                         value={subjectId}
                                         disabled={batches.length === 0}
@@ -493,8 +506,8 @@ export function AiPlanWizard({
                                             <SelectValue
                                                 placeholder={
                                                     batches.length === 0
-                                                        ? 'Pick a batch first'
-                                                        : 'Select a subject'
+                                                        ? t('wizard.pickBatchFirst')
+                                                        : t('wizard.selectSubject')
                                                 }
                                             />
                                         </SelectTrigger>
@@ -508,13 +521,13 @@ export function AiPlanWizard({
                                     </Select>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Chapters</Label>
+                                    <Label>{t('wizard.chapters')}</Label>
                                     <div className="max-h-36 space-y-1 overflow-y-auto rounded-md border border-neutral-200 p-2">
                                         {chapters.length === 0 && (
                                             <p className="px-1 py-2 text-xs text-neutral-500">
                                                 {subjectId
-                                                    ? 'Loading chapters…'
-                                                    : 'Pick a subject to see chapters.'}
+                                                    ? t('wizard.loadingChapters')
+                                                    : t('wizard.pickSubject')}
                                             </p>
                                         )}
                                         {chapters.map((c) => (
@@ -543,11 +556,11 @@ export function AiPlanWizard({
 
                         <div className="rounded-lg border border-neutral-200 p-4">
                             <p className="text-sm font-medium text-neutral-900">
-                                Shape of the plan
+                                {t('wizard.shape')}
                             </p>
                             <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                 <div className="space-y-1.5">
-                                    <Label>Duration</Label>
+                                    <Label>{t('wizard.duration')}</Label>
                                     <div className="flex flex-wrap gap-1.5">
                                         {DURATIONS.map((d) => (
                                             <button
@@ -560,13 +573,13 @@ export function AiPlanWizard({
                                                         : 'rounded-md bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-200'
                                                 }
                                             >
-                                                {d.label}
+                                                {t(d.key)}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="ai-start">Starts</Label>
+                                    <Label htmlFor="ai-start">{t('wizard.starts')}</Label>
                                     <Input
                                         id="ai-start"
                                         type="date"
@@ -575,7 +588,7 @@ export function AiPlanWizard({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Tasks per day</Label>
+                                    <Label>{t('wizard.perDay')}</Label>
                                     <div className="flex gap-1.5">
                                         {[1, 2, 3].map((n) => (
                                             <button
@@ -594,7 +607,7 @@ export function AiPlanWizard({
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Difficulty</Label>
+                                    <Label>{t('wizard.difficulty')}</Label>
                                     <Select
                                         value={difficulty}
                                         onValueChange={(v) =>
@@ -605,14 +618,16 @@ export function AiPlanWizard({
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="easy">Easy</SelectItem>
-                                            <SelectItem value="medium">Medium</SelectItem>
-                                            <SelectItem value="hard">Hard</SelectItem>
+                                            <SelectItem value="easy">{t('wizard.easy')}</SelectItem>
+                                            <SelectItem value="medium">
+                                                {t('wizard.medium')}
+                                            </SelectItem>
+                                            <SelectItem value="hard">{t('wizard.hard')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="ai-open">Opens at</Label>
+                                    <Label htmlFor="ai-open">{t('wizard.opensAt')}</Label>
                                     <Input
                                         id="ai-open"
                                         type="time"
@@ -621,7 +636,7 @@ export function AiPlanWizard({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="ai-close">Closes at</Label>
+                                    <Label htmlFor="ai-close">{t('wizard.closesAt')}</Label>
                                     <Input
                                         id="ai-close"
                                         type="time"
@@ -630,7 +645,7 @@ export function AiPlanWizard({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="ai-reveal">Reveal answers at</Label>
+                                    <Label htmlFor="ai-reveal">{t('wizard.revealAt')}</Label>
                                     <Input
                                         id="ai-reveal"
                                         type="time"
@@ -639,7 +654,7 @@ export function AiPlanWizard({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="ai-lang">Language</Label>
+                                    <Label htmlFor="ai-lang">{t('wizard.language')}</Label>
                                     <Input
                                         id="ai-lang"
                                         value={language}
@@ -649,33 +664,9 @@ export function AiPlanWizard({
                             </div>
 
                             <div className="mt-4 space-y-1.5">
-                                <Label>Kinds of task</Label>
+                                <Label>{t('wizard.kinds')}</Label>
                                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                    {(
-                                        [
-                                            [
-                                                'question_of_day',
-                                                'Question of the day',
-                                                'Multiple choice, graded, answer at reveal',
-                                            ],
-                                            [
-                                                'text_question',
-                                                'Written question',
-                                                'A short reflective answer you read',
-                                            ],
-                                            ['poll', 'Poll', 'Opinion, no right answer'],
-                                            [
-                                                'reading',
-                                                'Reading',
-                                                'A short explainer; add pictures later',
-                                            ],
-                                            [
-                                                'game',
-                                                'Flashcard game',
-                                                'Terms and definitions to flip through',
-                                            ],
-                                        ] as const
-                                    ).map(([key, label, hint]) => (
+                                    {TASK_KINDS.map((key) => (
                                         <label
                                             key={key}
                                             className="flex items-start gap-2 rounded-lg border border-neutral-200 p-3"
@@ -688,10 +679,10 @@ export function AiPlanWizard({
                                             />
                                             <span>
                                                 <span className="block text-sm font-medium text-neutral-900">
-                                                    {label}
+                                                    {t(KIND_LABEL_KEY[key])}
                                                 </span>
                                                 <span className="block text-xs text-neutral-500">
-                                                    {hint}
+                                                    {t(`${KIND_LABEL_KEY[key]}_hint`)}
                                                 </span>
                                             </span>
                                         </label>
@@ -712,11 +703,10 @@ export function AiPlanWizard({
                     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
                         <Sparkle size={36} className="animate-pulse text-primary-500" />
                         <p className="text-sm font-medium text-neutral-900">
-                            Drafting {days} day{days === 1 ? '' : 's'} of tasks…
+                            {t('wizard.generating', { count: days })}
                         </p>
                         <p className="max-w-md text-xs text-neutral-500">
-                            One pass writes every question, reading and game. You review all of it
-                            before any learner sees anything.
+                            {t('wizard.generatingHint')}
                         </p>
                     </div>
                 )}
@@ -726,7 +716,10 @@ export function AiPlanWizard({
                         {/* Days */}
                         <div className="space-y-1">
                             <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                                {draft.days_planned} days · {totalItems} tasks
+                                {t('wizard.summary', {
+                                    days: draft.days_planned,
+                                    items: totalItems,
+                                })}
                             </p>
                             {draft.slots.map((slot, i) => (
                                 <button
@@ -746,8 +739,7 @@ export function AiPlanWizard({
                                         {slot.title}
                                     </span>
                                     <span className="block text-xs text-neutral-500">
-                                        {(slot.items ?? []).length} task
-                                        {(slot.items ?? []).length === 1 ? '' : 's'}
+                                        {t('wizard.tasks', { count: (slot.items ?? []).length })}
                                     </span>
                                 </button>
                             ))}
@@ -757,8 +749,7 @@ export function AiPlanWizard({
                         <div className="space-y-3">
                             {!draft.grounded && (
                                 <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                                    This draft was written from the topic alone, not from your
-                                    course content. Check facts before publishing.
+                                    {t('wizard.ungrounded')}
                                 </p>
                             )}
                             {(draft.slots[selectedDay]?.items ?? []).map((item, ii) => {
@@ -786,7 +777,7 @@ export function AiPlanWizard({
                                             </div>
                                             <button
                                                 type="button"
-                                                aria-label="Remove task"
+                                                aria-label={t('wizard.removeTask')}
                                                 className="text-neutral-400 hover:text-danger-600"
                                                 onClick={() => removeItem(selectedDay, ii)}
                                             >
@@ -802,8 +793,8 @@ export function AiPlanWizard({
                                         >
                                             <ArrowsClockwise size={14} />
                                             {regenerating === key
-                                                ? 'Regenerating…'
-                                                : `Regenerate (~${ITEM_CREDITS} credits)`}
+                                                ? t('wizard.regenerating')
+                                                : t('wizard.regenerate', { credits: ITEM_CREDITS })}
                                         </Button>
                                         {placeholders > 0 && (
                                             <Button
@@ -815,8 +806,13 @@ export function AiPlanWizard({
                                             >
                                                 <ImageIcon size={14} />
                                                 {illustrating === key
-                                                    ? 'Generating pictures…'
-                                                    : `Add ${Math.min(placeholders, 2)} picture${Math.min(placeholders, 2) === 1 ? '' : 's'} (~${Math.min(placeholders, 2) * IMAGE_CREDITS} credits)`}
+                                                    ? t('wizard.generatingPictures')
+                                                    : t('wizard.addPictures', {
+                                                          count: Math.min(placeholders, 2),
+                                                          credits:
+                                                              Math.min(placeholders, 2) *
+                                                              IMAGE_CREDITS,
+                                                      })}
                                             </Button>
                                         )}
                                     </div>
@@ -847,11 +843,10 @@ export function AiPlanWizard({
                     {step === 'brief' && (
                         <>
                             <p className="text-xs text-neutral-500">
-                                Drafting costs ~{DRAFT_CREDITS} credits. Pictures are extra, only if
-                                you add them.
+                                {t('wizard.cost', { credits: DRAFT_CREDITS })}
                             </p>
                             <MyButton type="button" onClick={generate}>
-                                <Sparkle size={16} /> Draft the plan
+                                <Sparkle size={16} /> {t('wizard.draft')}
                             </MyButton>
                         </>
                     )}
@@ -862,7 +857,7 @@ export function AiPlanWizard({
                                 variant="outline"
                                 onClick={() => setStep('brief')}
                             >
-                                Back to brief
+                                {t('wizard.back')}
                             </Button>
                             <span className="flex gap-2">
                                 <Button
@@ -871,7 +866,7 @@ export function AiPlanWizard({
                                     disabled={saving}
                                     onClick={() => publish('DRAFT')}
                                 >
-                                    Save as draft
+                                    {t('wizard.saveDraft')}
                                 </Button>
                                 <MyButton
                                     type="button"
@@ -879,8 +874,8 @@ export function AiPlanWizard({
                                     onClick={() => publish('PUBLISHED')}
                                 >
                                     {saving
-                                        ? 'Publishing…'
-                                        : `Publish to ${batches.length} batch${batches.length === 1 ? '' : 'es'}`}
+                                        ? t('wizard.publishing')
+                                        : t('wizard.publish', { count: batches.length })}
                                 </MyButton>
                             </span>
                         </>

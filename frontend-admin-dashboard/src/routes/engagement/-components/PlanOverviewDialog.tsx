@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getPlanOverview } from '../-services/engagement-service';
 
@@ -18,6 +19,7 @@ export function PlanOverviewDialog({
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
+    const { t } = useTranslation('engagement');
     const { data, isLoading } = useQuery({
         queryKey: ['engagement-plan-overview', planId],
         queryFn: () => getPlanOverview(planId),
@@ -29,7 +31,7 @@ export function PlanOverviewDialog({
             <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-3xl">
                 <DialogHeader>
                     <DialogTitle className="truncate text-start">
-                        {data?.title ?? 'Progress'}
+                        {data?.title ?? t('overview.title')}
                     </DialogTitle>
                 </DialogHeader>
 
@@ -38,39 +40,51 @@ export function PlanOverviewDialog({
                 {data && (
                     <div className="space-y-4">
                         <div className="flex flex-wrap gap-3">
-                            <Stat label="Learners" value={String(data.learners)} />
+                            <Stat label={t('overview.learners')} value={String(data.learners)} />
                             <Stat
-                                label="Active"
+                                label={t('overview.active')}
                                 value={String(data.learnersActive)}
-                                hint="did at least one task"
+                                hint={t('overview.activeHint')}
                             />
                             <Stat
-                                label="Slipping"
+                                label={t('overview.slipping')}
                                 value={String(data.learnersSlipping)}
-                                hint="missed 3+ closed tasks"
+                                hint={t('overview.slippingHint')}
                                 tone={data.learnersSlipping > 0 ? 'warn' : 'ok'}
                             />
                             <Stat
-                                label="Tasks closed"
+                                label={t('overview.tasksClosed')}
                                 value={`${data.tasksClosed} / ${data.tasksTotal}`}
                             />
                         </div>
 
                         {data.rows.length === 0 ? (
                             <p className="rounded-lg border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500">
-                                No learners are enrolled in this batch.
+                                {t('overview.noLearners')}
                             </p>
                         ) : (
                             <div className="overflow-x-auto rounded-lg border border-neutral-200">
                                 <table className="w-full text-sm">
                                     <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
                                         <tr>
-                                            <th className="px-3 py-2 text-start">Learner</th>
-                                            <th className="px-3 py-2 text-start">Done</th>
-                                            <th className="px-3 py-2 text-start">Correct</th>
-                                            <th className="px-3 py-2 text-start">Missed</th>
-                                            <th className="px-3 py-2 text-start">Points</th>
-                                            <th className="px-3 py-2 text-start">Last active</th>
+                                            <th className="px-3 py-2 text-start">
+                                                {t('overview.learner')}
+                                            </th>
+                                            <th className="px-3 py-2 text-start">
+                                                {t('overview.done')}
+                                            </th>
+                                            <th className="px-3 py-2 text-start">
+                                                {t('overview.correct')}
+                                            </th>
+                                            <th className="px-3 py-2 text-start">
+                                                {t('overview.missed')}
+                                            </th>
+                                            <th className="px-3 py-2 text-start">
+                                                {t('overview.points')}
+                                            </th>
+                                            <th className="px-3 py-2 text-start">
+                                                {t('overview.lastActive')}
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-neutral-100">
@@ -114,7 +128,7 @@ export function PlanOverviewDialog({
                                                           ).toLocaleDateString(undefined, {
                                                               dateStyle: 'medium',
                                                           })
-                                                        : 'never'}
+                                                        : t('overview.never')}
                                                 </td>
                                             </tr>
                                         ))}

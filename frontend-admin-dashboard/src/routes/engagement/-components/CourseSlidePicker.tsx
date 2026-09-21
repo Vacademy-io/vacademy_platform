@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
     Dialog,
     DialogContent,
@@ -75,6 +76,7 @@ export function CourseSlidePicker({
     packageSessionId: string;
     onPick: (slide: PickedSlide) => void;
 }) {
+    const { t } = useTranslation('engagement');
     const [subjectId, setSubjectId] = useState('');
     const [moduleId, setModuleId] = useState('');
     const [chapterId, setChapterId] = useState('');
@@ -139,17 +141,14 @@ export function CourseSlidePicker({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-xl">
                 <DialogHeader>
-                    <DialogTitle className="text-start">Pick course content</DialogTitle>
+                    <DialogTitle className="text-start">{t('slidePicker.title')}</DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-4">
-                    <p className="text-sm text-neutral-500">
-                        The learner opens this lesson in the course library, and it counts as done
-                        once they finish it there.
-                    </p>
+                    <p className="text-sm text-neutral-500">{t('slidePicker.hint')}</p>
 
                     <div className="space-y-1.5">
-                        <Label>Subject</Label>
+                        <Label>{t('slidePicker.subject')}</Label>
                         <Select
                             value={subjectId}
                             onValueChange={(v) => {
@@ -160,7 +159,7 @@ export function CourseSlidePicker({
                             }}
                         >
                             <SelectTrigger>
-                                <SelectValue placeholder="Select a subject" />
+                                <SelectValue placeholder={t('slidePicker.selectSubject')} />
                             </SelectTrigger>
                             <SelectContent>
                                 {subjects.map((s) => (
@@ -172,13 +171,13 @@ export function CourseSlidePicker({
                         </Select>
                         {subjects.length === 0 && (
                             <p className="text-xs text-neutral-500">
-                                No subjects found for this batch&apos;s course.
+                                {t('slidePicker.noSubjects')}
                             </p>
                         )}
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label>Module</Label>
+                        <Label>{t('slidePicker.module')}</Label>
                         <Select
                             value={moduleId}
                             disabled={!subjectId || modulesQuery.isLoading}
@@ -191,7 +190,9 @@ export function CourseSlidePicker({
                             <SelectTrigger>
                                 <SelectValue
                                     placeholder={
-                                        modulesQuery.isLoading ? 'Loading…' : 'Select a module'
+                                        modulesQuery.isLoading
+                                            ? t('slidePicker.loading')
+                                            : t('slidePicker.selectModule')
                                     }
                                 />
                             </SelectTrigger>
@@ -206,7 +207,7 @@ export function CourseSlidePicker({
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label>Chapter</Label>
+                        <Label>{t('slidePicker.chapter')}</Label>
                         <Select
                             value={chapterId}
                             disabled={!moduleId}
@@ -216,7 +217,7 @@ export function CourseSlidePicker({
                             }}
                         >
                             <SelectTrigger>
-                                <SelectValue placeholder="Select a chapter" />
+                                <SelectValue placeholder={t('slidePicker.selectChapter')} />
                             </SelectTrigger>
                             <SelectContent>
                                 {chapters.map((c) => (
@@ -229,7 +230,7 @@ export function CourseSlidePicker({
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label>Slide</Label>
+                        <Label>{t('slidePicker.slide')}</Label>
                         <Select
                             value={slideId}
                             disabled={!chapterId || slidesQuery.isLoading}
@@ -238,7 +239,9 @@ export function CourseSlidePicker({
                             <SelectTrigger>
                                 <SelectValue
                                     placeholder={
-                                        slidesQuery.isLoading ? 'Loading…' : 'Select a slide'
+                                        slidesQuery.isLoading
+                                            ? t('slidePicker.loading')
+                                            : t('slidePicker.selectSlide')
                                     }
                                 />
                             </SelectTrigger>
@@ -255,7 +258,7 @@ export function CourseSlidePicker({
 
                 <DialogFooter className="gap-2">
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                        Cancel
+                        {t('slidePicker.cancel')}
                     </Button>
                     <MyButton
                         type="button"
@@ -276,7 +279,7 @@ export function CourseSlidePicker({
                             onOpenChange(false);
                         }}
                     >
-                        Use this slide
+                        {t('slidePicker.use')}
                     </MyButton>
                 </DialogFooter>
             </DialogContent>

@@ -643,3 +643,49 @@ needs a cross-service read; until then the `ASSESSMENT` source type is defined b
   Flip the UI to `metric=POINTS` once accrual has run and the numbers look right — verify against a
   real batch before flipping, since that is the moment every learner's visible rank changes.
 - Strings in the new UI are not run through i18n.
+
+---
+
+## 16. Phase 4 — AI planner (BUILT 2026-09-21)
+
+**Flow:** Brief → one draft → review → publish. The AI never publishes; the draft comes back in the
+composer's own request shape (`slots[].items[]`) and is saved through the normal engagement API
+after the teacher has looked at every task. Entry points: "Plan with AI" on `/engagement` and on the
+course page's Engagement tab.
+
+**Brief** (`AiPlanWizard`): batches (multi, server-paged picker), topic in the teacher's words,
+grounding chapters (subject → chapters, multi-select; slide HTML is collected client-side and sent as
+`grounding_texts`), optional knowledge base, duration (1/7/14/30 days), tasks per day (1–3),
+window/reveal times, difficulty, language, and which task kinds to use.
+
+**Review:** day list → that day's tasks (retitle, remove) → live learner preview (reuses
+`PlanPreview`). Readings arrive with `<img data-img-prompt>` placeholders; "Add pictures" upgrades
+one reading to a `VISUAL_NOTE` on demand. A draft written from the topic alone (no grounding) is
+flagged so facts get checked before publishing.
+
+**Service** (`ai_service/app/routers/engagement_plan.py`, `services/engagement_plan_service.py`):
+- `POST /ai-service/engagement/plan/draft` — one structured JSON call on **`z-ai/glm-5.3-flash`**
+  (`ENGAGEMENT_PLAN_MODEL` overrides) produces every day's MCQs (4 options, key, explanation,
+  `hideResultUntilReveal` on by default), written questions, polls, readings (200–350 words of
+  semantic HTML) and **flashcard games** (rendered server-side from a card list into a self-contained
+  HTML game that speaks `vacademy:complete`, so it also works as a slide). Grounding = teacher-picked
+  slide text + `KbRetrievalService.search` hits on the topic, capped at 24k chars. Malformed items
+  are DROPPED, never repaired into something wrong.
+- `POST /ai-service/engagement/plan/illustrate` — runs `illustrate_document` (**`qwen/qwen-image-3`**)
+  over one reading's placeholders, max 3 pictures.
+
+**Credits — the cost plan:**
+
+| Step | Tool key | Charge |
+|---|---|---|
+| Draft (whole plan, any length) | `engagement_plan` | flat **10**, charged as max(flat, tokens × 2) |
+| Pictures for one reading | `html_document_image` | **2 per picture actually returned** |
+
+The two are split on purpose. A fortnight of illustrated pages would cost 14 × (page + images)
+before the teacher had seen anything; instead the draft is cheap and pictures are opt-in per task.
+Both endpoints 402 on a pre-flight balance check before spending, and bill after success
+(best-effort — a billing hiccup never takes a generated draft away). The wizard shows the price
+before each spend.
+
+**Not in this phase:** streaming per-day progress (the draft is one call), regenerate-one-task,
+per-task type switching in review (remove + re-draft instead), and games beyond flashcards.

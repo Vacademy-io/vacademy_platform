@@ -142,6 +142,19 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # tokens), flat per call, charged as
     # max(flat, actual). A full CREATE costs more than a conversational EDIT
     # (which reuses the existing page), so they are priced separately.
+    # AI engagement planner — ONE structured call drafts a whole run of daily
+    # tasks (questions, polls, prompts, readings, flashcard games). Flat per
+    # draft, charged as max(flat, actual × markup). Readings come back with
+    # image placeholders only; pictures are a separate opt-in charge
+    # (html_document_image) so a fortnight of illustrated pages is never billed
+    # before the teacher has reviewed the draft.
+    "engagement_plan": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("10"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     "html_document": {          # first generation (create)
         "request_type": "content",
         "flat_base_credits": Decimal("15"),

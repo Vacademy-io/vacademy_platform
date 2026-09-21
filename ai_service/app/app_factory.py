@@ -45,6 +45,7 @@ from .routers.coding_question_gen import router as coding_question_gen_router
 from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 from .routers.transcript_notes import router as transcript_notes_router
 from .routers.html_document import router as html_document_router
+from .routers.engagement_plan import router as engagement_plan_router
 from .routers.page_builder import router as page_builder_router
 from .routers.course_assist import router as course_assist_router
 from .routers.copy_check import router as copy_check_router
@@ -298,6 +299,7 @@ def create_app() -> FastAPI:
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
     app.include_router(transcript_notes_router, prefix=settings.api_base_path)
     app.include_router(html_document_router, prefix=settings.api_base_path)
+    app.include_router(engagement_plan_router, prefix=settings.api_base_path)
     app.include_router(page_builder_router, prefix=settings.api_base_path)
     # Inline "generate with AI" for the manual Add Course form fields:
     #   {api_base_path}/course/assist/v1/text  |  /v1/image

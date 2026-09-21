@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus } from '@phosphor-icons/react';
+import { Plus, Sparkle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { listEngagementPlans } from '@/routes/engagement/-services/engagement-service';
+import { AiPlanWizard } from '@/routes/engagement/-components/AiPlanWizard';
 import { PlanComposerDialog } from '@/routes/engagement/-components/PlanComposerDialog';
 import { PlanCard } from '@/routes/engagement/-components/PlanCard';
 
@@ -15,6 +16,7 @@ import { PlanCard } from '@/routes/engagement/-components/PlanCard';
  */
 export function EngagementTab({ packageSessionId }: { packageSessionId: string }) {
     const [composerOpen, setComposerOpen] = useState(false);
+    const [aiOpen, setAiOpen] = useState(false);
 
     const {
         data: plans,
@@ -50,9 +52,14 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
                         games — and how they did.
                     </p>
                 </div>
-                <MyButton type="button" onClick={() => setComposerOpen(true)}>
-                    <Plus size={16} /> New plan
-                </MyButton>
+                <span className="flex gap-2">
+                    <MyButton type="button" buttonType="secondary" onClick={() => setAiOpen(true)}>
+                        <Sparkle size={16} /> Plan with AI
+                    </MyButton>
+                    <MyButton type="button" onClick={() => setComposerOpen(true)}>
+                        <Plus size={16} /> New plan
+                    </MyButton>
+                </span>
             </div>
 
             {isLoading && <div className="h-20 animate-pulse rounded-lg bg-neutral-100" />}
@@ -71,6 +78,13 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
                     <PlanCard key={plan.id} plan={plan} onChanged={() => void refetch()} />
                 ))}
             </div>
+
+            <AiPlanWizard
+                open={aiOpen}
+                onOpenChange={setAiOpen}
+                onCreated={() => void refetch()}
+                defaultPackageSessionId={packageSessionId}
+            />
 
             <PlanComposerDialog
                 open={composerOpen}

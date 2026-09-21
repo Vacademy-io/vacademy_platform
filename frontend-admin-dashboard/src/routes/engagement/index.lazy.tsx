@@ -1,11 +1,12 @@
 import { createLazyFileRoute, getRouteApi } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus } from '@phosphor-icons/react';
+import { Plus, Sparkle } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { MyButton } from '@/components/design-system/button';
 import { listEngagementPlans } from './-services/engagement-service';
+import { AiPlanWizard } from '@/routes/engagement/-components/AiPlanWizard';
 import { PlanComposerDialog } from './-components/PlanComposerDialog';
 import { PlanCard } from './-components/PlanCard';
 
@@ -20,6 +21,7 @@ function EngagementPlans() {
     const { packageSessionId } = routeApi.useSearch();
     const { setNavHeading } = useNavHeadingStore();
     const [composerOpen, setComposerOpen] = useState(false);
+    const [aiOpen, setAiOpen] = useState(false);
 
     useEffect(() => {
         setNavHeading('Daily Engagement');
@@ -45,9 +47,18 @@ function EngagementPlans() {
                             the day, games — and track how they do.
                         </p>
                     </div>
-                    <MyButton type="button" onClick={() => setComposerOpen(true)}>
-                        <Plus size={16} /> New plan
-                    </MyButton>
+                    <span className="flex gap-2">
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            onClick={() => setAiOpen(true)}
+                        >
+                            <Sparkle size={16} /> Plan with AI
+                        </MyButton>
+                        <MyButton type="button" onClick={() => setComposerOpen(true)}>
+                            <Plus size={16} /> New plan
+                        </MyButton>
+                    </span>
                 </div>
 
                 {isLoading && (
@@ -72,6 +83,13 @@ function EngagementPlans() {
                     ))}
                 </div>
             </div>
+
+            <AiPlanWizard
+                open={aiOpen}
+                onOpenChange={setAiOpen}
+                onCreated={() => void refetch()}
+                defaultPackageSessionId={packageSessionId}
+            />
 
             <PlanComposerDialog
                 open={composerOpen}

@@ -49,6 +49,7 @@ public class RenewalPaymentService {
     private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
     private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
     private final RenewalGracePolicy gracePolicy;
+    private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -70,12 +71,18 @@ public class RenewalPaymentService {
         }
         UserPlan userPlan = paymentLog.getUserPlan();
         if (paymentStatus == PaymentStatusEnum.PAID) {
-            // Record the payment itself as settled. Renewals previously left the log
-            // in its pre-payment state, so a paid renewal showed as unpaid in payment
-            // history and any invoice would have hung off a non-PAID log.
+            // Razorpay delivers payment.captured AND order.paid for one capture, and prod
+            // runs 4 replicas, so this arrives more than once. Without a claim every
+            // delivery extended the plan by a full cycle: one Rs 1,200 payment bought two
+            // months, one Rs 7,200 payment two years (2026-09-19). The conditional UPDATE
+            // flips the log to PAID exactly once, in its own transaction, so only the
+            // winning delivery runs the ledger / extension / invoice side effects.
+            if (paymentLogService.claimPaidIfNotAlready(orderId) == 0) {
+                log.info("RENEWAL order {} already applied by another event or replica — skipping duplicate", orderId);
+                return;
+            }
             paymentLog.setPaymentStatus(PaymentStatusEnum.PAID.name());
             paymentLog.setStatus(PaymentLogStatusEnum.SUCCESS.name());
-            paymentLogRepository.save(paymentLog);
             recordRenewalOnLedger(paymentLog, userPlan, instituteId);
             handleSuccessfulRenewal(userPlan, instituteId);
             scheduleRenewalInvoicing(orderId, instituteId);

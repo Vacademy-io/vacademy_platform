@@ -111,6 +111,47 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("daysAhead") int daysAhead);
 
   /**
+   * Learners whose autopay charge was PRESENTED AND REFUSED and who have not renewed
+   * since: plan still ACTIVE with autopay on, at least one renewal attempt recorded
+   * (renewal_attempt_count is reset to 0 only by a successful renewal), and end_date
+   * inside [today - graceDays, today + daysAhead]. This is the "your payment could not
+   * be processed — pay via this link" audience; it is disjoint from
+   * findManualRenewalDuePlans (autopay off / plan cancelled), so a learner is never
+   * chased by both messages. last_error is the gateway's reason from the most recent
+   * FAILED payment_log, when one was recorded.
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (up.id)
+          up.id AS user_plan_id,
+          up.user_id AS user_id,
+          s.full_name AS full_name,
+          s.mobile_number AS mobile_number,
+          s.username AS username,
+          up.renewal_attempt_count AS attempts,
+          up.end_date AS end_date,
+          to_char(up.end_date, 'DD Mon YYYY') AS end_date_label,
+          (SELECT pl.payment_specific_data FROM payment_log pl
+            WHERE pl.user_plan_id = up.id AND pl.payment_status = 'FAILED'
+            ORDER BY pl.created_at DESC LIMIT 1) AS last_failure
+      FROM user_plan up
+      JOIN student_session_institute_group_mapping ssigm
+        ON ssigm.user_plan_id = up.id AND ssigm.status = 'ACTIVE'
+      JOIN student s ON s.user_id = up.user_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND up.status = 'ACTIVE'
+        AND up.auto_renewal_enabled = true
+        AND COALESCE(up.renewal_attempt_count, 0) > 0
+        AND up.end_date IS NOT NULL
+        AND CAST(up.end_date AS date) BETWEEN CURRENT_DATE - CAST(:graceDays AS int)
+                                          AND CURRENT_DATE + CAST(:daysAhead AS int)
+      ORDER BY up.id
+      """, nativeQuery = true)
+  List<Object[]> findRenewalFailedPlans(
+      @Param("psIds") List<String> packageSessionIds,
+      @Param("daysAhead") int daysAhead,
+      @Param("graceDays") int graceDays);
+
+  /**
    * Learners who must PAY MANUALLY to continue: their plan ends within the next
    * N days (or ended up to graceDays ago) and autopay will NOT charge them —
    * autopay off (cancelled mandate) or plan CANCELED/PAYMENT_FAILED/EXPIRED.

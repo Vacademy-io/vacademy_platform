@@ -36,6 +36,9 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
 
         List<AiEvaluationProcess> findByAssessmentId(String assessmentId);
 
+        /** Every run, of any status, for a set of attempts - one query for a whole table page. */
+        List<AiEvaluationProcess> findByStudentAttempt_IdIn(List<String> attemptIds);
+
         /**
          * Non-terminal processes that started before {@code cutoff} — i.e. jobs the
          * stale-job sweeper should mark FAILED because ai_service died / never sent

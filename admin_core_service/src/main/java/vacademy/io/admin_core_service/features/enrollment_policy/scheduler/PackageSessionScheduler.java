@@ -195,6 +195,13 @@ public class PackageSessionScheduler {
     // (see UserPlanRepository.findDueForRenewal), so it can never touch a
     // pre-existing / non-autopay plan — unlike processActiveEnrollments, which
     // stays manual to avoid activating dormant destructive expiry behaviour.
+    //
+    // ShedLock: the per-plan claim (claimForRenewal) protects a SUCCESSFUL charge
+    // from being repeated, but a FAILED charge is re-armed for tomorrow at once,
+    // which makes the plan claimable again by the next replica seconds later. With
+    // 4 replicas and no lock, 22 due plans produced 52 Razorpay orders on
+    // 2026-09-19 — every refused plan was presented up to four times in one
+    // minute. One replica runs the sweep; the others find the lock and skip.
 
     /**
      * Runs daily at 15:00 IST (09:30 UTC, still after the 09:00 UTC reminder scan).
@@ -205,6 +212,7 @@ public class PackageSessionScheduler {
      * Pinned to Asia/Kolkata so a pod timezone change cannot move it.
      */
     @Scheduled(cron = "0 0 15 * * ?", zone = "Asia/Kolkata")
+    @SchedulerLock(name = "RenewalChargeSweep", lockAtMostFor = "PT50M", lockAtLeastFor = "PT2M")
     public void emitRenewalCharges() {
         log.info("[RenewalCharge] Starting autopay charge scan...");
         try {

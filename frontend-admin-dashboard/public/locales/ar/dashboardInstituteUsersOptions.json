@@ -1,5 +1,6 @@
 {
   "menu": {
+    "editProfile": "تعديل عضو الفريق",
     "changeRoleType": "تغيير نوع الدور",
     "disableUser": "تعطيل المستخدم",
     "enableUser": "تفعيل المستخدم",
@@ -44,6 +45,27 @@
     "confirmButton": "نعم",
     "toast": {
       "success": "تم حذف المستخدم بنجاح!"
+    }
+  },
+  "editProfile": {
+    "title": "الملف الشخصي لـ {{name}}",
+    "hint": "تظهر الصورة والمسمى الوظيفي والنبذة أينما يظهر {{name}} في أي دورة.",
+    "nameLabel": "الاسم",
+    "emailLabel": "البريد الإلكتروني",
+    "mobileNumberLabel": "رقم الجوال",
+    "photoLabel": "صورة الملف الشخصي",
+    "designationLabel": "المسمى الوظيفي",
+    "designationPlaceholder": "مثال: معلم فيزياء",
+    "bioLabel": "نبذة",
+    "bioPlaceholder": "نبذة قصيرة",
+    "cancel": "إلغاء",
+    "save": "حفظ التغييرات",
+    "saving": "جارٍ الحفظ…",
+    "toast": {
+      "notImage": "يرجى اختيار ملف صورة.",
+      "uploadFailed": "فشل رفع الصورة.",
+      "success": "تم تحديث الملف الشخصي.",
+      "error": "تعذر تحديث الملف الشخصي."
     }
   }
 }

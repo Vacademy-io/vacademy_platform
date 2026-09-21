@@ -210,9 +210,23 @@ def grading_system(subject: str = "school", klass: str = "6-12") -> str:
     return GRADING_SYSTEM_TEMPLATE.format(subject=subject, klass=klass)
 
 
-def _transcript_for_prompt(layout_map: dict[str, Any]) -> str:
+def _transcript_for_prompt(layout_map: dict[str, Any], page_ids: list[str] | None = None) -> str:
+    """The transcript block. `page_ids` narrows it to those pages (in copy
+    order) — set by the answer-location pass so a 40-page copy is not re-sent
+    in full for each of 100 questions. None = every page, as before."""
     out: list[str] = []
-    for page in layout_map.get("pages") or []:
+    pages = layout_map.get("pages") or []
+    if page_ids is not None:
+        wanted = set(page_ids)
+        shown = [p for p in pages if str(p.get("page_id")) in wanted]
+        if shown and len(shown) < len(pages):
+            out.append(
+                f"NOTE: only the {len(shown)} page(s) where this answer was located are shown "
+                f"({', '.join(str(p.get('page_id')) for p in shown)} of {len(pages)} pages). "
+                "If the answer is not on these pages, return verdict \"unattempted\" - do not guess."
+            )
+            pages = shown
+    for page in pages:
         out.append("---- Page " + str(page.get("page_id")) + " ----")
         vision = (page.get("vision_text") or "").strip()
         if vision:
@@ -382,6 +396,7 @@ def build_grading_prompt(
     rubric: dict[str, Any],
     layout_map: dict[str, Any],
     neighbour_question_labels: list[str] | None = None,
+    page_ids: list[str] | None = None,
 ) -> str:
     max_marks = float(rubric.get("max_marks") or question.get("max_marks") or 10)
     rubric_json = json.dumps(rubric, indent=2)
@@ -402,7 +417,7 @@ def build_grading_prompt(
 {rubric_json}
 
 **Student's transcript (row id + text per page):**
-{_transcript_for_prompt(layout_map)}
+{_transcript_for_prompt(layout_map, page_ids)}
 
 **Type-specific grading:**
 {_type_instructions(question.get('question_type'), bool(question.get('correct_answer')))}

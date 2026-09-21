@@ -1,5 +1,6 @@
 {
   "menu": {
+    "editProfile": "Modifier le membre",
     "changeRoleType": "Changer le type de rôle",
     "disableUser": "Désactiver l'utilisateur",
     "enableUser": "Activer l'utilisateur",
@@ -20,7 +21,7 @@
     "title": "Désactiver l'utilisateur",
     "attention": "Attention",
     "confirmPrefix": "Êtes-vous sûr de vouloir désactiver",
-    "confirmSuffix" : " ?",
+    "confirmSuffix": " ?",
     "confirmButton": "Oui",
     "toast": {
       "success": "L'utilisateur a été désactivé avec succès !"
@@ -30,7 +31,7 @@
     "title": "Activer l'utilisateur",
     "attention": "Attention",
     "confirmPrefix": "Êtes-vous sûr de vouloir activer",
-    "confirmSuffix" : " ?",
+    "confirmSuffix": " ?",
     "confirmButton": "Oui",
     "toast": {
       "success": "L'utilisateur a été activé avec succès !"
@@ -40,10 +41,31 @@
     "title": "Supprimer l'utilisateur",
     "attention": "Attention",
     "confirmPrefix": "Êtes-vous sûr de vouloir supprimer",
-    "confirmSuffix" : " ?",
+    "confirmSuffix": " ?",
     "confirmButton": "Oui",
     "toast": {
       "success": "L'utilisateur a été supprimé avec succès !"
+    }
+  },
+  "editProfile": {
+    "title": "Profil de {{name}}",
+    "hint": "La photo, la fonction et la bio apparaissent partout où {{name}} figure sur un cours.",
+    "nameLabel": "Nom",
+    "emailLabel": "E-mail",
+    "mobileNumberLabel": "Numéro de mobile",
+    "photoLabel": "Photo de profil",
+    "designationLabel": "Fonction",
+    "designationPlaceholder": "ex. Professeur de physique",
+    "bioLabel": "Bio",
+    "bioPlaceholder": "Courte biographie",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "toast": {
+      "notImage": "Veuillez choisir un fichier image.",
+      "uploadFailed": "Échec du téléversement de l'image.",
+      "success": "Profil mis à jour.",
+      "error": "Impossible de mettre à jour le profil."
     }
   }
 }

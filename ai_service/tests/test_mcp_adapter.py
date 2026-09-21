@@ -45,7 +45,8 @@ def test_exposed_set_is_the_documented_one():
     # One tool per feature (with an `action` argument), so the settings tab has
     # one toggle per feature. Adding here means adding a label + docs too.
     assert MCP_EXPOSED_TOOLS == (
-        "whoami", "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit"
+        "whoami", "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit",
+        "workflows", "workflows_edit",
     )
 
 
@@ -75,6 +76,16 @@ def test_draft_write_tool_is_off_unless_its_group_is_enabled():
     assert "website_edit" in [t.name for t in adapter.list_tools_for(principal(), setting(["website_builder_edits"]))]
     # Unconfigured institute: the write tool is off even for admins.
     assert "website_edit" not in [t.name for t in adapter.list_tools_for(principal(), normalize_setting({"enabled": True}))]
+
+
+def test_workflow_draft_tool_is_off_unless_its_group_is_enabled():
+    """The automations write tool follows the same rule: its own group, never the read group."""
+    assert "workflows_edit" not in [t.name for t in adapter.list_tools_for(principal(), setting(["workflows"]))]
+    assert gated(adapter.list_tools_for(principal(), setting(["workflows"]))) == ["workflows"]
+    assert "workflows_edit" in [t.name for t in adapter.list_tools_for(principal(), setting(["workflows_edits"]))]
+    tool = next(t for t in adapter.list_tools_for(principal(), setting(["workflows_edits"])) if t.name == "workflows_edit")
+    assert tool.annotations.read_only_hint is False
+    assert set(tool.input_schema["properties"]["action"]["enum"]) == {"validate", "create_draft", "update_draft", "discard_draft"}
 
 
 # ── schema translation ───────────────────────────────────────────────────

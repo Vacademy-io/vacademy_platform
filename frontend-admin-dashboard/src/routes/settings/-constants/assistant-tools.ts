@@ -140,6 +140,28 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         defaultEnabled: false,
     },
     {
+        key: 'workflows',
+        label: 'Automations: view',
+        description:
+            'See the institute’s automations (workflows): each one’s trigger or schedule, its nodes, ' +
+            'recent runs and per-node results, plus the authoring catalog and the batches, lead ' +
+            'campaigns and templates an automation can reference. Read-only. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'workflows_edits',
+        label: 'Automations: draft',
+        description:
+            'Let the assistant build automations by conversation — compose the workflow, check it ' +
+            'against the builder’s rules and save it as a DRAFT. A draft never runs until you open it ' +
+            'in the builder and publish it; published automations cannot be changed or removed from ' +
+            'here. Uses no AI credits. Off by default.',
+        phase: 3,
+        defaultEnabled: false,
+    },
+    {
         key: 'announcements',
         label: 'Announcements',
         description:

@@ -10,8 +10,8 @@ are. The MCP surface is a narrow adapter over those, not a second implementation
 ---
 ## 1. What it exposes
 
-Four tools. Each feature is **one tool with an `action` argument**, so the
-institute's settings tab has one toggle per feature to manage per role:
+Each feature is **one tool with an `action` argument**, so the institute's
+settings tab has one toggle per feature to manage per role:
 
 | Tool | Mode | Settings group | Actions |
 | :--- | :--- | :--- | :--- |
@@ -21,14 +21,18 @@ institute's settings tab has one toggle per feature to manage per role:
 | `website_edit` | WRITE (drafts only, no model, no credits) | `website_builder_edits` | `create_page`, `create_site`, `update_page`, `set_layout`, `add_section`, `set_theme`, `set_site_settings`, `set_courses`, `link_lead_form`, `set_seo`, `import_image`, `discard_draft` |
 | `audience_forms` | READ | `audience_forms` | `list`, `get`, `leads` |
 | `audience_forms_edit` | WRITE (additive only) | `audience_forms_edits` | `create`, `update_fields` (adds/changes, never removes), `send_test_lead` |
+| `workflows` | READ | `workflows` | `list`, `get`, `runs`, `catalog` (the builder's authoring contract, in sections), `context` (real batches / audiences / templates / sessions / invites to reference) |
+| `workflows_edit` | WRITE (drafts only, no model, no credits) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` — the last two refuse anything whose status is not DRAFT |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so
 adding Assistant tools never widens this surface by accident. The tools live in
-`app/services/assistant_tools_website.py`, `assistant_tools_website_edit.py` and
-`assistant_tools_audience.py` (shared loaders in `website_data.py`, page
-summaries and the publish-check port in `catalogue_summary.py`); the design is
-in `docs/ai-page-builder/WEBSITE_BUILDER_MCP_PLAN.md`.
+`app/services/assistant_tools_website.py`, `assistant_tools_website_edit.py`,
+`assistant_tools_audience.py` and `assistant_tools_workflow.py` (shared loaders
+in `website_data.py`, page summaries and the publish-check port in
+`catalogue_summary.py`); the designs are in
+`docs/ai-page-builder/WEBSITE_BUILDER_MCP_PLAN.md` and
+`docs/WORKFLOW_AI_ASSIST_DESIGN.md` (§14, the MCP path).
 
 **One model, not two.** The connected AI app is the only LLM: it interviews the
 admin (`website(brief_checklist)`), reads the component contract
@@ -44,15 +48,33 @@ composer's own output rules would have normalised them; a site written
 straight to the DB (the Claude-CLI path) round-trips through `create_site`
 unchanged (verified against learn.ttsedu.co.in/new-website).
 
+**Automations follow the same pattern.** `workflows(catalog)` serves the AI
+drafter's grounding document (`GET /v1/workflow/ai-catalog`: the workflow JSON
+shape, the generation rules, every node type's config, the prebuilt queries with
+their output keys, the trigger events with the `#ctx` keys they emit) and
+`workflows(context)` the institute's real ids and template names. The connected
+LLM composes the workflow JSON; `workflows_edit` normalises it (canvas or
+builder shape, `config.routing` folded into edges, a CONDITION's predicate
+propagated onto its true edge, the trigger backfilled from the TRIGGER node),
+lints it (dead node types, flat DELAY shapes, unreachable nodes, missing
+templates, ids that are not the institute's, mutating queries), runs the
+backend `/validate`, and only then saves — always as `status=DRAFT`. A DRAFT
+never fires (`WorkflowTriggerService` and the scheduler read only ACTIVE
+workflows); the admin reviews it at `editor_url` and publishes from the
+builder. There is no Test Run action: `QUERY`, `SET_LEAD_STATUS` and `COMBOT`
+act for real even in a dry run. Nothing on the MCP path calls
+`/v1/workflow/ai-draft` or any other model.
+
 **Why a write tool is allowed.** MCP has no confirm card, so `website_edit`
 never touches live data: every action saves a **draft revision**
 (`source=AI_COPILOT`/`AI_WIZARD`, `ai_run_id`) that the admin reviews in Manage
 Pages — where the publish checks run — and publishes themselves.
-`discard_draft` is the undo. `audience_forms_edit` is allowed on the other safe
-property: it only **adds** (a campaign, a field, a test lead) and never changes
-or removes what exists. `MCP_ALLOWED_WRITE_TOOLS` names each allowed write tool
-with the property that makes it safe, and `tests/test_mcp_adapter.py` refuses
-any other write tool. Write groups are off for every role until an admin
+`discard_draft` is the undo. `workflows_edit` has the same property — it can
+only create, replace or discard a DRAFT automation. `audience_forms_edit` is
+allowed on the other safe property: it only **adds** (a campaign, a field, a
+test lead) and never changes or removes what exists. `MCP_ALLOWED_WRITE_TOOLS`
+names each allowed write tool with the property that makes it safe, and
+`tests/test_mcp_adapter.py` refuses any other write tool. Write groups are off for every role until an admin
 enables them.
 
 ## 2. Who can reach it
@@ -237,7 +259,7 @@ cd ai_service
 python -m pytest tests/test_mcp_access.py tests/test_mcp_adapter.py \
                  tests/test_mcp_oauth.py tests/test_mcp_clients.py tests/test_mcp_institute_scope.py \
                  tests/test_website_tools.py tests/test_website_edit_tool.py \
-                 tests/test_institute_setting_reader.py -q
+                 tests/test_workflow_tools.py tests/test_institute_setting_reader.py -q
 ```
 
 These cover the gates, the exposed-tool containment, the redirect-URI policy and

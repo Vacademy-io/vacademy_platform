@@ -121,7 +121,7 @@ public class CopyIntakeNotifier {
                               int waiting) {
         try {
             Map<String, Long> counts = StaffNoticeEmails.counts();
-            counts.put("Copies uploaded", (long) batch.getTotalItems());
+            counts.put(batch.isFromSubmissions() ? "Copies submitted" : "Copies uploaded", (long) batch.getTotalItems());
             counts.put("Checked by AI", (long) lastCounts.completed());
             counts.put("Could not be checked", (long) lastCounts.failed());
             counts.put("Skipped", (long) lastCounts.skipped());

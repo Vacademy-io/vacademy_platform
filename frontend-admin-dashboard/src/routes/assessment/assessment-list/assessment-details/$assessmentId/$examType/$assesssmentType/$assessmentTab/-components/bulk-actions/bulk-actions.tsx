@@ -15,6 +15,9 @@ interface BulkActionsProps {
     // Opens the report ZIP export dialog scoped to the checked rows
     // (Attempted tab only — other tabs have no reports to export).
     onExportReports?: () => void;
+    // Queues the AI check for the checked rows' submitted copies (Attempted
+    // tab, manual-evaluation assessments only).
+    onCheckWithAi?: () => void;
 }
 
 export const BulkActions = ({
@@ -24,6 +27,7 @@ export const BulkActions = ({
     onReset,
     selectedTab,
     onExportReports,
+    onCheckWithAi,
 }: BulkActionsProps) => {
     const { t } = useTranslation('assessmentBulkActions');
 
@@ -54,6 +58,7 @@ export const BulkActions = ({
                         selectedStudentIds={selectedStudentIds}
                         selectedStudents={selectedStudents} // Pass the selected students
                         onExportReports={onExportReports}
+                        onCheckWithAi={onCheckWithAi}
                         trigger={
                             <MyButton
                                 buttonType="primary"

@@ -153,6 +153,7 @@ public class CopyIntakeService {
                 .createdByEmail(creatorEmail(user))
                 .preferredModel(request.getPreferredModel())
                 .status(AiCopyIntakeBatch.RUNNING)
+                .source(AiCopyIntakeBatch.SOURCE_UPLOAD)
                 .totalItems(usable.size())
                 .notifyEmail(request.getNotifyEmail() == null || request.getNotifyEmail())
                 .build());
@@ -173,6 +174,175 @@ public class CopyIntakeService {
                 "started AI check of " + items.size() + " uploaded copies for assessment " + assessment.getName(),
                 Map.of("batch_id", batch.getId(), "copies", items.size()));
         return batch;
+    }
+
+    // ------------------------------------------------- submitted copies
+
+    /**
+     * Evaluation states that mean "the AI is on this copy now". Mirrors
+     * AiEvaluationService.ACTIVE_STATUSES; re-declared like the enqueuer does,
+     * so this path is free to diverge.
+     */
+    private static final List<String> EVALUATION_ACTIVE = List.of(
+            "PENDING", "STARTED", "PROCESSING", "EXTRACTING", "EVALUATING");
+
+    /** One submitted attempt and where its AI check stands. */
+    private record SubmittedCopy(StudentAttempt attempt, String fileId, boolean checked, boolean running) {
+    }
+
+    /**
+     * Which of the learners' own submissions a check would touch. Answers the
+     * dialog's "62 submitted, 12 already checked, 3 running - 47 will be
+     * checked" before a credit is spent, and is the exact list
+     * {@link #startFromSubmitted} queues, so the quote and the bill agree.
+     *
+     * <p>Only an ENDED attempt with an uploaded sheet counts: a LIVE one is
+     * still being written, and one without a file (an online attempt) would be
+     * dispatched only to fail with "nothing to grade".
+     */
+    @Transactional(readOnly = true)
+    public CopyIntakeDtos.SubmittedPreviewDto previewSubmitted(String assessmentId, List<String> attemptIds,
+                                                               boolean includeChecked) {
+        List<SubmittedCopy> copies = submittedCopies(assessmentId, attemptIds);
+        int withCopy = 0, checked = 0, running = 0, noCopy = 0;
+        List<String> toCheck = new ArrayList<>();
+        for (SubmittedCopy c : copies) {
+            if (c.fileId() == null) {
+                noCopy++;
+                continue;
+            }
+            withCopy++;
+            if (c.running()) {
+                running++;
+            } else if (c.checked()) {
+                checked++;
+                if (includeChecked) toCheck.add(c.attempt().getId());
+            } else {
+                toCheck.add(c.attempt().getId());
+            }
+        }
+        return CopyIntakeDtos.SubmittedPreviewDto.builder()
+                .considered(copies.size()).withCopy(withCopy).alreadyChecked(checked).inProgress(running)
+                .noCopy(noCopy).toCheck(toCheck.size()).attemptIds(toCheck).build();
+    }
+
+    /**
+     * Queue the AI check for copies the learners submitted themselves, as one
+     * batch. Every item is born QUEUED on its own attempt - there is no file to
+     * read or student to match - so the runner's pass finds nothing to
+     * identify and only settles the batch as the checks come back. The
+     * evaluation poller paces the dispatch under its in-flight cap exactly as
+     * for an uploaded pile; one email and one bell announce the batch.
+     */
+    @Transactional
+    public AiCopyIntakeBatch startFromSubmitted(CustomUserDetails user, String assessmentId, String instituteId,
+                                                CopyIntakeDtos.SubmittedRequest request) {
+        Assessment assessment = assessmentRepository.findById(assessmentId)
+                .orElseThrow(() -> new VacademyException("Assessment not found"));
+        aiEvaluationService.requireGradableQuestions(assessment);
+
+        boolean includeChecked = request != null && Boolean.TRUE.equals(request.getIncludeChecked());
+        List<String> wanted = request == null ? null : request.getAttemptIds();
+        List<SubmittedCopy> copies = submittedCopies(assessmentId, wanted).stream()
+                .filter(c -> c.fileId() != null && !c.running() && (includeChecked || !c.checked()))
+                .toList();
+        if (copies.isEmpty()) {
+            throw new VacademyException(wanted == null || wanted.isEmpty()
+                    ? "No submitted copies are waiting for a check on this assessment"
+                    : "None of the selected students has a submitted copy waiting for a check");
+        }
+        if (copies.size() > MAX_FILES_PER_BATCH) {
+            throw new VacademyException("At most " + MAX_FILES_PER_BATCH + " copies per batch; select fewer students");
+        }
+
+        String model = request == null ? null : request.getPreferredModel();
+        AiCopyIntakeBatch batch = batchRepository.save(AiCopyIntakeBatch.builder()
+                .assessmentId(assessment.getId())
+                .instituteId(instituteId)
+                .createdBy(user.getUserId())
+                .createdByName(user.getFullName())
+                .createdByEmail(creatorEmail(user))
+                .preferredModel(model)
+                .status(AiCopyIntakeBatch.RUNNING)
+                .source(AiCopyIntakeBatch.SOURCE_SUBMITTED)
+                .totalItems(copies.size())
+                .notifyEmail(request == null || request.getNotifyEmail() == null || request.getNotifyEmail())
+                .build());
+
+        List<AiCopyIntakeItem> items = new ArrayList<>();
+        for (SubmittedCopy c : copies) {
+            StudentAttempt attempt = c.attempt();
+            AssessmentUserRegistration reg = attempt.getRegistration();
+            String name = reg != null && StringUtils.hasText(reg.getParticipantName())
+                    ? reg.getParticipantName() : "Student";
+            // The teacher is recorded on the run so the evaluations page shows who
+            // asked; the completion notice still comes from this batch, not per copy.
+            String processId = aiEvaluationService.initiateEvaluationForAttempt(attempt, model, true, user.getUserId());
+            items.add(AiCopyIntakeItem.builder()
+                    .batchId(batch.getId())
+                    .fileId(c.fileId())
+                    .fileName(name)
+                    .status(AiCopyIntakeItem.QUEUED)
+                    .matchedUserId(reg == null ? null : reg.getUserId())
+                    .matchedName(name)
+                    .registrationId(reg == null ? null : reg.getId())
+                    .attemptId(attempt.getId())
+                    .processId(processId)
+                    .build());
+        }
+        itemRepository.saveAll(items);
+
+        auditClient.record(user, instituteId, "BULK_AI_CHECK", assessmentId,
+                "started AI check of " + items.size() + " submitted copies for assessment " + assessment.getName(),
+                Map.of("batch_id", batch.getId(), "copies", items.size(), "source", AiCopyIntakeBatch.SOURCE_SUBMITTED));
+        return batch;
+    }
+
+    /**
+     * The assessment's ENDED attempts (or the given ones, kept to this
+     * assessment) with their submitted file and AI-check state. The evaluation
+     * rows are fetched in one query for the whole set.
+     */
+    private List<SubmittedCopy> submittedCopies(String assessmentId, List<String> attemptIds) {
+        List<StudentAttempt> attempts = attemptIds == null || attemptIds.isEmpty()
+                ? studentAttemptService.getAllParticipantsAttemptForAssessment(assessmentId)
+                : studentAttemptService.getStudentAttemptsByIds(attemptIds);
+        List<StudentAttempt> ended = attempts.stream()
+                .filter(a -> a != null && a.getRegistration() != null
+                        && a.getRegistration().getAssessment() != null
+                        && assessmentId.equals(a.getRegistration().getAssessment().getId())
+                        && "ENDED".equalsIgnoreCase(a.getStatus()))
+                .toList();
+        if (ended.isEmpty()) return List.of();
+
+        Map<String, Boolean> checkedByAttempt = new HashMap<>();
+        Map<String, Boolean> runningByAttempt = new HashMap<>();
+        List<String> ids = ended.stream().map(StudentAttempt::getId).toList();
+        for (AiEvaluationProcess p : processRepository.findByStudentAttempt_IdIn(ids)) {
+            if (p.getStudentAttempt() == null || p.getStatus() == null) continue;
+            String id = p.getStudentAttempt().getId();
+            String status = p.getStatus().toUpperCase(Locale.ROOT);
+            if (EVALUATION_ACTIVE.contains(status)) runningByAttempt.put(id, true);
+            else if ("COMPLETED".equals(status)) checkedByAttempt.put(id, true);
+        }
+        List<SubmittedCopy> out = new ArrayList<>(ended.size());
+        for (StudentAttempt a : ended) {
+            out.add(new SubmittedCopy(a, submittedFileId(a.getAttemptData()),
+                    checkedByAttempt.getOrDefault(a.getId(), false),
+                    runningByAttempt.getOrDefault(a.getId(), false)));
+        }
+        return out;
+    }
+
+    /** The learner's uploaded sheet - the same key the checker grades from. */
+    private String submittedFileId(String attemptData) {
+        if (!StringUtils.hasText(attemptData)) return null;
+        try {
+            String fileId = objectMapper.readTree(attemptData).path("fileId").asText(null);
+            return StringUtils.hasText(fileId) ? fileId : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // -------------------------------------------------------- identification
@@ -590,6 +760,7 @@ public class CopyIntakeService {
         Counts c = counts(batch.getId());
         CopyIntakeDtos.BatchDto dto = CopyIntakeDtos.BatchDto.builder()
                 .id(batch.getId()).assessmentId(batch.getAssessmentId()).status(batch.getStatus())
+                .source(batch.getSource() == null ? AiCopyIntakeBatch.SOURCE_UPLOAD : batch.getSource())
                 .totalItems(batch.getTotalItems()).identified(c.identified()).matched(c.matched())
                 .ambiguous(c.ambiguous()).unmatched(c.unmatched()).queued(c.queued()).evaluating(c.evaluating())
                 .evaluated(c.completed()).failed(c.failed()).skipped(c.skipped()).inProgress(c.active())

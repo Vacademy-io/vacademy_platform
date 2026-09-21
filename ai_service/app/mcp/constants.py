@@ -34,6 +34,8 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "website_edit",         # WRITE: draft-only — every change lands as a draft the admin publishes
     "audience_forms",       # READ:  lead campaigns, their form fields, recent leads
     "audience_forms_edit",  # WRITE: additive only — create a campaign, add fields, send a test lead
+    "workflows",            # READ:  automations, their runs, the authoring catalog, real entity ids
+    "workflows_edit",       # WRITE: draft-only — validates and saves DRAFT automations the admin publishes
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
@@ -44,6 +46,10 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
 MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
+    "workflows_edit": (
+        "draft-only: every save forces status=DRAFT, which never fires (triggers and the scheduler only "
+        "run ACTIVE workflows); update/discard refuse anything that is not a DRAFT"
+    ),
 }
 
 #: Friendly labels for the settings groups the exposed tools belong to. Serves
@@ -55,6 +61,8 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "website_builder_edits": "Website: edit drafts",
     "audience_forms": "Lead forms: view",
     "audience_forms_edits": "Lead forms: edit",
+    "workflows": "Automations: view",
+    "workflows_edits": "Automations: draft",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -77,6 +85,17 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     ),
     "audience_forms_edits": (
         "Create lead campaigns, add fields to their forms and send test leads. Never removes anything."
+    ),
+    "workflows": (
+        "See the institute's automations (workflows): each one's trigger or schedule, its nodes, recent "
+        "runs and per-node results, plus the authoring catalog and the batches, lead campaigns and "
+        "message templates an automation can reference."
+    ),
+    "workflows_edits": (
+        "Let the connected AI app build automations by conversation — compose the workflow (trigger, "
+        "queries, emails, WhatsApp, delays, conditions), check it against the builder's rules and save it "
+        "as a DRAFT. A draft never runs until you open it in the builder and publish it; published "
+        "automations cannot be changed or removed from here. Uses no AI credits."
     ),
 }
 

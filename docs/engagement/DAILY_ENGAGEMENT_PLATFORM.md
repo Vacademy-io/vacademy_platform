@@ -642,7 +642,7 @@ needs a cross-service read; until then the `ASSESSMENT` source type is defined b
   (b) is now half-built: activity and streak points accrue once `PointsAccrualJob` is switched on.
   Flip the UI to `metric=POINTS` once accrual has run and the numbers look right — verify against a
   real batch before flipping, since that is the moment every learner's visible rank changes.
-- Strings in the new UI are not run through i18n.
+- ~~Strings in the new UI are not run through i18n.~~ Done 2026-09-21 (§18).
 
 ---
 
@@ -709,3 +709,23 @@ per-task type switching in review (remove + re-draft instead), and games beyond 
 (cap / dwell / scroll thresholds); i18n for the new UI strings; `QUIZ` (assessment-backed) item type
 has no authoring or learner path and is effectively unused; assessment points still outside the
 ledger; AI wizard has no regenerate-one-task or streaming.
+
+---
+
+## 18. Follow-through, 2026-09-21 (`225ba8f314` + admin i18n commit)
+
+Closed from the §17 list: reveal push (`V525`, `EngagementNotifyJob` REVEAL kind), Settings → Daily
+Engagement screen, regenerate-one-task in the AI wizard (`engagement_item`, 2 credits), and i18n on
+both apps.
+
+**i18n.** Learner strings live in `dashboardEngagement` (learner app, en/hi/fr/ar). Admin strings
+live in `frontend-admin-dashboard/public/locales/<lng>/engagement.json` (en/hi/fr/ar, ~275 keys)
+under `page / card / composer / preview / batchPicker / slidePicker / tracking / overview / wizard /
+settings`. Item-type, miss-policy and question-format labels are keyed by their enum value
+(`composer.types.QUESTION_OF_DAY`, `composer.miss.CATCH_UP_REDUCED`, `composer.formats.TEXT`, each
+with a `_hint` sibling) so the composer, plan card and live preview share one set of names — add a
+new `ItemType` and the three surfaces pick up the label from one key. Namespaces resolve by file
+name (`src/i18n.ts` lazy backend), so nothing was registered.
+
+**Still open:** `QUIZ` item type unused; assessment points outside the ledger; AI wizard streaming;
+nightly accrual (`vacademy.points.accrual.enabled`) still OFF pending the POINTS-metric flip.

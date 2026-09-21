@@ -47,8 +47,10 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
-        "draft-only: every save forces status=DRAFT, which never fires (triggers and the scheduler only "
-        "run ACTIVE workflows); update/discard refuse anything that is not a DRAFT"
+        "draft-only + additive: every workflow save forces status=DRAFT, which never fires (triggers and "
+        "the scheduler only run ACTIVE workflows); update/discard refuse anything that is not a DRAFT; the "
+        "template actions only CREATE new email/WhatsApp templates (unused until an automation references "
+        "them) and never edit or remove an existing one"
     ),
 }
 
@@ -94,8 +96,9 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     "workflows_edits": (
         "Let the connected AI app build automations by conversation — compose the workflow (trigger, "
         "queries, emails, WhatsApp, delays, conditions), check it against the builder's rules and save it "
-        "as a DRAFT. A draft never runs until you open it in the builder and publish it; published "
-        "automations cannot be changed or removed from here. Uses no AI credits."
+        "as a DRAFT, and create the new email and WhatsApp templates it needs (WhatsApp templates go to "
+        "Meta for approval). A draft never runs until you open it in the builder and publish it; published "
+        "automations and existing templates cannot be changed or removed from here. Uses no AI credits."
     ),
 }
 

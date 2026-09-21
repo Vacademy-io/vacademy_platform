@@ -24,11 +24,13 @@ from app.services import assistant_tool_registry as registry  # noqa: E402
 from app.services import website_data  # noqa: E402
 from app.services.assistant_tool_registry import ASSISTANT_TOOLS, ToolContext, is_tool_allowed  # noqa: E402
 from app.services.assistant_tools_workflow import (  # noqa: E402
+    email_placeholders,
     execute_workflows,
     execute_workflows_edit,
     lint_workflow,
     normalize_workflow,
     step_summary,
+    whatsapp_body_problems,
 )
 
 INST = "inst-1"
@@ -80,11 +82,13 @@ ACTIVE_WF = {**DRAFT_WF, "id": "wf-live", "name": "Live one", "status": "ACTIVE"
 FOREIGN_WF = {**DRAFT_WF, "id": "wf-foreign", "institute_id": "inst-2"}
 
 EMAIL_TEMPLATES = [
-    {"id": "t1", "name": "lead_thank_you", "status": "ACTIVE", "subject": "Thanks {{name}}", "dynamicParameters": {"name": "string"}},
+    {"id": "t1", "name": "lead_thank_you", "status": "ACTIVE", "subject": "Thanks {{name}}", "dynamicParameters": {"name": "string"},
+     "content": "<p>Hi {{name}}</p>", "contentType": "text/html"},
     {"id": "t2", "name": "old_promo", "status": "INACTIVE", "dynamicParameters": {}},
 ]
 WHATSAPP_TEMPLATES = [
-    {"id": "w1", "name": "welcome_wa", "status": "APPROVED", "bodyText": "Hi {{1}}, welcome to {{2}}", "bodySampleValues": ["Riya", "Acme"]},
+    {"id": "w1", "name": "welcome_wa", "status": "APPROVED", "language": "en", "category": "UTILITY",
+     "bodyText": "Hi {{1}}, welcome to {{2}}", "bodySampleValues": ["Riya", "Acme"]},
     {"id": "w2", "name": "pending_wa", "status": "PENDING", "bodyText": "Hello"},
 ]
 CAMPAIGN = {"id": "camp-1", "campaign_name": "Admissions 2027", "status": "ACTIVE", "campaign_type": "WEBSITE",
@@ -100,6 +104,11 @@ class _Backend:
         self.deleted = []
         self.validate_errors = []      # what POST /validate answers
         self.workflows = {"wf-draft": DRAFT_WF, "wf-live": ACTIVE_WF, "wf-foreign": FOREIGN_WF}
+        self.raw = []                  # (method, path, params, body) through _raw_call
+        self.email_created = []
+        self.wa_created = []
+        self.wa_submitted = []
+        self.submit_fails = None       # set to an error dict to make /submit answer 400
 
     async def admin_core(self, ctx_, method, path, params=None, body=None, timeout=None):
         self.calls.append((method, path, params, body))
@@ -155,8 +164,28 @@ class _Backend:
     async def notification(self, ctx_, method, path, params=None, body=None, timeout=None):
         self.calls.append((method, path, params, body))
         if path.endswith("/whatsapp-templates/list"):
-            return WHATSAPP_TEMPLATES
+            return WHATSAPP_TEMPLATES + [{**c, "status": "DRAFT"} for c in self.wa_created]
         raise AssertionError(f"unexpected notification call {method} {path}")
+
+    async def raw_call(self, ctx_, base_url, method, path, params=None, body=None, timeout=None):
+        self.raw.append((method, path, params, body))
+        if path.endswith("/institute/template/v1/create"):
+            self.email_created.append(body)
+            return 201, {**body, "id": f"t-new-{len(self.email_created)}"}
+        if path == "/notification-service/v1/whatsapp-templates" and method == "POST":
+            row = {**body, "id": f"w-new-{len(self.wa_created) + 1}", "status": "DRAFT"}
+            self.wa_created.append(row)
+            return 200, row
+        if path.endswith("/submit"):
+            if self.submit_fails:
+                return 400, self.submit_fails
+            tid = path.split("/")[-2]
+            self.wa_submitted.append(tid)
+            row = next(r for r in self.wa_created if r["id"] == tid)
+            return 200, {**row, "status": "PENDING", "submittedAt": "2026-09-21T10:00:00Z"}
+        if path.endswith("/whatsapp-templates/sync"):
+            return 200, {"synced": 3, "instituteId": params["instituteId"]}
+        raise AssertionError(f"unexpected raw call {method} {path}")
 
 
 @pytest.fixture
@@ -165,6 +194,7 @@ def backend(monkeypatch):
     monkeypatch.setattr(wf_mod, "_admin_core_json", b.admin_core)
     monkeypatch.setattr(wf_mod, "_notification_json", b.notification)
     monkeypatch.setattr(website_data, "_admin_core_json", b.admin_core)
+    monkeypatch.setattr(wf_mod, "_raw_call", b.raw_call)
     return b
 
 
@@ -472,10 +502,123 @@ async def test_context_lists_real_ids_and_only_usable_templates(backend):
     assert res["batches"]["items"][0] == {"package_session_id": "ps-1", "name": "Class 12 NEET 2027 (default)", "status": "ACTIVE", "enrolled": 40}
     assert res["audiences"]["items"] == [{"audience_id": "camp-1", "name": "Admissions 2027", "type": "WEBSITE", "objective": "LEAD_GENERATION"}]
     assert [t["name"] for t in res["templates"]["email"]["items"]] == ["lead_thank_you"]        # INACTIVE dropped
-    assert [t["name"] for t in res["templates"]["whatsapp"]["items"]] == ["welcome_wa"]          # PENDING dropped
+    assert [t["name"] for t in res["templates"]["whatsapp"]["items"]] == ["welcome_wa"]          # PENDING not sendable
+    assert res["templates"]["whatsapp_pending"]["items"] == [{"name": "pending_wa", "status": "PENDING"}]
     assert res["templates"]["whatsapp"]["items"][0]["placeholders"] == ["1", "2"]
     assert res["templates"]["email"]["items"][0]["placeholders"] == ["name"]
     assert res["live_sessions"]["items"] == [{"live_session_id": "ls-1", "title": "Physics live", "subject": "Physics"}]
     assert res["invites"]["items"][0]["enroll_invite_id"] == "inv-1"
     res = await run(execute_workflows, {"action": "context", "kind": "batches", "search": "foundation"})
     assert [b["package_session_id"] for b in res["batches"]["items"]] == ["ps-2"] and "audiences" not in res
+
+
+# ── templates: read ──────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_template_read_returns_full_content_and_a_node_hint(backend):
+    res = await run(execute_workflows, {"action": "template", "channel": "EMAIL", "name": "lead_thank_you"})
+    assert res["template"]["html"] == "<p>Hi {{name}}</p>" and res["template"]["usable"] is True
+    assert res["send_node_hint"]["config"]["templateName"] == "lead_thank_you"
+    assert list(res["send_node_hint"]["config"]["templateVars"]) == ["name"]
+
+    res = await run(execute_workflows, {"action": "template", "channel": "WHATSAPP", "name": "welcome_wa"})
+    assert res["template"]["body"] == "Hi {{1}}, welcome to {{2}}" and res["template"]["placeholders"] == ["1", "2"]
+    assert res["send_node_hint"]["config"]["languageCode"] == "en"
+    res = await run(execute_workflows, {"action": "template", "channel": "WHATSAPP", "name": "pending_wa"})
+    assert res["template"]["usable"] is False and "PENDING" in res["note"]
+    res = await run(execute_workflows, {"action": "template", "channel": "EMAIL", "name": "nope"})
+    assert res["error"] == "unknown_template"
+    res = await run(execute_workflows, {"action": "template", "name": "x"})
+    assert res["error"] == "missing_argument"
+
+
+# ── templates: pure helpers ──────────────────────────────────────────────
+def test_email_placeholders_are_distinct_and_ordered():
+    assert email_placeholders("Hi {{ fullName }}", "<p>{{fullName}} — {{class_time}} {{ Full Name }}</p>") == ["fullName", "class_time", "Full Name"]
+
+
+def test_whatsapp_rules_mirror_meta():
+    ok = whatsapp_body_problems("class_reminder", "Hi {{1}}, your class is at {{2}}.", "UTILITY", ["Riya", "5pm"], "", "", [])
+    assert ok == []
+    bad = whatsapp_body_problems("Class Reminder", "{{1}} your class {{3}}", "AUTHENTICATION", ["Riya"], "", "", [{"type": "URL", "text": "Join"}])
+    text = " ".join(bad)
+    assert "lowercase" in text and "AUTHENTICATION" in text and "no gaps" in text
+    assert "start with a variable" in text and "sample_values" in text and "absolute http" in text
+    assert "named placeholders" in " ".join(whatsapp_body_problems("x", "Hi {{name}}, welcome.", "UTILITY", [], "", "", []))
+
+
+# ── templates: create email ──────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_create_email_template_derives_placeholders_and_saves_active(backend):
+    res = await run(execute_workflows_edit, {
+        "action": "create_email_template", "name": "class_reminder",
+        "subject": "Your class {{className}} starts soon",
+        "html": "<p>Hi {{fullName}},</p><p>{{className}} starts at {{startTime}}.</p>",
+        "placeholder_labels": {"startTime": "Class start time"},
+    })
+    assert res["template"] == {"id": "t-new-1", "name": "class_reminder", "channel": "EMAIL", "status": "ACTIVE",
+                               "subject": "Your class {{className}} starts soon", "placeholders": ["className", "fullName", "startTime"]}
+    assert list(res["send_node_hint"]["config"]["templateVars"]) == ["className", "fullName", "startTime"]
+    body = backend.email_created[0]
+    assert body["instituteId"] == INST and body["status"] == "ACTIVE" and body["type"] == "EMAIL" and body["contentType"] == "text/html"
+    assert body["dynamicParameters"] == {"className": "Class Name", "fullName": "Full Name", "startTime": "Class start time"}
+    assert body["settingJson"]["variables"] == ["className", "fullName", "startTime"]
+
+
+@pytest.mark.asyncio
+async def test_create_email_template_never_touches_an_existing_one(backend):
+    res = await run(execute_workflows_edit, {"action": "create_email_template", "name": "lead_thank_you", "subject": "s", "html": "<p>x</p>"})
+    assert res["error"] == "template_exists" and not backend.email_created
+    res = await run(execute_workflows_edit, {"action": "create_email_template", "name": "cond", "subject": "s", "html": "{{#if a}}x{{/if}}"})
+    assert res["error"] == "bad_request" and not backend.email_created
+    res = await run(execute_workflows_edit, {"action": "create_email_template", "name": "x"})
+    assert res["error"] == "missing_argument" and set(res["needs"]) == {"subject", "html"}
+
+
+# ── templates: create WhatsApp ───────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_create_whatsapp_template_drafts_then_submits_to_meta(backend):
+    res = await run(execute_workflows_edit, {
+        "action": "create_whatsapp_template", "name": "Class_Reminder",
+        "body": "Hi {{1}}, your {{2}} class starts at {{3}}. See you there!",
+        "sample_values": ["Riya", "Physics", "5:00 PM"], "variable_names": ["name", "subject", "time"],
+        "footer_text": "Acme Coaching", "buttons": [{"type": "URL", "text": "Join", "url": "https://acme.edu/join"}],
+    })
+    assert res["submitted"] is True and res["template"]["status"] == "PENDING" and res["template"]["usable"] is False
+    assert res["template"]["name"] == "class_reminder" and res["template"]["placeholders"] == ["1", "2", "3"]
+    assert res["send_node_hint"]["config"] == {"templateName": "class_reminder", "languageCode": "en",
+                                               "templateVars": {"1": "<item field or #ctx SpEL>", "2": "<item field or #ctx SpEL>", "3": "<item field or #ctx SpEL>"}}
+    draft = backend.wa_created[0]
+    assert draft["instituteId"] == INST and draft["category"] == "UTILITY" and draft["language"] == "en"
+    assert draft["bodySampleValues"] == ["Riya", "Physics", "5:00 PM"] and draft["bodyVariableNames"] == ["name", "subject", "time"]
+    assert draft["headerType"] == "NONE" and draft["footerText"] == "Acme Coaching"
+    assert draft["buttons"] == [{"type": "URL", "text": "Join", "url": "https://acme.edu/join", "phoneNumber": None}]
+    assert backend.wa_submitted == ["w-new-1"]
+
+
+@pytest.mark.asyncio
+async def test_create_whatsapp_template_refuses_bad_content_and_duplicates_before_calling_meta(backend):
+    res = await run(execute_workflows_edit, {"action": "create_whatsapp_template", "name": "x", "body": "{{1}} hello"})
+    assert res["error"] == "bad_request" and any("start with a variable" in p for p in res["problems"])
+    res = await run(execute_workflows_edit, {"action": "create_whatsapp_template", "name": "welcome_wa", "body": "Hello there {{1}}.", "sample_values": ["Riya"]})
+    assert res["error"] == "template_exists" and res["status"] == "APPROVED"
+    assert not backend.wa_created and not backend.wa_submitted
+
+
+@pytest.mark.asyncio
+async def test_create_whatsapp_template_relays_metas_reason_when_submit_fails(backend):
+    backend.submit_fails = {"message": "WhatsApp is not connected for this institute.", "hint": "Add the Meta token in Settings.", "code": "NOT_CONFIGURED"}
+    res = await run(execute_workflows_edit, {"action": "create_whatsapp_template", "name": "fee_due", "body": "Hi {{1}}, your fee is due.", "sample_values": ["Riya"]})
+    assert res["submitted"] is False and res["template"]["status"] == "DRAFT"
+    assert res["submit_error"] == {"message": "WhatsApp is not connected for this institute.", "hint": "Add the Meta token in Settings.", "code": "NOT_CONFIGURED"}
+    assert "NOT submitted" in res["next"]
+    res = await run(execute_workflows_edit, {"action": "create_whatsapp_template", "name": "fee_due_2", "body": "Hi {{1}}, your fee is due.", "sample_values": ["Riya"], "submit": False})
+    assert "submitted" not in res and res["template"]["status"] == "DRAFT" and backend.wa_submitted == []
+
+
+@pytest.mark.asyncio
+async def test_sync_whatsapp_templates_groups_by_status(backend):
+    res = await run(execute_workflows_edit, {"action": "sync_whatsapp_templates"})
+    assert res["synced"] == 3
+    assert res["templates_by_status"] == {"APPROVED": ["welcome_wa"], "PENDING": ["pending_wa"]}
+    _, _, params, _ = backend.raw[0]
+    assert params == {"instituteId": INST}

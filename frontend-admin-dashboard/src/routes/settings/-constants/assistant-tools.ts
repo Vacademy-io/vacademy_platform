@@ -155,9 +155,11 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         label: 'Automations: draft',
         description:
             'Let the assistant build automations by conversation — compose the workflow, check it ' +
-            'against the builder’s rules and save it as a DRAFT. A draft never runs until you open it ' +
-            'in the builder and publish it; published automations cannot be changed or removed from ' +
-            'here. Uses no AI credits. Off by default.',
+            'against the builder’s rules, save it as a DRAFT, and create the new email and WhatsApp ' +
+            'templates it needs (WhatsApp templates are sent to Meta for approval). A draft never ' +
+            'runs until you open it in the builder and publish it; published automations and ' +
+            'existing templates cannot be changed or removed from here. Uses no AI credits. Off by ' +
+            'default.',
         phase: 3,
         defaultEnabled: false,
     },

@@ -689,3 +689,23 @@ before each spend.
 
 **Not in this phase:** streaming per-day progress (the draft is one call), regenerate-one-task,
 per-task type switching in review (remove + re-draft instead), and games beyond flashcards.
+
+---
+
+## 17. Deep review, 2026-09-21 — gaps found and closed (`bd2b47c239`)
+
+| # | Gap | Fix |
+|---|---|---|
+| 1 | **Written/uploaded answers discarded at submit** — validated, graded, never stored | Learner response (option, text, file ids, score) serialised into `engagement_attempt.response_json`; shown in tracking + CSV; files open via signed URL |
+| 2 | **No reveal surface** — the "8 PM answer + leaderboard" moment had nowhere to land | Feed returns `revealed[]` (completed tasks past reveal, last 2 days) with key/explanation/result; home card shows a "Revealed" section. The only place the key ever travels to a learner |
+| 3 | **AI endpoints defaulted to ADMIN role** — a learner token could spend institute credits | Explicit teacher/admin authority required, 403 otherwise; JWT per-institute role map read correctly |
+| 4 | Batch name never populated (decision 3) | `packageSessionName` resolved per plan; shown on cards and revealed entries |
+| 5 | "Keep your streak alive" copy, no streak | `streakDays` = consecutive institute-local days with a completion, yesterday counting; 🔥 chip on the card |
+| 6 | No unpublish/remove from the plan list | Eye / trash actions on `PlanCard` (attempts and points untouched by removal) |
+| 7 | No batch-level view | `GET /plan/{id}/overview` — per-learner done/correct/missed/points, "slipping" = 3+ missed **closed** tasks (a learner who joined yesterday is not marked as missing a fortnight) |
+| 8 | AI idempotency key minted per call → retry double-charged | Minted once per attempt, reused on retry, rotated on success |
+
+**Still open after this pass:** push notification at reveal time; an `ENGAGEMENT_SETTING` screen
+(cap / dwell / scroll thresholds); i18n for the new UI strings; `QUIZ` (assessment-backed) item type
+has no authoring or learner path and is effectively unused; assessment points still outside the
+ledger; AI wizard has no regenerate-one-task or streaming.

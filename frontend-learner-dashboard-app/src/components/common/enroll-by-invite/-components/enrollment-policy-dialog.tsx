@@ -97,6 +97,14 @@ interface EnrollmentPolicyDialogProps {
      * has already resolved (see below); the other variants keep their own copy.
      */
     serverMessage?: string;
+    /**
+     * Where "Login now" sends an already-registered learner: the institute's own
+     * learner portal (learner_portal_base_url) + /login. When set, the
+     * already-enrolled dialog offers login instead of "Go to dashboard" — the
+     * learner on the public enrol form is not signed in, and their next step
+     * (renew / pay to continue) lives behind login on their dashboard.
+     */
+    loginUrl?: string;
     onContinue?: () => void;
     onUpgrade?: (url: string) => void;
 }
@@ -108,6 +116,7 @@ const EnrollmentPolicyDialog = ({
     policyResponse,
     courseName,
     serverMessage,
+    loginUrl,
     onContinue,
     onUpgrade,
 }: EnrollmentPolicyDialogProps) => {
@@ -234,7 +243,8 @@ const EnrollmentPolicyDialog = ({
                         {t("enrollmentPolicy.alreadyEnrolledTitle")}
                     </DialogTitle>
                     <DialogDescription className="text-gray-600 text-sm sm:text-base leading-relaxed">
-                        {reenrollmentPolicy?.alreadyEnrolledMessage ||
+                        {serverMessage ||
+                            reenrollmentPolicy?.alreadyEnrolledMessage ||
                             t("enrollmentPolicy.alreadyEnrolledMessage", { course })}
                     </DialogDescription>
                 </div>
@@ -288,19 +298,35 @@ const EnrollmentPolicyDialog = ({
                     <X className="w-4 h-4 me-2" />
                     {t("enrollmentPolicy.close")}
                 </MyButton>
-                <MyButton
-                    type="button"
-                    buttonType="primary"
-                    scale="medium"
-                    layoutVariant="default"
-                    onClick={() => {
-                        onOpenChange(false);
-                        onContinue?.();
-                    }}
-                    className="w-full sm:w-auto order-1 sm:order-2 bg-gradient-to-r from-primary-500 to-primary-600"
-                >
-                    {t("enrollmentPolicy.goToDashboard")}
-                </MyButton>
+                {loginUrl ? (
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="medium"
+                        layoutVariant="default"
+                        onClick={() => {
+                            onOpenChange(false);
+                            window.location.href = loginUrl;
+                        }}
+                        className="w-full sm:w-auto order-1 sm:order-2 bg-gradient-to-r from-primary-500 to-primary-600"
+                    >
+                        {t("enrollmentPolicy.loginNow")}
+                    </MyButton>
+                ) : (
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="medium"
+                        layoutVariant="default"
+                        onClick={() => {
+                            onOpenChange(false);
+                            onContinue?.();
+                        }}
+                        className="w-full sm:w-auto order-1 sm:order-2 bg-gradient-to-r from-primary-500 to-primary-600"
+                    >
+                        {t("enrollmentPolicy.goToDashboard")}
+                    </MyButton>
+                )}
             </DialogFooter>
         </>
     );

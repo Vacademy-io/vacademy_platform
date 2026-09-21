@@ -58,6 +58,8 @@ export interface EngagementItem {
 
   attemptStatus?: string | null;
   isCorrect?: boolean | null;
+  /** True when isCorrect is withheld until revealAt (hide-result questions). */
+  resultPending?: boolean | null;
   pointsAwarded?: number | null;
 
   completedCount?: number | null;

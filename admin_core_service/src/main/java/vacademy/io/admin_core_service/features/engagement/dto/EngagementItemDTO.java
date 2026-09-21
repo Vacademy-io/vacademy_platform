@@ -57,6 +57,8 @@ public class EngagementItemDTO {
     // This learner's progress.
     private String attemptStatus;
     private Boolean isCorrect;
+    /** True when isCorrect is deliberately withheld until revealAt. */
+    private Boolean resultPending;
     private Integer pointsAwarded;
 
     /** Social proof: how many learners have completed it. */

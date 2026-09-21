@@ -608,8 +608,13 @@ public class EngagementLearnerService {
         }
 
         if (attempt != null) {
+            // Same rule as the submit response: a hide-until-reveal question must not
+            // confirm the outcome on a refresh either, or the redaction is theatre.
+            boolean withholdResult =
+                    Boolean.TRUE.equals(item.getHideResultUntilReveal()) && !revealed;
             builder.attemptStatus(attempt.getStatus())
-                    .isCorrect(attempt.getIsCorrect())
+                    .isCorrect(withholdResult ? null : attempt.getIsCorrect())
+                    .resultPending(withholdResult)
                     .pointsAwarded(attempt.getPointsAwarded());
         }
         return builder.build();

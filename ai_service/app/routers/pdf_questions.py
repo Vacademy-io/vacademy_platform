@@ -24,7 +24,11 @@ from ..db import db_dependency
 from ..models.ai_task import AiTaskInputType, AiTaskType
 from ..repositories.ai_task_repository import AiTaskRepository
 from ..schemas.ai_task import LecturePlanKickoffResponse
-from ..services import ai_task_service, pdf_questions_service, question_gen_service
+from ..services import (
+    ai_task_service, mathpix_pdf_service, pdf_local_convert, pdf_questions_service,
+    question_extract_service, question_gen_service,
+)
+from ..services.ai_billing import preflight_tool_credits
 from ..services.ai_task_service import AiTaskService
 from ..services.model_selection import resolve_models
 from ..services.pdf_questions_service import StillProcessing
@@ -37,6 +41,10 @@ router = APIRouter(prefix="/ai/get-question-pdf", tags=["AI Question Generation"
 
 class AutoDocumentSubmitResponse(BaseModel):
     pdf_id: Optional[str] = None
+    # Set by mode=extract: whether the file needed OCR (MathPix, charged per
+    # page) or was read locally for free, and how many pages it has.
+    ocr: Optional[bool] = None
+    pages: Optional[int] = None
 
 
 class PdfFileIdRequest(BaseModel):
@@ -78,6 +86,11 @@ async def start_process_pdf(
 @router.post("/math-parser/start-process-pdf-file-id", response_model=AutoDocumentSubmitResponse)
 async def start_process_pdf_from_file_id(
     body: PdfFileIdRequest,
+    mode: Optional[str] = Query(
+        None,
+        description="'extract' = read a digital PDF locally (free) and use MathPix only for scans; "
+                    "absent = MathPix for every file, as before.",
+    ),
     user=Depends(get_optional_user),
 ) -> AutoDocumentSubmitResponse:
     """Resolve a media fileId → URL, submit to MathPix, return the pdfId."""
@@ -85,6 +98,11 @@ async def start_process_pdf_from_file_id(
     if not file_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="fileId is required")
     try:
+        if (mode or "").strip().lower() == "extract":
+            started = await pdf_local_convert.start_for_extraction(file_id)
+            return AutoDocumentSubmitResponse(
+                pdf_id=started["pdf_id"], ocr=started["ocr"], pages=started.get("pages"),
+            )
         pdf_id = await pdf_questions_service.start_from_file_id(file_id)
         return AutoDocumentSubmitResponse(pdf_id=pdf_id)
     except Exception as exc:  # noqa: BLE001
@@ -113,11 +131,36 @@ async def pdf_to_questions(
     instituteId: Optional[str] = Query(None),
     preferredModel: Optional[str] = Query(None),
     generateImage: bool = Query(True),
+    mode: Optional[str] = Query(
+        None,
+        description="'extract' = digitise the paper's own questions verbatim (Vsmart Extract); "
+                    "absent = generate questions from the material (Vsmart Upload).",
+    ),
     db: Session = Depends(db_dependency),
     user=Depends(get_optional_user),
 ):
     """Async: poll MathPix for the PDF HTML, then generate questions. Poll
     /task-status/get-result for the AutoQuestionPaperResponse."""
+    extract = (mode or "").strip().lower() == "extract"
+    if extract and instituteId:
+        # Credit gate before any model call. The paper's size is unknown until
+        # MathPix is done, so the gate is priced at a typical paper; the real
+        # charge (per question actually extracted) is recorded by the worker.
+        estimate = preflight_tool_credits(
+            db, tool_key=question_extract_service.TOOL_KEY,
+            tool_params={"num_questions": 20}, institute_id=instituteId,
+        )
+        if estimate.get("sufficient") is False:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "message": (
+                        f"Extracting a paper needs about {estimate['estimated_credits']:.0f} credits "
+                        f"but only {estimate.get('current_balance', 0):.0f} are available. Top up to continue."
+                    ),
+                    "estimate": estimate,
+                },
+            )
     primary_model, fallback_models = resolve_models(
         db, question_gen_service.QUESTIONS_USE_CASE, preferredModel
     )
@@ -129,7 +172,10 @@ async def pdf_to_questions(
         institute_id=instituteId,
         dynamic_values={
             "model": primary_model,
-            "params": {"pdfId": pdfId, "userPrompt": userPrompt, "generateImage": generateImage},
+            "params": {
+                "pdfId": pdfId, "userPrompt": userPrompt, "generateImage": generateImage,
+                **({"mode": "extract"} if extract else {}),
+            },
         },
     )
     user_id = getattr(user, "user_id", None)
@@ -137,13 +183,28 @@ async def pdf_to_questions(
 
     async def _work() -> str:
         html = await pdf_questions_service.fetch_or_convert_html(pdfId, allow_poll=True)
+        if extract:
+            # The paper's own questions, all of them, key applied — never a
+            # rewrite. userPrompt here is the teacher's notes, not a brief.
+            # A scanned file went through MathPix (per-page cost); a digital
+            # one was read locally for free — only the former is surcharged.
+            vendor = await asyncio.to_thread(pdf_local_convert.vendor_of, pdfId)
+            ocr_pages = pdf_local_convert.ocr_pages_from_vendor(vendor)
+            if ocr_pages is None:  # whole-file MathPix job
+                ocr_pages = await mathpix_pdf_service.get_num_pages(pdfId) or 0
+            return await question_extract_service.extract_from_html(
+                html=html, models=models, user_notes=userPrompt,
+                institute_id=instituteId, user_id=user_id, billing_ref=task.id,
+                ocr_pages=ocr_pages,
+            )
         return await question_gen_service.questions_from_html(
             html=html, user_prompt=userPrompt, generate_image=generateImage,
             models=models, institute_id=instituteId, user_id=user_id,
         )
 
     ai_task_service.schedule(task.id, _work)
-    logger.info("Started pdf-to-questions: taskId=%s pdfId=%s model=%s", task.id, pdfId, primary_model)
+    logger.info("Started pdf-to-questions%s: taskId=%s pdfId=%s model=%s",
+                " (extract)" if extract else "", task.id, pdfId, primary_model)
     return LecturePlanKickoffResponse(
         taskId=task.id, model=primary_model, message="PDF question generation started"
     )

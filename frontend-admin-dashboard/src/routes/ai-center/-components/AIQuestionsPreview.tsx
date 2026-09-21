@@ -434,6 +434,41 @@ const AIQuestionsPreview = ({
                                                 <span className="text-sm font-bold leading-tight text-foreground/90">
                                                     {form.getValues('title')}
                                                 </span>
+                                                {/* A digitised paper says what it found, so the
+                                                    teacher knows whether the key needs a look. */}
+                                                {assessmentData.extraction && (
+                                                    <span className="text-caption text-muted-foreground">
+                                                        {t('header.extractionSummary', {
+                                                            questions:
+                                                                assessmentData.extraction.questions,
+                                                            keyed: assessmentData.extraction.keyed,
+                                                            explained:
+                                                                assessmentData.extraction.explained,
+                                                        })}
+                                                        {assessmentData.extraction.unkeyed > 0 &&
+                                                            ' · ' +
+                                                                t('header.extractionUnkeyed', {
+                                                                    count: assessmentData.extraction
+                                                                        .unkeyed,
+                                                                })}
+                                                        {(assessmentData.extraction.check?.length ??
+                                                            0) > 0 &&
+                                                            ' · ' +
+                                                                t('header.extractionCheck', {
+                                                                    numbers:
+                                                                        assessmentData.extraction.check!.join(
+                                                                            ', '
+                                                                        ),
+                                                                })}
+                                                        {assessmentData.extraction.credits !=
+                                                            null &&
+                                                            ' · ' +
+                                                                t('header.extractionCredits', {
+                                                                    count: assessmentData.extraction
+                                                                        .credits,
+                                                                })}
+                                                    </span>
+                                                )}
                                                 <div className="mt-0.5 flex flex-wrap items-center gap-2">
                                                     {form
                                                         .getValues('tags')

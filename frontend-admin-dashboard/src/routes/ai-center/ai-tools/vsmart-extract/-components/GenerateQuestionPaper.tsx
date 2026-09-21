@@ -13,22 +13,12 @@ import AITasksList from '@/routes/ai-center/-components/AITasksList';
 import { UseFormReturn } from 'react-hook-form';
 import { SectionFormType } from '@/types/assessments/assessment-steps';
 import { getRandomTaskName } from '@/routes/ai-center/-utils/helper';
-import { FilePdf, UploadSimple, X, Sparkle } from '@phosphor-icons/react';
+import { FilePdf, UploadSimple, X } from '@phosphor-icons/react';
 import { AITaskIndividualListInterface } from '@/types/ai/generate-assessment/generate-complete-assessment';
-import {
-    relativeTime,
-    statusLabel,
-    statusStyles,
-    taskDisplayName,
-} from '@/routes/ai-center/-utils/format';
 import { GeneratingState } from '@/routes/ai-center/-components/GeneratingState';
 import { DraftingDonePanel } from '@/routes/ai-center/-components/DraftingDonePanel';
 import { RecentFilesPanel } from '@/routes/ai-center/-components/RecentFilesPanel';
-import {
-    QuestionConfigPanel,
-    buildQuestionPrompt,
-} from '@/routes/ai-center/-components/QuestionConfigPanel';
-import { languageSupport } from '@/constants/dummy-data';
+import { ExtractOptionsPanel } from '@/routes/ai-center/-components/ExtractOptionsPanel';
 
 const ACCEPTED_FORMATS = '.pdf,.doc,.docx,.ppt,.pptx,.html';
 const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'html'];
@@ -44,7 +34,7 @@ const GenerateAiQuestionPaperComponent = ({
 }) => {
     const { t } = useTranslation([
         'aiCenterVsmartExtractGenerateQuestionPaper',
-        'aiCenterQuestionConfigPanel',
+        'aiCenterExtractOptionsPanel',
     ]);
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
@@ -63,16 +53,13 @@ const GenerateAiQuestionPaperComponent = ({
     const [readyTask, setReadyTask] = useState<AITaskIndividualListInterface | null>(null);
     const [openPreviewDialog, setOpenPreviewDialog] = useState(false);
 
-    const [numQuestions, setNumQuestions] = useState('10');
-    const [questionType, setQuestionType] = useState('MCQ');
-    const [difficulty, setDifficulty] = useState('Medium');
-    const [language, setLanguage] = useState(languageSupport[0]);
+    // The paper decides what and how much; the teacher may only leave notes.
+    const [notes, setNotes] = useState('');
 
     const { data: recentTasksData } = useQuery({
         ...handleQueryGetListIndividualTopics('PDF_TO_QUESTIONS'),
         staleTime: 30 * 1000,
-        refetchInterval:
-            pendingTaskId !== null && readyTask === null ? 5000 : false,
+        refetchInterval: pendingTaskId !== null && readyTask === null ? 5000 : false,
     });
 
     useEffect(() => {
@@ -93,9 +80,7 @@ const GenerateAiQuestionPaperComponent = ({
         const list: AITaskIndividualListInterface[] = Array.isArray(recentTasksData)
             ? recentTasksData
             : [];
-        return [...list]
-            .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
-            .slice(0, 3);
+        return [...list].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)).slice(0, 3);
     }, [recentTasksData]);
 
     const generateAssessmentMutation = useMutation({
@@ -112,7 +97,13 @@ const GenerateAiQuestionPaperComponent = ({
         }) => {
             setLoader(true);
             setKey('question');
-            return handleGenerateAssessmentQuestions(pdfId, userPrompt, taskName, taskId || '');
+            return handleGenerateAssessmentQuestions(
+                pdfId,
+                userPrompt,
+                taskName,
+                taskId || '',
+                'extract'
+            );
         },
         onSuccess: (response: unknown) => {
             setLoader(false);
@@ -151,11 +142,7 @@ const GenerateAiQuestionPaperComponent = ({
     const handleGenerate = () => {
         if (!uploadedFilePDFId) return;
         setPhase('generating');
-        pollGenerateAssessment(
-            uploadedFilePDFId,
-            buildQuestionPrompt(t, numQuestions, questionType, difficulty, language),
-            ''
-        );
+        pollGenerateAssessment(uploadedFilePDFId, notes.trim(), '');
     };
 
     const processFile = async (file: File) => {
@@ -182,7 +169,7 @@ const GenerateAiQuestionPaperComponent = ({
                 return;
             }
             setPhase('processing');
-            const response = await handleStartProcessUploadedFile(fileId);
+            const response = await handleStartProcessUploadedFile(fileId, 'extract');
             if (response?.pdf_id) {
                 setUploadedFilePDFId(response.pdf_id);
                 setPhase('ready');
@@ -224,8 +211,7 @@ const GenerateAiQuestionPaperComponent = ({
     };
 
     const fileChosen = phase !== 'idle' && fileName !== '';
-    const isWorking =
-        phase === 'uploading' || phase === 'processing' || phase === 'generating';
+    const isWorking = phase === 'uploading' || phase === 'processing' || phase === 'generating';
     const workingLabel =
         phase === 'uploading'
             ? t('workingLabel.uploading')
@@ -310,10 +296,7 @@ const GenerateAiQuestionPaperComponent = ({
                                 setReadyTask(null);
                                 setPendingTaskId(null);
                                 setErrorMessage(null);
-                                setNumQuestions('10');
-                                setQuestionType('MCQ');
-                                setDifficulty('Medium');
-                                setLanguage(languageSupport[0]);
+                                setNotes('');
                                 resetFile();
                             }}
                         />
@@ -328,17 +311,10 @@ const GenerateAiQuestionPaperComponent = ({
                             <p className="text-sm text-blue-900">{workingLabel}</p>
                         </div>
                     ) : phase === 'ready' ? (
-                        <QuestionConfigPanel
-                            numQuestions={numQuestions}
-                            setNumQuestions={setNumQuestions}
-                            questionType={questionType}
-                            setQuestionType={setQuestionType}
-                            difficulty={difficulty}
-                            setDifficulty={setDifficulty}
-                            language={language}
-                            setLanguage={setLanguage}
+                        <ExtractOptionsPanel
+                            notes={notes}
+                            setNotes={setNotes}
                             onSubmit={handleGenerate}
-                            ctaLabel={t('questionConfig.ctaLabel')}
                         />
                     ) : null}
                 </div>

@@ -23,10 +23,18 @@ import {
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import axios from 'axios';
 
-export const handleStartProcessUploadedFile = async (fileId: string) => {
+/**
+ * Get an uploaded file ready for question work.
+ *
+ * `mode: 'extract'` (Vsmart Extract) reads a digital PDF on the server for
+ * free and sends only scans to MathPix — the response says which (`ocr`).
+ * Without it every file goes to MathPix, as the generate tools always have.
+ */
+export const handleStartProcessUploadedFile = async (fileId: string, mode?: 'extract') => {
     const response = await axios({
         method: 'POST',
         url: START_PROCESSING_FILE_AI_URL,
+        params: mode ? { mode } : undefined,
         data: {
             file_id: fileId,
         },
@@ -154,11 +162,20 @@ export const handleSortQuestionsPDF = async (
     return response?.data;
 };
 
+/**
+ * Start a PDF → questions task.
+ *
+ * `mode: 'extract'` digitises the paper's OWN questions verbatim (every
+ * question, options, passages, marks, printed answer key and solutions) —
+ * what Vsmart Extract promises. Without it the server GENERATES questions
+ * from the material, which is Vsmart Upload's job.
+ */
 export const handleGenerateAssessmentQuestions = async (
     pdfId: string,
     userPrompt: string,
     taskName: string,
-    taskId: string
+    taskId: string,
+    mode?: 'extract'
 ) => {
     const instituteId = getInstituteId();
     const response = await axios({
@@ -170,6 +187,7 @@ export const handleGenerateAssessmentQuestions = async (
             taskName,
             instituteId,
             taskId,
+            ...(mode ? { mode } : {}),
         },
     });
     return response?.data;

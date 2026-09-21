@@ -20,7 +20,12 @@
         "saveChanges": "Save Changes",
         "close": "Close",
         "moreTagsBadge_one": "+{{count}}",
-        "moreTagsBadge_other": "+{{count}}"
+        "moreTagsBadge_other": "+{{count}}",
+        "extractionSummary": "{{questions}} questions read from the paper · answers for {{keyed}} · explanations for {{explained}}",
+        "extractionUnkeyed_one": "{{count}} without an answer — mark it before use",
+        "extractionUnkeyed_other": "{{count}} without an answer — mark them before use",
+        "extractionCredits": "{{count}} credits",
+        "extractionCheck": "check Q {{numbers}}"
     },
     "questionCard": {
         "duplicate": "Duplicate",

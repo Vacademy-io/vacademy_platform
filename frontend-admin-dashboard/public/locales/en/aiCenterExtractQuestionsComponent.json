@@ -4,9 +4,9 @@
     },
     "dialog": {
         "title": "Extract Questions",
-        "promptLabel": "Prompt",
-        "promptPlaceholder": "Enter Your Prompt Here",
-        "extractButton": "Extract"
+        "promptLabel": "Notes for the reader (optional)",
+        "promptPlaceholder": "e.g. only Section B · answers are in the margin",
+        "extractButton": "Extract all questions"
     },
     "tasksList": {
         "heading": "Vsmart Extract"

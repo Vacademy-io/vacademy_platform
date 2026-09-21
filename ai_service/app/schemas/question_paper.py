@@ -77,3 +77,7 @@ class AutoQuestionPaperResponse(BaseModel):
     subjects: Optional[List[str]] = None
     classes: Optional[List[str]] = None
     topic_question_map: Optional[TopicNumberMapDto] = None
+    # Vsmart Extract only: how the paper was read (parts, key found, keyed,
+    # explained, credits) — shown above the preview so the teacher knows what
+    # to check. Absent for generated papers.
+    extraction: Optional[Dict[str, Any]] = None

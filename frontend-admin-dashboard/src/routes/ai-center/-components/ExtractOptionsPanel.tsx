@@ -3,11 +3,20 @@ import { useTranslation } from 'react-i18next';
 import { Textarea } from '@/components/ui/textarea';
 import { computeToolCredits, useToolPricingQuery } from '@/services/ai-credits/get-ai-credits';
 
+export interface PaperInfo {
+    questionCount: number | null;
+    estimatedCredits: number | null;
+    pages: number | null;
+    ocrPages: number;
+}
+
 interface ExtractOptionsPanelProps {
     notes: string;
     setNotes: (value: string) => void;
     onSubmit: () => void;
     disabled?: boolean;
+    /** What the upload step found: question count and the exact credits (null while unknown). */
+    paperInfo?: PaperInfo | null;
 }
 
 /** A typical paper, for the cost line shown before the real count is known. */
@@ -26,6 +35,7 @@ export const ExtractOptionsPanel = ({
     setNotes,
     onSubmit,
     disabled = false,
+    paperInfo = null,
 }: ExtractOptionsPanelProps) => {
     const { t } = useTranslation('aiCenterExtractOptionsPanel');
     const { data: pricing } = useToolPricingQuery();
@@ -57,6 +67,21 @@ export const ExtractOptionsPanel = ({
                 <h3 className="text-sm font-semibold text-gray-900">{t('title')}</h3>
                 <p className="text-xs text-neutral-500">{t('subtitle')}</p>
             </div>
+
+            {/* The exact bill, before the button: the paper was already read
+                on upload, so the question count and the credits are known. */}
+            {paperInfo && (
+                <div className="rounded-xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-neutral-700">
+                    {paperInfo.questionCount != null && paperInfo.estimatedCredits != null
+                        ? t('found', {
+                              questions: paperInfo.questionCount,
+                              pages: paperInfo.pages ?? '?',
+                              credits: paperInfo.estimatedCredits,
+                          })
+                        : t('foundScan', { pages: paperInfo.pages ?? '?' })}
+                    {paperInfo.ocrPages > 0 && ' ' + t('foundOcr', { count: paperInfo.ocrPages })}
+                </div>
+            )}
 
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {(['questions', 'options', 'passages', 'key', 'solutions', 'marks'] as const).map(

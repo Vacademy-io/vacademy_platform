@@ -420,11 +420,12 @@ async def _start_local(file_id: str, data: bytes) -> Dict[str, Any]:
     pdf_id = LOCAL_ID_PREFIX + uuid4().hex
     vendor = f"{HYBRID_VENDOR}:{ocr_done}" if ocr_done else LOCAL_VENDOR
     await asyncio.to_thread(_cache, pdf_id, file_id, html, vendor)
-    logger.info("extract: %s read locally (%d pages, %d figures, %d via MathPix: %s) as %s",
+    questions = await asyncio.to_thread(question_count_of_html, html)
+    logger.info("extract: %s read locally (%d pages, %d figures, %d via MathPix: %s, ~%d questions) as %s",
                 file_id, info["pages"], info["figures"], ocr_done,
-                ",".join(str(i + 1) for i in info["ocr_idx"]) or "-", pdf_id)
+                ",".join(str(i + 1) for i in info["ocr_idx"]) or "-", questions, pdf_id)
     return {"pdf_id": pdf_id, "vendor": vendor, "pages": info["pages"],
-            "ocr": ocr_done > 0, "ocr_pages": ocr_done}
+            "ocr": ocr_done > 0, "ocr_pages": ocr_done, "question_count": questions}
 
 
 def _single(doc, pno: int):
@@ -453,6 +454,36 @@ def vendor_of(pdf_id: str) -> Optional[str]:
         return None
 
 
+def question_count_of_html(html: str) -> int:
+    """How many questions the paper prints, from its own numbering (the
+    answer key excluded) — the number the teacher sees before extracting."""
+    from .question_extract_service import find_answer_key, question_starts, split_blocks
+
+    from .question_extract_service import _question_no
+
+    blocks = split_blocks(html or "")
+    key_at = find_answer_key(blocks)
+    body = blocks[:key_at] if key_at is not None else blocks
+    # Distinct numbers, not starts: an empty "1. 2. 3." list in the
+    # instructions box is tolerated as a start by the cursor but must not be
+    # counted twice against the real Q1–Q3.
+    numbers = {_question_no(b) for b, st in zip(body, question_starts(body)) if st}
+    return len(numbers)
+
+
+def question_count_of(pdf_id: str) -> Optional[int]:
+    """Question count for a converted pdfId whose HTML is cached; None when
+    the conversion is still running (whole-file MathPix)."""
+    try:
+        with db_session() as db:
+            row = FileConversionRepository(db).find_by_vendor_file_id(pdf_id)
+            if not row or not row.html_text:
+                return None
+            return question_count_of_html(row.html_text)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def ocr_pages_from_vendor(vendor: Optional[str]) -> Optional[int]:
     """Pages that went through MathPix for a conversion, from its vendor tag:
     0 for a purely local read, N for a hybrid, None for a whole-file MathPix
@@ -469,5 +500,5 @@ def ocr_pages_from_vendor(vendor: Optional[str]) -> Optional[int]:
 
 __all__ = [
     "start_for_extraction", "to_html", "is_digital", "page_kind", "vendor_of",
-    "ocr_pages_from_vendor", "LOCAL_VENDOR", "HYBRID_VENDOR",
+    "ocr_pages_from_vendor", "question_count_of", "question_count_of_html", "LOCAL_VENDOR", "HYBRID_VENDOR",
 ]

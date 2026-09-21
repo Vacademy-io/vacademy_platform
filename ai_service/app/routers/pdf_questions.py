@@ -12,10 +12,11 @@ reuses the shared question engine (question_gen_service + question_format).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -25,7 +26,7 @@ from ..models.ai_task import AiTaskInputType, AiTaskType
 from ..repositories.ai_task_repository import AiTaskRepository
 from ..schemas.ai_task import LecturePlanKickoffResponse
 from ..services import (
-    ai_task_service, mathpix_pdf_service, pdf_local_convert, pdf_questions_service,
+    ai_task_service, audit_client, mathpix_pdf_service, pdf_local_convert, pdf_questions_service,
     question_extract_service, question_gen_service,
 )
 from ..services.ai_billing import preflight_tool_credits
@@ -42,9 +43,17 @@ router = APIRouter(prefix="/ai/get-question-pdf", tags=["AI Question Generation"
 class AutoDocumentSubmitResponse(BaseModel):
     pdf_id: Optional[str] = None
     # Set by mode=extract: whether the file needed OCR (MathPix, charged per
-    # page) or was read locally for free, and how many pages it has.
+    # page) or was read locally for free, how many pages it has, how many
+    # questions it prints and what extracting them will cost — shown to the
+    # teacher before they press the button.
     ocr: Optional[bool] = None
     pages: Optional[int] = None
+    ocr_pages: Optional[int] = None
+    question_count: Optional[int] = None
+    estimated_credits: Optional[float] = None
+
+
+AUDIT_ENTITY = "AI_QUESTION_EXTRACTION"
 
 
 class PdfFileIdRequest(BaseModel):
@@ -86,11 +95,14 @@ async def start_process_pdf(
 @router.post("/math-parser/start-process-pdf-file-id", response_model=AutoDocumentSubmitResponse)
 async def start_process_pdf_from_file_id(
     body: PdfFileIdRequest,
+    request: Request,
     mode: Optional[str] = Query(
         None,
         description="'extract' = read a digital PDF locally (free) and use MathPix only for scans; "
                     "absent = MathPix for every file, as before.",
     ),
+    instituteId: Optional[str] = Query(None, description="for the cost estimate and the activity log (extract)"),
+    fileName: Optional[str] = Query(None, description="shown in the activity log (extract)"),
     user=Depends(get_optional_user),
 ) -> AutoDocumentSubmitResponse:
     """Resolve a media fileId → URL, submit to MathPix, return the pdfId."""
@@ -100,8 +112,31 @@ async def start_process_pdf_from_file_id(
     try:
         if (mode or "").strip().lower() == "extract":
             started = await pdf_local_convert.start_for_extraction(file_id)
+            questions = started.get("question_count")
+            ocr_pages = started.get("ocr_pages") or 0
+            estimate = None
+            if questions is not None:
+                estimate = await asyncio.to_thread(
+                    question_extract_service._estimated_credits, questions, ocr_pages, instituteId,
+                )
+            name = fileName or file_id
+            how = (
+                "read locally, free" if not started["ocr"]
+                else (f"{ocr_pages} page(s) via OCR" if started.get("ocr_pages") else "scanned — sent to OCR")
+            )
+            audit_client.record_later(
+                institute_id=instituteId, request=request, user=user,
+                entity_type=AUDIT_ENTITY, entity_id=started["pdf_id"], action="UPLOAD",
+                description=(
+                    f"Uploaded '{name}' for question extraction — {started.get('pages') or '?'} page(s), {how}"
+                    + (f", {questions} question(s) found, estimated {estimate:.0f} credits" if questions is not None and estimate is not None else "")
+                ),
+                payload={"file_id": file_id, "pdf_id": started["pdf_id"], "pages": started.get("pages"),
+                         "ocr_pages": ocr_pages, "question_count": questions, "estimated_credits": estimate},
+            )
             return AutoDocumentSubmitResponse(
                 pdf_id=started["pdf_id"], ocr=started["ocr"], pages=started.get("pages"),
+                ocr_pages=ocr_pages, question_count=questions, estimated_credits=estimate,
             )
         pdf_id = await pdf_questions_service.start_from_file_id(file_id)
         return AutoDocumentSubmitResponse(pdf_id=pdf_id)
@@ -125,6 +160,7 @@ async def pdf_to_html(pdfId: str = Query(...)) -> PdfHtmlResponse:
 
 @router.get("/math-parser/pdf-to-questions", response_model=LecturePlanKickoffResponse)
 async def pdf_to_questions(
+    request: Request,
     pdfId: str = Query(...),
     userPrompt: Optional[str] = Query(None),
     taskName: Optional[str] = Query(None),
@@ -143,12 +179,14 @@ async def pdf_to_questions(
     /task-status/get-result for the AutoQuestionPaperResponse."""
     extract = (mode or "").strip().lower() == "extract"
     if extract and instituteId:
-        # Credit gate before any model call. The paper's size is unknown until
-        # MathPix is done, so the gate is priced at a typical paper; the real
-        # charge (per question actually extracted) is recorded by the worker.
+        # Credit gate before any model call, priced on the paper's own
+        # question count when its text is already converted (the local
+        # path), else on a typical paper; the real charge (per question
+        # actually extracted) is recorded by the worker.
+        known = pdf_local_convert.question_count_of(pdfId)
         estimate = preflight_tool_credits(
             db, tool_key=question_extract_service.TOOL_KEY,
-            tool_params={"num_questions": 20}, institute_id=instituteId,
+            tool_params={"num_questions": known if known else 20}, institute_id=instituteId,
         )
         if estimate.get("sufficient") is False:
             raise HTTPException(
@@ -180,26 +218,63 @@ async def pdf_to_questions(
     )
     user_id = getattr(user, "user_id", None)
     models = [primary_model, *fallback_models]
+    # Captured now: the worker runs after the request (and its headers) is gone.
+    actor = audit_client.actor_from_request(request, user) if extract else None
 
-    async def _work() -> str:
+    async def _extract() -> str:
+        # The paper's own questions, all of them, key applied — never a
+        # rewrite. userPrompt here is the teacher's notes, not a brief.
+        # A scanned file went through MathPix (per-page cost); a digital
+        # one was read locally for free — only the former is surcharged.
         html = await pdf_questions_service.fetch_or_convert_html(pdfId, allow_poll=True)
-        if extract:
-            # The paper's own questions, all of them, key applied — never a
-            # rewrite. userPrompt here is the teacher's notes, not a brief.
-            # A scanned file went through MathPix (per-page cost); a digital
-            # one was read locally for free — only the former is surcharged.
-            vendor = await asyncio.to_thread(pdf_local_convert.vendor_of, pdfId)
-            ocr_pages = pdf_local_convert.ocr_pages_from_vendor(vendor)
-            if ocr_pages is None:  # whole-file MathPix job
-                ocr_pages = await mathpix_pdf_service.get_num_pages(pdfId) or 0
-            return await question_extract_service.extract_from_html(
+        vendor = await asyncio.to_thread(pdf_local_convert.vendor_of, pdfId)
+        ocr_pages = pdf_local_convert.ocr_pages_from_vendor(vendor)
+        if ocr_pages is None:  # whole-file MathPix job
+            ocr_pages = await mathpix_pdf_service.get_num_pages(pdfId) or 0
+        try:
+            raw = await question_extract_service.extract_from_html(
                 html=html, models=models, user_notes=userPrompt,
                 institute_id=instituteId, user_id=user_id, billing_ref=task.id,
                 ocr_pages=ocr_pages,
             )
+        except Exception as exc:
+            audit_client.record_later(
+                institute_id=instituteId, actor=actor, entity_type=AUDIT_ENTITY, entity_id=task.id,
+                action="FAIL", description=f"Question extraction failed: {str(exc)[:200]}",
+                payload={"task_id": task.id, "pdf_id": pdfId}, response_status=500,
+            )
+            raise
+        summary = (json.loads(raw).get("extraction") or {}) if raw else {}
+        audit_client.record_later(
+            institute_id=instituteId, actor=actor, entity_type=AUDIT_ENTITY, entity_id=task.id,
+            action="COMPLETE",
+            description=(
+                f"Extracted {summary.get('questions', 0)} question(s) — answers for {summary.get('keyed', 0)}, "
+                f"explanations for {summary.get('explained', 0)}"
+                + (f", {summary['credits']:.0f} credits charged" if summary.get("credits") is not None else "")
+                + (f", {summary['ocr_pages']} page(s) OCR" if summary.get("ocr_pages") else "")
+            ),
+            payload={"task_id": task.id, "pdf_id": pdfId, **{k: v for k, v in summary.items() if k != "check"},
+                     "check": summary.get("check")},
+        )
+        return raw
+
+    async def _work() -> str:
+        if extract:
+            return await _extract()
+        html = await pdf_questions_service.fetch_or_convert_html(pdfId, allow_poll=True)
         return await question_gen_service.questions_from_html(
             html=html, user_prompt=userPrompt, generate_image=generateImage,
             models=models, institute_id=instituteId, user_id=user_id,
+        )
+
+    if extract:
+        audit_client.record_later(
+            institute_id=instituteId, request=request, user=user,
+            entity_type=AUDIT_ENTITY, entity_id=task.id, action="EXTRACT",
+            description=f"Started question extraction (task {task.id})"
+                        + (f" — {taskName}" if taskName else ""),
+            payload={"task_id": task.id, "pdf_id": pdfId, "notes": userPrompt or None},
         )
 
     ai_task_service.schedule(task.id, _work)

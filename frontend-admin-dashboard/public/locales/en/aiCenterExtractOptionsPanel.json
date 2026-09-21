@@ -17,5 +17,9 @@
     "costBands": "Credits by paper size: {{bands}}.",
     "bandUpTo": "up to {{upto}} questions",
     "bandRange": "{{from}}–{{upto}}",
-    "bandOpen": "{{from}}+"
+    "bandOpen": "{{from}}+",
+    "found": "{{questions}} questions found across {{pages}} pages — {{credits}} credits will be deducted when you extract.",
+    "foundScan": "Scanned paper ({{pages}} pages) — the question count will be known after reading; credits by paper size below, plus the per-page OCR charge.",
+    "foundOcr_one": "{{count}} page was read by OCR (included).",
+    "foundOcr_other": "{{count}} pages were read by OCR (included)."
 }

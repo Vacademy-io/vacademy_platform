@@ -30,11 +30,27 @@ import axios from 'axios';
  * free and sends only scans to MathPix — the response says which (`ocr`).
  * Without it every file goes to MathPix, as the generate tools always have.
  */
-export const handleStartProcessUploadedFile = async (fileId: string, mode?: 'extract') => {
+export interface StartProcessResponse {
+    pdf_id: string;
+    /** extract mode: was OCR needed, page counts, the paper's question count and the credits it will cost */
+    ocr?: boolean | null;
+    pages?: number | null;
+    ocr_pages?: number | null;
+    question_count?: number | null;
+    estimated_credits?: number | null;
+}
+
+export const handleStartProcessUploadedFile = async (
+    fileId: string,
+    mode?: 'extract',
+    options?: { fileName?: string }
+): Promise<StartProcessResponse> => {
     const response = await axios({
         method: 'POST',
         url: START_PROCESSING_FILE_AI_URL,
-        params: mode ? { mode } : undefined,
+        params: mode
+            ? { mode, instituteId: getInstituteId(), fileName: options?.fileName }
+            : undefined,
         data: {
             file_id: fileId,
         },

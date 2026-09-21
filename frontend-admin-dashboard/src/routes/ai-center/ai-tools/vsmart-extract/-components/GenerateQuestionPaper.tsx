@@ -55,6 +55,13 @@ const GenerateAiQuestionPaperComponent = ({
 
     // The paper decides what and how much; the teacher may only leave notes.
     const [notes, setNotes] = useState('');
+    // What the server found on upload: question count and the exact credits.
+    const [paperInfo, setPaperInfo] = useState<{
+        questionCount: number | null;
+        estimatedCredits: number | null;
+        pages: number | null;
+        ocrPages: number;
+    } | null>(null);
 
     const { data: recentTasksData } = useQuery({
         ...handleQueryGetListIndividualTopics('PDF_TO_QUESTIONS'),
@@ -136,6 +143,7 @@ const GenerateAiQuestionPaperComponent = ({
         setPhase('idle');
         setFileName('');
         setUploadedFilePDFId('');
+        setPaperInfo(null);
         setErrorMessage(null);
     };
 
@@ -169,9 +177,17 @@ const GenerateAiQuestionPaperComponent = ({
                 return;
             }
             setPhase('processing');
-            const response = await handleStartProcessUploadedFile(fileId, 'extract');
+            const response = await handleStartProcessUploadedFile(fileId, 'extract', {
+                fileName: file.name,
+            });
             if (response?.pdf_id) {
                 setUploadedFilePDFId(response.pdf_id);
+                setPaperInfo({
+                    questionCount: response.question_count ?? null,
+                    estimatedCredits: response.estimated_credits ?? null,
+                    pages: response.pages ?? null,
+                    ocrPages: response.ocr_pages ?? 0,
+                });
                 setPhase('ready');
             } else {
                 setErrorMessage(t('errors.processFailed'));
@@ -315,6 +331,7 @@ const GenerateAiQuestionPaperComponent = ({
                             notes={notes}
                             setNotes={setNotes}
                             onSubmit={handleGenerate}
+                            paperInfo={paperInfo}
                         />
                     ) : null}
                 </div>

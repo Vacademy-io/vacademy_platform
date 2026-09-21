@@ -74,6 +74,7 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
             // Reported by assessment_service through the internal audit endpoint,
             // not by an @Auditable annotation, so the contract test does not see it.
             { value: 'ASSESSMENT', label: 'Assessment' },
+            { value: 'AI_QUESTION_EXTRACTION', label: 'Question paper upload (AI)' },
         ],
     },
     {

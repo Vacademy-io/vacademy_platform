@@ -1120,6 +1120,31 @@ const EnrollByInvite = ({
       }
 
       const policyResponse = await getEnrollmentPolicy({ packageSessionId });
+
+      // A conflict the backend tagged explicitly (ENROLLMENT_CONFLICT:<TYPE>) is a
+      // conflict whether or not this package session has a policy configured.
+      // Gating it on policy content below meant an institute with no policy --
+      // the common case -- got the message as a toast with no way to sign in,
+      // while the dialog with "Login now" only appeared for institutes that had
+      // set one up.
+      if (
+        scenario === "error_already_enrolled" &&
+        enrollmentResponseCode?.includes("ENROLLMENT_CONFLICT:")
+      ) {
+        const dialogType = detectEnrollmentConflict({
+          policyResponse,
+          errorMessage: enrollmentErrorMessage,
+          responseCode: enrollmentResponseCode,
+        });
+        if (dialogType) {
+          setEnrollmentPolicyResponse(policyResponse ?? null);
+          setEnrollmentPolicyServerMessage(enrollmentErrorMessage);
+          setEnrollmentPolicyDialogType(dialogType);
+          setEnrollmentPolicyDialogOpen(true);
+          return true;
+        }
+      }
+
       console.log(
         "[EnrollByInvite] Enrollment policy response:",
         policyResponse,
@@ -1169,7 +1194,18 @@ const EnrollByInvite = ({
       }
     } catch (err) {
       console.error("[EnrollByInvite] Failed to fetch enrollment policy:", err);
-      // Non-blocking - we don't prevent the enrollment flow if policy fetch fails
+      // Non-blocking - we don't prevent the enrollment flow if policy fetch fails.
+      // A tagged conflict still deserves the dialog even when the policy read failed.
+      if (
+        scenario === "error_already_enrolled" &&
+        enrollmentResponseCode?.includes("ENROLLMENT_CONFLICT:")
+      ) {
+        setEnrollmentPolicyResponse(null);
+        setEnrollmentPolicyServerMessage(enrollmentErrorMessage);
+        setEnrollmentPolicyDialogType("already_enrolled");
+        setEnrollmentPolicyDialogOpen(true);
+        return true;
+      }
     }
     return false;
   };

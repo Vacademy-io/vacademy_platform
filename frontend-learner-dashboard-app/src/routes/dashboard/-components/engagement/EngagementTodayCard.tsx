@@ -8,6 +8,7 @@ import { EngagementItemDialog } from "./EngagementItemDialog";
 import { InlineQuestion } from "./InlineQuestion";
 import { glimpseFor } from "./engagement-preview";
 import { ProgressRing } from "./ProgressRing";
+import { RevealedAnswers } from "./RevealedAnswers";
 import {
   isUrgent,
   shortDateLabel,
@@ -77,7 +78,13 @@ export function EngagementTodayCard() {
   }
 
   // Nothing scheduled and nothing coming — stay out of the way entirely.
-  if (!feed || (feed.items.length === 0 && feed.upcoming.length === 0 && done === 0)) {
+  if (
+    !feed ||
+    (feed.items.length === 0 &&
+      feed.upcoming.length === 0 &&
+      done === 0 &&
+      (feed.revealed?.length ?? 0) === 0)
+  ) {
     return null;
   }
 
@@ -88,12 +95,24 @@ export function EngagementTodayCard() {
         <div className="flex items-center gap-4 border-b border-neutral-100 bg-gradient-to-r from-primary-50 via-white to-white px-5 py-4 dark:border-neutral-800 dark:from-primary-950/30 dark:via-neutral-900 dark:to-neutral-900">
           <ProgressRing percent={progressPercent} done={done} total={total} />
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
-              {allDone ? "All done for today" : "Your tasks today"}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
+                {allDone ? "All done for today" : "Your tasks today"}
+              </h2>
+              {(feed.streakDays ?? 0) > 0 && (
+                <span
+                  className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                  title="Consecutive days with a task completed"
+                >
+                  🔥 {feed.streakDays}-day streak
+                </span>
+              )}
+            </div>
             <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">
               {allDone
-                ? "Come back tomorrow to keep your streak alive."
+                ? (feed.streakDays ?? 0) > 0
+                  ? `Come back tomorrow to make it ${(feed.streakDays ?? 0) + 1} days.`
+                  : "Come back tomorrow to start a streak."
                 : remaining === 1
                   ? "One task left — it takes a minute."
                   : `${remaining} tasks waiting for you.`}
@@ -161,6 +180,11 @@ export function EngagementTodayCard() {
                     <span className="mt-1 block truncate text-base font-semibold text-neutral-900 dark:text-neutral-50">
                       {item.title}
                     </span>
+                    {item.packageSessionName && (
+                      <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
+                        {item.packageSessionName}
+                      </span>
+                    )}
 
                     {/* A glimpse of the actual content, so the card reads as
                         something to do rather than a link to somewhere else. */}
@@ -223,6 +247,9 @@ export function EngagementTodayCard() {
             </li>
           )}
         </ul>
+
+        {/* Last night's answers */}
+        <RevealedAnswers items={feed.revealed ?? []} />
 
         {/* Locked future tasks */}
         {upcoming.length > 0 && (

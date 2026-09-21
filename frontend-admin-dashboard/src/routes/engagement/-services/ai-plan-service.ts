@@ -54,11 +54,24 @@ export const DRAFT_CREDITS = 10;
 /** Per generated picture; mirrors html_document_image. */
 export const IMAGE_CREDITS = 2;
 
-export async function draftAiPlan(brief: AiPlanBrief): Promise<AiPlanDraft> {
+/**
+ * Idempotency keys are minted ONCE per attempt by the caller and reused on retry.
+ * A key generated inside this function would be fresh on every call, so a retry
+ * after a timeout would be billed as a second draft.
+ */
+export function newIdempotencyKey(prefix: string): string {
+    const rand = Math.random().toString(36).slice(2, 10);
+    return `${prefix}-${Date.now()}-${rand}`;
+}
+
+export async function draftAiPlan(
+    brief: AiPlanBrief,
+    idempotencyKey: string
+): Promise<AiPlanDraft> {
     const { data } = await authenticatedAxiosInstance.post<AiPlanDraft>(`${ROOT}/draft`, {
         ...brief,
         institute_id: getInstituteId(),
-        idempotency_key: `engagement-draft-${Date.now()}`,
+        idempotency_key: idempotencyKey,
     });
     return data;
 }
@@ -66,6 +79,7 @@ export async function draftAiPlan(brief: AiPlanBrief): Promise<AiPlanDraft> {
 export async function illustrateReading(
     title: string,
     contentHtml: string,
+    idempotencyKey: string,
     maxImages = 2
 ): Promise<{ content_html: string; images_generated: number }> {
     const { data } = await authenticatedAxiosInstance.post<{
@@ -76,7 +90,7 @@ export async function illustrateReading(
         title,
         content_html: contentHtml,
         max_images: maxImages,
-        idempotency_key: `engagement-illustrate-${Date.now()}`,
+        idempotency_key: idempotencyKey,
     });
     return data;
 }

@@ -1,7 +1,20 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CaretDown, CaretRight, PencilSimple } from '@phosphor-icons/react';
-import { getEngagementPlan } from '../-services/engagement-service';
+import {
+    CaretDown,
+    CaretRight,
+    PencilSimple,
+    ChartBar,
+    Trash,
+    EyeSlash,
+    Eye,
+} from '@phosphor-icons/react';
+import {
+    deleteEngagementPlan,
+    getEngagementPlan,
+    updateEngagementPlan,
+} from '../-services/engagement-service';
+import { PlanOverviewDialog } from './PlanOverviewDialog';
 import type { EngagementItemDTO, EngagementPlanDTO } from '../-types/types';
 import { ItemTrackingDialog } from './ItemTrackingDialog';
 import { PlanComposerDialog } from './PlanComposerDialog';
@@ -17,6 +30,35 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
     const [expanded, setExpanded] = useState(false);
     const [trackingItem, setTrackingItem] = useState<EngagementItemDTO | null>(null);
     const [editOpen, setEditOpen] = useState(false);
+    const [overviewOpen, setOverviewOpen] = useState(false);
+    const [busy, setBusy] = useState(false);
+
+    async function togglePublished(e: React.MouseEvent | React.KeyboardEvent) {
+        e.stopPropagation();
+        setBusy(true);
+        try {
+            await updateEngagementPlan(plan.id, {
+                status: plan.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED',
+            });
+            onChanged?.();
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function remove(e: React.MouseEvent | React.KeyboardEvent) {
+        e.stopPropagation();
+        // Removing a plan takes it off every learner's home page; the attempts and
+        // points already earned are untouched.
+        if (!window.confirm(`Remove "${plan.title}"? Learners will stop seeing its tasks.`)) return;
+        setBusy(true);
+        try {
+            await deleteEngagementPlan(plan.id);
+            onChanged?.();
+        } finally {
+            setBusy(false);
+        }
+    }
 
     const {
         data: detail,
@@ -55,8 +97,62 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                 >
                     {plan.status}
                 </span>
-                {/* A span, not a button: this sits inside the expand button, and a
+                {/* Spans, not buttons: these sit inside the expand button, and a
                     nested button is invalid HTML. */}
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Learner progress"
+                    title="Who is keeping up"
+                    className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setOverviewOpen(true);
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setOverviewOpen(true);
+                        }
+                    }}
+                >
+                    <ChartBar size={16} />
+                </span>
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={plan.status === 'PUBLISHED' ? 'Unpublish plan' : 'Publish plan'}
+                    title={plan.status === 'PUBLISHED' ? 'Hide from learners' : 'Show to learners'}
+                    aria-disabled={busy}
+                    className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                    onClick={(e) => void togglePublished(e)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            void togglePublished(e);
+                        }
+                    }}
+                >
+                    {plan.status === 'PUBLISHED' ? <EyeSlash size={16} /> : <Eye size={16} />}
+                </span>
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Remove plan"
+                    title="Remove"
+                    aria-disabled={busy}
+                    className="rounded p-1 text-neutral-400 hover:bg-danger-50 hover:text-danger-600"
+                    onClick={(e) => void remove(e)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            void remove(e);
+                        }
+                    }}
+                >
+                    <Trash size={16} />
+                </span>
                 <span
                     role="button"
                     tabIndex={0}
@@ -136,6 +232,12 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                     void refetch();
                     onChanged?.();
                 }}
+            />
+
+            <PlanOverviewDialog
+                planId={plan.id}
+                open={overviewOpen}
+                onOpenChange={setOverviewOpen}
             />
 
             <ItemTrackingDialog

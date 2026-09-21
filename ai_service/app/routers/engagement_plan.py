@@ -124,9 +124,32 @@ def _actor(current_user, body_institute: Optional[str]):
     raw = getattr(current_user, "roles", None) or getattr(current_user, "authorities", None)
     if raw is None and isinstance(current_user, dict):
         raw = current_user.get("roles") or current_user.get("authorities")
-    roles = {str(r).upper() for r in (raw or [])}
-    role = "ADMIN" if any("ADMIN" in r for r in roles) else ("TEACHER" if any("TEACHER" in r for r in roles) else "ADMIN")
+    roles = _flatten_roles(raw)
+    # Staff only. Both endpoints spend the institute's credits, so the caller must
+    # hold a teaching or admin authority — a learner token must NOT fall through to
+    # a default role the way some older routers allow.
+    if any("ADMIN" in r for r in roles):
+        role = "ADMIN"
+    elif any("TEACHER" in r for r in roles):
+        role = "TEACHER"
+    else:
+        raise HTTPException(status_code=403, detail="Planning engagement needs a teacher or admin account.")
     return user_id, (token_institute or body_institute), role
+
+
+def _flatten_roles(raw) -> set:
+    """Roles arrive either as a flat list or as the JWT's per-institute map
+    {instituteId: {roles: [...]}}; accept both."""
+    out = set()
+    if isinstance(raw, dict):
+        for v in raw.values():
+            inner = v.get("roles") if isinstance(v, dict) else v
+            for r in inner or []:
+                out.add(str(r).upper())
+    else:
+        for r in raw or []:
+            out.add(str(r).upper())
+    return out
 
 
 def _gate(db: Session, tool_key: str, institute_id: Optional[str], what: str) -> None:

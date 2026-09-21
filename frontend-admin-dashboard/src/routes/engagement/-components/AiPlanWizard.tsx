@@ -34,6 +34,7 @@ import {
     countImagePlaceholders,
     draftAiPlan,
     illustrateReading,
+    newIdempotencyKey,
     DRAFT_CREDITS,
     IMAGE_CREDITS,
     type AiPlanBrief,
@@ -114,6 +115,9 @@ export function AiPlanWizard({
 
     // Draft + review
     const [draft, setDraft] = useState<AiPlanDraft | null>(null);
+    // One key per draft attempt; a retry of the SAME attempt reuses it so it cannot
+    // be billed twice. Reset when the brief changes.
+    const [draftKey, setDraftKey] = useState(() => newIdempotencyKey('engagement-draft'));
     const [selectedDay, setSelectedDay] = useState(0);
     const [illustrating, setIllustrating] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -189,23 +193,28 @@ export function AiPlanWizard({
         setStep('generating');
         try {
             const grounding_texts = await collectGrounding();
-            const result = await draftAiPlan({
-                title: title.trim() || undefined,
-                topic: topic.trim() || undefined,
-                language,
-                difficulty,
-                start_date: startDate,
-                days,
-                per_day_items: perDay,
-                start_time: startTime,
-                end_time: endTime,
-                reveal_time: revealTime || undefined,
-                notify_time: startTime,
-                completion_points: 10,
-                correct_points: 20,
-                mix,
-                grounding_texts,
-            });
+            const result = await draftAiPlan(
+                {
+                    title: title.trim() || undefined,
+                    topic: topic.trim() || undefined,
+                    language,
+                    difficulty,
+                    start_date: startDate,
+                    days,
+                    per_day_items: perDay,
+                    start_time: startTime,
+                    end_time: endTime,
+                    reveal_time: revealTime || undefined,
+                    notify_time: startTime,
+                    completion_points: 10,
+                    correct_points: 20,
+                    mix,
+                    grounding_texts,
+                },
+                draftKey
+            );
+            // Success: the next draft is a new attempt and gets a new key.
+            setDraftKey(newIdempotencyKey('engagement-draft'));
             setDraft(result);
             setSelectedDay(0);
             setStep('review');
@@ -262,7 +271,12 @@ export function AiPlanWizard({
         setIllustrating(key);
         setError(null);
         try {
-            const res = await illustrateReading(item.title, item.contentHtml, 2);
+            const res = await illustrateReading(
+                item.title,
+                item.contentHtml,
+                newIdempotencyKey(`engagement-illustrate-${slotIndex}-${itemIndex}`),
+                2
+            );
             patchItem(slotIndex, itemIndex, {
                 contentHtml: res.content_html,
                 itemType: res.images_generated > 0 ? 'VISUAL_NOTE' : item.itemType,

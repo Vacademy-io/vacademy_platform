@@ -61,6 +61,11 @@ export interface EngagementItem {
   pointsAwarded?: number | null;
 
   completedCount?: number | null;
+
+  /** Present only on revealed entries. */
+  correctOptionId?: string | null;
+  explanation?: string | null;
+  selectedOptionId?: string | null;
 }
 
 export interface EngagementFeed {
@@ -69,6 +74,10 @@ export interface EngagementFeed {
   totalToday: number;
   completedToday: number;
   capApplied: boolean;
+  /** Recently revealed tasks the learner completed — answer, explanation, result. */
+  revealed: EngagementItem[];
+  /** Consecutive days with a completion, ending today or yesterday. */
+  streakDays: number;
 }
 
 /**
@@ -150,6 +159,8 @@ const EMPTY_FEED: EngagementFeed = {
   totalToday: 0,
   completedToday: 0,
   capApplied: false,
+  revealed: [],
+  streakDays: 0,
 };
 
 /** Today's tasks across every batch. Returns an empty feed on any failure. */
@@ -167,6 +178,8 @@ export async function fetchEngagementFeed(): Promise<EngagementFeed> {
       totalToday: data?.totalToday ?? 0,
       completedToday: data?.completedToday ?? 0,
       capApplied: Boolean(data?.capApplied),
+      revealed: Array.isArray(data?.revealed) ? data.revealed : [],
+      streakDays: Number(data?.streakDays ?? 0),
     };
   } catch (error) {
     console.error("[engagement] feed fetch failed:", error);

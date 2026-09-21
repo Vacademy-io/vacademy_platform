@@ -36,6 +36,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -82,6 +83,7 @@ public class EngagementLearnerService {
     private final PointsLedgerService pointsLedgerService;
     private final StudentSessionInstituteGroupMappingRepository enrollmentRepository;
     private final LearnerOperationRepository learnerOperationRepository;
+    private final vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository packageSessionRepository;
     private final ObjectMapper objectMapper;
 
     // ── Feed ─────────────────────────────────────────────────────────────────
@@ -108,6 +110,19 @@ public class EngagementLearnerService {
 
         Map<String, EngagementPlan> plansById = new HashMap<>();
         for (EngagementPlan plan : plans) plansById.put(plan.getId(), plan);
+
+        // A learner in several batches needs each card to say which batch it is from.
+        Map<String, String> batchNames = new HashMap<>();
+        for (EngagementPlan plan : plans) {
+            String psId = plan.getPackageSessionId();
+            if (batchNames.containsKey(psId)) continue;
+            try {
+                packageSessionRepository.findBatchAndInstituteByPackageSessionId(psId)
+                        .ifPresent(ctx -> batchNames.put(psId, ctx.getBatchName()));
+            } catch (Exception ignored) {
+                // A missing name is cosmetic; the card still renders.
+            }
+        }
 
         // The slot query is date-bounded; the plan's own timezone decides which local
         // date that is, so widen by a day on each side and let the resolver judge.
@@ -141,6 +156,7 @@ public class EngagementLearnerService {
 
         List<EngagementItemDTO> live = new ArrayList<>();
         List<EngagementItemDTO> upcoming = new ArrayList<>();
+        List<EngagementItemDTO> revealed = new ArrayList<>();
         int completedToday = 0;
 
         for (EngagementItem item : items) {
@@ -164,9 +180,25 @@ public class EngagementLearnerService {
                         && EngagementEnums.AttemptStatus.COMPLETED.name().equals(attempt.getStatus());
                 if (isCompleted && runDate.equals(today)) completedToday++;
 
+                // The reveal moment: a task this learner completed, whose reveal time
+                // has now passed, within the last two days. This is where the answer
+                // key and explanation are finally allowed out.
+                if (isCompleted && scheduleResolver.isRevealed(plan, slot, runDate)
+                        && !runDate.isBefore(today.minusDays(2))) {
+                    EngagementItemDTO shown = toLearnerDto(plan, slot, item, runDate, state, attempt,
+                            completedCounts.getOrDefault(item.getId(), 0L));
+                    shown.setPackageSessionName(batchNames.get(plan.getPackageSessionId()));
+                    shown.setCorrectOptionId(readPayloadText(item.getPayloadJson(), "correctOptionId"));
+                    shown.setExplanation(readPayloadText(item.getPayloadJson(), "explanation"));
+                    shown.setSelectedOptionId(readResponseText(attempt, "selectedOptionId"));
+                    revealed.add(shown);
+                }
+
                 if ((state == SlotState.OPEN || state == SlotState.CATCH_UP) && !isCompleted) {
-                    live.add(toLearnerDto(plan, slot, item, runDate, state, attempt,
-                            completedCounts.getOrDefault(item.getId(), 0L)));
+                    EngagementItemDTO dto = toLearnerDto(plan, slot, item, runDate, state, attempt,
+                            completedCounts.getOrDefault(item.getId(), 0L));
+                    dto.setPackageSessionName(batchNames.get(plan.getPackageSessionId()));
+                    live.add(dto);
                     continue;
                 }
             }
@@ -194,7 +226,14 @@ public class EngagementLearnerService {
         boolean capApplied = live.size() > cap;
         if (capApplied) live = new ArrayList<>(live.subList(0, cap));
 
-        return new EngagementFeedDTO(live, upcoming, live.size(), completedToday, capApplied);
+        // Newest reveal first; the learner most wants last night's answer.
+        revealed.sort(Comparator.comparing(EngagementItemDTO::getRevealAt,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+
+        EngagementFeedDTO feed = new EngagementFeedDTO(live, upcoming, live.size(), completedToday, capApplied);
+        feed.setRevealed(revealed);
+        feed.setStreakDays(engagementStreak(userId, instituteId, plansById.values()));
+        return feed;
     }
 
     /**
@@ -292,7 +331,7 @@ public class EngagementLearnerService {
         attempt.setScore(grade.score);
         attempt.setMaxScore(ctx.item.getMaxScore() == null
                 ? null : BigDecimal.valueOf(ctx.item.getMaxScore()));
-        attempt.setResponseJson(request.getResponseJson());
+        attempt.setResponseJson(buildResponseJson(type, request));
         attempt.setTimeSpentMs(request.getTimeSpentMs());
         attempt.setPointsAwarded(points);
         attempt.setIsLate(isLate);
@@ -325,6 +364,42 @@ public class EngagementLearnerService {
         }
 
         return buildResponse(ctx, attempt, instituteId, userId);
+    }
+
+    /**
+     * What the learner actually submitted, kept for the teacher.
+     *
+     * The grader reads textAnswer/fileIds to decide the outcome, but nothing else
+     * stored them — a written answer was validated, graded as "completed", and
+     * thrown away. The teacher then had a row saying COMPLETED and no way to read
+     * what was written.
+     */
+    private String buildResponseJson(EngagementEnums.ItemType type, EngagementSubmitRequest request) {
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode node = objectMapper.createObjectNode();
+            if (request.getSelectedOptionId() != null) node.put("selectedOptionId", request.getSelectedOptionId());
+            if (request.getTextAnswer() != null && !request.getTextAnswer().isBlank()) {
+                node.put("textAnswer", request.getTextAnswer().trim());
+            }
+            if (request.getFileIds() != null && !request.getFileIds().isEmpty()) {
+                com.fasterxml.jackson.databind.node.ArrayNode files = node.putArray("fileIds");
+                request.getFileIds().forEach(files::add);
+            }
+            if (request.getScore() != null) node.put("score", request.getScore());
+            if (request.getScrollPercent() != null) node.put("scrollPercent", request.getScrollPercent());
+            // Anything the client chose to attach as free-form extra.
+            if (request.getResponseJson() != null && !request.getResponseJson().isBlank()) {
+                try {
+                    node.set("extra", objectMapper.readTree(request.getResponseJson()));
+                } catch (Exception ignored) {
+                    node.put("extra", request.getResponseJson());
+                }
+            }
+            return node.size() == 0 ? null : objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            log.warn("[engagement] could not serialise response for {}: {}", type, e.getMessage());
+            return request.getResponseJson();
+        }
     }
 
     // ── Grading ──────────────────────────────────────────────────────────────
@@ -421,6 +496,41 @@ public class EngagementLearnerService {
                 return Grade.of(null, null, completion);
             }
         }
+    }
+
+    /** A field off the learner's stored response, or null. */
+    private String readResponseText(EngagementAttempt attempt, String field) {
+        if (attempt == null) return null;
+        return readPayloadText(attempt.getResponseJson(), field);
+    }
+
+    /**
+     * Consecutive institute-local days with at least one completed task, ending
+     * today or yesterday. Yesterday counts so a learner who has not opened today's
+     * task yet still sees the streak they are about to keep, not one already broken.
+     */
+    private int engagementStreak(String userId, String instituteId, Collection<EngagementPlan> plans) {
+        ZoneId zone = plans.stream().findFirst().map(scheduleResolver::zoneOf)
+                .orElse(java.time.ZoneId.of("Asia/Kolkata"));
+        LocalDate today = LocalDate.now(zone);
+        LocalDate from = today.minusDays(60);
+        List<EngagementAttempt> attempts = attemptRepository.findCompletedBetween(
+                userId, instituteId,
+                Timestamp.from(from.atStartOfDay(zone).toInstant()),
+                Timestamp.from(today.plusDays(1).atStartOfDay(zone).toInstant()));
+        java.util.Set<LocalDate> days = new java.util.HashSet<>();
+        for (EngagementAttempt a : attempts) {
+            if (a.getCompletedAt() != null) {
+                days.add(a.getCompletedAt().toInstant().atZone(zone).toLocalDate());
+            }
+        }
+        LocalDate cursor = days.contains(today) ? today : today.minusDays(1);
+        int streak = 0;
+        while (days.contains(cursor) && streak < 365) {
+            streak++;
+            cursor = cursor.minusDays(1);
+        }
+        return streak;
     }
 
     /** MCQ (the default), TEXT or UPLOAD, from the item's payload. */

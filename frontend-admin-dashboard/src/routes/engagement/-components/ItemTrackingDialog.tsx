@@ -3,6 +3,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { CaretLeft, CaretRight, DownloadSimple } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { getPublicUrl } from '@/services/upload_file';
 import { downloadItemTrackingCsv, getItemTracking } from '../-services/engagement-service';
 import type { EngagementItemDTO, EngagementTrackingRow } from '../-types/types';
 
@@ -43,6 +44,9 @@ export function ItemTrackingDialog({
     });
 
     const gradable = item?.itemType === 'QUESTION_OF_DAY' || item?.itemType === 'QUIZ';
+    // Written and uploaded answers get their own column; there is nothing to grade,
+    // the teacher reads them.
+    const hasAnswers = (data?.rows ?? []).some((r) => r.textAnswer || (r.fileIds?.length ?? 0) > 0);
     const accuracy =
         data && data.completedCount > 0
             ? Math.round((data.correctCount / data.completedCount) * 100)
@@ -115,6 +119,9 @@ export function ItemTrackingDialog({
                                         {gradable && (
                                             <th className="px-3 py-2 text-start">Result</th>
                                         )}
+                                        {hasAnswers && (
+                                            <th className="px-3 py-2 text-start">Answer</th>
+                                        )}
                                         <th className="px-3 py-2 text-start">Points</th>
                                         <th className="px-3 py-2 text-start">Time</th>
                                         <th className="px-3 py-2 text-start">Completed</th>
@@ -126,6 +133,7 @@ export function ItemTrackingDialog({
                                             key={row.userId}
                                             row={row}
                                             gradable={gradable}
+                                            showAnswer={hasAnswers}
                                         />
                                     ))}
                                 </tbody>
@@ -171,7 +179,15 @@ export function ItemTrackingDialog({
     );
 }
 
-function TrackingRow({ row, gradable }: { row: EngagementTrackingRow; gradable: boolean }) {
+function TrackingRow({
+    row,
+    gradable,
+    showAnswer,
+}: {
+    row: EngagementTrackingRow;
+    gradable: boolean;
+    showAnswer: boolean;
+}) {
     return (
         <tr>
             <td className="px-3 py-2">
@@ -192,6 +208,36 @@ function TrackingRow({ row, gradable }: { row: EngagementTrackingRow; gradable: 
             {gradable && (
                 <td className="px-3 py-2">
                     {row.isCorrect === true ? 'Correct' : row.isCorrect === false ? 'Wrong' : '—'}
+                </td>
+            )}
+            {showAnswer && (
+                <td className="max-w-xs px-3 py-2">
+                    {row.textAnswer && (
+                        <p className="whitespace-pre-wrap text-sm text-neutral-800">
+                            {row.textAnswer}
+                        </p>
+                    )}
+                    {(row.fileIds?.length ?? 0) > 0 && (
+                        <ul className="mt-1 space-y-0.5">
+                            {row.fileIds!.map((id) => (
+                                <li key={id}>
+                                    {/* Uploads live behind signed URLs; resolve on click
+                                        rather than guessing a public path. */}
+                                    <button
+                                        type="button"
+                                        className="text-xs text-primary-600 underline"
+                                        onClick={async () => {
+                                            const url = await getPublicUrl(id);
+                                            if (url) window.open(url, '_blank', 'noopener');
+                                        }}
+                                    >
+                                        📎 Open file
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {!row.textAnswer && (row.fileIds?.length ?? 0) === 0 && '—'}
                 </td>
             )}
             <td className="px-3 py-2 tabular-nums">{row.pointsAwarded}</td>

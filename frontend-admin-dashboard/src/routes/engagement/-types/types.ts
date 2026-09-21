@@ -148,6 +148,31 @@ export interface EngagementTrackingRow {
     isLate: boolean;
     timeSpentMs?: number | null;
     completedAt?: string | null;
+    textAnswer?: string | null;
+    fileIds?: string[] | null;
+    selectedOptionId?: string | null;
+}
+
+export interface LearnerProgress {
+    userId: string;
+    fullName?: string | null;
+    username?: string | null;
+    completed: number;
+    correct: number;
+    pointsEarned: number;
+    missed: number;
+    lastCompletedAt?: string | null;
+}
+
+export interface PlanOverview {
+    planId: string;
+    title: string;
+    tasksClosed: number;
+    tasksTotal: number;
+    learners: number;
+    learnersActive: number;
+    learnersSlipping: number;
+    rows: LearnerProgress[];
 }
 
 export interface EngagementTrackingDTO {

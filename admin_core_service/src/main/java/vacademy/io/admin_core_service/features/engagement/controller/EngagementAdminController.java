@@ -119,6 +119,16 @@ public class EngagementAdminController {
         return ResponseEntity.ok(trackingService.getItemTracking(itemId, instituteId, page, size));
     }
 
+    /** Batch-level progress for a plan: who is keeping up, who is slipping. */
+    @GetMapping("/plan/{planId}/overview")
+    public ResponseEntity<?> planOverview(
+            @PathVariable String planId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireStaffAccess(user, instituteId);
+        return ResponseEntity.ok(trackingService.getPlanOverview(planId, instituteId));
+    }
+
     /**
      * The same table as CSV — every attempt, not just the page on screen.
      *

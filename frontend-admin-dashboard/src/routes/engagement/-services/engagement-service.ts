@@ -3,6 +3,7 @@ import { BASE_URL } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
 import type {
     EngagementPlanDTO,
+    PlanOverview,
     EngagementPlanRequest,
     EngagementSlotDTO,
     EngagementSlotRequest,
@@ -79,6 +80,14 @@ export async function deleteEngagementSlot(slotId: string): Promise<void> {
     await authenticatedAxiosInstance.delete(`${ROOT}/slot/${slotId}`, {
         params: instituteParams(),
     });
+}
+
+export async function getPlanOverview(planId: string): Promise<PlanOverview> {
+    const { data } = await authenticatedAxiosInstance.get<PlanOverview>(
+        `${ROOT}/plan/${planId}/overview`,
+        { params: instituteParams() }
+    );
+    return data;
 }
 
 export async function getItemTracking(

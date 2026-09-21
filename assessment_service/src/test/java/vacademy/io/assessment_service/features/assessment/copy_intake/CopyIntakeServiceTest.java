@@ -94,7 +94,8 @@ class CopyIntakeServiceTest {
                 mock(AssessmentBatchRegistrationRepository.class),
                 mock(AdminCoreServiceClient.class), aiClient,
                 mock(AdminOfflineDataEntryManager.class), mock(AiEvaluationService.class),
-                mock(StudentAttemptService.class), notifier, audit, new ObjectMapper(), tx);
+                mock(StudentAttemptService.class), notifier, audit, new ObjectMapper(), tx,
+                mock(vacademy.io.assessment_service.features.auth_service.service.AuthService.class));
         ReflectionTestUtils.setField(service, "mediaServiceUrl", "http://media.invalid");
         ReflectionTestUtils.setField(service, "identifyStaleMinutes", 10L);
 

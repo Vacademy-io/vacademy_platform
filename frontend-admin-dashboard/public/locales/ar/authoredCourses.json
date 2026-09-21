@@ -42,5 +42,8 @@
     "auditLogs": "سجلات التدقيق",
     "byActor": "بواسطة: {{actor}}",
     "commentLabel": "تعليق: {{comment}}",
-    "noHistoryAvailable": "لا يوجد سجل متاح."
+    "noHistoryAvailable": "لا يوجد سجل متاح.",
+    "publish": "نشر",
+    "published": "تم نشر الدورة",
+    "publishFailed": "فشل نشر الدورة"
 }

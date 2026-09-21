@@ -1478,6 +1478,9 @@ class KbRepository:
             row["curriculum"] = {
                 "board": r[19], "class": r[20], "subject": r[21],
                 "medium": r[22], "book": r[23],
+                # "SYLLABUS" for an official syllabus document (scope, not
+                # content — see paper.syllabus_scope); absent for a textbook.
+                "kind": (meta.get("curriculum") or {}).get("kind"),
             }
         return row
 

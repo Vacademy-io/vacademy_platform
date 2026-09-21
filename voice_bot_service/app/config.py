@@ -629,6 +629,12 @@ class Settings:
     # handles an interruption, and anything pushed into that window is dropped
     # with no error — the resume was lost that way on 3 of its first 4 live
     # attempts. Wait this long after the cut before speaking the words.
+    # Close the caller's turn in the aggregator when the turn-gate swallows a
+    # final (backchannel, carrier line, scrap, repeat). Otherwise pipecat keeps
+    # it open for user_turn_stop_timeout (5 s) and nothing we say in that
+    # window is heard. Kill switch only.
+    turn_release_on_absorb: bool = field(
+        default_factory=lambda: _env("TURN_RELEASE_ON_ABSORB", "1") not in ("0", "false", "no"))
     backchannel_resume_settle_secs: float = field(
         default_factory=lambda: float(_env("BACKCHANNEL_RESUME_SETTLE_SECS", "0.6")))
     backchannel_resume_max_chars: int = field(

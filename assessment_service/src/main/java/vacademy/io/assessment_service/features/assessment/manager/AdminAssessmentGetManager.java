@@ -284,11 +284,11 @@ public class AdminAssessmentGetManager {
 
         Page<StudentReportDto> studentReportDtoPage = null;
         if (StringUtils.hasText(filter.getName())) {
-            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilterAndSearch(filter.getName(), studentId, instituteId, filter.getStatus(), filter.getReleaseResultStatus() != null ? filter.getReleaseResultStatus() : new ArrayList<>(),filter.getAssessmentType()!=null ? filter.getAssessmentType() : new ArrayList<>(), pageable);
+            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilterAndSearch(false, filter.getName(), studentId, instituteId, filter.getStatus(), filter.getReleaseResultStatus() != null ? filter.getReleaseResultStatus() : new ArrayList<>(),filter.getAssessmentType()!=null ? filter.getAssessmentType() : new ArrayList<>(), pageable);
 
         }
         if (Objects.isNull(studentReportDtoPage)) {
-            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilter(studentId, instituteId, filter.getStatus(), filter.getReleaseResultStatus() != null ? filter.getReleaseResultStatus() : new ArrayList<>(),filter.getAssessmentType()!=null ? filter.getAssessmentType() : new ArrayList<>(), pageable);
+            studentReportDtoPage = studentAttemptRepository.findAssessmentForUserWithFilter(false, studentId, instituteId, filter.getStatus(), filter.getReleaseResultStatus() != null ? filter.getReleaseResultStatus() : new ArrayList<>(),filter.getAssessmentType()!=null ? filter.getAssessmentType() : new ArrayList<>(), pageable);
         }
 
         return ResponseEntity.ok(createReportResponse(studentReportDtoPage));

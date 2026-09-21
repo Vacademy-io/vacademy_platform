@@ -24,6 +24,7 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { ensureFileHasExtension } from '@/lib/file-download';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { EnableAiChecking } from './enable-ai-checking';
 
 interface AssessmentSubmissionsPanelProps {
     assessmentId: string;
@@ -140,23 +141,34 @@ const AssessmentSubmissionsPanel = ({
         enabled: Boolean(assessmentId && sectionIds),
     });
 
-    // The single question the marks/remarks attach to.
-    const primaryQuestion = useMemo(() => {
-        if (!questionData) return null;
-        for (const [sectionId, questions] of Object.entries(
-            questionData as Record<string, Array<{ question_id: string; marking_json?: string }>>
-        )) {
-            const q = questions?.[0];
-            if (q) {
-                return {
-                    sectionId,
-                    questionId: q.question_id,
-                    maxMarks: parseMaxMark(q.marking_json),
-                };
+    // The single question the marks/remarks attach to — and how many there are.
+    // A test created with AI checking carries the paper's real questions; a
+    // one-number quick evaluate would then silently score only the first of
+    // them, so it is offered only for the classic single-placeholder shape.
+    const { primaryQuestion, questionCount, maxMarksTotal } = useMemo(() => {
+        let primary: { sectionId: string; questionId: string; maxMarks: number } | null = null;
+        let count = 0;
+        let total = 0;
+        if (questionData) {
+            for (const [sectionId, questions] of Object.entries(
+                questionData as Record<string, Array<{ question_id: string; marking_json?: string }>>
+            )) {
+                for (const q of questions ?? []) {
+                    count += 1;
+                    total += parseMaxMark(q.marking_json);
+                    if (!primary) {
+                        primary = {
+                            sectionId,
+                            questionId: q.question_id,
+                            maxMarks: parseMaxMark(q.marking_json),
+                        };
+                    }
+                }
             }
         }
-        return null;
+        return { primaryQuestion: primary, questionCount: count, maxMarksTotal: total };
     }, [questionData]);
+    const quickEvaluateAvailable = questionCount <= 1;
 
     const rows: SubmissionRow[] = data?.content ?? [];
     const totalPages: number = data?.total_pages ?? 0;
@@ -278,8 +290,19 @@ const AssessmentSubmissionsPanel = ({
 
     const busy = submitting || uploading;
 
+    // The saved instructions carry the paper PDF the teacher attached; a
+    // placeholder-only test can be upgraded to AI checking from that same file.
+    const instructionsHtml: string | undefined =
+        assessmentDetails?.[0]?.saved_data?.instructions?.content ?? undefined;
+
     return (
         <div className="rounded-md border border-neutral-200 bg-white">
+            <EnableAiChecking
+                assessmentId={assessmentId}
+                assessmentName={assessmentDetails?.[0]?.saved_data?.name ?? undefined}
+                instructionsHtml={instructionsHtml}
+                totalMarks={maxMarksTotal > 0 ? maxMarksTotal : null}
+            />
             <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2">
                 <p className="text-xs font-semibold text-neutral-800">
                     {t('title')}
@@ -331,26 +354,26 @@ const AssessmentSubmissionsPanel = ({
                                     {evaluated && hasScore && (
                                         <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-2xs font-semibold text-neutral-700">
                                             {row.score}
-                                            {primaryQuestion && primaryQuestion.maxMarks > 0
-                                                ? ` / ${primaryQuestion.maxMarks}`
-                                                : ''}
+                                            {maxMarksTotal > 0 ? ` / ${maxMarksTotal}` : ''}
                                         </span>
                                     )}
                                     <StatusChip status={row.evaluation_status} t={t} />
+                                    {quickEvaluateAvailable && (
+                                        <MyButton
+                                            buttonType="primary"
+                                            scale="small"
+                                            onClick={() => openQuickEval(row)}
+                                            disable={!row.attempt_id}
+                                        >
+                                            <span className="inline-flex items-center gap-1 text-xs">
+                                                {evaluated
+                                                    ? t('actions.reEvaluate')
+                                                    : t('actions.quickEvaluate')}
+                                            </span>
+                                        </MyButton>
+                                    )}
                                     <MyButton
-                                        buttonType="primary"
-                                        scale="small"
-                                        onClick={() => openQuickEval(row)}
-                                        disable={!row.attempt_id}
-                                    >
-                                        <span className="inline-flex items-center gap-1 text-xs">
-                                            {evaluated
-                                                ? t('actions.reEvaluate')
-                                                : t('actions.quickEvaluate')}
-                                        </span>
-                                    </MyButton>
-                                    <MyButton
-                                        buttonType="secondary"
+                                        buttonType={quickEvaluateAvailable ? 'secondary' : 'primary'}
                                         scale="small"
                                         onClick={() => goEvaluate(row.attempt_id)}
                                         disable={!row.attempt_id || !playMode}

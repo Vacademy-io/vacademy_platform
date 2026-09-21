@@ -17,12 +17,16 @@ settings tab has one toggle per feature to manage per role:
 | :--- | :--- | :--- | :--- |
 | `whoami` | READ | `identity` — **always on**, not a toggle | the caller's name, username, email, mobile, roles + the institute's name, logo, theme, portals, terminology |
 | `get_institute_overview` | READ | `institute_overview` | sections: `profile` (name, logo, theme, contact, terminology), outstanding fees, classes live now, active learners |
-| `website` | READ | `website_builder` | `list`, `get_page`, `context`, `analytics`, `lead_summary`, `audit`, `brief_checklist`, `schema`, `list_media` |
-| `website_edit` | WRITE (drafts only, no model, no credits) | `website_builder_edits` | `create_page`, `create_site`, `update_page`, `set_layout`, `add_section`, `set_theme`, `set_site_settings`, `set_courses`, `link_lead_form`, `set_seo`, `import_image`, `discard_draft` |
+| `website` | READ | `website_builder` | `list`, `get_page`, `find_section`, `context`, `analytics`, `lead_summary`, `audit`, `review`, `brief_checklist`, `schema`, `list_media`, `preview` |
+| `website_edit` | WRITE (drafts only, no model, no credits) | `website_builder_edits` | `create_page`, `create_site`, `add_html_page`, `update_page`, `set_layout`, `add_section`, `set_theme`, `set_site_settings`, `set_courses`, `link_lead_form`, `set_seo`, `import_image`, `discard_draft` |
 | `audience_forms` | READ | `audience_forms` | `list`, `get`, `leads` |
 | `audience_forms_edit` | WRITE (additive only) | `audience_forms_edits` | `create`, `update_fields` (adds/changes, never removes), `send_test_lead` |
 | `workflows` | READ | `workflows` | `list`, `get`, `runs`, `catalog` (the builder's authoring contract, in sections), `context` (real batches / audiences / templates / sessions / invites to reference), `template` (one email or WhatsApp template in full) |
 | `workflows_edit` | WRITE (drafts + additive, no model, no credits) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` (the last two refuse anything whose status is not DRAFT); `create_email_template`, `create_whatsapp_template` (new templates only, WhatsApp submitted to Meta), `sync_whatsapp_templates` |
+| `workflows` | READ | `workflows` | `list`, `get`, `runs`, `catalog` (the builder's authoring contract, in sections), `context` (real batches / audiences / templates / sessions / invites to reference) |
+| `workflows_edit` | WRITE (drafts only, no model, no credits) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` — the last two refuse anything whose status is not DRAFT |
+| `blog` | READ | `blog` | `list` (posts of any status, categories, where they are shown), `get` (one post with its HTML body, SEO, public URLs), `placements` (website pages carrying a Blog section) |
+| `blog_edit` | WRITE (drafts only, no model, no credits) | `blog_edits` | `create` (always a DRAFT, `source=MCP`, body nh3-cleaned with the article profile), `update` / `discard` (refuse anything that is not a DRAFT), `request_publish` (readiness audit + the dashboard link; never publishes) |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so
@@ -42,6 +46,37 @@ archetypes), composes the page JSON itself and saves it with
 builder's sanitiser, audits, and returns issues to fix with `update_page`.
 Nothing on the MCP path calls a model or spends credits; images come only from
 the media library (`list_media`) or public URLs pulled in with `import_image`.
+**Quality loop.** `website(review)` is an opinionated design review
+(`services/page_quality.py`): structure (hero → proof → what you get → CTA),
+rhythm (bands, adjacent twins, unstyled pages), hero quality (headline length,
+CTAs, image or centered layout, eyebrow), content (placeholder copy, walls of
+text, stats without numbers, empty testimonials), palette (accent colours) —
+merged with the builder's defect audit — scored 0–100 with a bar of 85 and a
+concrete fix per issue. Every `website_edit` result carries the page's score;
+the server instructions tell the model to iterate with `update_page` until it
+passes. `website(preview)` renders the DRAFT with headless Chromium through the
+learner app's preview mode (`services/page_preview.py`: load `/<tag>?preview=true`,
+post the config with the wanted page presented as the root page, screenshot the
+page or one `section_id`) and returns it as MCP image content, so a
+vision-capable client can look at what it made. Screenshot-driven edits:
+`get_page` gives each section a `position` and a `looks` line (band colour,
+layout, images, buttons); `find_section` turns the text an admin points at into
+the section id and exact prop path. `list_media` ranks hero-worthy landscape
+photos first; `create_page` places the first one in a split hero that has no
+image, or falls back to a centered hero; `import_image` takes a `urls` batch.
+
+**HTML pages.** `add_html_page` takes HTML + CSS the connected model wrote (or
+the admin pasted) — a full document or body markup — through the builder's
+page-level contract (`services/html_page_import.py`): scripts and external
+stylesheets removed, `<style>` moved into `css`, links rewritten into the
+renderer's `data-vacademy` hooks (`route`, `scroll`, `lead-form`, `enrol`),
+page-level nh3 allowlist (SVG kept, forms/inputs removed), institute-media-only
+images, 200 KB/150 KB caps. The page renders in a shadow root with
+`hideSiteChrome` on by default. Enquiry buttons are
+`<a data-vacademy="lead-form" data-audience="">` — `link_lead_form` on the
+htmlPage section fills `data-audience`, and the audit flags empty ones. The
+contract is served to the model as `html_page_contract` in `website(schema)`.
+
 Authored pages keep what the author set — explicit paddings, one-section
 pages (course-details templates), rich text (nh3-cleaned) — where the
 composer's own output rules would have normalised them; a site written
@@ -84,6 +119,11 @@ Pages — where the publish checks run — and publishes themselves.
 `discard_draft` is the undo. `workflows_edit` has the same property — it can
 only create, replace or discard a DRAFT automation — plus the additive one for
 templates (create new, never change). `audience_forms_edit` is
+only create, replace or discard a DRAFT automation, and so does `blog_edit` —
+posts are rows in `catalogue_blog_post` (not page JSON), `create` forces
+`status=DRAFT` (the public endpoint serves PUBLISHED only), `update`/`discard`
+refuse anything else, and publishing is a click in Manage Pages → Blog.
+`audience_forms_edit` is
 allowed on the other safe property: it only **adds** (a campaign, a field, a
 test lead) and never changes or removes what exists. `MCP_ALLOWED_WRITE_TOOLS`
 names each allowed write tool with the property that makes it safe, and

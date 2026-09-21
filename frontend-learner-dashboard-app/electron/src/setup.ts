@@ -83,6 +83,7 @@ export class ElectronCapacitorApp {
   ];
   private mainWindowState;
   private loadWebApp;
+  private static pluginsLinked = false;
   private customScheme: string;
 
   constructor(
@@ -354,8 +355,17 @@ export class ElectronCapacitorApp {
       }
     });
 
-    // Link electron plugins into the system.
-    setupCapacitorElectronPlugins();
+    // Link electron plugins into the system — ONCE per process. init() runs again
+    // from the `activate` handler after the user closes the window with the red
+    // button and re-clicks the Dock icon (macOS keeps the app alive), and
+    // setupCapacitorElectronPlugins() registers an ipcMain.handle() per plugin
+    // method; a second registration throws "Attempted to register a second
+    // handler for 'OfflineMedia-getFreeDiskSpace'", which surfaced as an
+    // unhandled-rejection dialog with no window behind it (SN Mac 1.0.1).
+    if (!ElectronCapacitorApp.pluginsLinked) {
+      setupCapacitorElectronPlugins();
+      ElectronCapacitorApp.pluginsLinked = true;
+    }
 
     // When the web app is loaded we hide the splashscreen if needed and show the mainwindow.
     this.MainWindow.webContents.on('dom-ready', () => {

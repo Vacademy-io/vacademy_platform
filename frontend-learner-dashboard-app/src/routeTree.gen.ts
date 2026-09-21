@@ -90,6 +90,7 @@ import { Route as TagNameCourseIdIndexRouteImport } from './routes/$tagName/$cou
 import { Route as ParentChildChildIdRouteImport } from './routes/parent/child/$childId'
 import { Route as LoginOauthModalLearnerRouteImport } from './routes/login/oauth/modal-learner'
 import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
+import { Route as TagNamePageSlugPostSlugRouteImport } from './routes/$tagName/$pageSlug_.$postSlug'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassFeedbackIndexRouteImport } from './routes/study-library/live-class/feedback/index'
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
@@ -543,6 +544,11 @@ const LoginOauthLearnerRoute = LoginOauthLearnerRouteImport.update({
   path: '/login/oauth/learner',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TagNamePageSlugPostSlugRoute = TagNamePageSlugPostSlugRouteImport.update({
+  id: '/$tagName/$pageSlug_/$postSlug',
+  path: '/$tagName/$pageSlug/$postSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StudyLibraryLiveClassWaitingRoomIndexRoute =
   StudyLibraryLiveClassWaitingRoomIndexRouteImport.update({
     id: '/study-library/live-class/waiting-room/',
@@ -772,6 +778,7 @@ export interface FileRoutesByFullPath {
   '/try': typeof TryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/verify': typeof VerifyIndexRoute
+  '/$tagName/$pageSlug/$postSlug': typeof TagNamePageSlugPostSlugRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
@@ -884,6 +891,7 @@ export interface FileRoutesByTo {
   '/try': typeof TryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/verify': typeof VerifyIndexRoute
+  '/$tagName/$pageSlug/$postSlug': typeof TagNamePageSlugPostSlugRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
@@ -997,6 +1005,7 @@ export interface FileRoutesById {
   '/try/': typeof TryIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/verify/': typeof VerifyIndexRoute
+  '/$tagName/$pageSlug_/$postSlug': typeof TagNamePageSlugPostSlugRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
@@ -1112,6 +1121,7 @@ export interface FileRouteTypes {
     | '/try'
     | '/user-profile'
     | '/verify'
+    | '/$tagName/$pageSlug/$postSlug'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/parent/child/$childId'
@@ -1224,6 +1234,7 @@ export interface FileRouteTypes {
     | '/try'
     | '/user-profile'
     | '/verify'
+    | '/$tagName/$pageSlug/$postSlug'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/$tagName/$courseId'
@@ -1336,6 +1347,7 @@ export interface FileRouteTypes {
     | '/try/'
     | '/user-profile/'
     | '/verify/'
+    | '/$tagName/$pageSlug_/$postSlug'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/parent/child/$childId'
@@ -1450,6 +1462,7 @@ export interface RootRouteChildren {
   TryIndexRoute: typeof TryIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   VerifyIndexRoute: typeof VerifyIndexRoute
+  TagNamePageSlugPostSlugRoute: typeof TagNamePageSlugPostSlugRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
   ParentChildChildIdRoute: typeof ParentChildChildIdRouteWithChildren
@@ -2079,6 +2092,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginOauthLearnerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$tagName/$pageSlug_/$postSlug': {
+      id: '/$tagName/$pageSlug_/$postSlug'
+      path: '/$tagName/$pageSlug/$postSlug'
+      fullPath: '/$tagName/$pageSlug/$postSlug'
+      preLoaderRoute: typeof TagNamePageSlugPostSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/study-library/live-class/waiting-room/': {
       id: '/study-library/live-class/waiting-room/'
       path: '/study-library/live-class/waiting-room'
@@ -2378,6 +2398,7 @@ const rootRouteChildren: RootRouteChildren = {
   TryIndexRoute: TryIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   VerifyIndexRoute: VerifyIndexRoute,
+  TagNamePageSlugPostSlugRoute: TagNamePageSlugPostSlugRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
   ParentChildChildIdRoute: ParentChildChildIdRouteWithChildren,

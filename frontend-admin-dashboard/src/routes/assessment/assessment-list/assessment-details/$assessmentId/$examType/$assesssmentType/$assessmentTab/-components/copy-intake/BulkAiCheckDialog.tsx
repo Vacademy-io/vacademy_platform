@@ -27,8 +27,9 @@ const MAX_FILES = 200;
 const MAX_MB = 60;
 
 /**
- * Upload a pile of scanned copies at once. Each file is counted (the check is
- * priced per page), uploaded to storage, then the batch is started: the
+ * Upload a pile of scanned copies at once. Each file is page-counted (shown in
+ * the quote; the check itself is billed per graded question, so the quote is
+ * copies x questions), uploaded to storage, then the batch is started: the
  * server reads the student's name off every copy, matches it to the
  * assessment's students and queues the AI check. Progress lives in the batch
  * panel; the admin is told by email, bell and toast when it settles.
@@ -38,12 +39,15 @@ export const BulkAiCheckDialog = ({
     onOpenChange,
     assessmentId,
     instituteId,
+    questionsPerCopy,
     onStarted,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     assessmentId: string;
     instituteId: string;
+    /** Questions on the paper — the unit the AI check is billed in. */
+    questionsPerCopy: number;
     onStarted: (batch: CopyIntakeBatch) => void;
 }) => {
     const { t } = useTranslation('assessmentCopyIntake');
@@ -54,13 +58,33 @@ export const BulkAiCheckDialog = ({
     const { uploadFile } = useFileUpload();
     const userId = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken))?.user ?? '';
 
-    const totalPages = useMemo(() => files.reduce((sum, f) => sum + (f.pages ?? 1), 0), [files]);
     const counting = files.some((f) => f.state === 'counting');
+    // Mirrors the charge the orchestrator records per completed copy
+    // (num_questions = graded questions), once per copy: the rate card's flat
+    // base and rounding apply to each copy, so the inputs are NOT summed
+    // across files. The rate itself comes from ai_tool_pricing via the API.
     const cost = useToolCostPreview(
         'copy_check_evaluation',
-        { num_pages: totalPages },
-        files.length > 0 && !counting
+        { num_questions: questionsPerCopy },
+        files.length > 0 && !counting,
+        files.length
     );
+    // "1 + 0.2 per question" under the quote, straight from the rate row so a
+    // DB change to the price is explained without a release.
+    const rateLine = useMemo(() => {
+        const row = cost.rate;
+        if (!row) return null;
+        const flat = Number(row.flat_base_credits) || 0;
+        const perUnit = Number(row.per_unit_credits) || 0;
+        const unit =
+            row.unit_field === 'questions'
+                ? t('dialog.unitQuestion')
+                : row.unit_field === 'pages'
+                  ? t('dialog.unitPage')
+                  : null;
+        if (!unit) return null;
+        return t(flat > 0 ? 'dialog.rate' : 'dialog.rateNoBase', { flat, perUnit, unit });
+    }, [cost.rate, t]);
 
     const addFiles = async (picked: FileList | File[]) => {
         // PDF only: the grading pipeline opens the copy as a PDF, so an image
@@ -272,8 +296,8 @@ export const BulkAiCheckDialog = ({
                             : counting || cost.credits == null
                               ? t('dialog.counting')
                               : t('dialog.cost', {
-                                    copies: files.length,
-                                    pages: totalPages,
+                                    count: files.length,
+                                    questions: questionsPerCopy,
                                     credits: cost.credits,
                                 })}
                     </span>
@@ -281,6 +305,9 @@ export const BulkAiCheckDialog = ({
                         <span className="text-caption text-neutral-500">
                             {t('dialog.balance', { count: cost.currentBalance })}
                         </span>
+                    )}
+                    {rateLine && files.length > 0 && !counting && (
+                        <span className="basis-full text-caption text-neutral-500">{rateLine}</span>
                     )}
                 </div>
                 {cost.sufficient === false && (

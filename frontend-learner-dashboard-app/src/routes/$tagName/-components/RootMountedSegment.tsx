@@ -42,17 +42,22 @@ export const RootMountedSegment: React.FC<{
   instituteId: string;
   instituteThemeCode?: string | null;
   fallback: React.ReactNode;
-}> = ({ rootTag, segment, instituteId, instituteThemeCode, fallback }) => {
+  /**
+   * Only readings 1 and 3: the URL has a further segment after this one
+   * ("/blog/<post-slug>"), which a course details page has no meaning for.
+   */
+  pageOnly?: boolean;
+}> = ({ rootTag, segment, instituteId, instituteThemeCode, fallback, pageOnly = false }) => {
   // The `/$tagName/` route validates no search params, so read them loosely —
   // a root-mounted course link carries the same ?enrollInviteId=… the tagged
   // one does.
   const search = useSearch({ strict: false }) as Record<string, string | undefined>;
   const [verdict, setVerdict] = useState<"loading" | "page" | "course" | "other">(
-    looksLikeCourseId(segment) ? "course" : "loading",
+    !pageOnly && looksLikeCourseId(segment) ? "course" : "loading",
   );
 
   useEffect(() => {
-    if (looksLikeCourseId(segment)) {
+    if (!pageOnly && looksLikeCourseId(segment)) {
       setVerdict("course");
       return;
     }
@@ -77,7 +82,7 @@ export const RootMountedSegment: React.FC<{
     return () => {
       cancelled = true;
     };
-  }, [instituteId, rootTag, segment]);
+  }, [instituteId, rootTag, segment, pageOnly]);
 
   if (verdict === "loading") return <DashboardLoader />;
   if (verdict === "other") return <>{fallback}</>;

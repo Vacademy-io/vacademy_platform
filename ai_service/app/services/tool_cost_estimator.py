@@ -55,14 +55,19 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "params": {"image_unit_credits": "0.5"},
     },
     # AI evaluation of one uploaded answer copy (copy-check): OCR + per-question
-    # rubric-grounded grading. Priced per graded question for a predictable
-    # preview ("8 questions = 8 credits"); the actual charge is
+    # rubric-grounded grading. Priced per copy as flat + per graded question so
+    # the quote is known before upload; the actual charge is
     # max(this, real token cost), so premium models (Opus/GPT) add overage on
-    # long answers while flash-lite copies stay at the flat per-question rate.
+    # long answers while flash copies stay at the quoted rate.
+    #
+    # THE LIVE RATE IS THE `copy_check_evaluation` ROW IN ai_tool_pricing —
+    # change prices there (no release); this entry is only the fallback for an
+    # environment without that row and must mirror it (set 2026-09-21: the old
+    # 0 + 1/question made a 64-question one-word paper cost 64 credits/copy).
     "copy_check_evaluation": {
         "request_type": "evaluation",
-        "flat_base_credits": Decimal("0"),
-        "per_unit_credits": Decimal("1"),
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0.2"),
         "unit_field": "questions",
         "params": {},
     },
@@ -137,6 +142,28 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # tokens), flat per call, charged as
     # max(flat, actual). A full CREATE costs more than a conversational EDIT
     # (which reuses the existing page), so they are priced separately.
+    # AI engagement planner — ONE structured call drafts a whole run of daily
+    # tasks (questions, polls, prompts, readings, flashcard games). Flat per
+    # draft, charged as max(flat, actual × markup). Readings come back with
+    # image placeholders only; pictures are a separate opt-in charge
+    # (html_document_image) so a fortnight of illustrated pages is never billed
+    # before the teacher has reviewed the draft.
+    "engagement_plan": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("10"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Regenerate ONE task inside a draft — a small call, priced so a teacher can
+    # reject and retry a few items without it costing as much as the plan.
+    "engagement_item": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     "html_document": {          # first generation (create)
         "request_type": "content",
         "flat_base_credits": Decimal("15"),
@@ -318,6 +345,18 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "flat_base_credits": Decimal("2"),
         "per_unit_credits": Decimal("0"),
         "unit_field": "flat",
+        "params": {},
+    },
+    # A question paper PDF (the one a teacher attaches to an offline test) read
+    # into real questions with marks, so an uploaded answer sheet can be checked
+    # question by question. Priced like the other PDF reads: per page for the
+    # MathPix pass, plus a flat base for the extraction call(s). Charged only
+    # when questions actually come back.
+    "paper_digitise": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
         "params": {},
     },
     # One-time, permanent unlock of a curated library (V445). Deliberately low:

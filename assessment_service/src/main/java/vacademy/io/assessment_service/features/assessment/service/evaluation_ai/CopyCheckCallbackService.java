@@ -128,8 +128,16 @@ public class CopyCheckCallbackService {
                 : "COMPLETED";
         boolean failed = "FAILED".equals(qStatus);
 
-        Optional<AiQuestionEvaluation> row = questionEvaluationRepository
-                .findByEvaluationProcessIdAndQuestionId(process.getId(), payload.getQuestionId());
+        // Duplicated tracking rows (a double dispatch) used to turn this lookup
+        // into "2 results were returned" and lose the whole verdict; take the
+        // newest row instead and let the rest sit idle.
+        List<AiQuestionEvaluation> rowsForQuestion = questionEvaluationRepository
+                .findAllByEvaluationProcessIdAndQuestionIdOrderByCreatedAtDesc(process.getId(), payload.getQuestionId());
+        if (rowsForQuestion.size() > 1) {
+            log.warn("[copy-check] {} tracking rows for question {} in process {}; using the newest",
+                    rowsForQuestion.size(), payload.getQuestionId(), process.getId());
+        }
+        Optional<AiQuestionEvaluation> row = rowsForQuestion.stream().findFirst();
 
         // Never let a late or retried AI callback overwrite a mark a human has
         // already reviewed/edited on the review page.

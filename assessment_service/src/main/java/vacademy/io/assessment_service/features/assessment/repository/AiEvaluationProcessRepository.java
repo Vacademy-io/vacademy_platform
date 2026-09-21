@@ -36,6 +36,9 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
 
         List<AiEvaluationProcess> findByAssessmentId(String assessmentId);
 
+        /** Every run, of any status, for a set of attempts - one query for a whole table page. */
+        List<AiEvaluationProcess> findByStudentAttempt_IdIn(List<String> attemptIds);
+
         /**
          * Non-terminal processes that started before {@code cutoff} — i.e. jobs the
          * stale-job sweeper should mark FAILED because ai_service died / never sent
@@ -65,6 +68,30 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
         @Modifying(clearAutomatically = true, flushAutomatically = true)
         @Query("UPDATE AiEvaluationProcess p SET p.updatedAt = :now WHERE p.id = :id AND p.status NOT IN :terminal")
         int touch(@Param("id") String id, @Param("now") Date now, @Param("terminal") List<String> terminal);
+
+        /**
+         * Settled (COMPLETED/FAILED) checks nobody has been told about yet, oldest
+         * first. The completion notifier groups them per assessment.
+         */
+        @Query("SELECT DISTINCT p FROM AiEvaluationProcess p " +
+                        "LEFT JOIN FETCH p.assessment " +
+                        "LEFT JOIN FETCH p.studentAttempt sa " +
+                        "LEFT JOIN FETCH sa.registration " +
+                        "WHERE p.notifiedAt IS NULL AND p.status IN :terminal ORDER BY p.completedAt ASC")
+        List<AiEvaluationProcess> findUnnotifiedSettled(@Param("terminal") List<String> terminal);
+
+        /** Whether any check for the assessment is still running (the notice waits for it). */
+        @Query("SELECT COUNT(p) FROM AiEvaluationProcess p WHERE p.assessment.id = :assessmentId AND p.status IN :active")
+        long countActiveForAssessment(@Param("assessmentId") String assessmentId, @Param("active") List<String> active);
+
+        /**
+         * Claim a set of settled checks for one notice. Replica-safe: the WHERE on
+         * notified_at IS NULL means the first replica to run this wins and the
+         * others update zero rows, so the same copies are never announced twice.
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Query("UPDATE AiEvaluationProcess p SET p.notifiedAt = :now WHERE p.id IN :ids AND p.notifiedAt IS NULL")
+        int claimForNotice(@Param("ids") List<String> ids, @Param("now") Date now);
 
         /** How many copies are with the AI service right now (dispatched, not finished). */
         @Query("SELECT COUNT(p) FROM AiEvaluationProcess p WHERE p.status IN :statuses")

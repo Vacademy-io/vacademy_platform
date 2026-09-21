@@ -39,5 +39,44 @@ public class EngagementTrackingDTO {
         private Boolean isLate;
         private Long timeSpentMs;
         private String completedAt;
+        /** The written answer, when the format was TEXT. */
+        private String textAnswer;
+        /** Uploaded file ids, when the format was UPLOAD. */
+        private List<String> fileIds;
+        /** The option chosen, for MCQ/poll. */
+        private String selectedOptionId;
+    }
+
+    /** Batch-level view: how each learner is keeping up across the whole plan. */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class LearnerProgress {
+        private String userId;
+        private String fullName;
+        private String username;
+        private long completed;
+        private long correct;
+        private long pointsEarned;
+        /** Of the tasks that have closed so far, how many this learner never did. */
+        private long missed;
+        private String lastCompletedAt;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PlanOverview {
+        private String planId;
+        private String title;
+        /** Tasks whose window has already closed. */
+        private long tasksClosed;
+        private long tasksTotal;
+        private long learners;
+        /** Learners with at least one completion. */
+        private long learnersActive;
+        /** Learners with 3+ missed closed tasks — the ones to nudge. */
+        private long learnersSlipping;
+        private List<LearnerProgress> rows;
     }
 }

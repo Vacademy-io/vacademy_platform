@@ -596,3 +596,55 @@ async def test_schema_is_compact_by_default_and_detailed_on_request():
     out = json.loads(await website_mod.execute_website({"action": "schema", "page_type": "courses", "section_types": ["heroSection", "nope"]}, ctx()))
     assert list(out["examples"]) == ["heroSection"] and "title" in out["examples"]["heroSection"]["left"]
     assert out["archetype"]["page_type"] == "courses" and "DIRECTORY" in out["archetype"]["rules"]
+
+
+@pytest.mark.asyncio
+async def test_get_page_positions_and_looks(admin_core):
+    out = json.loads(await website_mod.execute_website({"action": "get_page"}, ctx()))
+    secs = out["page"]["sections"]
+    assert [s["position"] for s in secs] == [1, 2, 3, 4, 5, 6]
+    assert all("looks" in s for s in secs)
+    assert 'buttons: "Book a demo"' in secs[1]["looks"]
+
+
+@pytest.mark.asyncio
+async def test_find_section_action(admin_core):
+    out = json.loads(await website_mod.execute_website({"action": "find_section", "query": "Register"}, ctx()))
+    assert out["count"] == 1 and out["matches"][0]["section_id"] == "c-lead" and out["matches"][0]["path"] == "props.title"
+    out = json.loads(await website_mod.execute_website({"action": "find_section"}, ctx()))
+    assert out["error"] == "missing_argument"
+
+
+@pytest.mark.asyncio
+async def test_review_action_scores_every_page(admin_core):
+    out = json.loads(await website_mod.execute_website({"action": "review"}, ctx()))
+    assert set(out["pages"]) == {"home", "about"} and out["bar"] == 85
+    assert isinstance(out["score"], int) and out["passes"] is False       # the sample site is deliberately rough
+    assert all(i["fix"] for p in out["pages"].values() for i in p["issues"])
+
+
+@pytest.mark.asyncio
+async def test_list_media_ranks_hero_worthy_first(monkeypatch):
+    from app.services import assistant_tool_registry as reg
+    async def files(ctx_, method, base, path, **kw):
+        return [
+            {"file_detail": {"id": "a", "url": "https://cdn/a.png", "file_name": "logo.png", "file_type": "image/png", "width": 300, "height": 300}},
+            {"file_detail": {"id": "b", "url": "https://cdn/b.jpg", "file_name": "campus.jpg", "file_type": "image/jpeg", "width": 1600, "height": 900}},
+            {"file_detail": {"id": "c", "url": "https://cdn/c.pdf", "file_name": "brochure.pdf", "file_type": "application/pdf"}},
+            {"file_detail": {"id": "d", "url": "https://cdn/d.jpg", "file_name": "class.jpg", "file_type": "image/jpeg", "width": 800, "height": 1200}},
+        ]
+    monkeypatch.setattr(reg, "_service_json", files)
+    out = json.loads(await website_mod.execute_website({"action": "list_media"}, ctx()))
+    assert [m["name"] for m in out["images"]] == ["campus.jpg", "class.jpg", "logo.png"]
+    assert out["images"][0]["hero_worthy"] is True and "hero_worthy" not in out["images"][2]
+
+
+@pytest.mark.asyncio
+async def test_preview_is_wired_and_fails_softly(admin_core, monkeypatch):
+    from app.services import page_preview
+    async def fake_render(**kw):
+        assert kw["tag_name"] == "main-site" and kw["page_route"] == "home" and kw["base_url"] == "sites.acme.edu"
+        return {"png_base64": "AAAA", "width": 1280, "height": 3000}
+    monkeypatch.setattr(page_preview, "render_preview", fake_render)
+    out = json.loads(await website_mod.execute_website({"action": "preview"}, ctx()))
+    assert out["image_png_base64"] == "AAAA" and out["height"] == 3000

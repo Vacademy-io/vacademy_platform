@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ export function EngagementItemDialog({
   onOpenChange: (open: boolean) => void;
   onCompleted: (result: EngagementSubmitResponse) => void;
 }) {
+  const { t } = useTranslation("dashboardEngagement");
   const [detail, setDetail] = useState<EngagementItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function EngagementItemDialog({
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(e?.response?.data?.message ?? "This task could not be opened right now.");
+          setError(e?.response?.data?.message ?? t("dialog.openError"));
         }
       })
       .finally(() => {
@@ -104,7 +106,7 @@ export function EngagementItemDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, item]);
+  }, [open, item, t]);
 
   // Dwell timer, ticking so the learner can see it fill rather than guess.
   useEffect(() => {
@@ -184,12 +186,12 @@ export function EngagementItemDialog({
     } catch (e: unknown) {
       const message =
         (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        "Could not submit this just yet.";
+        t("dialog.submitError");
       setError(message);
     } finally {
       setSubmitting(false);
     }
-  }, [active, selectedOptionId, reachedEnd, onCompleted, isText, isUpload, textAnswer, fileIds]);
+  }, [active, selectedOptionId, reachedEnd, onCompleted, isText, isUpload, textAnswer, fileIds, t]);
 
   const canSubmit = (() => {
     if (submitting || result) return false;
@@ -201,14 +203,14 @@ export function EngagementItemDialog({
   })();
 
   const submitLabel = (() => {
-    if (submitting) return "Submitting…";
-    if (isChoice) return "Submit answer";
-    if (isText) return "Submit answer";
-    if (isUpload) return uploading ? "Uploading…" : "Submit answer";
-    if (isReading && !reachedEnd) return "Scroll to the end to finish";
-    if (isReading && !dwellMet) return "Almost there…";
-    if (isCourseSlide) return "I've finished the lesson";
-    return "Mark complete";
+    if (submitting) return t("dialog.submitting");
+    if (isChoice) return t("dialog.submitAnswer");
+    if (isText) return t("dialog.submitAnswer");
+    if (isUpload) return uploading ? t("dialog.uploading") : t("dialog.submitAnswer");
+    if (isReading && !reachedEnd) return t("dialog.scrollToEnd");
+    if (isReading && !dwellMet) return t("dialog.almostThere");
+    if (isCourseSlide) return t("dialog.finishedLesson");
+    return t("dialog.markComplete");
   })();
 
   const readingPercent = Math.round(
@@ -228,7 +230,7 @@ export function EngagementItemDialog({
             </span>
             <span className="min-w-0">
               <span className="block text-xs font-semibold uppercase tracking-wide text-white/80">
-                {visual?.label}
+                {visual ? t(`types.${visual.label}`) : ""}
               </span>
               <span className="block truncate text-lg font-bold">{active?.title}</span>
             </span>
@@ -254,8 +256,7 @@ export function EngagementItemDialog({
             <div className="space-y-4 pt-4">
               {active.pointsPercent != null && active.pointsPercent < 100 && (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                  You&apos;re catching up on this one — it&apos;s worth {active.pointsPercent}% of
-                  its points now.
+                  {t("dialog.catchUpNote", { percent: active.pointsPercent })}
                 </p>
               )}
 
@@ -283,7 +284,7 @@ export function EngagementItemDialog({
                       {slideTarget?.slideTitle ?? active.title}
                     </p>
                     <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                      Open the lesson, finish it, then come back to claim your points.
+                      {t("dialog.lessonHint")}
                     </p>
                     <Button
                       className="mt-3"
@@ -305,12 +306,12 @@ export function EngagementItemDialog({
                         });
                       }}
                     >
-                      Open the lesson
+                      {t("dialog.openLesson")}
                     </Button>
                   </div>
                   {!slideTarget && (
                     <p className="text-sm text-rose-600 dark:text-rose-400">
-                      This lesson link is incomplete — ask your teacher to re-pick the content.
+                      {t("dialog.lessonBroken")}
                     </p>
                   )}
                 </div>
@@ -384,10 +385,10 @@ export function EngagementItemDialog({
                     value={textAnswer}
                     onChange={(e) => setTextAnswer(e.target.value)}
                     rows={6}
-                    placeholder="Write your answer…"
+                    placeholder={t("dialog.writePlaceholder")}
                   />
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Your teacher reads these — say what you think and why.
+                    {t("dialog.writeHint")}
                   </p>
                 </div>
               )}
@@ -403,10 +404,10 @@ export function EngagementItemDialog({
                   <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-neutral-300 px-4 py-8 text-center transition hover:border-primary-400 dark:border-neutral-700">
                     <span className="text-2xl">📎</span>
                     <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                      {uploading ? "Uploading…" : "Choose a file"}
+                      {uploading ? t("dialog.uploading") : t("dialog.chooseFile")}
                     </span>
                     <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                      A photo of your work, a PDF, a document
+                      {t("dialog.fileHint")}
                     </span>
                     <input
                       type="file"
@@ -429,10 +430,10 @@ export function EngagementItemDialog({
                             setFileIds((prev) => [...prev, id]);
                             setFileNames((prev) => [...prev, file.name]);
                           } else {
-                            setError("That file could not be uploaded.");
+                            setError(t("dialog.uploadError"));
                           }
                         } catch {
-                          setError("That file could not be uploaded.");
+                          setError(t("dialog.uploadError"));
                         } finally {
                           setUploading(false);
                           // Allow re-picking the same file after a failure.
@@ -459,7 +460,7 @@ export function EngagementItemDialog({
                               setFileNames((prev) => prev.filter((_, x) => x !== i));
                             }}
                           >
-                            Remove
+                            {t("dialog.remove")}
                           </button>
                         </li>
                       ))}
@@ -480,9 +481,7 @@ export function EngagementItemDialog({
                     />
                   </div>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {readingGateMet
-                      ? "Ready to mark complete."
-                      : "Read through to the end to earn your points."}
+                    {readingGateMet ? t("dialog.readingReady") : t("dialog.readingHint")}
                   </p>
                 </div>
               )}
@@ -500,25 +499,24 @@ export function EngagementItemDialog({
                   </p>
                   <p className="text-lg font-bold text-neutral-900 dark:text-neutral-50">
                     {result.resultPending
-                      ? "Answer locked in"
+                      ? t("dialog.lockedIn")
                       : result.isCorrect === true
-                        ? "Correct!"
+                        ? t("dialog.correct")
                         : result.isCorrect === false
-                          ? "Not this time"
-                          : "Done!"}
+                          ? t("dialog.wrong")
+                          : t("dialog.done")}
                   </p>
                   {result.resultPending && (
                     <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                      You&apos;ll find out how you did — and get any bonus points — when
-                      the answer is revealed.
+                      {t("dialog.lockedInHint")}
                     </p>
                   )}
                   <p className="text-sm font-semibold text-primary-700 dark:text-primary-300">
-                    +{result.pointsAwarded} points
+                    {t("dialog.pointsAwarded", { count: result.pointsAwarded })}
                   </p>
                   {!result.isRevealed && active.itemType === "QUESTION_OF_DAY" && (
                     <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                      The answer is revealed later today, with the leaderboard.
+                      {t("dialog.revealLater")}
                     </p>
                   )}
                   {result.explanation && (
@@ -536,7 +534,7 @@ export function EngagementItemDialog({
               <div className="flex items-center justify-end gap-2">
                 {result ? (
                   <Button className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>
-                    Done
+                    {t("dialog.doneButton")}
                   </Button>
                 ) : (
                   <Button

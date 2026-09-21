@@ -21,8 +21,9 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation, vision_transcript
-from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
+from . import annotator, callbacks, cancellation, locate, vision_transcript
+from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
+from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
 from .rubric import RubricResolver, load_snapshot
@@ -68,6 +69,25 @@ def _new_job_id() -> str:
     return str(uuid.uuid4())
 
 
+def _looks_unattempted(raw: dict[str, Any]) -> bool:
+    """The grader found no answer: the explicit verdict, or the shape the
+    prompt prescribes for one (0 marks, nothing extracted, nothing to draw) for
+    models that leave `verdict` out."""
+    if not isinstance(raw, dict):
+        return False
+    if str(raw.get("verdict") or "").strip().lower() == "unattempted":
+        return True
+    try:
+        marks = float(raw.get("marks_awarded") or 0)
+    except (TypeError, ValueError):
+        return False
+    return (
+        marks == 0
+        and not str(raw.get("extracted_answer") or "").strip()
+        and not raw.get("annotations")
+    )
+
+
 def _render_client() -> CopyCheckRenderClient:
     # ai-service uses RENDER_SERVER_URL/RENDER_SERVER_KEY as the cluster-wide
     # convention (already set on the deployment). Fall through to the names
@@ -89,6 +109,39 @@ async def grade_copy(process_id: Optional[str] = None) -> str:
     return job_id
 
 
+def _mark_label_blocks(questions: list[dict[str, Any]]) -> None:
+    """Tell repeated printed numbers apart.
+
+    A paper with two passages under one section prints 1-10 twice; the student
+    writes both runs. `label_block` = which run this question belongs to (1, 2…)
+    and `label_blocks` = how many runs that section has, worked out from paper
+    order: a printed number that is <= the previous one in the same section
+    starts a new run. Without this "Section A · 1" named two questions and the
+    grader marked one passage's answers against the other's key (2026-09-21).
+    """
+    import re as _re
+
+    def _num(label: Any) -> int | None:
+        m = _re.match(r"\s*(\d+)", str(label or ""))
+        return int(m.group(1)) if m else None
+
+    runs: dict[str, int] = {}
+    last: dict[str, int] = {}
+    for q in questions:
+        section = str(q.get("section") or "").strip()
+        n = _num(q.get("paper_label"))
+        if n is None:
+            q["label_block"] = 1
+            continue
+        if section in last and n <= last[section]:
+            runs[section] = runs.get(section, 1) + 1
+        runs.setdefault(section, 1)
+        last[section] = n
+        q["label_block"] = runs[section]
+    for q in questions:
+        q["label_blocks"] = runs.get(str(q.get("section") or "").strip(), 1)
+
+
 async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     """The actual pipeline. Designed to never raise out of the BG task — any
     failure ends in a callbacks.failed() POST so Java can surface it."""
@@ -101,7 +154,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     questions: list[dict[str, Any]] = req["questions"]
 
     llm = ChatLLMClient(ApiKeyResolver(db))
-    grader = CopyCheckGrader(llm, institute_id=institute_id)
+    grader = CopyCheckGrader(llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)))
     mathpix = MathpixFallback()
 
     async def _llm_for_criteria(system: str, user: str, model: str | None) -> dict[str, Any]:
@@ -243,6 +296,20 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         cancellation.check(job_id, process_id)
         layout_map = await mathpix.enrich_layout_for_math(pdf_url, layout_map)
 
+        # 2b. Where is each answer? One call over the page prose so every
+        # grading call below gets only the pages that matter (+1 either side)
+        # instead of the whole copy. Without this, cost was pages × questions:
+        # a 100-question/40-page copy re-sent ~18k tokens of transcript 100
+        # times. Advisory only — {} (call failed, copy too small, locator
+        # unconvincing) means every call sees the full transcript, as before.
+        cancellation.check(job_id, process_id)
+        located = await locate.locate_answers(
+            llm, questions, layout_map, DEFAULT_MODEL,
+            institute_id=institute_id, token_sink=grader,
+        )
+        all_page_ids = [str(p.get("page_id")) for p in layout_map.get("pages") or []]
+        question_order = locate.paper_order(questions)
+
         # 3. Per-question grading.
         # Java flips the process to EVALUATING on this step. Python never sent
         # it, so that branch was dead and the UI showed "OCR done" for most of
@@ -253,12 +320,35 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         evaluated = 0
         # Kept so the annotator can draw every verdict in one pass at the end;
         # the per-question callback already fired for each of these.
+        # Every other question's printed label: the grader is told which numbers
+        # exist on the sheet so "2." under Section B is not mistaken for "2." under
+        # Passage I. Labels only reached us from 2026-09-21; before that this list
+        # would have been ids and was not sent at all.
+        _mark_label_blocks(questions)
+        all_labels = [paper_label_for(q) for q in questions]
         verdicts: list[dict[str, Any]] = []
-        for q in questions:
+        for index, q in enumerate(questions):
+            q["neighbour_labels"] = [lbl for i, lbl in enumerate(all_labels) if i != index][:80]
             cancellation.check(job_id, process_id)
+            qid = str(q["question_id"])
+            page_ids = locate.pages_for_question(qid, located, question_order, all_page_ids)
+            narrowed = page_ids is not None and len(page_ids) < len(all_page_ids)
             try:
                 rubric = await rubric_resolver.resolve(q, preferred_model)
-                raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
+                raw = await grader.grade_question(q, rubric, layout_map, preferred_model, page_ids)
+                if narrowed and _looks_unattempted(raw) and located.get(qid) != []:
+                    # The locator said the answer is on these pages (or did not
+                    # place it at all) and the grader found nothing there. One
+                    # of them is wrong; a wrong locator must never cost a
+                    # student the marks, so look at the whole copy once. An
+                    # explicit [] from the locator ("not attempted") agreeing
+                    # with the grader is left alone — that is two reads
+                    # saying the same thing.
+                    logger.info(
+                        "Q%s unattempted on located pages %s; re-grading against the full copy",
+                        qid, page_ids,
+                    )
+                    raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
                 verdict = validate_and_cap(raw, q, layout_map)
             except cancellation.Cancelled:
                 raise
@@ -274,7 +364,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 )
                 try:
                     rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
-                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL)
+                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL, page_ids)
                     verdict = validate_and_cap(raw, q, layout_map)
                 except cancellation.Cancelled:
                     raise
@@ -329,7 +419,9 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         try:
             questions_meta = [{
                 "question_id": q.get("question_id"),
-                "paper_label": q.get("paper_label") or q.get("label"),
+                # section-qualified so "2" under Section B and "2" under Passage I
+                # stay two different keys inside enforce
+                "paper_label": paper_label_for(q) if (q.get("paper_label") or q.get("label")) else None,
                 "max_marks": q.get("max_marks"),
                 "question_type": q.get("question_type"),
             } for q in questions]

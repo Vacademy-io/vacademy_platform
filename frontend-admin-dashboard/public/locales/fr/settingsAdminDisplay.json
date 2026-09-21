@@ -67,7 +67,7 @@
     },
     "courseListTabs": {
         "title": "Onglets de la liste des cours",
-        "description": "Configurez les onglets visibles, leur ordre et l'onglet par défaut. Remarque : « Approbation des cours » est toujours visible pour les administrateurs ; « Cours en révision » est masqué."
+        "description": "Configurez les onglets visibles, leur ordre et l'onglet par défaut. Courses In Review est destiné aux rôles non administrateurs et reste masqué pour les administrateurs."
     },
     "courseDetailsTabs": {
         "title": "Onglets des détails du cours",

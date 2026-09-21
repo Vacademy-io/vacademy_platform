@@ -78,6 +78,8 @@ export interface PaperSpec {
     grade?: string;
     language?: string;
     exam_style?: string;
+    /** Exam date as typed in the date field (YYYY-MM-DD); printed on the sheet. */
+    exam_date?: string;
     /** The teacher's own title; blank lets the planner name the paper. */
     title?: string;
     /** Fixed mix in paper order. Counts and marks are enforced server-side. */

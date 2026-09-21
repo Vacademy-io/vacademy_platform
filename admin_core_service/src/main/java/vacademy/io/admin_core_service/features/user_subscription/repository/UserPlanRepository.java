@@ -112,6 +112,26 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         Optional<UserPlan> findFirstByUserIdAndEnrollInviteIdOrderByCreatedAtDesc(
                         String userId, String enrollInviteId);
 
+        /**
+         * Does this user already hold a plan — on ANY invite — that lands in one of the given
+         * package sessions? Used by the phone-identifier submission guard so a learner cannot
+         * take the same course again through a sibling invite link (an institute typically has
+         * several links into one batch: monthly / quarterly / annual). TERMINATED plans are
+         * ignored: that status is an admin's explicit "this enrolment never counted".
+         */
+        @Query("""
+                SELECT COUNT(up) > 0 FROM UserPlan up
+                WHERE up.userId = :userId
+                  AND up.status <> 'TERMINATED'
+                  AND up.enrollInvite.id IN (
+                        SELECT m.enrollInvite.id
+                        FROM PackageSessionLearnerInvitationToPaymentOption m
+                        WHERE m.packageSession.id IN :packageSessionIds)
+                """)
+        boolean existsByUserIdAndPackageSessionIds(
+                        @Param("userId") String userId,
+                        @Param("packageSessionIds") List<String> packageSessionIds);
+
         Optional<UserPlan> findFirstByUserIdAndEnrollInviteIdAndCreatedAtAfterOrderByCreatedAtAsc(
                         String userId,
                         String enrollInviteId,

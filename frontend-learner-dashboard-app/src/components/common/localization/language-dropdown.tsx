@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { useLanguageStore } from "@/stores/localization/useLanguageStore";
 import {
   DropdownMenu,
@@ -10,7 +11,11 @@ import {
 import { CaretUp, CaretDown, Check, Globe } from "@phosphor-icons/react";
 import { useSyncLanguage } from "@/hooks/useSyncLanguage";
 import { LOCALE_LABELS } from "@/i18n/locales";
-import { getEnabledLocales } from "@/services/language-settings";
+import {
+  getEnabledLocales,
+  syncLanguageSettingFromSettingJson,
+} from "@/services/language-settings";
+import { handleGetPublicInstituteDetails } from "@/components/common/layout-container/services/navbar-services";
 import { cn } from "@/lib/utils";
 
 interface LanguageDropdownProps {
@@ -31,8 +36,27 @@ export const LanguageDropdown = ({
   const setLocale = useLanguageStore((state) => state.setLocale);
   const [isOpen, setIsOpen] = useState(false);
 
+  // The cached LANGUAGE_SETTING is only written at login, so refresh it from
+  // the public institute details (shared query with the navbar — no extra
+  // request) so an admin enabling a language shows up without a re-login,
+  // and the pre-login page gets the institute's list at all.
+  const { data: instituteDetails } = useQuery({
+    ...handleGetPublicInstituteDetails(),
+    retry: false,
+  });
+  useEffect(() => {
+    if (instituteDetails?.setting !== undefined) {
+      syncLanguageSettingFromSettingJson(instituteDetails.setting);
+    }
+  }, [instituteDetails]);
+
   // Institute-enabled locales (always includes the current selection).
-  const enabledLocales = getEnabledLocales(locale);
+  // Recomputed once the details land, since getEnabledLocales reads the cache.
+  const enabledLocales = useMemo(
+    () => getEnabledLocales(locale),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locale, instituteDetails]
+  );
 
   const handleChangeLanguage = (nextLocale: string) => {
     setLocale(nextLocale);

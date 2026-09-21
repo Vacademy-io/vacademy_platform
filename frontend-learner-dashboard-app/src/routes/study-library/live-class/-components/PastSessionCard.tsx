@@ -14,6 +14,7 @@ import {
   VideoCamera,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { InstructorLine } from "./InstructorLine";
 import {
   formatSessionTimeInUserTimezone,
   getTimezoneDisplayInfo,
@@ -171,6 +172,8 @@ export const PastSessionCard = ({ session }: PastSessionCardProps) => {
           <span className="capitalize">{session.subject}</span>
         </div>
       )}
+
+      <InstructorLine instructors={session.instructors} className="mb-2" />
 
       <div className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300 mb-2">
         <Clock size={16} className="text-neutral-500 dark:text-neutral-400" />

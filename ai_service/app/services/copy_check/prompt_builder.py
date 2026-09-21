@@ -210,9 +210,23 @@ def grading_system(subject: str = "school", klass: str = "6-12") -> str:
     return GRADING_SYSTEM_TEMPLATE.format(subject=subject, klass=klass)
 
 
-def _transcript_for_prompt(layout_map: dict[str, Any]) -> str:
+def _transcript_for_prompt(layout_map: dict[str, Any], page_ids: list[str] | None = None) -> str:
+    """The transcript block. `page_ids` narrows it to those pages (in copy
+    order) — set by the answer-location pass so a 40-page copy is not re-sent
+    in full for each of 100 questions. None = every page, as before."""
     out: list[str] = []
-    for page in layout_map.get("pages") or []:
+    pages = layout_map.get("pages") or []
+    if page_ids is not None:
+        wanted = set(page_ids)
+        shown = [p for p in pages if str(p.get("page_id")) in wanted]
+        if shown and len(shown) < len(pages):
+            out.append(
+                f"NOTE: only the {len(shown)} page(s) where this answer was located are shown "
+                f"({', '.join(str(p.get('page_id')) for p in shown)} of {len(pages)} pages). "
+                "If the answer is not on these pages, return verdict \"unattempted\" - do not guess."
+            )
+            pages = shown
+    for page in pages:
         out.append("---- Page " + str(page.get("page_id")) + " ----")
         vision = (page.get("vision_text") or "").strip()
         if vision:
@@ -241,36 +255,61 @@ def _transcript_for_prompt(layout_map: dict[str, Any]) -> str:
 
 
 def _question_context(question: dict[str, Any]) -> str:
+    """Options (with every way a student may refer to a position) and the key.
+
+    The key is shown whenever there is one — a one-word or numerical question
+    has no options but still has exactly one right answer, and without it the
+    grader was left to decide correctness from its own knowledge.
+    """
     options = question.get("options") or []
-    if not options:
-        return ""
-    rendered: list[str] = []
-    for i, opt in enumerate(options):
-        text = opt.get("text") or opt.get("preview_id") or str(opt)
-        rendered.append(f"  {i + 1}. (position {i + 1} / {chr(65 + i)} / {_roman(i + 1)}): {text}")
-    block = "**Options:**\n" + "\n".join(rendered)
+    parts: list[str] = []
+    if options:
+        rendered: list[str] = []
+        for i, opt in enumerate(options):
+            text = opt.get("text") or opt.get("preview_id") or str(opt)
+            rendered.append(f"  {i + 1}. (position {i + 1} / {chr(65 + i)} / {_roman(i + 1)}): {text}")
+        parts.append("**Options:**\n" + "\n".join(rendered))
     correct = question.get("correct_answer")
     if correct:
-        block += f"\n**Correct answer:** {correct}"
-    return block
+        parts.append(f"**Correct answer:** {correct}")
+    return "\n".join(parts)
 
 
 def _roman(n: int) -> str:
     return ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"][n - 1] if 1 <= n <= 10 else str(n)
 
 
-def _type_instructions(question_type: str) -> str:
+# The platform's own type names for "pick an option" questions. The grading
+# rules below key on these; "MCQ" is the older free-text alias.
+_CHOICE_TYPES = ("MCQ", "MCQS", "MCQM", "TRUE_FALSE")
+
+
+def _type_instructions(question_type: str, has_key: bool = False) -> str:
+    """Per-type grading rule. `has_key` = a correct answer was supplied above;
+    only then is the grader told not to decide the key itself — a legacy
+    question with no stored key must still be gradable on the model's judgement,
+    as it always was."""
     t = (question_type or "").upper()
-    if t == "MCQ":
-        return (
+    key_rule = " Grade ONLY against the correct answer given above; never decide the key yourself." if has_key else ""
+    if t in _CHOICE_TYPES:
+        text = (
             "MCQ: Match the option POSITION (number), not exact text. Accept "
-            "'2', 'B', 'b', 'ii', 'option 2' as equivalent. Award full marks "
-            "if position matches, even if the option text is misspelled."
+            "'2', 'B', 'b', 'ii', 'option 2' as equivalent, and the option's own "
+            "printed label such as '(b)'. Award full marks if position matches, even "
+            "if the option text is misspelled." + key_rule
         )
-    if t in ("ONE_WORD", "SHORT_ANSWER"):
+        if t == "MCQM":
+            text += (
+                " MCQM has several correct options: full marks only when the student "
+                "marked exactly the correct set; a wrong extra option or a missing one "
+                "is a wrong answer."
+            )
+        return text
+    if t in ("ONE_WORD", "SHORT_ANSWER", "NUMERIC"):
         return (
-            "ONE_WORD: Accept spelling variants and close synonyms. Award marks "
-            "if the intent matches the correct answer."
+            "ONE_WORD / NUMERIC: Accept spelling variants, close synonyms and equivalent "
+            "numeric forms (units, decimals, fractions). Award marks if the intent matches "
+            "the correct answer." + key_rule
         )
     if t in ("LONG_ANSWER", "DESCRIPTIVE"):
         return (
@@ -305,7 +344,7 @@ def _annotation_regime(question_type: str, max_marks: float) -> str:
     """One reminder line; the full regime is in the system prompt and is the
     same for every type. The only per-type difference is the tick budget."""
     t = (question_type or "").upper()
-    if t in ("MCQ", "ONE_WORD", "SHORT_ANSWER") or max_marks <= 1:
+    if t in (*_CHOICE_TYPES, "ONE_WORD", "SHORT_ANSWER", "NUMERIC") or max_marks <= 1:
         return (
             "Objective/short answer: `tick` or `cross` on the answer row, plus ONE `score`. "
             "Wrong answer also gets a `margin_note` naming the correct answer. No praise."
@@ -317,20 +356,56 @@ def _annotation_regime(question_type: str, max_marks: float) -> str:
     )
 
 
+def paper_label_for(question: dict[str, Any]) -> str:
+    """What the student wrote before the answer: the printed number, with its
+    section when numbering restarts per section ("Section B · 2"); the overall
+    position when the caller knows no printed number; the id only as a last
+    resort (that was the only value ever sent before 2026-09-21, so the grader
+    was locating answers by wording alone)."""
+    printed = str(question.get("paper_label") or "").strip()
+    section = str(question.get("section") or "").strip()
+    block = question.get("label_block")  # 2, 3… when the same number repeats in the section
+    if printed:
+        base = f"{section} · {printed}" if section else printed
+        return f"{base} (block {block})" if block and int(block) > 1 else base
+    number = question.get("question_number")
+    if number:
+        return f"Q{number}"
+    return str(question["question_id"])
+
+
+def _section_hint(question: dict[str, Any]) -> str:
+    section = str(question.get("section") or "").strip()
+    printed = str(question.get("paper_label") or "").strip()
+    if not (section and printed):
+        return ""
+    block = int(question.get("label_block") or 1)
+    blocks = int(question.get("label_blocks") or 1)
+    where = (f"**Where to look:** the student's answer is labelled \"{printed}\" under the heading "
+             f"\"{section}\" (or after that section's earlier answers). The same number may appear "
+             "under other headings - those belong to other questions; do not grade them here.")
+    if blocks > 1:
+        ordinal = {1: "first", 2: "second", 3: "third"}.get(block, f"{block}th")
+        where += (f" In \"{section}\" the numbering restarts {blocks} times (one run per passage/part); "
+                  f"this question is in the {ordinal} run numbered from 1 - skip the other run(s) with the same number.")
+    return where + "\n"
+
+
 def build_grading_prompt(
     question: dict[str, Any],
     rubric: dict[str, Any],
     layout_map: dict[str, Any],
     neighbour_question_labels: list[str] | None = None,
+    page_ids: list[str] | None = None,
 ) -> str:
     max_marks = float(rubric.get("max_marks") or question.get("max_marks") or 10)
     rubric_json = json.dumps(rubric, indent=2)
-    label = question.get("paper_label") or question["question_id"]
+    label = paper_label_for(question)
     neighbours = ", ".join(neighbour_question_labels or []) or "none supplied"
     return f"""Mark the student's handwritten answer to the question below.
 
 **Question as numbered on the paper:** {label}
-**Other questions that may appear on the same pages (do NOT grade these):** {neighbours}
+{_section_hint(question)}**Other questions that may appear on the same pages (do NOT grade these):** {neighbours}
 **Question type:** {question.get('question_type')}
 **Question:**
 {question['question_text']}
@@ -342,10 +417,10 @@ def build_grading_prompt(
 {rubric_json}
 
 **Student's transcript (row id + text per page):**
-{_transcript_for_prompt(layout_map)}
+{_transcript_for_prompt(layout_map, page_ids)}
 
 **Type-specific grading:**
-{_type_instructions(question.get('question_type'))}
+{_type_instructions(question.get('question_type'), bool(question.get('correct_answer')))}
 
 **Annotation regime for this question:**
 {_annotation_regime(question.get('question_type'), max_marks)}

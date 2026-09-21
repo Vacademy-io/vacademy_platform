@@ -57,8 +57,16 @@ public class EngagementItemDTO {
     // This learner's progress.
     private String attemptStatus;
     private Boolean isCorrect;
+    /** True when isCorrect is deliberately withheld until revealAt. */
+    private Boolean resultPending;
     private Integer pointsAwarded;
 
     /** Social proof: how many learners have completed it. */
     private Long completedCount;
+
+    // Present only on REVEALED entries — the answer key travels here, never on a
+    // live item.
+    private String correctOptionId;
+    private String explanation;
+    private String selectedOptionId;
 }

@@ -131,6 +131,10 @@ public class AssessmentTriggerContextBuilder {
         put(ctx, "resultStatus", attempt.getResultStatus());
         put(ctx, "reportReleaseStatus", attempt.getReportReleaseStatus());
         put(ctx, "reportPdfFileId", attempt.getReportPdfFileId());
+        // The checked copy (AI-annotated or teacher-uploaded PDF). On a manual-result
+        // test this is the only document a learner gets — there is no generated
+        // report — so an automation needs it to link or attach anything.
+        put(ctx, "checkedCopyFileId", attempt.getEvaluatedFileId());
         put(ctx, "rank", rank);
         put(ctx, "percentile", percentile);
         return ctx;

@@ -137,6 +137,42 @@ public class CourseApprovalService {
     }
 
     /**
+     * Teacher publishes their own DRAFT course directly, skipping the
+     * IN_REVIEW -> admin-approve step. Used when the role's display settings
+     * have "Require approval before publishing" switched off. Runs the same
+     * publish / merge logic as admin approval, with the teacher as the actor.
+     */
+    @Transactional
+    public String publishByTeacher(String courseId, CustomUserDetails teacher) {
+        PackageEntity course = packageRepository.findById(courseId)
+                .orElseThrow(() -> new VacademyException("Course not found"));
+
+        if (!PackageStatusEnum.DRAFT.name().equals(course.getStatus())) {
+            throw new VacademyException("Only draft courses can be published");
+        }
+
+        if (!teacher.getUserId().equals(course.getCreatedByUserId())) {
+            throw new VacademyException("Only the course creator can publish this course");
+        }
+
+        validateCourseContent(course);
+        PackageInstitute packageInstitute = packageInstituteRepository.findTopByPackageEntity_IdOrderByCreatedAtDesc(courseId).orElse(null);
+        String result;
+        if (course.getOriginalCourseId() != null) {
+            // Editable copy of a published course - merge changes back
+            result = mergeChangesIntoOriginal(course, packageInstitute);
+            deleteTempCourse(course);
+        } else {
+            // Brand-new course - publish as active
+            result = publishNewCourse(course, packageInstitute);
+        }
+
+        log.info("Course {} published directly by teacher {}", courseId, teacher.getUserId());
+        appendAuditLog(course, "SELF_PUBLISH", teacher.getUserId(), "Published course without admin review", null);
+        return result;
+    }
+
+    /**
      * Withdraw course from review back to draft
      */
     @Transactional

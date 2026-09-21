@@ -74,8 +74,18 @@ SERVER_INSTRUCTIONS = (
     "and no model runs on the server: read website(action='schema') for the component contract, "
     "write the page JSON from the interview, save it with create_page / create_site, fix what the "
     "audit reports with update_page, and give the admin the editor_url to review and publish. "
-    "Never invent image URLs — use list_media or import_image.\n"
-    "Lead forms: `audience_forms` reads the lead campaigns that website forms submit into."
+    "Never invent image URLs — use list_media or import_image. Quality loop: after composing or "
+    "editing a page call website(action='review') and, when possible, website(action='preview') to "
+    "look at it; fix what they report with update_page until review passes (score ≥ 85, no `fix` "
+    "items) before telling the admin it is ready. For a change the admin describes from a screenshot, "
+    "use get_page (positions + what each section looks like) or find_section (the text they point at) "
+    "to locate the exact section and prop, then update_page.\n"
+    "Lead forms: `audience_forms` reads the lead campaigns that website forms submit into.\n"
+    "Blog: `blog` reads the institute's blog posts and blog(action='placements') tells you which website "
+    "pages show them. `blog_edit` (when enabled) writes articles as DRAFTS — compose the body as clean HTML "
+    "(h2/h3, paragraphs, lists, tables, images only from the institute's media, YouTube/Vimeo embeds), "
+    "give it an excerpt and a meta description, save with create, then hand the admin the editor_url to "
+    "review and publish. Never say a post is live; request_publish only reports readiness and the link."
 )
 
 

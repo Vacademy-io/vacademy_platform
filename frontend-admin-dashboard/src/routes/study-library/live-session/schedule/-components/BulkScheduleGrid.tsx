@@ -1202,7 +1202,25 @@ export function BulkScheduleGrid() {
 
                 // Pass an empty session_id; backend's BulkLiveSessionService
                 // overwrites it with the real id from each created session.
-                return transformFormToDTOStep2(syntheticStep2Form, '', rowPackageSessionIds);
+                const rowStep2 = transformFormToDTOStep2(
+                    syntheticStep2Form,
+                    '',
+                    rowPackageSessionIds
+                );
+
+                // Instructors from the CSV's `instructors` column, still as the
+                // admin typed them (id / email / username). The backend resolves
+                // them against the institute directory once for the whole import
+                // and reports unmatched entries as a per-row warning.
+                //
+                // Only sent when the row actually named someone: an empty list
+                // would mean "remove all instructors" and would wipe the creator
+                // the backend seeds for rows that named nobody.
+                if ((row.instructorIdentifiers?.length ?? 0) > 0) {
+                    rowStep2.instructor_identifiers = row.instructorIdentifiers;
+                }
+
+                return rowStep2;
             });
 
             // Throttled creation: send rows in small chunks with a short pause

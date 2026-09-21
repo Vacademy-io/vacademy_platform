@@ -96,6 +96,48 @@ def _rich(content: Optional[str], rtype: str = "HTML") -> Dict[str, Any]:
     return {"id": None, "type": rtype, "content": content}
 
 
+def _explanation(q: Dict[str, Any]) -> Dict[str, Any]:
+    """The explanation rich text, empty rather than null when the source has none.
+
+    assessment_service stores it as its own row with `content NOT NULL` and the
+    admin dashboard sends `""` for "no explanation"; a `null` here made the bank
+    reject the whole paper (every question of a digitised paper, which is read
+    verbatim and never has one) on 2026-09-20.
+    """
+    return _rich(q.get("exp") or "")
+
+
+_TRUE_FALSE_ALIASES = {"t": "true", "f": "false", "yes": "true", "no": "false"}
+
+
+def _option_text_key(content: Any) -> str:
+    """Comparable form of an option's text or an answer marker: markup and
+    punctuation gone, lower-cased, T/F/yes/no folded onto true/false — applied
+    to BOTH sides so "yes" still finds a "Yes" option."""
+    text = re.sub(r"<[^>]+>", " ", str(content or ""))
+    key = re.sub(r"[^a-z0-9]+", "", text.lower())
+    return _TRUE_FALSE_ALIASES.get(key, key)
+
+
+def match_option_text(markers: Optional[List[Any]], options: List[Dict[str, Any]]) -> List[str]:
+    """Preview ids of the options whose TEXT equals a marker (case/markup-insensitive).
+
+    Fallback for keys the generator wrote as the option's words rather than its
+    letter or number — a TRUE_FALSE answered "FALSE", an MCQ answered "Parity".
+    """
+    by_text: Dict[str, str] = {}
+    for opt in options:
+        key = _option_text_key(((opt.get("text") or {}).get("content")))
+        if key and key not in by_text:
+            by_text[key] = str(opt.get("preview_id"))
+    found: List[str] = []
+    for marker in markers or []:
+        pid = by_text.get(_option_text_key(marker))
+        if pid and pid not in found:
+            found.append(pid)
+    return found
+
+
 def _eval_json(obj: Dict[str, Any]) -> str:
     """Serialize the evaluation DTO compactly (matches Jackson: no spaces)."""
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
@@ -202,12 +244,17 @@ def _build_options(q: Dict[str, Any]) -> tuple[List[Dict[str, Any]], List[str]]:
 
 def _handle_mcq(q: Dict[str, Any], qtype: str) -> Dict[str, Any]:
     options_out, preview_ids = _build_options(q)
-    correct = normalize_correct_option_ids(q.get("correct_options"), preview_ids)
+    raw_markers = q.get("correct_options") or ([q.get("ans")] if q.get("ans") else [])
+    # str(): a generator may write the key as a number; the normaliser strips strings.
+    markers = [str(m) for m in (raw_markers if isinstance(raw_markers, list) else [raw_markers]) if m is not None]
+    correct = normalize_correct_option_ids(markers, preview_ids)
+    if not correct:
+        correct = match_option_text(markers, options_out)
     dto: Dict[str, Any] = {
         "access_level": "PUBLIC",
         "question_response_type": "OPTION",
         "question_type": qtype,
-        "explanation_text": _rich(q.get("exp")),
+        "explanation_text": _explanation(q),
         "text": _rich(q.get("question", {}).get("content")),
         "options": options_out,
         # Both spellings. Java's MCQEvaluationDTO.MCQData binds `correctOptionIds`
@@ -251,7 +298,7 @@ def _handle_numeric(q: Dict[str, Any]) -> Dict[str, Any]:
         "access_level": "PUBLIC",
         "question_response_type": response_type,
         "question_type": "NUMERIC",
-        "explanation_text": _rich(q.get("exp")),
+        "explanation_text": _explanation(q),
         "text": _rich(q.get("question", {}).get("content")),
         # NumericalEvaluationDto.NumericalData binds `validAnswers`; the snake key is
         # kept for the preview readers, exactly as with MCQ above.
@@ -268,7 +315,7 @@ def _handle_one_word(q: Dict[str, Any]) -> Dict[str, Any]:
         "access_level": "PUBLIC",
         "question_response_type": "ONE_WORD",
         "question_type": "ONE_WORD",
-        "explanation_text": _rich(q.get("exp")),
+        "explanation_text": _explanation(q),
         "text": _rich(q.get("question", {}).get("content")),
         "auto_evaluation_json": _eval_json({"type": "ONE_WORD", "data": {"answer": q.get("ans")}}),
     }
@@ -281,7 +328,7 @@ def _handle_long_answer(q: Dict[str, Any]) -> Dict[str, Any]:
         "access_level": "PUBLIC",
         "question_response_type": "LONG_ANSWER",
         "question_type": "LONG_ANSWER",
-        "explanation_text": _rich(q.get("exp")),
+        "explanation_text": _explanation(q),
         "text": _rich(q.get("question", {}).get("content")),
         "auto_evaluation_json": _eval_json({"type": "LONG_ANSWER", "data": {"answer": _rich(q.get("ans"))}}),
     }

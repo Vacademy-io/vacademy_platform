@@ -31,6 +31,7 @@ from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
 from .routers.knowledge_base import router as knowledge_base_router
 from .routers.kb_paper import router as kb_paper_router
+from .routers.paper_digitise import router as paper_digitise_router
 from .routers.kb_library import router as kb_library_router
 from .routers.voice_agent import router as voice_agent_router
 from .routers.tutor import router as tutor_router
@@ -44,6 +45,7 @@ from .routers.coding_question_gen import router as coding_question_gen_router
 from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 from .routers.transcript_notes import router as transcript_notes_router
 from .routers.html_document import router as html_document_router
+from .routers.engagement_plan import router as engagement_plan_router
 from .routers.page_builder import router as page_builder_router
 from .routers.course_assist import router as course_assist_router
 from .routers.copy_check import router as copy_check_router
@@ -270,6 +272,8 @@ def create_app() -> FastAPI:
     # Question papers generated from a knowledge base (V436). Shares the
     # /knowledge-base/v1 prefix and the same Caller auth dependency.
     app.include_router(kb_paper_router, prefix=settings.api_base_path)
+    # A question-paper PDF read into gradable questions for offline tests.
+    app.include_router(paper_digitise_router, prefix=settings.api_base_path)
     app.include_router(kb_library_router, prefix=settings.api_base_path)
     app.include_router(voice_agent_router, prefix=settings.api_base_path)
     app.include_router(tutor_router, prefix=settings.api_base_path)
@@ -295,6 +299,7 @@ def create_app() -> FastAPI:
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
     app.include_router(transcript_notes_router, prefix=settings.api_base_path)
     app.include_router(html_document_router, prefix=settings.api_base_path)
+    app.include_router(engagement_plan_router, prefix=settings.api_base_path)
     app.include_router(page_builder_router, prefix=settings.api_base_path)
     # Inline "generate with AI" for the manual Add Course form fields:
     #   {api_base_path}/course/assist/v1/text  |  /v1/image

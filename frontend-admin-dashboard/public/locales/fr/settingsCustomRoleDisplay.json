@@ -46,7 +46,8 @@
         "canEditCourseStructure": "Peut modifier la matière / le module / le chapitre",
         "canDeleteCourseStructure": "Peut supprimer la matière / le module / le chapitre",
         "showBulkUpload": "Afficher le bouton de téléversement en masse (ZIP)",
-        "canDeleteCourse": "Peut supprimer le cours"
+        "canDeleteCourse": "Peut supprimer le cours",
+        "requireCourseApproval": "Exiger l'approbation d'un administrateur avant de publier un nouveau cours (Soumettre pour relecture)"
     },
     "authoredCoursesCard": {
         "title": "Carte des cours créés",
@@ -69,7 +70,7 @@
     },
     "courseListTabs": {
         "title": "Onglets de la liste des cours",
-        "description": "Configurez les onglets visibles, leur ordre et l'onglet par défaut. Remarque : l'onglet Cours en revue est toujours visible pour les enseignants ; l'onglet Approbation des cours est masqué."
+        "description": "Configurez les onglets visibles, leur ordre et l'onglet par défaut. Course Approval est réservé aux administrateurs et reste masqué pour ce rôle."
     },
     "courseDetailsTabs": {
         "title": "Onglets des détails du cours",

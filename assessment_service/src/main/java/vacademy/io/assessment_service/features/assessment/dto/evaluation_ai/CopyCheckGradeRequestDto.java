@@ -66,6 +66,23 @@ public class CopyCheckGradeRequestDto {
         @JsonProperty("subject")
         private String subject;
 
+        /** 1-based position in the paper's order (section, then question). */
+        @JsonProperty("question_number")
+        private Integer questionNumber;
+
+        /**
+         * The number the student sees printed next to this question — "2", "3(a)",
+         * "Q7" — which may repeat across sections. Without it the grader was told
+         * the question's UUID was "the number on the paper" and had to guess where
+         * the answer sat from the wording alone.
+         */
+        @JsonProperty("paper_label")
+        private String paperLabel;
+
+        /** Section heading as printed ("Section B", "Passage II"), when known. */
+        @JsonProperty("section")
+        private String section;
+
         @JsonProperty("options")
         private List<Map<String, Object>> options;
 

@@ -719,6 +719,7 @@ export const TEACHER_MY_COURSES = `${BASE_URL}/admin-core-service/teacher/course
 export const TEACHER_CREATE_EDITABLE_COPY = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/create-editable-copy`;
 export const TEACHER_SUBMIT_FOR_REVIEW = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/submit-for-review`;
 export const TEACHER_WITHDRAW_FROM_REVIEW = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/withdraw-from-review`;
+export const TEACHER_PUBLISH_COURSE = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/publish`;
 export const TEACHER_CAN_EDIT_COURSE = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/can-edit`;
 export const TEACHER_COURSE_HISTORY = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/my-course-history`;
 
@@ -1330,6 +1331,19 @@ export const CATALOGUE_REVISION_GET = (revisionId: string) =>
 // Catalogue site analytics (first-party page views, joined to leads)
 export const CATALOGUE_ANALYTICS_SUMMARY = (instituteId: string, days: number) =>
     `${BASE_URL}/admin-core-service/v1/catalogue-analytics/summary?instituteId=${instituteId}&days=${days}`;
+// Catalogue blog posts — rows an admin writes in Manage Pages → Blog, read live
+// by the `blog` section of any of the institute's sites.
+export const CATALOGUE_BLOG_BASE_URL = `${BASE_URL}/admin-core-service/v1/catalogue-blog`;
+export const CATALOGUE_BLOG_POSTS = (instituteId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/posts?instituteId=${instituteId}`;
+export const CATALOGUE_BLOG_POST = (instituteId: string, postId?: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post?instituteId=${instituteId}${postId ? `&postId=${postId}` : ''}`;
+export const CATALOGUE_BLOG_POST_PUBLISH = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/publish?instituteId=${instituteId}&postId=${postId}`;
+export const CATALOGUE_BLOG_POST_UNPUBLISH = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/unpublish?instituteId=${instituteId}&postId=${postId}`;
+export const CATALOGUE_BLOG_POST_ARCHIVE = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/archive?instituteId=${instituteId}&postId=${postId}`;
 
 // AI Page Builder (ai_service)
 export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;

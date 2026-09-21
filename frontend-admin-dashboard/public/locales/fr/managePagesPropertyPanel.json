@@ -934,5 +934,30 @@
     "uploadPdf": "Importer un PDF",
     "clear": "Effacer",
     "openFile": "Ouvrir"
+  },
+  "blog": {
+    "heading": "Paramètres du blog",
+    "managePostsHint": "Les articles sont rédigés et publiés à part : un nouvel article n’oblige jamais à republier le site.",
+    "managePosts": "Gérer les articles",
+    "postCount": "{{count}} articles dans votre bibliothèque (tous statuts).",
+    "layout": "Disposition",
+    "layoutGrid": "Grille de cartes",
+    "layoutList": "Liste horizontale",
+    "columns": "Colonnes",
+    "pageSize": "Articles par page",
+    "pageSizeHelp": "Les articles plus anciens sont accessibles via Plus récents / Plus anciens.",
+    "category": "Afficher uniquement cette catégorie",
+    "allCategories": "Toutes les catégories",
+    "categoryHelp": "Limitez la section à une catégorie, par ex. une page Actualités et une page Conseils séparée.",
+    "showCoverImage": "Afficher l’image de couverture",
+    "showExcerpt": "Afficher l’extrait",
+    "showDate": "Afficher la date",
+    "showAuthor": "Afficher l’auteur",
+    "showCategory": "Afficher la catégorie",
+    "showReadingTime": "Afficher le temps de lecture",
+    "showCategoryFilter": "Puces de filtre par catégorie",
+    "readMoreLabel": "Libellé Lire la suite",
+    "backLabel": "Libellé Retour à la liste",
+    "emptyMessage": "Message quand il n’y a aucun article"
   }
 }

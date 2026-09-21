@@ -159,8 +159,37 @@ export function getActiveWebDirectory(packagedDirectory: string): string {
     return packagedDirectory;
   }
 
+  // A store update ships a newer packaged bundle, but the staged one survives in
+  // userData. Without this check the OLDER staged bundle kept winning, and since
+  // the OTA check then reported that stale version as current, no newer bundle
+  // was ever offered — the app was stuck on it for good. Seen live on Shiksha
+  // Nation Mac 1.0: a pre-define bundle (2.4.5) rebranded it as SSDC Horizon.
+  const packaged = packagedWebVersion();
+  if (compareVersions(activeVersion, packaged) <= 0) {
+    log(`staged bundle ${activeVersion} is not newer than packaged ${packaged} — serving the packaged bundle`);
+    writeState({ activeVersion: null });
+    return packagedDirectory;
+  }
+
   log(`serving OTA bundle ${activeVersion}`);
   return candidate;
+}
+
+/**
+ * Same rule as the backend's `OtaUpdateService.compareVersions`: dot-separated
+ * numeric parts, missing parts count as 0, non-numeric parts count as 0.
+ * Positive when a > b.
+ */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.');
+  const pb = b.split('.');
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = i < pa.length ? parseInt(pa[i], 10) || 0 : 0;
+    const nb = i < pb.length ? parseInt(pb[i], 10) || 0 : 0;
+    if (na !== nb) return na - nb;
+  }
+  return 0;
 }
 
 /** Version the running WebView is on: the staged bundle, else the packaged one. */

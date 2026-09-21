@@ -239,7 +239,14 @@ function KnowledgeBaseListPage() {
                 </TabsList>
             </Tabs>
 
-            {tab === 'library' && <LibraryBrowser />}
+            {tab === 'library' && (
+                <LibraryBrowser
+                    onAddOwn={() => {
+                        setTab('mine');
+                        setCreateOpen(true);
+                    }}
+                />
+            )}
 
             <div className={tab === 'mine' ? 'flex flex-col gap-5' : 'hidden'}>
                 <div className="flex flex-wrap items-start justify-between gap-3">

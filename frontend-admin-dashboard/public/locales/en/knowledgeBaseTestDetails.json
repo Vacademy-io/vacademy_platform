@@ -40,5 +40,9 @@
     "diagrams": {
         "label": "Generate diagrams where a question needs one",
         "help": "Diagrams from the book are always used. Turn this on to also draw a labelled figure for questions that need one the book does not have — about a minute per figure, billed per image. Review every drawn figure before printing."
+    },
+    "examDate": {
+        "label": "Exam date (optional)",
+        "help": "Printed in the Date field on the paper. Leave blank to print a line for the student to fill."
     }
 }

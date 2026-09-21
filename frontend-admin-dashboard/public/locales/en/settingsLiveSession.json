@@ -227,5 +227,21 @@
         "notePrefix": "Changes apply only to",
         "noteBold": "new",
         "noteSuffix": "live classes scheduled after saving. Existing classes are unaffected."
+    },
+    "visibility": {
+        "title": "Who can see which sessions",
+        "description": "By default everyone in the institute sees every live session. Restrict a role here to limit it to its own sessions, or to the sessions of specific roles. A session's owner is its instructor list, falling back to whoever scheduled it.",
+        "roleColumn": "Role",
+        "ruleColumn": "Can see",
+        "modeAll": "All sessions",
+        "modeOwn": "Only their own sessions",
+        "modeSpecificRoles": "Their own + sessions of selected roles",
+        "selectRoles": "Select roles",
+        "selectedRoles_one": "{{count}} role selected",
+        "selectedRoles_other": "{{count}} roles selected",
+        "noRolesSelected": "No roles selected yet — this behaves like 'only their own sessions'.",
+        "loadFailed": "Couldn't load the institute's roles.",
+        "empty": "No roles found for this institute.",
+        "multiRoleNote": "A person holding several roles gets the most permissive of their rules, so a role left on 'All sessions' keeps full visibility."
     }
 }

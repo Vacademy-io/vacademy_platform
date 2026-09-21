@@ -56,6 +56,8 @@ import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/
 import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
 import { GoogleMeetIntegrationCard } from './google/GoogleMeetIntegrationCard';
 import { DefaultRecordingDestinationPicker } from './DefaultRecordingDestinationPicker';
+import { LiveSessionVisibilityCard } from './LiveSessionVisibilityCard';
+import { getInstituteId } from '@/constants/helper';
 
 // Maps each platform key to its translation-catalog key (the JSON key can't
 // hold a literal space, so 'google meet' -> 'googleMeet').
@@ -391,6 +393,14 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
             <GoogleMeetIntegrationCard />
 
             {/* Recurring */}
+            {/* Role-based session visibility. Additive: with nothing configured
+                every role keeps seeing every session, exactly as before. */}
+            <LiveSessionVisibilityCard
+                instituteId={getInstituteId() ?? ''}
+                value={settings.roleVisibility}
+                onChange={(roleVisibility) => setSettings((prev) => ({ ...prev, roleVisibility }))}
+            />
+
             <Card className="border-neutral-200 shadow-none">
                 <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
                     <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">

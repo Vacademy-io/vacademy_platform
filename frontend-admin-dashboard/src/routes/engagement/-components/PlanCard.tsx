@@ -1,7 +1,21 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CaretDown, CaretRight, PencilSimple } from '@phosphor-icons/react';
-import { getEngagementPlan } from '../-services/engagement-service';
+import { useTranslation } from 'react-i18next';
+import {
+    CaretDown,
+    CaretRight,
+    PencilSimple,
+    ChartBar,
+    Trash,
+    EyeSlash,
+    Eye,
+} from '@phosphor-icons/react';
+import {
+    deleteEngagementPlan,
+    getEngagementPlan,
+    updateEngagementPlan,
+} from '../-services/engagement-service';
+import { PlanOverviewDialog } from './PlanOverviewDialog';
 import type { EngagementItemDTO, EngagementPlanDTO } from '../-types/types';
 import { ItemTrackingDialog } from './ItemTrackingDialog';
 import { PlanComposerDialog } from './PlanComposerDialog';
@@ -14,9 +28,39 @@ import { PlanComposerDialog } from './PlanComposerDialog';
  * every task in every plan just to render headers.
  */
 export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChanged?: () => void }) {
+    const { t } = useTranslation('engagement');
     const [expanded, setExpanded] = useState(false);
     const [trackingItem, setTrackingItem] = useState<EngagementItemDTO | null>(null);
     const [editOpen, setEditOpen] = useState(false);
+    const [overviewOpen, setOverviewOpen] = useState(false);
+    const [busy, setBusy] = useState(false);
+
+    async function togglePublished(e: React.MouseEvent | React.KeyboardEvent) {
+        e.stopPropagation();
+        setBusy(true);
+        try {
+            await updateEngagementPlan(plan.id, {
+                status: plan.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED',
+            });
+            onChanged?.();
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function remove(e: React.MouseEvent | React.KeyboardEvent) {
+        e.stopPropagation();
+        // Removing a plan takes it off every learner's home page; the attempts and
+        // points already earned are untouched.
+        if (!window.confirm(t('card.removeConfirm', { title: plan.title }))) return;
+        setBusy(true);
+        try {
+            await deleteEngagementPlan(plan.id);
+            onChanged?.();
+        } finally {
+            setBusy(false);
+        }
+    }
 
     const {
         data: detail,
@@ -43,7 +87,7 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                         {plan.title}
                     </span>
                     <span className="mt-0.5 block text-xs text-neutral-500">
-                        {plan.timezone} · {plan.defaultMissPolicy}
+                        {plan.timezone} · {t(`composer.miss.${plan.defaultMissPolicy}`)}
                     </span>
                 </span>
                 <span
@@ -55,12 +99,68 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                 >
                     {plan.status}
                 </span>
-                {/* A span, not a button: this sits inside the expand button, and a
+                {/* Spans, not buttons: these sit inside the expand button, and a
                     nested button is invalid HTML. */}
                 <span
                     role="button"
                     tabIndex={0}
-                    aria-label="Edit plan"
+                    aria-label={t('card.progress')}
+                    title={t('card.progressTitle')}
+                    className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setOverviewOpen(true);
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setOverviewOpen(true);
+                        }
+                    }}
+                >
+                    <ChartBar size={16} />
+                </span>
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={
+                        plan.status === 'PUBLISHED' ? t('card.unpublish') : t('card.publish')
+                    }
+                    title={plan.status === 'PUBLISHED' ? t('card.hide') : t('card.show')}
+                    aria-disabled={busy}
+                    className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                    onClick={(e) => void togglePublished(e)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            void togglePublished(e);
+                        }
+                    }}
+                >
+                    {plan.status === 'PUBLISHED' ? <EyeSlash size={16} /> : <Eye size={16} />}
+                </span>
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('card.remove')}
+                    title={t('card.remove')}
+                    aria-disabled={busy}
+                    className="rounded p-1 text-neutral-400 hover:bg-danger-50 hover:text-danger-600"
+                    onClick={(e) => void remove(e)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            void remove(e);
+                        }
+                    }}
+                >
+                    <Trash size={16} />
+                </span>
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('card.edit')}
                     className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
                     onClick={(e) => {
                         e.stopPropagation();
@@ -83,9 +183,7 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                     {isLoading && <div className="h-16 animate-pulse rounded bg-neutral-100" />}
 
                     {!isLoading && slots.length === 0 && (
-                        <p className="text-sm text-neutral-500">
-                            This plan has no scheduled slots yet.
-                        </p>
+                        <p className="text-sm text-neutral-500">{t('card.noSlots')}</p>
                     )}
 
                     <div className="space-y-4">
@@ -97,7 +195,9 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                                         ? ` – ${slot.endDate}`
                                         : ''}{' '}
                                     · {slot.startTime}–{slot.endTime}
-                                    {slot.revealTime ? ` · reveal ${slot.revealTime}` : ''}
+                                    {slot.revealTime
+                                        ? ` · ${t('card.reveal', { time: slot.revealTime })}`
+                                        : ''}
                                 </p>
                                 <div className="mt-2 space-y-2">
                                     {slot.items.map((item) => (
@@ -108,18 +208,22 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                                             className="flex w-full items-center gap-3 rounded-md border border-neutral-200 px-3 py-2 text-start text-sm transition hover:border-neutral-300"
                                         >
                                             <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
-                                                {item.itemType}
+                                                {t(`composer.types.${item.itemType}`)}
                                             </span>
                                             <span className="min-w-0 flex-1 truncate text-neutral-900">
                                                 {item.title}
                                             </span>
                                             <span className="text-xs text-neutral-500">
-                                                {item.completedCount ?? 0} completed
+                                                {t('card.completed', {
+                                                    count: item.completedCount ?? 0,
+                                                })}
                                             </span>
                                         </button>
                                     ))}
                                     {slot.items.length === 0 && (
-                                        <p className="text-sm text-neutral-500">No tasks.</p>
+                                        <p className="text-sm text-neutral-500">
+                                            {t('card.noTasks')}
+                                        </p>
                                     )}
                                 </div>
                             </div>
@@ -136,6 +240,12 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                     void refetch();
                     onChanged?.();
                 }}
+            />
+
+            <PlanOverviewDialog
+                planId={plan.id}
+                open={overviewOpen}
+                onOpenChange={setOverviewOpen}
             />
 
             <ItemTrackingDialog

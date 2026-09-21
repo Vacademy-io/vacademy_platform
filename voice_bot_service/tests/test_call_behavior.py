@@ -1515,6 +1515,7 @@ class _Rec:
 
     def __init__(self):
         self.frames = []
+        self.dirs = []
         self.interruptions = 0
 
     def cues(self):
@@ -1543,6 +1544,7 @@ def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
 
     async def _push(frame, direction=None):
         rec.frames.append(frame)
+        rec.dirs.append(direction)
 
     async def _broadcast():
         rec.interruptions += 1
@@ -5004,6 +5006,133 @@ async def test_a_second_backchannel_after_the_resume_was_cut_still_gets_a_cue():
     tc._resumed_t = time.time()              # resumed a moment ago, then cut
     await _feed(tc, "हम्म।")
     assert any(("carry on" in c) or ("NEXT step" in c) for c in rec.cues()), rec.cues()
+
+
+def _released(rec):
+    from pipecat.frames.frames import TranscriptionFrame
+    return [f for f in rec.frames if isinstance(f, TranscriptionFrame) and not f.text.strip()]
+
+
+@pytest.mark.asyncio
+async def test_an_absorbed_backchannel_releases_the_callers_turn():
+    """Calls 9050a3e1 / 42106148: a final we swallow never reaches pipecat's
+    stop strategy, so the caller's turn stays open for the 5 s timeout and
+    nothing we say inside it is heard. A whitespace-only final closes it."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    tc._user_turn_open = True
+    await _feed(tc, "हम्म।")
+    assert len(_released(rec)) == 1, [type(f).__name__ for f in rec.frames]
+    rec.frames.clear()
+    tc._user_turn_open = False            # already closed: nothing to release
+    await _feed(tc, "हम्म।")
+    assert _released(rec) == []
+
+
+@pytest.mark.asyncio
+async def test_a_carrier_line_and_a_repeat_release_the_turn_too():
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, in_machine_window=lambda: True)
+    tc._user_turn_open = True
+    await _feed(tc, "Your call has been forwarded to voicemail.")
+    assert len(_released(rec)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_resume_triggered_by_a_broadcast_vad_frame_still_travels_downstream():
+    """THE lost-resume bug (b41b481f, 0c42d3a6, 9050a3e1, 42106148). VAD frames
+    are broadcast by the aggregator and reach the turn-gate travelling
+    UPSTREAM; a resume that inherited that direction went into the STT and
+    vanished. Traced hop by hop in the timing sim on 2026-09-21."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tail = "like sending the link, reminders, attendance and fees."
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: tail, resume_settle_secs=0.01,
+                           resume_on_stop_secs=1.0)
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.2)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.1)
+    sent = [(f, d) for f, d in zip(rec.frames, rec.dirs) if isinstance(f, b.TTSSpeakFrame)]
+    assert [f.text for f, _ in sent] == [tail], [type(f).__name__ for f in rec.frames]
+    assert sent[0][1] == b.FrameDirection.DOWNSTREAM, "the resume went up the pipeline"
+    tc._cancel_resume_check(stale=True)
+
+
+@pytest.mark.asyncio
+async def test_the_re_run_cue_after_a_blip_travels_downstream_too():
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "", resume_on_stop_secs=1.0)
+    tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    cues = [(f, d) for f, d in zip(rec.frames, rec.dirs) if getattr(f, "run_llm", False)]
+    assert cues, "no re-run cue"
+    assert all(d == b.FrameDirection.DOWNSTREAM for _, d in cues), "the cue went up the pipeline"
+
+
+@pytest.mark.asyncio
+async def test_a_resume_lost_twice_asks_the_model_to_finish_the_thought():
+    """Call 42106148: un-recording the words did nothing on its own — nobody
+    ran the model, and the caller waited 12 s."""
+    rec = _Rec()
+    tail = "like sending the link, reminders, attendance and fees."
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: tail, forget_resume=lambda: True,
+                           resume_settle_secs=0.01)
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    tc._outcome.transcript.append({"role": "assistant",
+                                   "text": "We take care of the daily work of your online classes."})
+    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
+    await asyncio.wait_for(tc._resume_check, timeout=6)
+    cues = [c for c in rec.cues() if "Say the rest now" in c]
+    assert len(cues) == 1, rec.cues()
+    assert "online classes" in cues[0], cues[0]
+    assert any(getattr(f, "run_llm", False) for f in rec.frames), "the cue must run the model"
+
+
+@pytest.mark.asyncio
+async def test_a_scrap_right_after_a_carrier_line_does_not_cut_the_opening():
+    """Call 9050a3e1: '…trying to reach.' / 'Not.' / 'Not available.' — the
+    middle piece cut the opening 1.1 s in."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True, in_machine_window=lambda: True)
+    await _feed(tc, "The person you're trying to reach.")      # carrier: sets the flag
+    assert tc._carrier_seen and rec.interruptions == 0
+    await _feed(tc, "Not.")
+    assert rec.interruptions == 0, "the scrap cut the opening"
+    assert "Not." in rec.cues(), "a possible human 'No.' must stay in the context"
+    # a real answer a while later still barges in
+    tc._prev_final_t -= 5.0
+    await _feed(tc, "No.")
+    assert rec.interruptions == 1
+
+
+@pytest.mark.asyncio
+async def test_a_second_hello_into_our_silence_is_not_a_duplicate():
+    """Call 9050a3e1: 'Hello.' 2.5 s after 'Hello.', bot silent, nothing in
+    flight — dropped as a repeat; the third one, 7 s later, got the reply."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False)
+    await _feed(tc, "Hello.")
+    n = len([f for f in rec.frames if not _released_one(f)])
+    await _feed(tc, "Hello.")
+    m = len([f for f in rec.frames if not _released_one(f)])
+    assert m > n, "the second hello was swallowed as a duplicate"
+
+
+def _released_one(f):
+    from pipecat.frames.frames import TranscriptionFrame
+    return isinstance(f, TranscriptionFrame) and not f.text.strip()
 
 
 @pytest.mark.asyncio

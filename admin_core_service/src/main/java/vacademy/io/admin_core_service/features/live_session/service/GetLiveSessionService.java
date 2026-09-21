@@ -8,7 +8,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionInstructorDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionVisibilityScope;
 import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRequest;
 import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchResponse;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
@@ -43,6 +45,12 @@ public class GetLiveSessionService {
     @Autowired
     private PackageSessionRepository packageSessionRepository;
 
+    @Autowired
+    private LiveSessionVisibilityService visibilityService;
+
+    @Autowired
+    private LiveSessionInstructorService instructorService;
+
         private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(java.util.Date date, List<LiveSessionListDTO> sessions) {
                 String defaultLink = null;
                 String defaultName = null;
@@ -71,8 +79,10 @@ public class GetLiveSessionService {
 
         public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
 
+                LiveSessionVisibilityScope scope = visibilityService.resolveScope(instituteId, user);
                 List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
-                                .findCurrentlyLiveSessions(instituteId);
+                                .findCurrentlyLiveSessions(instituteId, scope.restricted(),
+                                                scope.callerUserId(), scope.bindableUserIds());
 
         List<LiveSessionListDTO> result = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -102,8 +112,10 @@ public class GetLiveSessionService {
     }
 
         public List<GroupedSessionsByDateDTO> getUpcomingSession(String instituteId, CustomUserDetails user) {
+                LiveSessionVisibilityScope scope = visibilityService.resolveScope(instituteId, user);
                 List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
-                                .findUpcomingSessions(instituteId);
+                                .findUpcomingSessions(instituteId, scope.restricted(),
+                                                scope.callerUserId(), scope.bindableUserIds());
 
         List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -144,8 +156,10 @@ public class GetLiveSessionService {
     }
 
         public List<GroupedSessionsByDateDTO> getPreviousSession(String instituteId, CustomUserDetails user) {
+                LiveSessionVisibilityScope scope = visibilityService.resolveScope(instituteId, user);
                 List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
-                                .findPreviousSessions(instituteId);
+                                .findPreviousSessions(instituteId, scope.restricted(),
+                                                scope.callerUserId(), scope.bindableUserIds());
 
         List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -221,8 +235,10 @@ public class GetLiveSessionService {
 //    }
 
     public List<LiveSessionListDTO> getDraftedSession(String instituteId, CustomUserDetails user) {
+        LiveSessionVisibilityScope scope = visibilityService.resolveScope(instituteId, user);
         List<LiveSessionRepository.LiveSessionListProjection> projections =
-                sessionRepository.findDraftedSessions(instituteId);
+                sessionRepository.findDraftedSessions(instituteId, scope.restricted(),
+                        scope.callerUserId(), scope.bindableUserIds());
 
         // Deduplicate by sessionId using LinkedHashMap to preserve insertion order
         Map<String, LiveSessionListDTO> uniqueSessions = new LinkedHashMap<>();
@@ -338,6 +354,7 @@ public class GetLiveSessionService {
         }).toList());
 
         enrichWithPackageSessionDetails(flatList);
+        enrichWithInstructors(flatList);
 
         // Group by date
         return flatList.stream()
@@ -391,6 +408,7 @@ public class GetLiveSessionService {
         }).toList());
 
                 enrichWithPackageSessionDetails(flatList);
+                enrichWithInstructors(flatList);
 
                 // Group by date
                 return flatList.stream()
@@ -410,7 +428,8 @@ public class GetLiveSessionService {
         
         // Call repository with dynamic query
         Page<LiveSessionRepository.LiveSessionListProjection> page = 
-            sessionRepository.searchSessions(request, pageable);
+            sessionRepository.searchSessions(request, pageable,
+                visibilityService.resolveScope(request.getInstituteId(), user));
         
         // Map projections to DTOs
         List<LiveSessionListDTO> sessions = page.getContent().stream()
@@ -459,6 +478,25 @@ public class GetLiveSessionService {
 
     public String deleteLiveSessions(List<String> ids, String type) {
         return deleteLiveSessions(ids, type, null);
+    }
+
+    /**
+     * Access-checked delete (V524). The controller uses this overload so a
+     * restricted role cannot delete a session it is not allowed to see by
+     * POSTing its id directly. The unchecked overloads above remain for
+     * internal callers that have already established authorization.
+     */
+    public String deleteLiveSessions(List<String> ids, String type, Boolean notifyStudents,
+                                     CustomUserDetails user) {
+        if (ids != null && user != null) {
+            for (String id : ids) {
+                String sessionId = Objects.equals(type, "schedule")
+                        ? scheduleRepository.findSessionIdByScheduleId(id, NotificationStatusEnum.DELETED.name())
+                        : id;
+                visibilityService.assertCanAccessSession(sessionId, user);
+            }
+        }
+        return deleteLiveSessions(ids, type, notifyStudents);
     }
 
     public String deleteLiveSessions(List<String> ids, String type, Boolean notifyStudents) {
@@ -529,6 +567,57 @@ public class GetLiveSessionService {
             }
         }
         return type + " is deleted";
+    }
+
+    /**
+     * Attaches instructor names to learner-facing cards (V524).
+     *
+     * <p>Called only from the learner list paths. The admin lists deliberately
+     * skip it: they have their own instructor affordances, and the extra
+     * directory round trip would be paid on every dashboard render.
+     *
+     * <p>Never throws — an unreachable user directory costs the cards a name,
+     * not the learner their class list.
+     */
+    private void enrichWithInstructors(List<LiveSessionListDTO> sessions) {
+        if (sessions == null || sessions.isEmpty()) return;
+        try {
+            List<String> sessionIds = sessions.stream()
+                    .map(LiveSessionListDTO::getSessionId)
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (sessionIds.isEmpty()) return;
+
+            // Entities (not just the instructor rows) because the creator
+            // fallback needs created_by_user_id for sessions predating V524.
+            List<vacademy.io.admin_core_service.features.live_session.entity.LiveSession> entities =
+                    sessionRepository.findAllById(sessionIds);
+            Map<String, List<String>> idsBySession =
+                    instructorService.getEffectiveInstructorUserIdsBySession(entities);
+
+            List<String> allUserIds = idsBySession.values().stream()
+                    .flatMap(List::stream)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (allUserIds.isEmpty()) return;
+
+            // One directory fetch for the whole list, then fan the details back out.
+            Map<String, LiveSessionInstructorDTO> detailsByUserId =
+                    instructorService.toInstructorDetails(allUserIds).stream()
+                            .collect(Collectors.toMap(LiveSessionInstructorDTO::getUserId, d -> d, (a, b) -> a));
+
+            for (LiveSessionListDTO dto : sessions) {
+                List<String> userIds = idsBySession.get(dto.getSessionId());
+                if (userIds == null || userIds.isEmpty()) continue;
+                dto.setInstructors(userIds.stream()
+                        .map(detailsByUserId::get)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(Collectors.toList()));
+            }
+        } catch (Exception e) {
+            // Cosmetic enrichment: swallow and serve the list without names.
+        }
     }
 
     private void enrichWithPackageSessionDetails(List<LiveSessionListDTO> sessions) {

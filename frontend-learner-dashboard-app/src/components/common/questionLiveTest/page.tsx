@@ -192,6 +192,8 @@ function LiveTestShell() {
     setScratchpad,
     isPaletteOpen,
     setPaletteOpen,
+    isRailOpen,
+    setRailOpen,
   } = useLiveTestUi();
   const setLiveTest = useLiveTestStore((s) => s.setLiveTest);
   const immersiveActive = useLiveTestStore((s) => s.immersiveActive);
@@ -405,7 +407,8 @@ function LiveTestShell() {
   useImmersiveMode(hideAppChrome);
 
   const showPalette = settings.questionPalette.enabled;
-  const showDesktopPalette = showPalette && !isCompact;
+  // The header's panel toggle brings a collapsed rail back (see Navbar).
+  const showDesktopPalette = showPalette && !isCompact && isRailOpen;
 
   const toolPanel =
     activeTool === "calculator" && settings.calculator.enabled ? (
@@ -471,6 +474,7 @@ function LiveTestShell() {
           <aside className="flex w-reg-320 flex-none flex-col border-s border-neutral-200">
             <QuestionNavigator
               onClose={() => {}}
+              onCollapse={() => setRailOpen(false)}
               evaluationType={evaluationType}
             />
           </aside>

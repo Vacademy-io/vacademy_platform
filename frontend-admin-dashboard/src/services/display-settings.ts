@@ -602,6 +602,7 @@ function mergeDisplayWithDefaults(
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
         directEditPublishedCourse: false,
+        requireCourseApproval: true,
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
         showAdvancedCourseIds: false,
@@ -629,6 +630,10 @@ function mergeDisplayWithDefaults(
             incoming?.coursePage?.directEditPublishedCourse ??
             defCoursePage.directEditPublishedCourse ??
             false,
+        requireCourseApproval:
+            incoming?.coursePage?.requireCourseApproval ??
+            defCoursePage.requireCourseApproval ??
+            true,
         canEditCourseStructure:
             incoming?.coursePage?.canEditCourseStructure ??
             defCoursePage.canEditCourseStructure ??

@@ -594,6 +594,12 @@ export interface DisplaySettingsData {
         // courses and the Copy-to-Edit / Submit-for-Review approval flow —
         // they can edit and publish published courses directly.
         directEditPublishedCourse?: boolean;
+        // When true (default — the long-standing behaviour), a non-admin's new
+        // DRAFT course must go through Submit for Review -> admin approval
+        // before it becomes ACTIVE. Set false per role to give that role a
+        // "Publish" button instead. Read sites test `!== false` so a saved
+        // blob that predates this key keeps requiring review.
+        requireCourseApproval?: boolean;
         // When true, Edit buttons on Subject / Module / Chapter rows in the
         // Outline & Content Structure tabs are visible regardless of course
         // status. Admin always sees these; this flag is for non-admin roles.

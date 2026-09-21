@@ -642,4 +642,99 @@ needs a cross-service read; until then the `ASSESSMENT` source type is defined b
   (b) is now half-built: activity and streak points accrue once `PointsAccrualJob` is switched on.
   Flip the UI to `metric=POINTS` once accrual has run and the numbers look right — verify against a
   real batch before flipping, since that is the moment every learner's visible rank changes.
-- Strings in the new UI are not run through i18n.
+- ~~Strings in the new UI are not run through i18n.~~ Done 2026-09-21 (§18).
+
+---
+
+## 16. Phase 4 — AI planner (BUILT 2026-09-21)
+
+**Flow:** Brief → one draft → review → publish. The AI never publishes; the draft comes back in the
+composer's own request shape (`slots[].items[]`) and is saved through the normal engagement API
+after the teacher has looked at every task. Entry points: "Plan with AI" on `/engagement` and on the
+course page's Engagement tab.
+
+**Brief** (`AiPlanWizard`): batches (multi, server-paged picker), topic in the teacher's words,
+grounding chapters (subject → chapters, multi-select; slide HTML is collected client-side and sent as
+`grounding_texts`), optional knowledge base, duration (1/7/14/30 days), tasks per day (1–3),
+window/reveal times, difficulty, language, and which task kinds to use.
+
+**Review:** day list → that day's tasks (retitle, remove) → live learner preview (reuses
+`PlanPreview`). Readings arrive with `<img data-img-prompt>` placeholders; "Add pictures" upgrades
+one reading to a `VISUAL_NOTE` on demand. A draft written from the topic alone (no grounding) is
+flagged so facts get checked before publishing.
+
+**Service** (`ai_service/app/routers/engagement_plan.py`, `services/engagement_plan_service.py`):
+- `POST /ai-service/engagement/plan/draft` — one structured JSON call on **`z-ai/glm-5.3-flash`**
+  (`ENGAGEMENT_PLAN_MODEL` overrides) produces every day's MCQs (4 options, key, explanation,
+  `hideResultUntilReveal` on by default), written questions, polls, readings (200–350 words of
+  semantic HTML) and **flashcard games** (rendered server-side from a card list into a self-contained
+  HTML game that speaks `vacademy:complete`, so it also works as a slide). Grounding = teacher-picked
+  slide text + `KbRetrievalService.search` hits on the topic, capped at 24k chars. Malformed items
+  are DROPPED, never repaired into something wrong.
+- `POST /ai-service/engagement/plan/illustrate` — runs `illustrate_document` (**`qwen/qwen-image-3`**)
+  over one reading's placeholders, max 3 pictures.
+
+**Credits — the cost plan:**
+
+| Step | Tool key | Charge |
+|---|---|---|
+| Draft (whole plan, any length) | `engagement_plan` | flat **10**, charged as max(flat, tokens × 2) |
+| Pictures for one reading | `html_document_image` | **2 per picture actually returned** |
+
+The two are split on purpose. A fortnight of illustrated pages would cost 14 × (page + images)
+before the teacher had seen anything; instead the draft is cheap and pictures are opt-in per task.
+Both endpoints 402 on a pre-flight balance check before spending, and bill after success
+(best-effort — a billing hiccup never takes a generated draft away). The wizard shows the price
+before each spend.
+
+**Not in this phase:** streaming per-day progress (the draft is one call), regenerate-one-task,
+per-task type switching in review (remove + re-draft instead), and games beyond flashcards.
+
+---
+
+## 17. Deep review, 2026-09-21 — gaps found and closed (`bd2b47c239`)
+
+| # | Gap | Fix |
+|---|---|---|
+| 1 | **Written/uploaded answers discarded at submit** — validated, graded, never stored | Learner response (option, text, file ids, score) serialised into `engagement_attempt.response_json`; shown in tracking + CSV; files open via signed URL |
+| 2 | **No reveal surface** — the "8 PM answer + leaderboard" moment had nowhere to land | Feed returns `revealed[]` (completed tasks past reveal, last 2 days) with key/explanation/result; home card shows a "Revealed" section. The only place the key ever travels to a learner |
+| 3 | **AI endpoints defaulted to ADMIN role** — a learner token could spend institute credits | Explicit teacher/admin authority required, 403 otherwise; JWT per-institute role map read correctly |
+| 4 | Batch name never populated (decision 3) | `packageSessionName` resolved per plan; shown on cards and revealed entries |
+| 5 | "Keep your streak alive" copy, no streak | `streakDays` = consecutive institute-local days with a completion, yesterday counting; 🔥 chip on the card |
+| 6 | No unpublish/remove from the plan list | Eye / trash actions on `PlanCard` (attempts and points untouched by removal) |
+| 7 | No batch-level view | `GET /plan/{id}/overview` — per-learner done/correct/missed/points, "slipping" = 3+ missed **closed** tasks (a learner who joined yesterday is not marked as missing a fortnight) |
+| 8 | AI idempotency key minted per call → retry double-charged | Minted once per attempt, reused on retry, rotated on success |
+
+**Still open after this pass:** push notification at reveal time; an `ENGAGEMENT_SETTING` screen
+(cap / dwell / scroll thresholds); i18n for the new UI strings; `QUIZ` (assessment-backed) item type
+has no authoring or learner path and is effectively unused; assessment points still outside the
+ledger; AI wizard has no regenerate-one-task or streaming.
+
+---
+
+## 18. Follow-through, 2026-09-21 (`225ba8f314` + admin i18n commit)
+
+Closed from the §17 list: reveal push (`V525`, `EngagementNotifyJob` REVEAL kind), Settings → Daily
+Engagement screen, regenerate-one-task in the AI wizard (`engagement_item`, 2 credits), and i18n on
+both apps.
+
+**i18n.** Learner strings live in `dashboardEngagement` (learner app, en/hi/fr/ar). Admin strings
+live in `frontend-admin-dashboard/public/locales/<lng>/engagement.json` (en/hi/fr/ar, ~275 keys)
+under `page / card / composer / preview / batchPicker / slidePicker / tracking / overview / wizard /
+settings`. Item-type, miss-policy and question-format labels are keyed by their enum value
+(`composer.types.QUESTION_OF_DAY`, `composer.miss.CATCH_UP_REDUCED`, `composer.formats.TEXT`, each
+with a `_hint` sibling) so the composer, plan card and live preview share one set of names — add a
+new `ItemType` and the three surfaces pick up the label from one key. Namespaces resolve by file
+name (`src/i18n.ts` lazy backend), so nothing was registered.
+
+**Prod probe, 2026-09-21 14:30 IST** (riya_jain / shreyash777): settings save+get round-trip;
+plan create with hidden-result MCQ + TEXT + reading; feed redacts key, names batch; hidden MCQ
+paid 10 not 30 (bonus withheld); idempotent double submit; TEXT answer stored and shown in tracking
++ CSV; reading 510 under threshold, 5 pts over; overview counts; AI draft 200 for admin (glm-5.3-flash,
+88 s for 1 day), 403 for learner. **Found + fixed live (`b6234bd4b6`):** `GET /item/{id}` and the
+feed copied `attempt.isCorrect` through on hide-until-reveal questions, so a refresh leaked the
+outcome the submit response had withheld. Trap: ai_service role checks need the `clientId` header
+(auth service resolves `clientId@username`); without it every admin gets 403.
+
+**Still open:** `QUIZ` item type unused; assessment points outside the ledger; AI wizard streaming;
+nightly accrual (`vacademy.points.accrual.enabled`) still OFF pending the POINTS-metric flip.

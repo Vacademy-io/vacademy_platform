@@ -9,6 +9,8 @@ Note: OpenRouter does not currently support transparent prompt caching for
 arbitrary models — Anthropic's cache_control markers and Gemini's cached_content
 both require provider-specific request shaping. Implementing that lives in a
 future PR; for now the rubric block is resent in full on every grading call.
+The transcript is NOT resent in full: locate.py narrows each call to the pages
+holding that question's answer (see orchestrator step 2b).
 """
 from __future__ import annotations
 
@@ -38,12 +40,20 @@ ESCALATION_MODEL = "z-ai/glm-5.3-flash"
 ESCALATION_CONF_THRESHOLD = 0.60
 MAX_ESCALATIONS_PER_COPY = 2
 # Budget tuned for typical 8-question copies. Each grading call re-sends the
-# full OCR transcript + rubric + system prompt (~8.5k tokens), so 8 questions
+# full OCR transcript + rubric + system prompt (~5-8k tokens), so 8 questions
 # burn ~70k tokens just on grading; criteria-generation and escalations add
-# more. Cap at 250k so we never zero out late questions due to a per-copy
-# limit. Per-call provider limits still apply independently.
+# more. The floor is 250k; a paper with more questions gets more, because a
+# fixed cap is exactly what zeroed questions 38-64 of a 64-question paper on
+# 2026-09-20 ("needs manual review" for half the sheet) while the institute was
+# still charged per question. Per-call provider limits apply independently.
 WARN_TOKENS_PER_COPY = 80_000
 FAIL_TOKENS_PER_COPY = 250_000
+TOKENS_PER_QUESTION_ALLOWANCE = 7_000
+
+
+def token_budget_for(question_count: int) -> int:
+    """Per-copy hard cap: the historical floor, or room for every question."""
+    return max(FAIL_TOKENS_PER_COPY, int(question_count) * TOKENS_PER_QUESTION_ALLOWANCE)
 
 
 def _strip_code_fence(text: str) -> str:
@@ -96,10 +106,12 @@ class CopyCheckGrader:
         llm: ChatLLMClient,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        token_budget: int = FAIL_TOKENS_PER_COPY,
     ):
         self.llm = llm
         self.institute_id = institute_id
         self.user_id = user_id
+        self.token_budget = max(int(token_budget or 0), FAIL_TOKENS_PER_COPY)
         self._tokens_used = 0
         # Prompt/completion split, accumulated across all LLM calls for this copy
         # so per-copy credit billing can price input and output tokens correctly.
@@ -166,9 +178,12 @@ class CopyCheckGrader:
         rubric: dict[str, Any],
         layout_map: dict[str, Any],
         preferred_model: Optional[str] = None,
+        page_ids: Optional[list[str]] = None,
     ) -> dict[str, Any]:
+        """`page_ids`: only these pages of the transcript go into the prompt
+        (from locate.py). None = the whole copy."""
         model = preferred_model or DEFAULT_MODEL
-        verdict = await self._call(question, rubric, layout_map, model)
+        verdict = await self._call(question, rubric, layout_map, model, page_ids)
         # The model writes "low" or "85%" here often enough; read it the way
         # the validator will, instead of letting float() fail the question.
         if (
@@ -182,7 +197,7 @@ class CopyCheckGrader:
                 coerce_confidence(verdict.get("confidence")),
             )
             try:
-                verdict = await self._call(question, rubric, layout_map, ESCALATION_MODEL)
+                verdict = await self._call(question, rubric, layout_map, ESCALATION_MODEL, page_ids)
             except Exception as e:
                 logger.warning(f"Escalation failed, keeping initial verdict: {e}")
         return verdict
@@ -193,12 +208,17 @@ class CopyCheckGrader:
         rubric: dict[str, Any],
         layout_map: dict[str, Any],
         model: str,
+        page_ids: Optional[list[str]] = None,
     ) -> dict[str, Any]:
-        if self._tokens_used >= FAIL_TOKENS_PER_COPY:
+        if self._tokens_used >= self.token_budget:
             raise RuntimeError(
-                f"copy-check token budget exhausted: {self._tokens_used} >= {FAIL_TOKENS_PER_COPY}"
+                f"copy-check token budget exhausted: {self._tokens_used} >= {self.token_budget}"
             )
-        prompt = build_grading_prompt(question, rubric, layout_map)
+        prompt = build_grading_prompt(
+            question, rubric, layout_map,
+            neighbour_question_labels=question.get("neighbour_labels"),
+            page_ids=page_ids,
+        )
         messages = [
             {"role": "system", "content": GRADING_SYSTEM},
             {"role": "user", "content": prompt},

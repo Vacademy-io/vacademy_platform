@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   EngagementItem,
   fetchEngagementFeed,
@@ -8,6 +9,7 @@ import { EngagementItemDialog } from "./EngagementItemDialog";
 import { InlineQuestion } from "./InlineQuestion";
 import { glimpseFor } from "./engagement-preview";
 import { ProgressRing } from "./ProgressRing";
+import { RevealedAnswers } from "./RevealedAnswers";
 import {
   isUrgent,
   shortDateLabel,
@@ -23,6 +25,7 @@ import {
  * engagement keeps exactly the layout it has today.
  */
 export function EngagementTodayCard() {
+  const { t } = useTranslation("dashboardEngagement");
   const [feed, setFeed] = useState<EngagementFeed | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeItem, setActiveItem] = useState<EngagementItem | null>(null);
@@ -77,7 +80,13 @@ export function EngagementTodayCard() {
   }
 
   // Nothing scheduled and nothing coming — stay out of the way entirely.
-  if (!feed || (feed.items.length === 0 && feed.upcoming.length === 0 && done === 0)) {
+  if (
+    !feed ||
+    (feed.items.length === 0 &&
+      feed.upcoming.length === 0 &&
+      done === 0 &&
+      (feed.revealed?.length ?? 0) === 0)
+  ) {
     return null;
   }
 
@@ -88,15 +97,27 @@ export function EngagementTodayCard() {
         <div className="flex items-center gap-4 border-b border-neutral-100 bg-gradient-to-r from-primary-50 via-white to-white px-5 py-4 dark:border-neutral-800 dark:from-primary-950/30 dark:via-neutral-900 dark:to-neutral-900">
           <ProgressRing percent={progressPercent} done={done} total={total} />
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
-              {allDone ? "All done for today" : "Your tasks today"}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
+                {allDone ? t("card.titleDone") : t("card.title")}
+              </h2>
+              {(feed.streakDays ?? 0) > 0 && (
+                <span
+                  className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                  title={t("card.streakTitle")}
+                >
+                  🔥 {t("card.streak", { count: feed.streakDays })}
+                </span>
+              )}
+            </div>
             <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">
               {allDone
-                ? "Come back tomorrow to keep your streak alive."
+                ? (feed.streakDays ?? 0) > 0
+                  ? t("card.subtitleDoneStreak", { count: (feed.streakDays ?? 0) + 1 })
+                  : t("card.subtitleDoneNoStreak")
                 : remaining === 1
-                  ? "One task left — it takes a minute."
-                  : `${remaining} tasks waiting for you.`}
+                  ? t("card.subtitleOne")
+                  : t("card.subtitleMany", { count: remaining })}
             </p>
           </div>
         </div>
@@ -105,7 +126,7 @@ export function EngagementTodayCard() {
         <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
           {feed.items.map((item, index) => {
             const visual = visualFor(item.itemType);
-            const timeLeft = timeLeftLabel(item.closesAt, now);
+            const timeLeft = timeLeftLabel(t, item.closesAt, now);
             const urgent = isUrgent(item.closesAt, now);
             const maxPoints = item.completionPoints + item.correctPoints;
             const glimpse = glimpseFor(item);
@@ -144,16 +165,16 @@ export function EngagementTodayCard() {
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-1.5">
                       <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${visual.chip}`}>
-                        {visual.label}
+                        {t(`types.${visual.label}`)}
                       </span>
                       {item.isRequired && (
                         <span className="rounded-md bg-neutral-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-neutral-100 dark:text-neutral-900">
-                          Required
+                          {t("card.required")}
                         </span>
                       )}
                       {item.state === "CATCH_UP" && (
                         <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                          Catch up · {item.pointsPercent ?? 50}%
+                          {t("card.catchUp", { percent: item.pointsPercent ?? 50 })}
                         </span>
                       )}
                     </span>
@@ -161,6 +182,11 @@ export function EngagementTodayCard() {
                     <span className="mt-1 block truncate text-base font-semibold text-neutral-900 dark:text-neutral-50">
                       {item.title}
                     </span>
+                    {item.packageSessionName && (
+                      <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
+                        {item.packageSessionName}
+                      </span>
+                    )}
 
                     {/* A glimpse of the actual content, so the card reads as
                         something to do rather than a link to somewhere else. */}
@@ -193,12 +219,12 @@ export function EngagementTodayCard() {
                       )}
                       {(item.completedCount ?? 0) > 0 && (
                         <span className="text-neutral-500 dark:text-neutral-400">
-                          🔥 {item.completedCount} already done this
+                          {t("card.alreadyDone", { count: item.completedCount ?? 0 })}
                         </span>
                       )}
                       {maxPoints > 0 && (
                         <span className="rounded-full bg-primary-50 px-2 py-0.5 font-semibold text-primary-700 dark:bg-primary-950/40 dark:text-primary-300">
-                          +{maxPoints} pts
+                          {t("card.points", { count: maxPoints })}
                         </span>
                       )}
                     </span>
@@ -216,19 +242,20 @@ export function EngagementTodayCard() {
             <li className="px-5 py-8 text-center">
               <p className="text-3xl">{done > 0 ? "🎉" : "🌱"}</p>
               <p className="mt-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                {done > 0
-                  ? "Everything done. Nice work."
-                  : "Nothing open right now — check back soon."}
+                {done > 0 ? t("card.emptyDone") : t("card.emptyNone")}
               </p>
             </li>
           )}
         </ul>
 
+        {/* Last night's answers */}
+        <RevealedAnswers items={feed.revealed ?? []} />
+
         {/* Locked future tasks */}
         {upcoming.length > 0 && (
           <div className="border-t border-neutral-100 bg-neutral-50/70 px-5 py-3 dark:border-neutral-800 dark:bg-neutral-950/40">
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-              Coming up
+              {t("card.comingUp")}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {upcoming.map((item) => {

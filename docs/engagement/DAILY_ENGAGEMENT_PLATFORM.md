@@ -727,5 +727,14 @@ with a `_hint` sibling) so the composer, plan card and live preview share one se
 new `ItemType` and the three surfaces pick up the label from one key. Namespaces resolve by file
 name (`src/i18n.ts` lazy backend), so nothing was registered.
 
+**Prod probe, 2026-09-21 14:30 IST** (riya_jain / shreyash777): settings save+get round-trip;
+plan create with hidden-result MCQ + TEXT + reading; feed redacts key, names batch; hidden MCQ
+paid 10 not 30 (bonus withheld); idempotent double submit; TEXT answer stored and shown in tracking
++ CSV; reading 510 under threshold, 5 pts over; overview counts; AI draft 200 for admin (glm-5.3-flash,
+88 s for 1 day), 403 for learner. **Found + fixed live (`b6234bd4b6`):** `GET /item/{id}` and the
+feed copied `attempt.isCorrect` through on hide-until-reveal questions, so a refresh leaked the
+outcome the submit response had withheld. Trap: ai_service role checks need the `clientId` header
+(auth service resolves `clientId@username`); without it every admin gets 403.
+
 **Still open:** `QUIZ` item type unused; assessment points outside the ledger; AI wizard streaming;
 nightly accrual (`vacademy.points.accrual.enabled`) still OFF pending the POINTS-metric flip.

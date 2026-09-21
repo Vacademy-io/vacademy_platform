@@ -16,18 +16,25 @@ validator, and saves a DRAFT.
                      runs      recent executions, or one execution's per-node log
                      catalog   the grounding document, in sections (rules, node types, queries, ...)
                      context   real ids to reference: batches, audiences, templates, sessions, invites
+                     template  one message template in full (email HTML, or WhatsApp body + status)
 
-    workflows_edit   validate       normalise + lint + backend-validate a workflow; saves nothing
-                     create_draft   the same, then save it as a DRAFT automation
-                     update_draft   replace a DRAFT automation's definition (never a published one)
-                     discard_draft  remove a DRAFT automation (never a published one)
+    workflows_edit   validate                  normalise + lint + backend-validate a workflow; saves nothing
+                     create_draft              the same, then save it as a DRAFT automation
+                     update_draft              replace a DRAFT automation's definition (never a published one)
+                     discard_draft             remove a DRAFT automation (never a published one)
+                     create_email_template     a NEW email template (send nodes reference it by name)
+                     create_whatsapp_template  a NEW WhatsApp template, submitted to Meta for approval
+                     sync_whatsapp_templates   refresh WhatsApp template statuses from Meta
 
 Why the write tool is allowed over MCP (which has no confirm card): every
 action forces ``status=DRAFT``. A DRAFT never fires — ``WorkflowTriggerService``
 and the scheduler only pick up ``workflow.status='ACTIVE'`` — and only the
 admin can publish it, from the builder. ``update_draft``/``discard_draft``
 refuse anything whose stored status is not DRAFT, so a live automation cannot be
-changed or removed from here.
+changed or removed from here. The template actions are ADDITIVE: they create new
+templates (a template sends nothing until an automation references it) and never
+edit or remove an existing one — an existing template may be in use by a live
+automation.
 """
 from __future__ import annotations
 
@@ -43,6 +50,7 @@ from .assistant_tool_registry import (
     _admin_core_json,
     _batch_name_in_institute,
     _compact,
+    _jwt_headers,
     _notification_json,
 )
 
@@ -50,11 +58,21 @@ logger = logging.getLogger(__name__)
 
 WORKFLOWS_TOOL_NAME = "workflows"
 WORKFLOWS_GROUP_KEY = "workflows"
-WORKFLOWS_ACTIONS = ("list", "get", "runs", "catalog", "context")
+WORKFLOWS_ACTIONS = ("list", "get", "runs", "catalog", "context", "template")
 
 WORKFLOWS_EDIT_TOOL_NAME = "workflows_edit"
 WORKFLOWS_EDIT_GROUP_KEY = "workflows_edits"
-WORKFLOWS_EDIT_ACTIONS = ("validate", "create_draft", "update_draft", "discard_draft")
+WORKFLOWS_EDIT_ACTIONS = ("validate", "create_draft", "update_draft", "discard_draft",
+                          "create_email_template", "create_whatsapp_template", "sync_whatsapp_templates")
+
+#: Meta's template rules, checked here before the round trip so the model gets a
+#: specific message (mirror of notification-service WhatsAppTemplateValidator).
+WHATSAPP_CATEGORIES = ("UTILITY", "MARKETING")
+WHATSAPP_BODY_MAX = 1024
+WHATSAPP_NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
+_WA_PLACEHOLDER_RE = re.compile(r"\{\{\s*(\d+)\s*\}\}")
+_EMAIL_PLACEHOLDER_RE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_ .-]*?)\s*\}\}")
+_EMAIL_HTML_MAX = 60_000
 
 CATALOG_SECTIONS = ("overview", "node_types", "queries", "triggers", "trigger_events", "query_keys", "all")
 CONTEXT_KINDS = ("batches", "audiences", "templates", "live_sessions", "invites")
@@ -116,11 +134,16 @@ WORKFLOWS_SCHEMA: Dict[str, Any] = {
             "event list; `query_keys` every query's parameter contract; `all` everything.\n"
             "- context (kind?, search?): the REAL ids to reference — batches (package_session_id), "
             "audiences (lead campaigns), templates (ACTIVE email + APPROVED WhatsApp, with their "
-            "placeholders), live_sessions, invites. Never invent an id or a template name: take them "
-            "from here.\n"
+            "placeholders; WhatsApp templates still DRAFT/PENDING/REJECTED are listed separately and "
+            "cannot be sent yet), live_sessions, invites. Never invent an id or a template name: take "
+            "them from here.\n"
+            "- template (channel, name): one template in full — an email's subject and HTML, or a "
+            "WhatsApp template's body, header, footer, buttons, sample values, status and rejection "
+            "reason. Read it before reusing a template or writing templateVars for it.\n"
             "To build an automation: read catalog(overview) and the sections you need, fetch context for "
-            "the ids, compose the workflow JSON, then use workflows_edit(validate) until it is clean and "
-            "workflows_edit(create_draft) to save it as a draft the admin publishes."
+            "the ids and templates, create any missing template with workflows_edit(create_email_template "
+            "| create_whatsapp_template), compose the workflow JSON, then use workflows_edit(validate) until "
+            "it is clean and workflows_edit(create_draft) to save it as a draft the admin publishes."
         ),
         "parameters": {
             "type": "object",
@@ -133,6 +156,8 @@ WORKFLOWS_SCHEMA: Dict[str, Any] = {
                 "limit": {"type": "integer", "description": "list / runs: max rows (default 20, max 50)."},
                 "section": {"type": "string", "enum": list(CATALOG_SECTIONS), "description": "catalog: which part of the contract (default overview)."},
                 "kind": {"type": "string", "enum": list(CONTEXT_KINDS), "description": "context: one kind; omit for all kinds (capped)."},
+                "channel": {"type": "string", "enum": ["EMAIL", "WHATSAPP"], "description": "template: which channel the name belongs to."},
+                "name": {"type": "string", "description": "template: the template name (from context)."},
             },
             "required": ["action"],
         },
@@ -155,6 +180,21 @@ WORKFLOWS_EDIT_SCHEMA: Dict[str, Any] = {
             "ACTIVE/INACTIVE automations — published ones are edited in the dashboard.\n"
             "- discard_draft (workflow_id): remove a DRAFT automation (the undo for create_draft). Refused "
             "for anything that is not a DRAFT.\n"
+            "- create_email_template (name, subject, html, placeholder_labels?): a NEW email template a "
+            "SEND_EMAIL node can reference by name. Write {{placeholders}} in the subject/html for "
+            "per-recipient values; the placeholder list is derived for you and becomes the node's "
+            "templateVars keys. Plain {{var}} substitution only — no conditionals or loops. Names must be "
+            "unique; existing templates are never changed (they may be in use by live automations).\n"
+            "- create_whatsapp_template (name, body, category?, language?, sample_values?, variable_names?, "
+            "header_text?, footer_text?, buttons?, submit?): a NEW WhatsApp template. Meta rules: name is "
+            "lowercase letters/digits/underscores; variables are {{1}}, {{2}}, ... in order; the body "
+            "cannot start or end with a variable; one sample value per variable; body <= 1024 chars; "
+            "category UTILITY (transactional: confirmations, reminders, credentials — default) or "
+            "MARKETING (promotions; Meta rate-limits repeats to one number). It is submitted to Meta "
+            "(status PENDING) unless submit=false; approval usually takes minutes to hours — the "
+            "automation can be drafted now but the admin should publish after it is APPROVED.\n"
+            "- sync_whatsapp_templates: pull the latest template statuses from Meta (use it to check "
+            "whether a PENDING template got APPROVED, or to see templates made in Meta Business Manager).\n"
             "`workflow` follows workflows(catalog) → workflowJsonShape: {name, description, workflow_type "
             "EVENT_DRIVEN|SCHEDULED, trigger{trigger_event_name, event_applied_type, event_ids[], "
             "idempotency_generation_setting} | schedule{schedule_type CRON, cron_expression, timezone}, "
@@ -173,6 +213,29 @@ WORKFLOWS_EDIT_SCHEMA: Dict[str, Any] = {
                     "type": "object",
                     "description": "validate / create_draft / update_draft: the workflow JSON (builder shape, see workflows(catalog)).",
                 },
+                "name": {"type": "string", "description": "create_*_template: the template name. Email: any unique name, e.g. 'welcome_new_learner'. WhatsApp: lowercase letters, digits, underscores."},
+                "subject": {"type": "string", "description": "create_email_template: subject line; may contain {{placeholders}}."},
+                "html": {"type": "string", "description": "create_email_template: the HTML body with {{placeholders}}, e.g. {{fullName}}."},
+                "placeholder_labels": {
+                    "type": "object", "additionalProperties": {"type": "string"},
+                    "description": "create_email_template: optional human labels per placeholder, e.g. {\"fullName\": \"Learner name\"} (shown in the builder's mapping UI).",
+                },
+                "body": {"type": "string", "description": "create_whatsapp_template: the message body with {{1}}, {{2}}, ... variables."},
+                "category": {"type": "string", "enum": list(WHATSAPP_CATEGORIES), "description": "create_whatsapp_template: UTILITY (default) or MARKETING."},
+                "language": {"type": "string", "description": "create_whatsapp_template: Meta language code, default en."},
+                "sample_values": {"type": "array", "items": {"type": "string"}, "description": "create_whatsapp_template: one realistic example per {{n}} variable, in order (Meta reviews with these)."},
+                "variable_names": {"type": "array", "items": {"type": "string"}, "description": "create_whatsapp_template: optional semantic names per variable, e.g. ['name', 'class_time']."},
+                "header_text": {"type": "string", "description": "create_whatsapp_template: optional short text header (no variables)."},
+                "footer_text": {"type": "string", "description": "create_whatsapp_template: optional footer line."},
+                "buttons": {
+                    "type": "array",
+                    "description": "create_whatsapp_template: optional buttons (max 3): {type: QUICK_REPLY|URL|PHONE_NUMBER, text, url?, phone_number?}.",
+                    "items": {"type": "object", "properties": {
+                        "type": {"type": "string", "enum": ["QUICK_REPLY", "URL", "PHONE_NUMBER"]},
+                        "text": {"type": "string"}, "url": {"type": "string"}, "phone_number": {"type": "string"},
+                    }, "required": ["type", "text"]},
+                },
+                "submit": {"type": "boolean", "description": "create_whatsapp_template: submit to Meta for approval right away (default true)."},
             },
             "required": ["action"],
         },
@@ -320,6 +383,185 @@ async def load_templates(ctx: ToolContext) -> Dict[str, Any]:
     rows = await _notification_json(ctx, "GET", "/notification-service/v1/whatsapp-templates/list", params={"instituteId": inst})
     whatsapp = [_whatsapp_template_entry(r) for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict) and r.get("name")]
     return {"email": email, "whatsapp": whatsapp, "email_loaded": email_loaded, "whatsapp_loaded": isinstance(rows, list)}
+
+
+async def _raw_call(ctx: ToolContext, base_url: str, method: str, path: str, *,
+                    params: Optional[Dict[str, Any]] = None, body: Optional[Dict[str, Any]] = None,
+                    timeout: float = 30.0) -> Tuple[int, Any]:
+    """
+    One JWT-authenticated call that keeps the status AND the body.
+
+    The shared ``_service_json`` folds every non-200 into ``fetch_failed`` — fine
+    for reads, but template creation answers 201, and the template services put
+    the reason a template was refused (a Meta rule, a duplicate name) in a 4xx
+    body the model needs to relay. Returns (status, parsed body | text | None);
+    status 0 means the call itself failed.
+    """
+    import httpx
+    if not ctx.bearer_token:
+        return 0, {"message": "no_auth"}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.request(method, f"{base_url}{path}", params=params, json=body, headers=_jwt_headers(ctx))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("workflows %s %s failed: %s", method, path, e)
+        return 0, {"message": str(e)[:200]}
+    if resp.status_code >= 400:
+        logger.warning("workflows %s %s -> %s (%s)", method, path, resp.status_code, resp.text[:200])
+    try:
+        return resp.status_code, resp.json() if resp.text.strip() else None
+    except ValueError:
+        return resp.status_code, resp.text.strip()
+
+
+def _backend_reason(data: Any, fallback: str) -> Dict[str, Any]:
+    """The message/hint a template service put in its error body, or the fallback."""
+    if isinstance(data, dict):
+        return {k: v for k, v in {
+            "message": data.get("message") or data.get("ex") or fallback,
+            "hint": data.get("hint"),
+            "field": data.get("field"),
+            "code": data.get("code"),
+        }.items() if v}
+    return {"message": fallback}
+
+
+def _admin_core_base() -> str:
+    from ..config import get_settings
+    return get_settings().admin_core_service_base_url
+
+
+def _notification_base() -> str:
+    from ..config import get_settings
+    return get_settings().notification_service_base_url
+
+
+async def load_email_template(ctx: ToolContext, name: str) -> Optional[Dict[str, Any]]:
+    """One email template of the pinned institute in full (raw TemplateResponse), or None."""
+    inst = ctx.principal.institute_id
+    for t in ("EMAIL", "email"):
+        rows = await _admin_core_json(ctx, "GET", f"/admin-core-service/institute/template/v1/institute/{inst}/type/{t}")
+        for r in rows if isinstance(rows, list) else []:
+            if isinstance(r, dict) and _s(r.get("name")) == name:
+                return r
+    return None
+
+
+async def load_whatsapp_template_rows(ctx: ToolContext) -> Optional[List[Dict[str, Any]]]:
+    """Raw WhatsApp template rows (every status) or None when the list could not be fetched."""
+    rows = await _notification_json(ctx, "GET", "/notification-service/v1/whatsapp-templates/list",
+                                    params={"instituteId": ctx.principal.institute_id})
+    if not isinstance(rows, list):
+        return None
+    return [r for r in rows if isinstance(r, dict) and r.get("name")]
+
+
+def _whatsapp_template_full(t: Dict[str, Any]) -> Dict[str, Any]:
+    entry = _whatsapp_template_entry(t)
+    entry.pop("body", None)
+    out = {k: v for k, v in {
+        **entry,
+        "id": t.get("id"),
+        "category": t.get("category"),
+        "body": t.get("bodyText"),
+        "header_type": t.get("headerType"),
+        "header_text": t.get("headerText"),
+        "footer_text": t.get("footerText"),
+        "buttons": t.get("buttons"),
+        "sample_values": t.get("bodySampleValues"),
+        "variable_names": t.get("bodyVariableNames"),
+        "rejection_reason": t.get("rejectionReason"),
+        "submitted_at": t.get("submittedAt"),
+        "approved_at": t.get("approvedAt"),
+    }.items() if v not in (None, "", [], {})}
+    out["usable"] = _s(t.get("status")).upper() == "APPROVED"
+    return out
+
+
+def _email_template_full(t: Dict[str, Any]) -> Dict[str, Any]:
+    entry = _email_template_entry(t)
+    content = _s(t.get("content"))
+    if not entry.get("placeholders"):
+        # Templates made outside the wizard often have empty dynamic_parameters;
+        # the body still tells us what a send node has to supply.
+        entry["placeholders"] = email_placeholders(_s(t.get("subject")), content)
+    out = {k: v for k, v in {
+        **entry,
+        "id": t.get("id"),
+        "content_type": t.get("contentType"),
+        "html": content[:_EMAIL_HTML_MAX] + ("…" if len(content) > _EMAIL_HTML_MAX else ""),
+        "category": t.get("templateCategory"),
+    }.items() if v not in (None, "", [], {})}
+    out["usable"] = _s(t.get("status")).upper() in ("ACTIVE", "")
+    return out
+
+
+def _humanize(key: str) -> str:
+    """camelCase / snake_case placeholder → 'Camel Case' label (what the wizard does)."""
+    label = re.sub(r"[_-]+", " ", key)
+    label = re.sub(r"([a-z])([A-Z])", r"\1 \2", label)
+    return " ".join(w[:1].upper() + w[1:] for w in label.split())
+
+
+def email_placeholders(*texts: str) -> List[str]:
+    """Distinct {{placeholders}} in order of first appearance across subject + body."""
+    seen: List[str] = []
+    for text in texts:
+        for m in _EMAIL_PLACEHOLDER_RE.finditer(text or ""):
+            key = m.group(1).strip()
+            if key and key not in seen:
+                seen.append(key)
+    return seen
+
+
+def whatsapp_body_problems(name: str, body: str, category: str, samples: List[str],
+                           header_text: str, footer_text: str, buttons: List[Dict[str, Any]]) -> List[str]:
+    """Meta's content rules (the ones notification-service enforces at submit), checked up front."""
+    problems: List[str] = []
+    if not WHATSAPP_NAME_RE.match(name or ""):
+        problems.append("name must be lowercase letters, digits and underscores only (e.g. 'class_reminder_v1').")
+    if category not in WHATSAPP_CATEGORIES:
+        problems.append("category must be UTILITY or MARKETING (AUTHENTICATION is reserved for Meta-written OTP templates).")
+    body = body or ""
+    if not body.strip():
+        problems.append("body is required.")
+    else:
+        if len(body) > WHATSAPP_BODY_MAX:
+            problems.append(f"body is {len(body)} characters; Meta allows at most {WHATSAPP_BODY_MAX}.")
+        indexes = [int(m.group(1)) for m in _WA_PLACEHOLDER_RE.finditer(body)]
+        if indexes:
+            expected = list(range(1, max(indexes) + 1))
+            if sorted(set(indexes)) != expected:
+                problems.append(f"body variables must be {{{{1}}}}, {{{{2}}}}, ... with no gaps (found {sorted(set(indexes))}).")
+            stripped = body.strip()
+            if _WA_PLACEHOLDER_RE.match(stripped):
+                problems.append("body cannot start with a variable — put some words before it.")
+            if re.search(r"\{\{\s*\d+\s*\}\}\s*$", stripped):
+                problems.append("body cannot end with a variable — add a word or punctuation after it.")
+            count = max(indexes)
+            if len(samples) < count or any(not _s(x) for x in samples[:count]):
+                problems.append(f"body has {count} variable(s); give one non-empty sample_values entry per variable, in order.")
+        if re.search(r"\{\{\s*[A-Za-z]", body):
+            problems.append("WhatsApp variables are positional ({{1}}, {{2}}); named placeholders like {{name}} are not allowed — put the meaning in variable_names.")
+    if header_text and _WA_PLACEHOLDER_RE.search(header_text):
+        problems.append("header_text cannot contain variables here — keep it plain text.")
+    if len(header_text or "") > 60:
+        problems.append("header_text must be at most 60 characters.")
+    if len(footer_text or "") > 60:
+        problems.append("footer_text must be at most 60 characters.")
+    if len(buttons) > 3:
+        problems.append("at most 3 buttons.")
+    for b in buttons:
+        btype = _s(b.get("type")).upper()
+        if btype not in ("QUICK_REPLY", "URL", "PHONE_NUMBER"):
+            problems.append(f"button type '{btype}' is not supported (QUICK_REPLY, URL, PHONE_NUMBER).")
+        if not _s(b.get("text")):
+            problems.append("every button needs text.")
+        if btype == "URL" and not _s(b.get("url")).startswith("http"):
+            problems.append("a URL button needs an absolute http(s) url.")
+        if btype == "PHONE_NUMBER" and not _s(b.get("phone_number") or b.get("phoneNumber")):
+            problems.append("a PHONE_NUMBER button needs phone_number.")
+    return problems
 
 
 _BATCHES_SQL = """
@@ -1049,7 +1291,12 @@ async def _action_context(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
         out["templates"] = {
             "email": cap([x for x in t["email"] if _s(x.get("status")).upper() in ("ACTIVE", "")]),
             "whatsapp": cap([x for x in t["whatsapp"] if _s(x.get("status")).upper() == "APPROVED"]),
-            "use": "templateName must be one of these names, on a node of the matching channel; templateVars keys are the template's placeholders",
+            "whatsapp_pending": cap([{"name": x["name"], "status": x.get("status")} for x in t["whatsapp"]
+                                     if _s(x.get("status")).upper() in ("DRAFT", "PENDING", "REJECTED")]),
+            "use": ("templateName must be one of these names, on a node of the matching channel; templateVars keys "
+                    "are the template's placeholders. whatsapp_pending templates cannot be sent until APPROVED — "
+                    "workflows_edit(sync_whatsapp_templates) refreshes their status. Missing one? "
+                    "workflows_edit(create_email_template | create_whatsapp_template)."),
         }
     if "live_sessions" in kinds:
         out["live_sessions"] = {**cap(await load_live_sessions(ctx)), "use": "live_session_id → trigger.event_ids (LIVE_SESSION)"}
@@ -1059,7 +1306,35 @@ async def _action_context(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
     return out
 
 
-_ACTIONS = {"list": _action_list, "get": _action_get, "runs": _action_runs, "catalog": _action_catalog, "context": _action_context}
+async def _action_template(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    channel = _s(args.get("channel")).upper()
+    name = _s(args.get("name"))
+    if channel not in ("EMAIL", "WHATSAPP") or not name:
+        return _err("missing_argument", needs=[n for n, v in (("channel", channel in ("EMAIL", "WHATSAPP")), ("name", name)) if not v],
+                    message="template needs channel (EMAIL | WHATSAPP) and name.")
+    if channel == "EMAIL":
+        t = await load_email_template(ctx, name)
+        if t is None:
+            return _err("unknown_template", message=f"No email template named '{name}' for this institute — see workflows(context, kind='templates').")
+        full = _email_template_full(t)
+        return {"template": full,
+                "send_node_hint": {"node_type": "SEND_EMAIL", "config": {"templateName": name,
+                                   "templateVars": {k: "<item field or #ctx SpEL>" for k in full.get("placeholders") or []}}}}
+    rows = await load_whatsapp_template_rows(ctx)
+    if rows is None:
+        return _err("fetch_failed", message="Could not load WhatsApp templates right now.")
+    match = next((r for r in rows if _s(r.get("name")) == name and _s(r.get("status")).upper() != "DELETED"), None)
+    if match is None:
+        return _err("unknown_template", message=f"No WhatsApp template named '{name}' for this institute — see workflows(context, kind='templates') or run workflows_edit(sync_whatsapp_templates).")
+    full = _whatsapp_template_full(match)
+    return {"template": full,
+            "send_node_hint": {"node_type": "SEND_WHATSAPP", "config": {"templateName": name, "languageCode": full.get("language") or "en",
+                               "templateVars": {k: "<item field or #ctx SpEL>" for k in full.get("placeholders") or []}}},
+            "note": None if full["usable"] else f"Status is {full.get('status')}: sends will fail until Meta approves it."}
+
+
+_ACTIONS = {"list": _action_list, "get": _action_get, "runs": _action_runs, "catalog": _action_catalog,
+            "context": _action_context, "template": _action_template}
 
 
 async def execute_workflows(args: Dict[str, Any], ctx: ToolContext) -> str:
@@ -1162,7 +1437,144 @@ async def _action_discard_draft(args: Dict[str, Any], ctx: ToolContext) -> Dict[
             "note": "The draft is gone from the automations list. Nothing that was live was touched."}
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Template creation — additive: a new template affects nothing until referenced
+# ──────────────────────────────────────────────────────────────────────────
+
+_HANDLEBARS_BLOCK_RE = re.compile(r"\{\{\s*[#/^]")
+
+
+async def _action_create_email_template(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    name, subject, html = _s(args.get("name")), _s(args.get("subject")), _s(args.get("html"))
+    missing = [n for n, v in (("name", name), ("subject", subject), ("html", html)) if not v]
+    if missing:
+        return _err("missing_argument", action="create_email_template", needs=missing)
+    if len(html) > _EMAIL_HTML_MAX:
+        return _err("bad_request", message=f"html is {len(html)} characters; keep it under {_EMAIL_HTML_MAX}.")
+    if _HANDLEBARS_BLOCK_RE.search(subject + html):
+        return _err("bad_request", message="Only plain {{placeholder}} substitution is supported — no {{#if}}/{{/each}} blocks. Pre-render conditional parts as a single placeholder instead.")
+    templates = await load_templates(ctx)
+    if not templates.get("email_loaded"):
+        return _err("fetch_failed", message="Could not load the existing templates to check the name — try again.")
+    if any(t.get("name") == name for t in templates["email"]):
+        return _err("template_exists", name=name,
+                    message=f"An email template named '{name}' already exists. Existing templates are never changed from here — reuse it (workflows(template)) or pick a new name.")
+    placeholders = email_placeholders(subject, html)
+    labels_in = args.get("placeholder_labels") if isinstance(args.get("placeholder_labels"), dict) else {}
+    dynamic_parameters = {k: _s(labels_in.get(k)) or _humanize(k) for k in placeholders}
+    status, data = await _raw_call(
+        ctx, _admin_core_base(), "POST", "/admin-core-service/institute/template/v1/create",
+        body={
+            "type": "EMAIL",
+            "vendorId": "default",
+            "instituteId": ctx.principal.institute_id,
+            "name": name,
+            "subject": subject,
+            "content": html,
+            "contentType": "text/html",
+            "settingJson": {"variables": placeholders, "isDefault": False, "templateType": "utility", "createdVia": "mcp"},
+            "dynamicParameters": dynamic_parameters,
+            "canDelete": True,
+            "status": "ACTIVE",
+            "templateCategory": "NOTIFICATION",
+        },
+    )
+    if status not in (200, 201) or not isinstance(data, dict):
+        return _err("create_failed", status=status, **_backend_reason(data, "The email template could not be created."))
+    return {
+        "template": {"id": data.get("id"), "name": name, "channel": "EMAIL", "status": "ACTIVE",
+                     "subject": subject, "placeholders": placeholders},
+        "send_node_hint": {"node_type": "SEND_EMAIL", "config": {"templateName": name,
+                           "templateVars": {k: "<item field or #ctx SpEL>" for k in placeholders}}},
+        "next": ("The template is ready to reference from a SEND_EMAIL node (templateVars keys = placeholders). "
+                 "The admin can review or edit it under Settings → Templates."),
+    }
+
+
+async def _action_create_whatsapp_template(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    name = _s(args.get("name")).lower()
+    body = _s(args.get("body"))
+    if not name or not body:
+        return _err("missing_argument", action="create_whatsapp_template", needs=[n for n, v in (("name", name), ("body", body)) if not v])
+    category = _s(args.get("category")).upper() or "UTILITY"
+    language = _s(args.get("language")) or "en"
+    samples = [_s(x) for x in args.get("sample_values")] if isinstance(args.get("sample_values"), list) else []
+    variable_names = [_s(x) for x in args.get("variable_names")] if isinstance(args.get("variable_names"), list) else []
+    header_text, footer_text = _s(args.get("header_text")), _s(args.get("footer_text"))
+    buttons = [b for b in args.get("buttons") if isinstance(b, dict)] if isinstance(args.get("buttons"), list) else []
+    problems = whatsapp_body_problems(name, body, category, samples, header_text, footer_text, buttons)
+    if problems:
+        return _err("bad_request", problems=problems, message="Fix these before Meta will accept the template.")
+    rows = await load_whatsapp_template_rows(ctx)
+    if rows is None:
+        return _err("fetch_failed", message="Could not load the existing WhatsApp templates to check the name — try again.")
+    clash = next((r for r in rows if _s(r.get("name")) == name and _s(r.get("language") or "en") == language
+                  and _s(r.get("status")).upper() != "DELETED"), None)
+    if clash:
+        return _err("template_exists", name=name, status=clash.get("status"),
+                    message=f"A WhatsApp template named '{name}' ({language}) already exists with status {clash.get('status')}. Templates with Meta are locked — pick a new name.")
+    count = max([int(m.group(1)) for m in _WA_PLACEHOLDER_RE.finditer(body)] or [0])
+    payload: Dict[str, Any] = {
+        "instituteId": ctx.principal.institute_id,
+        "name": name,
+        "language": language,
+        "category": category,
+        "headerType": "TEXT" if header_text else "NONE",
+        "headerText": header_text or None,
+        "bodyText": body,
+        "footerText": footer_text or None,
+        "bodySampleValues": samples[:count],
+        "bodyVariableNames": variable_names[:count] if variable_names else None,
+        "buttons": [{"type": _s(b.get("type")).upper(), "text": _s(b.get("text")), "url": _s(b.get("url")) or None,
+                     "phoneNumber": _s(b.get("phone_number") or b.get("phoneNumber")) or None} for b in buttons] or None,
+        "createdBy": ctx.principal.user_id,
+    }
+    status, data = await _raw_call(ctx, _notification_base(), "POST", "/notification-service/v1/whatsapp-templates", body=payload)
+    if status not in (200, 201) or not isinstance(data, dict) or not data.get("id"):
+        return _err("create_failed", status=status, **_backend_reason(data, "The WhatsApp template draft could not be created."))
+    template_id = str(data["id"])
+    result: Dict[str, Any] = {"template": _whatsapp_template_full(data)}
+    if args.get("submit", True) is False:
+        result["next"] = "Saved as a DRAFT with Meta not yet asked. Submit it from Settings → WhatsApp templates when ready."
+        return result
+    status, submitted = await _raw_call(ctx, _notification_base(), "POST", f"/notification-service/v1/whatsapp-templates/{template_id}/submit", timeout=60.0)
+    if status != 200 or not isinstance(submitted, dict):
+        reason = _backend_reason(submitted, "Meta did not accept the submission.")
+        result["submitted"] = False
+        result["submit_error"] = reason
+        result["next"] = ("The draft is saved but NOT submitted: " + reason["message"]
+                          + " Fix the content and create it again under a new name, or ask the admin to submit it from Settings → WhatsApp templates.")
+        return result
+    result["template"] = _whatsapp_template_full(submitted)
+    result["submitted"] = True
+    result["send_node_hint"] = {"node_type": "SEND_WHATSAPP", "config": {"templateName": name, "languageCode": language,
+                                "templateVars": {str(i + 1): "<item field or #ctx SpEL>" for i in range(count)}}}
+    result["next"] = ("Submitted to Meta (status PENDING). Approval usually takes minutes to a few hours; call "
+                      "workflows_edit(sync_whatsapp_templates) to check. You can draft the automation now, but the admin "
+                      "should publish only once the template is APPROVED — sends fail until then.")
+    return result
+
+
+async def _action_sync_whatsapp_templates(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    status, data = await _raw_call(ctx, _notification_base(), "POST", "/notification-service/v1/whatsapp-templates/sync",
+                                   params={"instituteId": ctx.principal.institute_id}, timeout=60.0)
+    if status != 200:
+        return _err("sync_failed", status=status, **_backend_reason(data, "Could not sync templates from Meta — is WhatsApp connected for this institute?"))
+    rows = await load_whatsapp_template_rows(ctx) or []
+    by_status: Dict[str, List[str]] = {}
+    for r in rows:
+        st = _s(r.get("status")).upper() or "UNKNOWN"
+        if st != "DELETED":
+            by_status.setdefault(st, []).append(_s(r.get("name")))
+    return {"synced": (data or {}).get("synced") if isinstance(data, dict) else None,
+            "templates_by_status": {k: sorted(v)[:_MAX_CONTEXT_ITEMS] for k, v in sorted(by_status.items())},
+            "note": "Only APPROVED templates can be sent."}
+
+
 _EDIT_ACTIONS = {"validate": _action_validate, "create_draft": _action_create_draft,
+                 "create_email_template": _action_create_email_template,
+                 "create_whatsapp_template": _action_create_whatsapp_template,
+                 "sync_whatsapp_templates": _action_sync_whatsapp_templates,
                  "update_draft": _action_update_draft, "discard_draft": _action_discard_draft}
 
 
@@ -1220,5 +1632,5 @@ __all__ = [
     "WORKFLOW_TOOLS", "WORKFLOWS_TOOL_NAME", "WORKFLOWS_GROUP_KEY", "WORKFLOWS_ACTIONS", "WORKFLOWS_SCHEMA",
     "WORKFLOWS_EDIT_TOOL_NAME", "WORKFLOWS_EDIT_GROUP_KEY", "WORKFLOWS_EDIT_ACTIONS", "WORKFLOWS_EDIT_SCHEMA",
     "execute_workflows", "execute_workflows_edit", "normalize_workflow", "lint_workflow", "check_workflow",
-    "step_summary", "load_workflow", "editor_url",
+    "step_summary", "load_workflow", "editor_url", "email_placeholders", "whatsapp_body_problems",
 ]

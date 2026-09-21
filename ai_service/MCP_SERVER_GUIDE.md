@@ -21,6 +21,8 @@ settings tab has one toggle per feature to manage per role:
 | `website_edit` | WRITE (drafts only, no model, no credits) | `website_builder_edits` | `create_page`, `create_site`, `add_html_page`, `update_page`, `set_layout`, `add_section`, `set_theme`, `set_site_settings`, `set_courses`, `link_lead_form`, `set_seo`, `import_image`, `discard_draft` |
 | `audience_forms` | READ | `audience_forms` | `list`, `get`, `leads` |
 | `audience_forms_edit` | WRITE (additive only) | `audience_forms_edits` | `create`, `update_fields` (adds/changes, never removes), `send_test_lead` |
+| `workflows` | READ | `workflows` | `list`, `get`, `runs`, `catalog` (the builder's authoring contract, in sections), `context` (real batches / audiences / templates / sessions / invites to reference), `template` (one email or WhatsApp template in full) |
+| `workflows_edit` | WRITE (drafts + additive, no model, no credits) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` (the last two refuse anything whose status is not DRAFT); `create_email_template`, `create_whatsapp_template` (new templates only, WhatsApp submitted to Meta), `sync_whatsapp_templates` |
 | `workflows` | READ | `workflows` | `list`, `get`, `runs`, `catalog` (the builder's authoring contract, in sections), `context` (real batches / audiences / templates / sessions / invites to reference) |
 | `workflows_edit` | WRITE (drafts only, no model, no credits) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` — the last two refuse anything whose status is not DRAFT |
 | `blog` | READ | `blog` | `list` (posts of any status, categories, where they are shown), `get` (one post with its HTML body, SEO, public URLs), `placements` (website pages carrying a Blog section) |
@@ -98,11 +100,25 @@ builder. There is no Test Run action: `QUERY`, `SET_LEAD_STATUS` and `COMBOT`
 act for real even in a dry run. Nothing on the MCP path calls
 `/v1/workflow/ai-draft` or any other model.
 
+Templates are part of the same flow: a SEND node references a template by
+name, so `workflows_edit(create_email_template)` creates one (placeholders
+derived from the `{{…}}` in subject/HTML become `dynamic_parameters`, which is
+what makes the builder's mapping UI appear) and
+`workflows_edit(create_whatsapp_template)` creates a draft in
+notification-service, pre-checks Meta's content rules (positional `{{1}}`
+variables, no leading/trailing variable, one sample per variable, ≤1024
+chars, UTILITY/MARKETING) and submits it for approval. Both are **additive**:
+an existing template is never edited or removed, because a live automation may
+be sending it. `sync_whatsapp_templates` refreshes statuses from Meta so a
+PENDING template can be re-checked before the admin publishes.
+
 **Why a write tool is allowed.** MCP has no confirm card, so `website_edit`
 never touches live data: every action saves a **draft revision**
 (`source=AI_COPILOT`/`AI_WIZARD`, `ai_run_id`) that the admin reviews in Manage
 Pages — where the publish checks run — and publishes themselves.
 `discard_draft` is the undo. `workflows_edit` has the same property — it can
+only create, replace or discard a DRAFT automation — plus the additive one for
+templates (create new, never change). `audience_forms_edit` is
 only create, replace or discard a DRAFT automation, and so does `blog_edit` —
 posts are rows in `catalogue_blog_post` (not page JSON), `create` forces
 `status=DRAFT` (the public endpoint serves PUBLISHED only), `update`/`discard`

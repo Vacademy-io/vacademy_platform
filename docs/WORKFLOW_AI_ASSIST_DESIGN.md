@@ -345,8 +345,8 @@ Settings → MCP Server (and in Assistant settings, same groups):
 
 | Tool | Group | Actions |
 |---|---|---|
-| `workflows` (READ) | `workflows` | `list`, `get`, `runs` (executions + per-node log), `catalog`, `context` |
-| `workflows_edit` (WRITE, draft-only) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` |
+| `workflows` (READ) | `workflows` | `list`, `get`, `runs` (executions + per-node log), `catalog`, `context`, `template` |
+| `workflows_edit` (WRITE, draft-only + additive) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft`, `create_email_template`, `create_whatsapp_template`, `sync_whatsapp_templates` |
 
 **Grounding is the existing grounding.** `workflows(catalog)` proxies
 `GET /v1/workflow/ai-catalog` (§2b's AI-grade schema) in sections — `overview` (JSON shape
@@ -386,9 +386,26 @@ to have the admin review and publish there. `update_draft` and `discard_draft` l
 workflow through `/edit`, refuse it if `institute_id` differs, and refuse it if
 `status != DRAFT` — a published automation cannot be changed or removed from an AI app.
 
+**Templates (L10, the other half of the flow).** A send node is only as good as the
+template it names, so the model can create what is missing: `create_email_template`
+posts to `/institute/template/v1/create` with `status=ACTIVE`, `contentType=text/html`
+and `dynamicParameters` derived from the `{{placeholders}}` in subject + HTML (empty
+`dynamic_parameters` is why the builder's mapping UI sometimes never appears); the
+response carries a `send_node_hint` with the `templateVars` keys to fill.
+`create_whatsapp_template` creates a draft in notification-service and submits it to
+Meta (`PENDING`), after checking Meta's rules locally — name `[a-z0-9_]`, positional
+`{{1}}…{{n}}` with no gaps, no leading/trailing variable, one sample value per
+variable, body ≤ 1024, UTILITY (default; MARKETING repeats to one number are
+rate-limited by Meta, AUTHENTICATION refused). `sync_whatsapp_templates` pulls the
+status back. `context` lists DRAFT/PENDING/REJECTED WhatsApp templates separately so a
+just-created one is visible but not offered as sendable, and the lint keeps warning
+until it is APPROVED. Existing templates are never edited or removed from here — a
+live automation may be sending them.
+
 **Deliberately not exposed:** publish/activate (the human-in-the-loop guarantee of §8),
 Test Run (`QUERY`, `SET_LEAD_STATUS`, `COMBOT` have no dry-run gate), `trigger-now`,
-and the in-place node-template editor (it edits live workflows).
+the in-place node-template editor (it edits live workflows), and editing/deleting
+message templates.
 
 Tests: `ai_service/tests/test_workflow_tools.py` (normaliser, lint, template/ownership
 checks, draft-only containment, reads) and the exposure assertions in

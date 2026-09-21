@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+from . import taxonomy
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,42 @@ def _row(r: Any) -> Dict[str, Any]:
 # Catalogue (client-facing)
 # ---------------------------------------------------------------------------
 
+def _selection_sql(
+    selection: taxonomy.Selection, params: Dict[str, Any]
+) -> Tuple[List[str], List[Any]]:
+    """WHERE fragments for a resolved picker selection.
+
+    Each group is `(l.board = :b AND l.level IN :lv)`, OR-ed together, so
+    "CBSE → Class 10" becomes `(board='CBSE' AND level IN ('10')) OR
+    (board='NCERT' AND level IN ('10'))`. IN-lists use expanding bind
+    parameters, which is how SQLAlchemy binds a Python tuple safely."""
+    where: List[str] = []
+    expanding: List[Any] = []
+    if selection.impossible:
+        where.append("FALSE")
+        return where, expanding
+    if selection.groups:
+        parts: List[str] = []
+        for i, g in enumerate(selection.groups):
+            conds: List[str] = []
+            if g.board is not None:
+                conds.append(f"l.board = :g{i}_board")
+                params[f"g{i}_board"] = g.board
+            if g.levels:
+                conds.append(f"l.level IN :g{i}_levels")
+                params[f"g{i}_levels"] = list(g.levels)
+                expanding.append(bindparam(f"g{i}_levels", expanding=True))
+            if conds:
+                parts.append("(" + " AND ".join(conds) + ")")
+        if parts:
+            where.append("(" + " OR ".join(parts) + ")")
+    if selection.subjects:
+        where.append("l.subject IN :subjects")
+        params["subjects"] = list(selection.subjects)
+        expanding.append(bindparam("subjects", expanding=True))
+    return where, expanding
+
+
 def list_catalogue(
     db: Session,
     institute_id: str,
@@ -87,6 +125,7 @@ def list_catalogue(
     subject: Optional[str] = None,
     level: Optional[str] = None,
     board: Optional[str] = None,
+    exam: Optional[str] = None,
     language: Optional[str] = None,
     query: Optional[str] = None,
     limit: int = 60,
@@ -99,6 +138,11 @@ def list_catalogue(
 
     Curriculum listings are ordinary free platform libraries and appear beside
     other published libraries, such as STEM.
+
+    `board`, `exam`, `level` and `subject` are a picker selection and go
+    through the taxonomy (see taxonomy.resolve): a CBSE or UP Board request
+    is answered with the NCERT books those boards prescribe, and an exam with
+    the classes it is built on.
     """
     where = ["l.status = 'PUBLISHED'"]
     if collection:
@@ -110,13 +154,13 @@ def list_catalogue(
     if params_collection:
         params["collection"] = params_collection
 
-    for facet, value in (
-        ("subject", subject), ("level", level),
-        ("board", board), ("language", language),
-    ):
-        if value:
-            where.append(f"l.{facet} = :{facet}")
-            params[facet] = value
+    selection = taxonomy.resolve(board=board, exam=exam, level=level, subject=subject)
+    selection_where, expanding = _selection_sql(selection, params)
+    where.extend(selection_where)
+
+    if language:
+        where.append("l.language = :language")
+        params["language"] = language
 
     if query:
         # Title, summary and tags. Deliberately not the corpus itself — the
@@ -150,10 +194,40 @@ def list_catalogue(
             ORDER BY l.sort_weight DESC, l.published_at DESC
             LIMIT :limit
             """
-        ),
+        ).bindparams(*expanding),
         params,
     ).fetchall()
     return [_row(r) for r in rows]
+
+
+def published_counts(
+    db: Session, language: Optional[str] = None
+) -> List[taxonomy.Count]:
+    """The published catalogue as (board, level, subject, n) — the input the
+    taxonomy tree is annotated with. Listings without a board (STEM) have no
+    place in the picker and are left out."""
+    where = ["l.status = 'PUBLISHED'", "kb.status = 'ACTIVE'", "l.board IS NOT NULL"]
+    params: Dict[str, Any] = {}
+    if language:
+        where.append("l.language = :language")
+        params["language"] = language
+    rows = db.execute(
+        text(
+            f"""
+            SELECT l.board, l.level, l.subject, COUNT(*) AS n
+              FROM knowledge_base_listing l
+              JOIN knowledge_base kb ON kb.id = l.knowledge_base_id
+             WHERE {' AND '.join(where)}
+             GROUP BY l.board, l.level, l.subject
+            """
+        ),
+        params,
+    ).fetchall()
+    return [
+        (r._mapping["board"], r._mapping["level"] or "", r._mapping["subject"] or "",
+         int(r._mapping["n"]))
+        for r in rows
+    ]
 
 
 def facet_values(db: Session) -> Dict[str, List[str]]:
@@ -461,7 +535,7 @@ def list_unlocked(db: Session, institute_id: str) -> List[str]:
 
 
 __all__ = [
-    "FACETS", "list_catalogue", "facet_values", "get_listing",
+    "FACETS", "list_catalogue", "published_counts", "facet_values", "get_listing",
     "upsert_listing", "set_status", "list_all_for_publisher",
     "is_entitled", "grant", "list_unlocked",
 ]

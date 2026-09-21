@@ -60,10 +60,65 @@ export type FacetValues = Record<keyof ListingFacets, string[]>;
 
 export interface CatalogueFilters {
     subject?: string;
+    /** Class ("10"). */
     level?: string;
+    /** Taxonomy board key ("CBSE", "UP"); the server resolves aliases. */
     board?: string;
+    /** Taxonomy exam key ("JEE_MAIN"); overrides board + level on the server. */
+    exam?: string;
     language?: string;
     q?: string;
+    limit?: number;
+}
+
+// ---- Curriculum taxonomy ----------------------------------------------------
+//
+// What the picker offers — every board, exam, class and subject, loaded or
+// not — with the number of published libraries that answer each node. Comes
+// from GET /library/taxonomy; see ai_service/app/services/kb/taxonomy.py.
+
+/** A corpus a board or exam is answered from: listing.board, for these classes (null = all). */
+export interface TaxonomySource {
+    board: string;
+    classes: string[] | null;
+}
+
+export interface TaxonomySubject {
+    name: string;
+    libraries: number;
+}
+
+export interface TaxonomyClass {
+    class: string;
+    libraries: number;
+    subjects: TaxonomySubject[];
+}
+
+export interface TaxonomyBoard {
+    key: string;
+    name: string;
+    full_name: string;
+    kind: 'NATIONAL' | 'STATE';
+    /** Boards whose books this one prescribes (CBSE → NCERT). Empty = its own. */
+    sources: TaxonomySource[];
+    libraries: number;
+    classes: TaxonomyClass[];
+}
+
+export interface TaxonomyExam {
+    key: string;
+    name: string;
+    full_name: string;
+    sources: TaxonomySource[];
+    libraries: number;
+    /** Subjects or sections; a section without a corpus simply counts 0. */
+    subjects: TaxonomySubject[];
+}
+
+export interface LibraryTaxonomy {
+    mediums: string[];
+    boards: TaxonomyBoard[];
+    exams: TaxonomyExam[];
 }
 
 export interface ListingDraft {

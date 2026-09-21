@@ -6,6 +6,7 @@ import {
 } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
+import { getStoredRegistration } from "@/routes/register/live-class/-utils/guestSessionStorage";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import { extractYouTubeVideoId, isLiveYouTubeSession, isYouTubeUrl } from "@/utils/youtube";
 import { useGuestAccessRecovery } from "../-hooks/useGuestAccessRecovery";
@@ -58,13 +59,20 @@ function GuestEmbedComponent() {
     setBbbJoining(true);
     setBbbError(null);
     try {
-      const registrationId = await getStoredGuestRegistrationId();
+      // The server resolves the display name from the registration (the Full
+      // Name typed on the form) so the learner shows up in BBB under their
+      // own name; only an unregistered visitor falls back to "Guest".
+      // Prefer this session's own registration over the device-wide "latest
+      // registration" key — a learner who already signed up for next week's
+      // class would otherwise send that id here and be treated as unregistered.
+      const registrationId =
+        getStoredRegistration(sessionDetails.sessionId)?.registrationId ||
+        (await getStoredGuestRegistrationId());
       const response = await axios.get(
         `${BASE_URL}/admin-core-service/live-session/guest/bbb-join`,
         {
           params: {
             scheduleId: sessionDetails.scheduleId,
-            guestName: "Guest",
             ...(registrationId ? { registrationId } : {}),
           },
         }

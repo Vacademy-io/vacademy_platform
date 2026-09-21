@@ -38,6 +38,8 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
      * Carries provider join metadata; on conflict it refreshes join
      * time/meeting id and forces PRESENT but leaves details untouched,
      * matching the previous update branch of markBbbAttendance.
+     * userSourceType is USER for authenticated learners and EXTERNAL_USER for
+     * registered public-session guests (userSourceId = registration id).
      */
     @Modifying
     @Transactional
@@ -46,7 +48,7 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
                 (id, session_id, schedule_id, user_source_type, user_source_id,
                  log_type, status, status_type, details, provider_join_time,
                  provider_meeting_id, updated_at)
-            VALUES (:id, :sessionId, :scheduleId, 'USER', :userSourceId,
+            VALUES (:id, :sessionId, :scheduleId, :userSourceType, :userSourceId,
                     'ATTENDANCE_RECORDED', 'PRESENT', 'ONLINE', :details,
                     :providerJoinTime, :providerMeetingId, now())
             ON CONFLICT (schedule_id, user_source_id) WHERE log_type = 'ATTENDANCE_RECORDED'
@@ -60,6 +62,7 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
             @Param("id") String id,
             @Param("sessionId") String sessionId,
             @Param("scheduleId") String scheduleId,
+            @Param("userSourceType") String userSourceType,
             @Param("userSourceId") String userSourceId,
             @Param("details") String details,
             @Param("providerJoinTime") String providerJoinTime,

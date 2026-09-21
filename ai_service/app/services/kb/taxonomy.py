@@ -105,8 +105,15 @@ class Board:
     aliases: Tuple[Source, ...] = ()
     # Board-specific subject schemes, by class; standard_subjects otherwise.
     subject_overrides: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
+    # Picker subject → listing subjects it is also answered by, for boards
+    # whose scheme splits or merges what the source corpus calls a subject
+    # (ICSE "Physics" lives inside NCERT "Science").
+    subject_aliases: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
     # Regional-language subjects added to every class.
     extra_subjects: Tuple[str, ...] = ()
+    # How the UI should describe the alias: PRESCRIBES (CBSE, UP Board really
+    # do set NCERT books) or OVERLAPS (ICSE: nearest free corpus, not its book).
+    alias_kind: str = "PRESCRIBES"
 
     def sources_for(self, cls: Optional[str]) -> List[str]:
         out = [self.key]
@@ -119,6 +126,10 @@ class Board:
         base = self.subject_overrides.get(cls) or standard_subjects(cls)
         return tuple(dict.fromkeys((*base, *self.extra_subjects)))
 
+    def listing_subjects(self, subject: str) -> Tuple[str, ...]:
+        """The subject itself plus whatever the source corpus files it under."""
+        return tuple(dict.fromkeys((subject, *self.subject_aliases.get(subject, ()))))
+
 
 _NCERT_ALL = (Source("NCERT"),)
 # State boards that adopted NCERT for the board classes only; lower classes
@@ -130,10 +141,20 @@ BOARDS: Tuple[Board, ...] = (
     Board("NCERT", "NCERT", "National Council of Educational Research and Training", "NATIONAL"),
     Board("CBSE", "CBSE", "Central Board of Secondary Education", "NATIONAL",
           aliases=_NCERT_ALL),
+    # CISCE publishes no textbooks (schools buy Selina, Frank, S. Chand…), so
+    # the closest free corpus is NCERT: ISC 11–12 tracks CBSE almost topic for
+    # topic, and ICSE 6–10 Physics/Chemistry/Biology sit inside NCERT Science.
+    # The alias is labelled as an overlap in the UI, never as "the ICSE book".
     Board("ICSE", "ICSE / ISC", "Council for the Indian School Certificate Examinations", "NATIONAL",
+          aliases=_NCERT_6_12, alias_kind="OVERLAPS",
           subject_overrides={
               **{c: _ICSE_MIDDLE for c in _classes(6, 8)},
               **{c: _ICSE_SECONDARY for c in _classes(9, 10)},
+          },
+          subject_aliases={
+              "Physics": ("Science",), "Chemistry": ("Science",), "Biology": ("Science",),
+              "History & Civics": ("Social Science",), "Geography": ("Social Science", "Geography"),
+              "Economics": ("Social Science", "Economics"),
           }),
     # -- State boards, alphabetical by state ---------------------------------
     Board("AP", "Andhra Pradesh Board", "Board of Secondary / Intermediate Education, Andhra Pradesh", "STATE",
@@ -186,11 +207,22 @@ class Exam:
     subjects: Dict[str, Tuple[str, ...]]
     sources: Tuple[Source, ...] = ()
 
-    def listing_subjects(self, subject: Optional[str]) -> Optional[Tuple[str, ...]]:
-        """Listing subjects behind one exam subject, or behind all of them."""
+    def listing_subjects(self, subject: Optional[str]) -> Tuple[str, ...]:
+        """Listing subjects behind one exam subject, or behind all of them.
+
+        The label itself is always included: a syllabus or past-paper library
+        loaded under the exam's own key is filed under the picker label
+        ("Quantitative Aptitude"), and that is how CAT can have books at all."""
         if subject is not None:
-            return self.subjects.get(subject, ())
-        return tuple(dict.fromkeys(s for group in self.subjects.values() for s in group))
+            return tuple(dict.fromkeys((subject, *self.subjects.get(subject, ()))))
+        return tuple(dict.fromkeys(
+            s for label, group in self.subjects.items() for s in (label, *group)
+        ))
+
+    def source_groups(self) -> Tuple["Group", ...]:
+        """The exam's own listings (board = exam key, any level) first, then
+        the textbook corpora it is built on."""
+        return (Group(self.key),) + tuple(Group(src.board, src.classes) for src in self.sources)
 
 
 def _same(*names: str) -> Dict[str, Tuple[str, ...]]:
@@ -293,11 +325,7 @@ def resolve(
         ex = find_exam(exam)
         if not ex:
             return Selection(groups=(), subjects=None, impossible=True)
-        subjects = ex.listing_subjects(subject)
-        if not subjects or not ex.sources:
-            return Selection(groups=(), subjects=None, impossible=True)
-        groups = tuple(Group(src.board, src.classes) for src in ex.sources)
-        return Selection(groups=groups, subjects=subjects)
+        return Selection(groups=ex.source_groups(), subjects=ex.listing_subjects(subject))
 
     subjects = (subject,) if subject else None
     if not board:
@@ -308,6 +336,8 @@ def resolve(
     if not b:
         return Selection(groups=(Group(board, (level,) if level else None),), subjects=subjects)
 
+    if subject:
+        subjects = b.listing_subjects(subject)
     if level:
         groups = tuple(Group(src, (level,)) for src in b.sources_for(level))
     else:
@@ -350,10 +380,17 @@ def annotate(counts: Sequence[Count]) -> Dict[str, Any]:
         for cls in b.classes:
             sources = b.sources_for(cls)
             # The standard scheme first, then anything loaded that it does not
-            # name (Arts, Vocational Education…), so nothing loaded is hidden.
-            names = list(dict.fromkeys((*b.subjects_for(cls), *_loaded_subjects(counts, sources, cls))))
+            # name (Arts, Vocational Education…), so nothing loaded is hidden —
+            # unless the scheme already reaches it through a subject alias
+            # (ICSE Physics covers NCERT Science; listing Science too would be
+            # the same book twice).
+            scheme = b.subjects_for(cls)
+            covered = {alias for name in scheme for alias in b.subject_aliases.get(name, ())}
+            extra = [x for x in _loaded_subjects(counts, sources, cls) if x not in covered]
+            names = list(dict.fromkeys((*scheme, *extra)))
             subjects_out = [
-                {"name": s, "libraries": _count(counts, sources, (cls,), (s,))} for s in names
+                {"name": s, "libraries": _count(counts, sources, (cls,), b.listing_subjects(s))}
+                for s in names
             ]
             classes_out.append({
                 "class": cls,
@@ -365,6 +402,7 @@ def annotate(counts: Sequence[Count]) -> Dict[str, Any]:
             "name": b.name,
             "full_name": b.full_name,
             "kind": b.kind,
+            "alias_kind": b.alias_kind,
             "sources": [
                 {"board": s.board, "classes": list(s.classes) if s.classes else None}
                 for s in b.aliases
@@ -375,18 +413,20 @@ def annotate(counts: Sequence[Count]) -> Dict[str, Any]:
 
     exams_out: List[Dict[str, Any]] = []
     for e in EXAMS:
-        subjects_out = []
-        for label, listing_subjects in e.subjects.items():
-            n = 0
-            for src in e.sources:
-                n += _count(counts, (src.board,), src.classes, listing_subjects) if listing_subjects else 0
-            subjects_out.append({"name": label, "libraries": n})
+        groups = e.source_groups()
+        subjects_out = [
+            {
+                "name": label,
+                "libraries": sum(
+                    _count(counts, (g.board,), g.levels, e.listing_subjects(label)) for g in groups
+                ),
+            }
+            for label in e.subjects
+        ]
         # Distinct books, not the per-section sum: one Class 10 Science book
         # serves both NDA Physics and NDA Chemistry and must count once.
         all_subjects = e.listing_subjects(None)
-        total = sum(
-            _count(counts, (src.board,), src.classes, all_subjects) for src in e.sources
-        ) if all_subjects else 0
+        total = sum(_count(counts, (g.board,), g.levels, all_subjects) for g in groups)
         exams_out.append({
             "key": e.key,
             "name": e.name,

@@ -52,7 +52,17 @@ def test_board_without_class_keeps_alias_class_ranges():
 
 def test_board_name_and_key_are_both_accepted_case_insensitively():
     assert resolve(board="up board", level="10").groups == resolve(board="UP", level="10").groups
-    assert resolve(board="icse / isc").groups == (Group("ICSE"),)
+    assert resolve(board="icse / isc").groups[0] == Group("ICSE")
+
+
+def test_icse_physics_is_answered_by_ncert_science():
+    # CISCE has no textbooks of its own; ICSE 9–10 splits what NCERT calls
+    # Science, so the picker's "Physics" must reach the Science book.
+    sel = resolve(board="ICSE", level="10", subject="Physics")
+    assert Group("NCERT", ("10",)) in sel.groups
+    assert sel.subjects == ("Physics", "Science")
+    # A subject with no split passes through unchanged.
+    assert resolve(board="ICSE", level="10", subject="Mathematics").subjects == ("Mathematics",)
 
 
 def test_unknown_board_passes_through_so_legacy_listings_stay_findable():
@@ -68,21 +78,36 @@ def test_level_alone_is_an_ordinary_equality_filter():
     assert resolve(level="10").groups == (Group(None, ("10",)),)
 
 
-def test_jee_resolves_to_ncert_11_and_12_for_its_three_subjects():
+def test_jee_resolves_to_its_own_listings_then_ncert_11_and_12():
     sel = resolve(exam="JEE_MAIN")
-    assert sel.groups == (Group("NCERT", ("11", "12")),)
+    assert sel.groups == (Group("JEE_MAIN"), Group("NCERT", ("11", "12")))
     assert sel.subjects == ("Physics", "Chemistry", "Mathematics")
 
 
-def test_exam_subject_maps_to_listing_subjects():
-    assert resolve(exam="UPSC", subject="Polity").subjects == ("Political Science",)
+def test_exam_subject_maps_to_listing_subjects_and_keeps_its_own_label():
+    assert resolve(exam="UPSC", subject="Polity").subjects == ("Polity", "Political Science")
     assert resolve(exam="NDA", subject="Physics").subjects == ("Physics", "Science")
 
 
-def test_exam_section_without_a_corpus_is_impossible_not_unfiltered():
-    for exam, subject in (("CAT", "Quantitative Aptitude"), ("CUET", "General Test"), ("CLAT", None)):
-        sel = resolve(exam=exam, subject=subject)
-        assert sel.impossible, (exam, subject)
+def test_exam_section_without_a_textbook_corpus_only_matches_its_own_listings():
+    # CAT has no NCERT behind it: the only thing that can answer "Quantitative
+    # Aptitude" is a syllabus or past-paper library loaded under board=CAT.
+    sel = resolve(exam="CAT", subject="Quantitative Aptitude")
+    assert sel.groups == (Group("CAT"),)
+    assert sel.subjects == ("Quantitative Aptitude",)
+    assert not sel.impossible
+
+
+def test_exam_syllabus_library_is_counted_under_the_exam():
+    counts = COUNTS + [("CAT", "UG", "Quantitative Aptitude", 1), ("JEE_MAIN", "UG", "Physics", 1)]
+    tree = taxonomy.annotate(counts)
+    cat = next(e for e in tree["exams"] if e["key"] == "CAT")
+    assert _subject(cat, "Quantitative Aptitude")["libraries"] == 1
+    assert cat["libraries"] == 1
+    jee = next(e for e in tree["exams"] if e["key"] == "JEE_MAIN")
+    assert _subject(jee, "Physics")["libraries"] == 2 + 1     # NCERT 12 Physics ×2 + syllabus
+    # …and a board never sees an exam's listings.
+    assert _board(tree, "CBSE")["libraries"] == 8 + 2 + 1
 
 
 def test_unknown_exam_is_impossible():
@@ -110,6 +135,19 @@ def test_tree_offers_every_class_and_the_standard_subjects_even_when_empty():
     assert "Physics" in [s["name"] for s in _cls(icse, "9")["subjects"]]
     assert icse["libraries"] == 0
     assert all(s["libraries"] == 0 for s in _cls(icse, "9")["subjects"])
+
+
+def test_icse_counts_ncert_science_under_its_split_subjects():
+    tree = taxonomy.annotate(COUNTS)
+    ten = _cls(_board(tree, "ICSE"), "10")
+    assert _subject(ten, "Physics")["libraries"] == 1      # NCERT 10 Science
+    assert _subject(ten, "Chemistry")["libraries"] == 1    # the same book
+    assert _subject(ten, "History & Civics")["libraries"] == 4
+    assert ten["libraries"] == 8                           # distinct books, not per-subject sum
+    # NCERT "Science" / "Social Science" are reached through the split
+    # subjects; they must not ALSO appear as subjects of their own.
+    offered = [s["name"] for s in ten["subjects"]]
+    assert "Science" not in offered and "Social Science" not in offered
 
 
 def test_cbse_counts_the_ncert_books():
@@ -193,7 +231,7 @@ def test_alias_groups_become_or_ed_board_and_level_clauses():
 
 
 def test_impossible_selection_compiles_to_false():
-    sql, params = _compile(resolve(exam="CAT", subject="Quantitative Aptitude"))
+    sql, params = _compile(resolve(exam="GATE"))
     assert sql.endswith("WHERE FALSE") and params == {}
 
 

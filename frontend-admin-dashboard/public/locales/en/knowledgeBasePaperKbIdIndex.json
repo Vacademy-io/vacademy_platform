@@ -126,5 +126,6 @@
     "details": {
         "heading": "Configure test details",
         "description": "Name the paper, set its duration and difficulty, and the class and language the questions are written for."
-    }
+    },
+    "syllabusNote": "This is the official syllabus, not a textbook: the paper stays inside the listed units, and questions are set from the standard curriculum rather than cited to a page."
 }

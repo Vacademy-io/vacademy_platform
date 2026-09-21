@@ -30,6 +30,8 @@ export interface LibraryListing extends ListingFacets {
     pages: number | null;
     /** Whether THIS institute has unlocked it. */
     unlocked: boolean | null;
+    /** "SYLLABUS" = an official syllabus document, not a textbook: papers follow its scope, unpaginated. */
+    curriculum_kind: 'SYLLABUS' | null;
 }
 
 /** A listing plus the price, as the detail page receives it. */
@@ -99,6 +101,8 @@ export interface TaxonomyBoard {
     name: string;
     full_name: string;
     kind: 'NATIONAL' | 'STATE';
+    /** Whether the aliased books are what the board sets, or just the nearest free corpus. */
+    alias_kind: 'PRESCRIBES' | 'OVERLAPS';
     /** Boards whose books this one prescribes (CBSE → NCERT). Empty = its own. */
     sources: TaxonomySource[];
     libraries: number;

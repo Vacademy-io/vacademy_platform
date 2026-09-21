@@ -121,6 +121,8 @@ export interface TaxonomyExam {
 
 export interface LibraryTaxonomy {
     mediums: string[];
+    /** Mediums with at least one published library; the picker offers a choice only when >1. */
+    mediums_loaded: string[];
     boards: TaxonomyBoard[];
     exams: TaxonomyExam[];
 }

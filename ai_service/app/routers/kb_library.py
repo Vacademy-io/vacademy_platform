@@ -141,7 +141,10 @@ async def taxonomy(
     number of published libraries that answer it — so the UI can show what is
     loaded and what is still coming without hiding either."""
     caller.require_institute(institute_id)
-    return kb_taxonomy.annotate(kb_library.published_counts(db, language=language))
+    return kb_taxonomy.annotate(
+        kb_library.published_counts(db, language=language),
+        languages=kb_library.published_languages(db),
+    )
 
 
 @router.get("/library/facets")

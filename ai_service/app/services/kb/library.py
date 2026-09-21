@@ -234,6 +234,23 @@ def published_counts(
     ]
 
 
+def published_languages(db: Session) -> List[str]:
+    """Mediums that actually have a published library — the picker hides the
+    medium choice until there is more than one."""
+    rows = db.execute(
+        text(
+            """
+            SELECT DISTINCT l.language AS v
+              FROM knowledge_base_listing l
+              JOIN knowledge_base kb ON kb.id = l.knowledge_base_id
+             WHERE l.status = 'PUBLISHED' AND kb.status = 'ACTIVE' AND l.language IS NOT NULL
+             ORDER BY v
+            """
+        )
+    ).fetchall()
+    return [r._mapping["v"] for r in rows]
+
+
 def facet_values(db: Session) -> Dict[str, List[str]]:
     """The filter options that actually exist, so the UI never offers a filter
     that returns nothing."""
@@ -541,7 +558,7 @@ def list_unlocked(db: Session, institute_id: str) -> List[str]:
 
 
 __all__ = [
-    "FACETS", "list_catalogue", "published_counts", "facet_values", "get_listing",
+    "FACETS", "list_catalogue", "published_counts", "published_languages", "facet_values", "get_listing",
     "upsert_listing", "set_status", "list_all_for_publisher",
     "is_entitled", "grant", "list_unlocked",
 ]

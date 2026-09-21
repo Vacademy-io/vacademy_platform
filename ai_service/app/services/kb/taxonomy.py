@@ -370,10 +370,11 @@ def _loaded_subjects(counts: Sequence[Count], boards: Iterable[str], level: str)
     return list(dict.fromkeys(sj for (bd, lv, sj, n) in counts if bd in board_set and lv == level and n))
 
 
-def annotate(counts: Sequence[Count]) -> Dict[str, Any]:
+def annotate(counts: Sequence[Count], languages: Optional[Sequence[str]] = None) -> Dict[str, Any]:
     """The full picker tree, each node carrying how many published libraries
     answer it. `counts` is the published catalogue grouped by
-    (board, level, subject) — see library.published_counts."""
+    (board, level, subject) — see library.published_counts; `languages` the
+    mediums with at least one published library."""
     boards_out: List[Dict[str, Any]] = []
     for b in BOARDS:
         classes_out: List[Dict[str, Any]] = []
@@ -439,7 +440,12 @@ def annotate(counts: Sequence[Count]) -> Dict[str, Any]:
             "subjects": subjects_out,
         })
 
-    return {"mediums": list(MEDIUMS), "boards": boards_out, "exams": exams_out}
+    return {
+        "mediums": list(MEDIUMS),
+        "mediums_loaded": list(languages or []),
+        "boards": boards_out,
+        "exams": exams_out,
+    }
 
 
 __all__ = [

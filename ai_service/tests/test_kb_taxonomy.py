@@ -207,8 +207,11 @@ def test_exam_total_counts_each_book_once():
     assert nda["libraries"] == 2 + 1 + 1 + 4 + 2  # English, Maths, Science, Social Science, 12 Physics
 
 
-def test_tree_lists_mediums():
-    assert taxonomy.annotate([])["mediums"] == ["English", "Hindi", "Urdu"]
+def test_tree_lists_mediums_and_which_are_loaded():
+    tree = taxonomy.annotate([], languages=["English"])
+    assert tree["mediums"] == ["English", "Hindi", "Urdu"]
+    assert tree["mediums_loaded"] == ["English"]
+    assert taxonomy.annotate([])["mediums_loaded"] == []
 
 
 # ── the SQL the catalogue builds ─────────────────────────────────────────────

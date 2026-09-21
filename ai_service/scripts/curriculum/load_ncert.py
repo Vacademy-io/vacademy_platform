@@ -33,6 +33,7 @@ Needs: python3 with httpx and pymupdf (`pip install httpx pymupdf`).
 from __future__ import annotations
 
 import argparse
+import unicodedata
 import asyncio
 import json
 import logging
@@ -289,6 +290,231 @@ def chapter_title_from_pdf(data: bytes, max_pages: int = 4) -> Optional[str]:
         doc.close()
 
 
+# Boxes and labels NCERT prints in heading type that are not sections.
+_HEADING_STOP = re.compile(
+    r"^(activity|activities|source|discuss|project|solution|example|examples|exercise|exercises|"
+    r"figure|fig\.?|table|note|notes|chapter|unit|summary|questions|question|answer|answers|"
+    r"think|do you know|remember|caution|hint|hints|group activity|what you have learnt|"
+    r"boxes?|key\s?words|glossary|let us|let's|write in brief|carry out|try (this|these)|"
+    r"what do you think|points? to (remember|ponder)|extended learning|fill in the blanks|"
+    r"match the following|true or false|multiple choice questions?)\b.*$", re.I,
+)
+# "1.2 Types of Chemical Reactions", "3.3.1 Substitution Method" — the
+# number must be followed by a word, or "1.6 × 10" in a worked example passes.
+_NUMBERED_HEADING = re.compile(r"^(\d{1,2}(?:\.\d{1,2}){1,2})\s+([A-Za-zऀ-ॿ].*)$")
+
+
+def pdf_headings(data: bytes, *, title: Optional[str] = None, max_headings: int = 40) -> List[str]:
+    """Section headings from the PDF's own typography — no model call.
+
+    NCERT chapters print their sections numbered ("1.2 TYPES OF…") and in a
+    bolder or larger face than the body. This reads those cues and returns
+    the headings in book order, ready for the server's `headings_manual`
+    path, which locates each one in the text (topics.locate_headings) and
+    never asks an LLM. Falls back to [] on a chapter with no such structure
+    (a poem, a story) — the chapter simply stays childless.
+
+    Outlined display type is drawn several times with sub-point offsets, so
+    the text layer holds a heading as overlapping fragments ("1.1 CHEMIC",
+    "AL EQUA", "TIONS"). Each heading band is therefore rebuilt from its
+    unique character positions rather than read line by line.
+    """
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(stream=data, filetype="pdf")
+    try:
+        sizes: Counter = Counter()
+        raw_lines: List[Dict[str, Any]] = []   # candidate lines with their chars
+        # Ligatures stay single glyphs (ﬁ) and are folded back to ASCII at the
+        # end; expanding them here gives two characters one origin, and the
+        # position de-duplication below would then eat one of them.
+        flags = fitz.TEXT_PRESERVE_LIGATURES | fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP
+        for pno, page in enumerate(doc):
+            mid = page.rect.width / 2
+            page_lines: List[Dict[str, Any]] = []
+            for block in page.get_text("rawdict", flags=flags)["blocks"]:
+                for line in block.get("lines", []):
+                    spans = [sp for sp in line.get("spans", []) if any(c["c"].strip() for c in sp["chars"])]
+                    if not spans:
+                        continue
+                    size = round(max(sp["size"] for sp in spans), 1)
+                    for sp in spans:
+                        sizes[round(sp["size"])] += len(sp["chars"])
+                    page_lines.append({
+                        "page": pno + 1, "y": line["bbox"][1], "x": line["bbox"][0],
+                        "x1": line["bbox"][2], "size": size, "column": 0,
+                        "spans": [(sp, "bold" in sp["font"].lower() or bool(sp["flags"] & 16)) for sp in spans],
+                    })
+            # A two-column page (Class 11–12 books) has a second run of body
+            # lines starting near the middle; there the left column is read
+            # before the right. A single-column page whose wide heading
+            # merely crosses the midline must not be cut in two.
+            right = sum(1 for ln in page_lines if mid * 0.9 <= ln["x"] <= mid * 1.3)
+            left = sum(1 for ln in page_lines if ln["x"] < mid * 0.8)
+            # Body lines that run across the middle can only exist on a
+            # single-column page — an indented "Activity" box is not a column.
+            spanning = sum(1 for ln in page_lines if ln["x"] < mid * 0.8 and ln["x1"] > mid * 1.15)
+            if right >= 8 and right >= left * 0.3 and spanning < 4:
+                for ln in page_lines:
+                    ln["column"] = int(ln["x"] > mid)
+            raw_lines.extend(page_lines)
+        if not raw_lines:
+            return []
+        body = sizes.most_common(1)[0][0]
+        title_key = _norm_heading(title or "")
+
+        # 1. Candidate lines: bigger than body, or bold. Their characters are
+        #    pooled per (page, y-band, size) and de-duplicated by position.
+        bands: List[Dict[str, Any]] = []
+        for ln in sorted(raw_lines, key=lambda l: (l["page"], l["column"], l["y"])):
+            lead_bold = all(b for _sp, b in ln["spans"])
+            any_bold = any(b for _sp, b in ln["spans"])
+            if not (ln["size"] >= body + 1 or any_bold):
+                continue
+            # Fragments of one heading sit within half a line of each other;
+            # cluster on the running band rather than rounding y, so a
+            # fragment never falls just across a rounding boundary.
+            band = bands[-1] if bands else None
+            if not (band and band["page"] == ln["page"] and band["column"] == ln["column"]
+                    and abs(band["size"] - ln["size"]) < 0.6 and ln["y"] - band["y"] <= ln["size"] * 0.5):
+                band = {"page": ln["page"], "column": ln["column"], "y": ln["y"],
+                        "size": ln["size"], "chars": [], "all_bold": True}
+                bands.append(band)
+            band["all_bold"] = band["all_bold"] and lead_bold
+            for sp, bold in ln["spans"]:
+                for ch in sp["chars"]:
+                    band["chars"].append((ch["origin"][0], ch["bbox"][2] - ch["bbox"][0], ch["c"], bold))
+
+        def band_segments(band: Dict[str, Any]) -> List[tuple]:
+            """(text, bold_lead) per run of characters, split at column-sized gaps.
+
+            Characters are walked left to right; a glyph drawn again within
+            half its own width (the outline/shadow copies) is dropped, and a
+            gap wider than a word space becomes a space."""
+            segs: List[tuple] = []
+            full: List[str] = []
+            lead: List[str] = []
+            in_lead = True
+            last_x = last_w = None
+            last_c = ""
+            pending_space = False
+            for x, w, c, bold in sorted(band["chars"], key=lambda t: t[0]):
+                if not c.strip():
+                    pending_space = True  # the PDF's own word space
+                    continue
+                if last_x is not None:
+                    step = x - last_x
+                    # The same glyph drawn again a hair to the right (outline
+                    # and fill copies), or two glyphs printed on top of each
+                    # other: a real next character advances by about the
+                    # previous glyph's width, never a twelfth of it.
+                    if (c.lower() == last_c.lower() and step < last_w * 0.6) or step < last_w * 0.08:
+                        continue
+                    gap = x - (last_x + last_w)
+                    if gap > band["size"] * 2.5 and full:
+                        segs.append(("".join(full), "".join(lead)))
+                        full, lead, in_lead = [], [], True
+                    elif (pending_space or gap > band["size"] * 0.18) and full and full[-1] != " ":
+                        full.append(" ")
+                        if in_lead:
+                            lead.append(" ")
+                pending_space = False
+                full.append(c)
+                if in_lead and bold:
+                    lead.append(c)
+                elif not bold:
+                    in_lead = False
+                last_x, last_w, last_c = x, w, c
+            if full:
+                segs.append(("".join(full), "".join(lead)))
+            return segs
+
+        def clean(txt: str) -> str:
+            return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", txt)).strip()
+
+        def wraps_previous(band: Dict[str, Any]) -> bool:
+            """Is this band the second line of the last accepted heading?"""
+            if not cands:
+                return False
+            p0, c0, y0, s0, t0 = cands[-1]
+            return (band["page"] == p0 and band["column"] == c0 and abs(band["size"] - s0) < 0.6
+                    and 0 < band["y"] - y0 <= s0 * 1.8
+                    and bool(re.search(r"\b(and|of|the|in|to|a|for|with|on|its|their)$", t0, re.I) or t0[-1].islower()))
+
+        cands: List[tuple] = []          # (page, column, y, size, text)
+        for band in bands:
+          for seg_text, seg_lead in band_segments(band):
+            text = clean(seg_text)
+            lead = clean(seg_lead).strip(" :–-")
+            m = _NUMBERED_HEADING.match(text)
+            if m:
+                # An inline heading continues in regular type on the same
+                # line ("3.3.1 Substitution Method : We shall…"): keep the
+                # bold run, or the whole line only when it is display type.
+                text = lead if lead.startswith(m.group(1)) else (text if band["size"] >= body + 1 else "")
+                m = _NUMBERED_HEADING.match(text)
+                if m:
+                    text = f"{m.group(1)} {normalise_title(_fix_small_caps(m.group(2)))}"
+            elif band["size"] >= body + 4 or (band["all_bold"] and band["size"] >= body + 2):
+                text = normalise_title(_fix_small_caps(text))
+            elif band["all_bold"] and wraps_previous(band):
+                # "1.3 Properties of Matter and" / "their Measurement": the
+                # continuation is set like its first line, which already passed.
+                text = normalise_title(_fix_small_caps(lead or text))
+            else:
+                continue
+            # "1 the First World War" — the word after a section number is a
+            # first word, whatever normalise_title made of it.
+            text = re.sub(r"^(\d+(?:\.\d+)*\.?\s+)([a-z])", lambda mm: mm.group(1) + mm.group(2).upper(), text)
+            text = text.strip(" :–-")
+            if not (3 <= len(text) <= 120) or not re.search(r"[A-Za-zऀ-ॿ]{3}", text):
+                continue
+            if _HEADING_STOP.match(text) or _SKIP_LINE.match(text) or "×" in text or "=" in text:
+                continue
+            key = _norm_heading(text)
+            if title_key and (key in title_key or title_key in key):
+                continue  # the chapter title, possibly wrapped over two lines
+            cands.append((band["page"], band["column"], band["y"], band["size"], text))
+
+        # 2. Join a heading wrapped onto the next line (same page and column,
+        #    same size, directly below, and the first line does not end a phrase).
+        joined: List[tuple] = []
+        for c in cands:
+            if joined:
+                p0, c0, y0, s0, t0 = joined[-1]
+                if (c[0] == p0 and c[1] == c0 and abs(c[3] - s0) < 0.6 and 0 < c[2] - y0 <= s0 * 1.8
+                        and not _NUMBERED_HEADING.match(c[4])
+                        and (re.search(r"\b(and|of|the|in|to|a|for|with|on)$", t0, re.I) or t0[-1].islower())):
+                    # Re-case the whole heading: the joining word was the last
+                    # word of its line, which normalise_title keeps capitalised.
+                    joined[-1] = (p0, c0, y0, s0, _recase_heading(f"{t0} {c[4]}"))
+                    continue
+            joined.append(c)
+
+        # 3. Exact repeats (a running head, a heading echoed in a box) are kept once.
+        out: List[str] = []
+        seen: set = set()
+        for _page, _col, _y, _s, text in joined:
+            key = _norm_heading(text)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(text)
+        return out[:max_headings]
+    finally:
+        doc.close()
+
+
+def _norm_heading(text: str) -> str:
+    return re.sub(r"[^a-z0-9ऀ-ॿ]+", "", text.lower())
+
+
+def _recase_heading(text: str) -> str:
+    """Title-case the words after the section number, keeping the number."""
+    m = re.match(r"^(\d+(?:\.\d+)*\.?\s+)(.*)$", text)
+    return (m.group(1) + normalise_title(m.group(2))) if m else normalise_title(text)
+
+
 # ---------------------------------------------------------------------------
 # API client
 # ---------------------------------------------------------------------------
@@ -509,8 +735,24 @@ def build_plans(books: Sequence[Book], universe: Optional[Sequence[Book]] = None
 TERMINAL = {"READY", "PARTIAL", "FAILED"}
 
 
+# One chapter is read for its title and again for its headings; keep the last
+# few PDFs so the second read never hits ncert.nic.in.
+_PDF_CACHE: Dict[str, bytes] = {}
+_PDF_CACHE_MAX = 6
+
+
 async def _download(code: str, attempts: int = 4) -> bytes:
     """ncert.nic.in drops connections now and then; retry with backoff."""
+    if code in _PDF_CACHE:
+        return _PDF_CACHE[code]
+    data = await _download_uncached(code, attempts)
+    if len(_PDF_CACHE) >= _PDF_CACHE_MAX:
+        _PDF_CACHE.pop(next(iter(_PDF_CACHE)))
+    _PDF_CACHE[code] = data
+    return data
+
+
+async def _download_uncached(code: str, attempts: int = 4) -> bytes:
     last: Optional[Exception] = None
     for i in range(attempts):
         try:
@@ -632,7 +874,8 @@ def _pick_present(sources: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
 async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
                     dry_run: bool, publish: bool, retitle: bool = False,
                     embedding_model: str = EMBEDDING_MODEL,
-                    structures: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+                    structures: Optional[List[Dict[str, Any]]] = None,
+                    headings: str = "pdf") -> Dict[str, Any]:
     """Load one knowledge base (one book). Chapters run SEQUENTIALLY on purpose:
     the server rebuilds the book's topic tree after every chapter, and two
     rebuilds of the same tree racing each other would duplicate its nodes."""
@@ -661,6 +904,24 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
             extra["headings_manual"] = topics
         if chap.get("title"):
             extra["chapter_title"] = str(chap["title"]).strip()
+        return extra
+
+    async def headings_for(ch: Chapter, title: str, extra: Dict[str, Any]) -> Dict[str, Any]:
+        """Section headings read from the PDF's typography (free), unless the
+        structure file already listed them. With them on the source the server
+        locates each heading in the text and never calls a model for the
+        topic tree — that call was the only paid step of a curriculum load."""
+        if headings != "pdf" or "headings_manual" in extra:
+            return extra
+        try:
+            data = await _download(ch.code)
+            found = pdf_headings(data, title=title)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("   %s: could not read headings from the PDF: %r", ch.code, exc)
+            return extra
+        if found:
+            return {**extra, "headings_manual": found, "headings_from": "pdf"}
+        log.info("   %s: no section headings in the PDF (a reader/poem?) — chapter stays childless", ch.code)
         return extra
 
     # 1. Knowledge base (by name, under the publisher institute)
@@ -703,12 +964,14 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
             if retitle:
                 extra = manual_for(ch)
                 title = extra.get("chapter_title") or await resolve_title(ch, overrides)
+                extra = await headings_for(ch, title, extra)
                 wanted = f"Chapter {ch.chapter_no}: {title}" if not title.lower().startswith("chapter") else title
                 patch_meta = {"chapter_title": title, "chapter_no": ch.chapter_no, **extra}
                 if src["title"] != wanted or "headings_manual" in extra:
                     await api.patch_source(src["id"], {"title": wanted, "meta": patch_meta})
                     log.info("   %s retitled → '%s'%s", ch.code, wanted,
-                             "  + manual headings" if "headings_manual" in extra else "")
+                             f"  + {len(extra['headings_manual'])} headings ({extra.get('headings_from', 'structure')})"
+                             if "headings_manual" in extra else "")
             summary["skipped"] += 1
             continue
 
@@ -733,6 +996,7 @@ async def load_plan(api: Api, plan: Plan, *, overrides: Dict[str, str],
 
         extra = manual_for(ch)
         title = extra.get("chapter_title") or await resolve_title(ch, overrides)
+        extra = await headings_for(ch, title, extra)
         body = {
             "source_kind": "PDF",
             "title": f"Chapter {ch.chapter_no}: {title}" if not title.lower().startswith("chapter") else title,
@@ -848,6 +1112,7 @@ async def main_async(args: argparse.Namespace) -> int:
                 return await load_plan(
                     api, plan, overrides=overrides,
                     dry_run=args.dry_run, publish=not args.no_publish, retitle=args.retitle,
+                    headings=args.headings,
                     embedding_model=args.embedding_model, structures=structures,
                 )
             except OutOfCredits as exc:
@@ -892,7 +1157,11 @@ def main() -> None:
     ap.add_argument("--concurrency", type=int, default=2, help="books loading at once (chapters within a book are sequential)")
     ap.add_argument("--limit-books", type=int, help="stop after N knowledge bases (testing)")
     ap.add_argument("--no-publish", action="store_true", help="create + ingest but leave the listing DRAFT")
-    ap.add_argument("--retitle", action="store_true", help="re-resolve titles of chapters already loaded")
+    ap.add_argument("--retitle", action="store_true",
+                    help="re-resolve titles (and, with --headings pdf, section headings) of chapters already loaded")
+    ap.add_argument("--headings", choices=["pdf", "llm"], default="pdf",
+                    help="where subtopics come from: the PDF's own typography (free, default) or the "
+                         "server's LLM quoter (~1 cent a chapter on OpenRouter)")
     ap.add_argument("--embedding-model", default=EMBEDDING_MODEL,
                     help="registered embedder for NEW bases (existing bases keep theirs)")
     ap.add_argument("--print-prompts", action="store_true",

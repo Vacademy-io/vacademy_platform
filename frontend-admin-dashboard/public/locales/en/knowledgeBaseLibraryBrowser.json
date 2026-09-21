@@ -18,7 +18,7 @@
         "free": "Free to use",
         "syllabus": "Syllabus"
     },
-    "intro": "Ready-made textbooks and libraries from Vacademy — free to use. Pick a board or exam, a class and a subject, then build question papers, assessments and courses straight away — no uploading, no waiting for a book to process.",
+    "intro": "Free textbooks and syllabi from Vacademy. Pick a board or exam and a class, open a book, and build question papers, assessments and courses from it.",
     "manageLibrary": "Manage library",
     "searchPlaceholder": "Search by title",
     "clearFilters": "Clear filters",
@@ -35,20 +35,20 @@
     "otherLibrariesHeading": "More libraries",
     "classLabel": "Class {{number}}",
     "picker": {
-        "trackBoard": "School board",
-        "trackExam": "Competitive exam",
         "board": "Board",
-        "stateBoard": "State board…",
-        "stateBoardSelected": "{{name}}",
-        "optionWithCount": "{{name}} ({{count}})",
         "class": "Class",
         "subject": "Subject",
-        "exam": "Exam",
         "medium": "Medium",
         "all": "All",
-        "comingSoon": "Not loaded yet — coming soon",
         "pickExam": "Pick an exam to see the books it is built on.",
-        "unavailable": "The curriculum picker could not be loaded. Please refresh."
+        "unavailable": "The curriculum picker could not be loaded. Please refresh.",
+        "boardOrExam": "Board / Exam",
+        "choose": "Choose…",
+        "groupNational": "National boards",
+        "groupState": "State boards",
+        "groupExams": "Competitive exams",
+        "allClasses": "All classes",
+        "allSubjects": "All subjects"
     },
     "results": {
         "count_one": "{{count}} book · {{selection}}",

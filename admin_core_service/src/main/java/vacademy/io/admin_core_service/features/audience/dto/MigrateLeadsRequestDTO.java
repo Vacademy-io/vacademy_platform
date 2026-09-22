@@ -48,13 +48,13 @@ public class MigrateLeadsRequestDTO {
      */
     private String workflowAnchor;
     /**
-     * Opt-in: after the move, fire the target list's event-driven automations for each moved
-     * lead — i.e. emit {@code AUDIENCE_LEAD_SUBMISSION} on the target audience exactly as a
-     * fresh submission would, with {@code leadSource = "LEAD_MOVED"} in the context so a
-     * workflow can tell the two apart. Defaults to false: a move is bookkeeping unless the
-     * admin says otherwise, because those workflows send real messages and place real calls
-     * (AI-call lists in particular). Independent of {@link #workflowAnchor}, which governs
-     * the SCHEDULED drips; this governs the EVENT-driven ones.
+     * Fire the target list's event-driven automations for each moved lead — i.e. emit
+     * {@code AUDIENCE_LEAD_SUBMISSION} on the target audience exactly as a fresh submission
+     * would, with {@code leadSource = "LEAD_MOVED"} in the context so a workflow can tell the
+     * two apart. {@link WorkflowAnchorMode#RESET_TO_TARGET} implies this (treating a lead as
+     * new means its Lead-Submitted workflows run too — the AI call, the instant messages);
+     * this flag additionally lets an API caller fire them under {@code PRESERVE}. Either way
+     * the respondent/admin "thank you for submitting" emails are NOT sent. Defaults to false.
      */
     private Boolean runDestinationAutomations;
 

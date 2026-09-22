@@ -21,7 +21,6 @@ import { toast } from 'sonner';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -61,7 +60,7 @@ const ANCHOR_OPTIONS: { value: LeadWorkflowAnchor; label: string; hint: string }
     {
         value: 'RESET_TO_TARGET',
         label: "Start the new list's automation from day one",
-        hint: 'Treats them as if they just joined, so the list’s sequence runs from the beginning. This will send messages — use it for re-engagement campaigns.',
+        hint: 'Treats them as if they just joined: the list’s "Lead Submitted" automations fire now (AI calls, instant WhatsApp/email) and its sequence runs from the beginning. This will call and message them — use it for re-engagement campaigns.',
     },
 ];
 
@@ -75,9 +74,10 @@ export const MigrateLeadsDialog = ({
 }: MigrateLeadsDialogProps) => {
     const [targetAudienceId, setTargetAudienceId] = useState('');
     const [workflowAnchor, setWorkflowAnchor] = useState<LeadWorkflowAnchor>('PRESERVE');
-    // Event-driven automations (the list's "Lead Submitted" workflows — AI calls, instant
-    // messages). Distinct from the anchor above, which only re-times the scheduled drips.
-    const [runDestinationAutomations, setRunDestinationAutomations] = useState(false);
+    // "From day one" means all of it: the backend re-anchors the scheduled drip AND fires the
+    // list's "Lead Submitted" workflows (AI calls, instant messages). Sent explicitly so the
+    // request reads the same as the dialog, but the backend implies it from the anchor anyway.
+    const runDestinationAutomations = workflowAnchor === 'RESET_TO_TARGET';
     const [result, setResult] = useState<LeadMigrateResult | null>(null);
 
     // One page of lists, newest first. An institute with more lists than this would not see the
@@ -283,43 +283,15 @@ export const MigrateLeadsDialog = ({
                             </RadioGroup>
                         </div>
 
-                        <label
-                            htmlFor="run-destination-automations"
-                            className={cn(
-                                'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
-                                runDestinationAutomations
-                                    ? 'border-primary-300 bg-primary-50'
-                                    : 'border-neutral-200 hover:bg-neutral-50'
-                            )}
-                        >
-                            <Checkbox
-                                id="run-destination-automations"
-                                checked={runDestinationAutomations}
-                                onCheckedChange={(v) => setRunDestinationAutomations(v === true)}
-                                className="mt-0.5"
-                            />
-                            <div className="flex flex-col gap-0.5">
-                                <Label className="cursor-pointer text-body font-medium text-neutral-800">
-                                    Run the destination list&apos;s automations for these leads
-                                </Label>
-                                <span className="text-caption text-neutral-500">
-                                    Fires {targetName || 'the new list'}&apos;s &quot;Lead Submitted&quot;
-                                    workflows — AI calls, instant WhatsApp/email — for each moved lead,
-                                    as if it had just been submitted there.
-                                </span>
-                            </div>
-                        </label>
-
-                        {(workflowAnchor === 'RESET_TO_TARGET' || runDestinationAutomations) && (
+                        {workflowAnchor === 'RESET_TO_TARGET' && (
                             <div className="flex items-start gap-3 rounded-md border border-warning-200 bg-warning-50 p-3">
                                 <Warning
                                     weight="fill"
                                     className="mt-0.5 size-5 shrink-0 text-warning-600"
                                 />
                                 <p className="text-caption text-warning-700">
-                                    This will start {targetName || 'the new list'}&apos;s
-                                    {runDestinationAutomations ? ' calls and messages' : ' messages'} for{' '}
-                                    {responseIds.length} lead
+                                    This will start {targetName || 'the new list'}&apos;s calls and
+                                    messages for {responseIds.length} lead
                                     {responseIds.length === 1 ? '' : 's'}. Leads who opted out are
                                     never moved.
                                 </p>

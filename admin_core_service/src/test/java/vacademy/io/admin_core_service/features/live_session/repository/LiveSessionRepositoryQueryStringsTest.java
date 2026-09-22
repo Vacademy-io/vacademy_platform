@@ -20,7 +20,7 @@ class LiveSessionRepositoryQueryStringsTest {
 
     @Test
     void liveSessionQueryStringsParse() {
-        for (Class<?> repo : List.of(SessionGuestRegistrationRepository.class, LiveSessionLogsRepository.class)) {
+        for (Class<?> repo : List.of(SessionGuestRegistrationRepository.class, LiveSessionLogsRepository.class, LiveSessionParticipantRepository.class)) {
             for (Method m : repo.getDeclaredMethods()) {
                 Query q = m.getAnnotation(Query.class);
                 if (q == null) continue;

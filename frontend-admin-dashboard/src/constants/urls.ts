@@ -406,6 +406,8 @@ export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v
 // dispositions) per lead, for CSV export.
 export const GET_LEAD_JOURNEY_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/journey-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
+// Manual STUDENT-scoped events (notes, call logs, meetings) by type + typeId.
+export const GET_TIMELINE_EVENTS = `${BASE_URL}/admin-core-service/timeline/v1/events`;
 // Guardian-student linking — student side-view "Guardian" tab.
 export const GET_PARENT_LINK_PARENT = `${BASE_URL}/admin-core-service/parent-link/v1/parent`;
 export const GET_PARENT_LINK_CHILDREN = `${BASE_URL}/admin-core-service/parent-link/v1/children`;

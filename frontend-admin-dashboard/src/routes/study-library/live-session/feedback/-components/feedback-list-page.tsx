@@ -11,6 +11,7 @@ import {
     DownloadSimple,
     Columns,
     Rows,
+    UserCircle,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +19,10 @@ import { cn } from '@/lib/utils';
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { MyButton } from '@/components/design-system/button';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
+import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
+import type { StudentTable } from '@/types/student-table-types';
 import { DateRangePresets } from './date-range-presets';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getInstituteId } from '@/constants/helper';
@@ -44,6 +49,60 @@ import { FeedbackAnswers } from './feedback-answers';
 
 const PAGE_SIZE = 10;
 const stripDefault = (s: string) => s.replace(/^default\s+/i, '');
+// "Ratings Below" thresholds — every half-star step of the 5-star scale. A row
+// matches when its rating is strictly below the threshold, so picking several
+// is the union of them (i.e. below the highest one picked).
+const RATING_THRESHOLDS = ['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5'];
+
+/**
+ * Minimal StudentTable for the shared learner side-sheet, seeded from a feedback
+ * row. The sheet's tabs refetch everything else by user_id (same pattern as the
+ * attendance tracker).
+ */
+const feedbackRowToStudent = (
+    row: LiveClassFeedbackRow,
+    packageSessionId: string
+): StudentTable => ({
+    id: row.userId,
+    user_id: row.userId,
+    username: null,
+    email: row.learnerEmail ?? '',
+    full_name: row.learnerName ?? '',
+    mobile_number: row.learnerMobile ?? '',
+    institute_enrollment_id: '',
+    institute_enrollment_number: '',
+    package_session_id: packageSessionId,
+    status: 'ACTIVE',
+    face_file_id: null,
+    address_line: '',
+    attendance_percent: 0,
+    referral_count: 0,
+    region: null,
+    city: '',
+    pin_code: '',
+    date_of_birth: '',
+    gender: '',
+    fathers_name: '',
+    mothers_name: '',
+    father_mobile_number: '',
+    father_email: '',
+    mother_mobile_number: '',
+    mother_email: '',
+    linked_institute_name: null,
+    created_at: '',
+    updated_at: '',
+    session_expiry_days: 0,
+    institute_id: '',
+    expiry_date: 0,
+    parents_email: '',
+    parents_mobile_number: '',
+    parents_to_mother_email: '',
+    parents_to_mother_mobile_number: '',
+    destination_package_session_id: '',
+    enroll_invite_id: '',
+    payment_status: '',
+    custom_fields: {},
+});
 
 export default function FeedbackListPage() {
     const { t, i18n } = useTranslation('studyLibraryFeedbackListPage');
@@ -72,6 +131,11 @@ export default function FeedbackListPage() {
     // Filters
     const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
     const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+    const [selectedRatingThresholds, setSelectedRatingThresholds] = useState<string[]>([]);
+    // Effective server-side threshold: the union of "below X" picks is "below max(X)".
+    const ratingBelow = selectedRatingThresholds.length
+        ? Math.max(...selectedRatingThresholds.map(Number))
+        : null;
     const [startDate, setStartDate] = useState(() => dayjs().subtract(29, 'day').format('YYYY-MM-DD'));
     const [endDate, setEndDate] = useState(() => dayjs().format('YYYY-MM-DD'));
     const [searchInput, setSearchInput] = useState('');
@@ -88,6 +152,24 @@ export default function FeedbackListPage() {
     const [detailRow, setDetailRow] = useState<LiveClassFeedbackRow | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
 
+    // Learner side-sheet (shared StudentSidebar): opened from the Learner cell so
+    // academic staff can call the learner and leave remarks without leaving the page.
+    const { setSelectedStudent: setSidebarStudent } = useStudentSidebar();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const openLearner = (row: LiveClassFeedbackRow) => {
+        if (!row.userId) return;
+        const rowBatchIds = (row.packageSessionIds ?? '')
+            .split(',')
+            .map((id) => id.trim())
+            .filter(Boolean);
+        // Prefer a batch the user has filtered on, else the session's first batch.
+        const packageSessionId =
+            rowBatchIds.find((id) => selectedBatchIds.includes(id)) ?? rowBatchIds[0] ?? '';
+        // openOverlay:false → the compact right-side sheet, not the full-screen profile.
+        setSidebarStudent(feedbackRowToStudent(row, packageSessionId), { openOverlay: false });
+        setIsSidebarOpen(true);
+    };
+
     // Debounce the free-text search.
     useEffect(() => {
         const t = setTimeout(() => {
@@ -102,6 +184,10 @@ export default function FeedbackListPage() {
         () => (subjectsQuery.data ?? []).map((s) => ({ value: s, label: s })),
         [subjectsQuery.data]
     );
+    const ratingOptions: MultiSelectOption[] = useMemo(
+        () => RATING_THRESHOLDS.map((v) => ({ value: v, label: v })),
+        []
+    );
 
     const { data, isLoading, error } = useLiveClassFeedback({
         instituteId,
@@ -110,6 +196,7 @@ export default function FeedbackListPage() {
         startDate,
         endDate,
         searchQuery,
+        ratingBelow,
         page,
         size: PAGE_SIZE,
     });
@@ -129,6 +216,7 @@ export default function FeedbackListPage() {
         startDate,
         endDate,
         searchQuery,
+        ratingBelow,
         page: 0,
         size: PAGE_SIZE,
     });
@@ -166,6 +254,7 @@ export default function FeedbackListPage() {
     const hasActiveFilters =
         selectedBatchIds.length > 0 ||
         selectedSubjects.length > 0 ||
+        selectedRatingThresholds.length > 0 ||
         searchInput.trim().length > 0 ||
         startDate !== defaultStartDate ||
         endDate !== defaultEndDate;
@@ -174,6 +263,7 @@ export default function FeedbackListPage() {
     const clearAllFilters = () => {
         setSelectedBatchIds([]);
         setSelectedSubjects([]);
+        setSelectedRatingThresholds([]);
         setSearchInput('');
         setSearchQuery('');
         setStartDate(defaultStartDate);
@@ -195,21 +285,11 @@ export default function FeedbackListPage() {
     const columns: ColumnDef<LiveClassFeedbackRow>[] = useMemo(
         () => [
             {
+                id: 'learner',
                 accessorKey: 'learnerName',
                 header: t('columns.learner'),
                 size: 200,
-                cell: ({ row }) => (
-                    <div className="flex flex-col">
-                        <span className="text-sm font-medium text-neutral-800">
-                            {row.original.learnerName || t('unknown')}
-                        </span>
-                        {row.original.learnerEmail && (
-                            <span className="text-xs text-neutral-500">
-                                {row.original.learnerEmail}
-                            </span>
-                        )}
-                    </div>
-                ),
+                cell: ({ row }) => <LearnerCell row={row.original} unknownLabel={t('unknown')} />,
             },
             {
                 accessorKey: 'sessionTitle',
@@ -315,21 +395,11 @@ export default function FeedbackListPage() {
     const simpleColumns: ColumnDef<LiveClassFeedbackRow>[] = useMemo(
         () => [
             {
+                id: 'learner',
                 accessorKey: 'learnerName',
                 header: t('columns.learner'),
                 size: 200,
-                cell: ({ row }) => (
-                    <div className="flex flex-col">
-                        <span className="text-sm font-medium text-neutral-800">
-                            {row.original.learnerName || t('unknown')}
-                        </span>
-                        {row.original.learnerEmail && (
-                            <span className="text-xs text-neutral-500">
-                                {row.original.learnerEmail}
-                            </span>
-                        )}
-                    </div>
-                ),
+                cell: ({ row }) => <LearnerCell row={row.original} unknownLabel={t('unknown')} />,
             },
             {
                 accessorKey: 'packageSessionIds',
@@ -421,20 +491,32 @@ export default function FeedbackListPage() {
     // Export every feedback row matching the current filters (all pages) to CSV.
     const handleExport = async () => {
         try {
-            const { rows: allRows, truncated } = await fetchAllLiveClassFeedback({
+            const { rows: fetchedRows, truncated } = await fetchAllLiveClassFeedback({
                 instituteId,
                 batchIds: selectedBatchIds,
                 subjects: selectedSubjects,
                 startDate,
                 endDate,
                 searchQuery,
+                ratingBelow,
                 page: 0,
                 size: PAGE_SIZE,
             });
-            if (!allRows.length) {
+            if (!fetchedRows.length) {
                 toast.info(t('toast.noFeedbackToExport'));
                 return;
             }
+            // Ratings-wise download: with a rating filter on, order lowest rating
+            // first (then newest class) so the file reads as a call list.
+            const allRows =
+                ratingBelow == null
+                    ? fetchedRows
+                    : [...fetchedRows].sort((a, b) => {
+                          const ra = primaryRating(a) ?? Number.POSITIVE_INFINITY;
+                          const rb = primaryRating(b) ?? Number.POSITIVE_INFINITY;
+                          if (ra !== rb) return ra - rb;
+                          return (b.meetingDate ?? '').localeCompare(a.meetingDate ?? '');
+                      });
             let headers: string[];
             let csvRows: Array<Array<string | number>>;
 
@@ -489,8 +571,9 @@ export default function FeedbackListPage() {
                     ];
                 });
             }
+            const ratingSuffix = ratingBelow == null ? '' : `_below-${ratingBelow}`;
             downloadCsv(
-                `live-class-feedback_${viewMode}_${startDate}_to_${endDate}.csv`,
+                `live-class-feedback_${viewMode}${ratingSuffix}_${startDate}_to_${endDate}.csv`,
                 buildCsv(headers, csvRows)
             );
             toast.success(t('toast.exported', { count: allRows.length }));
@@ -575,6 +658,22 @@ export default function FeedbackListPage() {
                             setPage(0);
                         }}
                         emptyText={subjectsQuery.isLoading ? t('loading') : t('filters.noSubjects')}
+                    />
+                    <MultiSelectPopover
+                        label={t('filters.ratingsBelow')}
+                        options={ratingOptions}
+                        selected={selectedRatingThresholds}
+                        onChange={(next) => {
+                            // Keep numeric order so the trigger reads "2, 3", not "3, 2".
+                            setSelectedRatingThresholds(
+                                [...next].sort((a, b) => Number(a) - Number(b))
+                            );
+                            setPage(0);
+                        }}
+                        searchable={false}
+                        allText={t('filters.anyRating')}
+                        summary="labels"
+                        listClassName="max-h-80"
                     />
                     {hasActiveFilters && (
                         <button
@@ -683,7 +782,13 @@ export default function FeedbackListPage() {
                         error={error}
                         currentPage={page}
                         scrollable
-                        onCellClick={(row) => {
+                        onCellClick={(row, column) => {
+                            // Learner cell → learner sheet (call + remarks); any other cell —
+                            // or a row with no user to open — → feedback detail, as before.
+                            if (column.id === 'learner' && row.userId) {
+                                openLearner(row);
+                                return;
+                            }
                             setDetailRow(row);
                             setDialogOpen(true);
                         }}
@@ -699,6 +804,45 @@ export default function FeedbackListPage() {
             )}
 
             <FeedbackDetailDialog row={detailRow} open={dialogOpen} onOpenChange={setDialogOpen} />
+
+            {/* Shared learner side-sheet (Overview tab: call button + remarks). */}
+            <SidebarProvider
+                style={{ ['--sidebar-width' as string]: '565px' }}
+                defaultOpen={false}
+                open={isSidebarOpen}
+                onOpenChange={setIsSidebarOpen}
+            >
+                <StudentSidebar isStudentList />
+            </SidebarProvider>
+        </div>
+    );
+}
+
+/** Learner name + email, styled as a link — the cell opens the learner side-sheet. */
+function LearnerCell({ row, unknownLabel }: { row: LiveClassFeedbackRow; unknownLabel: string }) {
+    const clickable = !!row.userId;
+    return (
+        <div className={cn('group flex items-center gap-2', clickable && 'cursor-pointer')}>
+            <UserCircle
+                weight="duotone"
+                className={cn(
+                    'size-6 shrink-0 text-neutral-300',
+                    clickable && 'group-hover:text-primary-500'
+                )}
+            />
+            <div className="flex min-w-0 flex-col">
+                <span
+                    className={cn(
+                        'truncate text-sm font-medium text-neutral-800',
+                        clickable && 'group-hover:text-primary-600 group-hover:underline'
+                    )}
+                >
+                    {row.learnerName || unknownLabel}
+                </span>
+                {row.learnerEmail && (
+                    <span className="truncate text-xs text-neutral-500">{row.learnerEmail}</span>
+                )}
+            </div>
         </div>
     );
 }

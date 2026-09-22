@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Phone } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { MyButton } from '@/components/design-system/button';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { CallPickerPopover } from '@/components/shared/leads/call-picker-popover';
 import { usePlaceCall } from '@/components/shared/leads/use-place-call';
@@ -38,6 +39,14 @@ interface ContactCallButtonProps {
     /** Shown on the post-call disposition sheet when the call files onto a lead. */
     name?: string | null;
     className?: string;
+    /**
+     * 'icon' (default) is the compact phone glyph that sits beside a number;
+     * 'button' is a labelled secondary button for places where calling is the
+     * primary action (e.g. the Remarks card on the learner Overview).
+     */
+    appearance?: 'icon' | 'button';
+    /** Button-mode label; falls back to "Call". */
+    label?: string;
 }
 
 /**
@@ -65,6 +74,8 @@ export function ContactCallButton({
     phone,
     name,
     className,
+    appearance = 'icon',
+    label,
 }: ContactCallButtonProps) {
     const instituteId = getCurrentInstituteId() ?? '';
     const availability = useCallAvailability(instituteId);
@@ -103,22 +114,36 @@ export function ContactCallButton({
                 })
             }
             trigger={
-                <button
-                    type="button"
-                    onClick={(e) => e.stopPropagation()}
-                    disabled={disabled}
-                    title={reason ?? 'Call'}
-                    aria-label="Call"
-                    className={cn(
-                        'inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors',
-                        disabled
-                            ? 'cursor-not-allowed opacity-50'
-                            : 'hover:bg-success-50 hover:text-success-600',
-                        className
-                    )}
-                >
-                    <Phone weight="fill" className="size-3.5" />
-                </button>
+                appearance === 'button' ? (
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={(e) => e.stopPropagation()}
+                        disable={disabled}
+                        title={reason ?? label ?? 'Call'}
+                        className={className}
+                    >
+                        <Phone weight="fill" className="size-3.5" />
+                        {label ?? 'Call'}
+                    </MyButton>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={(e) => e.stopPropagation()}
+                        disabled={disabled}
+                        title={reason ?? 'Call'}
+                        aria-label="Call"
+                        className={cn(
+                            'inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors',
+                            disabled
+                                ? 'cursor-not-allowed opacity-50'
+                                : 'hover:bg-success-50 hover:text-success-600',
+                            className
+                        )}
+                    >
+                        <Phone weight="fill" className="size-3.5" />
+                    </button>
+                )
             }
         />
     );

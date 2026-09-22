@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     getUserCommunications,
@@ -28,12 +28,24 @@ import {
     CaretDown,
     CaretUp,
     FileText,
+    ArrowClockwise,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import { IndividualSendDialog } from './individual-send-dialog';
+import {
+    ResendMessageDialog,
+    canResend,
+    resendBlockedReason,
+    showsResendControl,
+} from './resend-message-dialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import {
+    getDisplaySettingsFromCache,
+    getDisplaySettingsWithFallback,
+} from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import {
     ProfileSkeleton,
     ProfileEmpty,
@@ -118,6 +130,63 @@ const extractEmailSubject = (
     }
     return t('noSubject');
 };
+
+// The subject to show — and, on a resend, to send again. Prefer the one the send actually stored
+// (notification_service reads it back off message_payload); the scrape above is the fallback for
+// rows written before it was returned.
+const emailSubjectOf = (item: CommunicationItem, t: TFunction): string =>
+    item.subject?.trim() || extractEmailSubject(item.title, item.fullBody || item.bodyPreview, t);
+
+/** Everything a row's resend needs that the row itself does not carry. */
+export interface ResendContext {
+    instituteId: string;
+    userId?: string;
+    recipientName?: string;
+    /** Role display setting — off hides the control entirely for this role. */
+    allowed: boolean;
+    /** Refetch the timeline so the resent message appears. */
+    onResent: () => void;
+}
+
+/**
+ * Whether this admin's role may resend from the timeline.
+ *
+ * Read here rather than passed in because the timeline mounts in two places (the side view and the
+ * profile overlay) and neither owns the flag. Cache-first: the side view has already loaded the
+ * same blob by the time this renders, so this is normally free.
+ *
+ * Starts null, not false: rendering the control and then pulling it away reads as a bug, and
+ * rendering nothing until the answer arrives is honest about not knowing yet.
+ */
+function useResendAllowed(): boolean | null {
+    const [allowed, setAllowed] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const resolve = async () => {
+            try {
+                const roleKey = getActiveRoleDisplaySettingsKey();
+                const settings =
+                    getDisplaySettingsFromCache(roleKey)?.studentSideView ??
+                    (await getDisplaySettingsWithFallback(roleKey)).studentSideView;
+                if (cancelled) return;
+                // Undefined = an institute that saved its settings before this flag existed. The
+                // merge has already applied the role's default, so undefined here only happens
+                // when no settings resolved at all — treat that as the admin default, on.
+                setAllowed(settings?.allowResendMessage ?? true);
+            } catch {
+                // A settings lookup that fails must not silently revoke an admin's action.
+                if (!cancelled) setAllowed(true);
+            }
+        };
+        void resolve();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    return allowed;
+}
 
 // ─── Channel Config ─────────────────────────────────────────────────────────
 // Colors use design-system semantic tokens: info for email, success for WhatsApp,
@@ -336,15 +405,16 @@ function TimelineHeaderMedia({ type, url }: { type?: string; url: string }) {
 function ExpandedDetail({
     item,
     onCollapse,
+    onResend,
 }: {
     item: CommunicationItem;
     onCollapse: () => void;
+    /** Absent on rows that carry no resend control at all (inbound, or no institute). */
+    onResend?: () => void;
 }) {
     const { t } = useTranslation('manageStudentsCommunicationTimeline');
     const isEmail = item.channel === 'EMAIL';
-    const subject = isEmail
-        ? extractEmailSubject(item.title, item.fullBody || item.bodyPreview, t)
-        : item.title;
+    const subject = isEmail ? emailSubjectOf(item, t) : item.title;
 
     return (
         <div
@@ -484,15 +554,67 @@ function ExpandedDetail({
                 </div>
             )}
 
-            <button
-                type="button"
-                onClick={onCollapse}
-                className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-            >
-                <CaretUp className="size-3" />
-                {t('expandedDetail.collapse')}
-            </button>
+            <div className="flex items-center justify-between gap-2">
+                <button
+                    type="button"
+                    onClick={onCollapse}
+                    className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                >
+                    <CaretUp className="size-3" />
+                    {t('expandedDetail.collapse')}
+                </button>
+                {/* Repeated here on purpose: by the time an admin has read the message the header
+                    chip is scrolled out of view, and this is the moment they decide to resend. */}
+                {onResend && <ResendButton item={item} onClick={onResend} />}
+            </div>
         </div>
+    );
+}
+
+// ─── Resend control ──────────────────────────────────────────────────────────
+// Deliberately a filled chip rather than a bare icon: this is the only action on the whole tab,
+// and as grey text beside the status pill it read as a label and went unnoticed. Rows we cannot
+// replay keep the chip, disabled, with the reason on hover — silence there is indistinguishable
+// from the feature not existing.
+
+function ResendButton({
+    item,
+    onClick,
+    className,
+}: {
+    item: CommunicationItem;
+    onClick: () => void;
+    className?: string;
+}) {
+    const { t } = useTranslation('manageStudentsCommunicationTimeline');
+    const blocked = resendBlockedReason(item);
+    const enabled = canResend(item);
+    const tooltip = enabled
+        ? t('resend.buttonTooltip')
+        : t(`resend.blocked.${blocked}`, { defaultValue: t('resend.blocked.unsupportedChannel') });
+
+    return (
+        <button
+            type="button"
+            disabled={!enabled}
+            title={tooltip}
+            aria-label={tooltip}
+            // The whole card toggles expand — a resend must not also open the row.
+            onClick={(e) => {
+                e.stopPropagation();
+                if (enabled) onClick();
+            }}
+            className={cn(
+                'flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                enabled
+                    ? 'bg-primary-50 text-primary-600 ring-primary-200 hover:bg-primary-100'
+                    : 'cursor-not-allowed bg-neutral-100 text-neutral-400 ring-neutral-200',
+                className
+            )}
+        >
+            <ArrowClockwise className="size-3" />
+            {t('resend.button')}
+        </button>
     );
 }
 
@@ -501,12 +623,19 @@ function ExpandedDetail({
 // It provides the expand/collapse interaction with preview text and delivery
 // status dots — all behaviour the spec requires to be preserved.
 
-function CommItemBody({ item }: { item: CommunicationItem }) {
+function CommItemBody({ item, resend }: { item: CommunicationItem; resend: ResendContext }) {
     const { t } = useTranslation('manageStudentsCommunicationTimeline');
     const channelConfig = buildChannelConfig(t);
     const [expanded, setExpanded] = useState(false);
+    const [resendOpen, setResendOpen] = useState(false);
     const channel = channelConfig[item.channel] ?? channelConfig.EMAIL!;
     const isInbound = item.direction === 'INBOUND';
+    // Only an outbound message we can rebuild a send from — never an inbound one, and never a
+    // free-text WhatsApp reply, which has no template for the send API to replay.
+    // Shown on every outbound row (disabled where the send cannot be replayed); hidden only on
+    // inbound ones, when the role's display settings withhold it, and when we have no institute
+    // to send on behalf of.
+    const showResend = resend.allowed && showsResendControl(item) && !!resend.instituteId;
 
     const isEmail = item.channel === 'EMAIL';
     // For emails prefer the COMPLETE fullBody — the backend's bodyPreview is often
@@ -540,6 +669,7 @@ function CommItemBody({ item }: { item: CommunicationItem }) {
                 </div>
                 <div className="flex items-center gap-1.5">
                     <StatusPill statusKey={item.status} />
+                    {showResend && <ResendButton item={item} onClick={() => setResendOpen(true)} />}
                     {expanded ? (
                         <CaretUp className="size-3 text-neutral-400" />
                     ) : (
@@ -565,7 +695,25 @@ function CommItemBody({ item }: { item: CommunicationItem }) {
 
             {/* Expanded details */}
             {expanded && (
-                <ExpandedDetail item={item} onCollapse={() => setExpanded(false)} />
+                <ExpandedDetail
+                    item={item}
+                    onCollapse={() => setExpanded(false)}
+                    onResend={showResend ? () => setResendOpen(true) : undefined}
+                />
+            )}
+
+            {/* Resend confirmation. Rendered in a portal, so its clicks never reach the card. */}
+            {resendOpen && (
+                <ResendMessageDialog
+                    open={resendOpen}
+                    onOpenChange={setResendOpen}
+                    item={item}
+                    instituteId={resend.instituteId}
+                    emailSubject={emailSubjectOf(item, t)}
+                    userId={resend.userId}
+                    recipientName={resend.recipientName}
+                    onSent={resend.onResent}
+                />
             )}
         </div>
     );
@@ -576,13 +724,12 @@ function CommItemBody({ item }: { item: CommunicationItem }) {
 function toTimelineItem(
     item: CommunicationItem,
     t: TFunction,
-    channelConfig: ChannelConfig
+    channelConfig: ChannelConfig,
+    resend: ResendContext
 ): ProfileTimelineItem {
     const channel = channelConfig[item.channel] ?? channelConfig.EMAIL!;
     const isEmail = item.channel === 'EMAIL';
-    const displayTitle = isEmail
-        ? extractEmailSubject(item.title, item.fullBody || item.bodyPreview, t)
-        : item.title || t('noSubject');
+    const displayTitle = isEmail ? emailSubjectOf(item, t) : item.title || t('noSubject');
 
     // Tone: direction-based — outbound=primary, inbound=success, failed/bounced=danger
     const failedStatuses = new Set(['FAILED', 'BOUNCED', 'COMPLAINT']);
@@ -603,7 +750,7 @@ function toTimelineItem(
             </span>
         ),
         meta: formatDistanceToNow(new Date(item.timestamp), { addSuffix: true }),
-        body: <CommItemBody item={item} />,
+        body: <CommItemBody item={item} resend={resend} />,
     };
 }
 
@@ -716,6 +863,7 @@ export const StudentCommunicationTimeline = () => {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
     const [sendDialog, setSendDialog] = useState<'EMAIL' | 'WHATSAPP' | null>(null);
+    const resendAllowed = useResendAllowed();
 
     const email = selectedStudent?.email || undefined;
     const phone = selectedStudent?.mobile_number || undefined;
@@ -798,6 +946,18 @@ export const StudentCommunicationTimeline = () => {
 
     const communications = wantMessages ? timelineData?.content || [] : [];
     const calls = wantCalls ? callsData?.content || [] : [];
+
+    // Shared by every row's resend button — the row itself knows the message, not who owns it.
+    const resendContext: ResendContext = {
+        instituteId,
+        userId,
+        recipientName: selectedStudent?.full_name || undefined,
+        // null (still resolving) renders no control, same as an explicit false.
+        allowed: resendAllowed === true,
+        onResent: () => {
+            void refetch();
+        },
+    };
 
     // Merge the two sources into one feed, newest first. Each is already a
     // page from its own service; sorting the union keeps the page coherent
@@ -985,7 +1145,12 @@ export const StudentCommunicationTimeline = () => {
                                 );
                             } else {
                                 currentGroup.push(
-                                    toTimelineItem(entry.entry.item, t, channelConfig)
+                                    toTimelineItem(
+                                        entry.entry.item,
+                                        t,
+                                        channelConfig,
+                                        resendContext
+                                    )
                                 );
                             }
                         }

@@ -5,6 +5,7 @@ import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     TEACHER_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
+    type StudentSideViewSettings,
 } from '@/types/display-settings';
 
 /**
@@ -19,27 +20,28 @@ const resendFor = (role: string, incoming?: Partial<DisplaySettingsData>): boole
     mergeDisplayWithDefaults(incoming, role as never).studentSideView?.allowResendMessage;
 
 /** A blob saved before this flag existed: studentSideView present, the new key absent. */
-const savedBeforeTheFlag = (): Partial<DisplaySettingsData> =>
-    ({
-        studentSideView: {
-            overviewTab: true,
-            testTab: true,
-            progressTab: true,
-            coursesTab: true,
-            notificationTab: true,
-            membershipTab: false,
-            paymentHistoryTab: true,
-            userTaggingTab: false,
-            badgesTab: true,
-            fileTab: false,
-            portalAccessTab: false,
-            reportsTab: false,
-            enrollDerollTab: false,
-            enquiryTab: false,
-            applicationTab: false,
-            leadTab: false,
-        },
-    }) as Partial<DisplaySettingsData>;
+const savedBeforeTheFlag = (): Partial<DisplaySettingsData> & {
+    studentSideView: StudentSideViewSettings;
+} => ({
+    studentSideView: {
+        overviewTab: true,
+        testTab: true,
+        progressTab: true,
+        coursesTab: true,
+        notificationTab: true,
+        membershipTab: false,
+        paymentHistoryTab: true,
+        userTaggingTab: false,
+        badgesTab: true,
+        fileTab: false,
+        portalAccessTab: false,
+        reportsTab: false,
+        enrollDerollTab: false,
+        enquiryTab: false,
+        applicationTab: false,
+        leadTab: false,
+    },
+});
 
 describe('allowResendMessage defaults', () => {
     it('is on for admin when nothing was ever saved', () => {
@@ -61,11 +63,11 @@ describe('allowResendMessage defaults', () => {
 
     it('respects an explicit choice over the role default, in both directions', () => {
         const off = savedBeforeTheFlag();
-        (off.studentSideView as Record<string, unknown>).allowResendMessage = false;
+        off.studentSideView.allowResendMessage = false;
         expect(resendFor(ADMIN_DISPLAY_SETTINGS_KEY, off)).toBe(false);
 
         const on = savedBeforeTheFlag();
-        (on.studentSideView as Record<string, unknown>).allowResendMessage = true;
+        on.studentSideView.allowResendMessage = true;
         expect(resendFor(TEACHER_DISPLAY_SETTINGS_KEY, on)).toBe(true);
     });
 });

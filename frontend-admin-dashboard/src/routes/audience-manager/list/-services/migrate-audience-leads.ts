@@ -25,8 +25,9 @@ export type LeadMigrateScope = 'RESPONSE' | 'USER';
  * - `PRESERVE` (default): keep the anchor. The old list's drip stops and the stale anchor will not
  *   match the new list's windows, so the lead is not messaged. Right for fixing a misrouted form,
  *   archiving to a cold list, or quarantining junk.
- * - `RESET_TO_TARGET`: re-anchor as though the lead had just been created in the target list, so
- *   that list's sequence runs from day zero. This SENDS MESSAGES — it is the re-engagement case.
+ * - `RESET_TO_TARGET`: treat the lead as though it had just been created in the target list: its
+ *   "Lead Submitted" workflows fire now (AI calls, instant messages) and its scheduled sequence
+ *   runs from day zero. This CALLS AND MESSAGES — it is the re-engagement case.
  */
 export type LeadWorkflowAnchor = 'PRESERVE' | 'RESET_TO_TARGET';
 
@@ -58,10 +59,9 @@ export interface LeadMigrateParams {
     scope?: LeadMigrateScope;
     workflowAnchor?: LeadWorkflowAnchor;
     /**
-     * Also fire the target list's EVENT-driven automations (its "Lead Submitted" workflows —
-     * AI calls, instant WhatsApp/email) for each moved lead, as if it had just been submitted
-     * there. Off by default: those workflows place real calls and send real messages.
-     * Separate from `workflowAnchor`, which only governs the scheduled drips.
+     * Fire the target list's EVENT-driven automations (its "Lead Submitted" workflows — AI
+     * calls, instant WhatsApp/email) for each moved lead. `RESET_TO_TARGET` implies this on the
+     * backend; the dialog sends it explicitly so the request reads the same as the UI.
      */
     runDestinationAutomations?: boolean;
 }

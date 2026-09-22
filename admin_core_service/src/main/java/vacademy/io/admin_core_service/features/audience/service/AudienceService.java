@@ -3853,11 +3853,19 @@ public class AudienceService {
         logger.info("Migrated {} lead(s) into audience {} (skipped {}, anchor={}) by user {}",
                 migrated, targetAudienceId, skipped.size(), anchorMode, actor.getUserId());
 
-        // Opt-in: run the target list's event-driven automations on the moved leads, exactly as
-        // if each had just been submitted there. Contexts are built now (inside the transaction,
-        // reads only) but fired only after commit — a workflow that dials or messages must see
-        // the lead already in its new list, and a rollback must fire nothing.
-        if (Boolean.TRUE.equals(request.getRunDestinationAutomations()) && !movable.isEmpty()) {
+        // Run the target list's event-driven automations on the moved leads, exactly as if each
+        // had just been submitted there. "Start the new list's automation from day one"
+        // (RESET_TO_TARGET) means the whole of it: the scheduled drip re-anchored above AND the
+        // Lead-Submitted workflows (AI call, instant WhatsApp/email) — an admin picking it is
+        // asking for the lead to be treated as new, and the dialog promises exactly that. The
+        // explicit flag is kept for API callers who want the event workflows without touching
+        // the drip anchor. PRESERVE + no flag = pure bookkeeping, nothing fires. Contexts are
+        // built now (inside the transaction, reads only) but fired only after commit — a
+        // workflow that dials or messages must see the lead already in its new list, and a
+        // rollback must fire nothing.
+        boolean runAutomations = Boolean.TRUE.equals(request.getRunDestinationAutomations())
+                || anchorMode == MigrateLeadsRequestDTO.WorkflowAnchorMode.RESET_TO_TARGET;
+        if (runAutomations && !movable.isEmpty()) {
             scheduleDestinationAutomations(movable, targetAudience, instituteId);
         }
 

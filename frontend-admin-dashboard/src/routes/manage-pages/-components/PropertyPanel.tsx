@@ -57,6 +57,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CoursePagesEditor } from './CoursePagesEditor';
+import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
 
@@ -4359,14 +4360,16 @@ const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
 // Announcement Feed Editor
 /**
  * Blog section. Only the LOOK of the list is authored here — the posts
- * themselves live in Manage Pages → Blog (rows, not page JSON), so writing an
- * article never means republishing the site. The category picker reads the
- * categories in use so the admin never types one that matches nothing.
+ * themselves are rows, not page JSON, written in the blog manager dialog
+ * (Manage posts below), so publishing an article never means republishing
+ * the site. The category picker reads the categories in use so the admin
+ * never types one that matches nothing.
  */
 const BlogEditor = ({ component, pageId, updateComponent }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const instituteId = getCurrentInstituteId();
+    const openBlog = useBlogManagerStore((s) => s.open);
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
     const { data: postsPage } = useQuery({
@@ -4392,10 +4395,14 @@ const BlogEditor = ({ component, pageId, updateComponent }: any) => {
             <div className="space-y-2 rounded border bg-gray-50 p-3">
                 <p className="text-xs text-gray-600">{t('blog.managePostsHint')}</p>
                 {publishedHint && <p className="text-xs text-gray-500">{publishedHint}</p>}
-                <Button asChild size="sm" variant="outline" className="w-full">
-                    <a href="/manage-pages/blog" target="_blank" rel="noopener noreferrer">
-                        {t('blog.managePosts')}
-                    </a>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => openBlog()}
+                >
+                    {t('blog.managePosts')}
                 </Button>
             </div>
             <div className="space-y-2">

@@ -21,6 +21,9 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
     // AI calling for a queue to mean anything -- on a quiet institute nothing ever
     // waits, so the page would only ever show an empty table.
     'calling-call-queue',
+    // Blog posts live inside Website Builder (Manage Pages → Blog button), so the
+    // sidebar entry is redundant for most institutes. Opt in for a shortcut.
+    'blog',
 ]);
 
 // Tabs that ship hidden until an institute admin opts them in via the

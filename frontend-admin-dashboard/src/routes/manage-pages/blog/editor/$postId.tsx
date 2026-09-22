@@ -1,12 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { LayoutContainer } from '@/components/common/layout-container/layout-container';
-import { BlogPostEditor } from '../-components/BlogPostEditor';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
-/** `/manage-pages/blog/editor/new` creates; any other id edits that post. */
+/** Old post-editor URL (still handed out by older MCP links) → the builder with that post open. */
 export const Route = createFileRoute('/manage-pages/blog/editor/$postId')({
-    component: () => (
-        <LayoutContainer intrnalMargin={false}>
-            <BlogPostEditor />
-        </LayoutContainer>
-    ),
+    beforeLoad: ({ params }) => {
+        throw redirect({ to: '/manage-pages', search: { blog: params.postId } });
+    },
 });

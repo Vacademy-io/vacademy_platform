@@ -160,9 +160,13 @@ def _admin_base(ctx: ToolContext) -> str:
 
 
 def editor_url(ctx: ToolContext, post_id: Optional[str] = None) -> str:
-    """The post editor (or the list) on the institute's own admin portal."""
+    """The post editor (or the list) on the institute's own admin portal.
+
+    Posts are managed inside the Website Builder: `?blog=<id>` opens the
+    builder with that post's editor over it, `?blog=list` the posts list.
+    """
     base = _admin_base(ctx)
-    return f"{base}/manage-pages/blog/editor/{post_id}" if post_id else f"{base}/manage-pages/blog"
+    return f"{base}/manage-pages?blog={post_id}" if post_id else f"{base}/manage-pages?blog=list"
 
 
 def _source(ctx: ToolContext) -> str:

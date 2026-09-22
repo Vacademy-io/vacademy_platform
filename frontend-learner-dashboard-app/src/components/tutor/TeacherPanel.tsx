@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise, SlidersHorizontal, ArrowsOut, ArrowsIn, Lock } from "@phosphor-icons/react";
-import { DefaultTeacherFace, TeacherAvatar, useTeacherPhotoUrl } from "./TeacherAvatar";
+import { TeacherAvatar, useTeacherPhotoUrl } from "./TeacherAvatar";
 import type { TutorPace } from "@/hooks/useTutorSocket";
 
 export interface TranscriptLine {
@@ -233,8 +233,10 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               {photoUrl ? (
                 <img src={photoUrl} alt="" className="size-full object-cover" />
               ) : (
-                <div className="flex size-full items-center justify-center bg-gradient-to-b from-primary-50 to-primary-100">
-                  <DefaultTeacherFace className="size-24 lg:size-32" />
+                // No photo: a quiet placeholder. The illustrated face would read
+                // as a different teacher than the one about to fade in.
+                <div className="flex size-full animate-pulse items-center justify-center bg-gradient-to-b from-primary-50 to-primary-100">
+                  <span className="font-semibold text-3xl text-primary-500/70">{teacherName.trim().charAt(0).toUpperCase() || "T"}</span>
                 </div>
               )}
               {avatarState === "loading" && (

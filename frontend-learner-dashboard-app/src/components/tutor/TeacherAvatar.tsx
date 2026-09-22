@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getPublicUrl } from "@/services/upload_file";
+import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface TeacherAvatarProps {
   /** Media file id from the course / institute Tutor Mode settings. */
@@ -34,7 +34,9 @@ export function useTeacherPhotoUrl(fileId?: string | null): string {
       setUrl("");
       return;
     }
+    // The public demo has no auth cookie, so the signed-in route 401s there.
     getPublicUrl(fileId)
+      .catch(() => getPublicUrlWithoutLogin(fileId))
       .then((u) => {
         if (!cancelled) setUrl(u || "");
       })

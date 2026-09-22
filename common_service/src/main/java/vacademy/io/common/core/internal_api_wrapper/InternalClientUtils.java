@@ -21,11 +21,36 @@ public class InternalClientUtils {
     private HmacUtils hmacUtils;
 
     private final RestTemplate restTemplate = createRestTemplate();
+    private final RestTemplate multipartRestTemplate = createMultipartRestTemplate();
 
     private static RestTemplate createRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10000);
         factory.setReadTimeout(30000);
+        return new RestTemplate(factory);
+    }
+
+    /**
+     * File transfers get their own client; the JSON one above is wrong for them on two counts.
+     *
+     * <p><b>Memory.</b> {@link MultipartInputStreamFileResource} reports a content length of -1, so
+     * a buffering factory drains the whole part into a byte array before the first byte goes out.
+     * A 300MB SCORM package is then a 300MB heap spike on a 4Gi pod -- two concurrent imports were
+     * enough to OOM-kill admin-core, which serves everything else too. Streaming sends it in
+     * chunks instead, so footprint is flat in the file size.
+     *
+     * <p><b>Time.</b> 30s is a sane ceiling for a JSON round-trip and far too tight here: the
+     * caller waits for media_service to take delivery AND push the object to S3 before it answers.
+     * At a few hundred MB that alone can outlast 30s, and the import failed with the upload
+     * already safely in the bucket. Five minutes covers the largest body the ingress admits.
+     */
+    private static RestTemplate createMultipartRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10000);
+        factory.setReadTimeout(300000);
+        factory.setBufferRequestBody(false);
+        // Default is 4KB, i.e. ~77k chunks for a 300MB package. 256KB keeps the syscall count sane.
+        factory.setChunkSize(256 * 1024);
         return new RestTemplate(factory);
     }
 
@@ -140,7 +165,7 @@ public class InternalClientUtils {
 
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-        return restTemplate.exchange(
+        return multipartRestTemplate.exchange(
                 builder.toUriString(),
                 HttpMethod.valueOf(method),
                 requestEntity,

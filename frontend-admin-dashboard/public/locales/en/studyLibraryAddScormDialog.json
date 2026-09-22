@@ -28,6 +28,7 @@
     "toasts": {
         "uploadFailed": "Failed to upload SCORM package",
         "selectZipFile": "Please select a .zip file",
+        "fileTooLarge": "SCORM package is too large ({{size}}). The maximum allowed is {{max}}.",
         "uploading": "Uploading SCORM package...",
         "uploadSuccessDetected": "Uploaded successfully! SCORM {{version}} package detected.",
         "uploadParseSuccess": "SCORM package uploaded & parsed successfully!",

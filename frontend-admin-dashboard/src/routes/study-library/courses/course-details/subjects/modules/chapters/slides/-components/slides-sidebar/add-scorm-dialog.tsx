@@ -29,6 +29,10 @@ import { Package } from '@phosphor-icons/react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { SCORM_UPLOAD } from '@/constants/urls';
 import {
+    formatBytes,
+    MAX_SCORM_BYTES,
+} from '@/components/common/study-library/bulk-content-uploading/conventions';
+import {
     buildAppendReorderPayload,
     getNextSlideOrder,
 } from '../../-helper/slide-naming-utils';
@@ -95,6 +99,27 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
         },
     });
 
+    /**
+     * The zip is POSTed whole to admin_core_service, which caps multipart bodies at
+     * MAX_SCORM_BYTES. Past that, Tomcat rejects on Content-Length and commits its response
+     * while the browser is still uploading, so the connection is reset and the reason never
+     * reaches JS — axios surfaces a bare "Network Error" after a long, pointless upload.
+     * Refuse it here instead, naming both the file's size and the limit.
+     */
+    const rejectIfTooLarge = (file: File) => {
+        if (file.size <= MAX_SCORM_BYTES) return false;
+        const message = t('toasts.fileTooLarge', {
+            size: formatBytes(file.size),
+            max: formatBytes(MAX_SCORM_BYTES),
+        });
+        setSelectedFile(file);
+        setScormUploadResult(null);
+        setUploadProgress('');
+        setUploadError(message);
+        toast.error(message, { duration: 8000 });
+        return true;
+    };
+
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -102,6 +127,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                 toast.error(t('toasts.selectZipFile'));
                 return;
             }
+            if (rejectIfTooLarge(file)) return;
             setUploadError(null);
             setSelectedFile(file);
             form.setValue('scormFile', file);
@@ -143,6 +169,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
         e.preventDefault();
         const file = e.dataTransfer.files?.[0];
         if (file && file.name.endsWith('.zip')) {
+            if (rejectIfTooLarge(file)) return;
             setUploadError(null);
             setSelectedFile(file);
             form.setValue('scormFile', file);

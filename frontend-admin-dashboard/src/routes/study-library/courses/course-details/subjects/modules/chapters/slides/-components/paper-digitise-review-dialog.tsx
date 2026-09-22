@@ -6,6 +6,7 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
 import { cn } from '@/lib/utils';
 import type { DigitisedPaper } from '@/services/paper-digitise';
+import { MathHtml } from '@/routes/knowledge-base/-components/paper/MathHtml';
 
 /** One question the teacher has accepted, with the marks the checker will use. */
 export interface ReviewedQuestion {
@@ -226,14 +227,27 @@ export const PaperDigitiseReviewDialog = ({
                                     Q{String(raw.question_number ?? row.index + 1)}
                                 </span>
                                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                                    <p
-                                        className={cn(
-                                            'line-clamp-2 text-body text-neutral-800',
-                                            row.removed && 'line-through'
-                                        )}
-                                    >
-                                        {stripHtml(dto.text?.content) || t('review.unreadableQuestion')}
-                                    </p>
+                                    {stripHtml(dto.text?.content) ? (
+                                        // Typeset, not the LaTeX source: a maths
+                                        // paper reads as "$2 \mathrm{x}-5
+                                        // \mathrm{y}=7$" otherwise.
+                                        <MathHtml
+                                            html={dto.text?.content ?? ''}
+                                            className={cn(
+                                                'line-clamp-2 text-body text-neutral-800 [&_p]:inline',
+                                                row.removed && 'line-through'
+                                            )}
+                                        />
+                                    ) : (
+                                        <p
+                                            className={cn(
+                                                'line-clamp-2 text-body text-neutral-800',
+                                                row.removed && 'line-through'
+                                            )}
+                                        >
+                                            {t('review.unreadableQuestion')}
+                                        </p>
+                                    )}
                                     <div className="flex flex-wrap items-center gap-1.5">
                                         <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-caption text-neutral-600">
                                             {TYPE_LABEL[type] ?? type}

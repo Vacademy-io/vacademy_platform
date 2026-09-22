@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.user_account.entity.UserAccountLedger;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Repository
 public interface UserAccountLedgerRepository extends JpaRepository<UserAccountLedger, String> {
@@ -39,6 +40,23 @@ public interface UserAccountLedgerRepository extends JpaRepository<UserAccountLe
               AND l.eventType IN ('CREDIT_PAYMENT', 'CREDIT_WAIVER', 'CREDIT_ADJUSTMENT')
             """)
     BigDecimal sumCredits(@Param("userId") String userId, @Param("instituteId") String instituteId);
+
+    /**
+     * Currency this learner's ledger is denominated in, newest entry first. Every row for a
+     * (user, institute) pair is in the same currency in practice, so the newest one is the
+     * answer; the summary used to report a hard-coded "INR" regardless, which is what showed
+     * AUD balances with a rupee sign in the payment-history tab.
+     */
+    @Query("""
+            SELECT l.currency
+            FROM UserAccountLedger l
+            WHERE l.userId = :userId AND l.instituteId = :instituteId
+              AND l.currency IS NOT NULL
+            ORDER BY l.createdAt DESC
+            """)
+    List<String> findLedgerCurrencies(@Param("userId") String userId,
+                                      @Param("instituteId") String instituteId,
+                                      Pageable pageable);
 
     /**
      * Net obligation whose due date has already passed (reversals subtracted, same as

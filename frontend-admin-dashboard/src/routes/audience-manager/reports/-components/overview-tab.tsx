@@ -8,8 +8,10 @@
  *
  * Data: GET /v1/reports/leads/summary (read-only — purely visual aggregation).
  */
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { useLeadTiers } from '@/hooks/use-lead-tiers';
 import { useTranslation } from 'react-i18next';
 import {
     CaretRight,
@@ -54,11 +56,12 @@ export function OverviewTab({
 }: ReportTabProps) {
     const { t } = useTranslation('audienceManagerOverviewTab');
     const navigate = useNavigate();
-    const tierLabels: Record<string, string> = {
-        HOT: t('tier.hot'),
-        WARM: t('tier.warm'),
-        COLD: t('tier.cold'),
-    };
+    // Tier labels + colours from the institute catalog (custom tiers included).
+    const tierCatalog = useLeadTiers();
+    const tierLabels: Record<string, string> = useMemo(
+        () => Object.fromEntries(tierCatalog.tiers.map((tier) => [tier.tier_key, tier.label])),
+        [tierCatalog.tiers]
+    );
 
     const summaryQuery = useQuery({
         queryKey: [
@@ -262,6 +265,7 @@ export function OverviewTab({
                                 }
                                 count={b.count}
                                 total={summary.totals.total_leads}
+                                colorHex={tierCatalog.byKey(b.tier)?.color}
                                 colorClass={tierBgClass(b.tier)}
                             />
                         ))

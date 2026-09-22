@@ -78,7 +78,7 @@
         "noProfileHint": "जैसे ही यह उपयोगकर्ता कोई पूछताछ सबमिट करेगा या स्कोर किया जाएगा, प्रोफ़ाइल दिखाई देगी।",
         "leadInterestScore": "लीड रुचि स्कोर",
         "lastCalculatedLabel": "अंतिम गणना",
-        "setTier": "स्तर सेट करें",
+        "setTier": "{{tier}} सेट करें",
         "campaigns": "कैंपेन",
         "timelineEvents": "टाइमलाइन घटनाएं",
         "demoAttendance": "डेमो उपस्थिति",

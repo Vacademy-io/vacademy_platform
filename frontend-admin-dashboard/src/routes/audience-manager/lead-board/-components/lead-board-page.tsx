@@ -34,6 +34,8 @@ import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { NO_STATUS_KEY, useLeadStatuses, type LeadStatus } from '@/hooks/use-lead-statuses';
+import { useLeadTiers } from '@/hooks/use-lead-tiers';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
@@ -157,11 +159,13 @@ const LeadBoardContent = () => {
     const { t } = useTranslation('audienceManagerLeadBoardPage');
     const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
     const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
-    const tierLabels: Record<string, string> = {
-        HOT: t('filters.tier.hot'),
-        WARM: t('filters.tier.warm'),
-        COLD: t('filters.tier.cold'),
-    };
+    // Institute tier catalog (custom tiers + labels) and its own name for "Tier".
+    const tierCatalog = useLeadTiers();
+    const terminology = useLeadTerminology();
+    const tierLabels: Record<string, string> = useMemo(
+        () => Object.fromEntries(tierCatalog.tiers.map((tier) => [tier.tier_key, tier.label])),
+        [tierCatalog.tiers]
+    );
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const { setSelectedStudent } = useStudentSidebar();
@@ -498,7 +502,9 @@ const LeadBoardContent = () => {
         chips.push({
             // tierFilters holds raw enum values (HOT/WARM/COLD) — map through
             // tierLabels so the chip shows the translated label, not the enum.
-            label: t('chips.tier', { tiers: tierFilters.map((v) => tierLabels[v] ?? v).join(', ') }),
+            label: t('chips.tier', {
+                tiers: tierFilters.map((v) => tierLabels[v] ?? v).join(', '),
+            }),
             onRemove: () => setTierFilters([]),
         });
     if (slaFilters.length > 0)
@@ -514,7 +520,8 @@ const LeadBoardContent = () => {
         const cLabels = counsellorFilters.map((id) =>
             id === UNASSIGNED_COUNSELLOR_VALUE
                 ? t('chips.unassigned')
-                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? t('chips.fallbackSelected'))
+                : counsellorOptions.find((c) => c.id === id)?.full_name ??
+                  t('chips.fallbackSelected')
         );
         chips.push({
             label: t('chips.counsellor', { names: cLabels.join(', ') }),
@@ -591,13 +598,12 @@ const LeadBoardContent = () => {
                 <div className="flex flex-wrap items-center gap-2">
                     {showOps && (
                         <MultiSelectFilter
-                            label={t('filters.tier.label')}
+                            label={terminology.tier}
                             icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
-                            options={[
-                                { value: 'HOT', label: tierLabels.HOT ?? 'HOT' },
-                                { value: 'WARM', label: tierLabels.WARM ?? 'WARM' },
-                                { value: 'COLD', label: tierLabels.COLD ?? 'COLD' },
-                            ]}
+                            options={tierCatalog.tiers.map((tier) => ({
+                                value: tier.tier_key,
+                                label: tier.label,
+                            }))}
                             selected={tierFilters}
                             onChange={setTierFilters}
                             widthClass="w-36"

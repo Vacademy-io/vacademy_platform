@@ -99,6 +99,19 @@ export interface LeadSettingsConfig {
     tatReminder: TatReminderConfig;
     followUp: FollowUpConfig;
     customStatuses: CustomLeadStatus[];
+
+    /**
+     * Institute-specific display names for the built-in lead attributes, e.g. an
+     * Eduzilla-style institute calling Tier "Interest Level" and Lead Status
+     * "Action Label". Empty/missing = the default wording. Read through
+     * useLeadTerminology() so every surface agrees.
+     */
+    labels?: LeadTerminologyLabels;
+}
+
+export interface LeadTerminologyLabels {
+    tier?: string;
+    leadStatus?: string;
 }
 
 export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
@@ -130,6 +143,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         notifyRoles: [],
     },
     customStatuses: DEFAULT_CUSTOM_LEAD_STATUSES,
+    labels: {},
 };
 
 // ── Fetcher ──────────────────────────────────────────────────────────────────

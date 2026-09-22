@@ -95,6 +95,9 @@ public class AudienceService {
     private AudienceRepository audienceRepository;
 
     @Autowired
+    private LeadTierService leadTierService;
+
+    @Autowired
     private AudienceRoleAccessService audienceRoleAccessService;
 
     @Autowired
@@ -1967,7 +1970,7 @@ public class AudienceService {
                     return LeadScoreDTO.builder()
                             .audienceResponseId(responseId)
                             .rawScore(score.getRawScore())
-                            .tier(score.getTier())
+                            .tier(leadTierService.deriveTier(score.getInstituteId(), score.getRawScore()))
                             .percentileRank(score.getPercentileRank())
                             .scoringFactors(factors)
                             .lastCalculatedAt(score.getLastCalculatedAt())
@@ -1977,7 +1980,13 @@ public class AudienceService {
                 .orElse(LeadScoreDTO.builder()
                         .audienceResponseId(responseId)
                         .rawScore(0)
-                        .tier("COLD")
+                        .tier(leadTierService.deriveTier(
+                                audienceResponseRepository.findById(responseId)
+                                        .map(AudienceResponse::getAudienceId)
+                                        .flatMap(audienceRepository::findById)
+                                        .map(Audience::getInstituteId)
+                                        .orElse(null),
+                                0))
                         .build());
     }
 
@@ -3413,7 +3422,9 @@ public class AudienceService {
                     .parentEmail(response.getParentEmail())
                     .parentMobile(response.getParentMobile())
                     .leadScore(score != null ? score.getRawScore() : null)
-                    .leadTier(score != null ? score.getTier() : null)
+                    .leadTier(score != null
+                            ? leadTierService.deriveTier(instituteId, score.getRawScore())
+                            : null)
                     .percentileRank(score != null && score.getPercentileRank() != null
                             ? score.getPercentileRank().doubleValue()
                             : null)
@@ -5344,7 +5355,9 @@ public class AudienceService {
                             .primaryResponseId(audienceResponse.getPrimaryResponseId())
                             // Lead score
                             .leadScore(leadScore != null ? leadScore.getRawScore() : null)
-                            .leadTier(leadScore != null ? leadScore.getTier() : null)
+                            .leadTier(leadScore != null
+                                    ? leadTierService.deriveTier(leadScore.getInstituteId(), leadScore.getRawScore())
+                                    : null)
                             .percentileRank(leadScore != null && leadScore.getPercentileRank() != null
                                     ? leadScore.getPercentileRank().doubleValue()
                                     : null)
@@ -5357,16 +5370,15 @@ public class AudienceService {
         String leadTier = filterDTO.getLeadTier();
         List<EnquiryWithResponseDTO> filteredDtos = dtos;
         if (leadTier != null && !leadTier.isBlank()) {
+            // Compare against the tier already resolved on the DTO (institute catalog aware)
+            // instead of re-deriving with fixed thresholds. Accepts a comma-separated list.
+            Set<String> wanted = Arrays.stream(leadTier.split(","))
+                    .map(String::trim).filter(v -> !v.isEmpty()).map(String::toUpperCase)
+                    .collect(Collectors.toSet());
             filteredDtos = dtos.stream().filter(dto -> {
-                Integer score = dto.getLeadScore();
-                if (score == null)
+                if (dto.getLeadScore() == null || dto.getLeadTier() == null)
                     return false;
-                return switch (leadTier.toUpperCase()) {
-                    case "HOT" -> score >= 80;
-                    case "WARM" -> score >= 50 && score < 80;
-                    case "COLD" -> score < 50;
-                    default -> true;
-                };
+                return wanted.contains(dto.getLeadTier().toUpperCase());
             }).collect(Collectors.toList());
         }
 

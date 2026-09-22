@@ -112,7 +112,7 @@ public class LeadStatusService {
     }
 
     @Transactional
-    public LeadStatus create(String instituteId, LeadStatusDTO dto) {
+    public LeadStatus create(String instituteId, LeadStatusDTO dto, String actorUserId) {
         String key = normalizeKey(dto.getStatusKey(), dto.getLabel());
         leadStatusRepository.findByInstituteIdAndStatusKey(instituteId, key).ifPresent(s -> {
             throw new VacademyException("A status with key " + key + " already exists");
@@ -125,6 +125,8 @@ public class LeadStatusService {
                 .displayOrder(dto.getDisplayOrder() != null ? dto.getDisplayOrder() : 0)
                 .isDefault(Boolean.TRUE.equals(dto.getIsDefault()))
                 .isActive(true)
+                .createdBy(actorUserId)
+                .updatedBy(actorUserId)
                 .updatedAt(new Timestamp(System.currentTimeMillis()))
                 .build());
         if (Boolean.TRUE.equals(saved.getIsDefault())) {
@@ -134,15 +136,22 @@ public class LeadStatusService {
     }
 
     @Transactional
-    public LeadStatus update(String id, LeadStatusDTO dto) {
+    public LeadStatus update(String id, LeadStatusDTO dto, String actorUserId) {
         LeadStatus s = leadStatusRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Lead status not found: " + id));
+        Timestamp now = new Timestamp(System.currentTimeMillis());
         if (dto.getLabel() != null) s.setLabel(dto.getLabel());
         if (dto.getColor() != null) s.setColor(dto.getColor());
         if (dto.getDisplayOrder() != null) s.setDisplayOrder(dto.getDisplayOrder());
-        if (dto.getIsActive() != null) s.setIsActive(dto.getIsActive());
+        if (dto.getIsActive() != null) {
+            // is_active = false through this endpoint is a soft delete just like DELETE, so it
+            // must leave the same trail; otherwise a status disappears with no deleted_by and the
+            // audit answer to "who removed this?" depends on which endpoint was used.
+            applyActiveChange(s, Boolean.TRUE.equals(dto.getIsActive()), actorUserId, now);
+        }
         if (dto.getIsDefault() != null) s.setIsDefault(dto.getIsDefault());
-        s.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+        s.setUpdatedBy(actorUserId);
+        s.setUpdatedAt(now);
         LeadStatus saved = leadStatusRepository.save(s);
         if (Boolean.TRUE.equals(saved.getIsDefault())) {
             clearOtherDefaults(saved.getInstituteId(), saved.getId());
@@ -152,15 +161,37 @@ public class LeadStatusService {
 
     /** Soft delete a custom status — keeps history references valid. System defaults cannot be deleted. */
     @Transactional
-    public void deactivate(String id) {
+    public void deactivate(String id, String actorUserId) {
         leadStatusRepository.findById(id).ifPresent(s -> {
             if (Boolean.TRUE.equals(s.getIsSystem())) {
                 throw new VacademyException("Default lead statuses (New / Converted / Lost) cannot be deleted.");
             }
-            s.setIsActive(false);
-            s.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+            applyActiveChange(s, false, actorUserId, now);
+            s.setUpdatedBy(actorUserId);
+            s.setUpdatedAt(now);
             leadStatusRepository.save(s);
         });
+    }
+
+    /**
+     * Flip is_active and keep the delete trail honest, for both the DELETE endpoint and an
+     * {@code is_active} change sent through the update endpoint.
+     *
+     * <p>Deactivating stamps deleted_by/deleted_at only on the active → inactive transition, so
+     * re-saving an already-deleted row keeps the original remover. Reactivating clears the pair,
+     * so a live row never carries a delete trail.</p>
+     */
+    private void applyActiveChange(LeadStatus status, boolean active, String actorUserId, Timestamp now) {
+        boolean wasActive = !Boolean.FALSE.equals(status.getIsActive());
+        status.setIsActive(active);
+        if (active) {
+            status.setDeletedBy(null);
+            status.setDeletedAt(null);
+        } else if (wasActive || status.getDeletedAt() == null) {
+            status.setDeletedBy(actorUserId);
+            status.setDeletedAt(now);
+        }
     }
 
     private void clearOtherDefaults(String instituteId, String keepId) {

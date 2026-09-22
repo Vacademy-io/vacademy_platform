@@ -61,6 +61,9 @@ public class LeadScoringService {
     private LeadScoreRepository leadScoreRepository;
 
     @Autowired
+    private LeadTierService leadTierService;
+
+    @Autowired
     private AudienceResponseRepository audienceResponseRepository;
 
     @Autowired
@@ -207,8 +210,9 @@ public class LeadScoringService {
         leadScore.setLastCalculatedAt(new Timestamp(System.currentTimeMillis()));
 
         LeadScore saved = leadScoreRepository.save(leadScore);
+        String savedTier = leadTierService.deriveTier(saved.getInstituteId(), saved.getRawScore());
         logger.info("Lead score calculated: response={}, score={}, tier={}",
-                audienceResponseId, rawScore, saved.getTier());
+                audienceResponseId, rawScore, savedTier);
 
         // Log SCORE_UPDATED whenever the score is set or changes (including initial calculation).
         if (!Integer.valueOf(rawScore).equals(oldRawScore)) {
@@ -226,7 +230,7 @@ public class LeadScoringService {
                         title, desc,
                         Map.of("old_score", oldRawScore != null ? oldRawScore : 0,
                                "new_score", rawScore,
-                               "tier", saved.getTier() != null ? saved.getTier() : ""),
+                               "tier", savedTier != null ? savedTier : ""),
                         responseForScoring != null ? responseForScoring.getStudentUserId() : null
                 );
             } catch (Exception e) {

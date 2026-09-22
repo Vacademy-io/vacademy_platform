@@ -23,6 +23,13 @@ import {
     mergeSectionQuestions,
 } from '@/routes/assessment/question-papers/-utils/merge-section-questions';
 import { calculateTotalMarks } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
+import { isUntouchedSection } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/kb-paper-sections';
+import {
+    pairWithPreview,
+    sectionRowFor,
+    sectionsFromExtractedPaper,
+    wantsSections,
+} from '../-utils/extracted-paper-sections';
 import { QuestionType } from '@/constants/dummy-data';
 import { DotsSixVertical } from '@phosphor-icons/react';
 import {
@@ -59,6 +66,13 @@ interface AIQuestionsPreviewProps {
     setOpenQuestionsPreview: Dispatch<SetStateAction<boolean>>;
     sectionsForm?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
+    /**
+     * The target form can hold several sections (the assessment / homework
+     * wizards): a digitised paper with sections may then become one section
+     * each. Off for a single-section target such as a quiz, which only reads
+     * `section.0` and would lose the rest.
+     */
+    allowSectionSplit?: boolean;
     /** Hide the internal "View questions" trigger button (when the dialog is opened externally). */
     hideTrigger?: boolean;
 }
@@ -69,6 +83,7 @@ const AIQuestionsPreview = ({
     setOpenQuestionsPreview,
     sectionsForm,
     currentSectionIndex,
+    allowSectionSplit = false,
     hideTrigger = false,
 }: AIQuestionsPreviewProps) => {
     const { t } = useTranslation('aiCenterAIQuestionsPreview');
@@ -259,6 +274,18 @@ const AIQuestionsPreview = ({
         });
     };
 
+    const closeAllAIQuestionDialogs = () => {
+        setIsAIQuestionDialog1(false);
+        setIsAIQuestionDialog2(false);
+        setIsAIQuestionDialog3(false);
+        setIsAIQuestionDialog4(false);
+        setIsAIQuestionDialog5(false);
+        setIsAIQuestionDialog6(false);
+        setIsAIQuestionDialog7(false);
+        setIsAIQuestionDialog8(false);
+        setIsAIQuestionDialog9(false);
+    };
+
     const handleSubmitFormData = useMutation({
         mutationFn: ({ data }: { data: MyQuestionPaperFormInterface }) =>
             addQuestionPaper(data, true),
@@ -270,27 +297,58 @@ const AIQuestionsPreview = ({
             if (currentSectionIndex !== undefined) {
                 // Check if index is defined
 
-                const incoming = transformQuestionsData.map((question) => ({
+                // The preview's own rows carry what a digitised paper printed —
+                // the section each question sits under and its marks — which the
+                // question bank does not keep; paired with the stored copy by
+                // position (they come back in the order they were sent).
+                const previewQuestions = (form.getValues('questions') ?? []) as MyQuestion[];
+                const paired = pairWithPreview(transformQuestionsData, previewQuestions);
+                const summary = assessmentData.extraction ?? null;
+
+                if (allowSectionSplit && sectionsForm && summary && wantsSections(summary)) {
+                    // One Step 2 section per paper section, marks as printed.
+                    // The blank section the wizard opens with is replaced; a
+                    // section the teacher already filled keeps its place and the
+                    // paper's sections follow it.
+                    const current = sectionsForm.getValues('section') ?? [];
+                    const target = current[currentSectionIndex];
+                    const replace = target ? isUntouchedSection(target) : false;
+                    const newSections = sectionsFromExtractedPaper(
+                        summary,
+                        previewQuestions,
+                        transformQuestionsData,
+                        current.length - (replace ? 1 : 0)
+                    );
+                    if (newSections.length >= 2) {
+                        const next = [...current];
+                        next.splice(
+                            replace ? currentSectionIndex : currentSectionIndex + 1,
+                            replace ? 1 : 0,
+                            ...newSections
+                        );
+                        sectionsForm.setValue('section', next);
+                        sectionsForm.trigger('section');
+                        toast.success(
+                            t('toast.sectionsAdded', {
+                                sections: newSections.length,
+                                questions: transformQuestionsData.length,
+                            })
+                        );
+                        closeAllAIQuestionDialogs();
+                        setOpenQuestionsPreview(false);
+                        queryClient.invalidateQueries({
+                            queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'],
+                        });
+                        return;
+                    }
+                }
+
+                const incoming = transformQuestionsData.map((question, i) =>
                     // Spread full question data (options, validAnswers, etc.) so that
                     // quiz context can read them via getValues. The Zod schema strips
                     // unknown fields on validation, so the assessment flow is unaffected.
-                    ...question,
-                    questionId: question.questionId,
-                    questionName: question.questionName,
-                    questionType: question.questionType,
-                    questionMark: question.questionMark,
-                    questionPenalty: question.questionPenalty,
-                    ...(question.questionType === 'MCQM' && {
-                        correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
-                            (item) => item.isSelected
-                        ).length,
-                    }),
-                    questionDuration: {
-                        hrs: question.questionDuration.hrs,
-                        min: question.questionDuration.min,
-                    },
-                    parentRichText: question.parentRichTextContent,
-                }));
+                    sectionRowFor(question, paired[i])
+                );
 
                 // Append rather than replace: running an AI tool on a section that
                 // already had questions used to wipe them without warning.
@@ -315,15 +373,7 @@ const AIQuestionsPreview = ({
                     `section.${currentSectionIndex}.adaptive_marking_for_each_question`
                 );
                 toast.success(describeMerge(mergeResult));
-                setIsAIQuestionDialog1(false);
-                setIsAIQuestionDialog2(false);
-                setIsAIQuestionDialog3(false);
-                setIsAIQuestionDialog4(false);
-                setIsAIQuestionDialog5(false);
-                setIsAIQuestionDialog6(false);
-                setIsAIQuestionDialog7(false);
-                setIsAIQuestionDialog8(false);
-                setIsAIQuestionDialog9(false);
+                closeAllAIQuestionDialogs();
                 setOpenQuestionsPreview(false);
             }
             queryClient.invalidateQueries({ queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'] });
@@ -459,6 +509,37 @@ const AIQuestionsPreview = ({
                                                                         assessmentData.extraction.check!.join(
                                                                             ', '
                                                                         ),
+                                                                })}
+                                                        {(assessmentData.extraction.sections
+                                                            ?.length ?? 0) >= 2 &&
+                                                            ' · ' +
+                                                                t(
+                                                                    !allowSectionSplit ||
+                                                                        assessmentData.extraction
+                                                                            .section_mode === 'single'
+                                                                        ? 'header.extractionSectionsSingle'
+                                                                        : 'header.extractionSectionsSplit',
+                                                                    {
+                                                                        count: assessmentData
+                                                                            .extraction.sections!
+                                                                            .length,
+                                                                        names: assessmentData.extraction
+                                                                            .sections!.map(
+                                                                                (s) => s.name
+                                                                            )
+                                                                            .join(', '),
+                                                                    }
+                                                                )}
+                                                        {assessmentData.extraction.marking?.marks !=
+                                                            null &&
+                                                            ' · ' +
+                                                                t('header.extractionMarking', {
+                                                                    marks: assessmentData.extraction
+                                                                        .marking.marks,
+                                                                    negative:
+                                                                        assessmentData.extraction
+                                                                            .marking
+                                                                            .negative_marks ?? 0,
                                                                 })}
                                                         {assessmentData.extraction.credits !=
                                                             null &&

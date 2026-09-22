@@ -174,6 +174,16 @@ def _metadata(q: Dict[str, Any]) -> Dict[str, Any]:
     passage = q.get("passage")
     if isinstance(passage, str) and passage.strip():
         meta["parent_rich_text"] = _rich(clean_text(passage))
+    # Where a digitised question sits in its paper and what it is worth
+    # there (Vsmart Extract) — the assessment builder uses these to create
+    # the paper's sections and marking. Absent for generated questions.
+    section = q.get("section")
+    if isinstance(section, str) and section.strip():
+        meta["section_name"] = section.strip()
+    for key in ("marks", "negative_marks"):
+        value = q.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+            meta[key] = float(value)
     return meta
 
 

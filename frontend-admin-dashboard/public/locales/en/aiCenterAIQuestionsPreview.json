@@ -7,7 +7,8 @@
     },
     "toast": {
         "noDataExists": "No data exists!",
-        "incompleteQuestions": "Some of your questions are incomplete or need attention!"
+        "incompleteQuestions": "Some of your questions are incomplete or need attention!",
+        "sectionsAdded": "Added {{sections}} sections with {{questions}} questions, as in the paper"
     },
     "trigger": {
         "retrying": "Retrying...",
@@ -25,7 +26,10 @@
         "extractionUnkeyed_one": "{{count}} without an answer — mark it before use",
         "extractionUnkeyed_other": "{{count}} without an answer — mark them before use",
         "extractionCredits": "{{count}} credits",
-        "extractionCheck": "check Q {{numbers}}"
+        "extractionCheck": "check Q {{numbers}}",
+        "extractionSectionsSplit": "{{count}} sections ({{names}}) — will be created as sections",
+        "extractionSectionsSingle": "{{count}} sections ({{names}}) — all questions go in one section",
+        "extractionMarking": "marking +{{marks}} / −{{negative}}"
     },
     "questionCard": {
         "duplicate": "Duplicate",

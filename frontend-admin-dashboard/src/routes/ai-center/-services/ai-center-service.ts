@@ -21,6 +21,10 @@ import {
     START_PROCESSING_FILE_AI_URL,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import type {
+    AIPaperMarking,
+    AIPaperSection,
+} from '@/types/ai/generate-assessment/generate-complete-assessment';
 import axios from 'axios';
 
 /**
@@ -38,6 +42,9 @@ export interface StartProcessResponse {
     ocr_pages?: number | null;
     question_count?: number | null;
     estimated_credits?: number | null;
+    /** the paper's own sections (2+) and marking scheme, when it prints them */
+    sections?: AIPaperSection[] | null;
+    marking?: AIPaperMarking | null;
 }
 
 export const handleStartProcessUploadedFile = async (
@@ -186,12 +193,16 @@ export const handleSortQuestionsPDF = async (
  * what Vsmart Extract promises. Without it the server GENERATES questions
  * from the material, which is Vsmart Upload's job.
  */
+export type SectionMode = 'split' | 'single';
+
 export const handleGenerateAssessmentQuestions = async (
     pdfId: string,
     userPrompt: string,
     taskName: string,
     taskId: string,
-    mode?: 'extract'
+    mode?: 'extract',
+    /** extract only: one assessment section per paper section, or everything in one */
+    sectionMode?: SectionMode
 ) => {
     const instituteId = getInstituteId();
     const response = await axios({
@@ -204,6 +215,7 @@ export const handleGenerateAssessmentQuestions = async (
             instituteId,
             taskId,
             ...(mode ? { mode } : {}),
+            ...(mode && sectionMode ? { sectionMode } : {}),
         },
     });
     return response?.data;

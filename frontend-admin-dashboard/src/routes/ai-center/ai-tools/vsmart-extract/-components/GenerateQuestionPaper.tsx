@@ -18,7 +18,11 @@ import { AITaskIndividualListInterface } from '@/types/ai/generate-assessment/ge
 import { GeneratingState } from '@/routes/ai-center/-components/GeneratingState';
 import { DraftingDonePanel } from '@/routes/ai-center/-components/DraftingDonePanel';
 import { RecentFilesPanel } from '@/routes/ai-center/-components/RecentFilesPanel';
-import { ExtractOptionsPanel } from '@/routes/ai-center/-components/ExtractOptionsPanel';
+import {
+    ExtractOptionsPanel,
+    type PaperInfo,
+} from '@/routes/ai-center/-components/ExtractOptionsPanel';
+import type { SectionMode } from '@/routes/ai-center/-services/ai-center-service';
 
 const ACCEPTED_FORMATS = '.pdf,.doc,.docx,.ppt,.pptx,.html';
 const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'html'];
@@ -28,9 +32,17 @@ type Phase = 'idle' | 'uploading' | 'processing' | 'ready' | 'generating' | 'don
 const GenerateAiQuestionPaperComponent = ({
     form,
     currentSectionIndex,
+    sectionSplit = false,
 }: {
     form?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
+    /**
+     * The target can hold several sections (assessment / homework wizards):
+     * a paper with sections may become one section each, and the teacher is
+     * asked which they want next to the credit line. A quiz cannot, so it is
+     * never asked and always gets a single section.
+     */
+    sectionSplit?: boolean;
 }) => {
     const { t } = useTranslation([
         'aiCenterVsmartExtractGenerateQuestionPaper',
@@ -56,12 +68,9 @@ const GenerateAiQuestionPaperComponent = ({
     // The paper decides what and how much; the teacher may only leave notes.
     const [notes, setNotes] = useState('');
     // What the server found on upload: question count and the exact credits.
-    const [paperInfo, setPaperInfo] = useState<{
-        questionCount: number | null;
-        estimatedCredits: number | null;
-        pages: number | null;
-        ocrPages: number;
-    } | null>(null);
+    const [paperInfo, setPaperInfo] = useState<PaperInfo | null>(null);
+    // A paper with sections: one assessment section each (the default) or all in one.
+    const [sectionMode, setSectionMode] = useState<SectionMode>('split');
 
     const { data: recentTasksData } = useQuery({
         ...handleQueryGetListIndividualTopics('PDF_TO_QUESTIONS'),
@@ -109,7 +118,8 @@ const GenerateAiQuestionPaperComponent = ({
                 userPrompt,
                 taskName,
                 taskId || '',
-                'extract'
+                'extract',
+                sectionSplit && (paperInfo?.sections?.length ?? 0) >= 2 ? sectionMode : 'single'
             );
         },
         onSuccess: (response: unknown) => {
@@ -187,7 +197,10 @@ const GenerateAiQuestionPaperComponent = ({
                     estimatedCredits: response.estimated_credits ?? null,
                     pages: response.pages ?? null,
                     ocrPages: response.ocr_pages ?? 0,
+                    sections: response.sections ?? [],
+                    marking: response.marking ?? null,
                 });
+                setSectionMode('split');
                 setPhase('ready');
             } else {
                 setErrorMessage(t('errors.processFailed'));
@@ -308,6 +321,7 @@ const GenerateAiQuestionPaperComponent = ({
                             heading={t('productName')}
                             sectionsForm={form}
                             currentSectionIndex={currentSectionIndex}
+                            allowSectionSplit={sectionSplit}
                             onDraftAnother={() => {
                                 setReadyTask(null);
                                 setPendingTaskId(null);
@@ -332,6 +346,8 @@ const GenerateAiQuestionPaperComponent = ({
                             setNotes={setNotes}
                             onSubmit={handleGenerate}
                             paperInfo={paperInfo}
+                            sectionMode={sectionSplit ? sectionMode : undefined}
+                            setSectionMode={sectionSplit ? setSectionMode : undefined}
                         />
                     ) : null}
                 </div>
@@ -365,6 +381,7 @@ const GenerateAiQuestionPaperComponent = ({
                 setEnableDialog={setEnableTasksDialog}
                 sectionsForm={form}
                 currentSectionIndex={currentSectionIndex}
+                allowSectionSplit={sectionSplit}
             />
         </div>
     );

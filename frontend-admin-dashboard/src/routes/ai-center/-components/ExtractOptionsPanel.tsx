@@ -1,13 +1,23 @@
 import { ArrowRight, CheckCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { computeToolCredits, useToolPricingQuery } from '@/services/ai-credits/get-ai-credits';
+import type {
+    AIPaperMarking,
+    AIPaperSection,
+} from '@/types/ai/generate-assessment/generate-complete-assessment';
+import type { SectionMode } from '../-services/ai-center-service';
 
 export interface PaperInfo {
     questionCount: number | null;
     estimatedCredits: number | null;
     pages: number | null;
     ocrPages: number;
+    /** The paper's own sections (2+) and marking scheme, when it prints them. */
+    sections?: AIPaperSection[];
+    marking?: AIPaperMarking | null;
 }
 
 interface ExtractOptionsPanelProps {
@@ -17,6 +27,9 @@ interface ExtractOptionsPanelProps {
     disabled?: boolean;
     /** What the upload step found: question count and the exact credits (null while unknown). */
     paperInfo?: PaperInfo | null;
+    /** Asked only when the paper has sections: one assessment section each, or all in one. */
+    sectionMode?: SectionMode;
+    setSectionMode?: (value: SectionMode) => void;
 }
 
 /** A typical paper, for the cost line shown before the real count is known. */
@@ -36,6 +49,8 @@ export const ExtractOptionsPanel = ({
     onSubmit,
     disabled = false,
     paperInfo = null,
+    sectionMode,
+    setSectionMode,
 }: ExtractOptionsPanelProps) => {
     const { t } = useTranslation('aiCenterExtractOptionsPanel');
     const { data: pricing } = useToolPricingQuery();
@@ -46,6 +61,7 @@ export const ExtractOptionsPanel = ({
         credits: string | number;
     }> | null;
     const perQuestion = row ? Number(row.per_unit_credits) : null;
+    const sections = paperInfo?.sections ?? [];
     const typical = computeToolCredits(row, { num_questions: TYPICAL_QUESTIONS });
     // "up to 20 → 1.5 · 21–50 → 3 · 51–100 → 4.5 · 100+ → 6.5"
     const bands = slabs
@@ -80,6 +96,58 @@ export const ExtractOptionsPanel = ({
                           })
                         : t('foundScan', { pages: paperInfo.pages ?? '?' })}
                     {paperInfo.ocrPages > 0 && ' ' + t('foundOcr', { count: paperInfo.ocrPages })}
+                    {paperInfo.marking?.marks != null &&
+                        ' ' +
+                            t('foundMarking', {
+                                marks: paperInfo.marking.marks,
+                                negative: paperInfo.marking.negative_marks ?? 0,
+                            })}
+                </div>
+            )}
+
+            {/* The paper has sections: the assessment can follow them or hold
+                every question in one section. Asked here, before the credits
+                are spent, because it changes what the preview builds. */}
+            {sections.length >= 2 && setSectionMode && (
+                <div className="flex flex-col gap-2 rounded-xl border border-neutral-200 px-4 py-3">
+                    <p className="text-sm font-medium text-neutral-700">
+                        {t('sectionsQuestion', {
+                            count: sections.length,
+                            names: sections.map((s) => s.name).join(' · '),
+                        })}
+                    </p>
+                    <RadioGroup
+                        value={sectionMode ?? 'split'}
+                        onValueChange={(value) => setSectionMode?.(value as SectionMode)}
+                        className="gap-1.5"
+                    >
+                        <div className="flex items-start gap-2">
+                            <RadioGroupItem
+                                value="split"
+                                id="extract-sections-split"
+                                className="mt-0.5"
+                            />
+                            <Label
+                                htmlFor="extract-sections-split"
+                                className="text-xs font-normal text-neutral-600"
+                            >
+                                {t('sectionsSplit', { count: sections.length })}
+                            </Label>
+                        </div>
+                        <div className="flex items-start gap-2">
+                            <RadioGroupItem
+                                value="single"
+                                id="extract-sections-single"
+                                className="mt-0.5"
+                            />
+                            <Label
+                                htmlFor="extract-sections-single"
+                                className="text-xs font-normal text-neutral-600"
+                            >
+                                {t('sectionsSingle')}
+                            </Label>
+                        </div>
+                    </RadioGroup>
                 </div>
             )}
 

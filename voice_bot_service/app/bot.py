@@ -99,7 +99,7 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
-                       is_screener_hold, spoken_key)
+                       is_screener_hold, spoken_key, takes_over_opening)
 
 logger = logging.getLogger(__name__)
 
@@ -903,6 +903,14 @@ class TranscriptCollector(FrameProcessor):
                 # They took the turn: the words we were resuming are stale.
                 self._cancel_resume_check(stale=True)
                 await self.broadcast_interruption()
+                # If that cut our opening before it was heard and what they
+                # said is not a question or a refusal, the opening is still
+                # owed (call 4243a436: room chatter cut it at 3 of 221 chars).
+                if self._resay_opening is not None and not takes_over_opening(text):
+                    try:
+                        await self._resay_opening(text, cut_now=True)
+                    except TypeError:
+                        await self._resay_opening(text)
             elif ducked:
                 # The reply finished while we were ducked (nothing held, bot
                 # quiet): this is just a normal turn — release the duck flag
@@ -2238,9 +2246,13 @@ class RunGuard(FrameProcessor):
 
     def __init__(self, context, enabled=None, diag=None,
                  short_answer_grace_secs: float = 0.0, short_answer_max_words: int = 3,
-                 quiet_for=None, on_run=None):
+                 quiet_for=None, on_run=None, opening_pending=None):
         super().__init__()
         self._context = context
+        # While the scripted opening has not been heard, the opening is the
+        # reply — a run only goes through if the caller genuinely took over
+        # (a question to us, a refusal, or our own cue). Call 4243a436.
+        self._opening_pending = opening_pending or (lambda: False)
         self._enabled = enabled or (lambda: True)
         self._diag = diag
         self._last_allowed_fp = None
@@ -2270,6 +2282,14 @@ class RunGuard(FrameProcessor):
         must be allowed to run again on the fallback, which the unchanged-
         context block would otherwise refuse."""
         self._last_allowed_fp = None
+
+    @staticmethod
+    def _last_user_text(msgs) -> str:
+        for msg in reversed(msgs):
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                c = msg.get("content")
+                return c if isinstance(c, str) else ""
+        return ""
 
     @staticmethod
     def _caller_words(msgs) -> int:
@@ -2402,6 +2422,14 @@ class RunGuard(FrameProcessor):
                 msgs = []
             if msgs:
                 role, fp = self._fingerprint(msgs)
+                if role == "user" and self._opening_pending():
+                    last = self._last_user_text(msgs)
+                    if not takes_over_opening(last):
+                        if self._diag is not None:
+                            self._diag.bump("runs_held_for_opening")
+                        logger.info("run-guard: the opening has not played yet and %r does "
+                                    "not take over — the opening is the reply", last[:32])
+                        return
                 # A newer run supersedes a held one (its context contains the
                 # held words too).
                 self._drop_held("a newer turn arrived")
@@ -4482,12 +4510,23 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     # ONE re-say per call. If the caller talks over the re-delivered opening
     # too, the normal continuation path takes it from there — never a loop.
-    _opening_resaid = False
+    _opening_resays = 0        # at most two: a noisy pickup can cut it twice
     _greet_queued_t = 0.0      # stamped by _greet_when_ready when it queues the opening
 
-    async def _resay_opening(text, force: bool = False) -> bool:
-        nonlocal _opening_resaid
-        if _opening_resaid or diag.greet_path != "scripted" or not _greet_queued_t:
+    def _opening_pending() -> bool:
+        """The scripted opening is still owed to the caller: it was never
+        played, or was cut before half of it played, no reply has run, and
+        we are still inside the pickup window (so this can never mute a call)."""
+        try:
+            return (diag.greet_path == "scripted" and _in_machine_window()
+                    and _opening_barely_heard(_opening_for_cache, outcome.transcript,
+                                              flags["reply_started_t"]))
+        except NameError:
+            return False
+
+    async def _resay_opening(text, force: bool = False, cut_now: bool = False) -> bool:
+        nonlocal _opening_resays
+        if _opening_resays >= 2 or diag.greet_path != "scripted" or not _greet_queued_t:
             return False
         if not force:
             # Only when something actually KILLED the queued opening: an
@@ -4496,7 +4535,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # the pipeline had even started playing it; nothing had cancelled it,
             # the re-say queued a second copy, and the caller heard the whole
             # introduction twice back to back.
-            if not (flags["last_cut_t"] > _greet_queued_t):
+            if not cut_now and not (flags["last_cut_t"] > _greet_queued_t):
                 return False
             if not _opening_barely_heard(_opening_for_cache, outcome.transcript,
                                          flags["reply_started_t"]):
@@ -4504,7 +4543,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # force=True: a call screener took the opening and the human has just
         # picked up — the "was it cut / barely heard" tests are about THEIR
         # ears, and none of it reached them (calls 612f5e37, 91d1541e).
-        _opening_resaid = True
+        _opening_resays += 1
         diag.bump("opening_resaid")
         logger.info("greet: %s — saying the opening again corr=%s",
                     "the line was screening; the person just picked up" if force
@@ -4523,7 +4562,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if not _opening_barely_heard(_opening_for_cache, outcome.transcript,
                                      flags["reply_started_t"]):
             return False
-        _opening_resaid = True
+        _opening_resays += 1
         diag.bump("opening_resaid")
         logger.info("greet: caller's %r cut the opening at its start — saying the "
                     "opening again corr=%s", (text or "")[:20], corr)
@@ -4673,7 +4712,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          quiet_for=lambda: (time.time() - flags["voice_tick_t"]
                                             if flags["voice_tick_t"] else float("inf")),
                          on_run=lambda text: outcome.replay["runs"].append(
-                             [round(time.time() - outcome.connected_at, 2), text]))
+                             [round(time.time() - outcome.connected_at, 2), text]),
+                         opening_pending=lambda: _opening_pending())
 
     # One EQ per call: it carries IIR state across frames, so it must not be
     # shared between concurrent calls. None when disabled or scipy is missing,

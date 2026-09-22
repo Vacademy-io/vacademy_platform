@@ -482,6 +482,33 @@ _WHO_PHRASES = ("who is this", "who's this", "who are you", "who is calling", "w
                 "know the name", "name of your", "your name", "naam kya", "आपका नाम", "aapka naam")
 
 
+_TAKEOVER_WORDS = frozenset({
+    "कौन", "क्यों", "कहाँ", "कहां", "किसलिए", "कैसे", "किसने", "किससे",
+    "who", "why", "where", "which", "how", "kaun", "kyun", "kyu", "kahan", "kaise",
+})
+
+
+def takes_over_opening(text: str) -> bool:
+    """Before our opening has been heard, does THIS utterance earn a model
+    reply instead? Only a question to us, a refusal, or our own cue does.
+    Call 4243a436 (2026-09-22): the callee was mid-conversation with someone
+    in the room — "तो गुजर जाएगी", "सेटिंग कम हो जाएगी", "नहीं वो तो ठीक था" —
+    and each ran the model or cut the opening; he heard "समझ सकती हूँ, नाम
+    क्या है?" from a stranger and asked who was calling at 33 s."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if t.startswith("["):
+        return True                    # our own steering cue
+    if caller_asks_who(t) or caller_wants_to_end(t):
+        return True
+    if is_audio_check(t) or caller_checking_presence(t):
+        return False                   # "Hello?" — the opening IS the answer
+    if "?" in t or "？" in t:
+        return True
+    return any(w in _TAKEOVER_WORDS for w in _words(t))
+
+
 def caller_asks_who(text: str) -> bool:
     """"Who is calling?" in any of the ways callers say it."""
     t = (text or "").casefold()

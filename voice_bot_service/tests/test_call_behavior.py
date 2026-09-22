@@ -3508,8 +3508,11 @@ def test_resay_requires_an_interruption_after_the_greet_was_queued():
     had played and nothing had cancelled it -> the caller heard the intro twice."""
     import inspect
     src = inspect.getsource(b.run_bot)
-    resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resaid = True")]
+    resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resays += 1")]
     assert 'flags["last_cut_t"] > _greet_queued_t' in resay
+    # cut_now is the one exception: the turn-gate has just broadcast the
+    # interruption itself (a real barge-in), so the cut is a fact, not a guess.
+    assert "not cut_now and not (flags" in resay
     greet = src[src.index("async def _greet_when_ready"):]
     assert "_greet_queued_t = time.time()" in greet
     assert greet.index("_greet_queued_t = time.time()") < greet.index("await task.queue_frames(_frames)")
@@ -5300,6 +5303,59 @@ def test_a_greeting_during_the_opening_is_absorbed():
     from app.turntake import mid_reply_action, ABSORB
     for t in ["नमस्ते।", "नमस्कार जी", "Namaste ma'am"]:
         assert mid_reply_action(t) == ABSORB, t
+
+
+# ── call 4243a436 (2026-09-22): room chatter at pickup ran the model and cut ──
+def test_takes_over_opening_only_for_questions_refusals_and_cues():
+    from app.turntake import takes_over_opening
+    for t in ["तो गुजर जाएगी।", "सेटिंग कम हो जाएगी।", "नहीं वो तो ठीक था।", "Hello.", "हाँ जी बोलिए।"]:
+        assert not takes_over_opening(t), t
+    for t in ["आप कौन बोल रहे हो?", "कहाँ से बोल रहे हो madam", "who is this",
+              "not interested, cut the call", "[They asked who is calling.]"]:
+        assert takes_over_opening(t), t
+
+
+@pytest.mark.asyncio
+async def test_nothing_generates_before_the_opening_unless_the_caller_takes_over():
+    from pipecat.frames.frames import LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    import app.diagnostics as dg
+    pending = {"v": True}
+    seen = []
+    async def _push(frame, direction=None): seen.append(type(frame).__name__)
+    def _guard(ctx):
+        g = b.RunGuard(ctx, enabled=lambda: True, diag=dg.CallDiagnostics(),
+                       opening_pending=lambda: pending["v"])
+        g.push_frame = _push
+        return g
+    b.FrameProcessor.process_frame = _noop_super
+    ctx = LLMContext(messages=[{"role": "system", "content": "x"},
+                               {"role": "user", "content": "तो गुजर जाएगी।"}])
+    await _guard(ctx).process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    assert seen == [], "room chatter ran the model before the opening"
+    ctx2 = LLMContext(messages=[{"role": "system", "content": "x"},
+                                {"role": "user", "content": "आप कौन बोल रहे हो?"}])
+    await _guard(ctx2).process_frame(LLMContextFrame(ctx2), b.FrameDirection.DOWNSTREAM)
+    assert seen == ["LLMContextFrame"], "a question to us must still run"
+    pending["v"] = False
+    await _guard(ctx).process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    assert seen == ["LLMContextFrame", "LLMContextFrame"], "once the opening played, normal"
+
+
+@pytest.mark.asyncio
+async def test_a_real_barge_in_that_cut_an_unheard_opening_gets_it_said_again():
+    rec = _Rec()
+    calls = []
+    async def _resay(text, force=False, cut_now=False):
+        calls.append((text, cut_now)); return True
+    tc = _replay_collector(rec, bot_speaking=True, in_machine_window=lambda: True,
+                           resay_opening=_resay)
+    await _feed(tc, "नहीं वो तो ठीक था।")          # room chatter: a real barge-in
+    assert rec.interruptions == 1
+    assert calls == [("नहीं वो तो ठीक था।", True)], calls
+    calls.clear()
+    await _feed(tc, "आप कौन बोल रहे हो?")           # a question to us takes over
+    assert calls == [], "a takeover must not re-greet"
 
 
 @pytest.mark.asyncio

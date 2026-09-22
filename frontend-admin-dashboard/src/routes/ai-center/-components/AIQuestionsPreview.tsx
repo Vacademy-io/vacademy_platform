@@ -24,6 +24,9 @@ import {
 } from '@/routes/assessment/question-papers/-utils/merge-section-questions';
 import { calculateTotalMarks } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
 import {
+    DEFAULT_MARK,
+    durationFields,
+    isBlankDuration,
     isEmptySection,
     pairWithPreview,
     sectionRowFor,
@@ -320,6 +323,20 @@ const AIQuestionsPreview = ({
                 const paired = pairWithPreview(transformQuestionsData, previewQuestions);
                 const summary = assessmentData.extraction ?? null;
 
+                // The time the paper allows becomes the test's duration when
+                // the teacher has not set one — the paper is usable as it lands.
+                const applyPaperDuration = () => {
+                    const minutes = summary?.duration_minutes;
+                    if (!sectionsForm || !minutes) return;
+                    const current = sectionsForm.getValues(
+                        'testDuration.entireTestDuration.testDuration'
+                    );
+                    if (!isBlankDuration(current)) return;
+                    const { hrs, min } = durationFields(minutes);
+                    sectionsForm.setValue('testDuration.entireTestDuration.testDuration.hrs', hrs);
+                    sectionsForm.setValue('testDuration.entireTestDuration.testDuration.min', min);
+                };
+
                 if (
                     allowSectionSplit &&
                     sectionsForm &&
@@ -351,6 +368,7 @@ const AIQuestionsPreview = ({
                         );
                         sectionsForm.setValue('section', next);
                         sectionsForm.trigger('section');
+                        applyPaperDuration();
                         toast.success(
                             t('toast.sectionsAdded', {
                                 sections: newSections.length,
@@ -370,7 +388,9 @@ const AIQuestionsPreview = ({
                     // Spread full question data (options, validAnswers, etc.) so that
                     // quiz context can read them via getValues. The Zod schema strips
                     // unknown fields on validation, so the assessment flow is unaffected.
-                    sectionRowFor(question, paired[i])
+                    // A digitised paper's questions are worth a mark each when the
+                    // paper prints none; generated questions keep the section default.
+                    sectionRowFor(question, paired[i], summary ? DEFAULT_MARK : '')
                 );
 
                 // Append rather than replace: running an AI tool on a section that
@@ -395,6 +415,7 @@ const AIQuestionsPreview = ({
                 sectionsForm?.trigger(
                     `section.${currentSectionIndex}.adaptive_marking_for_each_question`
                 );
+                applyPaperDuration();
                 toast.success(describeMerge(mergeResult));
                 closeAllAIQuestionDialogs();
                 setOpenQuestionsPreview(false);
@@ -597,6 +618,18 @@ const AIQuestionsPreview = ({
                                                                         assessmentData.extraction
                                                                             .marking
                                                                             .negative_marks ?? 0,
+                                                                })}
+                                                        {(assessmentData.extraction
+                                                            .duration_minutes ?? 0) > 0 &&
+                                                            ' · ' +
+                                                                t('header.extractionDuration', {
+                                                                    hrs: Math.floor(
+                                                                        assessmentData.extraction
+                                                                            .duration_minutes! / 60
+                                                                    ),
+                                                                    min:
+                                                                        assessmentData.extraction
+                                                                            .duration_minutes! % 60,
                                                                 })}
                                                         {assessmentData.extraction.credits !=
                                                             null &&

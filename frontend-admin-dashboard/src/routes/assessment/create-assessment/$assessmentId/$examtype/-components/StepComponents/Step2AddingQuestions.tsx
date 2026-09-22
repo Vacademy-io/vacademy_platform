@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { z } from 'zod';
 import sectionDetailsSchema from '../../-utils/section-details-schema';
 import { FormProvider, useFieldArray, useForm } from 'react-hook-form';
@@ -104,30 +104,7 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
     const { handleSubmit, getValues, control, watch } = form;
     // Store initial data in useRef to ensure it remains constant throughout the form updates
     const oldData = useRef(getValues());
-    // How many section cards to draw. Each card deletes itself through its
-    // own useFieldArray, and react-hook-form's remove() tells only that
-    // instance — nothing here re-rendered, so the list kept a card for a
-    // section that no longer existed (it then re-saved itself as "Section
-    // N" with no questions, and the real sections looked lost). Follow the
-    // form's own count instead; a keystroke inside a section leaves it as is.
-    const [sectionCount, setSectionCount] = useState(getValues('section')?.length ?? 0);
-    const sectionCountRef = useRef(sectionCount);
-    useEffect(
-        () =>
-            form.subscribe({
-                name: 'section',
-                formState: { values: true },
-                callback: ({ values }) => {
-                    const next = values.section?.length ?? 0;
-                    if (next !== sectionCountRef.current) {
-                        sectionCountRef.current = next;
-                        setSectionCount(next);
-                    }
-                },
-            }),
-        [form]
-    );
-    const allSections = (getValues('section') ?? []).slice(0, sectionCount);
+    const allSections = getValues('section');
 
     const handleSubmitStep2Form = useMutation({
         mutationFn: ({
@@ -198,7 +175,19 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
         }
     };
 
-    const { append } = useFieldArray({
+    // The one owner of the section list. Cards are keyed by the field id
+    // react-hook-form gives each section, not by index, and they delete
+    // through this instance's remove(): a card that stays mounted while the
+    // section under its index changes (a delete above it, or the paper's
+    // sections replacing the blank one) kept showing the old section's name
+    // and marks, because a controlled field only follows changes addressed
+    // to its exact name. With stable ids React remounts the card for the
+    // section that is actually there.
+    const {
+        fields: sectionFields,
+        append,
+        remove,
+    } = useFieldArray({
         control,
         name: 'section', // Matches the key in defaultValues
     });
@@ -766,13 +755,14 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                             defaultValue={`section-0`}
                             className="flex flex-col gap-4"
                         >
-                            {allSections.map((_, index) => (
+                            {sectionFields.map((sectionField, index) => (
                                 <Step2SectionInfo
-                                    key={index}
+                                    key={sectionField.id}
                                     form={form}
                                     index={index}
                                     currentStep={currentStep}
                                     oldData={oldData}
+                                    onDelete={remove}
                                 />
                             ))}
                         </Accordion>

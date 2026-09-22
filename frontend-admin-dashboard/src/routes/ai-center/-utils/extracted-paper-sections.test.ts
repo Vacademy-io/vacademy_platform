@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { AIExtractionSummary } from '@/types/ai/generate-assessment/generate-complete-assessment';
 import type { MyQuestion } from '@/types/assessments/question-paper-form';
 import {
+    DEFAULT_MARK,
+    durationFields,
+    isBlankDuration,
     isEmptySection,
     pairWithPreview,
     sectionRowFor,
@@ -29,10 +32,19 @@ const preview = (id: string, sectionName: string | undefined, mark: string, pena
         questionPenalty: penalty,
     }) as unknown as MyQuestion;
 
-const summary = (mode: 'split' | 'single', names: string[]): AIExtractionSummary =>
+const summary = (
+    mode: 'split' | 'single',
+    names: string[],
+    minutes?: number
+): AIExtractionSummary =>
     ({
         section_mode: mode,
-        sections: names.map((name) => ({ name, count: 1, instruction: `${name} instructions` })),
+        sections: names.map((name) => ({
+            name,
+            count: 1,
+            instruction: `${name} instructions`,
+            duration_minutes: minutes ?? null,
+        })),
     }) as unknown as AIExtractionSummary;
 
 describe('sectionsFromExtractedPaper', () => {
@@ -69,6 +81,19 @@ describe('sectionsFromExtractedPaper', () => {
         expect(sections.map((s) => s.sectionName)).toEqual(['Part I', 'Section 5']);
     });
 
+    it('gives a question the paper prices nowhere one mark, and the section its printed time', () => {
+        const sections = sectionsFromExtractedPaper(
+            summary('split', ['Section A'], 90),
+            [preview('1', 'Section A', '0')],
+            [stored('1')]
+        );
+        expect(sections[0]!.adaptive_marking_for_each_question[0]!.questionMark).toBe(DEFAULT_MARK);
+        expect(sections[0]!.marks_per_question).toBe('1');
+        expect(sections[0]!.total_marks).toBe('1');
+        expect(sections[0]!.section_duration).toEqual({ hrs: '1', min: '30' });
+        expect(sections[0]!.negative_marking.checked).toBe(false);
+    });
+
     it('leaves the section default blank when marks differ between questions', () => {
         const sections = sectionsFromExtractedPaper(
             summary('split', ['Section C']),
@@ -93,6 +118,21 @@ describe('sectionRowFor', () => {
         const kept = { ...stored('2'), questionMark: '7' } as MyQuestion;
         expect(sectionRowFor(kept, preview('2', undefined, '0', '0')).questionMark).toBe('7');
         expect(sectionRowFor(kept, undefined).questionMark).toBe('7');
+        // Without a default the old behaviour stands (generated papers keep the section default).
+        expect(sectionRowFor(stored('3'), undefined).questionMark).toBe('');
+        expect(sectionRowFor(stored('3'), undefined, DEFAULT_MARK).questionMark).toBe('1');
+    });
+});
+
+describe('durations', () => {
+    it('splits minutes into the wizard fields and knows an unset duration', () => {
+        expect(durationFields(120)).toEqual({ hrs: '2', min: '0' });
+        expect(durationFields(95)).toEqual({ hrs: '1', min: '35' });
+        expect(durationFields(null)).toEqual({ hrs: '0', min: '0' });
+        expect(isBlankDuration(undefined)).toBe(true);
+        expect(isBlankDuration({ hrs: '', min: '' })).toBe(true);
+        expect(isBlankDuration({ hrs: '0', min: '0' })).toBe(true);
+        expect(isBlankDuration({ hrs: '0', min: '30' })).toBe(false);
     });
 });
 

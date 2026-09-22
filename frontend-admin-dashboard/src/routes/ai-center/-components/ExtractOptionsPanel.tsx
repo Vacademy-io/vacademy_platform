@@ -18,6 +18,7 @@ export interface PaperInfo {
     /** The paper's own sections (2+) and marking scheme, when it prints them. */
     sections?: AIPaperSection[];
     marking?: AIPaperMarking | null;
+    durationMinutes?: number | null;
 }
 
 interface ExtractOptionsPanelProps {
@@ -101,6 +102,12 @@ export const ExtractOptionsPanel = ({
                             t('foundMarking', {
                                 marks: paperInfo.marking.marks,
                                 negative: paperInfo.marking.negative_marks ?? 0,
+                            })}
+                    {(paperInfo.durationMinutes ?? 0) > 0 &&
+                        ' ' +
+                            t('foundDuration', {
+                                hrs: Math.floor(paperInfo.durationMinutes! / 60),
+                                min: paperInfo.durationMinutes! % 60,
                             })}
                 </div>
             )}

@@ -199,6 +199,7 @@ const GenerateAiQuestionPaperComponent = ({
                     ocrPages: response.ocr_pages ?? 0,
                     sections: response.sections ?? [],
                     marking: response.marking ?? null,
+                    durationMinutes: response.duration_minutes ?? null,
                 });
                 setSectionMode('split');
                 setPhase('ready');

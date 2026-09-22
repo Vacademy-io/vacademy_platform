@@ -56,6 +56,8 @@ export interface AIPaperSection {
     marks?: number | null;
     negative_marks?: number | null;
     instruction?: string | null;
+    /** Time the paper allows for this section, when it says so. */
+    duration_minutes?: number | null;
 }
 
 export interface AIPaperMarking {
@@ -80,6 +82,8 @@ export interface AIExtractionSummary {
     sections?: AIPaperSection[];
     section_mode?: 'split' | 'single';
     marking?: AIPaperMarking | null;
+    /** Time the paper allows in all, when it says so (or the sum of its sections' times). */
+    duration_minutes?: number | null;
     credits: number | null;
     prompt_tokens: number;
     completion_tokens: number;

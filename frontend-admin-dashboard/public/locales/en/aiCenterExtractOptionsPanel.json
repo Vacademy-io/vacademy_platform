@@ -25,5 +25,6 @@
     "foundMarking": "Marking found: +{{marks}} per correct, −{{negative}} per wrong — applied to every question.",
     "sectionsQuestion": "This paper has {{count}} sections ({{names}}). How should the assessment be built?",
     "sectionsSplit": "One section per paper section ({{count}} sections, with their own marks)",
-    "sectionsSingle": "All questions in a single section"
+    "sectionsSingle": "All questions in a single section",
+    "foundDuration": "Time allowed: {{hrs}} h {{min}} min — set as the test duration."
 }

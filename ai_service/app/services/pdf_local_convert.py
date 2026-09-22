@@ -427,7 +427,8 @@ async def _start_local(file_id: str, data: bytes) -> Dict[str, Any]:
                 ",".join(str(i + 1) for i in info["ocr_idx"]) or "-", questions, len(outline["sections"]), pdf_id)
     return {"pdf_id": pdf_id, "vendor": vendor, "pages": info["pages"],
             "ocr": ocr_done > 0, "ocr_pages": ocr_done, "question_count": questions,
-            "sections": outline["sections"], "marking": outline["marking"]}
+            "sections": outline["sections"], "marking": outline["marking"],
+            "duration_minutes": outline["duration_minutes"]}
 
 
 def _single(doc, pno: int):

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from '@tanstack/react-router';
 import { ArrowLeft, ArrowSquareOut, Code, TextAa, X } from '@phosphor-icons/react';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
@@ -16,7 +15,7 @@ import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
 import { MonacoHtmlEditor } from '@/components/ai-video-editor/MonacoHtmlEditor';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInstituteDetails';
-import { ImageUploadField } from '../../-components/ImageUploadField';
+import { ImageUploadField } from '../ImageUploadField';
 import { useCataloguePermissions } from '../../-hooks/use-catalogue-permissions';
 import { getCatalogueTags } from '../../-services/catalogue-service';
 import { getCatalogueSiteUrl } from '../../-utils/learner-site-url';
@@ -144,11 +143,18 @@ const useBlogPlacements = (instituteId: string | null | undefined) => {
     }, [tags]);
 };
 
-export const BlogPostEditor = () => {
-    const { postId } = useParams({ strict: false }) as { postId: string };
+interface BlogPostEditorProps {
+    /** 'new' creates; any other id edits that post. */
+    postId: string;
+    onBack: () => void;
+    /** A brand-new post got its id — the host swaps to editing it. */
+    onCreated: (postId: string) => void;
+    onDirtyChange?: (dirty: boolean) => void;
+}
+
+export const BlogPostEditor = ({ postId, onBack, onCreated, onDirtyChange }: BlogPostEditorProps) => {
     const isNew = !postId || postId === 'new';
     const instituteId = getCurrentInstituteId();
-    const navigate = useNavigate();
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const { canWrite, canPublish } = useCataloguePermissions();
@@ -162,6 +168,9 @@ export const BlogPostEditor = () => {
     const [form, setForm] = useState<FormState>(() => emptyForm(authorDefault));
     const [mode, setMode] = useState<Mode>('visual');
     const [dirty, setDirty] = useState(false);
+    useEffect(() => {
+        onDirtyChange?.(dirty);
+    }, [dirty, onDirtyChange]);
 
     // Needed for "view on site" links on the institute's own learner domain.
     useEffect(() => {
@@ -240,7 +249,7 @@ export const BlogPostEditor = () => {
                 description: thenPublish ? 'The post is live on every site with a Blog section.' : undefined,
             });
             if (isNew) {
-                navigate({ to: '/manage-pages/blog/editor/$postId', params: { postId: saved.id }, replace: true });
+                onCreated(saved.id);
             }
         },
         onError: (err: unknown) => {
@@ -298,14 +307,14 @@ export const BlogPostEditor = () => {
             : [];
 
     return (
-        <div className="flex min-h-screen flex-col bg-neutral-50">
+        <div className="flex min-h-full flex-col bg-neutral-50">
             {/* Top bar */}
             <div className="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-4 py-3 lg:px-6">
                 <button
                     type="button"
                     onClick={() => {
                         if (dirty && !window.confirm('Discard unsaved changes?')) return;
-                        navigate({ to: '/manage-pages/blog' });
+                        onBack();
                     }}
                     className="inline-flex items-center gap-1.5 text-sm text-neutral-600 hover:text-neutral-900"
                 >

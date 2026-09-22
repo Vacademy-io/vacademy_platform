@@ -887,9 +887,7 @@ const ManagePagesBlogIndexRoute = ManagePagesBlogIndexRouteImport.update({
   id: "/manage-pages/blog/",
   path: "/manage-pages/blog/",
   getParentRoute: () => rootRouteImport,
-} as any).lazy(() =>
-  import("./routes/manage-pages/blog/index.lazy").then((d) => d.Route),
-)
+} as any)
 const ManageInstituteTeamsIndexRoute =
   ManageInstituteTeamsIndexRouteImport.update({
     id: "/manage-institute/teams/",

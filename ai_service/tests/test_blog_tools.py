@@ -168,7 +168,7 @@ async def test_list_reports_posts_placements_and_never_bodies(backend):
         "page_url": "https://learn.acme.edu/school/blog",
         "post_url_pattern": "https://learn.acme.edu/school/blog/<slug>",
     }]
-    assert out["editor_url"] == "https://admin.acme.edu/manage-pages/blog"
+    assert out["editor_url"] == "https://admin.acme.edu/manage-pages?blog=list"
 
 
 @pytest.mark.asyncio
@@ -186,7 +186,7 @@ async def test_get_returns_body_and_public_urls_only_when_published(backend):
     assert live["word_count"] > 100
     draft = await run("blog", {"action": "get", "slug": "neet-last-30-days"})
     assert draft["post"]["id"] == "post-draft" and "public_urls" not in draft
-    assert draft["editor_url"].endswith("/manage-pages/blog/editor/post-draft")
+    assert draft["editor_url"].endswith("/manage-pages?blog=post-draft")
     assert (await run("blog", {"action": "get", "post_id": "missing"}))["error"] == "unknown_post"
 
 
@@ -218,7 +218,7 @@ async def test_create_saves_a_draft_with_mcp_source_and_sanitised_body(backend):
     assert "<script>" not in body["content_html"]
     assert "cover_image_url" not in body                # http:// dropped, with a warning
     assert any("https" in w for w in out["warnings"])
-    assert out["editor_url"] == "https://admin.acme.edu/manage-pages/blog/editor/post-new"
+    assert out["editor_url"] == "https://admin.acme.edu/manage-pages?blog=post-new"
     assert "nothing is live" in out["next"].lower()
 
 
@@ -243,7 +243,7 @@ async def test_update_changes_only_drafts(backend):
     refused = await run("blog_edit", {"action": "update", "post_id": "post-live", "title": "Hacked"})
     assert refused["error"] == "not_a_draft" and refused["status"] == "PUBLISHED"
     assert backend.posts["post-live"]["title"] == "Results 2026"
-    assert refused["editor_url"].endswith("/editor/post-live")
+    assert refused["editor_url"].endswith("?blog=post-live")
 
 
 @pytest.mark.asyncio

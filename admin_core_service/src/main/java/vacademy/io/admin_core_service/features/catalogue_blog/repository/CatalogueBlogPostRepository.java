@@ -24,6 +24,9 @@ public interface CatalogueBlogPostRepository extends JpaRepository<CatalogueBlog
     /**
      * Admin list. Null status = every status; the search matches title, slug
      * and category. Newest edit first so the post being worked on stays on top.
+     * The CASTs matter: a null search term reaches Postgres untyped (bytea) and
+     * LOWER('%' || NULL || '%') then fails with "function lower(bytea) does not
+     * exist" even though the IS NULL branch would have short-circuited it.
      */
     @Query(value = """
             SELECT p FROM CatalogueBlogPost p
@@ -31,9 +34,9 @@ public interface CatalogueBlogPostRepository extends JpaRepository<CatalogueBlog
                AND (:status IS NULL OR p.status = :status)
                AND (:category IS NULL OR p.category = :category)
                AND (:q IS NULL
-                    OR LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(p.slug) LIKE LOWER(CONCAT('%', :q, '%'))
-                    OR LOWER(COALESCE(p.category, '')) LIKE LOWER(CONCAT('%', :q, '%')))
+                    OR LOWER(p.title) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
+                    OR LOWER(p.slug) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
+                    OR LOWER(COALESCE(p.category, '')) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%')))
              ORDER BY p.updatedAt DESC
             """)
     Page<CatalogueBlogPost> searchForAdmin(@Param("instituteId") String instituteId,

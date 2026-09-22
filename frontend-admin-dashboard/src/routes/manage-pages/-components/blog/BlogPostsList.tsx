@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 import { Plus, MagnifyingGlass, PencilSimple, Trash, DotsThreeVertical, ArrowSquareOut, Robot } from '@phosphor-icons/react';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { MyButton } from '@/components/design-system/button';
@@ -35,7 +34,7 @@ import {
 } from '../../-services/blog-service';
 
 /**
- * Manage Pages → Blog: every post of the institute, any status.
+ * Website Builder → Blog: every post of the institute, any status.
  *
  * Posts are rows, not page JSON, so this list is where an article's lifecycle
  * lives — draft, publish, unpublish, archive, delete — independently of any
@@ -73,9 +72,13 @@ const RowSkeleton = () => (
     </div>
 );
 
-export const BlogPostsList = () => {
+interface BlogPostsListProps {
+    /** 'new' opens a blank editor; any other id edits that post. */
+    onOpenPost: (postId: string) => void;
+}
+
+export const BlogPostsList = ({ onOpenPost }: BlogPostsListProps) => {
     const instituteId = getCurrentInstituteId();
-    const navigate = useNavigate();
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const { canWrite, canDelete, canPublish } = useCataloguePermissions();
@@ -145,7 +148,7 @@ export const BlogPostsList = () => {
                     <MyButton
                         buttonType="primary"
                         scale="medium"
-                        onClick={() => navigate({ to: '/manage-pages/blog/editor/$postId', params: { postId: 'new' } })}
+                        onClick={() => onOpenPost('new')}
                     >
                         <Plus className="size-4" /> New post
                     </MyButton>
@@ -205,7 +208,7 @@ export const BlogPostsList = () => {
                             buttonType="secondary"
                             scale="small"
                             className="mt-4"
-                            onClick={() => navigate({ to: '/manage-pages/blog/editor/$postId', params: { postId: 'new' } })}
+                            onClick={() => onOpenPost('new')}
                         >
                             <Plus className="size-4" /> New post
                         </MyButton>
@@ -222,7 +225,7 @@ export const BlogPostsList = () => {
                                 type="button"
                                 className="min-w-0 text-left"
                                 onClick={() =>
-                                    navigate({ to: '/manage-pages/blog/editor/$postId', params: { postId: post.id } })
+                                    onOpenPost(post.id)
                                 }
                             >
                                 <div className="flex flex-wrap items-center gap-2">
@@ -282,7 +285,7 @@ export const BlogPostsList = () => {
                                     <DropdownMenuContent align="end">
                                         <DropdownMenuItem
                                             onClick={() =>
-                                                navigate({ to: '/manage-pages/blog/editor/$postId', params: { postId: post.id } })
+                                                onOpenPost(post.id)
                                             }
                                         >
                                             <PencilSimple className="mr-2 size-4" /> Edit

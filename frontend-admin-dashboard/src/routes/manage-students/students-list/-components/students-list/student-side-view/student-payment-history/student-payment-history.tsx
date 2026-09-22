@@ -174,7 +174,10 @@ const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
                         {planLabel} · {t('feePlan.installments', { count: summary.installment_count })}
                     </div>
                     <div className="mt-0.5 text-caption text-muted-foreground">
-                        {t('feePlan.netPaid', { net: formatCurrency(net), paid: formatCurrency(paid) })}
+                        {t('feePlan.netPaid', {
+                            net: formatCurrency(net, summary.currency ?? undefined),
+                            paid: formatCurrency(paid, summary.currency ?? undefined),
+                        })}
                     </div>
                 </div>
                 <div className="text-right">
@@ -182,7 +185,7 @@ const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
                         {t('feePlan.outstanding')}
                     </div>
                     <div className="text-h2 font-bold leading-tight text-danger-600">
-                        {formatCurrency(summary.outstanding_total ?? 0)}
+                        {formatCurrency(summary.outstanding_total ?? 0, summary.currency ?? undefined)}
                     </div>
                 </div>
             </div>

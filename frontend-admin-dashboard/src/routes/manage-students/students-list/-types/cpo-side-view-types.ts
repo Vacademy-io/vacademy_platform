@@ -20,6 +20,8 @@ export interface CpoUserPlanSummary {
     payment_option_id: string | null;
     payment_option_name: string | null;
     status: string | null;
+    /** Currency the plan is billed in; absent on plans with no PaymentPlan behind them. */
+    currency?: string | null;
     gross_total: number;
     net_total: number;
     paid_total: number;

@@ -113,6 +113,9 @@ public class CpoSideViewService {
                     .paymentOptionId(plan.getPaymentOptionId())
                     .paymentOptionName(plan.getPaymentOption() != null ? plan.getPaymentOption().getName() : null)
                     .status(plan.getStatus())
+                    // Same lazy walk as getPaymentOption() above -- open-in-view keeps the
+                    // session alive for the request, which is what that line already relies on.
+                    .currency(plan.getPaymentPlan() != null ? plan.getPaymentPlan().getCurrency() : null)
                     .grossTotal(gross)
                     .netTotal(net)
                     .paidTotal(paid)

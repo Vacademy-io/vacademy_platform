@@ -4,17 +4,37 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * Premium teacher avatar rendered on the device by Spatius AvatarKit
  * (docs.spatius.ai). The lesson hands each spoken segment's audio to the
  * avatar instead of the speaker; AvatarKit plays it in sync with the face.
- * Loaded on demand so lessons without an avatar never download the SDK.
+ *
+ * Loading is the whole experience here, so it is staged for the eye:
+ *  - the SDK (3 MB + a 1 MB wasm core) is prefetched at the tap that opens
+ *    the lesson, a full round-trip before the page needs it;
+ *  - SDK init runs while the session token is still in flight;
+ *  - `progress` is the real asset download, `painted` the first frame —
+ *    the card shows the teacher's photo until then and cross-fades.
  */
 export interface AvatarBoot {
   provider: "spatius";
   app_id: string;
   avatar_id: string;
-  session_token: string;
+  /** The session token, or the request for it — init overlaps the wait. */
+  session_token: string | Promise<string>;
 }
 
 type AvatarKit = typeof import("@spatius/avatarkit");
 const TARGET_RATE = 16000;
+
+let kitPromise: Promise<AvatarKit> | null = null;
+/** Start downloading the SDK now (idempotent). Safe to call from any tap. */
+export function preloadAvatarKit(): Promise<AvatarKit> {
+  if (!kitPromise) {
+    kitPromise = import("@spatius/avatarkit").catch((e) => {
+      kitPromise = null; // a failed fetch is retried next time
+      throw e;
+    });
+  }
+  return kitPromise;
+}
+let initializedApp: string | null = null;
 
 /** Decode any browser-playable audio (mp3 / wav) to mono 16 kHz PCM16 for the motion server. */
 export async function toPcm16(ctx: AudioContext, data: ArrayBuffer): Promise<ArrayBuffer> {
@@ -42,11 +62,16 @@ const FATAL_CODES = new Set([
 ]);
 
 export function useSpatiusAvatar() {
+  /** The view exists (assets downloaded). Not yet visible: see `painted`. */
   const [ready, setReady] = useState(false);
+  /** The SDK drew its first frame: the face is on screen. */
+  const [painted, setPainted] = useState(false);
+  /** Asset download, 0..1, while loading; null when unknown. */
+  const [progress, setProgress] = useState<number | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   /** Last non-fatal vendor error (websocket drop, playback hiccup); the avatar stays and reconnects. */
   const [warning, setWarning] = useState<string | null>(null);
-  /** Audio unlocked inside a tap and the motion session started: the avatar can actually speak. */
+  /** Audio unlocked and the motion session started: the avatar can actually speak. */
   const [activated, setActivated] = useState(false);
   const connectedRef = useRef(false);
   const bootRef = useRef<AvatarBoot | null>(null);
@@ -66,24 +91,35 @@ export function useSpatiusAvatar() {
     viewRef.current = null;
     connectedRef.current = false;
     setReady(false);
+    setPainted(false);
+    setProgress(null);
     setActivated(false);
   }, []);
 
   /** Mount the avatar into `container` with the session from the server. Call once per lesson. */
   const mount = useCallback(async (boot: AvatarBoot, container: HTMLDivElement) => {
     try {
-      const kit = kitRef.current ?? (await import("@spatius/avatarkit"));
+      const kit = kitRef.current ?? (await preloadAvatarKit());
       kitRef.current = kit;
-      await kit.AvatarSDK.initialize(boot.app_id, {
-        drivingServiceMode: kit.DrivingServiceMode.direct,
-        // The SDK's default and what Spatius Studio renders with; "high" scales the
-        // splat pass down and single-photo avatars visibly soften.
-        renderQuality: kit.RenderQuality.ultra,
-        audioFormat: { channelCount: 1, sampleRate: TARGET_RATE },
+      // Init needs only the app id, so it overlaps the token round-trip.
+      if (initializedApp !== boot.app_id) {
+        await kit.AvatarSDK.initialize(boot.app_id, {
+          drivingServiceMode: kit.DrivingServiceMode.direct,
+          // The SDK's default and what Spatius Studio renders with; "high" scales the
+          // splat pass down and single-photo avatars visibly soften.
+          renderQuality: kit.RenderQuality.ultra,
+          audioFormat: { channelCount: 1, sampleRate: TARGET_RATE },
+        });
+        initializedApp = boot.app_id;
+      }
+      kit.AvatarSDK.setSessionToken(await boot.session_token);
+      setProgress(0);
+      const avatar = await kit.AvatarManager.shared.load(boot.avatar_id, (info) => {
+        if (typeof info.progress === "number") setProgress(Math.max(0, Math.min(1, info.progress)));
+        if (info.type === "completed") setProgress(1);
       });
-      kit.AvatarSDK.setSessionToken(boot.session_token);
-      const avatar = await kit.AvatarManager.shared.load(boot.avatar_id);
       const view = new kit.AvatarView(avatar, container);
+      view.onFirstRendering = () => setPainted(true);
       containerRef.current = container;
       const c = view.controller;
       c.onConversationState = (state) => {
@@ -118,13 +154,18 @@ export function useSpatiusAvatar() {
     } catch (e: unknown) {
       setFailed(e instanceof Error ? e.message : "The teacher avatar could not start");
       setReady(false);
+      setProgress(null);
     }
   }, []);
 
-  /** Must run inside a user gesture (tap): unlocks audio and connects to the motion server. */
-  const activate = useCallback(async () => {
+  /**
+   * Unlock audio and connect to the motion server. Works outside a tap when
+   * the document already has user activation (the tap that opened the
+   * lesson); returns false when the browser insists on a gesture first.
+   */
+  const activate = useCallback(async (): Promise<boolean> => {
     const view = viewRef.current;
-    if (!view) return;
+    if (!view) return false;
     try {
       const c = view.controller;
       await (view.initializeAudioContext?.() ?? c.initializeAudioContext?.());
@@ -132,11 +173,13 @@ export function useSpatiusAvatar() {
       connectedRef.current = true;
       setActivated(true);
       setWarning(null);
+      return true;
     } catch (e: unknown) {
       const code = String((e as { code?: string })?.code ?? "");
       console.warn("[tutor avatar] connect failed", code, e);
       if (FATAL_CODES.has(code)) setFailed(e instanceof Error ? e.message : "The teacher avatar could not connect");
-      else setWarning(code || (e instanceof Error ? e.message : "connect failed"));
+      else if (code !== "audioContextNotInitialized") setWarning(code || (e instanceof Error ? e.message : "connect failed"));
+      return false;
     }
   }, []);
 
@@ -193,5 +236,5 @@ export function useSpatiusAvatar() {
 
   useEffect(() => () => dispose(), [dispose]);
 
-  return { ready, failed, warning, activated, mount, activate, speak, interrupt, dispose, retry };
+  return { ready, painted, progress, failed, warning, activated, mount, activate, speak, interrupt, dispose, retry };
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Microphone } from "@phosphor-icons/react";
 import { getTutorAvailability, type TutorAvailability } from "@/services/tutor-api";
+import { preloadAvatarKit } from "@/hooks/useSpatiusAvatar";
 import { TeacherAvatar } from "./TeacherAvatar";
 
 interface TutorEntryCardProps {
@@ -42,14 +43,18 @@ export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packag
   const chapterId = resuming ? avail.resume_chapter_id : avail.first_chapter_id;
   const moduleId = resuming ? avail.resume_module_id : avail.first_module_id;
   const subjectId = resuming ? avail.resume_subject_id : avail.first_subject_id;
-  const go = (mode: "text" | "voice") =>
-    navigate({
+  const go = (mode: "text" | "voice") => {
+    // A voice lesson may bring the animated teacher: start its SDK download
+    // now, a whole round-trip before the lesson page asks for it.
+    if (mode === "voice") void preloadAvatarKit().catch(() => undefined);
+    return navigate({
       to: "/study-library/courses/course-details/tutor",
       search: {
         courseId, packageSessionId, slideId, chapterId: chapterId || undefined,
         moduleId: moduleId || undefined, subjectId: subjectId || undefined, mode,
       } as never,
     });
+  };
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-primary-200 bg-primary-50 p-4 sm:flex-row sm:items-center">

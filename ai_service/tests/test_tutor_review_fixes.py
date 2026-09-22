@@ -763,3 +763,23 @@ def test_a_null_check_is_the_default_check_not_a_failed_compile():
     # A real check still parses as itself.
     c = ConceptDraft.model_validate({**base, "check": {"type": "open", "prompt": "Why?", "rubric": "because"}})
     assert c.check.type == "open" and c.check.prompt == "Why?"
+
+
+# ── held opening: the teacher waits until the learner's device can show and play her ──
+
+def test_only_a_client_that_asks_gets_its_opening_held():
+    from app.routers.tutor_ws import BEGIN_WAIT_SECONDS, client_holds_opening
+    assert client_holds_opening({"type": "auth", "token": "t", "hold": True})
+    # Older bundles (OTA / electron) send neither flag and open at once, as before.
+    assert not client_holds_opening({"type": "auth", "token": "t"})
+    assert not client_holds_opening({"type": "auth", "token": "t", "hold": "yes"})
+    assert not client_holds_opening({})
+    # The cap is short enough that a broken client still gets its lesson quickly.
+    assert 5 <= BEGIN_WAIT_SECONDS <= 10
+
+
+def test_before_the_opening_a_lesson_message_opens_and_is_dropped_but_begin_and_pings_pass():
+    from app.routers.tutor_ws import LESSON_MESSAGES
+    assert {"continue", "answer", "ask", "control", "audio_end", "interrupt", "next_slide"} <= LESSON_MESSAGES
+    for passthrough in ("begin", "ping", "config", "end_session", "auth"):
+        assert passthrough not in LESSON_MESSAGES

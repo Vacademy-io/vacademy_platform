@@ -160,7 +160,9 @@ export function useTutorSocket(callbacks: Callbacks) {
       const ws = new WebSocket(wsUrl(socketPath));
       wsRef.current = ws;
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "auth", token: cbRef.current.getToken?.() || readToken() }));
+        // `hold`: the server sends `ready` but keeps the teacher quiet until
+        // `begin` — the face and the audio get to be on screen first.
+        ws.send(JSON.stringify({ type: "auth", token: cbRef.current.getToken?.() || readToken(), hold: true }));
         setConnectionState("connected");
         pingRef.current = setInterval(() => send({ type: "ping" }), 25000);
       };
@@ -256,6 +258,8 @@ export function useTutorSocket(callbacks: Callbacks) {
     connectionState,
     connect,
     disconnect,
+    /** The device can show and play the teacher: open the lesson. */
+    sendBegin: () => send({ type: "begin" }),
     sendContinue: () => send({ type: "continue" }),
     sendAnswer: (text: string) => send({ type: "answer", text }),
     sendAsk: (text: string) => send({ type: "ask", text }),

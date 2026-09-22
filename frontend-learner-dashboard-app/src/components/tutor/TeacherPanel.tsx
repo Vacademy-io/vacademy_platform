@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise, SlidersHorizontal, ArrowsOut, ArrowsIn, Lock } from "@phosphor-icons/react";
-import { TeacherAvatar } from "./TeacherAvatar";
+import { DefaultTeacherFace, TeacherAvatar, useTeacherPhotoUrl } from "./TeacherAvatar";
 import type { TutorPace } from "@/hooks/useTutorSocket";
 
 export interface TranscriptLine {
@@ -58,15 +58,19 @@ interface TeacherPanelProps {
   pace?: TutorPace;
   onPace?: (pace: TutorPace) => void;
   /** Premium teacher avatar: the container the SDK renders into, its state, and a hide/show toggle. */
-  avatarContainerRef?: React.RefObject<HTMLDivElement | null>;
+  avatarContainerRef?: React.RefObject<HTMLDivElement>;
   avatarState?: "loading" | "on" | "off" | "failed";
   onToggleAvatar?: () => void;
   /** Why the avatar stopped (vendor error code or message), and a way to start it again. */
   avatarError?: string;
   onRetryAvatar?: () => void;
-  /** The face is up but its audio is locked until the learner taps it. */
-  avatarNeedsTap?: boolean;
-  onActivateAvatar?: () => void;
+  /** The SDK has drawn its first frame: the photo poster cross-fades to the live face. */
+  avatarPainted?: boolean;
+  /** Asset download 0..1 while the face loads; null when unknown. */
+  avatarProgress?: number | null;
+  /** Cold load: the browser needs a tap before any audio — asked once, before the teacher speaks. */
+  gate?: boolean;
+  onGateTap?: () => void;
   /** Public demo: dials are shown but locked, and the header carries the time left. */
   locked?: boolean;
   countdown?: string;
@@ -112,8 +116,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled, pace, onPace, stats, language, languages, onLanguage,
-  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarNeedsTap, onActivateAvatar, locked, countdown,
+  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarPainted, avatarProgress, gate, onGateTap, locked, countdown,
 }) => {
+  const photoUrl = useTeacherPhotoUrl(teacherAvatarFileId);
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -213,18 +218,44 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* The teacher: an animated avatar card when it is on, otherwise the photo row. */}
+      {/* The teacher: an animated avatar card when it is on, otherwise the photo row.
+          The card keeps its final size from the first render; the teacher's photo
+          stands in until the SDK paints, then cross-fades to the live face. */}
       {avatarContainerRef && (
-        <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-neutral-100 to-neutral-300 ${avatarShown ? "aspect-[21/9] w-full lg:aspect-video" : "h-0"}`}>
-          <div ref={avatarContainerRef} className="size-full" aria-label={`${teacherName}'s avatar`} />
-          {avatarShown && avatarNeedsTap && avatarState === "on" && onActivateAvatar && (
+        <div className={`relative overflow-hidden rounded-2xl bg-primary-100 ${avatarShown ? "aspect-[21/9] w-full lg:aspect-video" : "h-0"}`}>
+          <div
+            ref={avatarContainerRef}
+            className={`size-full transition-opacity duration-700 ${avatarPainted ? "opacity-100" : "opacity-0"}`}
+            aria-label={`${teacherName}'s avatar`}
+          />
+          {avatarShown && (
+            <div className={`pointer-events-none absolute inset-0 transition-opacity duration-700 ${avatarPainted ? "opacity-0" : "opacity-100"}`} aria-hidden={avatarPainted}>
+              {photoUrl ? (
+                <img src={photoUrl} alt="" className="size-full object-cover" />
+              ) : (
+                <div className="flex size-full items-center justify-center bg-gradient-to-b from-primary-50 to-primary-100">
+                  <DefaultTeacherFace className="size-24 lg:size-32" />
+                </div>
+              )}
+              {avatarState === "loading" && (
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-white/30">
+                  {/* Genuinely dynamic value (download progress); same idiom as TutorSidebar's progress bar. */}
+                  <div
+                    className="h-full bg-white transition-[width] duration-300"
+                    style={{ width: `${Math.round((avatarProgress ?? 0) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {avatarShown && gate && onGateTap && (
             <button
               type="button"
-              onClick={onActivateAvatar}
-              className="absolute inset-0 flex items-center justify-center bg-neutral-900/40"
-              aria-label="Tap to start the teacher"
+              onClick={onGateTap}
+              className="absolute inset-0 flex items-center justify-center bg-neutral-900/35"
+              aria-label="Tap to begin"
             >
-              <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-lg">Tap to start the teacher</span>
+              <span className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 shadow-lg">Tap to begin</span>
             </button>
           )}
           {avatarShown && (
@@ -235,7 +266,11 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
                   <p className="truncate text-sm font-semibold text-white">{teacherName}</p>
                   <p className="flex items-center gap-1.5 text-xs text-neutral-200">
                     {phase === "speaking" && <span className="inline-block size-1.5 animate-pulse rounded-full bg-success-500" />}
-                    {avatarState === "loading" ? "Loading your teacher…" : PHASE_LABEL[phase]}
+                    {avatarState === "loading"
+                      ? typeof avatarProgress === "number" && avatarProgress > 0 && avatarProgress < 1
+                        ? `Getting your teacher ready · ${Math.round(avatarProgress * 100)}%`
+                        : "Getting your teacher ready…"
+                      : gate ? "Ready when you are" : PHASE_LABEL[phase]}
                     {stats && stats.asked > 0 && <span className="ms-1 rounded-full bg-white/15 px-1.5 py-px text-white">{stats.correct}/{stats.asked}{stats.streak >= 2 ? ` · 🔥${stats.streak}` : ""}</span>}
                     {countdown && <span className="ms-1 rounded-full bg-warning-500 px-1.5 py-px font-semibold tabular-nums text-white">{countdown}</span>}
                   </p>
@@ -268,8 +303,13 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           <TeacherAvatar fileId={teacherAvatarFileId} name={teacherName} speaking={phase === "speaking"} className="size-12" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-neutral-900">{teacherName}</p>
-            <p className="text-xs text-neutral-500">{PHASE_LABEL[phase]}</p>
+            <p className="text-xs text-neutral-500">{gate ? "Ready when you are" : PHASE_LABEL[phase]}</p>
           </div>
+          {gate && onGateTap && (
+            <button type="button" onClick={onGateTap} className="shrink-0 rounded-full bg-primary-500 px-3 py-1.5 text-xs font-semibold text-white">
+              Tap to begin
+            </button>
+          )}
           {scoreChip}
           {countdown && <span className="shrink-0 rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{countdown}</span>}
           {optionsButton(false)}
@@ -318,7 +358,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         </div>
       )}
 
-      {avatarError && !avatarNeedsTap && (avatarState === "failed" || avatarState === "on") && (
+      {avatarError && !gate && (avatarState === "failed" || avatarState === "on") && (
         <p role="status" className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600">
           {avatarState === "failed" ? "Teacher avatar stopped: " : "Teacher avatar hiccup: "}
           <span className="font-mono">{avatarError}</span>

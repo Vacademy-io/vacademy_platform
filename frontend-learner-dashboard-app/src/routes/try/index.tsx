@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CircleNotch, Microphone, TextT } from "@phosphor-icons/react";
 import { getTutorDemoTopics, startTutorDemo, type TutorDemoTopic } from "@/services/tutor-api";
 import { writeTutorGuest } from "@/lib/tutorGuest";
+import { preloadAvatarKit } from "@/hooks/useSpatiusAvatar";
 
 interface TrySearch {
   done?: string;
@@ -57,6 +58,8 @@ function TryPage() {
     }
     setError("");
     setBusy(true);
+    // The animated teacher's SDK downloads while the session is being created.
+    if (mode === "VOICE") void preloadAvatarKit().catch(() => undefined);
     try {
       const r = await startTutorDemo({ name: name.trim(), topicKey: topic, mode });
       writeTutorGuest({ token: r.token, boot: r.boot, minutes: r.minutes, name: name.trim(), topicKey: topic });

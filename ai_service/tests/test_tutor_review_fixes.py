@@ -752,3 +752,14 @@ def test_rule_five_makes_the_concept_the_unit():
     assert "FIRST concept of every board opens with its diagram" in flat
     assert "never count as the visual" in flat
     assert "never fewer than one per four concepts" in flat
+
+
+def test_a_null_check_is_the_default_check_not_a_failed_compile():
+    from app.schemas.tutor import ConceptDraft
+    base = {"id": "t1c1", "title": "Open", "say": "Look.", "board_ops": []}
+    for absent in (None, "none", "", False, {}):
+        c = ConceptDraft.model_validate({**base, "check": absent})
+        assert c.check.type == "none", absent
+    # A real check still parses as itself.
+    c = ConceptDraft.model_validate({**base, "check": {"type": "open", "prompt": "Why?", "rubric": "because"}})
+    assert c.check.type == "open" and c.check.prompt == "Why?"

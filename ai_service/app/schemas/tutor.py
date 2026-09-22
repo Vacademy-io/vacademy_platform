@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Board operations ─────────────────────────────────────────────────────────
@@ -225,6 +225,17 @@ class ConceptDraft(BaseModel):
     # this concept's board appears (first concept of a topic), graded lightly.
     predict: Optional[str] = None
     predict_i18n: Dict[str, str] = Field(default_factory=dict)
+
+    # "No check" arrives from the model as null, "none", false or {} at least
+    # as often as it arrives omitted; all of them mean the default Check, and
+    # a schema that rejects them fails the whole compile after three calls
+    # (2026-09-22, a first concept with "check": null).
+    @field_validator("check", mode="before")
+    @classmethod
+    def _no_check_means_none(cls, v):
+        if v is None or v is False or v == {} or (isinstance(v, str) and v.strip().lower() in ("", "none", "null")):
+            return {}
+        return v
 
 
 class TopicDraft(BaseModel):

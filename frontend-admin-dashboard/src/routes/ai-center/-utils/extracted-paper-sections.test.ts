@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AIExtractionSummary } from '@/types/ai/generate-assessment/generate-complete-assessment';
 import type { MyQuestion } from '@/types/assessments/question-paper-form';
 import {
+    isEmptySection,
     pairWithPreview,
     sectionRowFor,
     sectionsFromExtractedPaper,
@@ -111,5 +112,30 @@ describe('wantsSections', () => {
         expect(wantsSections(summary('split', ['A']))).toBe(false);
         expect(wantsSections(summary('single', ['A', 'B']))).toBe(false);
         expect(wantsSections(null)).toBe(false);
+    });
+
+    it('a choice made in the preview overrides the one made at upload', () => {
+        expect(wantsSections(summary('single', ['A', 'B']), 'split')).toBe(true);
+        expect(wantsSections(summary('split', ['A', 'B']), 'single')).toBe(false);
+        expect(wantsSections(summary('split', ['A']), 'split')).toBe(false);
+    });
+});
+
+describe('isEmptySection', () => {
+    it('is the blank section the wizard opens with, even if it was described or renamed', () => {
+        expect(isEmptySection({ adaptive_marking_for_each_question: [] })).toBe(true);
+        expect(
+            isEmptySection({
+                adaptive_marking_for_each_question: [],
+                uploaded_question_paper: null,
+            })
+        ).toBe(true);
+        expect(isEmptySection({ adaptive_marking_for_each_question: [{}] })).toBe(false);
+        expect(
+            isEmptySection({
+                adaptive_marking_for_each_question: [],
+                uploaded_question_paper: 'p1',
+            })
+        ).toBe(false);
     });
 });

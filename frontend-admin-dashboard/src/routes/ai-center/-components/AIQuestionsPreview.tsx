@@ -23,13 +23,20 @@ import {
     mergeSectionQuestions,
 } from '@/routes/assessment/question-papers/-utils/merge-section-questions';
 import { calculateTotalMarks } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
-import { isUntouchedSection } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/kb-paper-sections';
 import {
+    isEmptySection,
     pairWithPreview,
     sectionRowFor,
     sectionsFromExtractedPaper,
     wantsSections,
 } from '../-utils/extracted-paper-sections';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { QuestionType } from '@/constants/dummy-data';
 import { DotsSixVertical } from '@phosphor-icons/react';
 import {
@@ -111,6 +118,10 @@ const AIQuestionsPreview = ({
         questions: [],
     });
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    // How a digitised paper with sections goes into Step 2 — one section per
+    // paper section or all in the current one. Starts as what the teacher
+    // answered at upload; they can change it here before saving.
+    const [sectionChoice, setSectionChoice] = useState<'split' | 'single' | null>(null);
     const form = useForm<z.infer<typeof generateCompleteAssessmentFormSchema>>({
         resolver: zodResolver(generateCompleteAssessmentFormSchema),
         mode: 'onChange',
@@ -189,6 +200,7 @@ const AIQuestionsPreview = ({
             }
             setNoResponse(false);
             setAssessmentData(response);
+            setSectionChoice(response?.extraction?.section_mode ?? null);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
                 response.questions,
                 tHelper
@@ -241,6 +253,7 @@ const AIQuestionsPreview = ({
                 return;
             }
             setAssessmentData(response);
+            setSectionChoice(response?.extraction?.section_mode ?? null);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
                 response.questions,
                 tHelper
@@ -305,20 +318,28 @@ const AIQuestionsPreview = ({
                 const paired = pairWithPreview(transformQuestionsData, previewQuestions);
                 const summary = assessmentData.extraction ?? null;
 
-                if (allowSectionSplit && sectionsForm && summary && wantsSections(summary)) {
+                if (
+                    allowSectionSplit &&
+                    sectionsForm &&
+                    summary &&
+                    wantsSections(summary, sectionChoice)
+                ) {
                     // One Step 2 section per paper section, marks as printed.
-                    // The blank section the wizard opens with is replaced; a
+                    // The empty section the wizard opens with is replaced; a
                     // section the teacher already filled keeps its place and the
                     // paper's sections follow it.
                     const current = sectionsForm.getValues('section') ?? [];
                     const target = current[currentSectionIndex];
-                    const replace = target ? isUntouchedSection(target) : false;
+                    const replace = target ? isEmptySection(target) : false;
                     const newSections = sectionsFromExtractedPaper(
                         summary,
                         previewQuestions,
                         transformQuestionsData,
                         current.length - (replace ? 1 : 0)
                     );
+                    if (replace && target?.section_description && newSections[0]) {
+                        newSections[0].section_description ||= target.section_description;
+                    }
                     if (newSections.length >= 2) {
                         const next = [...current];
                         next.splice(
@@ -515,8 +536,11 @@ const AIQuestionsPreview = ({
                                                             ' · ' +
                                                                 t(
                                                                     !allowSectionSplit ||
-                                                                        assessmentData.extraction
-                                                                            .section_mode === 'single'
+                                                                        (sectionChoice ??
+                                                                            assessmentData
+                                                                                .extraction
+                                                                                .section_mode) ===
+                                                                            'single'
                                                                         ? 'header.extractionSectionsSingle'
                                                                         : 'header.extractionSectionsSplit',
                                                                     {
@@ -602,6 +626,37 @@ const AIQuestionsPreview = ({
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
+                                        {currentSectionIndex !== undefined &&
+                                            allowSectionSplit &&
+                                            (assessmentData.extraction?.sections?.length ?? 0) >=
+                                                2 && (
+                                                <Select
+                                                    value={sectionChoice ?? 'split'}
+                                                    onValueChange={(value) =>
+                                                        setSectionChoice(
+                                                            value as 'split' | 'single'
+                                                        )
+                                                    }
+                                                >
+                                                    <SelectTrigger
+                                                        className="h-8 w-auto gap-2 text-xs"
+                                                        aria-label={t('header.sectionChoiceLabel')}
+                                                    >
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="split">
+                                                            {t('header.sectionChoiceSplit', {
+                                                                count: assessmentData.extraction!
+                                                                    .sections!.length,
+                                                            })}
+                                                        </SelectItem>
+                                                        <SelectItem value="single">
+                                                            {t('header.sectionChoiceSingle')}
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
                                         {currentSectionIndex !== undefined &&
                                             (handleSubmitFormData.status === 'pending' ? (
                                                 <MyButton type="button" disable scale="small">

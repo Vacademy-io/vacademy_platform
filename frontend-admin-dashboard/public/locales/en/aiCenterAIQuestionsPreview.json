@@ -29,7 +29,10 @@
         "extractionCheck": "check Q {{numbers}}",
         "extractionSectionsSplit": "{{count}} sections ({{names}}) — will be created as sections",
         "extractionSectionsSingle": "{{count}} sections ({{names}}) — all questions go in one section",
-        "extractionMarking": "marking +{{marks}} / −{{negative}}"
+        "extractionMarking": "marking +{{marks}} / −{{negative}}",
+        "sectionChoiceLabel": "How to add the paper's sections",
+        "sectionChoiceSplit": "Create {{count}} sections as in the paper",
+        "sectionChoiceSingle": "Put all questions in this section"
     },
     "questionCard": {
         "duplicate": "Duplicate",

@@ -491,8 +491,12 @@ const RecentLeadsContent = () => {
     // "Manage Column" toggle list — only the columns actually visible for the
     // current config (the Lead-name column is always shown).
     const toggleableColumns = useMemo(
-        () => buildLeadColumnToggles(showOps, showScore),
-        [showOps, showScore]
+        () =>
+            buildLeadColumnToggles(showOps, showScore, {
+                tier: terminology.tier,
+                leadStatus: terminology.leadStatus,
+            }),
+        [showOps, showScore, terminology.tier, terminology.leadStatus]
     );
 
     const audiencesQuery = useQuery(

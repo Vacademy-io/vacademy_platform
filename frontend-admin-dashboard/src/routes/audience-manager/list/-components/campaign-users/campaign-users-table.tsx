@@ -694,8 +694,12 @@ const CampaignUsersContent = ({
     );
     // "Manage Column" list — source stays hidden and is not offered here.
     const toggleableColumns = useMemo(
-        () => buildLeadColumnToggles(showOps, showScore).filter((c) => c.id !== 'source'),
-        [showOps, showScore]
+        () =>
+            buildLeadColumnToggles(showOps, showScore, {
+                tier: terminology.tier,
+                leadStatus: terminology.leadStatus,
+            }).filter((c) => c.id !== 'source'),
+        [showOps, showScore, terminology.tier, terminology.leadStatus]
     );
 
     // ── Filter handlers ──────────────────────────────────────

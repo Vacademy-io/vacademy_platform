@@ -19,7 +19,7 @@
     },
     "visibilityCard": {
         "title": "स्कोर बैज दृश्यता",
-        "description": "चुनें कि HOT / WARM / COLD स्कोर बैज कहाँ दिखे।",
+        "description": "तय करें कि लीड स्कोर बैज कहाँ दिखे।",
         "options": {
             "enquiryTable": "पूछताछ तालिका (प्रवेश → पूछताछ)",
             "contactsTable": "संपर्क तालिका (संपर्क प्रबंधित करें)",

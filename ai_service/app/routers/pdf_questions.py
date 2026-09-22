@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,6 +51,11 @@ class AutoDocumentSubmitResponse(BaseModel):
     ocr_pages: Optional[int] = None
     question_count: Optional[int] = None
     estimated_credits: Optional[float] = None
+    # The paper's own sections (name, question count, marks) and its marking
+    # scheme, so the teacher can be asked "one section per paper section, or
+    # everything in one?" before extracting. Empty when the paper has none.
+    sections: Optional[List[Dict[str, Any]]] = None
+    marking: Optional[Dict[str, Any]] = None
 
 
 AUDIT_ENTITY = "AI_QUESTION_EXTRACTION"
@@ -114,6 +119,7 @@ async def start_process_pdf_from_file_id(
             started = await pdf_local_convert.start_for_extraction(file_id)
             questions = started.get("question_count")
             ocr_pages = started.get("ocr_pages") or 0
+            sections = started.get("sections") or []
             estimate = None
             if questions is not None:
                 estimate = await asyncio.to_thread(
@@ -130,13 +136,17 @@ async def start_process_pdf_from_file_id(
                 description=(
                     f"Uploaded '{name}' for question extraction — {started.get('pages') or '?'} page(s), {how}"
                     + (f", {questions} question(s) found, estimated {estimate:.0f} credits" if questions is not None and estimate is not None else "")
+                    + (f", {len(sections)} section(s): " + ", ".join(sec["name"] for sec in sections) if sections else "")
                 ),
                 payload={"file_id": file_id, "pdf_id": started["pdf_id"], "pages": started.get("pages"),
-                         "ocr_pages": ocr_pages, "question_count": questions, "estimated_credits": estimate},
+                         "ocr_pages": ocr_pages, "question_count": questions, "estimated_credits": estimate,
+                         "sections": [{"name": sec["name"], "count": sec["count"]} for sec in sections],
+                         "marking": started.get("marking")},
             )
             return AutoDocumentSubmitResponse(
                 pdf_id=started["pdf_id"], ocr=started["ocr"], pages=started.get("pages"),
                 ocr_pages=ocr_pages, question_count=questions, estimated_credits=estimate,
+                sections=sections, marking=started.get("marking"),
             )
         pdf_id = await pdf_questions_service.start_from_file_id(file_id)
         return AutoDocumentSubmitResponse(pdf_id=pdf_id)
@@ -172,12 +182,18 @@ async def pdf_to_questions(
         description="'extract' = digitise the paper's own questions verbatim (Vsmart Extract); "
                     "absent = generate questions from the material (Vsmart Upload).",
     ),
+    sectionMode: Optional[str] = Query(
+        None,
+        description="extract only: 'split' = one assessment section per paper section, "
+                    "'single' = every question in one section; absent = split when the paper has sections.",
+    ),
     db: Session = Depends(db_dependency),
     user=Depends(get_optional_user),
 ):
     """Async: poll MathPix for the PDF HTML, then generate questions. Poll
     /task-status/get-result for the AutoQuestionPaperResponse."""
     extract = (mode or "").strip().lower() == "extract"
+    section_mode = (sectionMode or "").strip().lower() or None
     if extract and instituteId:
         # Credit gate before any model call, priced on the paper's own
         # question count when its text is already converted (the local
@@ -213,6 +229,7 @@ async def pdf_to_questions(
             "params": {
                 "pdfId": pdfId, "userPrompt": userPrompt, "generateImage": generateImage,
                 **({"mode": "extract"} if extract else {}),
+                **({"sectionMode": section_mode} if extract and section_mode else {}),
             },
         },
     )
@@ -235,7 +252,7 @@ async def pdf_to_questions(
             raw = await question_extract_service.extract_from_html(
                 html=html, models=models, user_notes=userPrompt,
                 institute_id=instituteId, user_id=user_id, billing_ref=task.id,
-                ocr_pages=ocr_pages,
+                ocr_pages=ocr_pages, section_mode=section_mode,
             )
         except Exception as exc:
             audit_client.record_later(
@@ -253,6 +270,7 @@ async def pdf_to_questions(
                 f"explanations for {summary.get('explained', 0)}"
                 + (f", {summary['credits']:.0f} credits charged" if summary.get("credits") is not None else "")
                 + (f", {summary['ocr_pages']} page(s) OCR" if summary.get("ocr_pages") else "")
+                + (f", {len(summary['sections'])} section(s) ({summary.get('section_mode')})" if summary.get("sections") else "")
             ),
             payload={"task_id": task.id, "pdf_id": pdfId, **{k: v for k, v in summary.items() if k != "check"},
                      "check": summary.get("check")},

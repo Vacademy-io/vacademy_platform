@@ -110,8 +110,16 @@ def _text_of(block: str) -> str:
     return _WS.sub(" ", _TAG.sub(" ", block)).strip()
 
 
+# A block that is only a range of numbers ("1–15", the questions column of
+# a front-page section table) is not question 1.
+_PURE_RANGE = re.compile(r"^\s*\d{1,3}\s*(?:[–\-—]|to)\s*\d{1,3}\s*$", re.I)
+
+
 def _question_no(block: str) -> Optional[str]:
-    m = _QUESTION_START.match(_text_of(block))
+    text = _text_of(block)
+    if _PURE_RANGE.match(text):
+        return None
+    m = _QUESTION_START.match(text)
     return (m.group(1) or m.group(2)) if m else None
 
 
@@ -198,24 +206,92 @@ def _looks_like_key_table(text: str) -> bool:
 _EXPLICIT_Q = re.compile(r"^\s*\(?\s*q(?:uestion)?\.?\s*\(?\d", re.I)
 
 
+# The block(s) just before a numbered list that make it the instructions,
+# not the questions: "General Instructions", "Instructions to Candidates",
+# "Note:", "निर्देश".
+_INSTRUCTIONS_HEAD = re.compile(
+    r"^\s*(?:general\s+|important\s+)?instructions?\b|^\s*note\s*:|^\s*(?:सामान्य\s+)?निर्देश", re.I
+)
+# Runs shorter than this that sit before a fresh "1." are an instructions
+# list when nothing says otherwise; a section restarts numbering after a
+# heading, and that is kept.
+_LIST_MAX = 10
+
+
 def question_starts(blocks: Sequence[str]) -> List[bool]:
-    """Which blocks open a question — a numbered line that CONTINUES the
-    paper's sequence (or carries an explicit "Q"), so the numbered statements
-    inside "which of 1) 2) 3) 4) does not belong" are not mistaken for
-    questions 1–4. A number up to three ahead is accepted (a misread or a
-    skipped number must not stall the cursor); a restart at 1 is accepted
-    only with a "Q" marker."""
-    out: List[bool] = []
-    expected = 1
-    for block in blocks:
+    """Which blocks open a question.
+
+    Numbered blocks are grouped into RUNS that continue a sequence (a number
+    up to three ahead is accepted, so a misread or a skipped number does not
+    stall the cursor). A number that restarts at 1:
+      - after a section heading, or with a "Q" marker, starts a new run —
+        the paper numbers each section from 1;
+      - otherwise opens a nested run, the statements "1) 2) 3) 4)" inside a
+        question, which is dropped as soon as the outer run continues.
+    A run headed "General Instructions" / "Note:" is the instructions list,
+    never questions; so is a short leading run followed by a longer restart.
+    """
+    from .paper_outline import is_section_heading
+
+    texts = [_text_of(b) for b in blocks]
+    runs: List[Dict[str, Any]] = []
+    open_runs: List[Dict[str, Any]] = []
+    heading_since_start = False
+    for i, block in enumerate(blocks):
         no = _question_no(block)
-        ok = False
-        if no is not None:
-            n = int(no)
-            if expected <= n <= expected + 3 or _EXPLICIT_Q.match(_text_of(block)):
-                ok = True
-                expected = n + 1
-        out.append(ok)
+        if no is None:
+            if len(texts[i]) <= 90 and is_section_heading(texts[i]):
+                heading_since_start = True
+            continue
+        n = int(no)
+        explicit = bool(_EXPLICIT_Q.match(texts[i]))
+        # Outermost first: statements nest inside a question, so the outer
+        # sequence resuming ends the inner one.
+        matched = next((r for r in open_runs if r["expected"] <= n <= r["expected"] + 3), None)
+        if matched is not None:
+            while open_runs[-1] is not matched:
+                open_runs.pop()["nested"] = True
+        elif n == 1 or explicit:
+            # A fresh "1." nests inside a question (its statements) unless
+            # a heading or a "Q" marker restarts the paper — or the run it
+            # would nest in is the instructions list, which has no statements.
+            restart = explicit or heading_since_start or not open_runs or open_runs[-1]["instructions"]
+            if restart:
+                open_runs.clear()
+            before = texts[max(0, i - 3):i]
+            after_heading = any(is_section_heading(t) for t in before if len(t) <= 90)
+            matched = {"idx": [], "expected": n, "nested": False, "restart": restart and bool(runs),
+                       "instructions": any(_INSTRUCTIONS_HEAD.match(t) for t in before) and not after_heading,
+                       "after_heading": after_heading}
+            runs.append(matched)
+            open_runs.append(matched)
+        else:
+            continue
+        matched["idx"].append(i)
+        matched["expected"] = n + 1
+        heading_since_start = False
+
+    kept = [r for r in runs if not r["nested"] and not r["instructions"]]
+
+    def reads_like_a_list(r: Dict[str, Any]) -> bool:
+        # Instructions are numbered sentences: no "Q" markers, no options
+        # under them. Questions without options (long answers) that also
+        # sit under no heading are the residual risk, accepted.
+        if r["after_heading"] or any(_EXPLICIT_Q.match(texts[i]) for i in r["idx"]):
+            return False
+        with_options = sum(
+            1 for i in r["idx"] if any(_OPTION_LINE.match(texts[j]) for j in range(i + 1, min(i + 3, len(texts))))
+        )
+        return with_options * 2 < len(r["idx"])
+
+    # A short leading list followed by a longer restart is the instructions.
+    while len(kept) >= 2 and len(kept[0]["idx"]) <= _LIST_MAX and reads_like_a_list(kept[0]) \
+            and kept[1]["restart"] and len(kept[1]["idx"]) > len(kept[0]["idx"]):
+        kept.pop(0)
+    out = [False] * len(blocks)
+    for r in kept:
+        for i in r["idx"]:
+            out[i] = True
     return out
 
 
@@ -447,25 +523,28 @@ def expand_passages(part: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def merge_questions(parts: Sequence[Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-    """Concatenate part results in order; a question number seen twice (a part
-    boundary read both ways) keeps the fuller reading."""
+    """Concatenate part results in order. A question number read twice ACROSS
+    a part boundary (the last of one part and the first of the next — the
+    same question seen from both sides) keeps the fuller reading; the same
+    number appearing again elsewhere is a paper that restarts numbering in
+    every section, and both questions are kept."""
     out: List[Dict[str, Any]] = []
-    by_no: Dict[str, int] = {}
 
     def fullness(q: Dict[str, Any]) -> int:
         return len(str((q.get("question") or {}).get("content") or "")) + 50 * len(q.get("options") or [])
 
     for part in parts:
+        first_in_part = True
         for q in part or []:
             if not isinstance(q, dict) or not (q.get("question") or {}).get("content"):
                 continue
             no = str(q.get("question_number") or "").strip()
-            if no and no in by_no:
-                if fullness(q) > fullness(out[by_no[no]]):
-                    out[by_no[no]] = q
+            if first_in_part and no and out and str(out[-1].get("question_number") or "").strip() == no:
+                if fullness(q) > fullness(out[-1]):
+                    out[-1] = q
+                first_in_part = False
                 continue
-            if no:
-                by_no[no] = len(out)
+            first_in_part = False
             out.append(q)
     # Sequential preview ids, whatever the model wrote; no "Q7." in the text.
     for q in out:
@@ -622,10 +701,20 @@ async def extract_from_html(
     user_id: Optional[str] = None,
     billing_ref: Optional[str] = None,
     ocr_pages: int = 0,
+    section_mode: Optional[str] = None,
 ) -> str:
     """The paper's questions as RAW question JSON (a string), key and printed
     solutions applied, the credit charge recorded (`ocr_pages` > 0 adds the
-    MathPix surcharge for a scanned file)."""
+    MathPix surcharge for a scanned file).
+
+    Each question carries its section and its marks as the paper prints them
+    (paper_outline). `section_mode` is the teacher's answer to "one section
+    per paper section, or everything in one?" — "split" / "single"; recorded
+    in the summary for the preview, which builds the assessment accordingly.
+    Unasked (a scanned file, whose sections are unknown at upload) a paper
+    with sections is split."""
+    from .paper_outline import apply_outline, outline_of_blocks
+
     protector = HtmlTagProtector()
     protected = protector.protect(html or "")
     blocks = split_blocks(protected)
@@ -707,6 +796,14 @@ async def extract_from_html(
         and re.fullmatch(r"\(?[A-Da-d]\)?|i{1,3}|iv", str(q.get("ans") or "").strip() or "-")
     ]
     meta = _paper_meta(next((r for r in part_results if r.get("title")), part_results[0] if part_results else {}))
+    # Sections and marks as printed — the model's per-question reading of
+    # "[2]" wins, then the section's instructions, then the paper's scheme.
+    outline = outline_of_blocks(blocks, key_at)
+    apply_outline(questions, outline)
+    sections = outline["sections"]
+    mode = (section_mode or "").strip().lower()
+    if mode not in ("split", "single"):
+        mode = "split" if len(sections) >= 2 else "single"
 
     await asyncio.to_thread(
         _charge, usages=usages, num_questions=len(questions), ocr_pages=ocr_pages,
@@ -731,14 +828,23 @@ async def extract_from_html(
             "explained": sum(1 for q in questions if q.get("exp")),
             "check": suspect,
             "repaired_options": repaired,
+            "sections": [
+                {"name": sec["name"], "count": sec["count"], "from": sec["from"], "to": sec["to"],
+                 "marks": sec["marks"], "negative_marks": sec["negative_marks"],
+                 "instruction": sec["instruction"]}
+                for sec in sections
+            ],
+            "section_mode": mode,
+            "marking": outline["marking"],
             "credits": credits,
             "ocr_pages": ocr_pages,
             "prompt_tokens": sum(int(u.get("prompt_tokens") or 0) for _m, u in usages),
             "completion_tokens": sum(int(u.get("completion_tokens") or 0) for _m, u in usages),
         },
     }
-    logger.info("extract-questions: %d questions, key %s, %d keyed, %d explained", len(questions),
-                "found" if key else "absent", keyed, out["extraction"]["explained"])
+    logger.info("extract-questions: %d questions, key %s, %d keyed, %d explained, %d section(s) [%s], marking %s",
+                len(questions), "found" if key else "absent", keyed, out["extraction"]["explained"],
+                len(sections), mode, outline["marking"])
     return protector.restore_in_json(json.dumps(out, ensure_ascii=False))
 
 

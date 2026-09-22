@@ -21,5 +21,9 @@
     "found": "{{questions}} questions found across {{pages}} pages — {{credits}} credits will be deducted when you extract.",
     "foundScan": "Scanned paper ({{pages}} pages) — the question count will be known after reading; credits by paper size below, plus the per-page OCR charge.",
     "foundOcr_one": "{{count}} page was read by OCR (included).",
-    "foundOcr_other": "{{count}} pages were read by OCR (included)."
+    "foundOcr_other": "{{count}} pages were read by OCR (included).",
+    "foundMarking": "Marking found: +{{marks}} per correct, −{{negative}} per wrong — applied to every question.",
+    "sectionsQuestion": "This paper has {{count}} sections ({{names}}). How should the assessment be built?",
+    "sectionsSplit": "One section per paper section ({{count}} sections, with their own marks)",
+    "sectionsSingle": "All questions in a single section"
 }

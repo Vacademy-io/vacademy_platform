@@ -39,8 +39,14 @@ export const transformQuestionsToGenerateAssessmentAI = (
             questionName: convertSVGsToBase64(item.text?.content, t) || '',
             explanation: convertSVGsToBase64(item.explanation_text?.content, t) || '',
             questionType: item.question_type,
-            questionMark: '0',
-            questionPenalty: '0',
+            // A digitised paper's own marks and negative marks (Vsmart Extract);
+            // generated questions have none and keep the section's default.
+            questionMark: item.marks != null && item.marks > 0 ? String(item.marks) : '0',
+            questionPenalty:
+                item.negative_marks != null && item.negative_marks > 0
+                    ? String(item.negative_marks)
+                    : '0',
+            sectionName: item.section_name || undefined,
             tags: item.tags || [],
             level: item.level || '',
             questionDuration: {

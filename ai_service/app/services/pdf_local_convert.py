@@ -420,12 +420,14 @@ async def _start_local(file_id: str, data: bytes) -> Dict[str, Any]:
     pdf_id = LOCAL_ID_PREFIX + uuid4().hex
     vendor = f"{HYBRID_VENDOR}:{ocr_done}" if ocr_done else LOCAL_VENDOR
     await asyncio.to_thread(_cache, pdf_id, file_id, html, vendor)
-    questions = await asyncio.to_thread(question_count_of_html, html)
-    logger.info("extract: %s read locally (%d pages, %d figures, %d via MathPix: %s, ~%d questions) as %s",
+    outline = await asyncio.to_thread(outline_of_html, html)
+    questions = outline["question_count"]
+    logger.info("extract: %s read locally (%d pages, %d figures, %d via MathPix: %s, ~%d questions, %d section(s)) as %s",
                 file_id, info["pages"], info["figures"], ocr_done,
-                ",".join(str(i + 1) for i in info["ocr_idx"]) or "-", questions, pdf_id)
+                ",".join(str(i + 1) for i in info["ocr_idx"]) or "-", questions, len(outline["sections"]), pdf_id)
     return {"pdf_id": pdf_id, "vendor": vendor, "pages": info["pages"],
-            "ocr": ocr_done > 0, "ocr_pages": ocr_done, "question_count": questions}
+            "ocr": ocr_done > 0, "ocr_pages": ocr_done, "question_count": questions,
+            "sections": outline["sections"], "marking": outline["marking"]}
 
 
 def _single(doc, pno: int):
@@ -454,21 +456,17 @@ def vendor_of(pdf_id: str) -> Optional[str]:
         return None
 
 
+def outline_of_html(html: str) -> Dict[str, Any]:
+    """What the paper prints about itself — its question count (distinct
+    numbers, the answer key excluded), its sections and its marking scheme
+    — shown to the teacher before extracting."""
+    from .paper_outline import outline_of_html as _outline
+
+    return _outline(html or "")
+
+
 def question_count_of_html(html: str) -> int:
-    """How many questions the paper prints, from its own numbering (the
-    answer key excluded) — the number the teacher sees before extracting."""
-    from .question_extract_service import find_answer_key, question_starts, split_blocks
-
-    from .question_extract_service import _question_no
-
-    blocks = split_blocks(html or "")
-    key_at = find_answer_key(blocks)
-    body = blocks[:key_at] if key_at is not None else blocks
-    # Distinct numbers, not starts: an empty "1. 2. 3." list in the
-    # instructions box is tolerated as a start by the cursor but must not be
-    # counted twice against the real Q1–Q3.
-    numbers = {_question_no(b) for b, st in zip(body, question_starts(body)) if st}
-    return len(numbers)
+    return outline_of_html(html)["question_count"]
 
 
 def question_count_of(pdf_id: str) -> Optional[int]:

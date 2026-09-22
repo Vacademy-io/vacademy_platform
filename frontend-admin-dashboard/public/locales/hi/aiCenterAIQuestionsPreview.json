@@ -7,7 +7,8 @@
     },
     "toast": {
         "noDataExists": "कोई डेटा मौजूद नहीं है!",
-        "incompleteQuestions": "आपके कुछ प्रश्न अधूरे हैं या उन पर ध्यान देने की आवश्यकता है!"
+        "incompleteQuestions": "आपके कुछ प्रश्न अधूरे हैं या उन पर ध्यान देने की आवश्यकता है!",
+        "sectionsAdded": "पेपर के अनुसार {{sections}} सेक्शन में {{questions}} प्रश्न जोड़े गए"
     },
     "trigger": {
         "retrying": "पुनः प्रयास हो रहा है...",
@@ -25,7 +26,10 @@
         "extractionUnkeyed_one": "{{count}} का उत्तर नहीं मिला — उपयोग से पहले चिह्नित करें",
         "extractionUnkeyed_other": "{{count}} के उत्तर नहीं मिले — उपयोग से पहले चिह्नित करें",
         "extractionCredits": "{{count}} क्रेडिट",
-        "extractionCheck": "Q {{numbers}} जाँचें"
+        "extractionCheck": "Q {{numbers}} जाँचें",
+        "extractionSectionsSplit": "{{count}} सेक्शन ({{names}}) — अलग-अलग सेक्शन बनेंगे",
+        "extractionSectionsSingle": "{{count}} सेक्शन ({{names}}) — सभी प्रश्न एक ही सेक्शन में",
+        "extractionMarking": "अंकन +{{marks}} / −{{negative}}"
     },
     "questionCard": {
         "duplicate": "डुप्लिकेट करें",

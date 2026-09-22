@@ -41,6 +41,26 @@ export interface AIAssessmentCompleteQuestion {
     warnings: string[];
     tags: string[];
     level: string;
+    /** Vsmart Extract: the paper's section the question was printed under, and its printed marks. */
+    section_name?: string | null;
+    marks?: number | null;
+    negative_marks?: number | null;
+}
+
+/** A section the paper prints, as found at upload / after extraction. */
+export interface AIPaperSection {
+    name: string;
+    count: number;
+    from?: number | null;
+    to?: number | null;
+    marks?: number | null;
+    negative_marks?: number | null;
+    instruction?: string | null;
+}
+
+export interface AIPaperMarking {
+    marks: number | null;
+    negative_marks: number | null;
 }
 
 /** How a paper was digitised (Vsmart Extract only); absent for generated papers. */
@@ -56,6 +76,10 @@ export interface AIExtractionSummary {
     check?: string[];
     key_source?: 'regex' | 'regex+model' | 'none';
     ocr_pages?: number;
+    /** The paper's sections and how the teacher asked for them: one assessment section each, or all in one. */
+    sections?: AIPaperSection[];
+    section_mode?: 'split' | 'single';
+    marking?: AIPaperMarking | null;
     credits: number | null;
     prompt_tokens: number;
     completion_tokens: number;

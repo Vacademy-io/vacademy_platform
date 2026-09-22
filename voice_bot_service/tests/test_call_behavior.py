@@ -5358,6 +5358,83 @@ async def test_a_real_barge_in_that_cut_an_unheard_opening_gets_it_said_again():
     assert calls == [], "a takeover must not re-greet"
 
 
+# ── call 59888de8 (2026-09-22): "Obviously" ×5 regenerations; a question handed back; a lost last answer ──
+def test_english_affirmations_are_backchannels():
+    from app.turntake import mid_reply_action, ABSORB
+    for t in ["Obviously.", "हाँ that's.", "Exactly ma'am", "absolutely"]:
+        assert mid_reply_action(t) == ABSORB, t
+
+
+@pytest.mark.asyncio
+async def test_a_short_answer_on_a_noisy_line_still_runs():
+    """The hold waits for quiet; a line that never goes quiet is noise, not a
+    sentence — the run must go after the cap, not after the hang-up."""
+    from pipecat.frames.frames import LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    import app.diagnostics as dg
+    ctx = LLMContext(messages=[{"role": "system", "content": "x"},
+                               {"role": "assistant", "content": "क्या इसके अलावा कोई expectation है?"},
+                               {"role": "user", "content": "नहीं यही सब।"}])
+    seen = []
+    async def _push(frame, direction=None): seen.append(type(frame).__name__)
+    g = b.RunGuard(ctx, enabled=lambda: True, diag=dg.CallDiagnostics(),
+                   short_answer_grace_secs=0.05, short_answer_max_words=3,
+                   quiet_for=lambda: 0.0, noise_cap_secs=0.3)     # never quiet
+    g.push_frame = _push
+    g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    await asyncio.sleep(0.15)
+    assert "LLMContextFrame" not in seen, "released before the cap"
+    # cap 0.3 s + the 0.5 s context-settle that follows every release
+    await asyncio.sleep(1.4)
+    assert seen.count("LLMContextFrame") == 1, "the noisy-line answer never ran"
+
+
+@pytest.mark.asyncio
+async def test_a_question_is_answered_not_handed_back_when_the_reply_was_a_repeat():
+    rec = _NRRec()
+    asked = []
+    async def _next_step(held, kind="", attempt=0):
+        asked.append((kind, held))
+    caller = {"t": "ठीक है।"}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    line = "generally जब parents किसी coaching से जुड़ते हैं तो उनकी तीन-चार basic expectations होती हैं।"
+    await _reply(g, line)
+    g._next_steps = 2                               # per-call budget already spent
+    caller["t"] = "हाँ anything else?"
+    rec.text.clear()
+    await _reply(g, line)                           # the model repeats its script line
+    assert asked and asked[-1][0] == "answer-question" and "anything else" in asked[-1][1], asked
+    assert not any(t.strip() in ("जी?", "जी, बोलिए।") for t in rec.text), rec.text
+    what, cue = b.next_step_cue("हाँ anything else?", "answer-question", 2)
+    assert "anything else" in cue and "Answer their question" in cue
+
+
+@pytest.mark.asyncio
+async def test_a_real_barge_in_forwards_the_words_before_cutting_the_reply():
+    """Call 59888de8: the transcript pushed right after our own interruption
+    went missing in the aggregator; "नहीं यही सब" never reached the model."""
+    from pipecat.frames.frames import TranscriptionFrame
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    order = []
+    async def _broadcast():
+        rec.interruptions += 1; order.append("INTERRUPT")
+    async def _push(frame, direction=None):
+        rec.frames.append(frame); rec.dirs.append(direction)
+        if isinstance(frame, TranscriptionFrame): order.append("TRANSCRIPT")
+    tc.broadcast_interruption = _broadcast
+    tc.push_frame = _push
+    await _feed(tc, "नहीं यही सब।")
+    assert rec.interruptions == 1
+    assert order == ["TRANSCRIPT", "INTERRUPT"], order
+    assert sum(isinstance(f, TranscriptionFrame) for f in rec.frames) == 1, "forwarded twice"
+
+
 @pytest.mark.asyncio
 async def test_a_backchannel_during_the_settle_window_still_gets_no_cue():
     """The 0.6 s teardown settle must not re-open the two-voices window: while

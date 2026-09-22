@@ -659,6 +659,11 @@ class Settings:
         default_factory=lambda: float(_env("SHORT_ANSWER_GRACE_SECS", "0.8")))
     short_answer_max_words: int = field(
         default_factory=lambda: int(_env("SHORT_ANSWER_MAX_WORDS", "3")))
+    # A short answer's run waits for the caller's voice to go quiet — but not
+    # forever: a noisy line keeps the VAD "on" (call 59888de8: the last answer
+    # waited out the hang-up). Past this, the voice is noise; the run goes.
+    short_answer_noise_cap_secs: float = field(
+        default_factory=lambda: float(_env("SHORT_ANSWER_NOISE_CAP_SECS", "3.0")))
     # Cushion questions in context instead of firing them bare ("Do you take live
     # classes?") — founder 2026-09-08, "it's asking questions as if she is my
     # mother... humanize the prompt, inculcate this into AI calling in general".

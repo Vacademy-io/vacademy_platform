@@ -75,6 +75,9 @@ _BACKCHANNEL_WORDS = frozenset({
     # LLM reply. It is the commonest greeting in English there is.
     "hello", "helo", "hallo", "hlo", "hey", "hi", "hii", "हेलो", "हैलो", "हलो", "हाय",
     "right", "correct", "sure", "fine", "good", "great", "cool", "alright",
+    # Call 59888de8 (2026-09-22): "Obviously." and "हाँ that's" (the STT cut
+    # "that's right") were real barge-ins, five regenerations of one line.
+    "obviously", "exactly", "absolutely", "definitely", "true", "thats", "perfect",
     "go", "on", "ahead", "continue", "carry",
 })
 
@@ -486,6 +489,23 @@ _TAKEOVER_WORDS = frozenset({
     "कौन", "क्यों", "कहाँ", "कहां", "किसलिए", "कैसे", "किसने", "किससे",
     "who", "why", "where", "which", "how", "kaun", "kyun", "kyu", "kahan", "kaise",
 })
+
+
+_QUESTION_WORDS = frozenset({
+    "क्या", "कौन", "कितना", "कितनी", "कितने", "कब", "कहाँ", "कहां", "क्यों", "कैसे", "किस",
+    "what", "who", "how", "when", "where", "why", "which", "kya", "kaun", "kitna", "kab",
+    "kahan", "kyun", "kaise",
+})
+
+
+def is_question(text: str) -> bool:
+    """Did the caller ask something? A question mark, or a question word."""
+    t = (text or "").strip()
+    if not t or t.startswith("["):
+        return False
+    if "?" in t or "？" in t:
+        return True
+    return any(w in _QUESTION_WORDS for w in _words(t))
 
 
 def takes_over_opening(text: str) -> bool:

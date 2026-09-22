@@ -99,7 +99,7 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
-                       is_screener_hold, spoken_key, takes_over_opening)
+                       is_screener_hold, spoken_key, takes_over_opening, is_question)
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +353,7 @@ class TranscriptCollector(FrameProcessor):
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+        forwarded = False      # set once a final has already gone downstream
         # VAD user-speech frames re-arm the idle clock. Sarvam STT emits FINAL
         # transcripts only (no interims), so without this the clock goes stale during
         # a LONG caller utterance and the watchdog spoke "kya aap sun paa rahe hain?"
@@ -902,6 +903,15 @@ class TranscriptCollector(FrameProcessor):
                             "(ducked=%s)", text[:40], ducked)
                 # They took the turn: the words we were resuming are stale.
                 self._cancel_resume_check(stale=True)
+                # Their words go downstream BEFORE the cut. The interruption's
+                # job is the bot's audio, which does not care about order; the
+                # transcript, pushed 30 ms after our own interruption, has been
+                # arriving at the aggregator during its interruption handling
+                # and going missing — 19 of 133 calls in 48 h logged "caller
+                # answer never reached the model"; call 59888de8 lost "नहीं
+                # यही सब" this way and she hung up 27 s later.
+                await self.push_frame(frame, direction)
+                forwarded = True
                 await self.broadcast_interruption()
                 # If that cut our opening before it was heard and what they
                 # said is not a question or a refusal, the opening is still
@@ -987,7 +997,8 @@ class TranscriptCollector(FrameProcessor):
                                "[They asked who is calling. FIRST sentence: your name and "
                                "your institute. SECOND: one short line on why you called. "
                                "Nothing before that — no filler, no question.]"}]), direction)
-        await self.push_frame(frame, direction)
+        if not forwarded:
+            await self.push_frame(frame, direction)
 
     def looks_like_voicemail(self) -> bool:
         """The carrier's recording is the only thing that has spoken. Call
@@ -2123,6 +2134,28 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("repeat_escalations")
                     await self._emit(self._held_tail, direction)
+                elif (self._request_next_step is not None
+                      and is_question(self._last_caller_text() or "")
+                      and self._next_step_for != normalize_spoken(self._last_caller_text() or "")):
+                    # They asked something and the model answered with its
+                    # script line again. Call 59888de8: "हाँ anything else?" and
+                    # "नहीं, आप कुछ और पूछना चाह रही थी?" got "जी?" and "जी,
+                    # बोलिए". A question is never handed back; it is answered.
+                    # Once per turn, outside the per-call next-step budget.
+                    self._next_step_for = normalize_spoken(self._last_caller_text() or "")
+                    if self._diag is not None:
+                        self._diag.bump("handbacks")
+                    logger.info("no-repeat: whole reply was a repeat but the caller asked a "
+                                "question — asking the model to answer it")
+                    try:
+                        await self._request_next_step(self._last_caller_text() or "",
+                                                      kind="answer-question",
+                                                      attempt=self._next_steps)
+                    except Exception:
+                        logger.exception("no-repeat: answer-question request failed — handing back")
+                        line = self._handbacks[self._handback % len(self._handbacks)]
+                        self._handback += 1
+                        await self._emit(line, direction)
                 elif (self._request_next_step is not None and self._may_ask_next_step()
                       and (self._last_caller_text() or "").strip()
                       and not (self._last_caller_text() or "").startswith("[")):
@@ -2246,9 +2279,11 @@ class RunGuard(FrameProcessor):
 
     def __init__(self, context, enabled=None, diag=None,
                  short_answer_grace_secs: float = 0.0, short_answer_max_words: int = 3,
-                 quiet_for=None, on_run=None, opening_pending=None):
+                 quiet_for=None, on_run=None, opening_pending=None,
+                 noise_cap_secs: float = 3.0):
         super().__init__()
         self._context = context
+        self._noise_cap = noise_cap_secs
         # While the scripted opening has not been heard, the opening is the
         # reply — a run only goes through if the caller genuinely took over
         # (a question to us, a refusal, or our own cue). Call 4243a436.
@@ -2336,9 +2371,17 @@ class RunGuard(FrameProcessor):
             logger.info("run-guard: caller's voice resumed within %.1fs of a short "
                         "answer — waiting for the rest", self._grace)
             waited = 0.0
-            while self._quiet_for() < 0.4 and waited < 30.0:
+            while self._quiet_for() < 0.4 and waited < self._noise_cap:
                 await asyncio.sleep(0.1)
                 waited += 0.1
+            if waited >= self._noise_cap:
+                # Their "voice" never stopped: a noisy line, not a sentence.
+                # Call 59888de8: "नहीं यही सब" waited for a quiet that never
+                # came, and she hung up 27 s later.
+                logger.info("run-guard: voice never went quiet in %.1fs after a short answer "
+                            "— treating it as line noise and running", self._noise_cap)
+                if self._diag is not None:
+                    self._diag.bump("short_answer_noise_releases")
             # Time for the tail's final to land and be appended (Smallest
             # finalizes 0.1-0.8 s after the stop): run once the context has
             # been still for 0.5 s, 1.5 s at most.
@@ -2465,6 +2508,12 @@ class RunGuard(FrameProcessor):
 def next_step_cue(held: str, kind: str = "", attempt: int = 0):
     """The steering cue for a reply that said nothing new: (what, cue text).
     Module-level so the text simulator (sim/run.py) sends the SAME words."""
+    if kind == "answer-question":
+        q = (held or "").strip().replace("]", "")[:120]
+        return "answer-question", (
+            "[They just asked you: \"" + q + "\". Your last reply ignored it and repeated "
+            "your script line. Answer their question directly, in one or two short "
+            "sentences, then stop. Do not repeat the expectations line.]")
     if kind == "restatement":
         why = ("[Your last reply only said their answer back to them and asked "
                "nothing. Do not restate it again. ")
@@ -4713,7 +4762,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                             if flags["voice_tick_t"] else float("inf")),
                          on_run=lambda text: outcome.replay["runs"].append(
                              [round(time.time() - outcome.connected_at, 2), text]),
-                         opening_pending=lambda: _opening_pending())
+                         opening_pending=lambda: _opening_pending(),
+                         noise_cap_secs=settings.short_answer_noise_cap_secs)
 
     # One EQ per call: it carries IIR state across frames, so it must not be
     # shared between concurrent calls. None when disabled or scipy is missing,

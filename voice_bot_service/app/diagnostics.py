@@ -225,6 +225,8 @@ class CallDiagnostics:
     # Runs held because the scripted opening had not been heard yet and the
     # caller's words did not take over (room chatter at pickup, call 4243a436).
     runs_held_for_opening: int = 0
+    # Short-answer holds released because the line never went quiet (noise).
+    short_answer_noise_releases: int = 0
     # Short-answer runs ("Yes." + a breath) dropped because the caller's voice
     # resumed inside the grace — the whole turn was answered once instead
     # (bot.RunGuard, 2026-09-15). The fix working, not a fault.
@@ -920,6 +922,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "unsaidReverted": d.unsaid_reverted,
                 "emptyRunsBlocked": d.empty_runs_blocked,
                 "runsHeldForOpening": d.runs_held_for_opening,
+                "shortAnswerNoiseReleases": d.short_answer_noise_releases,
                 "shortAnswerHolds": d.short_answer_holds,
                 "resumeRespoken": d.resume_respoken,
                 "resumeLost": d.resume_lost,

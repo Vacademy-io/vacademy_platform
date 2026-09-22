@@ -27,7 +27,7 @@ from ..chat_llm_client import ChatLLMClient
 from ..platform_settings_service import get_platform_setting
 from . import compile_prompts as prompts
 from . import demo, plan_store
-from .plan_validator import DEFAULT_LIMITS, QUIZ_LIMITS, soft_errors, validate_plan
+from .plan_validator import DEFAULT_LIMITS, QUIZ_LIMITS, image_target, soft_errors, validate_plan
 from .svg_check import auto_layout_svg, structural_svg_errors
 from .quiz_compiler import compile_quiz
 from .slide_source import SlideSource, load_slide_source, slide_belongs_to_institute
@@ -107,11 +107,7 @@ def _replace_broken_diagrams(draft: TeachingPlanDraft) -> int:
 
 
 def _image_target(draft: TeachingPlanDraft) -> int:
-    """How many real illustrations a slide of this size should carry. One is
-    never enough for a long slide: institutes asked for a picture where a
-    picture teaches, not a single decorative opener."""
-    topics = len(draft.topics)
-    return 1 if topics <= 2 else 2 if topics <= 4 else 3
+    return image_target(draft)
 
 
 def _count_image_ops(draft: TeachingPlanDraft) -> int:

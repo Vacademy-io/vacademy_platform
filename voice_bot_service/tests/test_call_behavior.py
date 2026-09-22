@@ -502,7 +502,7 @@ def test_run_bot_setup_and_teardown_structure():
     src = inspect.getsource(b.run_bot)
     # Vertex SA OAuth must not block the event loop (other live calls glitch).
     # Still off the event loop; now carries the per-agent provider override.
-    assert "await asyncio.to_thread(build_llm, _llm_provider)" in src
+    assert "await asyncio.to_thread(build_llm_waterfall, _llm_provider)" in src   # off-loop: Vertex OAuth
     # Greet task is tracked; watchdog + greet cancels are AWAITED.
     assert "_bg_tasks.append(asyncio.create_task(_greet_when_ready()))" in src
     tail = src[src.index("watchdog_task = asyncio.create_task"):]
@@ -3216,7 +3216,7 @@ def test_run_bot_routes_only_listed_agents_to_sarvam():
     import inspect
     src = inspect.getsource(b.run_bot)
     assert '_agent_id in settings.sarvam_llm_agents' in src
-    assert 'to_thread(build_llm, _llm_provider)' in src
+    assert 'to_thread(build_llm_waterfall, _llm_provider)' in src
     assert 'diag.llm_vendor' in src
 
 
@@ -5190,6 +5190,83 @@ async def test_a_long_reply_is_capped_but_still_asks_its_closing_question():
     rec.text.clear()
     await _reply(g, "जी सर। ", "बताइए।")
     assert len([t for t in rec.text if t.strip()]) == 2, "a short reply must be untouched"
+
+
+# ── call f58ca825 (2026-09-22): the LLM vendor went 34 s → 49 s → 403 ──────
+@pytest.mark.asyncio
+async def test_first_token_timeout_fails_fast_and_passes_a_healthy_stream_through():
+    from app.providers import with_first_token_timeout
+
+    class _Slow:
+        def __aiter__(self): return self
+        async def __anext__(self):
+            await asyncio.sleep(1.0); return "late"
+
+    class _Fast:
+        def __init__(self): self.n = 0; self.closed = False
+        def __aiter__(self): return self
+        async def __anext__(self):
+            self.n += 1
+            if self.n > 2: raise StopAsyncIteration
+            return f"chunk{self.n}"
+        async def close(self): self.closed = True
+
+    class _Svc:
+        stream = None
+        async def get_chat_completions(self, context): return self.stream
+
+    Guarded = with_first_token_timeout(_Svc, 0.05)
+    g = Guarded(); g.stream = _Slow()
+    with pytest.raises(TimeoutError):
+        async for _ in await g.get_chat_completions(None):
+            pass
+    g = Guarded(); f = _Fast(); g.stream = f
+    out = [c async for c in await g.get_chat_completions(None)]
+    assert out == ["chunk1", "chunk2"]
+    wrapped = await g.get_chat_completions(None)
+    await wrapped.close()                    # attribute passthrough
+    assert f.closed
+    assert with_first_token_timeout(_Svc, 0) is _Svc, "0 disables the guard"
+
+
+def test_llm_waterfall_runs_the_primary_alone_when_the_fallback_cannot_build(monkeypatch):
+    from app import providers as pv
+    class _S:
+        llm_provider = "sarvam"; llm_fallback_provider = "vertex"
+    monkeypatch.setattr(pv, "get_settings", lambda: _S())
+    def _build(prov=None):
+        if prov == "vertex":
+            raise RuntimeError("no credentials here")
+        return object()
+    monkeypatch.setattr(pv, "build_llm", _build)
+    sw, primary, fallback = pv.build_llm_waterfall(None)
+    assert fallback is None and sw is primary
+    _S.llm_fallback_provider = ""
+    sw, primary, fallback = pv.build_llm_waterfall(None)
+    assert fallback is None and sw is primary
+    _S.llm_fallback_provider = "sarvam"           # same as primary: no waterfall
+    sw, primary, fallback = pv.build_llm_waterfall(None)
+    assert fallback is None
+
+
+@pytest.mark.asyncio
+async def test_run_guard_lets_the_same_context_run_again_after_the_vendor_failed():
+    from pipecat.frames.frames import LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    import app.diagnostics as dg
+    ctx = LLMContext(messages=[{"role": "system", "content": "x"},
+                               {"role": "user", "content": "कौन बच्चा?"}])
+    g = b.RunGuard(ctx, enabled=lambda: True, diag=dg.CallDiagnostics())
+    seen = []
+    async def _push(frame, direction=None): seen.append(type(frame).__name__)
+    g.push_frame = _push
+    b.FrameProcessor.process_frame = _noop_super
+    await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    assert seen.count("LLMContextFrame") == 1, "the unchanged-context block must still hold"
+    g.allow_rerun()
+    await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    assert seen.count("LLMContextFrame") == 2, "after a vendor failure the same turn must run again"
 
 
 @pytest.mark.asyncio

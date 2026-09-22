@@ -413,11 +413,99 @@ def _build_bedrock(s):
     return _tag_engine(svc, "bedrock", s.bedrock_model)
 
 
+class _FirstChunkGuard:
+    """Wraps the vendor's chat stream so the FIRST chunk is bounded in time.
+    `create()` returns once the headers arrive; a stalling model can hold the
+    stream open with no token for as long as it likes (call f58ca825,
+    2026-09-22: 34 s and 49 s to first token, then a 403). Everything after
+    the first chunk passes straight through; attributes (close, response…)
+    are delegated to the real stream."""
+
+    def __init__(self, stream, secs: float):
+        self._stream = stream
+        self._secs = secs
+        self._it = None
+        self._first = True
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._it is None:
+            self._it = self._stream.__aiter__()
+        if self._first:
+            self._first = False
+            try:
+                return await asyncio.wait_for(self._it.__anext__(), timeout=self._secs)
+            except asyncio.TimeoutError as e:
+                raise TimeoutError(f"LLM first token not received within {self._secs:.1f}s") from e
+        return await self._it.__anext__()
+
+    async def aclose(self):
+        it = self._it if self._it is not None else self._stream
+        if hasattr(it, "aclose"):
+            await it.aclose()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def with_first_token_timeout(cls, secs: float):
+    """Subclass an OpenAI-compatible pipecat LLM service so a reply whose
+    first token does not arrive within `secs` fails fast. The failure is an
+    ordinary exception inside pipecat's LLMContextFrame handling, so it
+    becomes a non-fatal ErrorFrame — which is exactly what ServiceSwitcher's
+    failover strategy switches on. 0 or None = no timeout."""
+    if not secs or secs <= 0:
+        return cls
+
+    class _Guarded(cls):
+        first_token_timeout_secs = float(secs)
+
+        async def get_chat_completions(self, context):
+            t = self.first_token_timeout_secs
+            try:
+                stream = await asyncio.wait_for(super().get_chat_completions(context), timeout=t)
+            except asyncio.TimeoutError as e:
+                raise TimeoutError(f"LLM did not answer within {t:.1f}s (connect)") from e
+            return _FirstChunkGuard(stream, t)
+    _Guarded.__name__ = cls.__name__
+    _Guarded.__qualname__ = cls.__qualname__
+    return _Guarded
+
+
+def build_llm_waterfall(provider: str | None = None):
+    """(switcher_or_primary, primary, fallback). Like build_stt_waterfall: when
+    LLM_FALLBACK_PROVIDER names a different provider that builds, the call
+    runs pipecat's ServiceSwitcher with the failover strategy over the two,
+    and a vendor error (a timeout, a 403, a 5xx) moves the rest of the call to
+    the fallback. If the fallback cannot be built (no credentials on this box)
+    the call runs on the primary alone, as before."""
+    s = get_settings()
+    primary = build_llm(provider)
+    prov = (provider or s.llm_provider or "").strip().lower()
+    fb = (s.llm_fallback_provider or "").strip().lower()
+    if not fb or fb == prov:
+        return primary, primary, None
+    try:
+        fallback = build_llm(fb)
+    except Exception as e:
+        logger.warning("llm: fallback provider %r could not be built (%s) — running on %s alone",
+                       fb, e, prov)
+        return primary, primary, None
+    from pipecat.pipeline.service_switcher import (ServiceSwitcher,
+                                                   ServiceSwitcherStrategyFailover)
+    switcher = ServiceSwitcher([primary, fallback], strategy_type=ServiceSwitcherStrategyFailover)
+    logger.info("llm: waterfall %s → %s", type(primary).__name__, type(fallback).__name__)
+    return switcher, primary, fallback
+
+
 def build_llm(provider: str | None = None):
     """`provider` overrides LLM_PROVIDER for one call (per-agent POC routing —
     see Settings.sarvam_llm_agents). None = the configured default."""
     s = get_settings()
     prov = (provider or s.llm_provider or "").strip().lower()
+    _Timed = with_first_token_timeout(OpenAILLMService, s.llm_first_token_timeout_secs)
     if prov == "vertex":
         # Gemini on Vertex AI, served from vertex_location (asia-south1 = Mumbai):
         # in-country inference → low TTFT with no cross-ocean RTT. Auth = service
@@ -461,7 +549,7 @@ def build_llm(provider: str | None = None):
     if prov == "google":
         # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop).
         # reasoning_effort 'none' via extra_body: 3.1 thinks by default.
-        return OpenAILLMService(
+        return _Timed(
             api_key=s.gemini_api_key,
             base_url=s.google_llm_base_url,
             model=s.google_llm_model,
@@ -485,7 +573,7 @@ def build_llm(provider: str | None = None):
     # JSON null (Python None inside extra_body — the SDK drops None kwargs but
     # keeps them in extra_body): the ONLY value that disables hybrid thinking.
     # 0.14s median TTFT from Mumbai with null; 6-14s (or content=None) without.
-    return OpenAILLMService(
+    return _Timed(
         api_key=s.sarvam_llm_api_key,
         base_url=s.sarvam_llm_base_url,
         model=s.sarvam_llm_model,

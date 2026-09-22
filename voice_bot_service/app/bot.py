@@ -90,7 +90,7 @@ from .ambience import AmbienceDucker
 from .voice_eq import build_voice_eq, make_voice_eq_processor
 from .prosody import build_prosody_shaper, make_prosody_processor
 from . import diagnostics as diag_mod
-from .providers import (build_stt_waterfall, build_llm, build_stt, build_tts, engine_of,
+from .providers import (build_stt_waterfall, build_llm, build_llm_waterfall, build_stt, build_tts, engine_of,
                         normalize_for_rumik, rumik_term_map_version)
 from . import ttscache
 from .turntake import (mid_reply_action, is_carrier_announcement,
@@ -2252,6 +2252,12 @@ class RunGuard(FrameProcessor):
         # Replay record: the last user text of every run that goes through.
         self._on_run = on_run or (lambda text: None)
 
+    def allow_rerun(self):
+        """The last run FAILED at the vendor (call f58ca825): the same context
+        must be allowed to run again on the fallback, which the unchanged-
+        context block would otherwise refuse."""
+        self._last_allowed_fp = None
+
     @staticmethod
     def _caller_words(msgs) -> int:
         """Words the caller said in the unanswered user messages at the end of
@@ -4278,13 +4284,17 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     elif ((_agent_id and _agent_id in settings.sarvam_llm_agents)
             or (_inst_id and _inst_id in settings.sarvam_llm_institutes)):
         _llm_provider = "sarvam"
-    llm = providers.get("llm") or await asyncio.to_thread(build_llm, _llm_provider)
+    if providers.get("llm") is not None:
+        llm, llm_primary, llm_fallback = providers["llm"], providers["llm"], None
+    else:
+        llm, llm_primary, llm_fallback = await asyncio.to_thread(build_llm_waterfall, _llm_provider)
+    flags["llm_failed_over"] = False
     _eff_provider = _llm_provider or settings.llm_provider
     diag.llm_vendor = "%s/%s" % (
         _eff_provider,
         {"sarvam": settings.sarvam_llm_model, "vertex": settings.vertex_model,
          "bedrock": settings.bedrock_model}.get(
-            _eff_provider, getattr(llm, "model_name", "") or ""))
+            _eff_provider, getattr(llm_primary, "model_name", "") or ""))
     logger.info("llm: %s corr=%s%s", diag.llm_vendor, corr,
                 " (per-agent POC override)" if _llm_provider else "")
     tts = providers.get("tts") or build_tts(settings.sample_rate, voice=_agent_voice(agent),
@@ -4719,6 +4729,30 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         ),
         observers=[TtfbObserver(corr, diag).observer],
     )
+
+    @task.event_handler("on_pipeline_error")
+    async def _on_pipeline_error(_task, frame):
+        """The primary LLM failed (a timeout, a 403, a 5xx). pipecat's failover
+        strategy has already moved the switcher to the fallback; what it does
+        not do is answer the turn that failed — call f58ca825 (2026-09-22): the
+        caller waited through 34 s, 49 s and a 403 with only bridges and
+        nudges. Re-run that context on the fallback, once."""
+        try:
+            if llm_fallback is None or flags["llm_failed_over"]:
+                return
+            proc = getattr(frame, "processor", None)
+            if proc is not llm_primary:
+                return
+            flags["llm_failed_over"] = True
+            diag.bump("llm_failovers")
+            diag.llm_vendor_final = type(llm_fallback).__name__
+            logger.warning("llm failover: %s — switching %s → %s for the rest of the call corr=%s",
+                           str(getattr(frame, "error", ""))[:90], type(llm_primary).__name__,
+                           type(llm_fallback).__name__, corr)
+            run_guard.allow_rerun()
+            await task.queue_frames([ManuallySwitchServiceFrame(service=llm_fallback), LLMRunFrame()])
+        except Exception:
+            logger.exception("llm failover: handler failed corr=%s", corr)
     sentinel.set_task(task)
 
     cap_minutes = float(agent.get("maxCallMinutes") or 0) or settings.max_call_minutes_default

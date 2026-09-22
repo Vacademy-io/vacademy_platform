@@ -354,6 +354,14 @@ class Settings:
     # google = Gemini's OpenAI-compat endpoint hit directly (no proxy hop);
     # openrouter = proxy fallback (routing lottery spiked TTFT to 7.9s once).
     llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "sarvam"))
+    # Second LLM for the rest of a call once the first one errors or stalls
+    # (call f58ca825, 2026-09-22: Sarvam 34 s → 49 s → 403 with nothing to
+    # catch it). Empty = no waterfall. Same values as LLM_PROVIDER.
+    llm_fallback_provider: str = field(default_factory=lambda: _env("LLM_FALLBACK_PROVIDER", ""))
+    # A reply whose first token has not arrived by then is a vendor failure,
+    # not a slow reply: it errors, and the waterfall takes over. 0 = off.
+    llm_first_token_timeout_secs: float = field(
+        default_factory=lambda: float(_env("LLM_FIRST_TOKEN_TIMEOUT_SECS", "6.0")))
     openrouter_api_key: str = field(default_factory=lambda: _env("OPENROUTER_API_KEY"))
     openrouter_base_url: str = field(
         default_factory=lambda: _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")

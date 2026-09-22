@@ -60,6 +60,10 @@ public class EngagementItemDTO {
     /** True when isCorrect is deliberately withheld until revealAt. */
     private Boolean resultPending;
     private Integer pointsAwarded;
+    private Boolean isLate;
+    private String completedAt;
+    /** History only: DONE, MISSED or CATCH_UP. */
+    private String historyStatus;
 
     /** Social proof: how many learners have completed it. */
     private Long completedCount;

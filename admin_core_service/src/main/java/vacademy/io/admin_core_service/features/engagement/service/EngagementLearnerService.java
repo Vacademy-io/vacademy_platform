@@ -9,6 +9,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementFeedDTO;
+import vacademy.io.admin_core_service.features.engagement.dto.EngagementHistoryDTO;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementItemDTO;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementSubmitRequest;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementSubmitResponse;
@@ -52,6 +53,7 @@ public class EngagementLearnerService {
 
     /** How many days ahead the locked "coming up" strip looks. */
     private static final int UPCOMING_DAYS = 7;
+    private static final int HISTORY_MAX_DAYS = 90;
 
     /**
      * The progress rows a finished slide can leave behind — one per slide type.
@@ -240,6 +242,148 @@ public class EngagementLearnerService {
      * Required first, then whatever closes soonest, then the item's own order — so a
      * learner in several batches meets a deterministic, urgency-led queue.
      */
+    // ── History ──────────────────────────────────────────────────────────────
+
+    /**
+     * Past occurrences for this learner, newest first.
+     *
+     * An attempt is per item, not per run date, so for a recurring slot the single
+     * completion is filed under the occurrence that was in effect when it happened
+     * (a late catch-up lands on the day it caught up FOR, not the day it was done).
+     * Occurrences after that completion are skipped — the feed never showed them —
+     * and earlier ones that have closed count as missed. Today's open tasks stay on
+     * the home card, so history only carries today's entries once they are done or
+     * closed.
+     */
+    @Transactional(readOnly = true)
+    public EngagementHistoryDTO getHistory(String instituteId, String userId, int days) {
+        int window = Math.max(1, Math.min(days, HISTORY_MAX_DAYS));
+        LocalDate utcToday = LocalDate.now(ZoneId.of("UTC"));
+        String from = utcToday.minusDays(window).toString();
+        String to = utcToday.toString();
+        EngagementHistoryDTO empty = new EngagementHistoryDTO(from, to, List.of(), 0, 0, 0);
+
+        List<String> packageSessionIds =
+                enrollmentRepository.findPackageSessionIdsByUserIdAndInstituteId(userId, instituteId);
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) return empty;
+        List<EngagementPlan> plans =
+                planRepository.findPublishedForPackageSessions(packageSessionIds, instituteId);
+        if (plans.isEmpty()) return empty;
+
+        Map<String, EngagementPlan> plansById = new HashMap<>();
+        Map<String, String> batchNames = new HashMap<>();
+        for (EngagementPlan plan : plans) {
+            plansById.put(plan.getId(), plan);
+            String psId = plan.getPackageSessionId();
+            if (!batchNames.containsKey(psId)) {
+                try {
+                    packageSessionRepository.findBatchAndInstituteByPackageSessionId(psId)
+                            .ifPresent(ctx -> batchNames.put(psId, ctx.getBatchName()));
+                } catch (Exception ignored) {
+                    // Cosmetic.
+                }
+            }
+        }
+
+        List<EngagementSlot> slots = slotRepository.findInRange(
+                new ArrayList<>(plansById.keySet()), utcToday.minusDays(window + 1), utcToday.plusDays(1));
+        if (slots.isEmpty()) return empty;
+        Map<String, EngagementSlot> slotsById = new HashMap<>();
+        for (EngagementSlot slot : slots) slotsById.put(slot.getId(), slot);
+
+        List<EngagementItem> items = itemRepository.findActiveBySlots(new ArrayList<>(slotsById.keySet()));
+        if (items.isEmpty()) return empty;
+        List<String> itemIds = items.stream().map(EngagementItem::getId).toList();
+
+        Map<String, EngagementAttempt> attempts = new HashMap<>();
+        for (EngagementAttempt attempt : attemptRepository.findByUserAndItems(userId, itemIds)) {
+            attempts.put(attempt.getItemId(), attempt);
+        }
+        Map<String, Long> completedCounts = new HashMap<>();
+        for (Object[] row : attemptRepository.countCompletedForItems(itemIds)) {
+            completedCounts.put((String) row[0], ((Number) row[1]).longValue());
+        }
+
+        List<EngagementItemDTO> out = new ArrayList<>();
+        int done = 0, missed = 0, points = 0;
+
+        for (EngagementItem item : items) {
+            EngagementSlot slot = slotsById.get(item.getSlotId());
+            if (slot == null) continue;
+            EngagementPlan plan = plansById.get(slot.getPlanId());
+            if (plan == null) continue;
+            ZoneId zone = scheduleResolver.zoneOf(plan);
+            LocalDate today = LocalDate.now(zone);
+            LocalDate first = today.minusDays(window);
+            EngagementAttempt attempt = attempts.get(item.getId());
+            boolean completed = attempt != null
+                    && EngagementEnums.AttemptStatus.COMPLETED.name().equals(attempt.getStatus());
+
+            // Which occurrence the completion belongs to.
+            LocalDate doneRun = null;
+            if (completed && attempt.getCompletedAt() != null) {
+                LocalDate doneLocal = attempt.getCompletedAt().toInstant().atZone(zone).toLocalDate();
+                doneRun = scheduleResolver.mostRecentRunDate(slot, doneLocal);
+                if (doneRun != null && Boolean.TRUE.equals(attempt.getIsLate())) {
+                    // A late completion is a catch-up for the occurrence BEFORE the
+                    // one running on the day it was done, when there was one.
+                    LocalDate prior = scheduleResolver.mostRecentRunDate(slot, doneRun.minusDays(1));
+                    if (prior != null) doneRun = prior;
+                }
+            }
+
+            LocalDate last = today.isAfter(slot.effectiveEndDate()) ? slot.effectiveEndDate() : today;
+            for (LocalDate run = last; !run.isBefore(first); run = run.minusDays(1)) {
+                if (run.isBefore(slot.getStartDate())) break;
+                if (!scheduleResolver.runsOn(slot, run)) continue;
+                SlotState state = scheduleResolver.stateOn(plan, slot, item, run);
+                if (state == SlotState.UPCOMING) continue;
+
+                String status;
+                if (completed && doneRun != null && run.equals(doneRun)) {
+                    status = "DONE";
+                } else if (completed && doneRun != null && run.isAfter(doneRun)) {
+                    continue; // already done — the feed never asked for this occurrence
+                } else if (state == SlotState.OPEN) {
+                    continue; // still on the home card
+                } else if (state == SlotState.CATCH_UP) {
+                    status = "CATCH_UP";
+                } else {
+                    status = "MISSED";
+                }
+
+                EngagementItemDTO dto = toLearnerDto(plan, slot, item, run, state,
+                        "DONE".equals(status) ? attempt : null,
+                        completedCounts.getOrDefault(item.getId(), 0L));
+                dto.setPackageSessionName(batchNames.get(plan.getPackageSessionId()));
+                dto.setHistoryStatus(status);
+                // History is a summary; the document itself is fetched on open.
+                dto.setContentHtml(null);
+                if ("DONE".equals(status)) {
+                    done++;
+                    points += attempt.getPointsAwarded() == null ? 0 : attempt.getPointsAwarded();
+                    dto.setIsLate(attempt.getIsLate());
+                    dto.setCompletedAt(attempt.getCompletedAt() == null
+                            ? null : attempt.getCompletedAt().toInstant().toString());
+                    if (scheduleResolver.isRevealed(plan, slot, run)) {
+                        dto.setCorrectOptionId(readPayloadText(item.getPayloadJson(), "correctOptionId"));
+                        dto.setExplanation(readPayloadText(item.getPayloadJson(), "explanation"));
+                        dto.setSelectedOptionId(readResponseText(attempt, "selectedOptionId"));
+                    }
+                } else {
+                    missed++;
+                }
+                out.add(dto);
+            }
+        }
+
+        out.sort(Comparator.comparing(EngagementItemDTO::getRunDate,
+                        Comparator.nullsLast(Comparator.<String>reverseOrder()))
+                .thenComparing(EngagementItemDTO::getOpensAt,
+                        Comparator.nullsLast(Comparator.<String>reverseOrder())));
+        return new EngagementHistoryDTO(from, to, out, done, missed, points);
+    }
+
     private Comparator<EngagementItemDTO> feedOrder() {
         return Comparator
                 .comparing((EngagementItemDTO d) -> !Boolean.TRUE.equals(d.getIsRequired()))

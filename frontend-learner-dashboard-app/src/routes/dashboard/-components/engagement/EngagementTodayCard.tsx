@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "@tanstack/react-router";
 import {
   EngagementItem,
   fetchEngagementFeed,
@@ -26,6 +27,7 @@ import {
  */
 export function EngagementTodayCard() {
   const { t } = useTranslation("dashboardEngagement");
+  const navigate = useNavigate();
   const [feed, setFeed] = useState<EngagementFeed | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeItem, setActiveItem] = useState<EngagementItem | null>(null);
@@ -278,6 +280,20 @@ export function EngagementTodayCard() {
             </div>
           </div>
         )}
+
+        {/* Yesterday and before — done, missed, still catchable */}
+        <div className="border-t border-neutral-100 px-5 py-3 dark:border-neutral-800">
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/engagement/history" })}
+            className="group flex w-full items-center justify-between text-sm font-semibold text-primary-700 transition-colors hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+          >
+            <span>{t("card.seePast")}</span>
+            <span className="transition-transform duration-200 group-hover:translate-x-1" aria-hidden>
+              ›
+            </span>
+          </button>
+        </div>
       </section>
 
       <EngagementItemDialog

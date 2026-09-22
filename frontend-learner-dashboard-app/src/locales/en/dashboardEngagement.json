@@ -19,7 +19,8 @@
     "revealed": "✨ Revealed",
     "answer": "Answer:",
     "youPicked": "You picked: {{text}}",
-    "gotIt": "You got it — +{{count}} points"
+    "gotIt": "You got it — +{{count}} points",
+    "seePast": "See past tasks"
   },
   "time": {
     "daysLeft": "{{count}}d left",
@@ -76,5 +77,28 @@
     "answered": "Answered —",
     "points": "+{{count}} points",
     "revealLater": " · the answer drops later today"
+  },
+  "history": {
+    "title": "Past tasks",
+    "subtitle": "What you did, what you missed, and what you can still catch up on.",
+    "back": "Home",
+    "window_one": "{{count}} day",
+    "window_other": "{{count}} days",
+    "done": "Done",
+    "missed": "Missed",
+    "points": "Points",
+    "today": "Today",
+    "doneBadge": "Done",
+    "doneLate": "Done late",
+    "missedBadge": "Missed",
+    "catchUp": "Catch up · {{percent}}% points",
+    "correct": "You got it right",
+    "wrong": "Not quite",
+    "pending": "Result comes at the reveal",
+    "earned": "+{{count}} pts",
+    "openToCatchUp": "Open to catch up",
+    "empty": "Nothing here yet — your finished and missed tasks will show up as the days go by.",
+    "error": "Couldn't load your past tasks.",
+    "retry": "Try again"
   }
 }

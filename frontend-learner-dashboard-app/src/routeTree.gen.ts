@@ -81,6 +81,7 @@ import { Route as LearningCentreAttendanceIndexRouteImport } from './routes/lear
 import { Route as LeaderboardPackageSessionIdIndexRouteImport } from './routes/leaderboard/$packageSessionId/index'
 import { Route as HomeworkReportsIndexRouteImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/index'
+import { Route as EngagementHistoryIndexRouteImport } from './routes/engagement/history/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
 import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/course-details/index'
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
@@ -496,6 +497,11 @@ const HomeworkListIndexRoute = HomeworkListIndexRouteImport.update({
   path: '/homework/list/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EngagementHistoryIndexRoute = EngagementHistoryIndexRouteImport.update({
+  id: '/engagement/history/',
+  path: '/engagement/history/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardNotificationsIndexRoute =
   DashboardNotificationsIndexRouteImport.update({
     id: '/dashboard/notifications/',
@@ -788,6 +794,7 @@ export interface FileRoutesByFullPath {
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
+  '/engagement/history': typeof EngagementHistoryIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
@@ -900,6 +907,7 @@ export interface FileRoutesByTo {
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
+  '/engagement/history': typeof EngagementHistoryIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
@@ -1015,6 +1023,7 @@ export interface FileRoutesById {
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
   '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
+  '/engagement/history/': typeof EngagementHistoryIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId/': typeof LeaderboardPackageSessionIdIndexRoute
@@ -1131,6 +1140,7 @@ export interface FileRouteTypes {
     | '/assessment/reports'
     | '/courses/course-details'
     | '/dashboard/notifications'
+    | '/engagement/history'
     | '/homework/list'
     | '/homework/reports'
     | '/leaderboard/$packageSessionId'
@@ -1243,6 +1253,7 @@ export interface FileRouteTypes {
     | '/assessment/reports'
     | '/courses/course-details'
     | '/dashboard/notifications'
+    | '/engagement/history'
     | '/homework/list'
     | '/homework/reports'
     | '/leaderboard/$packageSessionId'
@@ -1357,6 +1368,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/'
     | '/courses/course-details/'
     | '/dashboard/notifications/'
+    | '/engagement/history/'
     | '/homework/list/'
     | '/homework/reports/'
     | '/leaderboard/$packageSessionId/'
@@ -1472,6 +1484,7 @@ export interface RootRouteChildren {
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
   CoursesCourseDetailsIndexRoute: typeof CoursesCourseDetailsIndexRoute
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
+  EngagementHistoryIndexRoute: typeof EngagementHistoryIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
   LeaderboardPackageSessionIdIndexRoute: typeof LeaderboardPackageSessionIdIndexRoute
@@ -2029,6 +2042,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeworkListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/engagement/history/': {
+      id: '/engagement/history/'
+      path: '/engagement/history'
+      fullPath: '/engagement/history'
+      preLoaderRoute: typeof EngagementHistoryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/notifications/': {
       id: '/dashboard/notifications/'
       path: '/dashboard/notifications'
@@ -2408,6 +2428,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
   CoursesCourseDetailsIndexRoute: CoursesCourseDetailsIndexRoute,
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
+  EngagementHistoryIndexRoute: EngagementHistoryIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
   LeaderboardPackageSessionIdIndexRoute: LeaderboardPackageSessionIdIndexRoute,

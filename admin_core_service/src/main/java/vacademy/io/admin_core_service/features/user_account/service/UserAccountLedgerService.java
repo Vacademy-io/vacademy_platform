@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.user_account.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -15,6 +16,7 @@ import vacademy.io.admin_core_service.features.user_account.repository.UserAccou
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -200,8 +202,26 @@ public class UserAccountLedgerService {
                 .totalPaid(totalPaid)
                 .balance(balance)
                 .overdue(overdue)
-                .currency("INR")
+                .currency(resolveLedgerCurrency(userId, instituteId))
                 .build();
+    }
+
+    /**
+     * Currency to report the summary in: whatever this learner's most recent ledger entry was
+     * booked in. INR only when the ledger is empty, in which case every figure is zero anyway.
+     */
+    private String resolveLedgerCurrency(String userId, String instituteId) {
+        try {
+            List<String> currencies = repository.findLedgerCurrencies(
+                    userId, instituteId, PageRequest.of(0, 1));
+            if (!currencies.isEmpty() && currencies.get(0) != null && !currencies.get(0).isBlank()) {
+                return currencies.get(0).trim().toUpperCase();
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve ledger currency for user {} institute {}: {}",
+                    userId, instituteId, e.getMessage());
+        }
+        return "INR";
     }
 
     public Page<UserAccountLedgerEntryDTO> getLedger(String userId, String instituteId, Pageable pageable) {

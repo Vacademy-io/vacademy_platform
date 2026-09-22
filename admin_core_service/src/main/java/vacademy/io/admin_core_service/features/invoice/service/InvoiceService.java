@@ -126,6 +126,9 @@ public class InvoiceService {
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository userPlanRepository;
+
     // Installment line items name themselves after their fee type ("Registration Fee",
     // "GP Rating Course Installments") rather than the course. student_fee_payment.fee_type_id
     // is never populated by the generator, so the name is resolved the long way round:
@@ -3980,6 +3983,10 @@ public class InvoiceService {
         // allocation per SFP because a partial payment can produce multiple ledger
         // rows over time; the latest one corresponds to the invoice the admin wants.
         Map<String, String[]> sfpIdToPdfInfo = new HashMap<>();
+        // userPlanId -> currency, resolved in ONE query below. The synthetic rows used to
+        // report "INR" unconditionally, which rendered every AUD installment with a rupee
+        // symbol in the manage-students payment-history tab.
+        Map<String, String> userPlanIdToCurrency = new HashMap<>();
         try {
             List<String> sfpIds = sfps.stream()
                     .map(StudentFeePayment::getId)
@@ -4008,12 +4015,30 @@ public class InvoiceService {
                                         ? mediaService.getFilePublicUrlById(pdfFileId)
                                         : null;
                                 sfpIdToPdfInfo.put(e.getKey(),
-                                        new String[]{realInvoiceId, pdfFileId, url});
+                                        new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency()});
                             });
                 }
             }
         } catch (Exception e) {
             log.warn("Could not enrich SFP DTOs with invoice PDFs for user {}: {}", userId, e.getMessage());
+        }
+        try {
+            List<String> userPlanIds = sfps.stream()
+                    .map(StudentFeePayment::getUserPlanId)
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (!userPlanIds.isEmpty()) {
+                for (Object[] row : userPlanRepository.findPlanCurrencyByUserPlanIds(userPlanIds)) {
+                    String planId = row[0] != null ? row[0].toString() : null;
+                    String planCurrency = row[1] != null ? row[1].toString() : null;
+                    if (StringUtils.hasText(planId) && StringUtils.hasText(planCurrency)) {
+                        userPlanIdToCurrency.put(planId, planCurrency.trim().toUpperCase());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve plan currency for SFP rows of user {}: {}", userId, e.getMessage());
         }
         List<InvoiceDTO> dtos = new ArrayList<>();
         for (StudentFeePayment sfp : sfps) {
@@ -4050,6 +4075,12 @@ public class InvoiceService {
             String realInvoiceId = pdfInfo != null ? pdfInfo[0] : null;
             String pdfFileId = pdfInfo != null ? pdfInfo[1] : null;
             String pdfUrl = pdfInfo != null ? pdfInfo[2] : null;
+            // The real Invoice is authoritative; otherwise the plan the installment belongs
+            // to. INR only as a last resort, for rows with neither.
+            String invoiceCurrency = pdfInfo != null ? pdfInfo[3] : null;
+            String currency = StringUtils.hasText(invoiceCurrency)
+                    ? invoiceCurrency
+                    : userPlanIdToCurrency.getOrDefault(sfp.getUserPlanId(), "INR");
             // When a real Invoice exists for this SFP, expose its id so the FE's
             // existing /v1/invoices/{id}/download path can resolve (and regenerate
             // if needed) the PDF without a per-SFP endpoint. Otherwise fall back to
@@ -4068,7 +4099,7 @@ public class InvoiceService {
                     .dueDate(dueDate)
                     .subtotal(displayAmount)
                     .totalAmount(displayAmount)
-                    .currency("INR")
+                    .currency(currency)
                     .status(mapSfpStatusToInvoiceStatus(status))
                     .createdAt(createdAt)
                     .updatedAt(sfp.getUpdatedAt())
@@ -6066,7 +6097,13 @@ public class InvoiceService {
 
     private byte[] fetchPdfBytesFromS3(String pdfFileId) {
         try {
-            String pdfUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId);
+            // Presigned first: deployments that keep Block Public Access on (vet) answer an
+            // unsigned object URL with 403, which silently produced invoice emails with no
+            // PDF attached. The permanent URL stays as a fallback for the CDN-fronted case.
+            String pdfUrl = mediaService.getFilePublicUrlById(pdfFileId);
+            if (!StringUtils.hasText(pdfUrl)) {
+                pdfUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId);
+            }
             if (!StringUtils.hasText(pdfUrl)) return null;
             java.net.URL url = new java.net.URL(pdfUrl);
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();

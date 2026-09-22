@@ -18,6 +18,18 @@ import java.time.LocalDateTime;
 
 public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
 
+    /**
+     * (userPlanId, currency) for a batch of plans, read straight off the joined
+     * payment_plan row. Deliberately a projection rather than walking
+     * {@code UserPlan.getPaymentPlan()}: that association is LAZY, so touching it from a
+     * non-transactional read path is both an N+1 and a LazyInitializationException risk.
+     */
+    @Query(value = "SELECT up.id AS userPlanId, pp.currency AS currency " +
+            "FROM user_plan up " +
+            "JOIN payment_plan pp ON pp.id = up.plan_id " +
+            "WHERE up.id IN (:userPlanIds)", nativeQuery = true)
+    List<Object[]> findPlanCurrencyByUserPlanIds(@Param("userPlanIds") List<String> userPlanIds);
+
         @Query("SELECT ei.inviteCode FROM UserPlan up JOIN up.enrollInvite ei WHERE up.id = :userPlanId")
         Optional<String> findInviteCodeByUserPlanId(@Param("userPlanId") String userPlanId);
 

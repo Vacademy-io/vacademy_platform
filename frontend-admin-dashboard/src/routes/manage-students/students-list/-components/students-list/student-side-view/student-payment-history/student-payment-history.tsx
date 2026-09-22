@@ -58,6 +58,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { CircleNotch } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { getCurrencySymbol } from '@/constants/currencies';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 
@@ -76,10 +77,31 @@ function formatDate(dateStr: string | null | undefined): string {
     }
 }
 
+/**
+ * Symbol for a currency code. Goes through the platform-wide CURRENCIES table rather
+ * than an inline ternary: this tab used to know only USD and EUR and fell through to
+ * ₹ for everything else, so an AUD institute saw its invoices priced in rupees.
+ * Unknown codes render as the code itself, never as a wrong symbol.
+ */
+function symbolFor(currency?: string | null): string {
+    return getCurrencySymbol((currency || 'INR').toUpperCase());
+}
+
+/**
+ * Amount grouped per the *currency's* locale, not always en-IN — en-IN lakh/crore
+ * grouping ("A$12,34,567.00") is wrong for every non-INR currency.
+ */
+function formatAmount(amount: number | null | undefined, currency?: string | null, minimumFractionDigits = 2): string {
+    const code = (currency || 'INR').toUpperCase();
+    return Number(amount || 0).toLocaleString(code === 'INR' ? 'en-IN' : 'en-US', {
+        minimumFractionDigits,
+        maximumFractionDigits: 2,
+    });
+}
+
 function formatCurrency(amount: number | null | undefined, currency?: string): string {
     if (amount == null) return '—';
-    const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₹';
-    return `${sym}${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${symbolFor(currency)}${formatAmount(amount, currency)}`;
 }
 
 /**
@@ -174,9 +196,8 @@ const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
 /** Account summary grid — shows total accrued, paid, balance, overdue from the ledger. */
 const AccountSummaryGrid = ({ summary }: { summary: UserAccountSummaryDTO }) => {
     const { t } = useTranslation('manageStudentsPaymentHistory');
-    const sym = summary.currency === 'USD' ? '$' : summary.currency === 'EUR' ? '€' : '₹';
-    const fmt = (v: number) =>
-        `${sym}${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    const sym = symbolFor(summary.currency);
+    const fmt = (v: number) => `${sym}${formatAmount(v, summary.currency, 0)}`;
     return (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
@@ -646,15 +667,15 @@ const TransactionHistory = ({
                         isCredit: false,
                         neutral: false,
                     };
-                    const sym = entry.currency === 'USD' ? '$' : entry.currency === 'EUR' ? '€' : '₹';
-                    const amtStr = `${sym}${Number(entry.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    const sym = symbolFor(entry.currency);
+                    const amtStr = `${sym}${formatAmount(entry.amount, entry.currency)}`;
                     // Discounted accrual: backend sends the list price (gross_amount)
                     // alongside the net amount — render it struck through so the
                     // coupon's effect is visible on the transaction line itself.
                     const gross = Number(entry.gross_amount || 0);
                     const grossStr =
                         gross > Number(entry.amount || 0)
-                            ? `${sym}${gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                            ? `${sym}${formatAmount(gross, entry.currency)}`
                             : null;
                     return (
                         <li key={entry.id} className="flex items-start gap-2.5 px-3 py-2 hover:bg-neutral-50">

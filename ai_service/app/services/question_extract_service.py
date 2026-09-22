@@ -60,11 +60,15 @@ _WS = re.compile(r"\s+")
 
 # "1.", "1)", "(1)", "Q1.", "Q. 12 …", "Question 3:", "7 – …" at the start of a
 # block. After a bare number a separator is required (or "2024 was a leap
-# year" would start a question); after a Q / Question marker it is not.
+# year" would start a question) and a "." must not continue into a decimal
+# ("1.9 min" is a timing, not question 1); after a Q / Question marker no
+# separator is needed, but the number must end there ("Q30S", a code in a
+# series puzzle; "Q 30% 7 : 5" and "Q 1,20,000 …", table rows, are not
+# questions 30 and 1).
 _QUESTION_START = re.compile(
     r"^\s*(?:"
-    r"(?:q(?:uestion)?\.?\s*)\(?(\d{1,3})\)?\s*[\.\):\-–]?\s*"
-    r"|\(?(\d{1,3})\)?\s*[\.\):\-–]\s*"
+    r"(?:q(?:uestion)?\.?\s*)\(?(\d{1,3})(?![A-Za-z0-9%]|,\d)\)?\s*[\.\):\-–]?\s*"
+    r"|\(?(\d{1,3})\)?\s*(?:\.(?!\d)|[\):\-–])\s*"
     r")", re.I
 )
 # A heading that opens the answer key / solutions: "ANSWER KEY", "Answers",
@@ -218,18 +222,23 @@ _INSTRUCTIONS_HEAD = re.compile(
 _LIST_MAX = 10
 
 
-def question_starts(blocks: Sequence[str]) -> List[bool]:
-    """Which blocks open a question.
+def question_runs(blocks: Sequence[str]) -> List[List[int]]:
+    """The blocks that open questions, grouped into the paper's RUNS of
+    numbering (one run, or one per section when the paper restarts at 1).
 
-    Numbered blocks are grouped into RUNS that continue a sequence (a number
-    up to three ahead is accepted, so a misread or a skipped number does not
-    stall the cursor). A number that restarts at 1:
-      - after a section heading, or with a "Q" marker, starts a new run —
-        the paper numbers each section from 1;
+    Numbered blocks continue a run when they follow its sequence (a number
+    up to three ahead is accepted, so a misread or a skipped number does
+    not stall the cursor). A number that restarts at 1:
+      - after a section heading, with a "Q" marker, or after the
+        instructions list, starts a new run — the paper numbers each
+        section from 1;
       - otherwise opens a nested run, the statements "1) 2) 3) 4)" inside a
         question, which is dropped as soon as the outer run continues.
-    A run headed "General Instructions" / "Note:" is the instructions list,
-    never questions; so is a short leading run followed by a longer restart.
+    A leading run is the instructions list, not questions, when the paper
+    goes on to restart at 1 and the run was headed "General Instructions"
+    / "Note:", or is short with no options under its items and the restart
+    is longer. A paper that never restarts keeps its first run whatever
+    line sits above it.
     """
     from .paper_outline import is_section_heading
 
@@ -248,6 +257,12 @@ def question_starts(blocks: Sequence[str]) -> List[bool]:
         # Outermost first: statements nest inside a question, so the outer
         # sequence resuming ends the inner one.
         matched = next((r for r in open_runs if r["expected"] <= n <= r["expected"] + 3), None)
+        if matched is None and explicit and n != 1:
+            # "Question 3" after a run that just took a bare "3." — the last
+            # item of a "1. 2. 3." list inside the previous entry, which
+            # happened to be the number the run expected. The marker is the
+            # question; the list items (at most a few) go back to the entry.
+            matched = _rewind_to(open_runs, n)
         if matched is not None:
             while open_runs[-1] is not matched:
                 open_runs.pop()["nested"] = True
@@ -255,12 +270,16 @@ def question_starts(blocks: Sequence[str]) -> List[bool]:
             # A fresh "1." nests inside a question (its statements) unless
             # a heading or a "Q" marker restarts the paper — or the run it
             # would nest in is the instructions list, which has no statements.
-            restart = explicit or heading_since_start or not open_runs or open_runs[-1]["instructions"]
+            # A "Q" marker on any other number out of sequence (a misread
+            # "Q77", a stray "Q 30 …" in a table) only opens a candidate
+            # under the current run, dropped as soon as that run resumes.
+            restart = n == 1 and (explicit or heading_since_start or not open_runs or open_runs[-1]["instructions"])
             if restart:
                 open_runs.clear()
             before = texts[max(0, i - 3):i]
             after_heading = any(is_section_heading(t) for t in before if len(t) <= 90)
-            matched = {"idx": [], "expected": n, "nested": False, "restart": restart and bool(runs),
+            matched = {"idx": [], "nos": [], "bare": [], "expected": n, "nested": False,
+                       "restart": restart and bool(runs),
                        "instructions": any(_INSTRUCTIONS_HEAD.match(t) for t in before) and not after_heading,
                        "after_heading": after_heading}
             runs.append(matched)
@@ -268,10 +287,12 @@ def question_starts(blocks: Sequence[str]) -> List[bool]:
         else:
             continue
         matched["idx"].append(i)
+        matched["nos"].append(n)
+        matched["bare"].append(not explicit)
         matched["expected"] = n + 1
         heading_since_start = False
 
-    kept = [r for r in runs if not r["nested"] and not r["instructions"]]
+    kept = [r for r in runs if not r["nested"]]
 
     def reads_like_a_list(r: Dict[str, Any]) -> bool:
         # Instructions are numbered sentences: no "Q" markers, no options
@@ -284,13 +305,54 @@ def question_starts(blocks: Sequence[str]) -> List[bool]:
         )
         return with_options * 2 < len(r["idx"])
 
-    # A short leading list followed by a longer restart is the instructions.
-    while len(kept) >= 2 and len(kept[0]["idx"]) <= _LIST_MAX and reads_like_a_list(kept[0]) \
-            and kept[1]["restart"] and len(kept[1]["idx"]) > len(kept[0]["idx"]):
+    # The instructions list only ever sits before a restart: "Note: … 1. 2."
+    # followed by Q1 again. With no restart, the first run is the questions,
+    # whatever line sits above it ("Note: all questions are compulsory").
+    while len(kept) >= 2 and kept[1]["restart"] and (
+        kept[0]["instructions"]
+        or (len(kept[0]["idx"]) <= _LIST_MAX and reads_like_a_list(kept[0])
+            and len(kept[1]["idx"]) > len(kept[0]["idx"]))
+    ):
         kept.pop(0)
-    out = [False] * len(blocks)
+    # Only a restart opens a run of its own. A candidate the outer run never
+    # came back to (the statements of the last question, a numbering gap)
+    # belongs to the outer run's numbering.
+    merged: List[List[int]] = []
     for r in kept:
-        for i in r["idx"]:
+        if merged and not r["restart"]:
+            merged[-1] = sorted(merged[-1] + r["idx"])
+        else:
+            merged.append(list(r["idx"]))
+    return merged
+
+
+def _rewind_to(open_runs: List[Dict[str, Any]], n: int) -> Optional[Dict[str, Any]]:
+    """The open run whose last few entries are bare numbers ≥ n sitting
+    right after an explicit "Question m" entry that expects n (within the
+    usual slack) — in a run of markers, bare numbers are a list inside the
+    entry, not questions. Drops them and returns the run, now expecting n;
+    None when no run reads that way. A bare-numbered run is never rewound:
+    a stray "Q 6 …" (a table with a Q column) must not evict question 6."""
+    for r in open_runs:
+        tail = 0
+        while tail < len(r["idx"]) and r["nos"][-1 - tail] >= n and r["bare"][-1 - tail]:
+            tail += 1
+        if not 0 < tail <= 3 or tail == len(r["idx"]) or r["bare"][-1 - tail]:
+            continue
+        last = r["nos"][-1 - tail]
+        if last < n <= last + 3:
+            for key in ("idx", "nos", "bare"):
+                del r[key][-tail:]
+            r["expected"] = n
+            return r
+    return None
+
+
+def question_starts(blocks: Sequence[str]) -> List[bool]:
+    """Which blocks open a question (see question_runs)."""
+    out = [False] * len(blocks)
+    for run in question_runs(blocks):
+        for i in run:
             out[i] = True
     return out
 
@@ -422,6 +484,55 @@ def read_key_region(blocks: Sequence[str], min_hits: int = 4) -> Tuple[Dict[str,
             e["exp"] = exp.strip()
             explained += 1
     return answers, explained
+
+
+def numbering_runs(questions: Sequence[Dict[str, Any]]) -> List[List[int]]:
+    """Indexes of `questions` grouped into runs of numbering: one run, or
+    one per section when the paper numbers each section from 1 (a number
+    that starts over, at 1 or 2, after a higher one opens a new run; a
+    misread "7" for "17" does not)."""
+    runs: List[List[int]] = [[]]
+    prev: Optional[int] = None
+    for i, q in enumerate(questions):
+        no = str(q.get("question_number") or "").strip()
+        n = int(no) if no.isdigit() else None
+        if n is not None and prev is not None and n < prev and n <= 2:
+            runs.append([])
+        runs[-1].append(i)
+        if n is not None:
+            prev = n
+    return [r for r in runs if r]
+
+
+def split_key_region(blocks: Sequence[str], min_hits: int = 2) -> List[List[str]]:
+    """The key region cut where its numbering restarts — a "1. a … 20. d"
+    line followed by another "1. b …", or solution entries starting over at
+    "1." after "20." — so a paper that numbers each section from 1 can have
+    each section's answers applied to it. Key lines and solution entries
+    may each restart, giving two regions per section. Entries are the
+    sequence-aware question starts, so a numbered list inside an
+    explanation does not cut."""
+    runs = question_runs(blocks)
+    heads = {run[0] for run in runs[1:]}
+    entries = {i for run in runs for i in run}
+    cuts = set()
+    seen_max = 0
+    for i, block in enumerate(blocks):
+        text = _text_of(block)
+        nos = [int(no) for no, _l in _key_pairs(text) if no.isdigit()]
+        if len(nos) < min_hits or len(text) / len(nos) >= 14:
+            nos = [int(_question_no(block) or 0)] if i in entries else []
+        if not nos:
+            continue
+        if nos[0] <= 2 and seen_max >= 3 and (i in heads or len(nos) > 1):
+            cuts.add(i)
+        seen_max = max(seen_max, *nos)
+    regions: List[List[str]] = [[]]
+    for i, block in enumerate(blocks):
+        if i in cuts and regions[-1]:
+            regions.append([])
+        regions[-1].append(block)
+    return [r for r in regions if r]
 
 
 def _strip_entry_head(html: str, no: str) -> str:
@@ -771,21 +882,51 @@ async def extract_from_html(
     # most questions unanswered (an unnumbered or oddly laid-out key).
     key: Dict[str, Any] = {}
     key_source = "none"
+    keyed = 0
+    q_runs = numbering_runs(questions)
     if key_at is not None:
-        key, _explained = read_key_region(
-            blocks[key_at:], min_hits=max(3, min(8, len(questions) // 2)),
-        )
-        key_source = "regex"
-        covered = sum(1 for q in questions if key.get(str(q.get("question_number") or "").strip(), {}).get("options"))
-        if questions and covered < 0.7 * len(questions) and key_parts:
-            model_key = merge_keys(await asyncio.gather(*(read_key(i, p) for i, p in enumerate(key_parts))))
-            for no, entry in model_key.items():
-                cur = key.setdefault(no, {"options": [], "ans": "", "exp": ""})
-                cur["options"] = cur["options"] or entry.get("options") or []
-                cur["ans"] = cur["ans"] or entry.get("ans") or ""
-                cur["exp"] = cur["exp"] or entry.get("exp") or ""
-            key_source = "regex+model"
-    keyed = apply_answer_key(questions, key)
+        key_regions = split_key_region(blocks[key_at:]) if len(q_runs) >= 2 else []
+        part_keys: List[Dict[str, Any]] = []
+        if key_regions and len(key_regions) % len(q_runs) == 0:
+            # The paper numbers each section from 1 and so does its key
+            # (and its solutions, when printed as a second list): each
+            # section's answers go to that section's questions, not to
+            # whichever Q1 comes first. Regions cycle through the sections.
+            part_keys = [
+                merge_keys([
+                    read_key_region(region, min_hits=max(3, min(8, len(run) // 2)))[0]
+                    for region in key_regions[k::len(q_runs)]
+                ])
+                for k, run in enumerate(q_runs)
+            ]
+            covered = sum(
+                1 for part, run in zip(part_keys, q_runs) for i in run
+                if part.get(str(questions[i].get("question_number") or "").strip(), {}).get("options")
+            )
+            # Only when the split key really reads the paper; otherwise the
+            # whole-key path below, with its model fallback, as before.
+            if covered < 0.7 * len(questions):
+                part_keys = []
+        if part_keys:
+            for part, run in zip(part_keys, q_runs):
+                keyed += apply_answer_key([questions[i] for i in run], part)
+                key.update(part)
+            key_source = "regex"
+        else:
+            key, _explained = read_key_region(
+                blocks[key_at:], min_hits=max(3, min(8, len(questions) // 2)),
+            )
+            key_source = "regex"
+            covered = sum(1 for q in questions if key.get(str(q.get("question_number") or "").strip(), {}).get("options"))
+            if questions and covered < 0.7 * len(questions) and key_parts:
+                model_key = merge_keys(await asyncio.gather(*(read_key(i, p) for i, p in enumerate(key_parts))))
+                for no, entry in model_key.items():
+                    cur = key.setdefault(no, {"options": [], "ans": "", "exp": ""})
+                    cur["options"] = cur["options"] or entry.get("options") or []
+                    cur["ans"] = cur["ans"] or entry.get("ans") or ""
+                    cur["exp"] = cur["exp"] or entry.get("exp") or ""
+                key_source = "regex+model"
+            keyed = apply_answer_key(questions, key)
     # The key names an option letter but the question came back without
     # options: the model dropped them (it read "c is … (a) 10 (b) 12" as
     # numeric). Flag it — the teacher must fix that question before use.
@@ -852,5 +993,6 @@ async def extract_from_html(
 __all__ = [
     "TOOL_KEY", "OCR_TOOL_KEY", "extract_from_html", "split_blocks", "find_answer_key", "chunk_blocks",
     "merge_questions", "merge_keys", "apply_answer_key", "strip_question_number",
-    "read_key_region", "expand_passages", "question_starts", "repair_missing_options",
+    "read_key_region", "expand_passages", "question_starts", "question_runs", "repair_missing_options",
+    "numbering_runs", "split_key_region",
 ]

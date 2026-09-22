@@ -33,6 +33,14 @@ public class UnifiedCommunicationDTO {
     private String title;
 
     /**
+     * Outbound email subject, read back from the send's message_payload. Null for every other
+     * channel, and for email rows written before the subject was stored there — {@link #title}
+     * stays the display fallback. Kept separate from title because a resend has to reuse the
+     * exact subject line that went out, not a heading scraped out of the rendered HTML.
+     */
+    private String subject;
+
+    /**
      * Truncated preview of message body (first 150 chars)
      */
     private String bodyPreview;

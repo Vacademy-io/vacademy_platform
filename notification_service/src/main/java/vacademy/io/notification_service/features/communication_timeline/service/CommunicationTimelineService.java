@@ -195,6 +195,12 @@ public class CommunicationTimelineService {
         builder.bodyPreview(truncate(body, 150));
         builder.fullBody(body);
 
+        // The real subject line, stored beside the row rather than in it: body holds the rendered
+        // HTML, so EmailService parks the subject in message_payload ({"subject": ...}). Title above
+        // is a truncation of that HTML and is no substitute — anything resending this message needs
+        // the subject that actually went out.
+        builder.subject(extractEmailSubject(nl));
+
         // Email status, in order of authority:
         //   1. an SES tracking event   — the provider's own outcome, always freshest
         //   2. the stored deliveryStatus — a send we ourselves refused/failed before SMTP
@@ -259,6 +265,27 @@ public class CommunicationTimelineService {
      * Only failures are stored; a successful send leaves the column null and defers to SES.
      * Returns null when there is no recorded failure, so callers can fall through.
      */
+    /**
+     * Subject of an outbound EMAIL row, read from {@code message_payload} ({@code {"subject": ...}}
+     * — the key EmailService writes). Null when the payload is absent or carries no subject, which
+     * is every row written before the subject was stored there; callers fall back to the title.
+     */
+    private String extractEmailSubject(NotificationLog nl) {
+        String payload = nl.getMessagePayload();
+        if (!StringUtils.hasText(payload)) {
+            return null;
+        }
+        try {
+            Map<String, Object> parsed = objectMapper.readValue(
+                    payload, new TypeReference<Map<String, Object>>() {});
+            Object subject = parsed.get("subject");
+            return (subject instanceof String s && StringUtils.hasText(s)) ? s : null;
+        } catch (Exception e) {
+            log.debug("Could not parse EMAIL messagePayload for log {}: {}", nl.getId(), e.getMessage());
+            return null;
+        }
+    }
+
     private String storedFailureStatus(NotificationLog nl) {
         String stored = nl.getDeliveryStatus();
         if (!StringUtils.hasText(stored)) {

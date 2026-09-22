@@ -55,6 +55,38 @@
         "heading": "सूचना भेजें",
         "subheading": "ईमेल या व्हाट्सएप संदेश"
     },
+    "resend": {
+        "button": "फिर भेजें",
+        "buttonTooltip": "यह संदेश दोबारा भेजें",
+        "blocked": {
+            "noTemplate": "केवल टेम्पलेट संदेश दोबारा भेजे जा सकते हैं — यह इनबॉक्स में टाइप किया गया था",
+            "noBody": "मूल संदेश सहेजा नहीं गया था, इसलिए दोबारा भेजने के लिए कुछ नहीं है",
+            "unsupportedChannel": "यह चैनल यहाँ से दोबारा नहीं भेजा जा सकता"
+        },
+        "title": "यह {{channel}} संदेश दोबारा भेजें?",
+        "confirmQuestion": "क्या आप वाकई इसे {{recipient}} को दोबारा भेजना चाहते हैं?",
+        "subjectLabel": "विषय:",
+        "hasVariables_one": "इस टेम्पलेट में {{count}} वेरिएबल है।",
+        "hasVariables_other": "इस टेम्पलेट में {{count}} वेरिएबल हैं।",
+        "modeSame": "वही दोबारा भेजें",
+        "modeSameHint": "पहली बार भेजे गए मान वैसे ही रखें",
+        "modeEdit": "वेरिएबल बदलें",
+        "modeEditHint": "भेजने से पहले मान बदलें",
+        "variablePlaceholder": "{{name}} का मान",
+        "variableEmpty": "(खाली)",
+        "previewHeading": "पूर्वावलोकन",
+        "deliveryCaveat": "इससे शिक्षार्थी को वास्तविक संदेश जाएगा।",
+        "cancel": "रद्द करें",
+        "confirmSame": "दोबारा भेजें",
+        "confirmEdited": "नए मानों के साथ भेजें",
+        "emailSent": "ईमेल दोबारा भेजा गया",
+        "whatsappQueued": "व्हाट्सऐप संदेश प्रदाता को सौंप दिया गया",
+        "rejected": "प्रदाता ने दोबारा भेजने से इनकार कर दिया",
+        "rejectedWithReason": "प्रदाता ने दोबारा भेजने से इनकार कर दिया: {{reason}}",
+        "failed": "संदेश दोबारा नहीं भेजा जा सका",
+        "noInstitute": "कोई संस्थान चयनित नहीं है",
+        "noRecipient": "इस संदेश का कोई प्राप्तकर्ता नहीं है"
+    },
     "pagination": {
         "previous": "पिछला",
         "next": "अगला",

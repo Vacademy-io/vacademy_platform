@@ -267,6 +267,10 @@ const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         progressTab: true,
         coursesTab: true,
         notificationTab: false,
+        // On for admin: when an institute turns the Notifications tab on, resending
+        // a message is part of working it. Off for every other role — an outbound
+        // message to a learner is not a read-only action.
+        allowResendMessage: true,
         membershipTab: false,
         paymentHistoryTab: true,
         userTaggingTab: false,

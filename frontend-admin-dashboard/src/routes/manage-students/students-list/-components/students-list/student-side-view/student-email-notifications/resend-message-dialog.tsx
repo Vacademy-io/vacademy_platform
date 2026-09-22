@@ -1,7 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, CircleNotch, PencilSimple, WarningCircle } from '@phosphor-icons/react';
 
@@ -22,7 +21,7 @@ import {
     listTemplates,
     type WhatsAppTemplateDTO,
 } from '@/routes/communication/whatsapp-templates/-services/template-api';
-import { sendNotification } from '@/services/unified-send-service';
+import { resendCommunication } from '@/services/communication-resend-service';
 import type { CommunicationItem } from '@/services/communication-timeline-service';
 import { cn } from '@/lib/utils';
 
@@ -38,9 +37,6 @@ import { cn } from '@/lib/utils';
  *   - WhatsApp replays the template by name with the `bodyParams` the original send recorded.
  *   - Email replays the rendered HTML and the subject the send stored beside it.
  */
-
-/** Source stamped on resent messages so they are distinguishable in notification_log. */
-const RESEND_SOURCE = 'STUDENT_TIMELINE_RESEND';
 
 /** Placeholder shape the email send path interpolates — `{{word}}`, no inner spaces. */
 const EMAIL_PLACEHOLDER_SOURCE = '\\{\\{(\\w+)\\}\\}';
@@ -186,57 +182,31 @@ export function ResendMessageDialog({
         try {
             const variables = Object.keys(effectiveValues).length > 0 ? effectiveValues : undefined;
             const headerKind = (item.headerType ?? '').toUpperCase();
-            const response = isWhatsApp
-                ? await sendNotification({
-                      instituteId,
-                      channel: 'WHATSAPP',
-                      templateName: item.templateName!,
-                      languageCode:
-                          (item.metadata?.languageCode as string | undefined) ||
-                          template?.language ||
-                          'en',
-                      recipients: [
-                          {
-                              phone: item.recipientInfo,
-                              userId,
-                              name: recipientName,
-                              variables,
-                          },
-                      ],
-                      options: {
-                          source: RESEND_SOURCE,
-                          sourceId: uuidv4(),
+            const response = await resendCommunication({
+                instituteId,
+                channel: isWhatsApp ? 'WHATSAPP' : 'EMAIL',
+                sourceLogId: item.id,
+                recipient: item.recipientInfo,
+                recipientUserId: userId,
+                recipientName,
+                variables,
+                // The audit sentence distinguishes a duplicate from a correction.
+                variablesChanged: mode === 'EDIT',
+                ...(isWhatsApp
+                    ? {
+                          templateName: item.templateName!,
+                          languageCode:
+                              (item.metadata?.languageCode as string | undefined) ||
+                              template?.language ||
+                              'en',
                           // Meta rejects a media-header template that arrives without its header
                           // component, so replay the same attachment the original send carried.
                           ...(MEDIA_HEADERS.has(headerKind) && item.headerMediaUrl
-                              ? {
-                                    headerType: headerKind.toLowerCase() as
-                                        | 'image'
-                                        | 'video'
-                                        | 'document',
-                                    headerUrl: item.headerMediaUrl,
-                                }
+                              ? { headerType: headerKind, headerUrl: item.headerMediaUrl }
                               : {}),
-                      },
-                  })
-                : await sendNotification({
-                      instituteId,
-                      channel: 'EMAIL',
-                      recipients: [
-                          {
-                              email: item.recipientInfo,
-                              userId,
-                              name: recipientName,
-                              variables,
-                          },
-                      ],
-                      options: {
-                          emailSubject,
-                          emailBody: item.fullBody ?? '',
-                          source: RESEND_SOURCE,
-                          sourceId: uuidv4(),
-                      },
-                  });
+                      }
+                    : { emailSubject, emailBody: item.fullBody ?? '' }),
+            });
 
             // A refused recipient rides back inside a 200 with failed: 1, so the counts are the
             // truth here, not the promise resolving.

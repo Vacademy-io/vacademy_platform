@@ -79,6 +79,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     progressTab: true,
     coursesTab: true,
     notificationTab: false,
+    allowResendMessage: true,
     membershipTab: false,
     paymentHistoryTab: true,
     userTaggingTab: false,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     getUserCommunications,
@@ -41,6 +41,11 @@ import {
     showsResendControl,
 } from './resend-message-dialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import {
+    getDisplaySettingsFromCache,
+    getDisplaySettingsWithFallback,
+} from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import {
     ProfileSkeleton,
     ProfileEmpty,
@@ -137,8 +142,50 @@ export interface ResendContext {
     instituteId: string;
     userId?: string;
     recipientName?: string;
+    /** Role display setting — off hides the control entirely for this role. */
+    allowed: boolean;
     /** Refetch the timeline so the resent message appears. */
     onResent: () => void;
+}
+
+/**
+ * Whether this admin's role may resend from the timeline.
+ *
+ * Read here rather than passed in because the timeline mounts in two places (the side view and the
+ * profile overlay) and neither owns the flag. Cache-first: the side view has already loaded the
+ * same blob by the time this renders, so this is normally free.
+ *
+ * Starts null, not false: rendering the control and then pulling it away reads as a bug, and
+ * rendering nothing until the answer arrives is honest about not knowing yet.
+ */
+function useResendAllowed(): boolean | null {
+    const [allowed, setAllowed] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const resolve = async () => {
+            try {
+                const roleKey = getActiveRoleDisplaySettingsKey();
+                const settings =
+                    getDisplaySettingsFromCache(roleKey)?.studentSideView ??
+                    (await getDisplaySettingsWithFallback(roleKey)).studentSideView;
+                if (cancelled) return;
+                // Undefined = an institute that saved its settings before this flag existed. The
+                // merge has already applied the role's default, so undefined here only happens
+                // when no settings resolved at all — treat that as the admin default, on.
+                setAllowed(settings?.allowResendMessage ?? true);
+            } catch {
+                // A settings lookup that fails must not silently revoke an admin's action.
+                if (!cancelled) setAllowed(true);
+            }
+        };
+        void resolve();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    return allowed;
 }
 
 // ─── Channel Config ─────────────────────────────────────────────────────────
@@ -586,8 +633,9 @@ function CommItemBody({ item, resend }: { item: CommunicationItem; resend: Resen
     // Only an outbound message we can rebuild a send from — never an inbound one, and never a
     // free-text WhatsApp reply, which has no template for the send API to replay.
     // Shown on every outbound row (disabled where the send cannot be replayed); hidden only on
-    // inbound ones, and when we have no institute to send on behalf of.
-    const showResend = showsResendControl(item) && !!resend.instituteId;
+    // inbound ones, when the role's display settings withhold it, and when we have no institute
+    // to send on behalf of.
+    const showResend = resend.allowed && showsResendControl(item) && !!resend.instituteId;
 
     const isEmail = item.channel === 'EMAIL';
     // For emails prefer the COMPLETE fullBody — the backend's bodyPreview is often
@@ -815,6 +863,7 @@ export const StudentCommunicationTimeline = () => {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
     const [sendDialog, setSendDialog] = useState<'EMAIL' | 'WHATSAPP' | null>(null);
+    const resendAllowed = useResendAllowed();
 
     const email = selectedStudent?.email || undefined;
     const phone = selectedStudent?.mobile_number || undefined;
@@ -903,6 +952,8 @@ export const StudentCommunicationTimeline = () => {
         instituteId,
         userId,
         recipientName: selectedStudent?.full_name || undefined,
+        // null (still resolving) renders no control, same as an explicit false.
+        allowed: resendAllowed === true,
         onResent: () => {
             void refetch();
         },

@@ -19,7 +19,7 @@
     },
     "visibilityCard": {
         "title": "Visibilité du badge de score",
-        "description": "Choisissez où le badge de score CHAUD / TIÈDE / FROID apparaît.",
+        "description": "Choisissez où apparaît le badge de score du lead.",
         "options": {
             "enquiryTable": "Tableau des demandes (Admissions → Demandes)",
             "contactsTable": "Tableau des contacts (Gérer les contacts)",

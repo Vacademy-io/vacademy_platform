@@ -19,7 +19,7 @@
     },
     "visibilityCard": {
         "title": "Score Badge Visibility",
-        "description": "Choose where the HOT / WARM / COLD score badge appears.",
+        "description": "Choose where the lead score badge appears.",
         "options": {
             "enquiryTable": "Enquiries table (Admissions → Enquiries)",
             "contactsTable": "Contacts table (Manage Contacts)",

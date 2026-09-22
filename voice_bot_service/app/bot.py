@@ -733,6 +733,19 @@ class TranscriptCollector(FrameProcessor):
                                     "no cue for %r", text[:20])
                         self._resumed_t = 0.0
                         return
+                    if self._reply_in_flight():
+                        # The answer to this turn is already being composed and
+                        # nothing of it has played. Call 8e2041c8 (2026-09-22):
+                        # "मैं बच्चे का पिता बोल रहा हूँ" started run #1; "बोलिए"
+                        # 90 ms later was read as the ANSWER to the question the
+                        # bot had last played, started run #2, which repeated
+                        # run #1's question, was dropped as already-said, asked
+                        # for a next step (run #3), and the father heard "जी सर।
+                        # जी सर। जी, बोलिए।" for 11 s. It is in the context; the
+                        # reply on its way is the reply.
+                        logger.info("turn-gate: %r while the answer is already on its way "
+                                    "— nothing to generate", text[:20])
+                        return
                     if self._interrupt_on_vad():
                         # The callee's pickup "Hello" lands INSIDE our opening:
                         # call 9e566e32 (2026-09-09) said "Hello" 250ms into

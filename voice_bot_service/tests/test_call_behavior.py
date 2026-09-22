@@ -1692,12 +1692,16 @@ async def test_a_second_final_during_composition_is_not_a_fresh_turn():
 
 @pytest.mark.asyncio
 async def test_a_backchannel_during_composition_does_not_spawn_a_reply_either():
+    """Until 2026-09-22 this asserted a "carry on" cue here — a cue that RUNS
+    the model, i.e. exactly the second generation that produced "जी सर। जी सर।
+    जी, बोलिए।" in call 8e2041c8. The reply being composed is the reply."""
     rec = _Rec()
     tc = _replay_collector(rec, bot_speaking=False)
     tc._reply_in_flight = lambda: True
     await _feed(tc, "हाँ।")
     assert rec.interruptions == 0
-    assert any("carry on" in c for c in rec.cues()), rec.cues()
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+    assert "हाँ।" in rec.cues(), "the acknowledgement still goes into the context"
 
 
 @pytest.mark.asyncio
@@ -5267,6 +5271,35 @@ async def test_run_guard_lets_the_same_context_run_again_after_the_vendor_failed
     g.allow_rerun()
     await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
     assert seen.count("LLMContextFrame") == 2, "after a vendor failure the same turn must run again"
+
+
+@pytest.mark.asyncio
+async def test_a_backchannel_while_the_answer_is_composing_generates_nothing():
+    """Call 8e2041c8: "बोलिए" 90 ms after the real answer started a second run
+    (read as the answer to the last played question), then a third, and the
+    father heard "जी सर। जी सर। जी, बोलिए।"."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: False)
+    tc._outcome.transcript.append({"role": "assistant",
+                                   "text": "क्या मैं जान सकती हूँ कि मैं बच्चे के माता-पिता में से किससे बात कर रही हूँ?"})
+    tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
+    tc._reply_in_flight = lambda: True           # run #1 is composing, not audible
+    await _feed(tc, "बोलिए।")
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+    assert "बोलिए।" in rec.cues(), "the backchannel must still be in the context"
+    # Same words with NO reply in flight (the bot was cut mid-question and is
+    # quiet): the answer-to-the-question path still fires.
+    rec2 = _Rec()
+    tc2 = _replay_collector(rec2, bot_speaking=False, recently_cut=lambda: True)
+    tc2._outcome.transcript.append({"role": "assistant", "text": "आप बच्चे के पिता हैं?"})
+    await _feed(tc2, "बोलिए।")
+    assert [f for f in rec2.frames if getattr(f, "run_llm", False)], "the existing path must survive"
+
+
+def test_a_greeting_during_the_opening_is_absorbed():
+    from app.turntake import mid_reply_action, ABSORB
+    for t in ["नमस्ते।", "नमस्कार जी", "Namaste ma'am"]:
+        assert mid_reply_action(t) == ABSORB, t
 
 
 @pytest.mark.asyncio

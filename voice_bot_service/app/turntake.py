@@ -53,6 +53,9 @@ _BACKCHANNEL_WORDS = frozenset({
     # The STT writes the nasal grunt as "हं"/"हँ" as often as "हम्म" — it cut
     # the opening restart in bd9e6a0d as a "real barge-in".
     "हं", "हँ", "हंजी", "haanji", "hanji", "hmmji",
+    # A greeting while we are greeting is not a barge-in (call 8e2041c8: "नमस्ते।"
+    # cut the restarted opening at 58 of 221 chars — the identity never played).
+    "नमस्ते", "नमस्कार", "namaste", "namaskar", "namaskaar",
     "अच्छा", "अच्छे", "अछा", "ठीक", "है", "ओके", "सही", "बिल्कुल", "बिलकुल",
     "बढ़िया", "बढिया", "बहुत",
     "बोलिए", "बोलो", "बताइए", "बताओ", "सर", "मैम", "मैडम", "भैया", "ओ", "के",

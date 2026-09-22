@@ -220,6 +220,17 @@ export interface StudentSideViewSettings {
     // (ONBOARDING_SETTING feature). Optional for backward-compat with
     // settings saved before this tab existed.
     onboardingTab?: boolean;
+    /**
+     * The Resend control on each outbound row of the Notifications tab, which
+     * sends that message to the learner a second time. Not a tab toggle — the
+     * tab itself is `notificationTab` — so it is kept out of
+     * StudentSideViewVisibilityKey and rendered as its own option.
+     *
+     * Optional for backward-compat: an institute whose saved settings pre-date
+     * this flag falls through to the role's default (on for admin, off for
+     * teacher and custom roles).
+     */
+    allowResendMessage?: boolean;
     // Custom ordering by tab id. Lower numbers render first. Tabs missing
     // from the map fall back to the default order. Optional for
     // backward-compat with settings that pre-date this feature.

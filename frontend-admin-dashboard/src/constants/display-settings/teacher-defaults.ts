@@ -259,6 +259,9 @@ const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         progressTab: true,
         coursesTab: true,
         notificationTab: false,
+        // Off by default: resending sends a real message to a learner, so it is
+        // opt-in for this role even where the Notifications tab is enabled.
+        allowResendMessage: false,
         membershipTab: false,
         paymentHistoryTab: true,
         userTaggingTab: false,

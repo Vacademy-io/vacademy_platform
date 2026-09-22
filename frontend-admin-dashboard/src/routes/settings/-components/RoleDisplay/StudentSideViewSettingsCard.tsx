@@ -105,6 +105,15 @@ export const StudentSideViewSettingsCard = ({
         return typeof v === 'boolean' ? v : (defaults[opt.key] as boolean);
     });
 
+    // The Notifications tab's own visibility, resolved the same way the rows above resolve theirs.
+    const notificationTabVisible =
+        typeof settings.notificationTab === 'boolean'
+            ? settings.notificationTab
+            : !!defaults.notificationTab;
+    // Undefined means "never chosen" — fall through to the role's default rather than to a
+    // literal, which would give every role the same answer.
+    const resendAllowed = settings.allowResendMessage ?? defaults.allowResendMessage ?? true;
+
     const currentDefault: StudentSideViewTabId | undefined =
         settings.defaultTab &&
         visibleTabs.some((o) => VISIBILITY_KEY_TO_TAB_ID[o.key] === settings.defaultTab)
@@ -159,6 +168,28 @@ export const StudentSideViewSettingsCard = ({
                         </div>
                     );
                 })}
+
+                {/* Not a tab — a control INSIDE the Notifications tab, so it is shown only
+                    when that tab is on. Hiding it with the tab keeps the card from offering a
+                    switch for something the role cannot reach. */}
+                {notificationTabVisible && (
+                    <div className="mt-4 flex items-center justify-between gap-3 rounded border bg-neutral-50/50 p-3">
+                        <div>
+                            <Label className="text-sm font-medium">
+                                {t('resendMessage.label')}
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                {t('resendMessage.hint')}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={resendAllowed}
+                            onCheckedChange={(v) =>
+                                onChange({ ...settings, allowResendMessage: v })
+                            }
+                        />
+                    </div>
+                )}
 
                 <div className="mt-4 flex items-center justify-between gap-3 rounded border bg-neutral-50/50 p-3">
                     <div>

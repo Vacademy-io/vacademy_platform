@@ -36,7 +36,8 @@
         "sectionChoiceSingle": "सभी प्रश्न इसी सेक्शन में डालें",
         "addToQuestionBank": "प्रश्न बैंक में जोड़ें",
         "addingToQuestionBank": "जोड़ा जा रहा है…",
-        "addedToQuestionBank": "प्रश्न बैंक में जुड़ गया"
+        "addedToQuestionBank": "प्रश्न बैंक में जुड़ गया",
+        "extractionDuration": "समय {{hrs}} घं {{min}} मि"
     },
     "questionCard": {
         "duplicate": "डुप्लिकेट करें",

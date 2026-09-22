@@ -56,6 +56,7 @@ class AutoDocumentSubmitResponse(BaseModel):
     # everything in one?" before extracting. Empty when the paper has none.
     sections: Optional[List[Dict[str, Any]]] = None
     marking: Optional[Dict[str, Any]] = None
+    duration_minutes: Optional[int] = None
 
 
 AUDIT_ENTITY = "AI_QUESTION_EXTRACTION"
@@ -141,12 +142,13 @@ async def start_process_pdf_from_file_id(
                 payload={"file_id": file_id, "pdf_id": started["pdf_id"], "pages": started.get("pages"),
                          "ocr_pages": ocr_pages, "question_count": questions, "estimated_credits": estimate,
                          "sections": [{"name": sec["name"], "count": sec["count"]} for sec in sections],
-                         "marking": started.get("marking")},
+                         "marking": started.get("marking"), "duration_minutes": started.get("duration_minutes")},
             )
             return AutoDocumentSubmitResponse(
                 pdf_id=started["pdf_id"], ocr=started["ocr"], pages=started.get("pages"),
                 ocr_pages=ocr_pages, question_count=questions, estimated_credits=estimate,
                 sections=sections, marking=started.get("marking"),
+                duration_minutes=started.get("duration_minutes"),
             )
         pdf_id = await pdf_questions_service.start_from_file_id(file_id)
         return AutoDocumentSubmitResponse(pdf_id=pdf_id)

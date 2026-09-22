@@ -144,6 +144,55 @@ _TRAILING_MARKS = re.compile(
 )
 
 
+# ---- time allowed -------------------------------------------------------------
+
+_HOURS = r"(?:hours?|hrs?|h)"
+_MINS = r"(?:minutes?|mins?|m)"
+# "Time allowed: 3 hours", "Time: 1 hr 30 min", "Duration: 90 minutes",
+# "Total time – 2 hours"
+_DURATION = re.compile(
+    r"(?:time(?:\s+(?:allowed|allotted|limit))?|duration|total\s+time)\s*[:\-–—]?\s*"
+    r"(\d+(?:\.\d+)?)\s*(" + _HOURS + r"|" + _MINS + r")\b(?:\s*(?:and\s*)?(\d+)\s*" + _MINS + r"\b)?",
+    re.I,
+)
+# "120-minute limit", "a 90 minute test", the "Total 60 120 minutes" row of
+# a section table
+_DURATION_LOOSE = re.compile(
+    r"(\d+)\s*[-‑–]?\s*minutes?\s*(?:limit|allowed|test|paper|exam)\b|total\s+\d+\s+(\d+)\s*" + _MINS + r"\b",
+    re.I,
+)
+# In a section's own line ("Questions 1 to 15 · 30 minutes", "Time: 45 min").
+_DURATION_SHORT = re.compile(r"(\d+(?:\.\d+)?)\s*(" + _HOURS + r"|" + _MINS + r")\b(?:\s*(\d+)\s*" + _MINS + r"\b)?", re.I)
+
+
+def _minutes(amount: str, unit: str, extra: Optional[str]) -> Optional[int]:
+    try:
+        n = float(amount)
+    except ValueError:
+        return None
+    total = n * 60 if unit.lower().startswith("h") else n
+    if extra:
+        total += int(extra)
+    total = int(round(total))
+    return total if 0 < total <= 24 * 60 else None
+
+
+def duration_of(text: str, *, loose: bool = False) -> Optional[int]:
+    """Minutes the paper allows, from "Time allowed: 3 hours" and the like;
+    `loose` also accepts a bare "30 minutes" (a section's own line)."""
+    m = _DURATION.search(text)
+    if m:
+        return _minutes(m.group(1), m.group(2), m.group(3))
+    m = _DURATION_LOOSE.search(text)
+    if m:
+        return _minutes(m.group(1) or m.group(2), "m", None)
+    if loose:
+        m = _DURATION_SHORT.search(text)
+        if m:
+            return _minutes(m.group(1), m.group(2), m.group(3))
+    return None
+
+
 def _num(s: Optional[str]) -> Optional[float]:
     try:
         v = float(s) if s is not None else None
@@ -240,7 +289,11 @@ def _range_rows(texts: Sequence[str]) -> List[Dict[str, Any]]:
         # what follows is the sections' own headings ("Questions 1 to 15").
         if rows and (a <= rows[-1]["to"] or a - rows[-1]["to"] > 3):
             break
-        rows.append({"name": name, "from": a, "to": b})
+        # The row's time column, right after the range ("1–15 30 minutes",
+        # "1–15 15 questions 30 minutes").
+        tail = m.string[m.end():m.end() + 40]
+        t = re.match(r"\s*(?:\d+\s+(?:questions?|qs?)\s+)?(\d+)\s*" + _MINS + r"\b", tail, re.I)
+        rows.append({"name": name, "from": a, "to": b, "minutes": int(t.group(1)) if t else None})
     # A real table of sections starts at the first question; years, page
     # ranges and data tables do not.
     if len(rows) < 2 or rows[0]["from"] > 3:
@@ -277,7 +330,7 @@ def _row_name(raw: str) -> str:
 
 def _section_shell(name: str, source: str, label: Optional[str] = None) -> Dict[str, Any]:
     return {"name": name, "label": label, "source": source, "numbers": [], "from": None, "to": None,
-            "count": 0, "marks": None, "negative_marks": None, "instruction": ""}
+            "count": 0, "marks": None, "negative_marks": None, "instruction": "", "duration_minutes": None}
 
 
 def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str, Any]:
@@ -308,6 +361,7 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
         sec = _section_shell(row["name"], "table")
         sec["from"], sec["to"] = row["from"], row["to"]
         sec["numbers"] = [n for n in numbers if row["from"] <= n <= row["to"]]
+        sec["duration_minutes"] = row.get("minutes")
         sections.append(sec)
     if sections and sum(len(s["numbers"]) for s in sections) < 0.8 * count:
         sections = []  # the table is not about this paper's questions
@@ -375,9 +429,12 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
         marks = _num(m.group(4))
         if marks is not None:
             ranges.append({"from": int(m.group(1)), "to": int(m.group(2)), "marks": marks})
+    paper_minutes = duration_of(front)
     for sec in sections:
         own_text = " ".join(t for t in (sec.pop("heading_text", ""), sec["instruction"]) if t)
         own = marking_of(own_text) if own_text else {"marks": None, "negative_marks": None}
+        if sec["duration_minutes"] is None and own_text:
+            sec["duration_minutes"] = duration_of(own_text, loose=True)
         labelled = by_label.get(sec["label"] or "", {})
         ranged = next((r for r in ranges if sec["numbers"] and r["from"] <= sec["numbers"][0] <= r["to"]), None)
         sec["marks"] = (own["marks"] if own["marks"] is not None
@@ -394,10 +451,15 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
         if sec["numbers"]:
             sec["from"], sec["to"] = min(sec["numbers"]), max(sec["numbers"])
         sec.pop("numbers", None)
+    # A paper that times each section separately is as long as the sections
+    # together, when it does not say so itself.
+    if paper_minutes is None and sections and all(sec["duration_minutes"] for sec in sections):
+        paper_minutes = sum(sec["duration_minutes"] for sec in sections)
     return {
         "question_count": count,
         "sections": sections,
         "marking": {"marks": paper_marking["marks"], "negative_marks": paper_marking["negative_marks"]},
+        "duration_minutes": paper_minutes,
         "ranges": ranges,
     }
 
@@ -467,4 +529,4 @@ def apply_outline(questions: List[Dict[str, Any]], outline: Dict[str, Any]) -> N
             prev = n
 
 
-__all__ = ["outline_of_html", "outline_of_blocks", "marking_of", "apply_outline", "is_section_heading"]
+__all__ = ["outline_of_html", "outline_of_blocks", "marking_of", "duration_of", "apply_outline", "is_section_heading"]

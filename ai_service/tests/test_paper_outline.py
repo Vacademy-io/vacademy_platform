@@ -41,6 +41,9 @@ def test_front_page_table_of_ranges_names_the_sections():
     assert [s["source"] for s in o["sections"]] == ["table"] * 3
     assert o["marking"] == {"marks": 3.0, "negative_marks": 1.0}
     assert all(s["marks"] == 3.0 and s["negative_marks"] == 1.0 for s in o["sections"])
+    # Each section's time from its table row; the paper's is their sum.
+    assert [s["duration_minutes"] for s in o["sections"]] == [30, 30, 60]
+    assert o["duration_minutes"] == 120
 
 
 def test_body_headings_with_marks_from_the_general_instructions():
@@ -48,7 +51,8 @@ def test_body_headings_with_marks_from_the_general_instructions():
     5 questions carrying 02 marks each" gives Section B its marks; a mark
     printed at the question ("[2]") is kept as it is."""
     html = (
-        _p("General Instructions:")
+        _p("Time allowed: 3 hours") + _p("Maximum Marks: 80")
+        + _p("General Instructions:")
         + _p("1. This question paper has 3 sections A-C.")
         + _p("2. Section A has 2 MCQs carrying 1 mark each.")
         + _p("3. Section B has 2 questions carrying 02 marks each.")
@@ -62,6 +66,7 @@ def test_body_headings_with_marks_from_the_general_instructions():
     o = outline_of_html(html)
     assert o["question_count"] == 5
     assert _names(o) == [("Section A", 1, 2), ("Section B", 3, 4), ("Section C: Long answer", 5, 5)]
+    assert o["duration_minutes"] == 180 and all(s["duration_minutes"] is None for s in o["sections"])
     assert [s["marks"] for s in o["sections"]] == [1.0, 2.0, 5.0]
     qs = [{"question_number": str(i), "question": {"content": "x"}} for i in range(1, 6)]
     qs[2]["marks"] = 3  # the model read "[3]" at Q3: printed at the question wins
@@ -228,3 +233,15 @@ def test_extract_from_html_names_sections_and_settles_marks(monkeypatch):
     raw = json.loads(asyncio.run(qe.extract_from_html(html=html, models=["stub"], section_mode="single")))
     assert raw["extraction"]["section_mode"] == "single"
     assert raw["questions"][0]["section"] == "Physics"  # still named; the preview decides
+
+
+def test_time_allowed_phrasings():
+    from app.services.paper_outline import duration_of
+
+    assert duration_of("Time allowed: 3 hours") == 180
+    assert duration_of("Time: 1 hr 30 min · Maximum Marks: 80") == 90
+    assert duration_of("Duration – 90 minutes") == 90
+    assert duration_of("a 120-minute limit") == 120
+    assert duration_of("Maximum Marks: 80") is None
+    assert duration_of("Questions 1 to 15 · 30 minutes") is None  # bare minutes only count on a section's own line
+    assert duration_of("Questions 1 to 15 · 30 minutes", loose=True) == 30

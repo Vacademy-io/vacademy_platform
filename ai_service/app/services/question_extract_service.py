@@ -831,11 +831,12 @@ async def extract_from_html(
             "sections": [
                 {"name": sec["name"], "count": sec["count"], "from": sec["from"], "to": sec["to"],
                  "marks": sec["marks"], "negative_marks": sec["negative_marks"],
-                 "instruction": sec["instruction"]}
+                 "instruction": sec["instruction"], "duration_minutes": sec["duration_minutes"]}
                 for sec in sections
             ],
             "section_mode": mode,
             "marking": outline["marking"],
+            "duration_minutes": outline["duration_minutes"],
             "credits": credits,
             "ocr_pages": ocr_pages,
             "prompt_tokens": sum(int(u.get("prompt_tokens") or 0) for _m, u in usages),

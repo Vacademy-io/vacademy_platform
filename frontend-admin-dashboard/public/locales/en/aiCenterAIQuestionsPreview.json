@@ -36,7 +36,8 @@
         "sectionChoiceSingle": "Put all questions in this section",
         "addToQuestionBank": "Add to question bank",
         "addingToQuestionBank": "Adding…",
-        "addedToQuestionBank": "Added to question bank"
+        "addedToQuestionBank": "Added to question bank",
+        "extractionDuration": "time {{hrs}} h {{min}} min"
     },
     "questionCard": {
         "duplicate": "Duplicate",

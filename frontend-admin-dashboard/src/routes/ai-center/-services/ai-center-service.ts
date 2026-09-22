@@ -45,6 +45,7 @@ export interface StartProcessResponse {
     /** the paper's own sections (2+) and marking scheme, when it prints them */
     sections?: AIPaperSection[] | null;
     marking?: AIPaperMarking | null;
+    duration_minutes?: number | null;
 }
 
 export const handleStartProcessUploadedFile = async (

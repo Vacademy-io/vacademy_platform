@@ -26,16 +26,35 @@ export type SectionQuestionRow = KbPaperSection['adaptive_marking_for_each_quest
 
 const positive = (value: string | undefined): string => (value && Number(value) > 0 ? value : '');
 
-/** A stored question as one row of a section's marking table, marks from the paper when it has them. */
+/** What a question is worth when neither the paper nor the bank says: one mark, so the paper is usable as it lands. */
+export const DEFAULT_MARK = '1';
+
+/** A duration field the teacher has not filled in yet. */
+export const isBlankDuration = (d: { hrs?: string; min?: string } | undefined): boolean =>
+    !d || ((!d.hrs || Number(d.hrs) === 0) && (!d.min || Number(d.min) === 0));
+
+/** {hrs, min} for the wizard's duration fields; blank when the paper says nothing. */
+export const durationFields = (minutes: number | null | undefined): { hrs: string; min: string } =>
+    minutes && minutes > 0
+        ? { hrs: String(Math.floor(minutes / 60)), min: String(minutes % 60) }
+        : { hrs: '0', min: '0' };
+
+/**
+ * A stored question as one row of a section's marking table, marks from the
+ * paper when it has them. `defaultMark` fills in when neither the paper nor
+ * the bank has a mark — the digitising flow passes one so no question lands
+ * worth nothing; the generating flows pass none and keep the old behaviour.
+ */
 export const sectionRowFor = (
     stored: MyQuestion,
-    fromPaper: MyQuestion | undefined
+    fromPaper: MyQuestion | undefined,
+    defaultMark = ''
 ): SectionQuestionRow => ({
     ...stored,
     questionId: stored.questionId,
     questionName: stored.questionName,
     questionType: stored.questionType,
-    questionMark: positive(fromPaper?.questionMark) || stored.questionMark,
+    questionMark: positive(fromPaper?.questionMark) || stored.questionMark || defaultMark,
     questionPenalty: positive(fromPaper?.questionPenalty) || stored.questionPenalty,
     ...(stored.questionType === 'MCQM' && {
         correctOptionIdsCnt: stored?.multipleChoiceOptions?.filter((item) => item.isSelected)
@@ -105,7 +124,7 @@ export const sectionsFromExtractedPaper = (
         const name = fromPaper?.sectionName || '';
         if (!order.includes(name)) order.push(name);
         const bucket = bySection.get(name) ?? [];
-        bucket.push(sectionRowFor(stored, fromPaper));
+        bucket.push(sectionRowFor(stored, fromPaper, DEFAULT_MARK));
         bySection.set(name, bucket);
     });
 
@@ -125,7 +144,7 @@ export const sectionsFromExtractedPaper = (
                 uploaded_question_paper: null,
                 question_duration: { hrs: '0', min: '0' },
                 section_description: paperSection?.instruction ?? '',
-                section_duration: { hrs: '0', min: '0' },
+                section_duration: durationFields(paperSection?.duration_minutes),
                 marks_per_question: marksEach ?? '',
                 total_marks: String(calculateTotalMarks(rows)),
                 negative_marking: {

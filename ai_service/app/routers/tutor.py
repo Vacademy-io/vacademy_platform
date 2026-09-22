@@ -11,7 +11,8 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Query, Request,
+                     Response, UploadFile, status)
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from pydantic import BaseModel, Field
@@ -615,7 +616,8 @@ def demo_topics(db: Session = Depends(db_dependency)) -> Dict[str, Any]:
 
 
 @router.post("/demo/start", summary="Public: start a free, short, unbilled lesson as a guest")
-def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+def demo_start(payload: DemoStartRequest, request: Request, background: BackgroundTasks,
+               db: Session = Depends(db_dependency)) -> Dict[str, Any]:
     from ..services import spatius_service
     from ..services.tutor import demo
     c = demo.config(db)
@@ -649,6 +651,13 @@ def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depend
     settings: TutorSettings = boot["settings"]
     token = demo.mint_guest_token(user_id=user_id, tutor_session_id=boot["tutor_session_id"], institute_id=c["institute_id"])
     logger.info("demo lesson %s started (topic %s, ip %s…)", boot["tutor_session_id"], payload.topic_key, iph[:8])
+    # The teacher's face, and a token warmed while the browser is still
+    # downloading the SDK — minting costs 1-9 s at the vendor.
+    avatar_info = ({"provider": "spatius", "avatar_id": settings.avatar_id, "app_id": spatius_service.app_id()}
+                   if settings.avatar_provider == "spatius" and settings.avatar_id and spatius_service.available()
+                   and payload.mode == "VOICE" else None)
+    if avatar_info:
+        background.add_task(spatius_service.warm_session_token)
     return {
         "token": token,
         "minutes": c["minutes"],
@@ -666,9 +675,7 @@ def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depend
             "progress": boot["pointer"].progress(lesson),
             "socket_path": f"/tutor/ws/{boot['tutor_session_id']}",
             # Premium avatar of the demo institute, in voice lessons (unbilled like the rest).
-            "avatar": ({"provider": "spatius", "avatar_id": settings.avatar_id, "app_id": spatius_service.app_id()}
-                       if settings.avatar_provider == "spatius" and settings.avatar_id and spatius_service.available()
-                       and payload.mode == "VOICE" else None),
+            "avatar": (avatar_info if avatar_info else None),
         },
     }
 

@@ -200,6 +200,7 @@ def learner_chapter_slides(
 @router.post("/v1/sessions", summary="Start (or resume) a tutor session")
 def start_session(
     payload: StartSessionRequest,
+    background: BackgroundTasks,
     caller: Caller = Depends(_caller),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
@@ -220,6 +221,11 @@ def start_session(
         raise HTTPException(status_code=400, detail=str(e))
     lesson: sm.LessonPlan = boot["lesson"]
     settings: TutorSettings = boot["settings"]
+    # A lesson with a face: mint the Motion Server token now, in the
+    # background, so the browser's own request is a cache hit (1-9 s saved).
+    if (settings.avatar_provider == "spatius" and settings.avatar_id and spatius_service.available()
+            and payload.mode == "VOICE"):
+        background.add_task(spatius_service.warm_session_token)
     return {
         "tutor_session_id": boot["tutor_session_id"],
         "slide_id": lesson.slide_id,

@@ -58,5 +58,14 @@
     "saveButton": {
         "saving": "Saving…",
         "save": "Save scoring settings"
+    },
+    "terminologyCard": {
+        "title": "Terminology",
+        "description": "Call the built-in lead attributes what your team calls them. Leave blank to keep the defaults.",
+        "tierLabel": "Name for \"Tier\"",
+        "tierPlaceholder": "e.g. Interest Level",
+        "leadStatusLabel": "Name for \"Lead status\"",
+        "leadStatusPlaceholder": "e.g. Action Label",
+        "hint": "Used in the leads table headers, filters, lead side-view and these settings. Save with the button below."
     }
 }

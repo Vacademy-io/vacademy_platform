@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { tierChipStyle, useLeadTiers } from '@/hooks/use-lead-tiers';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -71,7 +72,7 @@ async function fetchAllEvents(
     userId: string,
     responseId: string | null | undefined,
     page: number,
-    size: number,
+    size: number
 ): Promise<EventPage> {
     const params: Record<string, unknown> = { page, size };
     // Pass responseId as typeIds so legacy journey events (stored with type_id=responseId
@@ -226,7 +227,11 @@ function getConfig(actionType: string, config: Record<string, ActionConfig>): Ac
 
 function StatusChangeMeta({ meta }: { meta: Record<string, unknown> }) {
     const { t } = useTranslation('manageStudentsLeadJourneyTimeline');
-    const from = (meta.from_status_label as string) || (meta.from_status_key as string) || (meta.old_status as string) || null;
+    const from =
+        (meta.from_status_label as string) ||
+        (meta.from_status_key as string) ||
+        (meta.old_status as string) ||
+        null;
     const to =
         (meta.to_status_label as string) ||
         (meta.to_status_key as string) ||
@@ -234,13 +239,15 @@ function StatusChangeMeta({ meta }: { meta: Record<string, unknown> }) {
         null;
     if (!from && !to) return null;
     return (
-        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {from ? (
                 <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
                     {from}
                 </span>
             ) : (
-                <span className="text-xs text-muted-foreground italic">{t('statusChangeMeta.previous')}</span>
+                <span className="text-xs italic text-muted-foreground">
+                    {t('statusChangeMeta.previous')}
+                </span>
             )}
             <ArrowRight weight="bold" className="size-3 shrink-0 text-muted-foreground" />
             {to && (
@@ -256,18 +263,14 @@ function ScoreUpdateMeta({ meta }: { meta: Record<string, unknown> }) {
     const oldScore = meta.old_score as number | undefined;
     const newScore = meta.new_score as number | undefined;
     const tier = meta.tier as string | undefined;
+    // Tier label/colour from the institute catalog (custom tiers included).
+    const tierCatalog = useLeadTiers();
     if (newScore === undefined) return null;
     const improved = oldScore === undefined || newScore >= oldScore;
     const TierIcon = improved ? TrendUp : TrendDown;
-    const tierColor =
-        tier === 'HOT'
-            ? 'bg-danger-50 text-danger-600 border-danger-200'
-            : tier === 'WARM'
-              ? 'bg-warning-50 text-warning-700 border-warning-200'
-              : 'bg-info-50 text-info-600 border-info-200';
 
     return (
-        <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1">
                 {oldScore !== undefined && (
                     <span className="text-xs font-semibold tabular-nums text-muted-foreground">
@@ -281,29 +284,30 @@ function ScoreUpdateMeta({ meta }: { meta: Record<string, unknown> }) {
                 <span
                     className={cn(
                         'text-xs font-bold tabular-nums',
-                        improved ? 'text-success-600' : 'text-danger-600',
+                        improved ? 'text-success-600' : 'text-danger-600'
                     )}
                 >
                     {newScore}
                 </span>
             </div>
-            <div className="h-1.5 w-16 rounded-full bg-neutral-100 overflow-hidden">
+            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-neutral-100">
                 <div
                     className={cn(
                         'h-full rounded-full transition-all duration-300',
-                        improved ? 'bg-success-400' : 'bg-danger-400',
+                        improved ? 'bg-success-400' : 'bg-danger-400'
                     )}
-                    style={{ width: `${newScore}%` }} /* dynamic score % — cannot use Tailwind token */
+                    style={{
+                        width: `${newScore}%`,
+                    }} /* dynamic score % — cannot use Tailwind token */
                 />
             </div>
             {tier && (
                 <span
-                    className={cn(
-                        'rounded-full border px-1.5 py-0.5 text-xs font-semibold',
-                        tierColor,
-                    )}
+                    className="rounded-full border px-1.5 py-0.5 text-xs font-semibold"
+                    // Inline style: tier colour is admin-picked hex (no design token).
+                    style={tierChipStyle(tierCatalog.colorFor(tier))}
                 >
-                    {tier}
+                    {tierCatalog.labelFor(tier)}
                 </span>
             )}
         </div>
@@ -318,12 +322,14 @@ function CounselorMeta({ meta }: { meta: Record<string, unknown> }) {
     const initial = name?.[0]?.toUpperCase() ?? '?';
     return (
         <div className="mt-1.5 flex items-center gap-1.5">
-            <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700 text-xs font-bold">
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700">
                 {initial}
             </div>
-            <span className="text-xs font-medium text-neutral-700">{name ?? t('counselorMeta.unknown')}</span>
+            <span className="text-xs font-medium text-neutral-700">
+                {name ?? t('counselorMeta.unknown')}
+            </span>
             {source && (
-                <span className="rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground border border-border">
+                <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
                     {source === 'AUTO' ? t('counselorMeta.autoPool') : t('counselorMeta.manual')}
                 </span>
             )}
@@ -355,7 +361,7 @@ function FollowupMeta({ meta }: { meta: Record<string, unknown> }) {
     if (!isValid) return null;
     return (
         <div className="mt-1.5 flex items-center gap-1.5">
-            <CalendarCheck weight="fill" className="size-3.5 text-info-500 shrink-0" />
+            <CalendarCheck weight="fill" className="size-3.5 shrink-0 text-info-500" />
             <span className="text-xs font-medium text-neutral-700">
                 {format(d, 'MMM d, yyyy · h:mm a')}
             </span>
@@ -400,9 +406,7 @@ function CallRecordingMeta({
     const status = typeof meta.status === 'string' ? meta.status : null;
     const direction = typeof meta.direction === 'string' ? meta.direction : null;
     const durationSeconds =
-        typeof meta.duration_seconds === 'number'
-            ? meta.duration_seconds
-            : null;
+        typeof meta.duration_seconds === 'number' ? meta.duration_seconds : null;
     const hasRecording = typeof meta.recording_storage_key === 'string';
 
     const [url, setUrl] = useState<string | null>(null);
@@ -443,10 +447,10 @@ function CallRecordingMeta({
                             status === 'COMPLETED'
                                 ? 'bg-success-50 text-success-700'
                                 : status === 'NO_ANSWER' || status === 'BUSY'
-                                ? 'bg-warning-50 text-warning-700'
-                                : status === 'FAILED' || status === 'CANCELLED'
-                                ? 'bg-danger-50 text-danger-700'
-                                : 'bg-neutral-100 text-neutral-600'
+                                  ? 'bg-warning-50 text-warning-700'
+                                  : status === 'FAILED' || status === 'CANCELLED'
+                                    ? 'bg-danger-50 text-danger-700'
+                                    : 'bg-neutral-100 text-neutral-600'
                         )}
                     >
                         {formatStatus(status, t)}
@@ -456,13 +460,13 @@ function CallRecordingMeta({
                     <span className="text-neutral-600">{formatDuration(durationSeconds, t)}</span>
                 )}
                 {callerId && (
-                    <span className="text-neutral-400">{t('callRecording.from', { caller: callerId })}</span>
+                    <span className="text-neutral-400">
+                        {t('callRecording.from', { caller: callerId })}
+                    </span>
                 )}
             </div>
 
-            {description && status == null && (
-                <p className="leading-relaxed">{description}</p>
-            )}
+            {description && status == null && <p className="leading-relaxed">{description}</p>}
 
             {hasRecording && (
                 <div className="pt-0.5">
@@ -492,11 +496,13 @@ function CallRecordingMeta({
                                 'inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-2xs text-neutral-700 transition-colors',
                                 loading || !callLogId
                                     ? 'cursor-not-allowed opacity-60'
-                                    : 'hover:bg-neutral-50 hover:border-primary-300'
+                                    : 'hover:border-primary-300 hover:bg-neutral-50'
                             )}
                         >
                             <PlayCircle className="size-3.5" />
-                            {loading ? t('callRecording.loading') : t('callRecording.playRecording')}
+                            {loading
+                                ? t('callRecording.loading')
+                                : t('callRecording.playRecording')}
                         </button>
                     )}
                 </div>
@@ -530,7 +536,7 @@ function CallRecordingMeta({
                     <button
                         type="button"
                         onClick={() => setNoteDialogOpen(true)}
-                        className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-2xs text-neutral-700 hover:bg-neutral-50 hover:border-primary-300"
+                        className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-2xs text-neutral-700 hover:border-primary-300 hover:bg-neutral-50"
                     >
                         <NotePencil className="size-3.5" />
                         {t('callRecording.addNote')}
@@ -569,7 +575,7 @@ function LinkedCallNote({ note }: { note: TimelineEvent }) {
     return (
         <div className="rounded-md bg-neutral-50 px-2.5 py-1.5 text-xs">
             <div className="flex flex-wrap items-center gap-1.5">
-                <NotePencil weight="fill" className="size-3 text-primary-500 shrink-0" />
+                <NotePencil weight="fill" className="size-3 shrink-0 text-primary-500" />
                 {outcome && (
                     <span className="rounded-full bg-primary-50 px-1.5 py-0.5 text-2xs font-medium text-primary-700">
                         {formatCallOutcome(outcome, t)}
@@ -586,7 +592,7 @@ function LinkedCallNote({ note }: { note: TimelineEvent }) {
             </div>
             {note.description && (
                 <div
-                    className="mt-1 leading-relaxed text-neutral-700 [&_p]:m-0 [&_p+p]:mt-1"
+                    className="mt-1 leading-relaxed text-neutral-700 [&_p+p]:mt-1 [&_p]:m-0"
                     dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(note.description) }}
                 />
             )}
@@ -599,21 +605,36 @@ function LinkedCallNote({ note }: { note: TimelineEvent }) {
  *  for one lookup. */
 function formatCallOutcome(key: string, t: TFunction): string {
     switch (key) {
-        case 'CONNECTED': return t('callOutcome.connected');
-        case 'NO_ANSWER': return t('callOutcome.noAnswer');
-        case 'BUSY': return t('callOutcome.busy');
-        case 'LEFT_VOICEMAIL': return t('callOutcome.leftVoicemail');
-        case 'CALL_BACK_LATER': return t('callOutcome.callBackLater');
-        case 'NOT_REACHABLE': return t('callOutcome.notReachable');
-        case 'SWITCHED_OFF': return t('callOutcome.switchedOff');
-        case 'WRONG_NUMBER': return t('callOutcome.wrongNumber');
-        case 'INTERESTED': return t('callOutcome.interested');
-        case 'NOT_INTERESTED': return t('callOutcome.notInterested');
-        case 'FOLLOW_UP_SCHEDULED': return t('callOutcome.followUpScheduled');
-        case 'DEMO_SCHEDULED': return t('callOutcome.demoScheduled');
-        case 'CONVERTED': return t('callOutcome.converted');
-        case 'DO_NOT_CALL': return t('callOutcome.doNotCall');
-        default: return key;
+        case 'CONNECTED':
+            return t('callOutcome.connected');
+        case 'NO_ANSWER':
+            return t('callOutcome.noAnswer');
+        case 'BUSY':
+            return t('callOutcome.busy');
+        case 'LEFT_VOICEMAIL':
+            return t('callOutcome.leftVoicemail');
+        case 'CALL_BACK_LATER':
+            return t('callOutcome.callBackLater');
+        case 'NOT_REACHABLE':
+            return t('callOutcome.notReachable');
+        case 'SWITCHED_OFF':
+            return t('callOutcome.switchedOff');
+        case 'WRONG_NUMBER':
+            return t('callOutcome.wrongNumber');
+        case 'INTERESTED':
+            return t('callOutcome.interested');
+        case 'NOT_INTERESTED':
+            return t('callOutcome.notInterested');
+        case 'FOLLOW_UP_SCHEDULED':
+            return t('callOutcome.followUpScheduled');
+        case 'DEMO_SCHEDULED':
+            return t('callOutcome.demoScheduled');
+        case 'CONVERTED':
+            return t('callOutcome.converted');
+        case 'DO_NOT_CALL':
+            return t('callOutcome.doNotCall');
+        default:
+            return key;
     }
 }
 
@@ -691,7 +712,7 @@ function EventMeta({
             // Sanitize and render rich text (HTML from the RichTextEditor)
             return (
                 <div
-                    className="mt-1 text-xs text-muted-foreground leading-relaxed prose-xs [&_p]:m-0 [&_p+p]:mt-1"
+                    className="prose-xs mt-1 text-xs leading-relaxed text-muted-foreground [&_p+p]:mt-1 [&_p]:m-0"
                     dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(event.description) }}
                 />
             );
@@ -741,31 +762,31 @@ function EventRow({
                     className={cn(
                         'flex size-7 shrink-0 items-center justify-center rounded-full ring-2',
                         dotBg,
-                        isTerminal && 'ring-offset-1',
+                        isTerminal && 'ring-offset-1'
                     )}
                 >
                     <Icon weight="fill" className={cn('size-3.5', iconColor)} />
                 </div>
-                {!isLast && <div className="mt-1 w-px flex-1 bg-border min-h-6" />}
+                {!isLast && <div className="mt-1 min-h-6 w-px flex-1 bg-border" />}
             </div>
 
             {/* Card */}
             <div
                 className={cn(
-                    'mb-4 flex-1 min-w-0 rounded-lg border px-3 py-2.5',
+                    'mb-4 min-w-0 flex-1 rounded-lg border px-3 py-2.5',
                     isActivity
                         ? 'border-border/60 bg-muted/30'
                         : isConverted
                           ? 'border-success-200 bg-success-50/60'
                           : isLost
                             ? 'border-danger-200 bg-danger-50/40'
-                            : 'border-border bg-card',
+                            : 'border-border bg-card'
                 )}
             >
                 <div className="flex items-start justify-between gap-2">
                     <p
                         className={cn(
-                            'text-xs leading-tight truncate',
+                            'truncate text-xs leading-tight',
                             isActivity ? 'font-medium text-neutral-600' : 'font-semibold',
                             isConverted
                                 ? 'text-success-700'
@@ -773,12 +794,12 @@ function EventRow({
                                   ? 'text-danger-700'
                                   : isActivity
                                     ? 'text-neutral-600'
-                                    : 'text-neutral-800',
+                                    : 'text-neutral-800'
                         )}
                     >
                         {event.title}
                     </p>
-                    <time className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    <time className="shrink-0 text-xs tabular-nums text-muted-foreground">
                         {format(eventDate, 'd MMM yyyy, h:mm a')}
                     </time>
                 </div>
@@ -788,7 +809,7 @@ function EventRow({
                 {/* Actor line: "by name" for admins, "System" badge for system events */}
                 <div className="mt-1.5 flex items-center gap-1.5">
                     {isSystem ? (
-                        <span className="rounded-full bg-secondary border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                        <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
                             {t('eventRow.system')}
                         </span>
                     ) : event.actor_name ? (
@@ -798,7 +819,7 @@ function EventRow({
                         </p>
                     ) : null}
                     {isActivity && (
-                        <span className="rounded-full bg-secondary border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                        <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
                             {t('eventRow.activity')}
                         </span>
                     )}
@@ -817,7 +838,7 @@ function SkeletonRows() {
                 <div key={i} className="flex gap-3">
                     <div className="flex flex-col items-center">
                         <Skeleton className="size-7 rounded-full" />
-                        {i < 3 && <Skeleton className="mt-1 w-px flex-1 min-h-8" />}
+                        {i < 3 && <Skeleton className="mt-1 min-h-8 w-px flex-1" />}
                     </div>
                     <div className="mb-4 flex-1">
                         <Skeleton className="h-14 w-full rounded-lg" />
@@ -836,7 +857,7 @@ function EmptyState() {
         <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 py-8 text-center">
             <Path weight="duotone" className="size-8 text-muted-foreground/50" />
             <p className="text-sm font-medium text-muted-foreground">{t('emptyState.title')}</p>
-            <p className="text-xs text-muted-foreground/70 max-w-xs">
+            <p className="max-w-xs text-xs text-muted-foreground/70">
                 {t('emptyState.description')}
             </p>
         </div>
@@ -901,13 +922,13 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
     }
 
     return (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
             <button
                 onClick={() => setOpen((v) => !v)}
                 className={cn(
                     'flex w-full cursor-pointer items-center gap-2 px-4 py-3 transition-colors duration-150',
                     'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
-                    open && 'border-b border-border',
+                    open && 'border-b border-border'
                 )}
                 aria-expanded={open}
             >
@@ -924,13 +945,16 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                 )}
                 <button
                     onClick={handleRefresh}
-                    className="flex size-5 items-center justify-center rounded-full hover:bg-muted transition-colors duration-150 cursor-pointer"
+                    className="flex size-5 cursor-pointer items-center justify-center rounded-full transition-colors duration-150 hover:bg-muted"
                     title={t('header.refresh')}
                     aria-label={t('header.refreshAria')}
                 >
                     <ArrowsClockwise
                         weight="bold"
-                        className={cn('size-3.5 text-muted-foreground', isFetching && 'animate-spin')}
+                        className={cn(
+                            'size-3.5 text-muted-foreground',
+                            isFetching && 'animate-spin'
+                        )}
                     />
                 </button>
                 {open ? (
@@ -1014,7 +1038,7 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
                                                     scale="small"
                                                     onClick={() =>
                                                         setPage((p) =>
-                                                            Math.min(data.totalPages - 1, p + 1),
+                                                            Math.min(data.totalPages - 1, p + 1)
                                                         )
                                                     }
                                                     disabled={page >= data.totalPages - 1}

@@ -128,7 +128,11 @@ export function tatMetClass(rate: number | null | undefined): string {
     return 'text-red-600 font-medium';
 }
 
-/** Tier → static Tailwind bg-class. Static enumeration so Tailwind keeps the classes. */
+/**
+ * Tier → static Tailwind bg-class, for the legacy trio only. Callers pass the institute's
+ * catalog colour as `colorHex`, which takes precedence; this is the fallback for a tier with
+ * no colour set. Static enumeration so Tailwind keeps the classes.
+ */
 export function tierBgClass(tier: string): string {
     switch (tier) {
         case 'HOT':
@@ -599,11 +603,7 @@ export function ExportWithColumnPickerButton({
                             <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
                                 {t('export.cancel')}
                             </Button>
-                            <Button
-                                size="sm"
-                                onClick={handleExport}
-                                disabled={selected.size === 0}
-                            >
+                            <Button size="sm" onClick={handleExport} disabled={selected.size === 0}>
                                 <DownloadSimple size={14} className="mr-1" />
                                 {t('export.export')}
                             </Button>

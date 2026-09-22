@@ -56,6 +56,7 @@ const RESOURCE_LABELS: Record<string, string> = {
     AUDIENCE: 'Audience list',
     LEAD: 'Lead',
     LEAD_STATUS: 'Lead status',
+    LEAD_TIER: 'Lead tier',
     LEAD_FOLLOWUP: 'Follow-up',
     LEAD_SLA_CONFIG: 'Lead SLA',
     LEAD_CONNECTOR: 'Lead connector',

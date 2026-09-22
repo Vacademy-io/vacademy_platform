@@ -13,6 +13,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import LeadStatusesManager from './LeadStatusesManager';
+import LeadTiersManager from './LeadTiersManager';
 import LeadSlaSettings from './LeadSlaSettings';
 import LeadReportSettings from './LeadReportSettings';
 import LeadDedupSettings from './LeadDedupSettings';
@@ -45,6 +46,12 @@ export interface LeadSettingsData {
     showScoreInEnquiryTable: boolean;
     showScoreInContactsTable: boolean;
     showScoreInStudentsTable: boolean;
+    /**
+     * Institute-specific names for the built-in lead attributes (e.g. Tier → "Interest
+     * Level", Lead status → "Action Label"). Blank = platform default. Read everywhere
+     * through useLeadTerminology().
+     */
+    labels?: { tier?: string; leadStatus?: string };
 }
 
 const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
@@ -59,6 +66,7 @@ const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
     showScoreInEnquiryTable: true,
     showScoreInContactsTable: true,
     showScoreInStudentsTable: true,
+    labels: {},
 };
 
 const SETTING_KEY = 'LEAD_SETTING';
@@ -136,6 +144,11 @@ export default function LeadSettings() {
         setHasChanges(true);
     };
 
+    const updateLabel = (key: 'tier' | 'leadStatus', value: string) => {
+        setSettings((prev) => ({ ...prev, labels: { ...(prev.labels ?? {}), [key]: value } }));
+        setHasChanges(true);
+    };
+
     const updateWeight = (key: keyof LeadSettingsData['scoringWeights'], value: number) => {
         setSettings((prev) => ({
             ...prev,
@@ -173,6 +186,7 @@ export default function LeadSettings() {
                         <ConfigSection
                             settings={settings}
                             update={update}
+                            updateLabel={updateLabel}
                             updateWeight={updateWeight}
                             weightTotal={weightTotal}
                             weightError={weightError}
@@ -205,6 +219,7 @@ export default function LeadSettings() {
 interface ConfigSectionProps {
     settings: LeadSettingsData;
     update: (patch: Partial<LeadSettingsData>) => void;
+    updateLabel: (key: 'tier' | 'leadStatus', value: string) => void;
     updateWeight: (key: keyof LeadSettingsData['scoringWeights'], value: number) => void;
     weightTotal: number;
     weightError: boolean;
@@ -216,6 +231,7 @@ interface ConfigSectionProps {
 function ConfigSection({
     settings,
     update,
+    updateLabel,
     updateWeight,
     weightTotal,
     weightError,
@@ -389,6 +405,43 @@ function ConfigSection({
                         </CardContent>
                     </Card>
 
+                    {/* ── Terminology: what this institute calls Tier / Lead status ── */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('terminologyCard.title')}</CardTitle>
+                            <CardDescription>{t('terminologyCard.description')}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="lead-label-tier">
+                                    {t('terminologyCard.tierLabel')}
+                                </Label>
+                                <Input
+                                    id="lead-label-tier"
+                                    value={settings.labels?.tier ?? ''}
+                                    placeholder={t('terminologyCard.tierPlaceholder')}
+                                    maxLength={40}
+                                    onChange={(e) => updateLabel('tier', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="lead-label-status">
+                                    {t('terminologyCard.leadStatusLabel')}
+                                </Label>
+                                <Input
+                                    id="lead-label-status"
+                                    value={settings.labels?.leadStatus ?? ''}
+                                    placeholder={t('terminologyCard.leadStatusPlaceholder')}
+                                    maxLength={40}
+                                    onChange={(e) => updateLabel('leadStatus', e.target.value)}
+                                />
+                            </div>
+                            <p className="text-xs text-muted-foreground sm:col-span-2">
+                                {t('terminologyCard.hint')}
+                            </p>
+                        </CardContent>
+                    </Card>
+
                     {/* ── Score / visibility save (its own action; statuses + reminders save separately) ── */}
                     <div className="flex items-center justify-end">
                         <MyButton
@@ -412,6 +465,9 @@ function ConfigSection({
 
                     {/* ── Lead Statuses (table-backed CRUD) ── */}
                     <LeadStatusesManager />
+
+                    {/* ── Lead Tiers (table-backed CRUD; Hot/Warm/Cold seeded, custom levels + score bands) ── */}
+                    <LeadTiersManager />
                 </>
             )}
         </div>

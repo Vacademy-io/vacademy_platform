@@ -60,9 +60,28 @@ export const pairWithPreview = (
     return storedQuestions.map((q) => byName.get(q.questionName));
 };
 
-/** Whether the paper asked to be split and has at least two sections to split into. */
-export const wantsSections = (summary: AIExtractionSummary | null | undefined): boolean =>
-    summary?.section_mode === 'split' && (summary.sections?.length ?? 0) >= 2;
+/**
+ * Whether the paper is to be split — the teacher's choice in the preview
+ * when they made one there, else what they answered at upload — and has at
+ * least two sections to split into.
+ */
+export const wantsSections = (
+    summary: AIExtractionSummary | null | undefined,
+    choice?: 'split' | 'single' | null
+): boolean =>
+    (choice ?? summary?.section_mode) === 'split' && (summary?.sections?.length ?? 0) >= 2;
+
+/**
+ * A section with no questions and no uploaded paper — the blank one Step 2
+ * opens with, whatever the teacher may have typed into its description or
+ * name. The paper's sections take its place; a description it had is kept
+ * on the first of them when the paper prints no instruction of its own.
+ */
+export const isEmptySection = (section: {
+    adaptive_marking_for_each_question: unknown[];
+    uploaded_question_paper?: unknown;
+}): boolean =>
+    section.adaptive_marking_for_each_question.length === 0 && !section.uploaded_question_paper;
 
 const uniform = (values: string[]): string | null =>
     values.length > 0 && values.every((v) => v === values[0]) ? values[0]! : null;

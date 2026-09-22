@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import sectionDetailsSchema from '../../-utils/section-details-schema';
 import { FormProvider, useFieldArray, useForm } from 'react-hook-form';
@@ -104,7 +104,30 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
     const { handleSubmit, getValues, control, watch } = form;
     // Store initial data in useRef to ensure it remains constant throughout the form updates
     const oldData = useRef(getValues());
-    const allSections = getValues('section');
+    // How many section cards to draw. Each card deletes itself through its
+    // own useFieldArray, and react-hook-form's remove() tells only that
+    // instance — nothing here re-rendered, so the list kept a card for a
+    // section that no longer existed (it then re-saved itself as "Section
+    // N" with no questions, and the real sections looked lost). Follow the
+    // form's own count instead; a keystroke inside a section leaves it as is.
+    const [sectionCount, setSectionCount] = useState(getValues('section')?.length ?? 0);
+    const sectionCountRef = useRef(sectionCount);
+    useEffect(
+        () =>
+            form.subscribe({
+                name: 'section',
+                formState: { values: true },
+                callback: ({ values }) => {
+                    const next = values.section?.length ?? 0;
+                    if (next !== sectionCountRef.current) {
+                        sectionCountRef.current = next;
+                        setSectionCount(next);
+                    }
+                },
+            }),
+        [form]
+    );
+    const allSections = (getValues('section') ?? []).slice(0, sectionCount);
 
     const handleSubmitStep2Form = useMutation({
         mutationFn: ({

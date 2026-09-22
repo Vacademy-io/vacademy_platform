@@ -23,13 +23,20 @@ import {
     mergeSectionQuestions,
 } from '@/routes/assessment/question-papers/-utils/merge-section-questions';
 import { calculateTotalMarks } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
-import { isUntouchedSection } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/kb-paper-sections';
 import {
+    isEmptySection,
     pairWithPreview,
     sectionRowFor,
     sectionsFromExtractedPaper,
     wantsSections,
 } from '../-utils/extracted-paper-sections';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { QuestionType } from '@/constants/dummy-data';
 import { DotsSixVertical } from '@phosphor-icons/react';
 import {
@@ -111,6 +118,10 @@ const AIQuestionsPreview = ({
         questions: [],
     });
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    // How a digitised paper with sections goes into Step 2 — one section per
+    // paper section or all in the current one. Starts as what the teacher
+    // answered at upload; they can change it here before saving.
+    const [sectionChoice, setSectionChoice] = useState<'split' | 'single' | null>(null);
     const form = useForm<z.infer<typeof generateCompleteAssessmentFormSchema>>({
         resolver: zodResolver(generateCompleteAssessmentFormSchema),
         mode: 'onChange',
@@ -189,6 +200,8 @@ const AIQuestionsPreview = ({
             }
             setNoResponse(false);
             setAssessmentData(response);
+            setSectionChoice(response?.extraction?.section_mode ?? null);
+            setSavedPaperId(null);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
                 response.questions,
                 tHelper
@@ -241,6 +254,8 @@ const AIQuestionsPreview = ({
                 return;
             }
             setAssessmentData(response);
+            setSectionChoice(response?.extraction?.section_mode ?? null);
+            setSavedPaperId(null);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
                 response.questions,
                 tHelper
@@ -305,20 +320,28 @@ const AIQuestionsPreview = ({
                 const paired = pairWithPreview(transformQuestionsData, previewQuestions);
                 const summary = assessmentData.extraction ?? null;
 
-                if (allowSectionSplit && sectionsForm && summary && wantsSections(summary)) {
+                if (
+                    allowSectionSplit &&
+                    sectionsForm &&
+                    summary &&
+                    wantsSections(summary, sectionChoice)
+                ) {
                     // One Step 2 section per paper section, marks as printed.
-                    // The blank section the wizard opens with is replaced; a
+                    // The empty section the wizard opens with is replaced; a
                     // section the teacher already filled keeps its place and the
                     // paper's sections follow it.
                     const current = sectionsForm.getValues('section') ?? [];
                     const target = current[currentSectionIndex];
-                    const replace = target ? isUntouchedSection(target) : false;
+                    const replace = target ? isEmptySection(target) : false;
                     const newSections = sectionsFromExtractedPaper(
                         summary,
                         previewQuestions,
                         transformQuestionsData,
                         current.length - (replace ? 1 : 0)
                     );
+                    if (replace && target?.section_description && newSections[0]) {
+                        newSections[0].section_description ||= target.section_description;
+                    }
                     if (newSections.length >= 2) {
                         const next = [...current];
                         next.splice(
@@ -392,6 +415,37 @@ const AIQuestionsPreview = ({
             return;
         }
         handleSubmitFormData.mutate({
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error
+            data: form.getValues(),
+        });
+    };
+
+    // "Add to question bank": the paper as shown, saved to the bank in one
+    // click and nothing else — no section, no navigation. Done once per
+    // preview; the button then says so instead of saving a second copy.
+    const [savedPaperId, setSavedPaperId] = useState<string | null>(null);
+    const saveToQuestionBank = useMutation({
+        mutationFn: ({ data }: { data: MyQuestionPaperFormInterface }) =>
+            addQuestionPaper(data, true),
+        onSuccess: (data) => {
+            setSavedPaperId(data?.saved_question_paper_id ?? '');
+            queryClient.invalidateQueries({ queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'] });
+            toast.success(t('toast.savedToQuestionBank'));
+        },
+        onError: (error: unknown) => {
+            toast.error(error instanceof Error ? error.message : String(error));
+        },
+    });
+    const handleAddToQuestionBank = () => {
+        if (Object.values(form.formState.errors).length > 0) {
+            toast.error(t('toast.incompleteQuestions'), {
+                className: 'error-toast',
+                duration: 3000,
+            });
+            return;
+        }
+        saveToQuestionBank.mutate({
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-expect-error
             data: form.getValues(),
@@ -515,8 +569,11 @@ const AIQuestionsPreview = ({
                                                             ' · ' +
                                                                 t(
                                                                     !allowSectionSplit ||
-                                                                        assessmentData.extraction
-                                                                            .section_mode === 'single'
+                                                                        (sectionChoice ??
+                                                                            assessmentData
+                                                                                .extraction
+                                                                                .section_mode) ===
+                                                                            'single'
                                                                         ? 'header.extractionSectionsSingle'
                                                                         : 'header.extractionSectionsSplit',
                                                                     {
@@ -603,6 +660,37 @@ const AIQuestionsPreview = ({
                                     </div>
                                     <div className="flex items-center gap-3">
                                         {currentSectionIndex !== undefined &&
+                                            allowSectionSplit &&
+                                            (assessmentData.extraction?.sections?.length ?? 0) >=
+                                                2 && (
+                                                <Select
+                                                    value={sectionChoice ?? 'split'}
+                                                    onValueChange={(value) =>
+                                                        setSectionChoice(
+                                                            value as 'split' | 'single'
+                                                        )
+                                                    }
+                                                >
+                                                    <SelectTrigger
+                                                        className="h-8 w-auto gap-2 text-xs"
+                                                        aria-label={t('header.sectionChoiceLabel')}
+                                                    >
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="split">
+                                                            {t('header.sectionChoiceSplit', {
+                                                                count: assessmentData.extraction!
+                                                                    .sections!.length,
+                                                            })}
+                                                        </SelectItem>
+                                                        <SelectItem value="single">
+                                                            {t('header.sectionChoiceSingle')}
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
+                                        {currentSectionIndex !== undefined &&
                                             (handleSubmitFormData.status === 'pending' ? (
                                                 <MyButton type="button" disable scale="small">
                                                     <div className="mr-2 size-3 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
@@ -617,6 +705,31 @@ const AIQuestionsPreview = ({
                                                     {t('header.saveChanges')}
                                                 </MyButton>
                                             ))}
+                                        {(assessmentData.questions?.length ?? 0) > 0 && (
+                                            <MyButton
+                                                type="button"
+                                                scale="small"
+                                                buttonType="secondary"
+                                                disable={
+                                                    saveToQuestionBank.status === 'pending' ||
+                                                    savedPaperId !== null
+                                                }
+                                                onClick={handleAddToQuestionBank}
+                                            >
+                                                {saveToQuestionBank.status === 'pending' ? (
+                                                    <>
+                                                        <div className="mr-2 size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
+                                                        <span>
+                                                            {t('header.addingToQuestionBank')}
+                                                        </span>
+                                                    </>
+                                                ) : savedPaperId !== null ? (
+                                                    t('header.addedToQuestionBank')
+                                                ) : (
+                                                    t('header.addToQuestionBank')
+                                                )}
+                                            </MyButton>
+                                        )}
                                         <ExportQuestionPaperAI
                                             responseQuestionsData={assessmentData?.questions}
                                         />

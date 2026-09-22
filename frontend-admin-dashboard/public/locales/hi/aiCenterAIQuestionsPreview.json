@@ -8,7 +8,8 @@
     "toast": {
         "noDataExists": "कोई डेटा मौजूद नहीं है!",
         "incompleteQuestions": "आपके कुछ प्रश्न अधूरे हैं या उन पर ध्यान देने की आवश्यकता है!",
-        "sectionsAdded": "पेपर के अनुसार {{sections}} सेक्शन में {{questions}} प्रश्न जोड़े गए"
+        "sectionsAdded": "पेपर के अनुसार {{sections}} सेक्शन में {{questions}} प्रश्न जोड़े गए",
+        "savedToQuestionBank": "पेपर प्रश्न बैंक में जोड़ दिया गया"
     },
     "trigger": {
         "retrying": "पुनः प्रयास हो रहा है...",
@@ -32,7 +33,10 @@
         "extractionMarking": "अंकन +{{marks}} / −{{negative}}",
         "sectionChoiceLabel": "पेपर के सेक्शन कैसे जोड़ें",
         "sectionChoiceSplit": "पेपर की तरह {{count}} सेक्शन बनाएँ",
-        "sectionChoiceSingle": "सभी प्रश्न इसी सेक्शन में डालें"
+        "sectionChoiceSingle": "सभी प्रश्न इसी सेक्शन में डालें",
+        "addToQuestionBank": "प्रश्न बैंक में जोड़ें",
+        "addingToQuestionBank": "जोड़ा जा रहा है…",
+        "addedToQuestionBank": "प्रश्न बैंक में जुड़ गया"
     },
     "questionCard": {
         "duplicate": "डुप्लिकेट करें",

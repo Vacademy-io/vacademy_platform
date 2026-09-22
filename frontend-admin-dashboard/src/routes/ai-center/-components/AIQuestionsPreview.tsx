@@ -201,6 +201,7 @@ const AIQuestionsPreview = ({
             setNoResponse(false);
             setAssessmentData(response);
             setSectionChoice(response?.extraction?.section_mode ?? null);
+            setSavedPaperId(null);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
                 response.questions,
                 tHelper
@@ -254,6 +255,7 @@ const AIQuestionsPreview = ({
             }
             setAssessmentData(response);
             setSectionChoice(response?.extraction?.section_mode ?? null);
+            setSavedPaperId(null);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
                 response.questions,
                 tHelper
@@ -413,6 +415,37 @@ const AIQuestionsPreview = ({
             return;
         }
         handleSubmitFormData.mutate({
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error
+            data: form.getValues(),
+        });
+    };
+
+    // "Add to question bank": the paper as shown, saved to the bank in one
+    // click and nothing else — no section, no navigation. Done once per
+    // preview; the button then says so instead of saving a second copy.
+    const [savedPaperId, setSavedPaperId] = useState<string | null>(null);
+    const saveToQuestionBank = useMutation({
+        mutationFn: ({ data }: { data: MyQuestionPaperFormInterface }) =>
+            addQuestionPaper(data, true),
+        onSuccess: (data) => {
+            setSavedPaperId(data?.saved_question_paper_id ?? '');
+            queryClient.invalidateQueries({ queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'] });
+            toast.success(t('toast.savedToQuestionBank'));
+        },
+        onError: (error: unknown) => {
+            toast.error(error instanceof Error ? error.message : String(error));
+        },
+    });
+    const handleAddToQuestionBank = () => {
+        if (Object.values(form.formState.errors).length > 0) {
+            toast.error(t('toast.incompleteQuestions'), {
+                className: 'error-toast',
+                duration: 3000,
+            });
+            return;
+        }
+        saveToQuestionBank.mutate({
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-expect-error
             data: form.getValues(),
@@ -672,6 +705,31 @@ const AIQuestionsPreview = ({
                                                     {t('header.saveChanges')}
                                                 </MyButton>
                                             ))}
+                                        {(assessmentData.questions?.length ?? 0) > 0 && (
+                                            <MyButton
+                                                type="button"
+                                                scale="small"
+                                                buttonType="secondary"
+                                                disable={
+                                                    saveToQuestionBank.status === 'pending' ||
+                                                    savedPaperId !== null
+                                                }
+                                                onClick={handleAddToQuestionBank}
+                                            >
+                                                {saveToQuestionBank.status === 'pending' ? (
+                                                    <>
+                                                        <div className="mr-2 size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
+                                                        <span>
+                                                            {t('header.addingToQuestionBank')}
+                                                        </span>
+                                                    </>
+                                                ) : savedPaperId !== null ? (
+                                                    t('header.addedToQuestionBank')
+                                                ) : (
+                                                    t('header.addToQuestionBank')
+                                                )}
+                                            </MyButton>
+                                        )}
                                         <ExportQuestionPaperAI
                                             responseQuestionsData={assessmentData?.questions}
                                         />

@@ -736,5 +736,14 @@ feed copied `attempt.isCorrect` through on hide-until-reveal questions, so a ref
 outcome the submit response had withheld. Trap: ai_service role checks need the `clientId` header
 (auth service resolves `clientId@username`); without it every admin gets 403.
 
+**Past tasks (2026-09-22, `1d6cab367e`).** `GET /engagement/learner/v1/history?instituteId&days=30`
+(≤90) → `{from,to,items[],done,missed,pointsEarned}`; each item is the learner DTO plus
+`historyStatus` DONE|MISSED|CATCH_UP, `isLate`, `completedAt`, and the answer key once revealed.
+Because an attempt is per item, a completion is filed under the occurrence in effect when it
+happened (a late one under the occurrence it caught up FOR); later occurrences of a recurring slot
+are skipped, earlier closed ones are MISSED, today's OPEN ones stay on the card. Learner page
+`/engagement/history` (7/30/90-day windows, grouped by day, catch-up entries open the normal
+dialog); "See past tasks" link at the bottom of the home card.
+
 **Still open:** `QUIZ` item type unused; assessment points outside the ledger; AI wizard streaming;
 nightly accrual (`vacademy.points.accrual.enabled`) still OFF pending the POINTS-metric flip.

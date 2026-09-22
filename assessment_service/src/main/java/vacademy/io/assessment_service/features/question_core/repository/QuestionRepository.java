@@ -11,9 +11,14 @@ import java.util.List;
 
 public interface QuestionRepository extends JpaRepository<Question, String> {
 
+    // In the order the paper was saved with: each bulkInsertQuestionsToQuestionPaper
+    // batch shares one created_at and numbers its rows 1..n in question_order, and a
+    // later edit appends a new batch (numbered from 1 again) after the old one. The
+    // AI preview pairs these rows positionally with the rows it sent.
     @Query(value = "SELECT q.* FROM question q " +
             "JOIN question_question_paper_mapping qp ON q.id = qp.question_id " +
-            "WHERE qp.question_paper_id = :questionPaperId and q.status != 'DELETED'", nativeQuery = true)
+            "WHERE qp.question_paper_id = :questionPaperId and q.status != 'DELETED' " +
+            "ORDER BY qp.created_at, qp.question_order NULLS LAST, q.id", nativeQuery = true)
     List<Question> findQuestionsByQuestionPaperId(@Param("questionPaperId") String questionPaperId);
 
     /** Shared by the row query and its count query so the two can never drift apart. */

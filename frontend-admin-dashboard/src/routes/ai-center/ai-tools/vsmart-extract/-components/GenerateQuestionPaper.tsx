@@ -113,13 +113,19 @@ const GenerateAiQuestionPaperComponent = ({
         }) => {
             setLoader(true);
             setKey('question');
+            // The teacher's answer only when they were asked (the paper's
+            // sections were known at upload); otherwise say nothing and the
+            // backend splits by what it reads — a scanned paper's sections
+            // are only known after extraction. A quiz never splits.
+            const askedSectionMode =
+                sectionSplit && (paperInfo?.sections?.length ?? 0) >= 2 ? sectionMode : undefined;
             return handleGenerateAssessmentQuestions(
                 pdfId,
                 userPrompt,
                 taskName,
                 taskId || '',
                 'extract',
-                sectionSplit && (paperInfo?.sections?.length ?? 0) >= 2 ? sectionMode : 'single'
+                sectionSplit ? askedSectionMode : 'single'
             );
         },
         onSuccess: (response: unknown) => {

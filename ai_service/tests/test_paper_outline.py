@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from app.services import question_extract_service as qe
-from app.services.paper_outline import apply_outline, marking_of, outline_of_html
+from app.services.paper_outline import apply_outline, duration_of, marking_of, outline_of_html
 
 
 def _p(text: str) -> str:
@@ -79,7 +79,7 @@ def test_body_headings_with_marks_from_the_general_instructions():
 def test_a_section_may_restart_numbering_from_one():
     html = _p("PART A") + _mcq(1) + _mcq(2) + _mcq(3) + _p("PART B") + _mcq(1) + _mcq(2)
     o = outline_of_html(html)
-    assert o["question_count"] == 3  # distinct numbers, as the count line says
+    assert o["question_count"] == 5  # every section counts, whatever its numbering
     assert _names(o) == [("Part A", 1, 3), ("Part B", 1, 2)]
     qs = [{"question_number": n, "question": {"content": "x"}} for n in ["1", "2", "3", "1", "2"]]
     apply_outline(qs, o)
@@ -245,3 +245,183 @@ def test_time_allowed_phrasings():
     assert duration_of("Maximum Marks: 80") is None
     assert duration_of("Questions 1 to 15 · 30 minutes") is None  # bare minutes only count on a section's own line
     assert duration_of("Questions 1 to 15 · 30 minutes", loose=True) == 30
+
+
+# ── review findings ──────────────────────────────────────────────────────────
+
+def test_a_note_or_directions_line_above_q1_does_not_make_the_questions_a_list():
+    ten = "".join(_mcq(i) for i in range(1, 11))
+    assert outline_of_html(_p("Note: All questions are compulsory.") + ten)["question_count"] == 10
+    assert outline_of_html(_p("General Instructions") + ten)["question_count"] == 10
+    rc = _p("Instructions for Questions 1 to 5: read the passage and answer.") + "".join(_mcq(i) for i in range(1, 6))
+    assert outline_of_html(rc)["question_count"] == 5
+
+
+def test_the_instructions_own_section_list_does_not_name_the_first_section():
+    instr = (_p("General Instructions") + _p("Section A: Questions 1 to 2 (2 marks)")
+             + _p("Section B: Questions 3 to 4 (4 marks)"))
+    body = _mcq(1) + _mcq(2) + _p("SECTION B") + _mcq(3) + _mcq(4)
+    # No heading above Q1: the instructions' line for Section A is the
+    # nearest true one; Section B's line names other questions.
+    assert _names(outline_of_html(instr + body)) == [("Section A", 1, 2), ("Section B", 3, 4)]
+    # A heading right above Q1 wins over the list, marks note and all.
+    o = outline_of_html(instr + _p("SECTION A (2 Marks)") + body)
+    assert _names(o) == [("Section A", 1, 2), ("Section B", 3, 4)]
+    # Only Section B's line in the list and no heading above Q1: nothing to
+    # name the first section by, so no sections rather than a wrong one.
+    assert outline_of_html(_p("Section B: Questions 3 to 4 (4 marks)") + body)["sections"] == []
+
+
+def test_a_marks_note_on_a_heading_is_neither_its_name_nor_a_per_question_mark():
+    o = outline_of_html(_p("SECTION A (20 Marks)") + _mcq(1) + _mcq(2) + _p("SECTION B (10 M)") + _mcq(3))
+    assert [(s["name"], s["marks"], s["duration_minutes"]) for s in o["sections"]] == [
+        ("Section A", None, None), ("Section B", None, None)]
+
+
+def test_a_bracketed_number_at_the_end_is_marks_unless_it_is_a_call():
+    from app.services.paper_outline import _printed_marks
+
+    assert _printed_marks({"question": {"content": "Find f(3)"}}) is None
+    assert _printed_marks({"question": {"content": "Evaluate g(2)"}}) is None
+    assert _printed_marks({"question": {"content": "Prove it. (2)"}}) == 2.0  # the common convention stays
+    assert _printed_marks({"question": {"content": "Prove it [3]"}}) == 3.0
+    assert _printed_marks({"question": {"content": "Solve (2 M)"}}) == 2.0
+    assert _printed_marks({"question": {"content": "Derive it. 5 marks"}}) == 5.0
+
+
+def test_a_marks_note_is_stripped_from_a_section_name_but_not_a_word_starting_with_m():
+    from app.services.paper_outline import _label_heading, _subject_heading
+
+    assert _label_heading("Part B: Chapter 5 Mechanics (10 Marks)")["name"] == "Part B: Chapter 5 Mechanics"
+    assert _label_heading("Section A: Physics (35 M)")["name"] == "Section A: Physics"
+    assert _label_heading("Section C: Reading 2 marks each")["name"] == "Section C: Reading"
+    # Subject headings are as before: a marks note keeps a line from being one.
+    assert _subject_heading("Physics (35 Marks)") is None and _subject_heading("PHYSICS") == "Physics"
+
+
+def test_section_time_in_hours_short_form_still_counts_but_not_a_marks_m():
+    assert duration_of("Section A · 2 h", loose=True) == 120
+    assert duration_of("Section A · 1 hr 30 m", loose=True) == 90
+    assert duration_of("SECTION B (20 M)", loose=True) is None
+
+
+def test_statements_under_the_last_question_are_not_extra_questions():
+    # "1) 2) 3)" inside Q4 with nothing after to resume the outer run: the
+    # same starts as before, but the count is the paper's four.
+    html = "".join(_mcq(i) for i in range(1, 4)) + _p("4. Which are true?") + _p("1) x") + _p("2) y") + _p("3) z")
+    blocks = qe.split_blocks(html)
+    assert [len(r) for r in qe.question_runs(blocks)] == [7]
+    assert outline_of_html(html)["question_count"] == 4
+
+
+def test_a_code_word_starting_with_q_and_a_number_is_not_a_question():
+    blocks = qe.split_blocks(_p("Q28. Which replaces the mark?") + _p("A) Q30S") + _p("B) R30T") + _p("Q29. Next?") + _p("A) x"))
+    assert qe.question_starts(blocks) == [True, False, False, True, False]
+
+
+def test_a_question_marker_takes_back_the_list_item_the_run_took_for_it():
+    # Q2's solution ends with a "1. 2. 3." list; its "3." is the number the
+    # run expects next. "Question 3" that follows is the real entry: it
+    # takes the number back and the list stays inside Q2 (IPMAT, Q3).
+    html = (_p("Question 2 ANSWER A") + _p("because") + _p("1. one") + _p("2. two") + _p("3. three")
+            + _p("Question 3 ANSWER C") + _p("why") + _p("Question 4 ANSWER B"))
+    blocks = qe.split_blocks(html)
+    assert [i for i, s in enumerate(qe.question_starts(blocks)) if s] == [0, 5, 7]
+    key, _ = qe.read_key_region(blocks, min_hits=3)
+    assert [key[n]["options"] for n in ("2", "3", "4")] == [["A"], ["C"], ["B"]]
+    assert "three" in key["2"]["exp"] and "three" not in key["3"]["exp"]
+    # A bare-numbered run is never rewound: a stray "Q 6 …" (a table with
+    # a Q column) must not evict question 6, near or far.
+    html = "".join(_mcq(i) for i in range(1, 8)) + _p("Q 6 7 : 5") + _mcq(8)
+    assert [i for i, s in enumerate(qe.question_starts(qe.split_blocks(html))) if s] == [0, 2, 4, 6, 8, 10, 12, 15]
+    html = "".join(_mcq(i) for i in range(1, 8)) + _p("Q 3 7 : 5") + _mcq(8)
+    assert sum(qe.question_starts(qe.split_blocks(html))) == 8
+    # Key lines "1. (a) … 20. (a)" then solutions "Q19." "Q20.": the lines
+    # keep their letters and the solutions still become entries.
+    key_html = "".join(_p(f"{i}. (a)") for i in range(1, 21)) + _p("Q19. Because …") + _p("Q20. Since …")
+    key, _ = qe.read_key_region(qe.split_blocks(key_html), min_hits=3)
+    assert key["19"]["options"] == ["a"] and key["20"]["options"] == ["a"]
+
+
+def test_a_table_row_or_a_timing_at_the_start_of_a_block_is_not_a_question():
+    assert qe._question_no(_p("Q 30% 7 : 5")) is None  # a DI table row labelled Q
+    assert qe._question_no(_p("Q 1,20,000 5 12")) is None
+    assert qe._question_no(_p("1.9 min")) is None
+    assert qe._question_no(_p("Q1, which is …")) == "1"
+    assert qe._question_no(_p("1.The first")) == "1"
+    # A stray "Q 30 …" inside a run (a table with a city called Q) neither
+    # splits the run nor counts: the run resumes and drops it.
+    html = "".join(_mcq(i) for i in range(1, 5)) + _p("City share") + _p("Q 30 7 : 5") + _mcq(5) + _mcq(6)
+    assert [len(r) for r in qe.question_runs(qe.split_blocks(html))] == [6]
+    assert outline_of_html(html)["question_count"] == 6
+
+
+def test_a_key_that_restarts_with_the_sections_is_applied_section_by_section(monkeypatch):
+    import asyncio
+    import json
+
+    html = (
+        _p("PART A") + _mcq(1) + _mcq(2) + _mcq(3)
+        + _p("PART B") + _mcq(1) + _mcq(2) + _mcq(3)
+        + _p("ANSWER KEY") + _p("Part A") + _p("1. a 2. b 3. c") + _p("Part B") + _p("1. d 2. d 3. d")
+    )
+    opts = [{"type": "HTML", "preview_id": str(i), "option_label": l, "content": str(i)} for i, l in enumerate("abcd", 1)]
+
+    async def fake_generate_json(prompt, models, label=""):
+        qs = [{"question_number": n, "question": {"type": "HTML", "content": f"{n}. q"}, "options": list(opts),
+               "question_type": "MCQS", "correct_options": []} for n in ["1", "2", "3", "1", "2", "3"]]
+        return json.dumps({"questions": qs, "title": "t"}), "stub", {"prompt_tokens": 1, "completion_tokens": 1}
+
+    monkeypatch.setattr(qe.llm_json, "generate_json", fake_generate_json)
+    monkeypatch.setattr(qe, "_charge", lambda **kw: None)
+    monkeypatch.setattr(qe, "_estimated_credits", lambda *a: 1.0)
+    raw = json.loads(asyncio.run(qe.extract_from_html(html=html, models=["stub"])))
+    assert [(q["section"], q["correct_options"]) for q in raw["questions"]] == [
+        ("Part A", ["1"]), ("Part A", ["2"]), ("Part A", ["3"]),
+        ("Part B", ["4"]), ("Part B", ["4"]), ("Part B", ["4"]),
+    ]
+    assert raw["extraction"]["keyed"] == 6 and raw["extraction"]["key_found"]
+
+
+def test_a_split_key_that_reads_poorly_falls_back_to_the_whole_key(monkeypatch):
+    import asyncio
+    import json
+
+    # Part B's key line carries no letters: the split read covers 3 of 6,
+    # so the whole-key path applies as before (B gets A's answers, as on
+    # main) rather than leaving B unkeyed.
+    html = (
+        _p("PART A") + _mcq(1) + _mcq(2) + _mcq(3)
+        + _p("PART B") + _mcq(1) + _mcq(2) + _mcq(3)
+        + _p("ANSWER KEY") + _p("Part A") + _p("1. a 2. b 3. c") + _p("Part B") + _p("1. ? 2. ? 3. ?")
+    )
+    opts = [{"type": "HTML", "preview_id": str(i), "option_label": l, "content": str(i)} for i, l in enumerate("abcd", 1)]
+
+    async def fake_generate_json(prompt, models, label=""):
+        qs = [{"question_number": n, "question": {"type": "HTML", "content": f"{n}. q"}, "options": list(opts),
+               "question_type": "MCQS", "correct_options": []} for n in ["1", "2", "3", "1", "2", "3"]]
+        return json.dumps({"questions": qs, "title": "t"}), "stub", {"prompt_tokens": 1, "completion_tokens": 1}
+
+    monkeypatch.setattr(qe.llm_json, "generate_json", fake_generate_json)
+    monkeypatch.setattr(qe, "_charge", lambda **kw: None)
+    monkeypatch.setattr(qe, "_estimated_credits", lambda *a: 1.0)
+    raw = json.loads(asyncio.run(qe.extract_from_html(html=html, models=["stub"])))
+    assert [q["correct_options"] for q in raw["questions"]] == [["1"], ["2"], ["3"], ["1"], ["2"], ["3"]]
+    assert raw["extraction"]["keyed"] == 6
+
+
+def test_numbering_runs_and_key_region_split():
+    qs = [{"question_number": n} for n in ["1", "2", "3", "1", "2"]]
+    assert qe.numbering_runs(qs) == [[0, 1, 2], [3, 4]]
+    assert qe.numbering_runs([{"question_number": n} for n in ["1", "2", "3"]]) == [[0, 1, 2]]
+    # A misread "7" for "17" is not a section starting over.
+    assert qe.numbering_runs([{"question_number": n} for n in ["16", "7", "18"]]) == [[0, 1, 2]]
+    regions = qe.split_key_region(qe.split_blocks(_p("Answers") + _p("1. a 2. b 3. c") + _p("1. d 2. d")))
+    assert [len(r) for r in regions] == [2, 1]
+    # Solutions that start over at 1 after the key lines cut too, so key
+    # lines and solutions each give a region per section (cycled in
+    # extract_from_html); a numbered list inside an explanation does not.
+    sol = (_p("Answers") + _p("1. a 2. b 3. c") + _p("Part B") + _p("1. d 2. d 3. d")
+           + _p("Solutions") + _p("Part A") + _p("1. Because of steps") + _p("1) first 2) second") + _p("2. x") + _p("3. y")
+           + _p("Part B") + _p("1. z") + _p("2. w") + _p("3. v"))
+    assert [len(r) for r in qe.split_key_region(qe.split_blocks(sol))] == [3, 3, 5, 3]

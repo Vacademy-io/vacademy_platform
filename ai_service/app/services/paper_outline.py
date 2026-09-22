@@ -24,7 +24,7 @@ from .question_extract_service import (
     _question_no,
     _text_of,
     find_answer_key,
-    question_starts,
+    question_runs,
     split_blocks,
 )
 
@@ -70,6 +70,7 @@ _END_MARK = re.compile(r"^\s*e\s?nd\s+of\s+(?:section|part)\s*[-–—:]?\s*(\w+
 _RANGE_IN_NAME = re.compile(
     r"\(?\s*(?:q(?:uestions?|s)?\.?\s*(?:nos?\.?)?\s*)?\d{1,3}\s*(?:[–\-—]|to)\s*\d{1,3}\s*\)?", re.I
 )
+_RANGE_FROM = re.compile(r"(\d{1,3})\s*(?:[–\-—]|to)\s*\d{1,3}\b", re.I)
 _MARKS_IN_NAME = re.compile(r"\(?\s*\d+\s*[x×*]\s*\d+(?:\.\d+)?\s*=\s*\d+(?:\.\d+)?\s*(?:marks?)?\s*\)?", re.I)
 _NOISE_WORD = re.compile(
     r"^(?:minutes?|mins?|marks?|questions?|qs|q\.?|nos?\.?|time|duration|hrs?|hours?|no\.?\s*of|"
@@ -138,10 +139,17 @@ _RANGE_MARKS = re.compile(
     + _NUM + r"\s*marks?",
     re.I,
 )
-# Marks printed at the end of a question: "[2]", "(3 marks)", "5 Marks", "(1)"
+# Marks printed at the end of a question: "[2]", "(3 marks)", "5 Marks",
+# "(2 M)", "(1)" — but not the argument of "f(3)": a bracket that follows
+# a letter or digit is part of an expression.
 _TRAILING_MARKS = re.compile(
-    r"(?:[\[(]\s*" + _NUM + r"\s*(?:marks?|m)?\s*[\])]|" + _NUM + r"\s*marks?)\s*$", re.I
+    r"(?:\[\s*" + _NUM + r"\s*(?:marks?|m)?\s*\]|(?<![A-Za-z0-9])\(\s*" + _NUM + r"\s*(?:marks?|m)?\s*\)|"
+    + _NUM + r"\s*marks?)\s*$",
+    re.I,
 )
+# "(20 Marks)", "(10 M)" on a section heading — the section's total, not
+# part of its name and not a per-question mark.
+_MARKS_NOTE_IN_NAME = re.compile(r"\(?\s*\d+(?:\.\d+)?\s*(?:marks?|m)\b\s*(?:each\b)?\s*\)?", re.I)
 
 
 # ---- time allowed -------------------------------------------------------------
@@ -162,7 +170,11 @@ _DURATION_LOOSE = re.compile(
     re.I,
 )
 # In a section's own line ("Questions 1 to 15 · 30 minutes", "Time: 45 min").
-_DURATION_SHORT = re.compile(r"(\d+(?:\.\d+)?)\s*(" + _HOURS + r"|" + _MINS + r")\b(?:\s*(\d+)\s*" + _MINS + r"\b)?", re.I)
+# No bare "m": "(20 M)" on a section heading is marks, not minutes (after
+# an hour count, "2 h 30 m", it is).
+_DURATION_SHORT = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(" + _HOURS + r"|minutes?|mins?)\b(?:\s*(\d+)\s*" + _MINS + r"\b)?", re.I
+)
 
 
 def _minutes(amount: str, unit: str, extra: Optional[str]) -> Optional[int]:
@@ -253,7 +265,8 @@ def _label_heading(text: str) -> Optional[Dict[str, str]]:
     if _SENTENCE_TAIL.search(tail) and not _MARKS_IN_NAME.search(tail):
         return None
     head = f"{word.title() if word.isascii() else word} {label.upper() if len(label) <= 4 else label.title()}"
-    rest = _tidy_name(tail)
+    # "SECTION A (20 Marks)": the section's total is not part of its name.
+    rest = _tidy_name(_MARKS_NOTE_IN_NAME.sub(" ", tail))
     return {"label": _label_key(label), "name": f"{head}: {rest}" if rest else head}
 
 
@@ -337,11 +350,18 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
     """{"question_count", "sections": [...], "marking": {...}} for a paper's
     blocks (the answer key, from `key_at`, excluded)."""
     body = list(blocks[:key_at] if key_at is not None else blocks)
-    starts = question_starts(body)
+    runs = question_runs(body)
+    starts = [False] * len(body)
+    for run in runs:
+        for i in run:
+            starts[i] = True
     texts = [_text_of(b) for b in body]
     first_q = next((i for i, s in enumerate(starts) if s), len(body))
     numbers = [int(_question_no(b)) for b, s in zip(body, starts) if s]
-    count = len(set(numbers))
+    # Distinct numbers within each run of numbering: an empty "1. 2. 3."
+    # is not counted twice against the real Q1–Q3, and a paper that
+    # numbers every section from 1 counts every section.
+    count = sum(len({_question_no(body[i]) for i in run}) for run in runs)
     front = " ".join(texts[:first_q])
     # The paper's general scheme is what the instructions say about EVERY
     # question; a line about one section ("Section A … 1 mark each") is
@@ -373,9 +393,12 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
                 continue
             lab = _label_heading(text)
             if lab:
-                # Before the first question only the heading right above it
-                # counts; earlier ones are the instructions' own list.
-                if i < first_q and re.search(r"\d", lab["name"]) and not _MARKS_IN_NAME.search(text):
+                # Before the first question, the instructions' own list
+                # ("Section B: Questions 21–40 …") names ranges that start
+                # elsewhere; only a heading for the questions that follow
+                # counts, whatever marks note it carries.
+                rng = _RANGE_FROM.search(text) if i < first_q else None
+                if rng and numbers and int(rng.group(1)) != numbers[0]:
                     continue
                 heads.append((i, lab["name"], lab["label"]))
                 continue
@@ -477,7 +500,7 @@ def _printed_marks(q: Dict[str, Any]) -> Optional[float]:
         return _num(v)
     text = _text_of(str((q.get("question") or {}).get("content") or ""))
     m = _TRAILING_MARKS.search(text)
-    return _num(m.group(1) or m.group(2)) if m else None
+    return _num(next((g for g in m.groups() if g), None)) if m else None
 
 
 def apply_outline(questions: List[Dict[str, Any]], outline: Dict[str, Any]) -> None:

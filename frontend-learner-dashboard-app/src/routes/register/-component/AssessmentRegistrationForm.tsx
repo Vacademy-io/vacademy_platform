@@ -37,6 +37,10 @@ import { isRichTextEmpty, sanitizeHtml } from "@/lib/utils";
 import {
   calculateTimeDifference,
   calculateTimeLeft,
+  case1,
+  case2,
+  case3,
+  isEffectivelyUnbounded,
   getDynamicSchema,
   getOpenRegistrationUserDetailsByEmail,
 } from "../-utils/helper";
@@ -119,39 +123,21 @@ const DateBlock = ({
           <span className="inline-flex items-center rounded-md bg-success-50 px-1.5 py-0.5 text-caption font-semibold text-success-700">
             {t("form.dateBlock.start")}
           </span>
-          <span className="text-neutral-700">{start}</span>
+          <span className="text-neutral-700">
+            {start || t("form.dateBlock.noLimit")}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex items-center rounded-md bg-danger-50 px-1.5 py-0.5 text-caption font-semibold text-danger-700">
             {t("form.dateBlock.end")}
           </span>
-          <span className="text-neutral-700">{end}</span>
+          <span className="text-neutral-700">
+            {end || t("form.dateBlock.noLimit")}
+          </span>
         </div>
       </div>
     </div>
   );
-};
-
-const case1 = (serverTime: number, startDate: string) => {
-  const registrationStartDate: number = new Date(
-    Date.parse(startDate),
-  ).getTime();
-  return serverTime < registrationStartDate;
-};
-
-const case2 = (serverTime: number, startDate: string, endDate: string) => {
-  const registrationStartDate: number = new Date(
-    Date.parse(startDate),
-  ).getTime();
-  const registrationEndDate: number = new Date(Date.parse(endDate)).getTime();
-  return (
-    registrationStartDate <= serverTime && serverTime <= registrationEndDate
-  );
-};
-
-const case3 = (serverTime: number, endDate: string) => {
-  const registrationEndDate: number = new Date(Date.parse(endDate)).getTime();
-  return serverTime > registrationEndDate;
 };
 
 // Surface the backend's human-readable message (ErrorInfo.ex) when present,
@@ -298,6 +284,11 @@ const AssessmentRegistrationForm = () => {
         data.assessment_public_dto.registration_open_date,
       ),
     );
+
+  const registrationDeadlineIsUnbounded = isEffectivelyUnbounded(
+    serverTime.current,
+    data.assessment_public_dto.registration_close_date,
+  );
 
   const [timeLeftForRegistrationCase2, setTimeLeftForRegistrationCase2] =
     useState(
@@ -857,12 +848,15 @@ const AssessmentRegistrationForm = () => {
               <div className="flex flex-col items-center gap-2 rounded-2xl border border-primary-100 bg-gradient-to-r from-primary-50 to-primary-50/30 px-4 py-4">
                 <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-primary-700">
                   <Timer size={14} weight="bold" />
-                  {t("form.closesIn")}
+                  {registrationDeadlineIsUnbounded
+                    ? t("form.noClosingDate")
+                    : t("form.closesIn")}
                 </div>
-                {(timeLeftForRegistrationCase2.days > 0 ||
+                {(!registrationDeadlineIsUnbounded &&
+                  (timeLeftForRegistrationCase2.days > 0 ||
                   timeLeftForRegistrationCase2.hours > 0 ||
                   timeLeftForRegistrationCase2.minutes > 0 ||
-                  timeLeftForRegistrationCase2.seconds > 0) ? (
+                  timeLeftForRegistrationCase2.seconds > 0)) ? (
                   <div className="flex items-end gap-2 tabular-nums text-primary-600">
                     {timeLeftForRegistrationCase2.days > 0 && (
                       <div className="flex flex-col items-center">

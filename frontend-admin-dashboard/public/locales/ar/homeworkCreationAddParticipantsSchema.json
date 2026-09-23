@@ -1,5 +1,6 @@
 {
     "validation": {
-        "endDateAfterStartDate": "يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء."
+        "endDateAfterStartDate": "يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء.",
+        "startDateRequired": "تاريخ بدء التسجيل مطلوب للاختبار المفتوح."
     }
 }

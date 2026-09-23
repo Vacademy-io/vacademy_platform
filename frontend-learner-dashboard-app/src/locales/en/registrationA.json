@@ -66,7 +66,8 @@
         },
         "dateBlock": {
             "start": "START",
-            "end": "END"
+            "end": "END",
+            "noLimit": "No limit"
         },
         "instructions": "Instructions",
         "aboutAssessment": "About Assessment",
@@ -79,7 +80,8 @@
             "registeredSuccess": "You have been registered successfully!",
             "accountUnresolved": "We couldn't resolve your account. Please try again.",
             "networkError": "Couldn't reach the server. Check your connection and try again."
-        }
+        },
+        "noClosingDate": "No closing date"
     },
     "checkEmailDialog": {
         "title": "Check Registration Status",
@@ -232,6 +234,7 @@
             "title": "Couldn't load the assessment",
             "description": "An unexpected error occurred while loading this page. Please try again."
         },
-        "retry": "Try again"
+        "retry": "Try again",
+        "updating": "Updating to the latest version…"
     }
 }

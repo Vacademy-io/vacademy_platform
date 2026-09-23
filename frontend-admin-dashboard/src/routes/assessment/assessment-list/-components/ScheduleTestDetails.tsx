@@ -251,6 +251,11 @@ const ScheduleTestDetails = ({
                     >
                         <Copy size={32} />
                     </MyButton>
+                    {scheduleTestContent.assessment_visibility === 'PRIVATE' && (
+                        <p className="max-w-xs text-xs text-warning-600">
+                            {t('joinLink.privateWarning')}
+                        </p>
+                    )}
                 </div>
                 <div className="flex items-center gap-4">
                     <QRCode

@@ -1360,7 +1360,10 @@ def test_bot_is_interrupted_at_vad_onset_not_at_transcript():
     import inspect
     src = inspect.getsource(b.run_bot)
     vad = src[src.index("VADUserTurnStartStrategy("):]
-    assert "enable_interruptions=settings.interrupt_on_vad" in vad[:200]
+    # Onset cuts only in the legacy mode; voice mode (default since 2026-09-23)
+    # stops on meaning or sustained voice instead (BARGE_IN_MODE).
+    assert "enable_interruptions=(settings.interrupt_on_vad" in vad[:200]
+    assert 'settings.barge_in_mode != "voice"' in vad[:300]
     # Interims must NOT interrupt: Google STT streams them continuously.
     tr = src[src.index("TranscriptionUserTurnStartStrategy("):]
     assert "enable_interruptions=False" in tr[:200]
@@ -5433,6 +5436,141 @@ async def test_a_real_barge_in_forwards_the_words_before_cutting_the_reply():
     assert rec.interruptions == 1
     assert order == ["TRANSCRIPT", "INTERRUPT"], order
     assert sum(isinstance(f, TranscriptionFrame) for f in rec.frames) == 1, "forwarded twice"
+
+
+# ── voice-mode barge-in (22 Sep paid batch: 473 cuts, 54% acknowledgements) ──
+def _voice_collector(rec, bot_speaking=True, **kw):
+    state = {"speaking": bot_speaking, "cut": False, "in_flight": False}
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: state["speaking"],
+        fillers_armed=lambda: False, bot_stopped_t=lambda: 0.0,
+        gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: state["cut"], recently_cut=lambda: state["cut"],
+        filler_phrases=[], in_machine_window=lambda: False,
+        reply_in_flight=lambda: state["in_flight"], bot_spoke_once=lambda: True,
+        cut_after_voice_secs=kw.pop("cut_after", 0.15), ack_answer_window_secs=3.0, **kw)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame); rec.dirs.append(direction)
+
+    async def _broadcast():
+        rec.interruptions += 1; state["cut"] = True
+    tc.push_frame = _push
+    tc.broadcast_interruption = _broadcast
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    return tc, state
+
+
+def test_several_acknowledgements_in_one_breath_are_still_an_acknowledgement():
+    from app.turntake import mid_reply_action, ABSORB, INTERRUPT
+    for t in ["हाँ जी। नमस्ते जी। जी।", "ठीक है जी। हम्म।", "जी जी हाँ जी"]:
+        assert mid_reply_action(t) == ABSORB, t
+    for t in ["हाँ Ma'am जल्दी है।", "नहीं जी नहीं", "ठीक है पर fees कितनी है?"]:
+        assert mid_reply_action(t) == INTERRUPT, t
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_talks_straight_through_an_acknowledgement():
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=0.3)
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.1)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)   # a 0.1 s "हाँ"
+    await _feed(tc, "हाँ जी।")
+    await asyncio.sleep(0.4)                                     # past the cut window
+    assert rec.interruptions == 0, "an acknowledgement stopped the bot"
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+    assert "हाँ जी।" not in rec.cues(), "an aside must not split the context"
+
+
+@pytest.mark.asyncio
+async def test_a_talked_through_acknowledgement_does_not_split_the_bots_sentence():
+    """Sim hello_cuts_opening (2026-09-23): 'Hello.' recorded mid-opening split it
+    into '…Aarushi' + 'from Vacademy'; the opening check then saw 13 chars."""
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=5.0)
+    tc._outcome.transcript.append({"role": "assistant", "text": "Hi, is this Bhawana Jain? Aarushi"})
+    await _feed(tc, "Hello.")
+    tc._outcome.transcript.append({"role": "assistant", "text": "from Vacademy"})   # rest of the sentence
+    tc._unrecord_aside("Hello.")                      # idempotent: nothing left to remove
+    roles = [e["role"] for e in tc._outcome.transcript]
+    assert roles.count("user") == 0, tc._outcome.transcript
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_stops_once_the_caller_keeps_talking():
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=0.15)
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.3)                                     # still talking
+    assert rec.interruptions == 1, "sustained voice must stop the bot"
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_real_words_stop_the_bot_on_their_transcript():
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=5.0)
+    await _feed(tc, "नहीं मुझे नहीं चाहिए।")
+    assert rec.interruptions == 1
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_over_the_closing_question_is_answered_when_the_reply_ends():
+    from pipecat.frames.frames import BotStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=5.0)
+    b.FrameProcessor.process_frame = _noop_super
+    await _feed(tc, "हाँ।")                                      # over the question
+    tc._outcome.transcript.append({"role": "assistant",
+                                   "text": "क्या आप Shiksha Nation से जुड़ना चाहेंगे?"})
+    state["speaking"] = False
+    await tc.process_frame(BotStoppedSpeakingFrame(), b.FrameDirection.UPSTREAM)
+    await asyncio.sleep(0.6)
+    cues = [c for c in rec.cues() if "their ANSWER" in c]
+    assert len(cues) == 1 and "हाँ" in cues[0], rec.cues()
+    assert any(getattr(f, "run_llm", False) for f in rec.frames)
+
+
+@pytest.mark.asyncio
+async def test_an_early_acknowledgement_or_a_hello_is_not_taken_as_the_answer():
+    from pipecat.frames.frames import BotStoppedSpeakingFrame
+    for text, back in (("हाँ।", 6.0), ("Hello.", 0.5)):
+        rec = _Rec()
+        tc, state = _voice_collector(rec, cut_after=5.0)
+        b.FrameProcessor.process_frame = _noop_super
+        await _feed(tc, text)
+        tc._acked_mid_reply = (text, time.time() - back)
+        tc._outcome.transcript.append({"role": "assistant", "text": "क्या आप जुड़ना चाहेंगे?"})
+        state["speaking"] = False
+        await tc.process_frame(BotStoppedSpeakingFrame(), b.FrameDirection.UPSTREAM)
+        await asyncio.sleep(0.6)
+        assert not [f for f in rec.frames if getattr(f, "run_llm", False)], (text, rec.cues())
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_a_blip_while_composing_does_not_re_ask():
+    """Nothing was cut, so the 'a noise killed your reply' recovery must not run."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, bot_speaking=False, cut_after=5.0,
+                                 resume_on_stop_secs=1.0, resume_unplayed=lambda n=600: "")
+    state["in_flight"] = True
+    tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.2)
+    assert rec.interruptions == 0
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
 
 
 @pytest.mark.asyncio

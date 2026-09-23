@@ -703,6 +703,26 @@ class Settings:
         default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
     interrupt_on_vad: bool = field(
         default_factory=lambda: _env("INTERRUPT_ON_VAD", "true").lower() == "true")
+    # WHEN the caller's voice stops the bot.
+    #   "voice" — the bot keeps talking through a short sound; it stops when
+    #             the words turn out to be a real interruption, or once the
+    #             caller has talked for barge_in_voice_secs. "हाँ", "जी",
+    #             "हम्म", "Hello" never stop it.
+    #   "onset" — the old behaviour: any sound over 0.2 s stops the bot and the
+    #             words are judged afterwards (then the cut words are resumed).
+    # The 22 Sep paid batch (107 calls): 473 cuts, 54% of them acknowledgements
+    # or noise, each followed by a median 0.8 s / p90 3.9 s stall; the opening
+    # was cut by the pickup "Hello" in 18 calls. Acknowledgement bursts last
+    # p90 0.60 s / p95 0.70 s, so at 0.7 s 95% of those stops disappear.
+    # Rollback: BARGE_IN_MODE=onset.
+    barge_in_mode: str = field(
+        default_factory=lambda: _env("BARGE_IN_MODE", "voice").strip().lower())
+    barge_in_voice_secs: float = field(
+        default_factory=lambda: float(_env("BARGE_IN_VOICE_SECS", "0.7")))
+    # An acknowledgement that began this close to the end of a reply that ended
+    # on a question is the caller's ANSWER to it ("हाँ" over "…जुड़ना चाहेंगे?").
+    ack_answer_window_secs: float = field(
+        default_factory=lambda: float(_env("ACK_ANSWER_WINDOW_SECS", "3.0")))
 
     duck_enabled: bool = field(
         default_factory=lambda: _env("DUCK_ENABLED", "true").lower() == "true")

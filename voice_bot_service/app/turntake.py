@@ -111,7 +111,7 @@ def _words(text: str) -> list:
 
 
 def mid_reply_action(text: str, extra_backchannels: frozenset = frozenset(),
-                     max_words: int = 3) -> str:
+                     max_words: int = 6) -> str:
     """Classify a caller final that arrived while the bot's reply is ducked.
 
     ABSORB only when EVERY word is a known acknowledgment, the utterance is

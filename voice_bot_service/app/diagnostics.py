@@ -227,6 +227,10 @@ class CallDiagnostics:
     runs_held_for_opening: int = 0
     # Short-answer holds released because the line never went quiet (noise).
     short_answer_noise_releases: int = 0
+    # Voice-mode barge-in: acknowledgements the bot talked straight through, and
+    # stops made because the caller kept talking past barge_in_voice_secs.
+    acks_talked_through: int = 0
+    voice_cuts: int = 0
     # Short-answer runs ("Yes." + a breath) dropped because the caller's voice
     # resumed inside the grace — the whole turn was answered once instead
     # (bot.RunGuard, 2026-09-15). The fix working, not a fault.
@@ -923,6 +927,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "emptyRunsBlocked": d.empty_runs_blocked,
                 "runsHeldForOpening": d.runs_held_for_opening,
                 "shortAnswerNoiseReleases": d.short_answer_noise_releases,
+                "acksTalkedThrough": d.acks_talked_through,
+                "voiceCuts": d.voice_cuts,
                 "shortAnswerHolds": d.short_answer_holds,
                 "resumeRespoken": d.resume_respoken,
                 "resumeLost": d.resume_lost,

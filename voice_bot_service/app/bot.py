@@ -208,9 +208,18 @@ class TranscriptCollector(FrameProcessor):
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
                  forget_resume=None, release_turn=None, noise_reask_wait_secs: float = 1.0,
-                 voice_live=None, resay_opening=None):
+                 voice_live=None, resay_opening=None, cut_after_voice_secs: float = 0.0,
+                 ack_answer_window_secs: float = 3.0):
         super().__init__()
         self._outcome = outcome
+        # "voice" barge-in mode (config.barge_in_mode): 0 = off (onset mode).
+        self._cut_after = cut_after_voice_secs
+        self._ack_answer_window = ack_answer_window_secs
+        self._voice_on = False
+        self._voice_cut_task = None
+        # (text, voice onset) of an acknowledgement heard while the bot kept
+        # talking — answered when the reply ends, if it ended on a question.
+        self._acked_mid_reply = None
         self._diag = diag
         # async (text) -> bool. Injected by run_bot: when the reply the caller's
         # acknowledgment cut was the scripted OPENING and they heard almost none
@@ -363,6 +372,11 @@ class TranscriptCollector(FrameProcessor):
         if isinstance(frame, UserStartedSpeakingFrame):
             self._on_voice_tick()
             self._user_turn_open = True
+        if isinstance(frame, BotStoppedSpeakingFrame) and self._acked_mid_reply is not None:
+            try:
+                self.create_task(self._answer_ack_after_reply(*self._acked_mid_reply, time.time()))
+            except Exception:
+                logger.debug("turn-gate: no task manager for the deferred answer")
         if isinstance(frame, (VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame)):
             # The VAD's own onset/stop: the acoustic truth the orphan re-ask
             # keys on. The aggregator's UserStopped comes ~5 s late when no
@@ -379,7 +393,13 @@ class TranscriptCollector(FrameProcessor):
                                    int(isinstance(frame, VADUserStartedSpeakingFrame))])
             if isinstance(frame, VADUserStartedSpeakingFrame):
                 self._vad_started_t = time.time()
+                self._voice_on = True
+                self._arm_voice_cut()
                 self._set_user_speaking(True)
+            elif self._voice_stopped() and not self._interrupt_on_vad():
+                # Voice mode and nothing was cut: the reply is still playing
+                # (or composing). There is nothing to resume or re-ask.
+                pass
             elif self._resume_on_stop_secs > 0 and self._vad_started_t:  # noqa: SIM102
                 # Their voice has stopped and it was SHORT, and we were cut
                 # before finishing a question — so they cannot have been
@@ -422,6 +442,9 @@ class TranscriptCollector(FrameProcessor):
                 and frame.text and frame.text.strip()):
             text = frame.text.strip()
             now = time.time()
+            # A newer final supersedes an acknowledgement waiting for the reply
+            # to end (the absorb branch sets it again if this one is one too).
+            self._acked_mid_reply = None
             _rp = getattr(self._outcome, "replay", None)
             if _rp is not None:
                 _rp["finals"].append([round(now - self._outcome.connected_at, 2), text])
@@ -719,6 +742,25 @@ class TranscriptCollector(FrameProcessor):
                     logger.info("turn-gate: absorbed backchannel %r "
                                 "(ducked=%s, cut=%s)", text[:30], ducked,
                                 self._interrupt_on_vad())
+                    if (self._cut_after > 0 and not self._interrupt_on_vad()
+                            and self._is_bot_speaking()):
+                        # Voice mode: the reply never stopped. If it ends on a
+                        # question and this came near its end, it is the answer
+                        # (handled when the reply finishes); otherwise it was
+                        # just "I'm listening" and needs nothing at all.
+                        #
+                        # It is an ASIDE, not a turn: kept out of the call
+                        # transcript and the model's context. Recorded in the
+                        # middle of the reply it split the bot's own sentence in
+                        # two ("…Aarushi" + "from Vacademy"), and everything that
+                        # reads what the caller just heard — the opening check,
+                        # the last question, the report — saw a fragment.
+                        self._unrecord_aside(text)
+                        self._acked_mid_reply = (text, self._vad_started_t or time.time())
+                        logger.info("turn-gate: %r over the reply — kept talking", text[:20])
+                        if self._diag is not None:
+                            self._diag.bump("acks_talked_through")
+                        return
                     await self.push_frame(LLMMessagesAppendFrame(
                         messages=[{"role": "user", "content": text}]), direction)
                     await self._on_absorb(text)
@@ -1016,6 +1058,103 @@ class TranscriptCollector(FrameProcessor):
             if entry.get("role") == "assistant":
                 return "?" in (entry.get("text") or "") or "？" in (entry.get("text") or "")
         return True
+
+    def _unrecord_aside(self, text: str):
+        """Take a talked-through acknowledgement back out of the call
+        transcript, re-joining the bot's sentence it had split."""
+        t = self._outcome.transcript
+        for i in range(len(t) - 1, max(-1, len(t) - 5), -1):
+            if t[i].get("role") == "user" and t[i].get("text") == text:
+                del t[i]
+                if (0 < i < len(t) and t[i - 1].get("role") == "assistant"
+                        and t[i].get("role") == "assistant"):
+                    t[i - 1]["text"] = (t[i - 1]["text"] + " " + t[i]["text"]).strip()
+                    del t[i]
+                return
+
+    def _voice_stopped(self) -> bool:
+        """Bookkeeping for a VAD stop; always True so it can sit in an elif."""
+        self._voice_on = False
+        t, self._voice_cut_task = self._voice_cut_task, None
+        if t is not None and not t.done():
+            t.cancel()
+        return True
+
+    def _arm_voice_cut(self):
+        """Voice mode: the bot keeps talking through the caller's sound, and
+        stops only if the sound turns into talk — barge_in_voice_secs of it —
+        or its words turn out to be a real interruption (the transcript path)."""
+        t, self._voice_cut_task = self._voice_cut_task, None
+        if t is not None and not t.done():
+            t.cancel()
+        if self._cut_after <= 0 or not self._gate_enabled():
+            return
+        if not (self._is_bot_speaking() or self._reply_in_flight()):
+            return
+        try:
+            self._voice_cut_task = self.create_task(self._cut_if_still_talking(self._vad_started_t))
+        except Exception:
+            logger.debug("turn-gate: no task manager for the voice cut")
+
+    async def _cut_if_still_talking(self, onset_t: float):
+        try:
+            await asyncio.sleep(self._cut_after)
+            if not self._voice_on or self._vad_started_t != onset_t:
+                return
+            if not (self._is_bot_speaking() or self._reply_in_flight()):
+                return
+            logger.info("turn-gate: caller has talked %.1fs over the reply — stopping it",
+                        self._cut_after)
+            if self._diag is not None:
+                self._diag.bump("voice_cuts")
+            self._acked_mid_reply = None
+            await self.broadcast_interruption()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("turn-gate: voice cut failed")
+
+    async def _answer_ack_after_reply(self, text: str, ack_t: float, stop_t: float):
+        """The reply ended after the caller said "हाँ"/"जी" over it without it
+        stopping. If the reply ended on a question and the acknowledgement came
+        near its end, that WAS their answer — respond to it now, instead of
+        both sides waiting. An earlier one was just "I'm listening"."""
+        try:
+            await asyncio.sleep(0.4)
+            if self._acked_mid_reply is None or self._acked_mid_reply[0] != text:
+                return                          # a newer final took over
+            if (self._is_bot_speaking() or self._reply_in_flight() or self._voice_live()
+                    or self._recently_cut() or self._end_pending()):
+                return                          # more of the reply, or they are talking
+            self._acked_mid_reply = None
+            if is_audio_check(text) or caller_checking_presence(text):
+                return                          # "Hello" at pickup — they will answer
+            if stop_t - ack_t > self._ack_answer_window:
+                return                          # it acknowledged earlier content
+            last = ""
+            for entry in reversed(self._outcome.transcript):
+                if entry.get("role") == "assistant":
+                    last = (entry.get("text") or "").strip()
+                    break
+            if not last.endswith(("?", "？")):
+                return
+            q = last_question_in(last) or last[-120:]
+            logger.info("turn-gate: %r came over the end of %r — answering it", text[:20], q[:40])
+            self._outcome.transcript.append({"role": "user", "text": text})
+            self._last_text_t = time.time()
+            await self.push_frame(LLMMessagesAppendFrame(
+                messages=[{"role": "user", "content": text}]), FrameDirection.DOWNSTREAM)
+            await self.push_frame(LLMMessagesAppendFrame(
+                messages=[{"role": "user", "content":
+                           "[While you were asking \"" + q + "\" they said \"" + text + "\" — "
+                           "that is their ANSWER to it. Respond to that answer only: do not "
+                           "ask the question again, do not rephrase it as a check, do not say "
+                           "their answer back to them. Go straight to your next line.]"}],
+                run_llm=True), FrameDirection.DOWNSTREAM)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("turn-gate: deferred answer failed")
 
     async def _release_user_turn(self, frame, direction):
         """Close the caller's turn in the aggregator after we swallow a final.
@@ -4498,7 +4637,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # Backchannels are still not lost: the turn-gate appends them to the
             # context, and _resume_after_backchannel below has the bot pick up
             # its sentence, because a cancelled reply cannot be un-cancelled.
-            VADUserTurnStartStrategy(enable_interruptions=settings.interrupt_on_vad,
+            # Voice mode (BARGE_IN_MODE, 2026-09-23): the onset never cuts —
+            # the turn-gate stops the bot on meaning or on sustained voice.
+            VADUserTurnStartStrategy(enable_interruptions=(settings.interrupt_on_vad
+                                                           and settings.barge_in_mode != "voice"),
                                      enable_user_speaking_frames=True),
             # Interims must NOT interrupt on their own: Google STT streams them
             # continuously, and the VAD onset above already covers the stop.
@@ -4547,7 +4689,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         return (flags["last_cut_t"] > 0
                 and time.time() - flags["last_cut_t"] <= settings.backchannel_carry_secs)
 
-    duck = DuckGate(enabled=lambda: settings.duck_enabled,
+    # Holding audio is a stop too — in voice mode the reply keeps playing.
+    duck = DuckGate(enabled=lambda: settings.duck_enabled and settings.barge_in_mode != "voice",
                     is_bot_speaking=lambda: flags["bot_speaking"],
                     on_duck=_on_duck, on_unduck=_on_unduck, diag=diag,
                     on_interrupt=_on_interrupt)
@@ -4660,7 +4803,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      duck=duck, on_absorb=_absorb,
                                      backchannel_extra=settings.backchannel_extra,
                                      gate_enabled=lambda: settings.duck_enabled,
-                                     interrupt_on_vad=lambda: settings.interrupt_on_vad,
+                                     # "Was the reply cut?" — in voice mode only a
+                                     # real stop (transcript or sustained voice) is.
+                                     interrupt_on_vad=((lambda: _recently_cut())
+                                                       if settings.barge_in_mode == "voice"
+                                                       else (lambda: settings.interrupt_on_vad)),
+                                     cut_after_voice_secs=(settings.barge_in_voice_secs
+                                                           if settings.barge_in_mode == "voice"
+                                                           else 0.0),
+                                     ack_answer_window_secs=settings.ack_answer_window_secs,
                                      recently_cut=_recently_cut, diag=diag,
                                      end_pending=lambda: (flags["end_pending_since"] != 0.0
                                                           or outcome.end_requested),

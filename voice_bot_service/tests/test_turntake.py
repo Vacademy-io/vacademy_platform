@@ -78,8 +78,13 @@ def test_interrupts_content_words():
 
 
 def test_interrupts_past_word_cap():
+    # The cap was 3 until 2026-09-23. The 22 Sep paid batch had "हाँ जी। नमस्ते
+    # जी। जी।" and "ठीक है जी। हम्म।" stopping the bot as real interruptions —
+    # a run of acknowledgement words is still an acknowledgement. Six is the cap.
     assert mid_reply_action("haan haan haan") == ABSORB
-    assert mid_reply_action("haan haan haan haan") == INTERRUPT
+    assert mid_reply_action("haan haan haan haan") == ABSORB
+    assert mid_reply_action("haan haan haan haan haan haan") == ABSORB
+    assert mid_reply_action("haan haan haan haan haan haan haan") == INTERRUPT
 
 
 # ── duck timing (pure watchdog branches) ──

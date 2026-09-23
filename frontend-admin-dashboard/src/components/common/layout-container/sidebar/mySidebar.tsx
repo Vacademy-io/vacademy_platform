@@ -38,7 +38,7 @@ import {
     getSubOrgInstituteQuery,
 } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { filterMenuItems } from './helper';
+import { filterMenuItems, parseSidebarLink } from './helper';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import {
@@ -66,10 +66,7 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { Lightning } from '@phosphor-icons/react';
 import { CategoryRail, type CategoryId } from './category-rail';
 import { SidebarPanel } from './sidebar-panel';
-import {
-    useCallIntelligenceEnabled,
-    useHasCallIntelligenceData,
-} from '@/components/shared/leads';
+import { useCallIntelligenceEnabled, useHasCallIntelligenceData } from '@/components/shared/leads';
 import { useIsMentor } from '@/hooks/use-is-mentor';
 import { useMyEmployeeProfile } from '@/hooks/use-my-employee-profile';
 
@@ -230,13 +227,16 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
             }
 
             // Custom tabs from the saved role config — these have their own category.
+            // Compare on the path part only: a custom route may carry `?filters`
+            // (…/recent-leads?called=NOT_CALLED) that never appear in `pathname`.
             const customTabs = roleDisplay?.sidebar?.filter((t) => t.isCustom) || [];
+            const routePath = (route?: string) => parseSidebarLink(route).to;
             for (const t of customTabs) {
-                if (t.route && currentRoute.startsWith(t.route)) {
+                if (t.route && currentRoute.startsWith(routePath(t.route))) {
                     push(t.category as SidebarCategory | undefined);
                 }
                 for (const s of t.subTabs || []) {
-                    if (s.route && currentRoute.startsWith(s.route)) {
+                    if (s.route && currentRoute.startsWith(routePath(s.route))) {
                         push(t.category as SidebarCategory | undefined);
                     }
                 }

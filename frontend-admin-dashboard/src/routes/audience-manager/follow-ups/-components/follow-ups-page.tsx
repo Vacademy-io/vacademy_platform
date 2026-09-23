@@ -103,6 +103,8 @@ const FollowUpsContent = () => {
         setSelectedDateStr,
         counsellorFilter,
         setCounsellorFilter,
+        bucket,
+        setBucket,
     } = useFollowUpsViewState(ALL_COUNSELLORS_VALUE);
 
     // ── Role detection ───────────────────────────────────────────────────────
@@ -114,8 +116,6 @@ const FollowUpsContent = () => {
         return getUserRoleForInstitute(id) === 'ADMIN';
     }, []);
     const currentUserId = useMemo(() => getUserId() ?? '', []);
-
-    const [bucket, setBucket] = useState<FollowUpBucket>('today');
 
     const leadSettings = useLeadSettings();
     const showOps = !leadSettings.isLoading && leadSettings.enabled;
@@ -335,9 +335,7 @@ const FollowUpsContent = () => {
                   count: counts.today,
                   context: isAdmin ? 'admin' : 'user',
               })}${
-                  counts.overdue > 0
-                      ? t('subline.overdueSuffix', { count: counts.overdue })
-                      : ''
+                  counts.overdue > 0 ? t('subline.overdueSuffix', { count: counts.overdue }) : ''
               }`;
 
     return (

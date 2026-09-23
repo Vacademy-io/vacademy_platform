@@ -280,3 +280,29 @@ export function parseSidebarLink(link?: string): {
     });
     return { to: link.slice(0, q), search };
 }
+
+/**
+ * Does a sidebar link point at what the browser is showing?
+ *
+ * Path part: exact match, or a parent segment (`/a/b` matches `/a/b/c`).
+ * Query part (when the link has one): every `key=value` in the link must also be in the current
+ * location search. Without this, sibling sub-tabs that share a path but differ only by filter —
+ * `/audience-manager/recent-leads?called=NOT_CALLED` vs `…?called=CALLED` — would all highlight
+ * together, since the raw link (with its `?query`) never equals `pathname`. Values compare as
+ * strings because the router parses `30` / `true` into primitives.
+ */
+export function sidebarLinkMatchesLocation(
+    link: string | undefined,
+    pathname: string,
+    currentSearch: Record<string, unknown> = {}
+): boolean {
+    if (!link) return false;
+    const { to, search } = parseSidebarLink(link);
+    if (!to) return false;
+    if (pathname !== to && !pathname.startsWith(to + '/')) return false;
+    if (!search) return true;
+    return Object.entries(search).every(([key, value]) => {
+        const current = currentSearch[key];
+        return current !== undefined && String(current) === String(value);
+    });
+}

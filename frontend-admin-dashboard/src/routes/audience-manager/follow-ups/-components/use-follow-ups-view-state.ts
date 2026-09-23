@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import type { FollowUpBucket } from './follow-up-buckets';
 
 /**
  * URL-driven view state for the Follow-ups page.
@@ -12,6 +13,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
  *   monthStr    — yyyy-MM (local) for the calendar's month
  *   selectedDateStr — yyyy-MM-dd (local) for the calendar's selected day
  *   counsellorFilter — userId, or the supplied `allValue` sentinel when "all"
+ *   bucket      — active stat tile; 'today' (the default) is left out of the URL
  */
 export type FollowUpsView = 'list' | 'calendar';
 
@@ -24,6 +26,8 @@ export interface FollowUpsViewState {
     setSelectedDateStr: (d: string) => void;
     counsellorFilter: string;
     setCounsellorFilter: (v: string) => void;
+    bucket: FollowUpBucket;
+    setBucket: (b: FollowUpBucket) => void;
 }
 
 export const useFollowUpsViewState = (allCounsellorsValue: string): FollowUpsViewState => {
@@ -34,6 +38,7 @@ export const useFollowUpsViewState = (allCounsellorsValue: string): FollowUpsVie
     const monthStr = search.month ?? format(new Date(), 'yyyy-MM');
     const selectedDateStr = search.date ?? format(new Date(), 'yyyy-MM-dd');
     const counsellorFilter = search.counsellor ?? allCounsellorsValue;
+    const bucket: FollowUpBucket = search.bucket ?? 'today';
 
     const setView = (v: FollowUpsView) =>
         navigate({ search: (prev) => ({ ...prev, view: v === 'list' ? undefined : v }) });
@@ -48,6 +53,12 @@ export const useFollowUpsViewState = (allCounsellorsValue: string): FollowUpsVie
             }),
         });
 
+    const setBucket = (b: FollowUpBucket) =>
+        navigate({
+            search: (prev) => ({ ...prev, bucket: b === 'today' ? undefined : b }),
+            replace: true,
+        });
+
     return {
         view,
         setView,
@@ -57,5 +68,7 @@ export const useFollowUpsViewState = (allCounsellorsValue: string): FollowUpsVie
         setSelectedDateStr,
         counsellorFilter,
         setCounsellorFilter,
+        bucket,
+        setBucket,
     };
 };

@@ -10,7 +10,7 @@ import { LockKey } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
 import { recordRecentTab } from './recent-tabs-store';
-import { parseSidebarLink } from './helper';
+import { parseSidebarLink, sidebarLinkMatchesLocation } from './helper';
 
 export const CollapsibleItem = ({
     icon,
@@ -27,11 +27,14 @@ export const CollapsibleItem = ({
     const colors = getCategoryColors(category as 'CRM' | 'LMS' | 'AI');
 
     const currentRoute = router.state.location.pathname;
+    const currentSearch = router.state.location.search as Record<string, unknown>;
 
+    // Path + (optional) query aware — see sidebarLinkMatchesLocation.
     const isSubLinkActive = (link: string) =>
-        currentRoute === link || currentRoute.startsWith(link + '/');
+        sidebarLinkMatchesLocation(link, currentRoute, currentSearch);
 
     // Most-specific match wins: pick the subItem whose link is the longest prefix of currentRoute
+    // (a link carrying more filter params is longer, so it beats its bare-path sibling).
     const activeSubLink = (() => {
         const matches =
             subItems?.filter((item) => item.subItemLink && isSubLinkActive(item.subItemLink)) ?? [];

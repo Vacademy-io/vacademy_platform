@@ -11,7 +11,7 @@ interface TrySearch {
 }
 
 /**
- * Public 3-minute lesson for tutezy.ai visitors: a name, a topic, then the
+ * Public demo lesson for tutezy.ai visitors: a name, a topic, then the
  * real tutor page with a guest token. No sign-up, one per visitor per day.
  */
 export const Route = createFileRoute("/try/")({
@@ -29,7 +29,8 @@ function TryPage() {
   const search = Route.useSearch();
   const [topics, setTopics] = useState<TutorDemoTopic[] | null>(null);
   const [enabled, setEnabled] = useState(true);
-  const [minutes, setMinutes] = useState(3);
+  // Placeholder until /demo/topics answers with the real tutor.demo.minutes.
+  const [minutes, setMinutes] = useState(10);
   const [name, setName] = useState("");
   const [topic, setTopic] = useState(search.topic || "");
   const [mode, setMode] = useState<"VOICE" | "TEXT">("VOICE");

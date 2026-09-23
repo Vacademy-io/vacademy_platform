@@ -682,7 +682,7 @@ function TutorPage() {
         setPhase("idle");
         socket.sendBegin();
         // The demo clock counts from the first words, not from the download.
-        if (guestRef.current) setDemoLeft((v) => (v === null ? (guestRef.current?.minutes ?? 3) * 60 : v));
+        if (guestRef.current) setDemoLeft((v) => (v === null ? (guestRef.current?.minutes ?? 10) * 60 : v));
       }
     };
     decide();
@@ -929,7 +929,10 @@ function TutorPage() {
       {isDemo && (
         <div className="mb-2 flex items-center gap-x-3 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm sm:px-4 sm:py-2">
           <span className="font-semibold text-neutral-900">Tutezy demo</span>
-          <span className="hidden text-neutral-600 md:inline">A 3-minute taste. Your students would get the whole chapter, in your teacher&apos;s voice.</span>
+          <span className="hidden text-neutral-600 md:inline">
+            {/* Length comes from the server (tutor.demo.minutes) via the guest session, never a literal. */}
+            {guestRef.current?.minutes ? `A ${guestRef.current.minutes}-minute taste.` : "A short taste."} Your students would get the whole chapter, in your teacher&apos;s voice.
+          </span>
           {demoClock && <span className="hidden rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700 lg:inline">{demoClock} left</span>}
           <a href="https://tutezy.ai/#demo" className="ms-auto shrink-0 rounded-full bg-primary-500 px-3 py-1 text-xs font-semibold text-white">Book a demo</a>
         </div>

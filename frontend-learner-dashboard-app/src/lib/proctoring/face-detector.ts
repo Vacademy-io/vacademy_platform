@@ -1,15 +1,20 @@
 /**
  * On-device face counting for the BASIC proctoring tier.
  *
- * Three backends, tried cheapest first:
+ * Three backends, most reliable first:
  *
- *  1. `native`    — the browser's Shape Detection `FaceDetector` (Chrome, Edge,
- *                   Android WebView). Zero download, hardware accelerated.
- *  2. `mediapipe` — MediaPipe Tasks Vision, loaded from the CDN only when this
- *                   runs, so the app bundle every other learner downloads is
- *                   untouched. ~3 MB of WASM + a 200 KB model, cached by the
- *                   browser after the first exam.
- *  3. `none`      — no detector could load (old Safari, offline CDN). Snapshots
+ *  1. `mediapipe` — MediaPipe Tasks Vision (BlazeFace short-range), loaded from
+ *                   the CDN only when this runs, so the app bundle every other
+ *                   learner downloads is untouched. ~3 MB of WASM + a 200 KB
+ *                   model, cached by the browser after the first exam. Same
+ *                   model on every platform, so behaviour is predictable.
+ *  2. `native`    — the browser's Shape Detection `FaceDetector`. Only exposed
+ *                   when a Chrome experimental flag is on, and platform-backed
+ *                   (macOS Vision, Android ML Kit), so results vary by OS. Used
+ *                   only if MediaPipe cannot load. Never with `fastMode`: on
+ *                   macOS it returned 0 faces for a clearly lit, centred face
+ *                   that MediaPipe scored 0.94 (2026-09-23 repro).
+ *  3. `none`      — neither could load (old Safari, offline CDN). Snapshots
  *                   still upload; a reviewer looks at them instead.
  *
  * Every backend answers the same question: how many faces are in this frame.
@@ -78,7 +83,7 @@ const createNative = (): FaceCounter | null => {
   if (typeof Ctor !== "function") return null;
   let detector: NativeFaceDetector;
   try {
-    detector = new Ctor({ maxDetectedFaces: 4, fastMode: true });
+    detector = new Ctor({ maxDetectedFaces: 4, fastMode: false });
   } catch {
     return null;
   }
@@ -153,7 +158,5 @@ export const createFaceCounter = async (
   enabled: boolean
 ): Promise<FaceCounter> => {
   if (!enabled) return none;
-  const native = createNative();
-  if (native) return native;
-  return (await createMediaPipe()) ?? none;
+  return (await createMediaPipe()) ?? createNative() ?? none;
 };

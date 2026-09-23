@@ -14,7 +14,9 @@
         "deniedRequired": "Accès à la caméra refusé. Cette évaluation ne peut pas démarrer sans — autorisez la caméra dans les réglages du navigateur et réessayez.",
         "deniedOptional": "Accès à la caméra refusé. Vous pouvez continuer, mais le refus sera noté pour votre enseignant.",
         "retry": "Réessayer",
-        "done": "Caméra prête. Vous pouvez commencer."
+        "done": "Caméra prête. Vous pouvez commencer.",
+        "continueAnyway": "Continuer quand même",
+        "overrideNote": "Toujours pas détecté ? Vous pouvez continuer — votre enseignant vérifiera la photo."
     },
     "selfView": {
         "recording": "Caméra active",

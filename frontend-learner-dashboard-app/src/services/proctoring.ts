@@ -132,11 +132,20 @@ export class ProctorEventQueue {
  * exists, and uploaded by the live page once it does. One slot is enough: a
  * learner is only ever checking in to one exam.
  */
-let pendingCheckIn: { assessmentId: string; blob: Blob; detector: string } | null =
-  null;
+interface PendingCheckIn {
+  assessmentId: string;
+  blob: Blob;
+  detector: string;
+  /** Faces the detector saw when the learner confirmed; null = no detector. */
+  faces: number | null;
+  /** Confirmed without the detector agreeing on exactly one face. */
+  unverified: boolean;
+}
 
-export const stashCheckIn = (assessmentId: string, blob: Blob, detector: string) => {
-  pendingCheckIn = { assessmentId, blob, detector };
+let pendingCheckIn: PendingCheckIn | null = null;
+
+export const stashCheckIn = (checkIn: PendingCheckIn) => {
+  pendingCheckIn = checkIn;
 };
 
 export const takeCheckIn = (assessmentId: string) => {

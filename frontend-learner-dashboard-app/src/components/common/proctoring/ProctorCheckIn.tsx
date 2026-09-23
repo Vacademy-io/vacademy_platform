@@ -10,6 +10,8 @@ import type { ProctoringConfig } from "@/types/proctoring";
 
 type Step = "intro" | "starting" | "preview" | "denied" | "done";
 
+const OVERRIDE_AFTER_MS = 10_000;
+
 /**
  * Camera check-in on the instructions page, before the timer starts.
  *
@@ -37,6 +39,10 @@ export const ProctorCheckIn = ({
   const [faces, setFaces] = useState<number | null>(null);
   const [detector, setDetector] = useState<string>("none");
   const [detectorLoading, setDetectorLoading] = useState(false);
+  // A detector can be wrong (it was, on macOS). After this long without a
+  // confirmed single face the learner may continue anyway; the check-in is
+  // then recorded as unverified for the teacher instead of blocking the exam.
+  const [allowOverride, setAllowOverride] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const counterRef = useRef<FaceCounter | null>(null);
@@ -67,6 +73,15 @@ export const ProctorCheckIn = ({
     video.playsInline = true;
     void video.play().catch(() => undefined);
   }, [step]);
+
+  useEffect(() => {
+    if (step !== "preview" || detectorLoading || faces === 1) {
+      setAllowOverride(false);
+      return;
+    }
+    const timer = setTimeout(() => setAllowOverride(true), OVERRIDE_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [step, detectorLoading, faces]);
 
   // While previewing, count faces so the learner can line themselves up.
   useEffect(() => {
@@ -111,7 +126,16 @@ export const ProctorCheckIn = ({
     const video = videoRef.current;
     if (video) {
       const blob = await captureJpeg(video);
-      if (blob) stashCheckIn(assessmentId, blob, detector);
+      if (blob) {
+        const verified = detector === "none" || !config.face_check || faces === 1;
+        stashCheckIn({
+          assessmentId,
+          blob,
+          detector,
+          faces: detector === "none" ? null : faces,
+          unverified: !verified,
+        });
+      }
     }
     stopStream(streamRef.current);
     streamRef.current = null;
@@ -121,10 +145,8 @@ export const ProctorCheckIn = ({
   };
 
   // With a detector, wait for exactly one face; without one, trust the learner.
-  const canConfirm =
-    step === "preview" &&
-    !detectorLoading &&
-    (detector === "none" || !config.face_check || faces === 1);
+  const faceConfirmed = detector === "none" || !config.face_check || faces === 1;
+  const canConfirm = step === "preview" && !detectorLoading && (faceConfirmed || allowOverride);
 
   return (
     <section
@@ -199,8 +221,11 @@ export const ProctorCheckIn = ({
                   disabled={!canConfirm}
                   onClick={confirm}
                 >
-                  {t("checkIn.confirm")}
+                  {faceConfirmed ? t("checkIn.confirm") : t("checkIn.continueAnyway")}
                 </MyButton>
+                {!faceConfirmed && allowOverride && (
+                  <p className="text-caption text-neutral-500">{t("checkIn.overrideNote")}</p>
+                )}
               </div>
             </div>
           )}

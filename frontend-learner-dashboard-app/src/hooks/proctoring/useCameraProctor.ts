@@ -136,22 +136,31 @@ export function useCameraProctor({
     // The selfie taken on the instructions page, now that an attempt exists.
     const checkIn = takeCheckIn(assessmentId);
     if (checkIn) {
+      // An unverified check-in is a WARN, not a FLAG: the detector, not the
+      // learner, is the likelier culprit, so it is shown to the reviewer but
+      // never counts toward the auto-submit ceiling.
+      const severity = checkIn.unverified ? "WARN" : "INFO";
+      const meta: ProctorEvent["meta"] = {
+        detector: checkIn.detector,
+        ...(checkIn.faces !== null ? { faces: checkIn.faces } : {}),
+        ...(checkIn.unverified ? { unverified: true } : {}),
+      };
       uploadSnapshot(checkIn.blob, attemptId, userId)
         .then((fileId) =>
           queue.push({
             event_type: "CHECK_IN",
-            severity: "INFO",
+            severity,
             occurred_at: new Date().toISOString(),
             evidence_file_id: fileId ?? null,
-            meta: { detector: checkIn.detector },
+            meta,
           })
         )
         .catch(() => {
           queue.push({
             event_type: "CHECK_IN",
-            severity: "INFO",
+            severity,
             occurred_at: new Date().toISOString(),
-            meta: { detector: checkIn.detector, upload: "failed" },
+            meta: { ...meta, upload: "failed" },
           });
         });
     }

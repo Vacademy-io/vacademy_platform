@@ -14,7 +14,9 @@
         "deniedRequired": "Camera access was refused. This assessment cannot start without it — allow the camera in your browser settings and try again.",
         "deniedOptional": "Camera access was refused. You can continue, but the refusal will be noted for your teacher.",
         "retry": "Try again",
-        "done": "Camera ready. You are set to begin."
+        "done": "Camera ready. You are set to begin.",
+        "continueAnyway": "Continue anyway",
+        "overrideNote": "Still not detected? You can continue — your teacher will check the photo."
     },
     "selfView": {
         "recording": "On camera",

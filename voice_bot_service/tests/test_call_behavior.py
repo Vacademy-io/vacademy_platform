@@ -5261,18 +5261,75 @@ async def test_first_token_timeout_fails_fast_and_passes_a_healthy_stream_throug
     assert with_first_token_timeout(_Svc, 0) is _Svc, "0 disables the guard"
 
 
+@pytest.mark.asyncio
+async def test_vertex_first_token_guard_fails_fast_so_the_waterfall_can_answer():
+    """23 Sep: a Vertex 429 took 7.1 s to surface; the 6 s guard only covered
+    OpenAI-compatible services. Gemini streams through _stream_content."""
+    from app.providers import with_stream_first_token_timeout
+
+    class _Stalled:
+        def __aiter__(self): return self
+        async def __anext__(self):
+            await asyncio.sleep(1.0); return "late"
+
+    class _Chunks:
+        def __init__(self): self.n = 0
+        def __aiter__(self): return self
+        async def __anext__(self):
+            self.n += 1
+            if self.n > 2: raise StopAsyncIteration
+            return f"c{self.n}"
+
+    class _Gemini:
+        stream = None; connect_secs = 0.0
+        async def _stream_content(self, context):
+            await asyncio.sleep(self.connect_secs)
+            return self.stream
+
+    G = with_stream_first_token_timeout(_Gemini, 0.05)
+    g = G(); g.stream = _Stalled()
+    with pytest.raises(TimeoutError):
+        async for _ in await g._stream_content(None):
+            pass
+    g = G(); g.connect_secs = 1.0; g.stream = _Chunks()
+    with pytest.raises(TimeoutError):
+        await g._stream_content(None)            # the 429 that takes seconds to come back
+    g = G(); g.stream = _Chunks()
+    assert [c async for c in await g._stream_content(None)] == ["c1", "c2"]
+    assert with_stream_first_token_timeout(_Gemini, 0) is _Gemini
+
+
+def test_llm_waterfall_primary_gives_up_early_only_when_a_fallback_exists(monkeypatch):
+    from app import providers as pv
+    class _S:
+        llm_provider = "vertex"; llm_fallback_provider = "sarvam"
+    monkeypatch.setattr(pv, "get_settings", lambda: _S())
+    built = []
+    def _build(prov=None, fail_fast=False):
+        built.append((prov, fail_fast)); return object()
+    monkeypatch.setattr(pv, "build_llm", _build)
+    monkeypatch.setattr("pipecat.pipeline.service_switcher.ServiceSwitcher",
+                        lambda services, strategy_type=None: ("switcher", services))
+    sw, primary, fallback = pv.build_llm_waterfall(None)
+    assert fallback is not None
+    assert (None, True) in built and ("sarvam", False) in built
+
+
 def test_llm_waterfall_runs_the_primary_alone_when_the_fallback_cannot_build(monkeypatch):
     from app import providers as pv
     class _S:
         llm_provider = "sarvam"; llm_fallback_provider = "vertex"
     monkeypatch.setattr(pv, "get_settings", lambda: _S())
-    def _build(prov=None):
+    built = []
+    def _build(prov=None, fail_fast=False):
+        built.append((prov, fail_fast))
         if prov == "vertex":
             raise RuntimeError("no credentials here")
         return object()
     monkeypatch.setattr(pv, "build_llm", _build)
     sw, primary, fallback = pv.build_llm_waterfall(None)
     assert fallback is None and sw is primary
+    assert (None, True) not in built, "no fallback → the primary must not give up early"
     _S.llm_fallback_provider = ""
     sw, primary, fallback = pv.build_llm_waterfall(None)
     assert fallback is None and sw is primary
@@ -6064,3 +6121,105 @@ async def test_the_callers_thank_you_after_our_goodbye_does_not_reopen_the_call(
     await _feed(tc, "Thank you.")
     assert rec.frames == [], "the goodbye reached the model and re-opened the call"
     assert stamped == [True]
+
+
+# ── FloorGate: never START a reply over a caller who is talking (call 358e5026) ──
+def _floor(talking, speaking=lambda: False, cap=3.0):
+    import app.diagnostics as dg
+    d = dg.CallDiagnostics()
+    out = []
+    g = b.FloorGate(enabled=lambda: True, caller_talking=talking,
+                    is_bot_speaking=speaking, diag=d, cap_secs=cap, poll_secs=0.01)
+    async def _push(frame, direction=None):
+        out.append(frame)
+    g.push_frame = _push
+    g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    return g, out, d
+
+
+def _audio(tag=b"\x00\x00"):
+    from pipecat.frames.frames import TTSAudioRawFrame
+    return TTSAudioRawFrame(audio=tag * 80, sample_rate=8000, num_channels=1)
+
+
+@pytest.mark.asyncio
+async def test_a_reply_ready_while_the_caller_talks_waits_and_then_plays_in_order():
+    """The parent is mid-fragment when the reply's first audio is ready: hold
+    it; they stop (an acknowledgement, absorbed by the turn-gate) → the
+    whole reply plays, first frame first."""
+    from pipecat.frames.frames import LLMFullResponseEndFrame
+    st = {"talking": True}
+    g, out, d = _floor(lambda: st["talking"])
+    D = b.FrameDirection.DOWNSTREAM
+    a1, a2, end = _audio(b"\x01\x00"), _audio(b"\x02\x00"), LLMFullResponseEndFrame()
+    await g.process_frame(a1, D)
+    await g.process_frame(a2, D)
+    assert out == [] and g.is_holding(), "started talking over the caller"
+    await asyncio.sleep(0.05)
+    await g.process_frame(end, D)             # the reply's end arrives mid-hold
+    assert out == []
+    st["talking"] = False
+    await asyncio.sleep(0.05)
+    assert out == [a1, a2, end], "held reply lost or reordered"
+    assert not g.is_holding()
+    assert d.floor_holds == 1 and d.floor_holds_released == 1
+
+
+@pytest.mark.asyncio
+async def test_a_held_reply_is_dropped_when_the_caller_takes_the_turn():
+    """Their words turn out to be real ("बच्चों के class ये हैं।"): the
+    turn-gate interrupts and the stub never reaches the line."""
+    from pipecat.frames.frames import InterruptionFrame
+    g, out, d = _floor(lambda: True)
+    D = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(_audio(), D)
+    await g.process_frame(_audio(), D)
+    intr = InterruptionFrame()
+    await g.process_frame(intr, D)
+    await asyncio.sleep(0.05)
+    assert out == [intr], "a dropped reply leaked audio"
+    assert not g.is_holding() and d.floor_holds_dropped == 1
+    a = _audio()                              # the next reply, caller now quiet
+    g._caller_talking = lambda: False
+    await g.process_frame(a, D)
+    assert out[-1] is a
+
+
+@pytest.mark.asyncio
+async def test_a_reply_on_a_quiet_line_is_never_held():
+    g, out, d = _floor(lambda: False)
+    a = _audio()
+    await g.process_frame(a, b.FrameDirection.DOWNSTREAM)
+    assert out == [a] and d.floor_holds == 0
+
+
+@pytest.mark.asyncio
+async def test_sound_during_a_playing_reply_is_not_the_floor_gates_business():
+    """Voice mode talks through a "हाँ" mid-reply. Only a reply STARTING is
+    held: later audio of a reply already on the line passes."""
+    st = {"talking": False}
+    g, out, d = _floor(lambda: st["talking"])
+    D = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(_audio(), D)        # reply starts on a quiet line
+    st["talking"] = True
+    await g.process_frame(_audio(), D)        # next sentence, caller acking
+    assert len(out) == 2 and d.floor_holds == 0
+    g2, out2, d2 = _floor(lambda: True, speaking=lambda: True)
+    await g2.process_frame(_audio(), D)       # bot audibly speaking: never a start
+    assert len(out2) == 1 and d2.floor_holds == 0
+
+
+@pytest.mark.asyncio
+async def test_a_line_that_never_goes_quiet_still_gets_its_reply():
+    g, out, d = _floor(lambda: True, cap=0.1)
+    a = _audio()
+    await g.process_frame(a, b.FrameDirection.DOWNSTREAM)
+    await asyncio.sleep(0.2)
+    assert out == [a] and d.floor_holds_capped == 1
+
+
+def test_floor_gate_sits_before_the_duck_and_counts_as_a_reply_in_flight():
+    src = open(b.__file__, encoding="utf-8").read()
+    assert "        floor,          # never START a reply over a talking caller\n        duck," in src
+    assert "if floor.is_holding():\n            return True" in src

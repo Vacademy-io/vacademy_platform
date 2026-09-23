@@ -515,6 +515,29 @@ def with_first_token_timeout(cls, secs: float):
     return _Guarded
 
 
+def with_stream_first_token_timeout(cls, secs: float):
+    """The same guard for pipecat's Google (Gemini/Vertex) service, which
+    streams through _stream_content instead of get_chat_completions. A 429 or
+    a stall before the first chunk raises inside _process_context, which
+    pipecat turns into a non-fatal ErrorFrame — the failover trigger."""
+    if not secs or secs <= 0:
+        return cls
+
+    class _Guarded(cls):
+        first_token_timeout_secs = float(secs)
+
+        async def _stream_content(self, context):
+            t = self.first_token_timeout_secs
+            try:
+                stream = await asyncio.wait_for(super()._stream_content(context), timeout=t)
+            except asyncio.TimeoutError as e:
+                raise TimeoutError(f"LLM did not answer within {t:.1f}s (connect)") from e
+            return _FirstChunkGuard(stream, t)
+    _Guarded.__name__ = cls.__name__
+    _Guarded.__qualname__ = cls.__qualname__
+    return _Guarded
+
+
 def build_llm_waterfall(provider: str | None = None):
     """(switcher_or_primary, primary, fallback). Like build_stt_waterfall: when
     LLM_FALLBACK_PROVIDER names a different provider that builds, the call
@@ -523,17 +546,20 @@ def build_llm_waterfall(provider: str | None = None):
     the fallback. If the fallback cannot be built (no credentials on this box)
     the call runs on the primary alone, as before."""
     s = get_settings()
-    primary = build_llm(provider)
     prov = (provider or s.llm_provider or "").strip().lower()
     fb = (s.llm_fallback_provider or "").strip().lower()
     if not fb or fb == prov:
+        primary = build_llm(provider)
         return primary, primary, None
     try:
         fallback = build_llm(fb)
     except Exception as e:
         logger.warning("llm: fallback provider %r could not be built (%s) — running on %s alone",
                        fb, e, prov)
+        primary = build_llm(provider)
         return primary, primary, None
+    # Only a primary that HAS somewhere to fail over to may give up early.
+    primary = build_llm(provider, fail_fast=True)
     from pipecat.pipeline.service_switcher import (ServiceSwitcher,
                                                    ServiceSwitcherStrategyFailover)
     switcher = ServiceSwitcher([primary, fallback], strategy_type=ServiceSwitcherStrategyFailover)
@@ -541,9 +567,11 @@ def build_llm_waterfall(provider: str | None = None):
     return switcher, primary, fallback
 
 
-def build_llm(provider: str | None = None):
+def build_llm(provider: str | None = None, fail_fast: bool = False):
     """`provider` overrides LLM_PROVIDER for one call (per-agent POC routing —
-    see Settings.sarvam_llm_agents). None = the configured default."""
+    see Settings.sarvam_llm_agents). None = the configured default.
+    fail_fast: this service is the primary of a waterfall, so a slow first
+    token should hand the turn to the fallback sooner (Vertex only)."""
     s = get_settings()
     prov = (provider or s.llm_provider or "").strip().lower()
     _Timed = with_first_token_timeout(OpenAILLMService, s.llm_first_token_timeout_secs)
@@ -576,7 +604,10 @@ def build_llm(provider: str | None = None):
         from pipecat.services.google.vertex.llm import GoogleVertexLLMService
 
         creds = s.vertex_credentials_json.strip() or None
-        return GoogleVertexLLMService(
+        _Vertex = (with_stream_first_token_timeout(GoogleVertexLLMService,
+                                                   s.vertex_first_token_timeout_secs)
+                   if fail_fast else GoogleVertexLLMService)
+        return _Vertex(
             credentials=creds,
             credentials_path=(s.vertex_credentials_path.strip() or None) if not creds else None,
             project_id=s.vertex_project_id,

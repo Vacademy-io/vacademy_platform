@@ -1554,6 +1554,120 @@ class DuckGate(FrameProcessor):
         logger.info("duck: resumed (%s) — released %d held frame(s)", reason, n)
 
 
+class FloorGate(FrameProcessor):
+    """Between TTS and transport.output(): never START a reply over a caller
+    who is talking.
+
+    THE BUG (call 358e5026, 2026-09-23, and 0.34-0.38 "stub cascades" per
+    call on both the gemma4 and the Gemini day): a parent who speaks in
+    pieces — "बच।" … "बच्चों के class ये हैं।" … "Sir बच्चों के class ये
+    हैं।" — gets a reply to every piece. The reply is composed in ~0.3 s, and
+    by the time its audio reaches the line the parent has already begun the
+    next piece (voice onset 47.39, bot audio 47.68). 0.7 s later the voice
+    cut stops it and the line hears a stub: "आप मुझे एक समय बता" / "मैं समझ"
+    / "मैं समझ गई" / "मैं आपसे पूछ रही थी" / "कि". 12 cuts, 21 abandoned
+    replies in that one call.
+
+    THE RULE: when a reply's FIRST audio is ready and the caller's voice is
+    live, hold the reply instead of starting it. Nothing has been played, so
+    holding is free — the caller hears no talk-over, and callers who pause
+    normally never meet the gate. Then the turn-gate decides, exactly as it
+    does for any reply in flight (is_holding() keeps it in flight):
+      real words or 0.7 s of voice → an InterruptionFrame drops the held reply,
+        and the next run answers everything they said, once;
+      an acknowledgement ("हाँ", "जी") → absorbed; the voice stops and the
+        held reply plays;
+      a line whose "voice" never stops → played after cap_secs anyway.
+    Mid-reply sound is not this gate's business (voice mode talks through it):
+    only a reply STARTING on a quiet line with a talking caller is held.
+    """
+
+    _HOLDABLE = DuckGate._HOLDABLE
+
+    def __init__(self, enabled, caller_talking, is_bot_speaking, diag=None,
+                 cap_secs: float = 3.0, poll_secs: float = 0.05):
+        super().__init__()
+        self._enabled = enabled
+        self._caller_talking = caller_talking
+        self._is_bot_speaking = is_bot_speaking
+        self._diag = diag
+        self._cap = cap_secs
+        self._poll = poll_secs
+        self._held: deque = deque()
+        self._holding = False
+        self._hold_t = 0.0
+        self._task: Optional[asyncio.Task] = None
+        # Last time audio went through: a reply's later sentences arrive while
+        # its first is still playing and must never be mistaken for a start.
+        self._last_audio_t = 0.0
+
+    def is_holding(self) -> bool:
+        return self._holding
+
+    def _bump(self, name: str):
+        if self._diag is not None:
+            self._diag.bump(name)
+
+    def _drop(self):
+        t, self._task = self._task, None
+        if t is not None and not t.done():
+            t.cancel()
+        self._held.clear()
+        self._holding = False
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InterruptionFrame):
+            if self._holding:
+                logger.info("floor: the caller took the turn — dropping the held reply "
+                            "(%d frame(s), held %.2fs)", len(self._held),
+                            time.time() - self._hold_t)
+                self._bump("floor_holds_dropped")
+            self._drop()
+            await self.push_frame(frame, direction)
+            return
+        if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, self._HOLDABLE):
+            await self.push_frame(frame, direction)
+            return
+        if self._holding:
+            self._held.append((frame, direction))
+            return
+        if isinstance(frame, TTSAudioRawFrame):
+            now = time.time()
+            starting = (not self._is_bot_speaking()
+                        and now - self._last_audio_t > 0.5)
+            if starting and self._enabled() and self._caller_talking():
+                self._holding = True
+                self._hold_t = now
+                self._held.append((frame, direction))
+                self._bump("floor_holds")
+                logger.info("floor: the caller is talking — holding the reply until they stop")
+                self._task = self.create_task(self._wait_for_floor())
+                return
+            self._last_audio_t = now
+        await self.push_frame(frame, direction)
+
+    async def _wait_for_floor(self):
+        try:
+            while self._caller_talking() and time.time() - self._hold_t < self._cap:
+                await asyncio.sleep(self._poll)
+            waited = time.time() - self._hold_t
+            capped = waited >= self._cap
+            logger.info("floor: %s — playing the held reply after %.2fs",
+                        "the line never went quiet" if capped else "the caller stopped", waited)
+            self._bump("floor_holds_capped" if capped else "floor_holds_released")
+            # Drain with the gate still shut, so frames that arrive meanwhile
+            # queue behind the held ones instead of overtaking them.
+            while self._held:
+                f, d = self._held.popleft()
+                await self.push_frame(f, d)
+                if isinstance(f, TTSAudioRawFrame):
+                    self._last_audio_t = time.time()
+            self._holding = False
+        except asyncio.CancelledError:
+            pass
+
+
 class TtfbObserver:
     """Corr-tagged per-turn latency telemetry. pipecat already computes per-service
     TTFB (enable_metrics=True) but only logs it uncorrelated at DEBUG inside the
@@ -1570,7 +1684,7 @@ class TtfbObserver:
             async def on_push_frame(self, data):
                 try:
                     from pipecat.frames.frames import MetricsFrame
-                    from pipecat.metrics.metrics import TTFBMetricsData
+                    from pipecat.metrics.metrics import LLMUsageMetricsData, TTFBMetricsData
                     if isinstance(data.frame, MetricsFrame):
                         # The SAME frame object is observed once per pipeline hop
                         # (~9x) — dedupe by object id or we log 9 duplicate lines
@@ -1582,6 +1696,9 @@ class TtfbObserver:
                         if len(outer._seen) > 64:
                             outer._seen.pop(0)
                         for d in data.frame.data:
+                            if isinstance(d, LLMUsageMetricsData) and d.value:
+                                outer._note_llm_usage(d.processor, d.value)
+                                continue
                             if isinstance(d, TTFBMetricsData) and d.value:
                                 logger.info("ttfb corr=%s service=%s value=%.3f",
                                             outer._corr, d.processor, d.value)
@@ -1607,6 +1724,22 @@ class TtfbObserver:
         self._seen: list = []
         self._diag = diag
         self.observer = _Obs()
+
+    def _note_llm_usage(self, processor, u):
+        """One line per LLM run: how much of the prompt the vendor served
+        from its cache. grep 'llm usage corr=<id>'."""
+        prompt = int(getattr(u, "prompt_tokens", 0) or 0)
+        cached = int(getattr(u, "cache_read_input_tokens", 0) or 0)
+        out = int(getattr(u, "completion_tokens", 0) or 0)
+        if not (prompt or out):
+            return                 # a cancelled run reports zeros — not a run
+        logger.info("llm usage corr=%s service=%s prompt=%d cached=%d out=%d",
+                    self._corr, processor, prompt, cached, out)
+        if self._diag is not None:
+            self._diag.bump("llm_runs")
+            self._diag.bump("llm_prompt_tokens", prompt)
+            self._diag.bump("llm_cached_tokens", cached)
+            self._diag.bump("llm_completion_tokens", out)
 
 
 class NoRepeatGate(FrameProcessor):
@@ -4712,6 +4845,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     on_duck=_on_duck, on_unduck=_on_unduck, diag=diag,
                     on_interrupt=_on_interrupt)
 
+    floor = FloorGate(
+        enabled=lambda: settings.floor_hold_enabled and not _opening_pending(),
+        caller_talking=lambda: (flags["voice_tick_t"] > 0 and
+                                time.time() - flags["voice_tick_t"] < settings.filler_voice_live_secs),
+        is_bot_speaking=lambda: flags["bot_speaking"],
+        diag=diag, cap_secs=settings.floor_hold_cap_secs)
+
     async def _absorb(text):
         if text is not None:
             diag.bump("duck_absorbs")
@@ -4801,6 +4941,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         Time-capped so a generation that dies without ever reaching playout
         cannot mute the caller's turns for the rest of the call.
         """
+        if floor.is_holding():
+            return True         # composed, held off the line while the caller talks
         st = flags["reply_started_t"]
         if not st or flags["bot_speaking"]:
             return False        # is_bot_speaking() already covers the audible case
@@ -4971,6 +5113,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # nothing".
         *([ttscache.make_turn_watcher_processor(tts_watcher)]
           if tts_watcher is not None else []),
+        floor,          # never START a reply over a talking caller
         duck,
         # Put the bot's voice in the caller's band (app/voice_eq.py). AFTER the
         # duck so audio that is held and then dropped is never filtered for
@@ -4997,6 +5140,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             audio_in_sample_rate=settings.sample_rate,
             audio_out_sample_rate=settings.sample_rate,
             enable_metrics=True,
+            # Token usage per LLM run (TtfbObserver sums it into diagnostics).
+            enable_usage_metrics=True,
         ),
         observers=[TtfbObserver(corr, diag).observer],
     )

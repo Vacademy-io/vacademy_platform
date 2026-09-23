@@ -371,6 +371,13 @@ class Settings:
     # not a slow reply: it errors, and the waterfall takes over. 0 = off.
     llm_first_token_timeout_secs: float = field(
         default_factory=lambda: float(_env("LLM_FIRST_TOKEN_TIMEOUT_SECS", "6.0")))
+    # Vertex primary WITH a fallback: give up on Gemini after this long with no
+    # first token and let the waterfall answer on the fallback. 23 Sep batch:
+    # one 429 RESOURCE_EXHAUSTED (asia-south1 shared capacity) took 7.1 s to
+    # surface, uncovered by the 6 s guard above (OpenAI-compatible services
+    # only). Gemini's own first token: p50 0.49 s, p95 0.80 s. 0 = off.
+    vertex_first_token_timeout_secs: float = field(
+        default_factory=lambda: float(_env("VERTEX_FIRST_TOKEN_TIMEOUT_SECS", "3.0")))
     openrouter_api_key: str = field(default_factory=lambda: _env("OPENROUTER_API_KEY"))
     openrouter_base_url: str = field(
         default_factory=lambda: _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
@@ -710,6 +717,14 @@ class Settings:
         default_factory=lambda: int(_env("VERTEX_THINKING_BUDGET", "0")))
     reply_inflight_grace_secs: float = field(
         default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
+    # FloorGate: a reply whose first audio is ready while the caller is talking
+    # waits for them to stop instead of starting over them (call 358e5026: a
+    # parent speaking in pieces got a stub of a reply to every piece). The
+    # cap is for lines whose "voice" never stops. Kill switch: FLOOR_HOLD_ENABLED=0.
+    floor_hold_enabled: bool = field(
+        default_factory=lambda: _env("FLOOR_HOLD_ENABLED", "1") not in ("0", "false", "no"))
+    floor_hold_cap_secs: float = field(
+        default_factory=lambda: float(_env("FLOOR_HOLD_CAP_SECS", "3.0")))
     interrupt_on_vad: bool = field(
         default_factory=lambda: _env("INTERRUPT_ON_VAD", "true").lower() == "true")
     # WHEN the caller's voice stops the bot.

@@ -230,6 +230,13 @@ class CallDiagnostics:
     # Voice-mode barge-in: acknowledgements the bot talked straight through, and
     # stops made because the caller kept talking past barge_in_voice_secs.
     acks_talked_through: int = 0
+    # FloorGate: replies held because the caller was talking when they were
+    # ready; then dropped (caller took the turn), released (caller stopped) or
+    # capped (the line never went quiet).
+    floor_holds: int = 0
+    floor_holds_dropped: int = 0
+    floor_holds_released: int = 0
+    floor_holds_capped: int = 0
     voice_cuts: int = 0
     # Short-answer runs ("Yes." + a breath) dropped because the caller's voice
     # resumed inside the grace — the whole turn was answered once instead
@@ -312,6 +319,14 @@ class CallDiagnostics:
     stt_vendor_final: str = ""
     llm_failovers: int = 0
     llm_vendor_final: str = ""
+    # Token usage summed over the call's LLM runs, from pipecat's usage
+    # metrics. cached = prompt tokens the vendor served from its prompt cache
+    # (Gemini implicit caching bills them at ~10%; Sarvam reports none) — the
+    # only per-call answer to "is caching lowering the LLM bill?".
+    llm_runs: int = 0
+    llm_prompt_tokens: int = 0
+    llm_cached_tokens: int = 0
+    llm_completion_tokens: int = 0
     hearing_failures: int = 0     # times we gave up and closed out honestly
     # Caller utterances DETECTED by VAD that produced no transcript at all. This
     # is the only signal that separates "nobody answered" from "we went deaf".
@@ -928,6 +943,10 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "runsHeldForOpening": d.runs_held_for_opening,
                 "shortAnswerNoiseReleases": d.short_answer_noise_releases,
                 "acksTalkedThrough": d.acks_talked_through,
+                "floorHolds": d.floor_holds,
+                "floorHoldsDropped": d.floor_holds_dropped,
+                "floorHoldsReleased": d.floor_holds_released,
+                "floorHoldsCapped": d.floor_holds_capped,
                 "voiceCuts": d.voice_cuts,
                 "shortAnswerHolds": d.short_answer_holds,
                 "resumeRespoken": d.resume_respoken,
@@ -978,6 +997,14 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "sttVendorFinal": d.stt_vendor_final or None,
                 "llmFailovers": d.llm_failovers,
                 "llmVendorFinal": d.llm_vendor_final or None,
+                "llmUsage": {
+                    "runs": d.llm_runs,
+                    "promptTokens": d.llm_prompt_tokens,
+                    "cachedTokens": d.llm_cached_tokens,
+                    "completionTokens": d.llm_completion_tokens,
+                    "cachedPct": (round(100.0 * d.llm_cached_tokens / d.llm_prompt_tokens, 1)
+                                  if d.llm_prompt_tokens else None),
+                } if d.llm_runs else None,
                 "hearingFailures": d.hearing_failures,
                 "unheardUtterances": d.unheard_utterances,
                 "promptUnfilled": d.prompt_unfilled or None,

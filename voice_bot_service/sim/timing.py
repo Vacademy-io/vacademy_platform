@@ -661,6 +661,36 @@ def chk_fragment_tail(res):
     return f
 
 
+def chk_pieces_with_gaps(res):
+    """Call 358e5026 (2026-09-23): a parent speaking in pieces got a reply to
+    every piece, each started while the NEXT piece was already under way and
+    cut 0.7 s later — "आप मुझे एक समय बता" / "मैं समझ" / "मैं समझ गई". No
+    reply may start while the caller is talking, no stub may reach the line,
+    and the pieces still get one full answer."""
+    f = []
+    if len(res["caller"]) < 3:
+        return ["caller turns missing"]
+    p1 = res["caller"][1]
+    p2 = res["caller"][2]
+    for a, b_ in res["bot"]:
+        if a < p1[0]:
+            continue
+        if any(ca + 0.05 < a < cb for ca, cb in res["caller"]):
+            f.append(f"bot audio started at {a:.2f}s while the caller was talking")
+        if b_ - a < 1.0 and a < p2[1] + 6.0:
+            f.append(f"a {b_ - a:.2f}s stub of a reply reached the line at {a:.2f}s")
+    # One answer to both pieces, played in full (its sentences are separate
+    # intervals on the line).
+    after = [iv for iv in res["bot"] if p2[1] <= iv[0] < p2[1] + 8.0]
+    if not after:
+        f.append("the pieces never got an answer")
+    elif sum(b_ - a for a, b_ in after) < 3.0:
+        f.append("the answer to the pieces was cut short")
+    if "Three girls" not in " ".join(_assistant_texts(res)):
+        f.append("the answer to both pieces never played")
+    return f
+
+
 LONG_ANSWER = ("Yes, I take classes in the evening, mostly at the studio near my house, "
                "and a few students come to my home on weekends")
 _LONG_KEYS = ("classes", "evening", "studio", "students", "weekends")
@@ -880,6 +910,23 @@ SCENARIOS: List[Scenario] = [
              replies=[PITCH_Q, "It makes sense, good. So who sends the daily link right now — you, or someone else?"],
              checks=chk_fragment_tail, max_secs=45,
              note="call 31763255: '? It makes' → reply → 'some' as a real barge-in killed it"),
+    Scenario("pieces_with_gaps",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("My daughter is in the eighth class", 1.1, after_bot_stop=2,
+                         offset=0.8, stt_latency=0.4),
+                     # Starts 0.8 s after the first piece — on the CI runner's
+                     # usual ~1.2 s reply latency the reply is ready mid-piece
+                     # (gate off: a 0.28 s stub at 25.51 s). Closer, and the
+                     # first reply never starts at all; on a fast runner it
+                     # starts before this piece and the case does not arise.
+                     Say("and there are three girls at home studying", 1.4, after_bot_stop=2,
+                         offset=2.7, stt_latency=0.4)],
+             replies=[PITCH_Q,
+                      "Got it, eighth class. And how were her marks last year?",
+                      "Three girls, that's lovely. And how were the eldest one's marks last year?",
+                      "Okay."],
+             checks=chk_pieces_with_gaps, max_secs=45,
+             note="call 358e5026: a reply started over every next piece and was cut to a stub"),
     Scenario("cached_opener_then_pitch",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=["Thank you. So the reason I called — we work with yoga teachers on everything "

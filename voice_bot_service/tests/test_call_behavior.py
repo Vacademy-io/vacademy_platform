@@ -4796,6 +4796,28 @@ def test_replay_invariants_catch_todays_call_shapes():
     assert R.invariants(ok) == [], R.invariants(ok)
 
 
+def test_an_opening_after_pickup_noises_is_not_a_replay():
+    """23 Sep batch: 'Hi.' / 'हाँ।' recorded before the opening made the one
+    opening count as its own replay (6 false REDs)."""
+    import app.report as rp
+    op = "नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से। आपने inquiry की थी।"
+    o = type("O", (), {})()
+    o.transcript = [{"role": "user", "text": "Hi."}, {"role": "user", "text": "हाँ।"},
+                    {"role": "assistant", "text": op},
+                    {"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"},
+                    {"role": "assistant", "text": "जी सर, बच्चे का नाम क्या है?"}]
+    assert rp._played_invariants(o)[0] == 0
+    o.transcript.append({"role": "user", "text": "कौन बोल रहा है?"})
+    o.transcript.append({"role": "assistant", "text": op})        # a REAL replay
+    assert rp._played_invariants(o)[0] == 1
+
+
+def test_pickup_scraps_are_not_counted_as_lost_answers():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert "if i > _first_bot" in src, "pickup scraps before the opening must not count as lost"
+
+
 def test_played_invariants_name_todays_faults():
     """The two Call-Health faults added 2026-09-15 read the PLAYED transcript."""
     from app import report as rp, diagnostics as dg

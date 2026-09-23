@@ -643,7 +643,11 @@ def _played_invariants(outcome: CallOutcome) -> tuple:
         return 0, 0, []
     opening = spoken_key(" ".join(bot[0].split()[:6]))
     replays, seen_user = 0, False
-    for t in tr[1:]:
+    # Start AFTER the opening itself. Pickup noises ("Hi.", "हाँ।") are recorded
+    # before it, so starting at tr[1] counted the one-and-only opening as its own
+    # replay whenever the callee spoke first — 6 false REDs in the 23 Sep batch.
+    first_bot = next(i for i, t in enumerate(tr) if t.get("role") == "assistant")
+    for t in tr[first_bot + 1:]:
         if t.get("role") == "user":
             if not (caller_checking_presence(t["text"]) or caller_asked_to_repeat(t["text"])):
                 seen_user = True

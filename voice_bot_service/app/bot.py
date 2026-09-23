@@ -5446,8 +5446,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # fix that filters them MANUFACTURES an ANSWER_DELETED fault: call
             # 14029bd6's panel read "2 caller answers were discarded", quoting
             # the voicemail system back at us.
-            _heard = [t.get("text") or "" for t in outcome.transcript
-                      if t.get("role") == "user"
+            # Pickup noises said before the bot's first word are dropped ON
+            # PURPOSE — the opening is their answer (machine-greeting scrap) —
+            # so they are not answers the model missed either. Counting them
+            # put "हम दस।" and "कोन दीदी?" on the 23 Sep panel as lost answers.
+            _first_bot = next((i for i, t in enumerate(outcome.transcript)
+                               if t.get("role") == "assistant"), len(outcome.transcript))
+            _heard = [t.get("text") or "" for i, t in enumerate(outcome.transcript)
+                      if i > _first_bot
+                      and t.get("role") == "user"
                       and not (t.get("text") or "").lstrip().startswith("[")
                       and not is_carrier_announcement(t.get("text") or "")]
             _lost = diag_mod.split_lost(_heard, _delivered)

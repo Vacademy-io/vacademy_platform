@@ -267,7 +267,11 @@ export function useCameraProctor({
             emit(
               "NO_FACE",
               "FLAG",
-              { seconds: Math.round((now - noFaceSince) / 1000), detector: counter.name },
+              {
+                seconds: Math.round((now - noFaceSince) / 1000),
+                detector: counter.name,
+                frame: `${video.videoWidth}x${video.videoHeight}`,
+              },
               fileId
             );
           }
@@ -280,7 +284,12 @@ export function useCameraProctor({
           ) {
             multiFlaggedAt = now;
             const fileId = await snapshot();
-            emit("MULTIPLE_FACES", "FLAG", { faces: n, detector: counter.name }, fileId);
+            emit(
+              "MULTIPLE_FACES",
+              "FLAG",
+              { faces: n, detector: counter.name, frame: `${video.videoWidth}x${video.videoHeight}` },
+              fileId
+            );
           }
         } else {
           noFaceSince = null;

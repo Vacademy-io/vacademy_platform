@@ -35,7 +35,7 @@ interface NativeDetectedFace {
   boundingBox: DOMRectReadOnly;
 }
 interface NativeFaceDetector {
-  detect(source: HTMLVideoElement): Promise<NativeDetectedFace[]>;
+  detect(source: HTMLVideoElement | HTMLCanvasElement): Promise<NativeDetectedFace[]>;
 }
 type NativeFaceDetectorCtor = new (options?: {
   maxDetectedFaces?: number;
@@ -47,7 +47,7 @@ interface MediaPipeDetection {
 }
 interface MediaPipeFaceDetector {
   detectForVideo(
-    video: HTMLVideoElement,
+    video: HTMLVideoElement | HTMLCanvasElement,
     timestampMs: number
   ): { detections: MediaPipeDetection[] };
   close(): void;
@@ -77,6 +77,35 @@ const MEDIAPIPE_MODEL =
 const isFrameReady = (video: HTMLVideoElement) =>
   video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
 
+/**
+ * The current video frame copied into a 2D canvas, which is what the
+ * detectors actually read.
+ *
+ * Handing a live camera <video> straight to a detector makes it import the
+ * frame itself, and on macOS a camera frame is a GPU surface — a path that
+ * returned 0 faces for a face MediaPipe scores 0.94 from a still copy of the
+ * same frame (2026-09-23). drawImage is the same read the snapshots already
+ * use successfully, so detection and evidence now see identical pixels.
+ * One canvas per counter, reused every tick.
+ */
+const makeFrameReader = () => {
+  let canvas: HTMLCanvasElement | null = null;
+  return (video: HTMLVideoElement): HTMLCanvasElement | null => {
+    if (!isFrameReady(video)) return null;
+    canvas ??= document.createElement("canvas");
+    if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
+    if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    try {
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    } catch {
+      return null;
+    }
+  };
+};
+
 const createNative = (): FaceCounter | null => {
   const Ctor = (window as unknown as { FaceDetector?: NativeFaceDetectorCtor })
     .FaceDetector;
@@ -87,12 +116,14 @@ const createNative = (): FaceCounter | null => {
   } catch {
     return null;
   }
+  const readFrame = makeFrameReader();
   return {
     name: "native",
     async count(video) {
-      if (!isFrameReady(video)) return null;
+      const frame = readFrame(video);
+      if (!frame) return null;
       try {
-        const faces = await detector.detect(video);
+        const faces = await detector.detect(frame);
         return faces.length;
       } catch {
         return null;
@@ -116,15 +147,17 @@ const createMediaPipe = async (): Promise<FaceCounter | null> => {
       minDetectionConfidence: 0.5,
     });
     let lastTimestamp = 0;
+    const readFrame = makeFrameReader();
     return {
       name: "mediapipe",
       async count(video) {
-        if (!isFrameReady(video)) return null;
+        const frame = readFrame(video);
+        if (!frame) return null;
         try {
           // MediaPipe requires strictly increasing timestamps per video stream.
           const now = Math.max(performance.now(), lastTimestamp + 1);
           lastTimestamp = now;
-          return detector.detectForVideo(video, now).detections.length;
+          return detector.detectForVideo(frame, now).detections.length;
         } catch {
           return null;
         }
@@ -158,5 +191,7 @@ export const createFaceCounter = async (
   enabled: boolean
 ): Promise<FaceCounter> => {
   if (!enabled) return none;
-  return (await createMediaPipe()) ?? createNative() ?? none;
+  const counter = (await createMediaPipe()) ?? createNative() ?? none;
+  console.info(`[proctoring] face detector: ${counter.name}`);
+  return counter;
 };

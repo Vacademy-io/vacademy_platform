@@ -68,7 +68,8 @@
         "emptyTitle": "No {{tab}} Sessions",
         "emptyDraftBody": "No draft sessions found. Create a new session to get started.",
         "emptyDefaultBody": "Schedule your first live class to engage with learners in real time.",
-        "emptyPage": "No {{tab}} sessions on this page."
+        "emptyPage": "No {{tab}} sessions on this page.",
+        "showingRange": "Showing {{from}} to {{to}} of {{total}} {{term}}"
     },
     "settingsButtonLabel": "Live session settings",
     "scheduleButton": "Schedule"

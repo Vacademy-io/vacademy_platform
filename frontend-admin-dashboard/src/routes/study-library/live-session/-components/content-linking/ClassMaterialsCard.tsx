@@ -148,14 +148,18 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
     };
 
     return (
-        <Card className="overflow-hidden border-border/60 shadow-sm">
+        <Card className="flex flex-col overflow-hidden border-border/60 shadow-sm">
             <CardHeader className="bg-muted/40 px-6 py-4">
-                <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="flex items-center gap-3 text-lg font-semibold">
-                        <div className="flex size-10 items-center justify-center rounded-xl bg-primary-500/10 text-primary-600 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="flex min-w-0 items-center gap-3 text-lg font-semibold">
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/10 text-primary-600 shadow-sm">
                             <Notebook className="size-5" />
                         </div>
-                        {t('classMaterials')}
+                        {/* Wraps rather than truncates: at a 1280px window this
+                            card is ~225px and the heading needs every pixel of
+                            it — "Class Materials" clipped to "Class Materia…"
+                            reads as a bug, two lines does not. */}
+                        <span className="break-words">{t('classMaterials')}</span>
                     </CardTitle>
                     <div className="flex flex-wrap items-center gap-2">
                         <button
@@ -184,9 +188,11 @@ export function ClassMaterialsCard({ sessionId, scheduleId, sessionTitle, batche
                 </div>
             </CardHeader>
             <Separator />
-            <CardContent className="flex flex-col gap-3 p-4 sm:p-6">
+            <CardContent className="flex flex-1 flex-col gap-3 p-4 sm:p-6">
                 {materialLinks.length === 0 && !panel && (
-                    <p className="text-xs text-muted-foreground">{t('noMaterialsYet')}</p>
+                    <p className="flex flex-1 items-center justify-center text-center text-xs text-muted-foreground">
+                        {t('noMaterialsYet')}
+                    </p>
                 )}
 
                 {materialLinks.length > 0 && (

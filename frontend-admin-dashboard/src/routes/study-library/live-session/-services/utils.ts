@@ -69,6 +69,7 @@ export interface SessionsByDate {
 }
 
 export interface DraftSession {
+    instructors?: LiveSessionInstructor[] | null;
     session_id: string;
     waiting_room_time: number | null;
     thumbnail_file_id: string | null;
@@ -85,6 +86,14 @@ export interface DraftSession {
     meeting_link: string;
     registration_form_link_for_public_sessions: string | null;
     timezone?: string;
+    /** Same rows the live/past cards get — the list spreads one search row into
+     *  every card shape, so drafts have had this on the wire all along. */
+    package_session_details?: Array<{
+        package_session_id: string;
+        package_name: string;
+        level_name: string;
+        session_name: string;
+    }> | null;
 }
 
 export type UpcomingSessionDay = SessionsByDate;
@@ -558,6 +567,9 @@ export interface SessionSearchResponseItem {
     meeting_link: string;
     registration_form_link_for_public_sessions: string | null;
     timezone: string;
+    /** 'bbb' | 'zoom' | 'google meet' | 'zoho' | 'youtube' | 'other'. Drives
+     *  which host flow the card's primary button runs. */
+    link_type?: string | null;
     default_class_link?: string | null;
     default_class_name?: string | null;
     learner_button_config?: {
@@ -573,6 +585,13 @@ export interface SessionSearchResponseItem {
         level_name: string;
         session_name: string;
     }> | null;
+    /**
+     * Who is taking the class. Never empty for an existing session — the
+     * backend falls back to the creator for sessions scheduled before
+     * instructors existed — but an individual entry can carry only a user_id
+     * when the directory lookup fails.
+     */
+    instructors?: LiveSessionInstructor[] | null;
 }
 
 export interface PaginationMetadata {

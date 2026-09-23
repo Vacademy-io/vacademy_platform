@@ -211,6 +211,10 @@ export interface LiveSession {
     allow_rewind?: boolean | null;
     allow_play_pause?: boolean | null;
     timezone?: string; // Changed from time_zone to timezone to match API response
+    /** Streaming platform of this occurrence — see HostJoinTarget. */
+    link_type?: string | null;
+    /** Minutes before start that the waiting room opens; gates "Start as Host". */
+    waiting_room_time?: number | null;
     default_class_link?: string | null;
     defaultClassName?: string | null;
     learner_button_config?: {
@@ -221,6 +225,12 @@ export interface LiveSession {
         visible: boolean;
     } | null;
     package_session_details?: PackageSessionDetail[] | null;
+    instructors?: Array<{
+        user_id: string;
+        full_name?: string | null;
+        email?: string | null;
+        profile_pic_file_id?: string | null;
+    }> | null;
 }
 
 export const createLiveSessionStep1 = async (data: LiveSessionStep1RequestDTO) => {

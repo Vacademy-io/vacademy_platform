@@ -217,6 +217,10 @@ class TranscriptCollector(FrameProcessor):
         self._ack_answer_window = ack_answer_window_secs
         self._voice_on = False
         self._voice_cut_task = None
+        # When THIS gate last stopped the reply. The pipeline's own "was cut"
+        # (recently_cut) is stamped when the InterruptionFrame reaches DuckGate,
+        # ~0.1 s later — and the caller's words arrive inside that gap.
+        self._self_cut_t = 0.0
         # (text, voice onset) of an acknowledgement heard while the bot kept
         # talking — answered when the reply ends, if it ended on a question.
         self._acked_mid_reply = None
@@ -396,7 +400,7 @@ class TranscriptCollector(FrameProcessor):
                 self._voice_on = True
                 self._arm_voice_cut()
                 self._set_user_speaking(True)
-            elif self._voice_stopped() and not self._interrupt_on_vad():
+            elif self._voice_stopped() and not self._was_cut():
                 # Voice mode and nothing was cut: the reply is still playing
                 # (or composing). There is nothing to resume or re-ask.
                 pass
@@ -742,7 +746,7 @@ class TranscriptCollector(FrameProcessor):
                     logger.info("turn-gate: absorbed backchannel %r "
                                 "(ducked=%s, cut=%s)", text[:30], ducked,
                                 self._interrupt_on_vad())
-                    if (self._cut_after > 0 and not self._interrupt_on_vad()
+                    if (self._cut_after > 0 and not self._was_cut()
                             and self._is_bot_speaking()):
                         # Voice mode: the reply never stopped. If it ends on a
                         # question and this came near its end, it is the answer
@@ -789,7 +793,7 @@ class TranscriptCollector(FrameProcessor):
                         logger.info("turn-gate: %r while the answer is already on its way "
                                     "— nothing to generate", text[:20])
                         return
-                    if self._interrupt_on_vad():
+                    if self._was_cut():
                         # The callee's pickup "Hello" lands INSIDE our opening:
                         # call 9e566e32 (2026-09-09) said "Hello" 250ms into
                         # "Hi, is this Shreyash?…", the VAD cut the opening after
@@ -954,6 +958,7 @@ class TranscriptCollector(FrameProcessor):
                 # यही सब" this way and she hung up 27 s later.
                 await self.push_frame(frame, direction)
                 forwarded = True
+                self._self_cut_t = time.time()
                 await self.broadcast_interruption()
                 # If that cut our opening before it was heard and what they
                 # said is not a question or a refusal, the opening is still
@@ -1072,6 +1077,17 @@ class TranscriptCollector(FrameProcessor):
                     del t[i]
                 return
 
+    def _was_cut(self) -> bool:
+        """Was the reply stopped? The pipeline's own answer, or ours — the gate
+        knows the instant it cuts, the pipeline ~0.1 s later. Call 0808862f
+        (2026-09-23): the gate stopped the reply after 0.7 s of voice; "हाँ जी
+        बिल्कुल" landed 0.1 s later, read as an aside over a still-playing reply,
+        and nothing resumed — 8 s of silence, then "Hello?" re-asked the marks
+        question the caller had already answered, because the closing question
+        he had never heard was not the last one PLAYED."""
+        return (self._interrupt_on_vad()
+                or (self._self_cut_t > 0 and time.time() - self._self_cut_t < 3.0))
+
     def _voice_stopped(self) -> bool:
         """Bookkeeping for a VAD stop; always True so it can sit in an elif."""
         self._voice_on = False
@@ -1108,6 +1124,7 @@ class TranscriptCollector(FrameProcessor):
             if self._diag is not None:
                 self._diag.bump("voice_cuts")
             self._acked_mid_reply = None
+            self._self_cut_t = time.time()
             await self.broadcast_interruption()
         except asyncio.CancelledError:
             raise

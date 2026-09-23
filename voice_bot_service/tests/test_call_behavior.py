@@ -5556,6 +5556,29 @@ async def test_an_early_acknowledgement_or_a_hello_is_not_taken_as_the_answer():
 
 
 @pytest.mark.asyncio
+async def test_an_acknowledgement_right_after_the_gate_cut_the_reply_resumes_it():
+    """Call 0808862f: the gate cut at 0.7 s of voice; "हाँ जी बिल्कुल" arrived
+    0.1 s later, before the pipeline's own cut flag and before the bot-speaking
+    flag dropped. It was read as an aside — nothing resumed, 8 s of silence."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame
+    rec = _Rec()
+    tail = "क्या मानशु के साथ भी ऐसा है सर, कि कुछ subjects में वो बहुत अच्छा करता है?"
+    tc, state = _voice_collector(rec, cut_after=0.1, resume_unplayed=lambda n=600: tail,
+                                 resume_settle_secs=0.01)
+    b.FrameProcessor.process_frame = _noop_super
+    await tc.process_frame(VADUserStartedSpeakingFrame(), b.FrameDirection.UPSTREAM)
+    await asyncio.sleep(0.2)                         # the gate cuts on sustained voice
+    assert rec.interruptions == 1
+    state["cut"] = False                             # pipeline flag not stamped yet
+    assert state["speaking"] is True                 # …and the bot still reads as speaking
+    await _feed(tc, "हाँ जी बिल्कुल।")
+    await asyncio.sleep(0.1)
+    assert tc._acked_mid_reply is None, "treated as an aside over a reply that was cut"
+    assert any(isinstance(f, b.TTSSpeakFrame) and f.text == tail for f in rec.frames), \
+        "the unheard closing question was not resumed"
+
+
+@pytest.mark.asyncio
 async def test_voice_mode_a_blip_while_composing_does_not_re_ask():
     """Nothing was cut, so the 'a noise killed your reply' recovery must not run."""
     from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame

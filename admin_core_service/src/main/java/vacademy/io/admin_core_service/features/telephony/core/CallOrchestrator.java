@@ -20,8 +20,11 @@ import vacademy.io.admin_core_service.features.telephony.spi.dto.OutboundCallHan
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderError;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderNumberView;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.SelectionContext;
+import org.springframework.beans.factory.annotation.Value;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.common.tracing.ExternalCallTimer;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.ConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
@@ -62,9 +65,17 @@ public class CallOrchestrator {
     @Autowired private ProviderCircuitBreaker circuitBreaker;
     @Autowired private TelephonyConfigCache configCache;
     @Autowired private TelephonyCallLogRepository callLogRepo;
+    @Autowired private CreditClient creditClient;
+
+    /** Kill-switch for the pre-dial affordability gate (default ON). */
+    @Value("${telephony.voice.credit-gate.enabled:true}")
+    private boolean voiceCreditGateEnabled;
 
     public ConnectCallResponseDTO connect(ConnectCallRequestDTO req, CustomUserDetails actor) {
         String instituteId = requireNonBlank(req.getInstituteId(), "instituteId is required");
+
+        // ── Phase 0: affordability ───────────────────────────────────
+        assertVoiceCreditsAvailable(instituteId);
 
         // ── Phase 1: gather + persist (transactional, fast) ──────────────────
         Prepared p = tx.prepareAndPersist(instituteId, req, actor);
@@ -115,6 +126,71 @@ public class CallOrchestrator {
                 .realtimeEvents(realtimeEvents)
                 .responseId(p.responseId())
                 .build();
+    }
+
+    /**
+     * Refuse the dial when the institute cannot pay for it.
+     *
+     * <p>Every manual call on a Vacademy-paid trunk is metered per minute by
+     * {@link CallBillingService}, which deducts POST-paid and with
+     * {@code allow_negative=true} — correct for a call that already happened, but
+     * it means nothing ever stopped an exhausted institute from dialling again.
+     * AI calling, the chatbot and engagement dispatch all gate their spend; the
+     * counsellor click-to-call path never did, so one institute ran to -1427
+     * credits across 1,306 billed calls before anyone noticed.
+     *
+     * <p><b>Only Vacademy-paid trunks.</b> Airtel/Exotel/Vonage ride the
+     * INSTITUTE'S own carrier account and are never charged to this wallet, so
+     * gating them would block calls the balance has nothing to do with. The
+     * provider set is shared with the meter ({@link CallBillingService#isVoiceBillable})
+     * precisely so the two cannot drift apart.
+     *
+     * <p><b>Fails OPEN</b>, unlike the AI-calling gate next door, and the asymmetry
+     * is deliberate. There, a blocked call is a scheduler retrying later. Here, a
+     * counsellor is mid-conversation with a lead on the other line, and every
+     * outbound call on the platform funnels through this method — so making an
+     * ai_service hiccup mean "nobody can dial" trades a small, self-correcting
+     * billing leak (the meter still charges, the balance still goes negative, we
+     * still see it) for a total calling outage. We block only on a balance we
+     * actually read.
+     */
+    private void assertVoiceCreditsAvailable(String instituteId) {
+        if (!voiceCreditGateEnabled) return;
+
+        // Same enabled-filter computeAvailability uses: an institute with calling
+        // switched off must hear "calling is not configured" from prepareAndPersist,
+        // not "top up your credits" — one of those is actionable and the other sends
+        // them to buy something that would not help.
+        String providerType = configCache.get(instituteId)
+                .filter(r -> Boolean.TRUE.equals(r.getConfig().getEnabled()))
+                .map(r -> r.getConfig().getProviderType())
+                .orElse(null);
+        if (!CallBillingService.isVoiceBillable(providerType)) return;
+
+        Optional<Double> balance;
+        try {
+            balance = creditClient.readBalance(instituteId);
+        } catch (Exception e) {
+            log.warn("credit gate: balance read threw for institute {} — allowing call (fail-open): {}",
+                    instituteId, e.getMessage());
+            return;
+        }
+        if (balance.isEmpty()) {
+            log.warn("credit gate: balance unreadable for institute {} — allowing call (fail-open)",
+                    instituteId);
+            return;
+        }
+        if (balance.get() > 0.0) return;
+
+        log.warn("call BLOCKED — institute {} is out of credits (balance {}, provider {})",
+                instituteId, balance.get(), providerType);
+        // ConflictException (409), not VacademyException (510): this is a business
+        // rule doing its job, and the VacademyException handler logs at ERROR level
+        // — which would file one Sentry issue per blocked click, hundreds a day for
+        // a busy call centre. The frontend reads `ex` off the body either way, so
+        // the counsellor still gets this exact sentence as a toast.
+        throw new ConflictException(
+                "Your institute has run out of AI credits. Please top up to continue calling.");
     }
 
     /**

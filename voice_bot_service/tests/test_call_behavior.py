@@ -5573,6 +5573,44 @@ async def test_voice_mode_a_blip_while_composing_does_not_re_ask():
     assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
 
 
+# ── 22 Sep batch: a fixed 0.30 s between "turn COMPLETE" and the model, every turn ──
+@pytest.mark.asyncio
+async def test_only_the_final_after_our_flush_is_flagged_finalized():
+    from pipecat.frames.frames import (TranscriptionFrame, VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+    from app.providers import final_after_flush
+
+    class _Base:
+        _settings = type("S", (), {"vad_signals": None})()
+        def __init__(self): self.out = []
+        async def process_frame(self, frame, direction): pass
+        async def push_frame(self, frame, direction=None): self.out.append(frame)
+
+    stt = final_after_flush(_Base)()
+    D = b.FrameDirection.UPSTREAM
+    f = lambda t: TranscriptionFrame(t, "u", "0")
+    await stt.process_frame(VADUserStartedSpeakingFrame(), D)
+    await stt.push_frame(f("मेरा बेटा"))                  # mid-utterance final
+    await stt.process_frame(VADUserStoppedSpeakingFrame(), D)
+    await stt.push_frame(f("class 6 में है।"))             # the answer to our flush
+    await stt.process_frame(VADUserStartedSpeakingFrame(), D)
+    await stt.push_frame(f("और"))                         # caller speaking again
+    assert [x.finalized for x in stt.out] == [False, True, False]
+    # Sarvam's own VAD drives segmentation → no flush → never flag
+    _Base._settings.vad_signals = True
+    stt2 = final_after_flush(_Base)()
+    await stt2.process_frame(VADUserStoppedSpeakingFrame(), D)
+    await stt2.push_frame(f("हाँ।"))
+    assert stt2.out[-1].finalized is False
+
+
+def test_build_stt_uses_the_flagging_sarvam_class():
+    import inspect
+    from app import providers as pv
+    src = inspect.getsource(pv.build_stt)
+    assert "final_after_flush(SarvamSTTService) if s.sarvam_final_on_flush" in src
+
+
 @pytest.mark.asyncio
 async def test_a_backchannel_during_the_settle_window_still_gets_no_cue():
     """The 0.6 s teardown settle must not re-open the two-voices window: while

@@ -296,7 +296,8 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     except Exception:
         logger.warning("build_stt: Settings rejected %r — model only", settings_kwargs)
         stt_settings = SarvamSTTService.Settings(model=stt_model)
-    return SarvamSTTService(
+    _cls = final_after_flush(SarvamSTTService) if s.sarvam_final_on_flush else SarvamSTTService
+    return _cls(
         api_key=s.sarvam_api_key,
         # Capability-gated, same reason as the settings above: saaras:v2.5 (a
         # documented SARVAM_STT_MODEL rollback target) has supports_mode=False
@@ -307,6 +308,46 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
         settings=stt_settings,
         ttfs_p99_latency=s.sarvam_ttfs_p99,
     )
+
+
+def final_after_flush(cls):
+    """Subclass a Sarvam STT so the transcript it sends in answer to our flush
+    is flagged finalized=True.
+
+    pipecat's Sarvam service flushes on every VAD stop (flush_signal) and
+    Sarvam answers with the utterance's final ~0.08 s later — but never flags
+    it, so TurnAnalyzerUserTurnStopStrategy treats it as provisional and waits
+    out its STT safety timeout before closing the turn: 0.30 s of dead air on
+    every turn of the 22 Sep batch. Only finals between a VAD stop and the next
+    VAD start are flagged; one Sarvam emits mid-utterance (on its own
+    segmentation) stays unflagged, so the turn cannot close on half a
+    sentence. Not applied when Sarvam's own VAD drives it (vad_signals): then
+    no flush is sent."""
+    from pipecat.frames.frames import (InterimTranscriptionFrame, TranscriptionFrame,
+                                       VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame)
+    from pipecat.processors.frame_processor import FrameDirection as _Dir
+
+    class _FinalOnFlush(cls):
+        _after_flush = False
+
+        async def process_frame(self, frame, direction):
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._after_flush = False
+            elif isinstance(frame, VADUserStoppedSpeakingFrame):
+                settings = getattr(self, "_settings", None)
+                self._after_flush = not bool(getattr(settings, "vad_signals", False) is True)
+            await super().process_frame(frame, direction)
+
+        async def push_frame(self, frame, direction=_Dir.DOWNSTREAM):
+            if (self._after_flush and isinstance(frame, TranscriptionFrame)
+                    and not isinstance(frame, InterimTranscriptionFrame)
+                    and (frame.text or "").strip()):
+                frame.finalized = True
+            await super().push_frame(frame, direction)
+
+    _FinalOnFlush.__name__ = cls.__name__
+    _FinalOnFlush.__qualname__ = cls.__qualname__
+    return _FinalOnFlush
 
 
 class _PersistentClientSession:

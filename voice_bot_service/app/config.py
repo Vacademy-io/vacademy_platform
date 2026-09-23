@@ -136,6 +136,15 @@ class Settings:
     # added dead air EVERY turn; the founder POC ships 0.5.
     sarvam_ttfs_p99: float = field(
         default_factory=lambda: float(_env("SARVAM_TTFS_P99", "0.5")))
+    # Mark the final Sarvam sends in answer to our flush (after the VAD stop,
+    # before the caller speaks again) as finalized, so the turn closes on it
+    # instead of waiting out sarvam_ttfs_p99 - vad_stop_secs = 0.30 s. The 22
+    # Sep batch: that 0.30 s sat between "Smart Turn: COMPLETE" and the model
+    # starting on EVERY turn, while the final itself had arrived 0.08 s after
+    # the voice stopped. Finals that arrive mid-utterance are left unflagged,
+    # so they keep the safety wait. Kill switch.
+    sarvam_final_on_flush: bool = field(
+        default_factory=lambda: _env("SARVAM_FINAL_ON_FLUSH", "1") not in ("0", "false", "no"))
     # Smart Turn v3 semantic end-of-turn: max silence it may wait before forcing
     # the turn closed (the model usually decides much earlier).
     smart_turn_stop_secs: float = field(

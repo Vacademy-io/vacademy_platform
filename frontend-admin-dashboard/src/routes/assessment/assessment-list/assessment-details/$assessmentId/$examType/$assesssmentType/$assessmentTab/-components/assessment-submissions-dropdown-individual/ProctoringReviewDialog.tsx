@@ -37,7 +37,9 @@ export const ProctoringReviewDialog = ({
         queryKey: ['PROCTOR_REVIEW', attemptId],
         queryFn: () => getAttemptProctorReview(attemptId, instituteId),
         enabled: open,
-        staleTime: 60_000,
+        staleTime: 10_000,
+        // A reviewer often watches an attempt that is still in progress.
+        refetchInterval: open ? 15_000 : false,
     });
 
     const events = (data?.events ?? []).filter((event) =>

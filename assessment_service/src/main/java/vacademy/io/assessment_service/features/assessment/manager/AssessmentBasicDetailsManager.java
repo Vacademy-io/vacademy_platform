@@ -169,8 +169,17 @@ public class AssessmentBasicDetailsManager {
 
     private void addOrUpdateBoundationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.LiveDateRange boundationData) {
         if (!ObjectUtils.isEmpty(boundationData)) {
-            Optional.ofNullable(boundationData.getStartDate()).ifPresent((startDate) -> assessment.setBoundStartTime(convertStringToUTCDate(startDate)));
-            Optional.ofNullable(boundationData.getEndDate()).ifPresent((endDate) -> assessment.setBoundEndTime(convertStringToUTCDate(endDate)));
+            // The admin sends "" for a blank optional date, not null, and
+            // DateUtil.convertStringToUTCDate("") returns `new Date()` — so an
+            // unset window used to be stored as start = end = now, i.e. a survey
+            // that was already over the moment it was created. Treat blank as
+            // "leave the bound unset"; a NULL bound means no limit on that side.
+            if (StringUtils.hasText(boundationData.getStartDate())) {
+                assessment.setBoundStartTime(convertStringToUTCDate(boundationData.getStartDate()));
+            }
+            if (StringUtils.hasText(boundationData.getEndDate())) {
+                assessment.setBoundEndTime(convertStringToUTCDate(boundationData.getEndDate()));
+            }
         }
     }
 

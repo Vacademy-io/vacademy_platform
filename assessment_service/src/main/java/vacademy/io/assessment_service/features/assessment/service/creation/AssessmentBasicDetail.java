@@ -161,6 +161,13 @@ public class AssessmentBasicDetail extends IStep {
 
     private List<Map<String, String>> getStepsForSurvey() {
         return List.of(
+                // A survey may be given a live window, but does not need one — declared
+                // OPTIONAL so Step 1 renders both inputs without an asterisk and without
+                // blocking "Next". Omitting them entirely (as this did) hid the inputs
+                // while the admin form still demanded their values, which left "Next"
+                // permanently disabled on every new survey.
+                Map.of(AssessmentCreationEnum.BOUNDATION_START_DATE.name().toLowerCase(), "OPTIONAL"),
+                Map.of(AssessmentCreationEnum.BOUNDATION_END_DATE.name().toLowerCase(), "OPTIONAL"),
                 Map.of(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), "OPTIONAL"),
                 Map.of(AssessmentCreationEnum.ASSESSMENT_VISIBILITY.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.EXPECTED_PARTICIPANTS.name().toLowerCase(), "REQUIRED"),

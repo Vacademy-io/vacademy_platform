@@ -25,9 +25,11 @@ import {
     defaultSubmissionTypeFor,
     flattenFormErrors,
     getStepKey,
+    isBasicInfoStepComplete,
+    resultTypeForEdit,
+    showsResultReleaseSettings,
     getTimeLimitString,
     isOpenEndedExamType,
-    normalizeResultTypeFor,
     syncStep1DataWithStore,
 } from '../../-utils/helper';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
@@ -650,16 +652,6 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     const liveDateRangeEndDate = watch('testCreation.liveDateRange.endDate');
     const reattemptCount = watch('reattemptCount');
 
-    // Determine if all fields are filled
-    const isFormValid =
-        (examType === 'EXAM' || examType === 'SURVEY') && assessmentId === 'defaultId'
-            ? !!assessmentName &&
-              !!liveDateRangeStartDate &&
-              !!liveDateRangeEndDate &&
-              !!Number(reattemptCount) &&
-              Object.entries(form.formState.errors).length === 0
-            : !!assessmentName && Object.entries(form.formState.errors).length === 0;
-
     const handleSubmitStep1Form = useMutation({
         mutationFn: ({
             data,
@@ -752,6 +744,33 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     // arrives via form.reset — so saved instructions look blank when editing.
     const [editorHydrationKey, setEditorHydrationKey] = useState(0);
 
+    // The live-window card renders only when the backend declares either
+    // boundation date for this assessment type (see the SectionCard below), and
+    // SURVEY declares neither — AssessmentBasicDetail.getStepsForSurvey lists
+    // only subject/visibility/expected-participants/reattempt. Demanding the
+    // dates unconditionally therefore left "Next" permanently disabled on a new
+    // survey, with nothing on screen to fill in. Require them only when they are
+    // actually on screen. (The zod schema already treats both as optional.)
+    // A survey renders both dates as OPTIONAL, an exam as REQUIRED. Gate the
+    // "Next" rule on REQUIRED only — keying it off mere presence would make a
+    // survey's optional dates mandatory again.
+    const liveDateRule = (key: string) => getStepKey({ assessmentDetails, currentStep, key });
+    const requiresLiveDateRange =
+        liveDateRule('boundation_start_date') === 'REQUIRED' ||
+        liveDateRule('boundation_end_date') === 'REQUIRED';
+
+    // Determine if all fields are filled
+    const isFormValid = isBasicInfoStepComplete({
+        examType,
+        isNewAssessment: assessmentId === 'defaultId',
+        requiresLiveDateRange,
+        assessmentName,
+        liveDateRangeStartDate,
+        liveDateRangeEndDate,
+        reattemptCount,
+        errorCount: Object.entries(form.formState.errors).length,
+    });
+
     useEffect(() => {
         setIsLoading(true);
         const fetchAssessmentDetails = async () => {
@@ -835,12 +854,10 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             // 27 older exams carry no result_type; they are all AUTO-evaluated,
             // and preselecting MANUAL for them (the old fallback) flipped a working
             // exam to teacher-checked on any Step 1 edit.
-            resultType: normalizeResultTypeFor(
+            resultType: resultTypeForEdit(
                 examType,
                 savedData?.result_type ||
-                    (savedData?.evaluation_type === 'MANUAL'
-                        ? 'MANUAL'
-                        : defaultResultTypeFor(examType))
+                    (savedData?.evaluation_type === 'MANUAL' ? 'MANUAL' : undefined)
             ),
             switchSections: savedData?.can_switch_section,
             raiseReattemptRequest: savedData?.reattempt_consent,
@@ -1108,6 +1125,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                             )}
                         />
                     )}
+                    {showsResultReleaseSettings(examType) && (
                     <div className="flex flex-col gap-6" id="evaluation-type">
                         <div className="flex flex-col gap-3">
                             <p className="text-sm font-medium">
@@ -1240,6 +1258,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 </div>
                             )}
                     </div>
+                    )}
 
                     <div className="flex flex-col gap-6" id="attempt-settings">
                         {/*

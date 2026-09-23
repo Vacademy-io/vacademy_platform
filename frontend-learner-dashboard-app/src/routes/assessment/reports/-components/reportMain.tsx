@@ -22,6 +22,7 @@ import { getFileDetail } from "@/services/upload_file";
 import { toast } from "sonner";
 import { EvaluatedReportDialog } from "@/components/common/student-test-records/evaluated-report-dialog";
 import { useTranslation } from "react-i18next";
+import { isReportableAttempt } from "../-utils/reportable-attempt";
 
 interface EvaluatedPreview {
   url: string;
@@ -220,11 +221,23 @@ const AssessmentReportList = ({
         }
       );
 
-      const newReports = response.data.content;
+      const newReports = (response.data.content as Report[]).filter(
+        isReportableAttempt
+      );
       setReports((prev) =>
         pageNo === 0 ? newReports : [...prev, ...newReports]
       );
-      setHasMore(!response.data.last);
+
+      const isLastPage = response.data.last;
+      setHasMore(!isLastPage);
+
+      // Infinite scroll advances when the LAST RENDERED row scrolls into view.
+      // A page that filters down to nothing (all surveys) renders no new row, so
+      // the observer would never fire again and the remaining pages would be
+      // unreachable. Pull the next page ourselves instead.
+      if (newReports.length === 0 && !isLastPage) {
+        setPageNo((prev) => prev + 1);
+      }
     } catch (err) {
       console.error("Error fetching reports:", err);
       setError(t("reportList.error.loadFailed"));

@@ -185,7 +185,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       const docType = slide.document_slide.type;
       if (docType === "PDF") {
         return { Icon: FilePdf, color: "text-red-600", label: t("courseStructureDetails.slideType.pdf") };
-      } else if (docType === "DOC" || docType === "DOCX") {
+      } else if (docType === "DOC" || docType === "DOCX" || docType === "HTML") {
         return { Icon: FileDoc, color: "text-blue-600", label: t("courseStructureDetails.slideType.document") };
       }
     }

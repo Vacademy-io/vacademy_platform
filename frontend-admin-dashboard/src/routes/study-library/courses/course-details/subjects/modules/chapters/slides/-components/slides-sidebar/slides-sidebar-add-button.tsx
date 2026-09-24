@@ -36,6 +36,9 @@ import { useContentStore } from '@/routes/study-library/courses/course-details/s
 import { useDialogStore } from '@/routes/study-library/courses/-stores/slide-add-dialogs-store';
 import { File, GameController, ClipboardText } from '@phosphor-icons/react';
 import { formatHTMLString } from '../slide-operations/formatHtmlString';
+import { importHtmlZip } from '../html-doc/html-zip-import';
+import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
 import { EMPTY_LEXICAL_INNER } from '../lexical-editor/lexical-doc-marker';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
@@ -51,7 +54,7 @@ import {
 import { createPresentationSlidePayload } from '../create-presentation-slide';
 import AddQuestionDialog from './add-question-dialog';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type DisplaySettingsData } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
@@ -196,6 +199,11 @@ export const ChapterSidebarAddButton = () => {
                         label: t('menu.createHtmlDoc.label'),
                         value: 'create-html-doc',
                         description: t('menu.createHtmlDoc.description'),
+                    },
+                    {
+                        label: t('menu.uploadHtmlZip.label'),
+                        value: 'upload-html-zip',
+                        description: t('menu.uploadHtmlZip.description'),
                     },
                     {
                         label: t('menu.createDocLegacy.label'),
@@ -380,6 +388,83 @@ export const ChapterSidebarAddButton = () => {
             .filter(Boolean) as typeof dropdownList;
     }, [roleDisplay?.contentTypes, roleDisplay?.assessmentPage, dropdownList]);
 
+    const zipInputRef = useRef<HTMLInputElement | null>(null);
+    const [isImportingZip, setIsImportingZip] = useState(false);
+
+    /**
+     * Import a zipped HTML document — index.html plus its css/js/images, the
+     * shape AI tools export — as one 'HTML' slide. Stylesheets and local
+     * scripts are inlined and every binary asset is uploaded to S3, so the
+     * saved slide is self-contained and keeps working after the zip is gone.
+     */
+    const handleHtmlZipSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        // Reset immediately so re-picking the same file still fires onChange.
+        event.target.value = '';
+        if (!file || isImportingZip) return;
+
+        const decoded = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken));
+        const userId = (decoded as unknown as { userId?: string })?.userId || decoded?.sub || '';
+
+        const toastId = toast.loading(t('toasts.zipReading'));
+        setIsImportingZip(true);
+        try {
+            const result = await importHtmlZip(file, userId, (progress) => {
+                if (progress.phase === 'uploading' && progress.total > 0) {
+                    toast.loading(
+                        t('toasts.zipUploadingAssets', {
+                            done: progress.done,
+                            total: progress.total,
+                        }),
+                        { id: toastId }
+                    );
+                }
+            });
+
+            const slideId = crypto.randomUUID();
+            const response = await addUpdateDocumentSlide({
+                id: slideId,
+                title: result.title,
+                image_file_id: '',
+                description: 'HTML Document',
+                slide_order: getNextSlideOrder(items || []),
+                document_slide: {
+                    id: crypto.randomUUID(),
+                    type: 'HTML',
+                    data: result.html,
+                    title: result.title,
+                    cover_file_id: '',
+                    total_pages: 1,
+                    published_data: result.html,
+                    published_document_total_pages: 1,
+                },
+                status: getSlideStatusForUser(),
+                new_slide: true,
+                notify: false,
+            });
+            if (response) await reorderSlidesAfterNewSlide(slideId);
+
+            toast.success(
+                t('toasts.zipImported', {
+                    title: result.title,
+                    assets: result.uploadedAssets,
+                }),
+                { id: toastId }
+            );
+            if (result.unresolved.length) {
+                toast.warning(t('toasts.zipUnresolved', { count: result.unresolved.length }));
+            }
+            result.warnings.forEach((warning) => toast.warning(warning));
+        } catch (error) {
+            console.error('HTML zip import failed:', error);
+            toast.error(error instanceof Error ? error.message : t('toasts.zipImportFailed'), {
+                id: toastId,
+            });
+        } finally {
+            setIsImportingZip(false);
+        }
+    };
+
     const handleSelect = async (value: string) => {
         switch (value) {
             case 'quick-add': {
@@ -493,6 +578,9 @@ export const ChapterSidebarAddButton = () => {
                 }
                 break;
             }
+            case 'upload-html-zip':
+                zipInputRef.current?.click();
+                break;
             case 'create-html-doc': {
                 // The Tiptap-based document type: data is plain HTML (no Yoopta
                 // wrapper), edited with the new editor. Coexists with 'DOC'.
@@ -1004,6 +1092,15 @@ export const ChapterSidebarAddButton = () => {
                     <AddVimeoDialog openState={(open) => !open && closeVimeoDialog()} />
                 </div>
             </MyDialog>
+
+            {/* Drives the "Upload HTML zip" menu entry; kept out of the DOM flow. */}
+            <input
+                ref={zipInputRef}
+                type="file"
+                accept=".zip,application/zip,application/x-zip-compressed"
+                className="hidden"
+                onChange={handleHtmlZipSelected}
+            />
         </div>
     );
 };

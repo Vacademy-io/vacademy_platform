@@ -10,7 +10,12 @@
         "codeCreateFailed": "فشل إنشاء محرر الأكواد",
         "slideAutoPublished": "تم إنشاء الشريحة ونشرها تلقائيًا للمراجعة",
         "quizCreated": "تم إنشاء الاختبار القصير بنجاح!",
-        "quizCreateFailedRetry": "فشل إنشاء الاختبار القصير. يرجى المحاولة مرة أخرى."
+        "quizCreateFailedRetry": "فشل إنشاء الاختبار القصير. يرجى المحاولة مرة أخرى.",
+        "zipReading": "جارٍ قراءة الملف المضغوط…",
+        "zipUploadingAssets": "جارٍ تحميل الأصول… {{done}} من {{total}}",
+        "zipImported": "تم استيراد \"{{title}}\" مع {{assets}} من الأصول",
+        "zipUnresolved": "تعذّر تحميل {{count}} من الأصول، ولا تزال تشير إلى مسارها الأصلي",
+        "zipImportFailed": "تعذّر استيراد هذا الملف المضغوط"
     },
     "menu": {
         "quickAdd": { "label": "إضافة سريعة (بالجملة)", "description": "تحميل وإضافة عدة شرائح دفعة واحدة" },
@@ -20,6 +25,7 @@
         "uploadDoc": { "label": "التحميل من الجهاز", "description": "تحميل مستند موجود" },
         "createDocLexical": { "label": "إنشاء مستند جديد", "description": "البدء بمستند فارغ" },
         "createHtmlDoc": { "label": "مستند بالذكاء الاصطناعي", "description": "صفحة تفاعلية غنية من تأليف الذكاء الاصطناعي" },
+        "uploadHtmlZip": { "label": "تحميل ملف HTML مضغوط", "description": "صفحة مضغوطة مع ملفات css وjs والصور" },
         "createDocLegacy": { "label": "إنشاء مستند (المحرر القديم)", "description": "قديم — محرر المستندات السابق" },
         "video": { "label": "فيديو", "description": "محتوى فيديو" },
         "uploadVideo": { "label": "تحميل ملف فيديو", "description": "التحميل من الجهاز" },

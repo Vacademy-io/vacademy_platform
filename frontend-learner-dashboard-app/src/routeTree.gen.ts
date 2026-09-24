@@ -81,6 +81,7 @@ import { Route as LearningCentreAttendanceIndexRouteImport } from './routes/lear
 import { Route as LeaderboardPackageSessionIdIndexRouteImport } from './routes/leaderboard/$packageSessionId/index'
 import { Route as HomeworkReportsIndexRouteImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/index'
+import { Route as GoUsernameIndexRouteImport } from './routes/go/$username/index'
 import { Route as EngagementHistoryIndexRouteImport } from './routes/engagement/history/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
 import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/course-details/index'
@@ -497,6 +498,11 @@ const HomeworkListIndexRoute = HomeworkListIndexRouteImport.update({
   path: '/homework/list/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GoUsernameIndexRoute = GoUsernameIndexRouteImport.update({
+  id: '/go/$username/',
+  path: '/go/$username/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EngagementHistoryIndexRoute = EngagementHistoryIndexRouteImport.update({
   id: '/engagement/history/',
   path: '/engagement/history/',
@@ -795,6 +801,7 @@ export interface FileRoutesByFullPath {
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/engagement/history': typeof EngagementHistoryIndexRoute
+  '/go/$username': typeof GoUsernameIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
@@ -908,6 +915,7 @@ export interface FileRoutesByTo {
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/engagement/history': typeof EngagementHistoryIndexRoute
+  '/go/$username': typeof GoUsernameIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
@@ -1024,6 +1032,7 @@ export interface FileRoutesById {
   '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
   '/engagement/history/': typeof EngagementHistoryIndexRoute
+  '/go/$username/': typeof GoUsernameIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId/': typeof LeaderboardPackageSessionIdIndexRoute
@@ -1141,6 +1150,7 @@ export interface FileRouteTypes {
     | '/courses/course-details'
     | '/dashboard/notifications'
     | '/engagement/history'
+    | '/go/$username'
     | '/homework/list'
     | '/homework/reports'
     | '/leaderboard/$packageSessionId'
@@ -1254,6 +1264,7 @@ export interface FileRouteTypes {
     | '/courses/course-details'
     | '/dashboard/notifications'
     | '/engagement/history'
+    | '/go/$username'
     | '/homework/list'
     | '/homework/reports'
     | '/leaderboard/$packageSessionId'
@@ -1369,6 +1380,7 @@ export interface FileRouteTypes {
     | '/courses/course-details/'
     | '/dashboard/notifications/'
     | '/engagement/history/'
+    | '/go/$username/'
     | '/homework/list/'
     | '/homework/reports/'
     | '/leaderboard/$packageSessionId/'
@@ -1485,6 +1497,7 @@ export interface RootRouteChildren {
   CoursesCourseDetailsIndexRoute: typeof CoursesCourseDetailsIndexRoute
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
   EngagementHistoryIndexRoute: typeof EngagementHistoryIndexRoute
+  GoUsernameIndexRoute: typeof GoUsernameIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
   LeaderboardPackageSessionIdIndexRoute: typeof LeaderboardPackageSessionIdIndexRoute
@@ -2042,6 +2055,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeworkListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/go/$username/': {
+      id: '/go/$username/'
+      path: '/go/$username'
+      fullPath: '/go/$username'
+      preLoaderRoute: typeof GoUsernameIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/engagement/history/': {
       id: '/engagement/history/'
       path: '/engagement/history'
@@ -2429,6 +2449,7 @@ const rootRouteChildren: RootRouteChildren = {
   CoursesCourseDetailsIndexRoute: CoursesCourseDetailsIndexRoute,
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
   EngagementHistoryIndexRoute: EngagementHistoryIndexRoute,
+  GoUsernameIndexRoute: GoUsernameIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
   LeaderboardPackageSessionIdIndexRoute: LeaderboardPackageSessionIdIndexRoute,

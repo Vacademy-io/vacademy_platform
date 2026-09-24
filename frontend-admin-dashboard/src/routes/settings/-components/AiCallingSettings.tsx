@@ -102,6 +102,7 @@ export interface AiCallingSettingsData {
     // Counsellor assignment
     assignmentMode: AssignmentMode;
     assignExhaustedToHuman: boolean;
+    reassignQualifiedToPool: boolean;
 
     /**
      * Auto-capture unknown INBOUND callers as leads. When the AI helpline answers a
@@ -144,6 +145,7 @@ const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
     customDispositions: [],
     assignmentMode: 'ROUND_ROBIN',
     assignExhaustedToHuman: true,
+    reassignQualifiedToPool: false,
     inboundLeadCapture: { enabled: false },
 };
 
@@ -1000,6 +1002,23 @@ export default function AiCallingSettings() {
                                 <Label htmlFor="assign-exhausted" className="cursor-pointer">
                                     {t('assignmentCard.assignExhausted')}
                                 </Label>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                                <Switch
+                                    id="reassign-qualified"
+                                    className="mt-0.5"
+                                    checked={settings.reassignQualifiedToPool}
+                                    onCheckedChange={(v) => update({ reassignQualifiedToPool: v })}
+                                />
+                                <div className="flex flex-col gap-0.5">
+                                    <Label htmlFor="reassign-qualified" className="cursor-pointer">
+                                        {t('assignmentCard.reassignQualified')}
+                                    </Label>
+                                    <span className="text-caption text-neutral-500">
+                                        {t('assignmentCard.reassignQualifiedHint')}
+                                    </span>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>

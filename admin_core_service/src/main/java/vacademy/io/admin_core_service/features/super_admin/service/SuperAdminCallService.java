@@ -147,15 +147,17 @@ public class SuperAdminCallService {
     /**
      * Per-component rupee cost.
      *
-     * <p>Plivo is billed in WHOLE MINUTES — a six-second call still costs a full
-     * minute — so it is ceiled. STT, TTS and the LLM are genuine usage meters
-     * (per second, per character, per token) and stay fractional. Charging the
-     * telephony leg fractionally understated every short call.
+     * <p>Plivo bills in 30-SECOND PULSES — a six-second call costs half a
+     * minute, a 1:45 call two minutes — so the telephony leg is ceiled to the
+     * pulse. (It was ceiled to whole minutes, which overstated every call by up
+     * to half a minute: verified against the Plivo rate, 2026-09-23.) STT, TTS
+     * and the LLM are usage meters (per second, per character, per token) and
+     * stay fractional.
      */
     private Map<String, Double> breakdown(Map<String, Double> card, String ttsModel,
                                           double minutes, int seconds, Integer ttsChars) {
         String engine = (ttsModel == null || ttsModel.isBlank()) ? "sarvam" : ttsModel.trim().toLowerCase();
-        long billedMinutes = seconds <= 0 ? 0 : (seconds + 59) / 60;
+        double billedMinutes = seconds <= 0 ? 0 : ((seconds + 29) / 30) / 2.0;
         Map<String, Double> b = new LinkedHashMap<>();
         b.put("plivo", round(card.getOrDefault("plivo", 0d) * billedMinutes));
         b.put("stt", round(card.getOrDefault("stt_sarvam", 0d) * minutes));

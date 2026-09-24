@@ -22,6 +22,7 @@ import { formatHTMLString } from './-components/slide-operations/formatHtmlStrin
 import { EMPTY_LEXICAL_INNER } from './-components/lexical-editor/lexical-doc-marker';
 import { docHtmlToLexicalIfSafe } from './-components/lexical-editor/convert-yoopta';
 import { HTML_DOC_TYPE } from './-components/html-doc/html-doc-utils';
+import { importHtmlZip } from './-components/html-doc/html-zip-import';
 import {
     Plus,
     YoutubeLogo,
@@ -33,6 +34,7 @@ import {
     MusicNotes,
     Image as ImageIcon,
     FileHtml,
+    FileZip,
     PencilSimple,
     Check,
     X,
@@ -57,6 +59,7 @@ type StagedKind =
     | 'IMAGE'
     | 'AUDIO'
     | 'HTML'
+    | 'ZIP'
     | 'EXTERNAL_LINK'
     | 'EMBED'
     | 'EMPTY_DOC'
@@ -217,6 +220,16 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
                 next.push({
                     id: crypto.randomUUID(),
                     kind: 'HTML',
+                    title: file.name.replace(/\.[^/.]+$/, ''),
+                    file,
+                    mime,
+                });
+            } else if (ext === 'zip' || mime.includes('zip')) {
+                // A zipped HTML document (index.html + css/js/images). Handled
+                // by the same importer as the doc menu's "Upload HTML zip".
+                next.push({
+                    id: crypto.randomUUID(),
+                    kind: 'ZIP',
                     title: file.name.replace(/\.[^/.]+$/, ''),
                     file,
                     mime,
@@ -778,6 +791,41 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
                     setStaged((prev) =>
                         prev.map((it) => (it.id === item.id ? { ...it, status: 'done' } : it))
                     );
+                } else if (item.kind === 'ZIP' && item.file) {
+                    // Zipped HTML document (index.html + css/js/images): inline
+                    // the text assets, push the binaries to S3, and store the
+                    // single self-contained page the importer returns.
+                    const userId =
+                        (decoded as unknown as { userId?: string })?.userId || decoded?.sub || '';
+                    const imported = await importHtmlZip(item.file, userId);
+                    const id = crypto.randomUUID();
+                    // The staged title is what the admin sees and can edit, so
+                    // it wins over the document's own <title>.
+                    const title = item.title || imported.title;
+                    const resp: string = await addUpdateDocumentSlide({
+                        id,
+                        title,
+                        image_file_id: '',
+                        description: 'HTML Document',
+                        slide_order: 0,
+                        document_slide: {
+                            id: crypto.randomUUID(),
+                            type: HTML_DOC_TYPE,
+                            data: imported.html,
+                            title,
+                            cover_file_id: '',
+                            total_pages: 1,
+                            published_data: imported.html,
+                            published_document_total_pages: 1,
+                        },
+                        status,
+                        new_slide: true,
+                        notify: false,
+                    });
+                    createdIds.push(resp || id);
+                    setStaged((prev) =>
+                        prev.map((it) => (it.id === item.id ? { ...it, status: 'done' } : it))
+                    );
                 } else if (item.kind === 'EXTERNAL_LINK' && item.url) {
                     const html = `<html><head></head><body><p><a href='${item.url}' target='_blank' rel='noreferrer noopener'>${item.url}</a></p></body></html>`;
                     const normalized = normalizeHtmlQuotes(html);
@@ -1222,6 +1270,8 @@ function renderKindIcon(kind: StagedKind) {
             return <MusicNotes className={cls} />;
         case 'HTML':
             return <FileHtml className={cls} />;
+        case 'ZIP':
+            return <FileZip className={cls} />;
         case 'EXTERNAL_LINK':
             return <LinkSimple className={cls} />;
         case 'CODE':

@@ -4,6 +4,7 @@
     "addImages": "Ajouter des images",
     "attachPdf": "Joindre un PDF",
     "pasteHtml": "Coller du HTML",
+    "uploadZip": "Téléverser un zip",
     "hidePasteBox": "Masquer la zone de collage",
     "pasteHtmlHint": "Vous avez déjà une page créée ailleurs ? Collez le HTML complet ici — aucun crédit utilisé. Vous pourrez toujours l'affiner avec l'IA ensuite.",
     "useThisHtml": "Utiliser ce HTML",
@@ -47,7 +48,12 @@
         "generationFailed": "Échec de la génération.",
         "pasteHtmlFirst": "Collez d'abord votre HTML.",
         "notHtml": "Cela ne ressemble pas à du HTML — collez le balisage complet de la page.",
-        "htmlAdded": "HTML ajouté. Affinez-le avec l'IA ou modifiez la source à tout moment."
+        "htmlAdded": "HTML ajouté. Affinez-le avec l'IA ou modifiez la source à tout moment.",
+        "zipReading": "Lecture du zip…",
+        "zipUploadingAssets": "Téléversement des ressources… {{done}} sur {{total}}",
+        "zipImported": "Zip importé — {{assets}} ressource(s) téléversée(s)",
+        "zipUnresolved": "{{count}} ressource(s) n’ont pas pu être téléversées et pointent toujours vers leur chemin d’origine",
+        "zipFailed": "Impossible d’importer ce zip"
     },
     "contentTypes": {
         "notes": "Notes courtes",

@@ -82,7 +82,21 @@ const MIME_BY_EXT: Record<string, string> = {
     mp3: 'audio/mpeg',
     wav: 'audio/wav',
     ogg: 'audio/ogg',
+    m4a: 'audio/mp4',
+    aac: 'audio/aac',
+    flac: 'audio/flac',
+    mov: 'video/quicktime',
     pdf: 'application/pdf',
+    // Nested pages and the data files interactive content loads at runtime.
+    html: 'text/html',
+    htm: 'text/html',
+    json: 'application/json',
+    txt: 'text/plain',
+    csv: 'text/csv',
+    xml: 'application/xml',
+    glb: 'model/gltf-binary',
+    gltf: 'model/gltf+json',
+    wasm: 'application/wasm',
 };
 
 const mimeFor = (name: string): string =>
@@ -217,7 +231,20 @@ const ASSET_ATTRS: ReadonlyArray<{ selector: string; attr: string; srcset?: bool
     { selector: 'object[data]', attr: 'data' },
     { selector: 'input[type="image"][src]', attr: 'src' },
     { selector: 'link[rel~="icon"][href]', attr: 'href' },
+    // An embedded sub-page from the same zip: uploaded as text/html and
+    // loaded from S3 rather than left pointing at a path that no longer exists.
+    { selector: 'iframe[src]', attr: 'src' },
+    { selector: 'use[href]', attr: 'href' },
+    { selector: 'image[href]', attr: 'href' },
 ];
+
+/**
+ * String literals in code, for the assets an interactive page loads at
+ * runtime — `new Audio('sfx/hit.mp3')`, `fetch('data/levels.json')`, a sprite
+ * path built in a game loop. A literal only counts when it matches a real
+ * entry in the archive, which keeps ordinary strings from being rewritten.
+ */
+const JS_STRING_RE = /(['"`])([^'"`\r\n]{1,300})\1/g;
 
 /** Split a srcset into its candidates, preserving each descriptor. */
 const parseSrcset = (value: string): Array<{ url: string; descriptor: string }> =>
@@ -281,6 +308,15 @@ export async function buildHtmlDocument(
     const files = zip.entries.filter((e) => !e.isDirectory && !isJunkPath(e.path));
     if (!files.length) throw new Error('This zip has no files in it.');
 
+    // A SCORM package is also a zip with an index.html inside. Flattening one
+    // into a page would silently drop its manifest, sequencing and tracking,
+    // so refuse and name the slide type that actually handles it.
+    if (files.some((e) => /(^|\/)imsmanifest\.xml$/i.test(e.path))) {
+        throw new Error(
+            'This looks like a SCORM package (it contains imsmanifest.xml). Add it with the SCORM Package slide type instead.'
+        );
+    }
+
     const index = new Map(files.map((e) => [e.path.toLowerCase(), e.path]));
     const htmlFiles = files.filter((e) => HTML_RE.test(e.path));
     if (!htmlFiles.length) {
@@ -309,6 +345,8 @@ export async function buildHtmlDocument(
 
     // <link rel="stylesheet"> → <style>. Remote stylesheets (Google Fonts and
     // friends) resolve to null and are deliberately left as <link>.
+    // Files whose contents now live in the document; never worth an S3 copy.
+    const inlinedPaths = new Set<string>();
     let inlinedStylesheets = 0;
     for (const link of Array.from(doc.querySelectorAll('link[rel][href]'))) {
         const rel = (link.getAttribute('rel') || '').toLowerCase().split(/\s+/);
@@ -328,11 +366,20 @@ export async function buildHtmlDocument(
         style.setAttribute('data-imported-from', href);
         link.replaceWith(style);
         cssBlocks.push({ element: style, text: css });
+        inlinedPaths.add(resolved);
         inlinedStylesheets++;
     }
 
     // Local <script src> → inline. Remote scripts stay as-is; the sandbox
     // allows scripts, so a CDN import still loads at render time.
+    const scriptBlocks: Array<{ element: Element; text: string }> = [];
+    // `defer` only applies to a script with a src. Once inlined the attribute
+    // is ignored, so a head script that waited for the document would start
+    // running against a DOM that does not exist yet. Re-appending these to the
+    // end of <body>, in their original order, restores the guarantee the page
+    // was written against — and unlike wrapping them in a DOMContentLoaded
+    // listener it leaves their declarations in global scope.
+    const deferred: Element[] = [];
     let inlinedScripts = 0;
     for (const script of Array.from(doc.querySelectorAll('script[src]'))) {
         const src = script.getAttribute('src') || '';
@@ -340,8 +387,16 @@ export async function buildHtmlDocument(
         if (!resolved) continue;
         try {
             const js = await zip.readText(resolved);
+            const wasDeferred =
+                script.hasAttribute('defer') &&
+                !script.hasAttribute('async') &&
+                (script.getAttribute('type') || '').toLowerCase() !== 'module';
             script.removeAttribute('src');
-            script.textContent = escapeScriptText(js);
+            script.removeAttribute('defer');
+            script.removeAttribute('async');
+            if (wasDeferred) deferred.push(script);
+            scriptBlocks.push({ element: script, text: js });
+            inlinedPaths.add(resolved);
             inlinedScripts++;
             if ((script.getAttribute('type') || '').toLowerCase() === 'module') {
                 warnings.push(
@@ -351,6 +406,18 @@ export async function buildHtmlDocument(
         } catch {
             unresolved.push(resolved);
         }
+    }
+
+    // Order is preserved because appendChild moves each node in turn.
+    for (const script of deferred) {
+        (doc.body ?? doc.documentElement)?.appendChild(script);
+    }
+
+    // Scripts the author already wrote inline can reference assets too.
+    for (const script of Array.from(doc.querySelectorAll('script:not([src])'))) {
+        if (scriptBlocks.some((b) => b.element === script)) continue;
+        const text = script.textContent || '';
+        if (text.trim()) scriptBlocks.push({ element: script, text });
     }
 
     // Everything the document still needs from inside the zip.
@@ -368,6 +435,21 @@ export async function buildHtmlDocument(
     for (const block of cssBlocks) {
         for (const match of block.text.matchAll(new RegExp(`${ZIP_REF}([^"')]+)`, 'g'))) {
             if (match[1]) needed.add(match[1]);
+        }
+    }
+
+    // Runtime refs written as string literals in code. Anything we already
+    // inlined (a css/js file) is excluded — it lives in the document now, so
+    // a copy on S3 would only be dead weight.
+    const codeRefs = new Map<string, string>();
+    for (const block of scriptBlocks) {
+        for (const match of block.text.matchAll(JS_STRING_RE)) {
+            const literal = match[2];
+            if (!literal || codeRefs.has(literal)) continue;
+            const resolved = resolveZipPath(entry.path, literal, index);
+            if (!resolved || inlinedPaths.has(resolved)) continue;
+            codeRefs.set(literal, resolved);
+            needed.add(resolved);
         }
     }
 
@@ -445,6 +527,21 @@ export async function buildHtmlDocument(
             new RegExp(`${ZIP_REF}([^"')]+)`, 'g'),
             (full, path: string) => urlByPath.get(path) ?? full
         );
+    }
+
+    // Point code-held paths at S3, keeping whichever quote the author used,
+    // then commit the script bodies. Escaping happens last so it covers both
+    // the inlined files and the page's own inline scripts.
+    for (const block of scriptBlocks) {
+        let text = block.text;
+        for (const [literal, path] of codeRefs) {
+            const url = urlByPath.get(path);
+            if (!url) continue;
+            for (const quote of ['"', "'", '`']) {
+                text = text.split(`${quote}${literal}${quote}`).join(`${quote}${url}${quote}`);
+            }
+        }
+        block.element.textContent = escapeScriptText(text);
     }
 
     // srcDoc inherits the parent's encoding, but an explicit charset keeps the

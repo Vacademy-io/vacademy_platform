@@ -4,6 +4,7 @@
     "addImages": "Add images",
     "attachPdf": "Attach PDF",
     "pasteHtml": "Paste HTML",
+    "uploadZip": "Upload zip",
     "hidePasteBox": "Hide paste box",
     "pasteHtmlHint": "Already have a page built elsewhere? Paste the complete HTML here — no credits used. You can still refine it with AI afterwards.",
     "useThisHtml": "Use this HTML",
@@ -45,7 +46,12 @@
         "generationFailed": "Generation failed.",
         "pasteHtmlFirst": "Paste your HTML first.",
         "notHtml": "That does not look like HTML — paste the full page markup.",
-        "htmlAdded": "HTML added. Refine it with AI or edit the source anytime."
+        "htmlAdded": "HTML added. Refine it with AI or edit the source anytime.",
+        "zipReading": "Reading the zip…",
+        "zipUploadingAssets": "Uploading assets… {{done}} of {{total}}",
+        "zipImported": "Zip imported — {{assets}} asset(s) uploaded",
+        "zipUnresolved": "{{count}} asset(s) could not be uploaded and still point at their original path",
+        "zipFailed": "Could not import this zip"
     },
     "contentTypes": {
         "notes": "Short notes",

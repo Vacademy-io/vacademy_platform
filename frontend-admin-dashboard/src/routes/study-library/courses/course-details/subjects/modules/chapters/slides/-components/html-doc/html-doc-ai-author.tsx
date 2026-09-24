@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     MagicWand,
     Code,
+    FileZip,
     Spinner,
     Image as ImageIcon,
     FilePdf,
@@ -23,6 +24,7 @@ import { Slide } from '../../-hooks/use-slides';
 import { getInitialHtmlDocContent } from './html-doc-utils';
 import { generateHtmlDocumentStream, buildHtmlContentTypes } from './html-doc-ai-service';
 import { HtmlSlidePreview } from '@/components/html-slide/html-slide-preview';
+import { importHtmlZip } from './html-zip-import';
 
 type HtmlDocAiAuthorProps = {
     slide: Slide;
@@ -98,6 +100,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
     slideIdRef.current = slide.id;
     const imageInputRef = useRef<HTMLInputElement | null>(null);
     const pdfInputRef = useRef<HTMLInputElement | null>(null);
+    const zipInputRef = useRef<HTMLInputElement | null>(null);
 
     const html = (versionIndex >= 0 ? versions[versionIndex] : '') ?? '';
     const hasContent = !!html.trim();
@@ -234,6 +237,46 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
 
     const cancelGenerate = () => abortRef.current?.abort();
 
+    /**
+     * A zipped page (index.html plus its css, js, images, media) becomes the
+     * document in one step: assets go to S3, local css/js are inlined, and the
+     * result is pushed as a new version so it renders in the preview below.
+     */
+    const onPickZip = async (files: FileList | null) => {
+        const file = files?.[0];
+        if (!file) return;
+        setIsUploading(true);
+        const toastId = toast.loading(t('toast.zipReading'));
+        try {
+            const result = await importHtmlZip(file, currentUserId(), (progress) => {
+                if (progress.phase === 'uploading' && progress.total > 0) {
+                    toast.loading(
+                        t('toast.zipUploadingAssets', {
+                            done: progress.done,
+                            total: progress.total,
+                        }),
+                        { id: toastId }
+                    );
+                }
+            });
+            pushVersion(result.html);
+            toast.success(t('toast.zipImported', { assets: result.uploadedAssets }), {
+                id: toastId,
+            });
+            if (result.unresolved.length) {
+                toast.warning(t('toast.zipUnresolved', { count: result.unresolved.length }));
+            }
+            result.warnings.forEach((warning) => toast.warning(warning));
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : t('toast.zipFailed'), {
+                id: toastId,
+            });
+        } finally {
+            setIsUploading(false);
+            if (zipInputRef.current) zipInputRef.current.value = '';
+        }
+    };
+
     const usePastedHtml = () => {
         const next = pastedHtml.trim();
         if (!next) {
@@ -286,6 +329,13 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                 className="hidden"
                                 onChange={(e) => void onPickPdf(e.target.files)}
                             />
+                            <input
+                                ref={zipInputRef}
+                                type="file"
+                                accept=".zip,application/zip,application/x-zip-compressed"
+                                className="hidden"
+                                onChange={(e) => void onPickZip(e.target.files)}
+                            />
                             <MyButton
                                 buttonType="secondary"
                                 scale="small"
@@ -309,6 +359,14 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             >
                                 <Code className="size-4" />
                                 {showPaste ? t('hidePasteBox') : t('pasteHtml')}
+                            </MyButton>
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                disable={isUploading}
+                                onClick={() => zipInputRef.current?.click()}
+                            >
+                                <FileZip className="size-4" /> {t('uploadZip')}
                             </MyButton>
                             {isUploading && <Spinner className="size-4 animate-spin text-primary-500" />}
                         </div>

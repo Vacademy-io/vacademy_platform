@@ -91,6 +91,15 @@ describe('buildHtmlDocument', () => {
         await expect(importZip({ 'notes.txt': 'hello' })).rejects.toThrow(/No \.html file/i);
     });
 
+    it('refuses a SCORM package rather than flattening it into a page', async () => {
+        await expect(
+            importZip({
+                'imsmanifest.xml': '<manifest/>',
+                'index.html': '<html><body>scorm</body></html>',
+            })
+        ).rejects.toThrow(/SCORM Package slide type/i);
+    });
+
     it('prefers index.html and reports the pages it skipped', async () => {
         const result = await importZip({
             'about.html': '<html><body>about</body></html>',
@@ -196,6 +205,33 @@ describe('buildHtmlDocument', () => {
         expect(result.html).toContain('https://cdn.example.com/lib.js');
     });
 
+    it('moves a deferred script to the end of body so the DOM exists when it runs', async () => {
+        const result = await importZip({
+            'index.html':
+                '<html><head><script defer src="app.js"></script></head><body><div id="root"></div></body></html>',
+            'app.js': 'document.getElementById("root").textContent = "ready";',
+        });
+
+        // Inlining drops the defer guarantee, so the script has to move.
+        expect(result.html).not.toContain('defer');
+        const rootAt = result.html.indexOf('id="root"');
+        const scriptAt = result.html.indexOf('getElementById');
+        expect(rootAt).toBeGreaterThan(-1);
+        expect(scriptAt).toBeGreaterThan(rootAt);
+    });
+
+    it('leaves a non-deferred script where the author put it', async () => {
+        const result = await importZip({
+            'index.html':
+                '<html><head><script src="early.js"></script></head><body><div id="root"></div></body></html>',
+            'early.js': 'window.EARLY = 1;',
+        });
+
+        const scriptAt = result.html.indexOf('window.EARLY');
+        const rootAt = result.html.indexOf('id="root"');
+        expect(scriptAt).toBeLessThan(rootAt);
+    });
+
     it('neutralises a </script> inside inlined JS so the document still parses', async () => {
         const result = await importZip({
             'index.html': '<html><body><script src="app.js"></script></body></html>',
@@ -235,6 +271,66 @@ describe('buildHtmlDocument', () => {
         const result = await importZip({ 'index.html': '<html><body>hi</body></html>' });
         expect(result.html).toMatch(/^<!doctype html>/);
         expect(result.html).toContain('charset="utf-8"');
+    });
+
+    it('uploads an asset a script loads at runtime and rewrites the literal', async () => {
+        const result = await importZip({
+            'index.html': '<html><body><script src="game.js"></script></body></html>',
+            'game.js': "const hit = new Audio('sfx/hit.mp3');\nconst art = 'sprites/hero.png';",
+            'sfx/hit.mp3': 'binary',
+            'sprites/hero.png': 'binary',
+        });
+
+        expect(result.uploadedAssets).toBe(2);
+        expect(result.html).toContain("'https://cdn.test/id-hit.mp3'");
+        expect(result.html).toContain("'https://cdn.test/id-hero.png'");
+    });
+
+    it('rewrites runtime refs in a script the page already had inline', async () => {
+        const result = await importZip({
+            'index.html': '<html><body><script>const bg = "img/board.png";</script></body></html>',
+            'img/board.png': 'binary',
+        });
+
+        expect(result.html).toContain('"https://cdn.test/id-board.png"');
+    });
+
+    it('does not upload a css or js file that is already inlined', async () => {
+        const result = await importZip({
+            'index.html':
+                '<html><head><link rel="stylesheet" href="app.css"></head><body><script src="app.js"></script></body></html>',
+            'app.css': 'body{color:red}',
+            // Naming the inlined files in code must not cause an S3 copy.
+            'app.js': "const files = ['app.css', 'app.js'];",
+        });
+
+        expect(result.uploadedAssets).toBe(0);
+        expect(UploadFileInS3).not.toHaveBeenCalled();
+    });
+
+    it('uploads video sources, poster and captions', async () => {
+        const result = await importZip({
+            'index.html': `<html><body>
+                <video poster="media/cover.jpg"><source src="media/clip.mp4"><track src="media/subs.vtt"></video>
+            </body></html>`,
+            'media/clip.mp4': 'binary',
+            'media/cover.jpg': 'binary',
+            'media/subs.vtt': 'binary',
+        });
+
+        expect(result.uploadedAssets).toBe(3);
+        expect(result.html).toContain('https://cdn.test/id-clip.mp4');
+        expect(result.html).toContain('https://cdn.test/id-cover.jpg');
+    });
+
+    it('uploads an embedded sub-page as html rather than leaving a dead path', async () => {
+        await importZip({
+            'index.html': '<html><body><iframe src="embed/widget.html"></iframe></body></html>',
+            'embed/widget.html': '<html><body>widget</body></html>',
+        });
+
+        const uploaded = vi.mocked(UploadFileInS3).mock.calls[0]?.[0] as File;
+        expect(uploaded.type).toBe('text/html');
     });
 
     it('reports progress through the upload phase', async () => {

@@ -10,12 +10,7 @@
         "codeCreateFailed": "कोड एडिटर बनाने में विफल",
         "slideAutoPublished": "स्लाइड बनाई गई और समीक्षा के लिए स्वतः प्रकाशित हुई",
         "quizCreated": "क्विज़ सफलतापूर्वक बनाई गई!",
-        "quizCreateFailedRetry": "क्विज़ बनाने में विफल। कृपया पुनः प्रयास करें।",
-        "zipReading": "ज़िप पढ़ी जा रही है…",
-        "zipUploadingAssets": "एसेट अपलोड हो रहे हैं… {{total}} में से {{done}}",
-        "zipImported": "\"{{title}}\" आयात किया गया, {{assets}} एसेट के साथ",
-        "zipUnresolved": "{{count}} एसेट अपलोड नहीं हो सके और अब भी अपने मूल पथ की ओर इशारा कर रहे हैं",
-        "zipImportFailed": "यह ज़िप आयात नहीं की जा सकी"
+        "quizCreateFailedRetry": "क्विज़ बनाने में विफल। कृपया पुनः प्रयास करें।"
     },
     "menu": {
         "quickAdd": { "label": "त्वरित जोड़ें (बल्क)", "description": "एक साथ कई स्लाइड अपलोड और जोड़ें" },
@@ -25,7 +20,6 @@
         "uploadDoc": { "label": "डिवाइस से अपलोड करें", "description": "मौजूदा दस्तावेज़ अपलोड करें" },
         "createDocLexical": { "label": "नया दस्तावेज़ बनाएं", "description": "खाली दस्तावेज़ से शुरू करें" },
         "createHtmlDoc": { "label": "AI दस्तावेज़", "description": "AI द्वारा तैयार समृद्ध इंटरैक्टिव पेज" },
-        "uploadHtmlZip": { "label": "HTML ज़िप अपलोड करें", "description": "css, js और इमेज सहित ज़िप किया हुआ पेज" },
         "createDocLegacy": { "label": "दस्तावेज़ बनाएं (पुराना एडिटर)", "description": "डेप्रिकेटेड — पुराना दस्तावेज़ एडिटर" },
         "video": { "label": "वीडियो", "description": "वीडियो सामग्री" },
         "uploadVideo": { "label": "वीडियो फ़ाइल अपलोड करें", "description": "डिवाइस से अपलोड करें" },

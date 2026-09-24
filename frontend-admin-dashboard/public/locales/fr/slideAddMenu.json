@@ -10,12 +10,7 @@
         "codeCreateFailed": "Échec de la création de l'éditeur de code",
         "slideAutoPublished": "Diapositive créée et publiée automatiquement pour relecture",
         "quizCreated": "Quiz créé avec succès !",
-        "quizCreateFailedRetry": "Échec de la création du quiz. Veuillez réessayer.",
-        "zipReading": "Lecture du zip…",
-        "zipUploadingAssets": "Téléversement des ressources… {{done}} sur {{total}}",
-        "zipImported": "« {{title}} » importé avec {{assets}} ressource(s)",
-        "zipUnresolved": "{{count}} ressource(s) n’ont pas pu être téléversées et pointent toujours vers leur chemin d’origine",
-        "zipImportFailed": "Impossible d’importer ce zip"
+        "quizCreateFailedRetry": "Échec de la création du quiz. Veuillez réessayer."
     },
     "menu": {
         "quickAdd": { "label": "Ajout rapide (en masse)", "description": "Téléverser et ajouter plusieurs diapositives en une fois" },
@@ -25,7 +20,6 @@
         "uploadDoc": { "label": "Téléverser depuis l'appareil", "description": "Téléverser un document existant" },
         "createDocLexical": { "label": "Créer un nouveau document", "description": "Commencer avec un document vierge" },
         "createHtmlDoc": { "label": "Document IA", "description": "Page interactive riche rédigée par l'IA" },
-        "uploadHtmlZip": { "label": "Téléverser un zip HTML", "description": "Page zippée avec ses css, js et images" },
         "createDocLegacy": { "label": "Créer un document (ancien éditeur)", "description": "Obsolète — ancien éditeur de documents" },
         "video": { "label": "Vidéo", "description": "Contenu vidéo" },
         "uploadVideo": { "label": "Téléverser un fichier vidéo", "description": "Téléverser depuis l'appareil" },

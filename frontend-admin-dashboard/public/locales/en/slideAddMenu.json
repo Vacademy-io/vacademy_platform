@@ -10,12 +10,7 @@
         "codeCreateFailed": "Failed to create code editor",
         "slideAutoPublished": "Slide created and auto-published for review",
         "quizCreated": "Quiz created successfully!",
-        "quizCreateFailedRetry": "Failed to create quiz. Please try again.",
-        "zipReading": "Reading the zip…",
-        "zipUploadingAssets": "Uploading assets… {{done}} of {{total}}",
-        "zipImported": "Imported \"{{title}}\" with {{assets}} asset(s)",
-        "zipUnresolved": "{{count}} asset(s) could not be uploaded and still point at their original path",
-        "zipImportFailed": "Could not import this zip"
+        "quizCreateFailedRetry": "Failed to create quiz. Please try again."
     },
     "menu": {
         "quickAdd": { "label": "Quick Add (Bulk)", "description": "Bulk upload & add multiple slides" },
@@ -25,7 +20,6 @@
         "uploadDoc": { "label": "Upload from device", "description": "Upload existing document" },
         "createDocLexical": { "label": "Create new document", "description": "Start with blank document" },
         "createHtmlDoc": { "label": "AI document", "description": "Rich interactive page authored by AI" },
-        "uploadHtmlZip": { "label": "Upload HTML zip", "description": "Zipped page with its css, js and images" },
         "createDocLegacy": { "label": "Create document (Legacy editor)", "description": "Deprecated — old document editor" },
         "video": { "label": "Video", "description": "Video content" },
         "uploadVideo": { "label": "Upload video file", "description": "Upload from device" },

@@ -4,6 +4,7 @@ import strings from '../../../../../../../../public/locales/en/manageStudentsCom
 import {
     canResend,
     originalVariables,
+    requiredVariableKeys,
     resendBlockedReason,
     showsResendControl,
 } from './resend-message-dialog';
@@ -135,6 +136,88 @@ describe('originalVariables', () => {
         expect(originalVariables(item({ metadata: undefined }), '')).toEqual({});
     });
 
+    // A workflow node with no variable mapping sends `bodyParams: {}`, which Meta rejects. Without
+    // the template's own placeholders there would be nothing to fix on the resend.
+    it('adds the template’s placeholders the original send left out, empty', () => {
+        const vars = originalVariables(item({ metadata: { bodyParams: {} } }), '', {
+            bodyText: 'Hi {{1}} 👋 We’ve received your details.',
+            bodyVariableNames: ['Name'],
+        });
+        expect(vars).toEqual({ '1': '' });
+    });
+
+    it('keeps the values the send did record beside the ones it missed', () => {
+        const vars = originalVariables(
+            item({ metadata: { bodyParams: { 1: 'Neeju', _headerUrl: 'https://x/y.png' } } }),
+            '',
+            { bodyText: 'Hi {{1}}, your {{2}} batch starts soon.' }
+        );
+        expect(vars).toEqual({ '1': 'Neeju', '2': '' });
+    });
+
+    // Workflow sends often store the variables by NAME (the send path maps them to positions
+    // through bodyVariableNames). A named value covers its positional placeholder — adding an
+    // empty {{1}} beside `name` would block "resend the same" on a send that was complete.
+    it('treats a variable stored by name as filling its positional placeholder', () => {
+        const vars = originalVariables(
+            item({
+                metadata: {
+                    bodyParams: { name: 'testmansu', email: 'a@b.com', instituteName: 'Vacademy' },
+                },
+            }),
+            '',
+            { bodyText: 'Hi {{1}}, welcome!', bodyVariableNames: ['name'] }
+        );
+        expect(vars).toEqual({ name: 'testmansu', email: 'a@b.com', instituteName: 'Vacademy' });
+    });
+
+    it('names a missing variable the way the rest of a named send does', () => {
+        const vars = originalVariables(item({ metadata: { bodyParams: { name: 'Asha' } } }), '', {
+            bodyText: 'Hi {{1}}, your {{2}} batch starts soon.',
+            bodyVariableNames: ['name', 'course'],
+        });
+        expect(vars).toEqual({ name: 'Asha', course: '' });
+    });
+
+    // The send path lower-cases a name and turns anything but [a-z0-9_] into "_".
+    it('matches names the way the send path does', () => {
+        const vars = originalVariables(
+            item({ metadata: { bodyParams: { 'Course Name': 'NEET' } } }),
+            '',
+            { bodyText: 'Your {{1}} batch', bodyVariableNames: ['course_name'] }
+        );
+        expect(vars).toEqual({ 'Course Name': 'NEET' });
+    });
+});
+
+describe('requiredVariableKeys', () => {
+    it('is the keys filling the template’s own placeholders, by position or by name', () => {
+        const template = {
+            bodyText: 'Hi {{1}}, your {{2}} batch',
+            bodyVariableNames: ['name', 'course'],
+        };
+        expect(requiredVariableKeys({ 1: 'A', 2: 'B' }, template)).toEqual(['1', '2']);
+        expect(requiredVariableKeys({ name: 'A', course: '', email: '' }, template)).toEqual([
+            'name',
+            'course',
+        ]);
+    });
+
+    // A send can carry keys its template never uses (an older mapping sent name, email, …
+    // to every template); a blank one of those must not block a resend.
+    it('ignores stored keys the template does not use', () => {
+        expect(
+            requiredVariableKeys(
+                { name: 'A', email: '' },
+                { bodyText: 'Hi {{1}}', bodyVariableNames: ['name'] }
+            )
+        ).toEqual(['name']);
+    });
+
+    it('requires nothing when the template is not known', () => {
+        expect(requiredVariableKeys({ name: '' }, null)).toEqual([]);
+    });
+
     // An email body is stored already rendered, so the only variables left are the ones nothing
     // resolved at send time. They come back empty for the admin to fill in.
     it('finds unresolved placeholders in an email subject and body', () => {
@@ -172,6 +255,8 @@ describe('resend copy', () => {
             'resend.subjectLabel',
             'resend.modeSame',
             'resend.modeSameHint',
+            'resend.modeSameBlockedHint',
+            'resend.variablesRequired',
             'resend.modeEdit',
             'resend.modeEditHint',
             'resend.variablePlaceholder',

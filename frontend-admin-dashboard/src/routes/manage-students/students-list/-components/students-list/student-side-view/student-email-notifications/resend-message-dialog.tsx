@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -67,6 +67,23 @@ export function resendBlockedReason(item: CommunicationItem): string | null {
     return 'unsupportedChannel';
 }
 
+/**
+ * The keys of `values` that fill the template's own placeholders — the ones Meta needs non-empty.
+ * A send may carry extra keys the template never uses; those are left alone. Without the template
+ * there is nothing to check against, so nothing is required.
+ */
+export function requiredVariableKeys(
+    values: Record<string, string>,
+    whatsappTemplate?: { bodyText?: string; bodyVariableNames?: string[] } | null
+): string[] {
+    const keys: string[] = [];
+    for (const token of declaredTokens(whatsappTemplate?.bodyText)) {
+        const key = keyForToken(values, token, whatsappTemplate?.bodyVariableNames);
+        if (key && !keys.includes(key)) keys.push(key);
+    }
+    return keys;
+}
+
 export function canResend(item: CommunicationItem): boolean {
     return resendBlockedReason(item) === null;
 }
@@ -88,19 +105,65 @@ function toStringMap(raw: unknown): Record<string, string> {
     return out;
 }
 
+/** How the send path matches a named variable to a template position (UnifiedSendService). */
+const sendPathName = (name: string) =>
+    name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '_');
+
+/** The placeholders a WhatsApp template body declares, in order, each once. */
+function declaredTokens(templateBody: string | undefined): string[] {
+    const tokens: string[] = [];
+    for (const match of (templateBody ?? '').matchAll(new RegExp(EMAIL_PLACEHOLDER_SOURCE, 'g'))) {
+        if (match[1] && !tokens.includes(match[1])) tokens.push(match[1]);
+    }
+    return tokens;
+}
+
+/**
+ * The key in `values` that fills a template placeholder: its position (`1`), or its name from
+ * `bodyVariableNames` — the send path resolves both, so a send may have stored either.
+ */
+function keyForToken(values: Record<string, string>, token: string, variableNames?: string[]) {
+    if (token in values) return token;
+    const name = sendPathName(variableNameFor(token, variableNames));
+    return Object.keys(values).find((key) => sendPathName(key) === name);
+}
+
 /**
  * The variables the original send used, keyed exactly as it stored them.
  *
- * WhatsApp records them as a named map on the send payload, so they come back with their values.
+ * WhatsApp records them as a map on the send payload — positional (`1`) or named (`name`) — so
+ * they come back with their values. Given the approved template, a placeholder the send stored
+ * under neither key (a workflow node with no mapping stores `bodyParams: {}`) is added empty, for
+ * the admin to fill in: otherwise there would be nothing to edit, and resending the same would
+ * fail at Meta exactly as the original did.
+ *
  * Email stores the body already rendered, so the only variables left are placeholders nothing
  * resolved at send time — those come back empty, for the admin to fill in on a resend.
  */
-export function originalVariables(item: CommunicationItem, emailSubject: string) {
+export function originalVariables(
+    item: CommunicationItem,
+    emailSubject: string,
+    whatsappTemplate?: { bodyText?: string; bodyVariableNames?: string[] }
+) {
     if (item.channel === 'WHATSAPP') {
         const params = toStringMap(item.metadata?.bodyParams);
         // Internal send-path keys, not template variables — they carry the media URL and button
         // link and are threaded through as options instead of shown as editable fields.
-        return Object.fromEntries(Object.entries(params).filter(([k]) => !k.startsWith('_')));
+        const stored = Object.fromEntries(
+            Object.entries(params).filter(([k]) => !k.startsWith('_'))
+        );
+        const namedSend = Object.keys(stored).some((key) => !/^\d+$/.test(key));
+        const missing: Record<string, string> = {};
+        for (const token of declaredTokens(whatsappTemplate?.bodyText)) {
+            if (keyForToken(stored, token, whatsappTemplate?.bodyVariableNames)) continue;
+            // Match the send's own style, so the resend is not half named, half positional.
+            const name = variableNameFor(token, whatsappTemplate?.bodyVariableNames);
+            missing[namedSend ? name : token] = '';
+        }
+        return { ...stored, ...missing };
     }
 
     const names = new Set<string>();
@@ -139,20 +202,13 @@ export function ResendMessageDialog({
     const { t } = useTranslation('manageStudentsCommunicationTimeline');
     const isWhatsApp = item.channel === 'WHATSAPP';
 
-    const initialVariables = useMemo(
-        () => originalVariables(item, emailSubject),
-        [item, emailSubject]
-    );
-    const variableKeys = Object.keys(initialVariables);
-    const hasVariables = variableKeys.length > 0;
-
     const [mode, setMode] = useState<ResendMode>('SAME');
-    const [values, setValues] = useState<Record<string, string>>(initialVariables);
     const [isSending, setIsSending] = useState(false);
 
-    // The approved template, for the variable labels and the live preview. Only WhatsApp has one;
-    // an email's body is stored already rendered. A failed lookup is not fatal — the resend still
-    // works off the stored params, it just shows the positional token as the field label.
+    // The approved template, for the variable labels, the live preview, and the placeholders the
+    // original send may have left out. Only WhatsApp has one; an email's body is stored already
+    // rendered. A failed lookup is not fatal — the resend still works off the stored params, it
+    // just shows the positional token as the field label.
     const { data: template } = useQuery({
         queryKey: ['wa-template-for-resend', instituteId, item.templateName],
         queryFn: async (): Promise<WhatsAppTemplateDTO | null> => {
@@ -163,7 +219,28 @@ export function ResendMessageDialog({
         staleTime: 300000,
     });
 
+    const initialVariables = useMemo(
+        () => originalVariables(item, emailSubject, template ?? undefined),
+        [item, emailSubject, template]
+    );
+    const variableKeys = Object.keys(initialVariables);
+    const hasVariables = variableKeys.length > 0;
+    const [values, setValues] = useState<Record<string, string>>(initialVariables);
+
+    // WhatsApp variables the first send went out without. Meta rejects a template message with an
+    // empty variable, so "resend the same" cannot work — go straight to editing them.
+    const requiredKeys = isWhatsApp ? requiredVariableKeys(initialVariables, template) : [];
+    const missingKeys = requiredKeys.filter((key) => !initialVariables[key]?.trim());
+    const sameBlocked = missingKeys.length > 0;
+    useEffect(() => {
+        if (sameBlocked && mode === 'SAME') {
+            setValues(initialVariables);
+            setMode('EDIT');
+        }
+    }, [sameBlocked, mode, initialVariables]);
+
     const effectiveValues = mode === 'EDIT' ? values : initialVariables;
+    const blankWhatsappVariables = requiredKeys.some((key) => !(effectiveValues[key] ?? '').trim());
 
     const labelFor = (key: string) =>
         isWhatsApp ? variableNameFor(key, template?.bodyVariableNames) : key;
@@ -319,7 +396,14 @@ export function ResendMessageDialog({
                                     active={mode === 'SAME'}
                                     icon={<ArrowClockwise className="size-3.5" />}
                                     label={t('resend.modeSame')}
-                                    hint={t('resend.modeSameHint')}
+                                    hint={
+                                        sameBlocked
+                                            ? t('resend.modeSameBlockedHint', {
+                                                  names: missingKeys.map(labelFor).join(', '),
+                                              })
+                                            : t('resend.modeSameHint')
+                                    }
+                                    disabled={sameBlocked}
                                     onClick={() => setMode('SAME')}
                                 />
                                 <ModeButton
@@ -371,6 +455,13 @@ export function ResendMessageDialog({
                         </div>
                     )}
 
+                    {blankWhatsappVariables && (
+                        <p className="flex items-start gap-1.5 text-2xs text-warning-700">
+                            <WarningCircle className="mt-px size-3.5 shrink-0" />
+                            {t('resend.variablesRequired')}
+                        </p>
+                    )}
+
                     <p className="flex items-start gap-1.5 text-2xs text-warning-700">
                         <WarningCircle className="mt-px size-3.5 shrink-0" />
                         {t('resend.deliveryCaveat')}
@@ -391,7 +482,7 @@ export function ResendMessageDialog({
                         type="button"
                         buttonType="primary"
                         scale="medium"
-                        disable={isSending}
+                        disable={isSending || blankWhatsappVariables}
                         onClick={() => void handleSend()}
                         className="flex items-center gap-1.5"
                     >
@@ -413,12 +504,14 @@ function ModeButton({
     icon,
     label,
     hint,
+    disabled = false,
     onClick,
 }: {
     active: boolean;
     icon: ReactNode;
     label: string;
     hint: string;
+    disabled?: boolean;
     onClick: () => void;
 }) {
     return (
@@ -426,8 +519,9 @@ function ModeButton({
             type="button"
             onClick={onClick}
             aria-pressed={active}
+            disabled={disabled}
             className={cn(
-                'flex items-start gap-2 rounded-md border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                'flex items-start gap-2 rounded-md border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 disabled:cursor-not-allowed disabled:opacity-60',
                 active
                     ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
                     : 'border-neutral-200 bg-white hover:border-neutral-300'

@@ -211,7 +211,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     // whether each attempt has a submitted answer-sheet file. Same cached query
     // the row dropdown uses for its menu.
     const { data: assessmentDetailsData } = useSuspenseQuery(
-        getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' })
+        // The route's own type: a MOCK or PRACTICE test must not be described as an EXAM
+        // (the step keys and defaults the wizard answers with differ per type).
+        getAssessmentDetails({ assessmentId, instituteId, type: examType || 'EXAM' })
     );
     const isManualEvaluation = assessmentDetailsData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
     // For the "Enable AI checking" card on a placeholder-only offline test: the paper
@@ -1649,6 +1651,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         />
                         <AssessmentExportCsvDialog
                             assessmentId={assessmentId}
+                            examType={examType}
                             instituteId={initData?.id}
                             assessmentType={assesssmentType}
                             registrationSource={getCurrentRegistrationSource()}

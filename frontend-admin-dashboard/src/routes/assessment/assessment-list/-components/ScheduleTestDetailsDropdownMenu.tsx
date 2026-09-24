@@ -524,16 +524,13 @@ export function ScheduleTestMainDropdownComponent({
     const { instituteDetails } = useInstituteDetailsStore();
     const [openUtmDialog, setOpenUtmDialog] = useState(false);
 
-    // A PRIVATE assessment is reachable only by an already-enrolled learner, so
-    // there is no campaign traffic to attribute; and without a join code the
-    // /register URL resolves to nothing. Either case means no builder.
-    const joinLink =
-        scheduleTestContent.assessment_visibility === 'PUBLIC' && scheduleTestContent.join_link
-            ? getAssessmentJoinLink(
-                  instituteDetails?.learner_portal_base_url,
-                  scheduleTestContent.join_link
-              )
-            : '';
+    // Any test with a join code has a link the teacher hands out (WhatsApp, a
+    // notice board, a batch group) - PRIVATE included, since its learners still
+    // arrive through /register?code=. Only a test with no code has nothing to tag;
+    // the "PUBLIC only" rule hid the builder from every batch test (2026-09-21).
+    const joinLink = scheduleTestContent.join_link
+        ? getAssessmentJoinLink(instituteDetails?.learner_portal_base_url, scheduleTestContent.join_link)
+        : '';
     const onGenerateUtmLink = joinLink ? () => setOpenUtmDialog(true) : undefined;
 
     const dropdown = (() => {

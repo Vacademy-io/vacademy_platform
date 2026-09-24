@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScheduleTestTab } from '@/types/assessments/assessment-list';
 import { useTranslation } from 'react-i18next';
+import { ChartBar } from '@phosphor-icons/react';
 
 const ScheduleTestTabList = ({
     selectedTab,
@@ -27,6 +28,23 @@ const ScheduleTestTabList = ({
     // wider than a phone, which cut "Previous" and "Drafts" off the screen entirely.
     return (
         <TabsList className="no-scrollbar flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b !bg-transparent p-0 sm:gap-4">
+            {/* Overview first: the numbers an admin opens the page for, before any list. */}
+            <TabsTrigger
+                value="overview"
+                className={`flex shrink-0 gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-8 lg:px-12 ${
+                    selectedTab === 'overview'
+                        ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                        : 'border-none bg-transparent'
+                }`}
+            >
+                <ChartBar
+                    className={`size-4 ${selectedTab === 'overview' ? 'text-primary-500' : 'text-neutral-500'}`}
+                    weight="bold"
+                />
+                <span className={`${selectedTab === 'overview' ? 'text-primary-500' : ''}`}>
+                    {t('tabs.overview')}
+                </span>
+            </TabsTrigger>
             <TabsTrigger
                 value="liveTests"
                 className={`flex shrink-0 gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-8 lg:px-12 ${

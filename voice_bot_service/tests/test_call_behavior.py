@@ -6223,3 +6223,53 @@ def test_floor_gate_sits_before_the_duck_and_counts_as_a_reply_in_flight():
     src = open(b.__file__, encoding="utf-8").read()
     assert "        floor,          # never START a reply over a talking caller\n        duck," in src
     assert "if floor.is_holding():\n            return True" in src
+
+
+# ── call e32df5c0 (2026-09-23): "क्या <name> के साथ भी ऐसा है सर" read aloud ──
+def test_template_slots_copied_from_the_prompt_are_never_spoken():
+    t, n = b.fill_template_slots("क्या <name> के साथ भी ऐसा है सर, कि कुछ subjects में?")
+    assert t == "क्या बच्चे के साथ भी ऐसा है सर, कि कुछ subjects में?" and n == 1
+    t, n = b.fill_template_slots("So how is <child name> doing in maths?")
+    assert t == "So how is your child doing in maths?" and n == 1
+    t, n = b.fill_template_slots("सर, <program> की fees लगभग <range> के बीच रहती है।")
+    assert "<" not in t and n == 2
+    for marker in ("<<SEND:scholarship_quiz>>", "<<END_CALL>>", "<<TRANSFER>>", "5 < 7 > 3"):
+        assert b.fill_template_slots(marker) == (marker, 0), marker
+
+
+def test_no_repeat_gate_fills_slots_before_the_tts():
+    src = open(b.__file__, encoding="utf-8").read()
+    i = src.index("async def _emit(self, text: str, direction, past_cap: bool = False)")
+    j = src.index("norm = normalize_spoken(text)", i)
+    assert "fill_template_slots(text)" in src[i:j]
+
+
+@pytest.mark.asyncio
+async def test_smallest_meters_only_the_characters_the_vendor_synthesises():
+    """diagnostics.tts.chars drives the per-call TTS cost; it was null for
+    Smallest. The cache wraps the instance's run_tts and calls the class one
+    only on a miss, so metering there counts vendor characters only."""
+    from app.providers import _letterless_guard
+    import app.diagnostics as dg
+
+    class _Engine:
+        async def run_tts(self, text, context_id=None):
+            yield "audio:" + text
+
+    G = _letterless_guard(_Engine)
+    d = dg.CallDiagnostics()
+    t = G(); t.set_diagnostics(d)
+    out = [f async for f in t.run_tts(" नमस्ते जी। ")]
+    assert out == ["audio: नमस्ते जी। "] and d.tts_chars == len("नमस्ते जी।")
+    original = t.run_tts                      # what install_tts_cache wraps
+
+    async def cached(text, context_id=None):
+        if text == "हाँ जी?":
+            yield "cached"; return            # a HIT never reaches the class method
+        async for f in original(text, context_id):
+            yield f
+    t.run_tts = cached
+    [f async for f in t.run_tts("हाँ जी?")]
+    assert d.tts_chars == len("नमस्ते जी।")
+    [f async for f in t.run_tts("ठीक है।")]
+    assert d.tts_chars == len("नमस्ते जी।") + len("ठीक है।")

@@ -233,6 +233,8 @@ class CallDiagnostics:
     # FloorGate: replies held because the caller was talking when they were
     # ready; then dropped (caller took the turn), released (caller stopped) or
     # capped (the line never went quiet).
+    # "<name>" copied from the prompt's script lines, replaced before the TTS.
+    placeholders_filled: int = 0
     floor_holds: int = 0
     floor_holds_dropped: int = 0
     floor_holds_released: int = 0
@@ -943,6 +945,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "runsHeldForOpening": d.runs_held_for_opening,
                 "shortAnswerNoiseReleases": d.short_answer_noise_releases,
                 "acksTalkedThrough": d.acks_talked_through,
+                "placeholdersFilled": d.placeholders_filled,
                 "floorHolds": d.floor_holds,
                 "floorHoldsDropped": d.floor_holds_dropped,
                 "floorHoldsReleased": d.floor_holds_released,

@@ -945,6 +945,25 @@ def _letterless_guard(cls):
     run_bot (a bridge line queued behind a long reply, call 28570ec0)."""
     class _NoLetterless(cls):
         skip_text_if = None
+        _vendor_diag = None
+
+        def set_diagnostics(self, diag):
+            # Meter what the VENDOR bills: characters that reach run_tts. The
+            # speech cache wraps the instance's run_tts and calls this class
+            # method only on a miss, so cache hits are not counted. Feeds
+            # diagnostics.tts.chars — the per-call TTS cost on the call card
+            # (it was null for Smallest, so the card fell back to duration).
+            self._vendor_diag = diag
+            sup = getattr(super(), "set_diagnostics", None)
+            if sup is not None:
+                sup(diag)
+
+        async def run_tts(self, text, *args, **kwargs):
+            d = self._vendor_diag
+            if d is not None and text:
+                d.bump("tts_chars", len(text.strip()))
+            async for frame in super().run_tts(text, *args, **kwargs):
+                yield frame
 
         async def _push_tts_frames(self, src_frame, *args, **kwargs):
             text = getattr(src_frame, "text", "") or ""

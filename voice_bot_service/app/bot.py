@@ -130,6 +130,32 @@ def _valid_send_key(key: str) -> bool:
 # the caller said "हैं?". Normalise the loose form to the canonical one before
 # any marker scan. Complete tokens only: a half-streamed "<SEND:schol" is held
 # back by _split_safe until its closing bracket arrives.
+# A template slot copied out of the prompt's example lines: "क्या <name> के
+# साथ भी ऐसा है सर" (call e32df5c0, 2026-09-23) — the parent never gave the
+# child's name and the model spoke the script line verbatim; the TTS read
+# "name" aloud. Gemini did it 11 times in its first day, gemma4 once. Our
+# markers are UPPERCASE (<<SEND:…>>, <<END_CALL>>) and never match.
+_TEMPLATE_SLOT_RE = re.compile(r"<\s*([a-z][a-z _'-]{0,24})\s*>")
+
+
+def fill_template_slots(text: str):
+    """(text, n): name-like slots become "the child" in the reply's language,
+    any other slot is dropped — anything but reading the bracket aloud."""
+    n = 0
+
+    def _rep(m):
+        nonlocal n
+        n += 1
+        slot = m.group(1).strip()
+        if "name" in slot or slot in ("child", "student", "beta", "bachcha"):
+            return "बच्चे" if re.search(r"[\u0900-\u097F]", text) else "your child"
+        return ""
+    out = _TEMPLATE_SLOT_RE.sub(_rep, text)
+    if n:
+        out = re.sub(r"[ \t]{2,}", " ", out)
+    return out, n
+
+
 _LOOSE_MARKER_RE = re.compile(r"(?<!<)<\s*(SEND:[^<>]+|END_CALL|TRANSFER)\s*>(?!>)")
 _LOOSE_MARKER_PREFIXES = ("<SEND:", "<END_CALL>", "<TRANSFER>", "<tool_call>", "<arg_key>",
                           "<arg_value>", "</tool_call>")
@@ -2168,6 +2194,13 @@ class NoRepeatGate(FrameProcessor):
         # WhatsApp number 9425677707 पर भेज दूँ?"). Space the digits so it is
         # read out one by one, which is also how the prompt asks for numbers.
         text = re.sub(r"(?<!\d)(\d{10})(?!\d)", lambda m: " ".join(m.group(1)), text)
+        if "<" in text:
+            text, slots = fill_template_slots(text)
+            if slots:
+                logger.info("no-repeat: filled %d template slot(s) the model copied from "
+                            "the prompt -> %r", slots, text.strip()[:60])
+                if self._diag is not None:
+                    self._diag.bump("placeholders_filled", slots)
         norm = normalize_spoken(text)
         self._spoken.append(norm)
         self._norms_this_reply.add(norm)

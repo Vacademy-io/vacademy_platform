@@ -1762,9 +1762,23 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               CAST(:nameSearch AS TEXT) IS NULL
               OR sg.full_name ILIKE '%' || :nameSearch || '%'
               OR sg.email ILIKE '%' || :nameSearch || '%'
+              -- A lead who never enrolled has NO student row, so the LEFT JOIN leaves
+              -- sg.* entirely NULL and the three clauses above can never match it --
+              -- searching an institute whose contacts are all leads returned nothing
+              -- at all. Their identity lives on audience_response, and on the auth
+              -- User for the paths that store the name only there (pre-resolved into
+              -- :searchUserIdsCsv by the caller). This mirrors the four-way match the
+              -- leads list already does in AudienceResponseRepository.
+              OR ar.parent_name ILIKE '%' || :nameSearch || '%'
+              OR ar.parent_email ILIKE '%' || :nameSearch || '%'
+              OR (COALESCE(:searchUserIdsCsv, '') != ''
+                  AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ',')))
               OR (
                   :nameSearch ~ '[0-9]'
-                  AND REGEXP_REPLACE(sg.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+                  AND (
+                      REGEXP_REPLACE(sg.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+                      OR REGEXP_REPLACE(ar.parent_mobile, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+                  )
               )
             )
           GROUP BY ar.user_id
@@ -1847,9 +1861,23 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               CAST(:nameSearch AS TEXT) IS NULL
               OR sg.full_name ILIKE '%' || :nameSearch || '%'
               OR sg.email ILIKE '%' || :nameSearch || '%'
+              -- A lead who never enrolled has NO student row, so the LEFT JOIN leaves
+              -- sg.* entirely NULL and the three clauses above can never match it --
+              -- searching an institute whose contacts are all leads returned nothing
+              -- at all. Their identity lives on audience_response, and on the auth
+              -- User for the paths that store the name only there (pre-resolved into
+              -- :searchUserIdsCsv by the caller). This mirrors the four-way match the
+              -- leads list already does in AudienceResponseRepository.
+              OR ar.parent_name ILIKE '%' || :nameSearch || '%'
+              OR ar.parent_email ILIKE '%' || :nameSearch || '%'
+              OR (COALESCE(:searchUserIdsCsv, '') != ''
+                  AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ',')))
               OR (
                   :nameSearch ~ '[0-9]'
-                  AND REGEXP_REPLACE(sg.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+                  AND (
+                      REGEXP_REPLACE(sg.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+                      OR REGEXP_REPLACE(ar.parent_mobile, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+                  )
               )
             )
       ) total
@@ -1865,6 +1893,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("audienceIds") List<String> audienceIds,
       @Param("cfMatchedUserIdsCsv") String cfMatchedUserIdsCsv,
       @Param("cfExcludedUserIdsCsv") String cfExcludedUserIdsCsv,
+      /** Auth-service user ids matching the free-text search; lets a lead whose name
+       *  lives only on the auth User still be found. Null/blank = no id match. */
+      @Param("searchUserIdsCsv") String searchUserIdsCsv,
       @Param("sortCustomFieldId") String sortCustomFieldId,
       @Param("cfSortDirection") String cfSortDirection,
       Pageable pageable);

@@ -22,13 +22,14 @@ import vacademy.io.admin_core_service.features.invoice.repository.InvoicePayment
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
-import vacademy.io.common.auth.repository.UserRoleRepository;
+import vacademy.io.admin_core_service.features.live_session.client.InstituteRoleUserClient;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -78,7 +79,8 @@ public class PaymentDeletionService {
     private final InvoiceRepository invoiceRepository;
     private final InvoicePaymentLogMappingRepository invoicePaymentLogMappingRepository;
     private final PaymentVoidService paymentVoidService;
-    private final UserRoleRepository userRoleRepository;
+    /** Roles live in auth_service's database — admin_core has no user_role table to query. */
+    private final InstituteRoleUserClient instituteRoleUserClient;
     private final InstituteSettingService instituteSettingService;
     private final AsyncAuditDispatcher auditDispatcher;
     private final AdminActivityLogRepository adminActivityLogRepository;
@@ -100,10 +102,14 @@ public class PaymentDeletionService {
     public boolean canDelete(String userId, String instituteId) {
         if (!StringUtils.hasText(userId) || !StringUtils.hasText(instituteId)) return false;
         try {
-            if (userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(userId, instituteId, "ADMIN")) {
+            Optional<Set<String>> roleNames = instituteRoleUserClient.findRolesOfUser(instituteId, userId);
+            if (roleNames.isEmpty()) return false; // lookup failed: fail closed
+            if (roleNames.get().contains("ADMIN")) {
                 return flagOn(instituteSettingService.getSettingByInstituteIdAndKey(instituteId, ADMIN_SETTINGS_KEY));
             }
-            List<String> roleIds = userRoleRepository.findActiveRoleIdsByUserIdAndInstituteId(userId, instituteId);
+            Optional<Set<String>> roleIdLookup = instituteRoleUserClient.findRoleIdsOfUser(instituteId, userId);
+            if (roleIdLookup.isEmpty()) return false;
+            List<String> roleIds = List.copyOf(roleIdLookup.get());
             Object byRole = instituteSettingService.getSettingByInstituteIdAndKey(instituteId, ROLE_SETTINGS_KEY);
             if (roleIds != null && byRole instanceof Map<?, ?> roles) {
                 List<Object> cards = roleIds.stream().filter(id -> id != null && roles.containsKey(id))

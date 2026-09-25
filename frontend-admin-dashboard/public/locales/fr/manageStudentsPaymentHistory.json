@@ -116,11 +116,24 @@
         "action": "Supprimer définitivement",
         "paymentTitle": "Supprimer définitivement le paiement de {{label}} ?",
         "invoiceTitle": "Supprimer définitivement la facture {{label}} ?",
-        "paymentDescription": "Le paiement est supprimé définitivement. S'il compte encore, il est d'abord annulé : le montant est réaffecté au solde et aux échéances de l'apprenant, et la facture émise pour lui est supprimée. Cette action est irréversible. Une trace de la suppression reste dans le journal d'activité des administrateurs.",
-        "invoiceDescription": "La facture est supprimée définitivement. Une facture impayée ne compte plus non plus dans le solde de l'apprenant. Son numéro n'est pas réutilisé. Cette action est irréversible. Une trace de la suppression reste dans le journal d'activité des administrateurs.",
-        "typeToConfirm": "Saisissez {{word}} pour confirmer",
+        "cannotUndo": "Cette action est irréversible.",
+        "whatHappens": "Ce qui va se passer",
+        "payment": {
+            "removed": "L'enregistrement du paiement est supprimé définitivement.",
+            "balance": "S'il compte encore, le montant est réaffecté au solde et aux échéances de l'apprenant.",
+            "invoice": "La facture-reçu générée pour ce paiement est supprimée et son numéro est libéré pour la prochaine facture."
+        },
+        "invoice": {
+            "removed": "La facture est supprimée définitivement.",
+            "balance": "Une facture impayée ne compte plus dans le solde de l'apprenant.",
+            "number": "Son numéro de facture est libéré et attribué à la prochaine facture."
+        },
+        "auditLog": "Une trace de la suppression est conservée dans le journal d'activité administrateur.",
+        "typePrefix": "Saisissez",
+        "typeSuffix": "pour confirmer",
         "keep": "Conserver",
         "confirm": "Supprimer définitivement",
+        "deleting": "Suppression…",
         "paymentDeletedToast": "Paiement {{label}} supprimé",
         "invoiceDeletedToast": "Facture {{label}} supprimée",
         "errorToast": "Suppression impossible"

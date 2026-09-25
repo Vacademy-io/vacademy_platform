@@ -349,6 +349,23 @@ export const isDeletablePayment = (
  * → Learner Management → "delete payments & invoices" on; a payment that still counts is voided
  * first, so balances, installments and invoices are put right before the rows go.
  */
+/**
+ * Whether the server will let this user permanently delete payments / invoices at the current
+ * institute — the same check the delete endpoints run. False on any failure (fail closed).
+ */
+export const fetchCanDeletePayments = async (): Promise<boolean> => {
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) return false;
+    try {
+        const response = await authenticatedAxiosInstance.get(`${PAYMENT_LOGS_URL}/can-delete`, {
+            params: { instituteId },
+        });
+        return response.data?.allowed === true;
+    } catch {
+        return false;
+    }
+};
+
 export const deletePaymentLog = async (
     paymentLogId: string
 ): Promise<{ payment_log_id: string; amount: number | null; invoices_deleted: string[] }> => {

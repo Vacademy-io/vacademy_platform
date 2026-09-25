@@ -58,6 +58,7 @@ public class InstituteRoleUserClient {
     private final RestTemplate restTemplate = buildRestTemplate();
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry> callerRolesCache = new ConcurrentHashMap<>();
+    private final Map<String, CacheEntry> callerRoleIdsCache = new ConcurrentHashMap<>();
 
     private record CacheEntry(Set<String> userIds, long expiresAt) {
         boolean isFresh() {
@@ -176,6 +177,43 @@ public class InstituteRoleUserClient {
             return Optional.of(frozen);
         } catch (Exception e) {
             log.error("live_session.visibility.caller_roles_lookup_failed instituteId={} userId={}: {}",
+                    instituteId, userId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Role IDS the user holds ACTIVE at the institute — what per-role Display Settings cards are
+     * keyed by. Same contract as {@link #findRolesOfUser}: empty optional when the lookup failed.
+     */
+    public Optional<Set<String>> findRoleIdsOfUser(String instituteId, String userId) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(userId)) {
+            return Optional.of(Set.of());
+        }
+        String cacheKey = instituteId + "::" + userId;
+        CacheEntry cached = callerRoleIdsCache.get(cacheKey);
+        if (cached != null && cached.isFresh()) {
+            return Optional.of(cached.userIds());
+        }
+        try {
+            String route = "/auth-service/internal/user/v1/institute-role-ids?instituteId="
+                    + java.net.URLEncoder.encode(instituteId, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&userId=" + java.net.URLEncoder.encode(userId, java.nio.charset.StandardCharsets.UTF_8);
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequestWithEncodedRoute(
+                    applicationName, HttpMethod.GET.name(), authServerBaseUrl, route, null);
+
+            Set<String> ids = new HashSet<>();
+            for (JsonNode id : objectMapper.readTree(response.getBody())) {
+                String value = id.asText(null);
+                if (StringUtils.hasText(value)) {
+                    ids.add(value.trim());
+                }
+            }
+            Set<String> frozen = Set.copyOf(ids);
+            callerRoleIdsCache.put(cacheKey, new CacheEntry(frozen, System.currentTimeMillis() + CACHE_TTL_MS));
+            return Optional.of(frozen);
+        } catch (Exception e) {
+            log.error("caller_role_ids_lookup_failed instituteId={} userId={}: {}",
                     instituteId, userId, e.getMessage());
             return Optional.empty();
         }

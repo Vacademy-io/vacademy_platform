@@ -158,6 +158,23 @@ public class UserPlanController {
      *
      * <p>{@code DELETE /v1/user-plan/payment-logs/{paymentLogId}?instituteId=xxx}
      */
+    /**
+     * Whether the caller may permanently delete payments / invoices here — the same check the
+     * delete endpoints run. The admin app shows the Delete buttons only when this says yes, so
+     * the screen can never offer a delete the server will refuse.
+     *
+     * <p>{@code GET /v1/user-plan/payment-logs/can-delete?instituteId=xxx}
+     */
+    @GetMapping("/payment-logs/can-delete")
+    public ResponseEntity<java.util.Map<String, Object>> canDeletePayments(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        boolean allowed = paymentDeletionService.canDelete(
+                userDetails != null ? userDetails.getUserId() : null, instituteId);
+        return ResponseEntity.ok(java.util.Map.of("allowed", allowed));
+    }
+
     @DeleteMapping("/payment-logs/{paymentLogId}")
     public ResponseEntity<java.util.Map<String, Object>> deletePayment(
             @PathVariable String paymentLogId,

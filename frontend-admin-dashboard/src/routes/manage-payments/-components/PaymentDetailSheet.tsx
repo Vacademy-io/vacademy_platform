@@ -100,7 +100,12 @@ interface TimelineEvent {
 }
 
 /** Read-only detail panel for a single payment row: identity, key facts, and a status timeline. */
-export function PaymentDetailSheet({ entry, open, onOpenChange, onVoided }: PaymentDetailSheetProps) {
+export function PaymentDetailSheet({
+    entry,
+    open,
+    onOpenChange,
+    onVoided,
+}: PaymentDetailSheetProps) {
     // Opens the same full-screen student profile overlay the students list uses.
     const { openOverlay } = useStudentSidebar();
     const [voidTarget, setVoidTarget] = useState<VoidPaymentTarget | null>(null);
@@ -133,9 +138,19 @@ export function PaymentDetailSheet({ entry, open, onOpenChange, onVoided }: Paym
     const status = isVoided ? 'VOIDED' : entry.current_payment_status || log?.payment_status || '';
     const meta = statusMeta(status);
     // Invoice rows carry the invoice id in payment_log.id, so only real payment rows qualify.
-    const canVoid = !entry.invoice && !!log?.id && isVoidablePayment(log.vendor, log.payment_status);
+    const canVoid =
+        !entry.invoice && !!log?.id && isVoidablePayment(log.vendor, log.payment_status);
     const canDelete =
-        canDeletePayments && !entry.invoice && !!log?.id && isDeletablePayment(log.vendor, log.payment_status);
+        canDeletePayments &&
+        !entry.invoice &&
+        !!log?.id &&
+        isDeletablePayment(log.vendor, log.payment_status);
+    // An invoice row (raised, never paid against) can be deleted too, under the same switch. A paid
+    // invoice has a live payment behind it and is refused by the server, so it is not offered.
+    const canDeleteInvoice =
+        canDeletePayments &&
+        !!entry.invoice?.invoice_id &&
+        (entry.invoice.status || '').toUpperCase() !== 'PAID';
     const currency = resolveEntryCurrency(entry);
     const amount = log?.payment_amount || 0;
     const hasTime = Boolean(log?.created_at);
@@ -336,12 +351,31 @@ export function PaymentDetailSheet({ entry, open, onOpenChange, onVoided }: Paym
                                 setDeleteTarget({
                                     kind: 'payment',
                                     id: log?.id ?? '',
-                                    label: formatMoney(amount, currency, { maximumFractionDigits: 2 }),
+                                    label: formatMoney(amount, currency, {
+                                        maximumFractionDigits: 2,
+                                    }),
                                 })
                             }
                         >
                             <Trash size={16} />
                             Delete permanently
+                        </MyButton>
+                    )}
+                    {canDeleteInvoice && entry.invoice && (
+                        <MyButton
+                            buttonType="text"
+                            scale="medium"
+                            className="w-full gap-2 text-danger-600"
+                            onClick={() =>
+                                setDeleteTarget({
+                                    kind: 'invoice',
+                                    id: entry.invoice?.invoice_id ?? '',
+                                    label: entry.invoice?.invoice_number ?? '',
+                                })
+                            }
+                        >
+                            <Trash size={16} />
+                            Delete invoice permanently
                         </MyButton>
                     )}
                 </div>

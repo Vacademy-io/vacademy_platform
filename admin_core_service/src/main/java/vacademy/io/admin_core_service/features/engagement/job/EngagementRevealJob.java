@@ -120,7 +120,11 @@ public class EngagementRevealJob {
                     "Correct answer — " + item.getTitle(),
                     // Distinct from the submit-time award for the same item, so both
                     // can exist and neither can be paid twice.
-                    "ENGAGEMENT_BONUS:" + item.getId() + ":v" + item.getVersion()
+                    // Keyed on the version the learner ANSWERED, not the item's current
+                    // one: an in-place edit bumps item.version, and keying on that would
+                    // pay every correct learner a second time.
+                    "ENGAGEMENT_BONUS:" + item.getId() + ":v"
+                            + (attempt.getItemVersion() == null ? item.getVersion() : attempt.getItemVersion())
                             + ":" + attempt.getUserId()).isPresent();
 
             if (awarded) {

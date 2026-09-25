@@ -1,4 +1,15 @@
 import type { TFunction } from "i18next";
+import {
+  BookOpen,
+  ChartBar,
+  CheckSquare,
+  GameController,
+  GraduationCap,
+  Lightbulb,
+  PaintBrush,
+  Sparkle,
+  type Icon,
+} from "@phosphor-icons/react";
 import type { EngagementItemType } from "@/services/engagement";
 
 /**
@@ -10,6 +21,9 @@ export interface EngagementVisual {
   label: string;
   /** Emoji marker — reads instantly and needs no icon import. */
   glyph: string;
+  /** Line-icon equivalent of `glyph`, used by the Corporate skin, where emoji
+   *  read as consumer/K-12 rather than as a professional work tool. */
+  icon: Icon;
   /** Chip background + text. */
   chip: string;
   /** Solid accent for the rail and progress. */
@@ -24,6 +38,7 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
   READING_HTML: {
     label: "READING_HTML",
     glyph: "📖",
+    icon: BookOpen,
     chip: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200",
     accent: "bg-sky-500",
     wash: "group-hover:bg-sky-50/60 dark:group-hover:bg-sky-950/20",
@@ -32,6 +47,7 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
   VISUAL_NOTE: {
     label: "VISUAL_NOTE",
     glyph: "🎨",
+    icon: PaintBrush,
     chip: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200",
     accent: "bg-violet-500",
     wash: "group-hover:bg-violet-50/60 dark:group-hover:bg-violet-950/20",
@@ -40,6 +56,7 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
   QUESTION_OF_DAY: {
     label: "QUESTION_OF_DAY",
     glyph: "💡",
+    icon: Lightbulb,
     chip: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200",
     accent: "bg-amber-500",
     wash: "group-hover:bg-amber-50/60 dark:group-hover:bg-amber-950/20",
@@ -48,6 +65,7 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
   QUIZ: {
     label: "QUIZ",
     glyph: "✅",
+    icon: CheckSquare,
     chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200",
     accent: "bg-emerald-500",
     wash: "group-hover:bg-emerald-50/60 dark:group-hover:bg-emerald-950/20",
@@ -56,6 +74,7 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
   GAME: {
     label: "GAME",
     glyph: "🎮",
+    icon: GameController,
     chip: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
     accent: "bg-rose-500",
     wash: "group-hover:bg-rose-50/60 dark:group-hover:bg-rose-950/20",
@@ -64,6 +83,7 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
   COURSE_SLIDE: {
     label: "COURSE_SLIDE",
     glyph: "🎓",
+    icon: GraduationCap,
     chip: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-200",
     accent: "bg-teal-500",
     wash: "group-hover:bg-teal-50/60 dark:group-hover:bg-teal-950/20",
@@ -72,6 +92,7 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
   POLL: {
     label: "POLL",
     glyph: "📊",
+    icon: ChartBar,
     chip: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200",
     accent: "bg-indigo-500",
     wash: "group-hover:bg-indigo-50/60 dark:group-hover:bg-indigo-950/20",
@@ -82,11 +103,30 @@ const VISUALS: Record<EngagementItemType, EngagementVisual> = {
 const FALLBACK: EngagementVisual = {
   label: "fallback",
   glyph: "✨",
+  icon: Sparkle,
   chip: "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200",
   accent: "bg-neutral-500",
   wash: "group-hover:bg-neutral-50 dark:group-hover:bg-neutral-900",
   gradient: "from-neutral-500 to-neutral-400",
 };
+
+/**
+ * Corporate skin: one neutral chip for every task type. The per-type rainbow
+ * (sky / violet / amber / emerald / rose / teal / indigo) is a large part of
+ * what reads as K-12 on a professional-training dashboard; the type is still
+ * named in the chip's text and shown by its line icon.
+ */
+/**
+ * A few catalog strings open with a decorative emoji ("✨ Revealed",
+ * "🔒 Answer locked in …") in every locale. Corporate renders them without it
+ * rather than forking the copy; the words are unchanged.
+ */
+export function stripLeadingEmoji(text: string): string {
+  return text.replace(/^(?:\p{Extended_Pictographic}\uFE0F?\s*)+/u, "");
+}
+
+export const CORPORATE_CHIP =
+  "bg-muted text-muted-foreground dark:bg-neutral-800 dark:text-neutral-300";
 
 export function visualFor(type: EngagementItemType): EngagementVisual {
   return VISUALS[type] ?? FALLBACK;

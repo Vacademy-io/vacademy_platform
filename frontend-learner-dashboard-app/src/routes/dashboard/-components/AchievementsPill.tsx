@@ -6,6 +6,7 @@ import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { getCachedGamification, type PlayGamificationData } from "@/services/play-gamification";
 import { getInstituteId } from "@/constants/helper";
 import { AchievementsDialog } from "./AchievementsDialog";
+import { useCorporateTheme } from "@/hooks/use-corporate-theme";
 
 /**
  * Compact header pill showing the learner's badge count + points. Clicking it
@@ -18,6 +19,8 @@ export function AchievementsPill({ className }: { className?: string }) {
   const storeData = usePlayGamificationStore((s) => s.data);
   const [fallback, setFallback] = useState<PlayGamificationData | null>(null);
   const [open, setOpen] = useState(false);
+  // Corporate: monochrome line icons instead of a gold trophy + brand star.
+  const isCorporate = useCorporateTheme();
 
   useEffect(() => {
     if (storeData) return;
@@ -49,15 +52,16 @@ export function AchievementsPill({ className }: { className?: string }) {
         title={t("achievements.title")}
         className={cn(
           "flex h-9 items-center gap-2 rounded-full border border-primary-200/50 bg-white px-2.5 transition-colors duration-200 hover:border-primary-300 hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-700 [.ui-play_&]:rounded-full [.ui-play_&]:border-border",
+          "[.ui-corporate_&]:rounded-md [.ui-corporate_&]:border-border [.ui-corporate_&]:hover:border-border [.ui-corporate_&]:hover:bg-muted",
           className
         )}
       >
         <span className="flex items-center gap-1">
-          <Trophy weight="fill" className="h-4 w-4 text-warning-500" />
+          <Trophy weight={isCorporate ? "regular" : "fill"} className="h-4 w-4 text-warning-500 [.ui-corporate_&]:text-muted-foreground" />
           <span className="text-caption font-semibold text-foreground">{badgeCount}</span>
         </span>
-        <span className="hidden items-center gap-1 border-s border-primary-200/50 ps-2 dark:border-neutral-700 sm:flex">
-          <Star weight="fill" className="h-4 w-4 text-primary-500" />
+        <span className="hidden items-center gap-1 border-s border-primary-200/50 ps-2 dark:border-neutral-700 sm:flex [.ui-corporate_&]:border-border">
+          <Star weight={isCorporate ? "regular" : "fill"} className="h-4 w-4 text-primary-500 [.ui-corporate_&]:text-muted-foreground" />
           <span className="text-caption font-semibold text-foreground">
             {xp.toLocaleString()}
           </span>

@@ -15,6 +15,17 @@
    the interface should read as a polished work tool.
 
    ---------------------------------------------------------------------
+   REVISION NOTE 2 (2026-09-25, same day). v2 fixed the tokens but the owner,
+   looking at the live dashboard, still called it "kiddish". Correctly: the
+   childish cues were never in tokens — they were in the components (36px
+   extra-bold hero titles, uppercase coloured eyebrows, emoji task markers, a
+   rainbow of per-type chips, gold trophy pills, a big letter-avatar). A skin
+   that only moves tokens cannot reach those. So Corporate now also has
+   component-level treatment: [.ui-corporate_&]: variants for anything purely
+   visual, and hooks/use-corporate-theme.ts where the MARKUP must differ
+   (a Phosphor line icon instead of an emoji). This file adds the weight
+   ceiling and 8px geometry.
+
    REVISION NOTE (2026-09-25). The first version of this skin was built on
    2012-era enterprise conventions — 4px corners, darkened hairline borders
    with shadows stripped out, white cards on a white canvas, tighter spacing,
@@ -25,8 +36,8 @@
    1. LAYERING, NOT OUTLINES. A cool off-white canvas with white surfaces on
       top. Depth comes from surface contrast plus a soft, layered shadow —
       the border is a quiet low-contrast edge, not the structure itself.
-   2. SOFT GEOMETRY. 10px corners. Sharp 4px corners are the single most
-      dated cue in enterprise UI.
+   2. MODEST GEOMETRY. 8px corners — neither the dated 4px of 2012
+      enterprise UI nor the 14–20px pill softness of consumer apps.
    3. CALM, NOT CRAMPED. Default spacing. Density belongs in data tables, and
       the density axis is still there for institutes that want it.
    4. CONFIDENT, CONTROLLED BRAND. Primary actions are solid brand with a
@@ -62,8 +73,10 @@
 
 html.ui-corporate {
   /* ---- Geometry (default; the corners axis overrides) ----------------
-     10px seed -> sm/rounded 6, md 8, lg 10, xl 12, 2xl 14. */
-  --radius: 10px;
+     8px seed -> sm/rounded 4, md 6, lg 8, xl 10, 2xl 12. Tightened from 10px
+     on 2026-09-25 after owner review: at 10 the rounded-2xl heroes and cards
+     sat at 14px, which still read soft and app-like next to Linear/Vercel. */
+  --radius: 8px;
 
   /* ---- Surfaces: layered, cool neutral -------------------------------
      Off-white canvas, pure white cards. The small lightness gap is what
@@ -166,6 +179,21 @@ html.ui-corporate ::selection {
   .ui-corporate :is(h1, h2, h3, .text-h1, .text-h2, .text-h3, .text-display, .text-display-sm) {
     letter-spacing: -0.02em;
   }
+}
+
+/* ── Weight ceiling ──────────────────────────────────────────────────
+   Linear / Stripe / Vercel almost never set UI text above semibold,
+   while this app uses bold, extra-bold and black liberally —
+   heavy weights at display sizes were a large part of why the dashboard read
+   as a children's product. Capped at 600.
+
+   Deliberately OUTSIDE @layer: inside it, Tailwind v3 treats .font-bold as a
+   utility and clones this rule for every variant used in the app
+   ([&_h1]:font-bold, [.ui-play_&]:font-bold, …). Specificity is (0,2,0), so
+   it beats plain .font-bold; component-level [.ui-corporate_&]: variants tie
+   on specificity and win because utilities are emitted after this file. */
+.ui-corporate :is(.font-bold, .font-extrabold, .font-black, .text-display, .text-display-sm) {
+  font-weight: 600;
 }
 
 /* ── Icons ────────────────────────────────────────────────────────────

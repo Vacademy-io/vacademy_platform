@@ -1482,8 +1482,8 @@ function ViewLiveSession() {
                                             : null;
                                         const canSaveToLibrary =
                                             rec.recordingStorage === 'ZOOM_CLOUD' && !rec.fileId;
-                                        // Meet recordings stay in the organiser's Drive — no server
-                                        // mirror, so the admin uploads a copy instead.
+                                        // Meet recordings stay in the organiser's Drive until saved
+                                        // (server download, or a manual upload as fallback).
                                         const needsDriveUpload =
                                             rec.recordingStorage === 'GOOGLE_DRIVE' && !rec.fileId;
                                         return (

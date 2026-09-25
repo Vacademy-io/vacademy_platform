@@ -966,6 +966,8 @@ export const SYNC_RECORDINGS_TO_S3 = `${BASE_URL}/admin-core-service/live-sessio
 export const SYNC_GOOGLE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/sync`;
 // Google Meet: attach an admin-uploaded copy of a Drive recording (no server-side Drive access).
 export const ATTACH_GOOGLE_RECORDING_FILE = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/attach-file`;
+// Google Meet: server downloads the recording from Drive into the library (needs Drive access on the account).
+export const SAVE_GOOGLE_RECORDING_TO_LIBRARY = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/save-to-library`;
 
 // ── Zoom integration ──
 // Per-institute Zoom account credentials (S2S OAuth + Meeting SDK pair).

@@ -6365,3 +6365,67 @@ async def test_a_short_first_sentence_is_never_left_on_its_own_by_the_budget():
     await _reply(g, "that's actually a good performance। ", long_one)
     said = " ".join(t.strip() for t in rec.text if t.strip())
     assert "position improve" in said, "the substantive sentence was held behind a fragment"
+
+
+# ── call 7f86df90 (2026-09-25, Shreya-marathi demo): Hindi in Marathi, "करतो/करते" ──
+def test_a_name_slot_is_filled_in_the_replys_own_language():
+    f = b.fill_template_slots
+    assert f("<name> च्या बाबतीतही असं आहे का मॅडम?")[0] == "मुलाच्या बाबतीतही असं आहे का मॅडम?"
+    assert f("<name> खूप छान करतो का?")[0] == "मूल खूप छान करतो का?"
+    assert f("क्या <name> के साथ भी ऐसा है सर?")[0] == "क्या बच्चे के साथ भी ऐसा है सर?"
+    assert f("<name> માટે આ સારું છે")[0].startswith("બાળક")
+    assert f("<name> பற்றி சொல்லுங்கள்")[0].startswith("குழந்தை")
+    assert f("So how is <child name> doing?")[0] == "So how is your child doing?"
+
+
+def test_an_either_or_pair_is_spoken_as_one_form():
+    c = b.collapse_alternatives
+    assert c("खूप छान करतो/करते पण")[0] == "खूप छान करतो पण"
+    assert c("मी शिकतो/शिकते.")[0] == "मी शिकतो."
+    assert c("जी सर/मॅडम, नमस्कार", "f")[0] == "जी मॅडम, नमस्कार"
+    assert c("जी सर/मैम, नमस्ते", "m")[0] == "जी सर, नमस्ते"
+    for keep in ("24/7 support", "https://vacademy.io/a b", "<<SEND:quiz>>"):
+        assert c(keep) == (keep, 0), keep
+
+
+@pytest.mark.asyncio
+async def test_the_gate_keeps_the_address_the_call_already_uses():
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "आई।")
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "जी मॅडम, धन्यवाद। ")
+    rec.text.clear()
+    await _reply(g, "सर/मॅडम, मुलगा खूप छान करतो/करते का?")
+    said = " ".join(t.strip() for t in rec.text if t.strip())
+    assert "मॅडम" in said and "सर" not in said and "/" not in said, said
+
+
+
+def test_hello_is_a_line_check_in_every_script():
+    from app.turntake import caller_checking_presence, is_audio_check
+    for hello in ("हॅलो.", "Hello?", "हेलो", "હેલો?", "হ্যালো", "ஹலோ", "హలో", "ಹಲೋ"):
+        assert is_audio_check(hello), hello
+        assert caller_checking_presence(hello), hello
+    assert not caller_checking_presence("बरोबर।")
+
+
+def test_an_opening_cut_at_pickup_and_said_again_is_not_a_replay():
+    """Call f9b9f575: "नमस्कार," (cut by the callee's "हॅलो."), then the whole
+    opening — scored OPENING_REPLAYED, RED."""
+    from app import report as rp
+    opening = ("नमस्कार, मी श्रेया बोलतेय Shiksha Nation मधून. तुम्ही तुमच्या मुलासाठी live "
+               "classes बद्दल चौकशी केली होती.")
+    class _O:
+        transcript = [{"role": "assistant", "text": "नमस्कार,"},
+                      {"role": "user", "text": "हॅलो."},
+                      {"role": "assistant", "text": opening},
+                      {"role": "user", "text": "बरोबर।"},
+                      {"role": "assistant", "text": "Shiksha Nation मध्ये आमचा focus फक्त syllabus वर नाही."}]
+    replays, _, _ = rp._played_invariants(_O())
+    assert replays == 0
+    class _Replayed:
+        transcript = [{"role": "assistant", "text": opening},
+                      {"role": "user", "text": "बरोबर, बोला।"},
+                      {"role": "assistant", "text": opening}]
+    assert rp._played_invariants(_Replayed())[0] == 1, "a real replay must still count"

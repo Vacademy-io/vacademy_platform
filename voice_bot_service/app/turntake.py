@@ -258,9 +258,20 @@ def is_carrier_announcement(text: str) -> bool:
 # means the first response did not work and repeating the sentence again will
 # not either — see TranscriptCollector, which switches to a short "can you hear
 # me?" and then stops talking.
-_AUDIO_CHECK_WORDS = frozenset({
-    "hello", "helo", "hallo", "hlo", "hey", "hi", "hii", "हेलो", "हैलो", "हलो", "हाय",
+# "Hello" as the STT spells it across the agents' languages. Call f9b9f575
+# (2026-09-25, Shreya-marathi): Marathi "हॅलो" matched nothing, so a pickup
+# "hello" read as an answer and the re-said opening was scored a replay.
+HELLO_VARIANTS = frozenset({
+    "hello", "helo", "hallo", "hlo", "hullo",
+    "हेलो", "हैलो", "हलो", "हॅलो", "हॅल्लो", "हेल्लो", "हालो",            # Devanagari (hi, mr)
+    "હેલો", "હલો",                                                      # Gujarati
+    "হ্যালো", "হেলো",                                                    # Bengali
+    "ਹੈਲੋ", "ਹੈਲੋ",                                                      # Gurmukhi
+    "ஹலோ", "ஹல்லோ",                                                    # Tamil
+    "హలో", "హల్లో",                                                     # Telugu
+    "ಹಲೋ", "ಹಲ್ಲೋ",                                                      # Kannada
 })
+_AUDIO_CHECK_WORDS = frozenset({"hey", "hi", "hii", "हाय"}) | HELLO_VARIANTS
 
 
 def is_audio_check(text: str, max_words: int = 3) -> bool:
@@ -362,7 +373,7 @@ def caller_wants_to_end(text: str) -> bool:
     return bool(ws) and (ws[-1] in _BYE_WORDS or (len(ws) <= 4 and bool(set(ws) & _BYE_WORDS)))
 
 
-_PRESENCE_WORDS = frozenset({"hello", "hallo", "helo", "hullo", "hi", "haan", "ji", "yes", "yeah"})
+_PRESENCE_WORDS = frozenset({"hi", "haan", "ji", "yes", "yeah"}) | HELLO_VARIANTS
 _PRESENCE_PHRASES = ("are you there", "you there", "still there", "can you hear", "sun rahe",
                      "sun rahi", "sun pa rahe", "awaaz aa rahi", "aawaz aa rahi", "hai kya", "koi hai")
 
@@ -377,8 +388,11 @@ def caller_checking_presence(text: str) -> bool:
         return False                       # a synthetic cue, not speech
     if any(p in t for p in _PRESENCE_PHRASES):
         return True
-    ws = re.findall(r"[a-z\u0900-\u097f']+", t)   # _words keeps the '?' on 'hello?'
-    return 1 <= len(ws) <= 6 and all(w in _PRESENCE_WORDS for w in ws) and "hello" in ws
+    # Letters and marks of Latin and every Indic script (U+0900-0DFF), so a
+    # Gujarati or Tamil "hello" is a word here too.
+    ws = re.findall(r"[a-z\u0900-\u0dff']+", t)   # _words keeps the '?' on 'hello?'
+    return (1 <= len(ws) <= 6 and all(w in _PRESENCE_WORDS for w in ws)
+            and any(w in HELLO_VARIANTS for w in ws))
 
 
 def presence_cue(question: str) -> str:

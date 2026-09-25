@@ -101,6 +101,12 @@ class Scenario:
     # instead of SimTTS. The speech-cache scenarios need it — SimTTS yields its
     # audio synchronously, which is how a cache HIT works, not how Smallest does.
     engine: str = "sim"
+    # Chance of a thinking filler ("Hmm…") on a turn. 0 by default so a gate
+    # never flips a coin: production's 10% made a random scenario fail about
+    # one deploy in several (a6252b5c57's gate: a filler before a reply read
+    # as a hole inside it). Scenarios that exercise the filler set 1.0.
+    # SIM_FILLER_PROBABILITY overrides every scenario, for a forced run.
+    filler: float = 0.0
     # Needs the REAL STT (python -m sim.timing --real-stt): the check is about
     # what the vendor transcribes from the fixture audio, not the pipeline.
     # Skipped by "all" without the flag.
@@ -502,6 +508,18 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
     ctx["agent"]["speech_cache_mode"] = "FULL" if scenario.cache_warm else "OFF"
     ctx["agent"]["voiceModulation"] = 1.0
     ctx["corr"] = f"sim-{scenario.key}"
+    from app.config import get_settings as _gs
+    # A fresh, empty speech cache per scenario. One shared cache let a
+    # sentence rendered in an earlier scenario (the background sweeper warms
+    # what it saw) change the timing of a later one: the filler scenario
+    # passed alone and failed in the full run.
+    import tempfile
+    from app import ttscache as _tc
+    _tc._CACHE = _tc.SpeechCache(root=tempfile.mkdtemp(prefix=f"sim-cache-{scenario.key}-"))
+    _tc._CACHE.open()
+    _p = os.environ.get("SIM_FILLER_PROBABILITY")
+    object.__setattr__(_gs(), "filler_probability",
+                       float(_p) if _p not in (None, "") else scenario.filler)
     line = Line()
     transport, providers = build(scenario, line, verbose, real_stt)
     if scenario.cache_warm:
@@ -925,7 +943,8 @@ def _norm_ws(t: str) -> str:
     return " ".join(t.split())
 
 
-def chk_reply_plays_whole(expected: List[str], max_gap: float = 0.8):
+def chk_reply_plays_whole(expected: List[str], max_gap: float = 0.8,
+                          leading_filler: bool = False):
     """What the caller hears, for one multi-sentence reply: every sentence, in
     order, exactly once, recorded exactly as it played (no sentence's words
     inside another's), and no hole inside the reply longer than max_gap.
@@ -950,6 +969,13 @@ def chk_reply_plays_whole(expected: List[str], max_gap: float = 0.8):
             if reply and iv[0] - reply[-1][1] > 4.0:
                 break
             reply.append(iv)
+        if leading_filler:
+            # "Hmm…" covers the model's thinking time; the pause between it and
+            # the reply is the model, not a hole in the reply.
+            if not reply or reply[0][1] - reply[0][0] > 1.5:
+                f.append("no filler played before the reply")
+            else:
+                reply = reply[1:]
         gaps = [round(b[0] - a[1], 2) for a, b in zip(reply, reply[1:])]
         if any(g > max_gap for g in gaps):
             f.append(f"hole inside the reply: gaps {gaps} s (max {max_gap})")
@@ -1059,6 +1085,13 @@ SCENARIOS: List[Scenario] = [
              checks=chk_reply_plays_whole([S_CACHED_HEAD, S_LIVE_1, S_CACHED_TAIL]), max_secs=30,
              cache_warm=[S_CACHED_HEAD, S_CACHED_TAIL], engine="smallest",
              note="cached, live, cached in one reply"),
+    Scenario("smallest_filler_then_live_and_cached",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL])],
+             checks=chk_reply_plays_whole([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL],
+                                          leading_filler=True),
+             max_secs=30, cache_warm=[S_CACHED_TAIL], engine="smallest", filler=1.0,
+             note="a6252b5c57's gate: a 'Hmm…' filler, then the reply must still come whole"),
     Scenario("long_cached_then_live",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=[LONG_CACHED + " " + LIVE_AFTER_CACHED],

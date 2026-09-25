@@ -138,9 +138,46 @@ def _valid_send_key(key: str) -> bool:
 _TEMPLATE_SLOT_RE = re.compile(r"<\s*([a-z][a-z _'-]{0,24})\s*>")
 
 
+# "The child" in the reply's own language, for a name slot the model copied.
+# Script first (each has its own Unicode block), then Marathi vs Hindi inside
+# Devanagari. Call 7f86df90 (2026-09-25, Shreya-marathi demo): the Hindi-only
+# filler put "बच्चे" into Marathi — "बच्चे च्या बाबतीतही असं आहे का मॅडम".
+_CHILD_BY_SCRIPT = (
+    ("[\u0A80-\u0AFF]", "બાળક"),       # Gujarati
+    ("[\u0980-\u09FF]", "শিশু"),        # Bengali / Assamese
+    ("[\u0A00-\u0A7F]", "ਬੱਚਾ"),        # Gurmukhi (Punjabi)
+    ("[\u0B80-\u0BFF]", "குழந்தை"),     # Tamil
+    ("[\u0C00-\u0C7F]", "పిల్లవాడు"),   # Telugu
+    ("[\u0C80-\u0CFF]", "ಮಗು"),         # Kannada
+    ("[\u0D00-\u0D7F]", "കുട്ടി"),      # Malayalam
+    ("[\u0B00-\u0B7F]", "ପିଲା"),        # Odia
+)
+# Words that occur in Marathi and not in Hindi.
+_MARATHI_MARKERS = frozenset(
+    "आहे आहेत आहात आहोत मध्ये आम्ही तुमच्या तुमचं तुमची तुमचा आणि होतं होती "
+    "करतो करते करतात बद्दल मधून पूर्ण असं काय नाव सध्या".split())
+_MARATHI_POSTPOSITIONS = ("च्या", "चा", "ची", "चे", "ला", "ने", "साठी", "कडे", "कडून", "बद्दल")
+_CHILD_SLOT = "\x00CHILD\x00"
+
+
+def _is_marathi(text: str) -> bool:
+    words = {w.strip("।.,!?;:\"'()") for w in text.split()}
+    return bool(words & _MARATHI_MARKERS) or any(w.endswith("च्या") for w in words)
+
+
+def _child_word(text: str) -> str:
+    for block, word in _CHILD_BY_SCRIPT:
+        if re.search(block, text):
+            return word
+    if re.search("[\u0900-\u097F]", text):
+        return _CHILD_SLOT if _is_marathi(text) else "बच्चे"
+    return "your child"
+
+
 def fill_template_slots(text: str):
-    """(text, n): name-like slots become "the child" in the reply's language,
-    any other slot is dropped — anything but reading the bracket aloud."""
+    """(text, n): name-like slots become "the child" in the reply's language
+    (Marathi takes the oblique मुला- before a postposition: "मुलाच्या"), any
+    other slot is dropped — anything but reading the bracket aloud."""
     n = 0
 
     def _rep(m):
@@ -148,12 +185,49 @@ def fill_template_slots(text: str):
         n += 1
         slot = m.group(1).strip()
         if "name" in slot or slot in ("child", "student", "beta", "bachcha"):
-            return "बच्चे" if re.search(r"[\u0900-\u097F]", text) else "your child"
+            return _child_word(text)
         return ""
     out = _TEMPLATE_SLOT_RE.sub(_rep, text)
+    if _CHILD_SLOT in out:
+        out = re.sub(re.escape(_CHILD_SLOT) + r"\s*(" + "|".join(_MARATHI_POSTPOSITIONS) + r")",
+                     lambda m: "मुला" + m.group(1), out)
+        out = out.replace(_CHILD_SLOT, "मूल")
     if n:
         out = re.sub(r"[ \t]{2,}", " ", out)
     return out, n
+
+
+# "करतो/करते", "सर/मॅडम", "शिकतो/शिकते": a prompt's either-or written as a
+# slash pair, copied into a reply — the voice reads the slash or both words
+# (call 7f86df90, 2026-09-25: "…खूप छान करतो/करते पण…"). Keep ONE: the address
+# the call already uses (sir or madam), otherwise the first form. A token with
+# a digit ("24/7") or a URL is left alone.
+_ALT_RE = re.compile(r"(?<![^\s\"'“‘(])([^\s/\"'“”‘’()]+)/([^\s/\"'“”‘’()]+)")
+_FEMALE_ADDRESS = frozenset({"मॅडम", "मैम", "मैडम", "मेम", "madam", "ma'am", "maam", "mam"})
+_MALE_ADDRESS = frozenset({"सर", "sir"})
+
+
+def collapse_alternatives(text: str, address: str = ""):
+    """(text, n). address: "f" or "m" — how the caller has been addressed."""
+    n = 0
+
+    def _rep(m):
+        nonlocal n
+        a, b = m.group(1), m.group(2)
+        if any(ch.isdigit() for ch in a + b) or ":" in a:
+            return m.group(0)
+        if not (any(ch.isalpha() for ch in a) and any(ch.isalpha() for ch in b)):
+            return m.group(0)
+        tail = re.search(r"[।.,!?;:…]*$", b).group(0)
+        b_core = b[:len(b) - len(tail)] if tail else b
+        pick = a
+        if address == "f" and b_core.casefold() in _FEMALE_ADDRESS:
+            pick = b_core
+        elif address == "m" and b_core.casefold() in _MALE_ADDRESS:
+            pick = b_core
+        n += 1
+        return pick + tail
+    return _ALT_RE.sub(_rep, text), n
 
 
 _LOOSE_MARKER_RE = re.compile(r"(?<!<)<\s*(SEND:[^<>]+|END_CALL|TRANSFER)\s*>(?!>)")
@@ -1875,6 +1949,9 @@ class NoRepeatGate(FrameProcessor):
         # given back if the caller never actually heard it.
         self._resumed_entries: list = []
         self._buf = ""
+        # How the bot addresses the caller so far ("f" madam / "m" sir): picks
+        # the side of a "सर/मॅडम" pair the model copies from its prompt.
+        self._address = ""
         self._emitted = 0
         # Characters spoken this reply — the length budget (max_reply_chars).
         self._body_chars = 0
@@ -2233,6 +2310,13 @@ class NoRepeatGate(FrameProcessor):
         # WhatsApp number 9425677707 पर भेज दूँ?"). Space the digits so it is
         # read out one by one, which is also how the prompt asks for numbers.
         text = re.sub(r"(?<!\d)(\d{10})(?!\d)", lambda m: " ".join(m.group(1)), text)
+        if "/" in text:
+            text, alts = collapse_alternatives(text, self._address)
+            if alts:
+                logger.info("no-repeat: kept one form of %d either-or pair(s) -> %r",
+                            alts, text.strip()[:60])
+                if self._diag is not None:
+                    self._diag.bump("alternatives_collapsed", alts)
         if "<" in text:
             text, slots = fill_template_slots(text)
             if slots:
@@ -2240,6 +2324,11 @@ class NoRepeatGate(FrameProcessor):
                             "the prompt -> %r", slots, text.strip()[:60])
                 if self._diag is not None:
                     self._diag.bump("placeholders_filled", slots)
+        _words = {w.strip("।.,!?;:\"'()").casefold() for w in text.split()}
+        if _words & _FEMALE_ADDRESS:
+            self._address = "f"
+        elif _words & _MALE_ADDRESS:
+            self._address = "m"
         norm = normalize_spoken(text)
         self._spoken.append(norm)
         self._norms_this_reply.add(norm)

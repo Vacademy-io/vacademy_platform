@@ -64,4 +64,32 @@ public class GoogleRecordingController {
         body.put("recordings", recordings);
         return ResponseEntity.ok(body);
     }
+
+    /**
+     * Admin "Upload to library" for a Meet recording: the admin downloaded the MP4 from Drive and
+     * uploaded it via media-service; this attaches that fileId to the recording so it can be added
+     * to a course / YouTube like any library recording. Returns the updated recording list.
+     */
+    @PostMapping("/google-recordings/attach-file")
+    public ResponseEntity<Map<String, Object>> attachFile(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam String scheduleId,
+            @RequestParam String recordingId,
+            @RequestParam String fileId) {
+
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
+                        "Schedule not found: " + scheduleId));
+        String inst = scheduleRepository.findInstituteIdByScheduleId(scheduleId)
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
+                        "Institute not found for schedule: " + scheduleId));
+        instituteAccessValidator.validateUserAccess(user, inst);
+
+        List<MeetingRecordingDTO> recordings =
+                googleRecordingService.attachUploadedFile(schedule, recordingId, fileId);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("recordings", recordings);
+        return ResponseEntity.ok(body);
+    }
 }

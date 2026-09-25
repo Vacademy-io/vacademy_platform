@@ -67,6 +67,16 @@ _NOT_HEADING_START = re.compile(
 # "END OF SECTION II" — also "E ND OF" as a spaced-out text layer reads it.
 _PASSAGE_INTRO = re.compile(r"^\s*(?:directions?|instructions?\s+for|read\s+the|passage|study\s+the)\b", re.I)
 _END_MARK = re.compile(r"^\s*e\s?nd\s+of\s+(?:section|part)\s*[-–—:]?\s*(\w+)", re.I)
+# "Directions for Questions 25–28", "Directions (Q. 25–28)" — opens a set of
+# questions; the range follows the word, so "Instructions for candidates …
+# 1–30" is not one.
+_SET_INTRO = re.compile(
+    r"^\s*(?:directions?|instructions?)\s*(?:for\s+)?[(\[]?\s*(?:the\s+)?(?:(?:q(?:uestions?|s)?|nos?)\.?\s*)*"
+    r"\d{1,3}\s*(?:[–\-—]|to)\s*\d{1,3}",
+    re.I,
+)
+# A line that is one bracketed caption: "(Seating arrangement)", "[DI set]".
+_BRACKETED = re.compile(r"\([^()]*\)|\[[^\[\]]*\]")
 _RANGE_IN_NAME = re.compile(
     r"\(?\s*(?:q(?:uestions?|s)?\.?\s*(?:nos?\.?)?\s*)?\d{1,3}\s*(?:[–\-—]|to)\s*\d{1,3}\s*\)?", re.I
 )
@@ -252,8 +262,15 @@ def _tidy_name(raw: str) -> str:
     name = _MARKS_IN_NAME.sub(" ", raw)
     name = _RANGE_IN_NAME.sub(" ", name)
     name = re.sub(r"\s+", " ", name).strip(" :-–—.,()|·")
+    # The strip also takes the ")" of a name's own "(VARC)"; give it back.
+    opened, closed = name.count("("), name.count(")")
+    if opened > closed:
+        name += ")" * (opened - closed)
+    elif closed > opened:
+        name = "(" * (closed - opened) + name
     if name.isupper() and len(name) > 3:
-        name = name.title()
+        # "ENGLISH COMPREHENSION (VARC)" → "English Comprehension (VARC)"
+        name = re.sub(r"\(([A-Za-z]{2,5})\)", lambda m: f"({m.group(1).upper()})", name.title())
     return name
 
 
@@ -403,7 +420,9 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
                 heads.append((i, lab["name"], lab["label"]))
                 continue
             sub = _subject_heading(text)
-            if sub:
+            # "(Science fair scores logic)" under "Directions for Questions
+            # 25–28:" captions that set of questions, not a new section.
+            if sub and not (i > 0 and _BRACKETED.fullmatch(text.strip()) and _SET_INTRO.match(texts[i - 1])):
                 heads.append((i, sub, None))
         # In the front matter keep only the last heading.
         front_heads = [h for h in heads if h[0] < first_q]

@@ -118,6 +118,46 @@ def test_subject_headings_but_not_instruction_lines():
     assert _names(outline_of_html(html)) == [("Physics", 1, 2), ("Chemistry", 3, 4)]
 
 
+def test_a_caption_for_a_set_of_questions_is_not_a_section():
+    """EUG-03: "(Science fair scores logic)" under "Directions for Questions
+    25–28:" split Logical Reasoning in two ("science" is a subject word)."""
+    html = (
+        _p("SECTION 1: ENGLISH COMPREHENSION (VARC)") + _mcq(1) + _mcq(2)
+        + _p("SECTION 2: LOGICAL REASONING") + _mcq(3)
+        + _p("Directions for Questions 4-5:") + _p("(Science fair scores logic)") + _mcq(4) + _mcq(5)
+        + _p("SECTION 3: QUANTITATIVE ABILITY") + _mcq(6)
+    )
+    assert _names(outline_of_html(html)) == [
+        ("Section 1: English Comprehension (VARC)", 1, 2),
+        ("Section 2: Logical Reasoning", 3, 5),
+        ("Section 3: Quantitative Ability", 6, 6),
+    ]
+    assert _names(outline_of_html(html.replace("Directions for Questions 4-5:", "Directions (Q. 4-5):")))[1] == (
+        "Section 2: Logical Reasoning", 3, 5)
+    # Only the two together: a bracketed subject line or a heading under a
+    # directions line on its own is read exactly as before.
+    for alone in (html.replace(_p("Directions for Questions 4-5:"), ""),
+                  html.replace("(Science fair scores logic)", "Science fair scores")):
+        assert len(outline_of_html(alone)["sections"]) == 4
+    brackets = _p("(PHYSICS)") + _mcq(1) + _mcq(2) + _p("(CHEMISTRY)") + _mcq(3)
+    assert _names(outline_of_html(brackets)) == [("Physics", 1, 2), ("Chemistry", 3, 3)]
+    candidates = _p("Instructions for candidates 1-3 compulsory") + _p("(PHYSICS)") + _mcq(1) + _mcq(2) + _p(
+        "(CHEMISTRY)") + _mcq(3)
+    assert _names(outline_of_html(candidates)) == [("Physics", 1, 2), ("Chemistry", 3, 3)]
+
+
+def test_a_section_name_keeps_its_own_brackets():
+    from app.services.paper_outline import _label_heading, _subject_heading
+
+    assert _label_heading("SECTION 1: ENGLISH COMPREHENSION (VARC)")["name"] == "Section 1: English Comprehension (VARC)"
+    assert _label_heading("Section A: Physics (Theory)")["name"] == "Section A: Physics (Theory)"
+    # A name wholly in brackets, or a range in brackets, loses them as before.
+    assert _label_heading("SECTION – B (Physics)")["name"] == "Section B: Physics"
+    assert _label_heading("Section C (Long answer)")["name"] == "Section C: Long answer"
+    assert _subject_heading("PHYSICS (THEORY)") == "Physics (Theory)"
+    assert _subject_heading("(PHYSICS)") == "Physics"
+
+
 def test_a_single_heading_is_not_a_split():
     assert outline_of_html(_p("SECTION A") + _mcq(1) + _mcq(2))["sections"] == []
 

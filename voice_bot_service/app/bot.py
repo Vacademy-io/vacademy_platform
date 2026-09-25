@@ -2199,8 +2199,12 @@ class NoRepeatGate(FrameProcessor):
         # a 210-char pitch sentence, then the faculty line, then the dashboard
         # and PTM — "समझ में नहीं आया", and the parent hung up. Shreya's replies:
         # p95 228 chars, so this trims only the stacked monologues.
+        # Only once the reply has said something substantial: call 5aa10e10
+        # (2026-09-25) held a 220-char sentence behind a 35-char one, the reply
+        # was "that's actually a good performance।" and nothing else, and the
+        # parent waited 7 s — "आप बार-बार शांत क्यों जा रही हैं?".
         budget = self._max_chars()
-        if (budget and not past_cap and self._body_chars
+        if (budget and not past_cap and self._body_chars >= 120
                 and self._body_chars + len(text.strip()) > budget):
             self._capped.append(text)
             return

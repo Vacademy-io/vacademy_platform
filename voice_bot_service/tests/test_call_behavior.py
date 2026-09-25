@@ -6347,3 +6347,21 @@ def test_a_line_the_transcript_joined_but_the_model_got_in_pieces_is_not_lost():
                  "उसकी मतलब पढ़ाई हो सकती।"]
     assert dg.split_lost(heard, delivered).answers == 0
     assert dg.split_lost(["मेरा बच्चा mobile बाईस से।"], ["कुछ और"]).answers == 1
+
+
+
+@pytest.mark.asyncio
+async def test_a_short_first_sentence_is_never_left_on_its_own_by_the_budget():
+    """Call 5aa10e10: 35 chars said, a 220-char sentence held, no question —
+    the bot said a fragment and went silent for 7 s."""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "हाँ बोल सकते हैं।",
+                       max_sentences=lambda: 3, max_chars=lambda: 240)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    long_one = ("लेकिन इस level पर हमारा focus सिर्फ marks improve करने का नहीं होता, focus ये होता है "
+                "कि उसके concepts और मजबूत हों, weaknesses identify हों, और वो अपनी class के बाकी अच्छे "
+                "students के बीच अपनी position improve कर सके। ")
+    await _reply(g, "that's actually a good performance। ", long_one)
+    said = " ".join(t.strip() for t in rec.text if t.strip())
+    assert "position improve" in said, "the substantive sentence was held behind a fragment"

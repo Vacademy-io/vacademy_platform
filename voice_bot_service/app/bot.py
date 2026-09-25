@@ -247,6 +247,7 @@ class TranscriptCollector(FrameProcessor):
         # (recently_cut) is stamped when the InterruptionFrame reaches DuckGate,
         # ~0.1 s later — and the caller's words arrive inside that gap.
         self._self_cut_t = 0.0
+        self._question_cue_t = 0.0
         # (text, voice onset) of an acknowledgement heard while the bot kept
         # talking — answered when the reply ends, if it ended on a question.
         self._acked_mid_reply = None
@@ -984,6 +985,25 @@ class TranscriptCollector(FrameProcessor):
                 # यही सब" this way and she hung up 27 s later.
                 await self.push_frame(frame, direction)
                 forwarded = True
+                # They cut in with a QUESTION: the model must answer it, not go
+                # back to the sentence it lost. Call 2983bf1f (2026-09-24): "तो
+                # Ma'am कैसे क्या होगा… मेरा बच्चा mobile… पढ़ाई हो सकती?" reached
+                # the model whole, and it replied "जी मैम। आपको एक online
+                # dashboard मिलता है…" — the cut sentence, re-delivered. Pushed
+                # BEFORE the interruption, like the words themselves, so it
+                # cannot go missing in the aggregator's interruption handling.
+                # Once per burst of pieces; never while the opening is owed.
+                if (is_question(text) and self._bot_spoke_once()
+                        and time.time() - self._question_cue_t > 4.0):
+                    self._question_cue_t = time.time()
+                    logger.info("turn-gate: %r cut in with a question — steering the "
+                                "model to answer it first", text[:32])
+                    await self.push_frame(LLMMessagesAppendFrame(messages=[{
+                        "role": "user", "content":
+                        "[They cut you off with a QUESTION. Answer that question "
+                        "first, directly, in one or two sentences. Do not go back "
+                        "to what you were saying and do not re-say the sentence "
+                        "they interrupted.]"}]), direction)
                 self._self_cut_t = time.time()
                 await self.broadcast_interruption()
                 # If that cut our opening before it was heard and what they
@@ -1798,7 +1818,8 @@ class NoRepeatGate(FrameProcessor):
 
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
                  no_echo=None, handbacks=None, played_text=None, end_forced=None,
-                 request_next_step=None, drop_stale_bridge=None, max_sentences=None):
+                 request_next_step=None, drop_stale_bridge=None, max_sentences=None,
+                 max_chars=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         # The most body sentences one reply may put on the line (0 = no cap).
@@ -1809,6 +1830,7 @@ class NoRepeatGate(FrameProcessor):
         # turn is handed over cleanly. The context only ever holds what was
         # played, so the model picks up the rest itself next turn.
         self._max_sentences = max_sentences or (lambda: 0)
+        self._max_chars = max_chars or (lambda: 0)
         self._capped: list = []
         self._last_caller_text = last_caller_text or (lambda: "")
         self._diag = diag
@@ -1854,6 +1876,8 @@ class NoRepeatGate(FrameProcessor):
         self._resumed_entries: list = []
         self._buf = ""
         self._emitted = 0
+        # Characters spoken this reply — the length budget (max_reply_chars).
+        self._body_chars = 0
         self._held_tail = ""
         self._handback = 0
         # Content-free turns since the last reply that actually said something.
@@ -2169,6 +2193,17 @@ class NoRepeatGate(FrameProcessor):
         if cap and not past_cap and self._emitted >= cap:
             self._capped.append(text)
             return
+        # Length budget: the first sentence always plays; after it, stop once
+        # the reply would run past max_reply_chars (the closing question is
+        # still asked, as for the sentence cap). Call 3c2f5b82 (2026-09-24):
+        # a 210-char pitch sentence, then the faculty line, then the dashboard
+        # and PTM — "समझ में नहीं आया", and the parent hung up. Shreya's replies:
+        # p95 228 chars, so this trims only the stacked monologues.
+        budget = self._max_chars()
+        if (budget and not past_cap and self._body_chars
+                and self._body_chars + len(text.strip()) > budget):
+            self._capped.append(text)
+            return
         if self._echo_held and text is not self._echo_held:
             logger.info("no-echo: dropping restated answer %r — real content followed",
                         self._echo_held.strip()[:48])
@@ -2211,6 +2246,7 @@ class NoRepeatGate(FrameProcessor):
             self._asked[topic] = norm
         self._pending.append((norm, topic, prev_exemplar, text.strip()))
         self._emitted += 1
+        self._body_chars += len(text.strip())
         if not self._is_content_free(text):
             self._said_real = True          # the bot said something answerable
         if self._is_filler(text):
@@ -2224,6 +2260,7 @@ class NoRepeatGate(FrameProcessor):
 
         if isinstance(frame, LLMFullResponseStartFrame):
             self._buf, self._emitted, self._held_tail = "", 0, ""
+            self._body_chars = 0
             self._capped = []
             self._said_real = False
             self._cf_held = ""
@@ -2410,8 +2447,8 @@ class NoRepeatGate(FrameProcessor):
             if self._capped:
                 last = self._capped[-1]
                 asks = "?" in last or "？" in last
-                logger.info("no-repeat: reply capped at %d sentence(s) — %d held%s",
-                            self._emitted, len(self._capped),
+                logger.info("no-repeat: reply capped at %d sentence(s) / %d chars — %d held%s",
+                            self._emitted, self._body_chars, len(self._capped),
                             ", asking its closing question" if asks else "")
                 if self._diag is not None:
                     self._diag.bump("sentences_capped", len(self._capped))
@@ -5069,6 +5106,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         request_next_step=_ask_for_next_step,
         drop_stale_bridge=_bridge_is_stale,
         max_sentences=lambda: settings.max_sentences_per_reply,
+        max_chars=lambda: settings.max_reply_chars,
         handbacks=(NoRepeatGate._HANDBACK_EN
                    if _agent_language(agent)[0] == "en-IN" else None),
         # PlayedTranscriptRecorder's record of what the caller actually heard —
@@ -5634,7 +5672,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                       if i > _first_bot
                       and t.get("role") == "user"
                       and not (t.get("text") or "").lstrip().startswith("[")
-                      and not is_carrier_announcement(t.get("text") or "")]
+                      and not is_carrier_announcement(t.get("text") or "")
+                      # An acknowledgement ("ठीक।", "Okay जी") is talked
+                      # through in voice mode and kept OUT of the model's
+                      # context on purpose — not a lost answer. 8 of the 11
+                      # ANSWER_DELETED samples on 24 Sep were exactly these.
+                      and mid_reply_action(t.get("text") or "") != ABSORB]
             _lost = diag_mod.split_lost(_heard, _delivered)
             diag.answers_deleted = _lost.answers
             diag.answers_deleted_samples = _lost.answer_samples

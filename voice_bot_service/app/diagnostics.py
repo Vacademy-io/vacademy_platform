@@ -710,6 +710,22 @@ def split_lost(heard: List[str], delivered: List[str]) -> Lost:
         if hw and _consume_words(words, hw):
             continue
         missing.append(h)
+    # Pass 3, the reverse split: the transcript JOINS a fragment continuation
+    # onto its head ("मेरा बच्चा mobile" + "बाईस से।" -> one entry) while the
+    # model received the pieces as separate messages. Call 2983bf1f
+    # (2026-09-24) reported that line lost; the run that followed had all 17
+    # of the caller's words. Search the unconsumed messages joined in order.
+    if missing and spans:
+        joined = "".join(spans)
+        still: List[str] = []
+        for h in missing:
+            k = _norm_answer(h)
+            j = joined.find(k) if len(k) >= _CONTAIN_MIN_CHARS else -1
+            if j >= 0:
+                joined = joined[:j] + joined[j + len(k):]
+            else:
+                still.append(h)
+        missing = still
     answers = [h for h in missing if _lost_carries_meaning(h)]
     scraps = [h for h in missing if not _lost_carries_meaning(h)]
     return Lost(len(answers), answers[:_MAX_DELETED_ANSWERS],

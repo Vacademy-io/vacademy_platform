@@ -665,6 +665,13 @@ class Settings:
     # still asked. 0 disables. (call bd9e6a0d: a 30 s, five-sentence pitch)
     max_sentences_per_reply: int = field(
         default_factory=lambda: int(_env("MAX_SENTENCES_PER_REPLY", "3")))
+    # Length budget per reply, in characters: after the first sentence, no
+    # sentence that would take the reply past this (closing question still
+    # asked). 0 disables. Call 3c2f5b82 (2026-09-24): stacked pitch lines,
+    # "समझ में नहीं आया", hang-up. Shreya p95 = 228 chars; 2 sentences max was
+    # tried first and cut required content out of scripted turns (timing sim).
+    max_reply_chars: int = field(
+        default_factory=lambda: int(_env("MAX_REPLY_CHARS", "240")))
     turn_release_on_absorb: bool = field(
         default_factory=lambda: _env("TURN_RELEASE_ON_ABSORB", "1") not in ("0", "false", "no"))
     backchannel_resume_settle_secs: float = field(

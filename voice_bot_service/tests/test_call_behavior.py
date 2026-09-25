@@ -6273,3 +6273,77 @@ async def test_smallest_meters_only_the_characters_the_vendor_synthesises():
     assert d.tts_chars == len("नमस्ते जी।")
     [f async for f in t.run_tts("ठीक है।")]
     assert d.tts_chars == len("नमस्ते जी।") + len("ठीक है।")
+
+
+@pytest.mark.asyncio
+async def test_a_long_reply_stops_at_the_length_budget_but_asks_its_question():
+    """Call 3c2f5b82 (2026-09-24): a 210-char pitch sentence, then the faculty
+    line — "समझ में नहीं आया", hang-up. After the first sentence, nothing that
+    takes the reply past max_reply_chars; the closing question still goes."""
+    from app.config import Settings
+    assert Settings().max_reply_chars == 240 and Settings().max_sentences_per_reply == 3
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "नहीं।",
+                       max_sentences=lambda: 3, max_chars=lambda: 240)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "ठीक है सर। ",
+                 "Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है, हम Day one से "
+                 "बच्चों की concept clarity मजबूत करने पर काम करते हैं, ताकि वो school exams में "
+                 "बेहतर perform करें और पूरे confidence के साथ अच्छे marks ला सकें। ",
+                 "हमारे यहाँ 50+ full-time faculties हैं, और हर faculty class के बाद तीन-चार घंटे "
+                 "खुद तैयारी करते हैं। ",
+                 "क्या आप इसके बारे में और जानना चाहेंगे?")
+    said = [t.strip() for t in rec.text if t.strip()]
+    assert any("focus" in t for t in said), said
+    assert not any("faculties" in t for t in said), "the stacked sentence should be held"
+    assert said[-1].startswith("क्या आप"), said
+    rec.text.clear()
+    long_one = "Shiksha Nation में " + "बहुत अच्छी पढ़ाई होती है, " * 12 + "सच में।"
+    await _reply(g, long_one)
+    assert [t.strip() for t in rec.text if t.strip()] == [long_one.strip()], \
+        "the first sentence always plays, however long"
+
+
+# ── call 2983bf1f (2026-09-24): a question that cut the bot off went unanswered ──
+@pytest.mark.asyncio
+async def test_a_question_that_cuts_the_bot_off_is_answered_first():
+    """The model got "तो Ma'am कैसे क्या होगा… पढ़ाई हो सकती?" whole and
+    re-delivered the dashboard sentence it had lost. A cue now travels with
+    the question — before the interruption, so it cannot go missing — and
+    only once for a burst of pieces."""
+    from pipecat.frames.frames import TranscriptionFrame, LLMMessagesAppendFrame
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    order = []
+    async def _broadcast():
+        rec.interruptions += 1; order.append("INTERRUPT")
+    async def _push(frame, direction=None):
+        rec.frames.append(frame); rec.dirs.append(direction)
+        if isinstance(frame, TranscriptionFrame): order.append("TRANSCRIPT")
+        if isinstance(frame, LLMMessagesAppendFrame): order.append("CUE")
+    tc.broadcast_interruption = _broadcast
+    tc.push_frame = _push
+    await _feed(tc, "तो Ma'am कैसे क्या होगा क्या बच्चे?")
+    assert order == ["TRANSCRIPT", "CUE", "INTERRUPT"], order
+    assert any("QUESTION" in c for c in rec.cues())
+    order.clear()
+    await _feed(tc, "कैसे पढ़ाई होगी?")        # the next piece of the same burst
+    assert "CUE" not in order, "one cue per burst"
+    rec2 = _Rec()
+    tc2 = _replay_collector(rec2, bot_speaking=True)
+    await _feed(tc2, "नहीं यही सब।")              # a statement: no cue
+    assert not any("QUESTION" in c for c in rec2.cues())
+
+
+
+def test_a_line_the_transcript_joined_but_the_model_got_in_pieces_is_not_lost():
+    """Call 2983bf1f: "मेरा बच्चा mobile" + "बाईस से।" reached the model as
+    two messages; the transcript joined them and the report called it lost."""
+    import app.diagnostics as dg
+    heard = ["तो Ma'am कैसे क्या होगा क्या बच्चे?", "मेरा बच्चा mobile बाईस से।",
+             "उसकी मतलब पढ़ाई हो सकती।"]
+    delivered = ["तो Ma'am कैसे क्या होगा क्या बच्चे?", "मेरा बच्चा mobile", "बाईस से।",
+                 "उसकी मतलब पढ़ाई हो सकती।"]
+    assert dg.split_lost(heard, delivered).answers == 0
+    assert dg.split_lost(["मेरा बच्चा mobile बाईस से।"], ["कुछ और"]).answers == 1

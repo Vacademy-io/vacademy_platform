@@ -122,5 +122,11 @@
         "recordingHeading": "التسجيل",
         "noRecording": "لا يوجد تسجيل لهذه المكالمة",
         "byCounsellor": "بواسطة {{name}}"
+    },
+    "origin": {
+        "workflow": "أُرسلت بواسطة سير العمل «{{name}}»",
+        "workflowUnnamed": "أُرسلت بواسطة سير عمل",
+        "chatbotFlow": "أُرسلت بواسطة تدفق روبوت المحادثة «{{name}}»",
+        "chatbotFlowUnnamed": "أُرسلت بواسطة تدفق روبوت محادثة"
     }
 }

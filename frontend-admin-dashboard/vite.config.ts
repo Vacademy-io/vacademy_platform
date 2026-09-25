@@ -491,6 +491,7 @@ export default defineConfig(({ mode }) => {
                 'src/constants/**/*.test.{ts,tsx}',
                 'src/lib/**/*.test.{ts,tsx}',
                 'src/components/templates/**/*.test.{ts,tsx}',
+                'src/components/shared/whatsapp/**/*.test.{ts,tsx}',
             ],
         },
         server: {

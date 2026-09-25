@@ -119,5 +119,11 @@
         "recordingHeading": "Enregistrement",
         "noRecording": "Aucun enregistrement pour cet appel",
         "byCounsellor": "par {{name}}"
+    },
+    "origin": {
+        "workflow": "Envoyé par le flux de travail « {{name}} »",
+        "workflowUnnamed": "Envoyé par un flux de travail",
+        "chatbotFlow": "Envoyé par le flux de chatbot « {{name}} »",
+        "chatbotFlowUnnamed": "Envoyé par un flux de chatbot"
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.notification.constants.NotificationConstant;
+import vacademy.io.admin_core_service.features.notification.dto.MessageOrigin;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
@@ -174,6 +175,15 @@ public class NotificationService {
      * Maps the legacy Map<phone, Map<key,value>> format to recipients with variables.
      */
     public UnifiedSendResponse sendWhatsappViaUnified(WhatsappRequest request, String instituteId) {
+        return sendWhatsappViaUnified(request, instituteId, null);
+    }
+
+    /**
+     * As {@link #sendWhatsappViaUnified(WhatsappRequest, String)}, recording who is sending
+     * (e.g. a workflow) so the WhatsApp Inbox and the student timeline can show it.
+     */
+    public UnifiedSendResponse sendWhatsappViaUnified(WhatsappRequest request, String instituteId,
+                                                      MessageOrigin origin) {
         List<UnifiedSendRequest.Recipient> recipients = new java.util.ArrayList<>();
 
         log.info("sendWhatsappViaUnified: template={}, userDetails={}, headerParams={}, headerVideoParams={}, buttonUrlParams={}, buttonIndexParams={}, headerType={}",
@@ -233,6 +243,9 @@ public class NotificationService {
         if (request.getHeaderType() != null) {
             optsBuilder.headerType(request.getHeaderType());
         }
+        if (origin != null) {
+            optsBuilder.originType(origin.type()).originId(origin.id()).originName(origin.name());
+        }
 
         return sendUnified(UnifiedSendRequest.builder()
                 .instituteId(instituteId)
@@ -248,9 +261,14 @@ public class NotificationService {
      * Bridge: List<WhatsappRequest> (batch) → unified send. Sends each request sequentially.
      */
     public void sendWhatsappViaUnified(List<WhatsappRequest> requests, String instituteId) {
+        sendWhatsappViaUnified(requests, instituteId, null);
+    }
+
+    /** Batch form of {@link #sendWhatsappViaUnified(WhatsappRequest, String, MessageOrigin)}. */
+    public void sendWhatsappViaUnified(List<WhatsappRequest> requests, String instituteId, MessageOrigin origin) {
         for (WhatsappRequest request : requests) {
             try {
-                sendWhatsappViaUnified(request, instituteId);
+                sendWhatsappViaUnified(request, instituteId, origin);
             } catch (Exception e) {
                 log.error("Failed to send WhatsApp batch for template {}: {}",
                         request.getTemplateName(), e.getMessage());

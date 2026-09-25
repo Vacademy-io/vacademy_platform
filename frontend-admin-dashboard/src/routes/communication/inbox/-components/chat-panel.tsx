@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useInboxStore } from '../-stores/inbox-store';
 import type { InboxMessage } from '../-services/inbox-api';
+import { WhatsAppTemplateButtons } from '@/components/shared/whatsapp/whatsapp-template-buttons';
+import { MessageOriginIcon, messageOriginKey } from '@/components/shared/whatsapp/message-origin';
 import { ReplyBox } from './reply-box';
 import { DeliveryTicks, deliveryState } from './delivery-ticks';
 import { formatMessageTime, groupMessagesByDay } from '../-utils/day-labels';
@@ -183,6 +185,7 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
     // The provider's verdict, said in words an admin can act on: "Re-engagement message (131047)"
     // becomes the 24-hour window, and an unrecognised code still shows the provider's exact text.
     const failure = failed ? explainWhatsAppFailure(msg.error) : null;
+    const originKey = messageOriginKey(msg.origin);
 
     return (
         <div className={`flex ${msg.direction === 'OUTGOING' ? 'justify-end' : 'justify-start'}`}>
@@ -222,6 +225,14 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                 {/* Message body — the actual template text the recipient received */}
                 {msg.body && (
                     <p className="whitespace-pre-wrap break-words text-gray-800">{msg.body}</p>
+                )}
+
+                {/* Who sent it: the workflow or chatbot flow behind this message */}
+                {originKey && msg.origin && (
+                    <p className="mt-1 flex items-center gap-1 text-caption text-gray-500">
+                        <MessageOriginIcon type={msg.origin.type} size={11} />
+                        <span>{t(originKey, { name: msg.origin.name })}</span>
+                    </p>
                 )}
 
                 {/* Template context: which template it came from */}
@@ -277,6 +288,13 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                         <DeliveryTicks state={deliveryState(msg.deliveryStatus, msg.status)} />
                     )}
                 </p>
+
+                {msg.buttons && msg.buttons.length > 0 && (
+                    <WhatsAppTemplateButtons
+                        buttons={msg.buttons}
+                        className="-mx-3 -mb-2 mt-1.5 rounded-b-lg border-t border-black/10"
+                    />
+                )}
             </div>
         </div>
     );

@@ -8,8 +8,11 @@ import type { HtmlDocJobPhase } from './html-doc-ai-service';
 export type GenerationProgress = {
     phase: HtmlDocJobPhase;
     hasPdf?: boolean;
-    /** Heading of the section being written right now. */
+    /** Heading of the section being written now (parallel: those still in flight). */
     section?: string;
+    /** Parallel mode — all sections are written at the same time. */
+    sectionsTotal?: number;
+    sectionsDone?: number;
     contentChars?: number;
     /** Rough final size — the current page's length on an edit. */
     expectedChars?: number;
@@ -33,6 +36,9 @@ function formatElapsed(total: number) {
 function percentOf(p: GenerationProgress) {
     if (p.phase === 'reading_pdf') return 4;
     if (p.phase === 'planning') return 8;
+    if (p.phase === 'writing' && p.sectionsTotal) {
+        return 10 + ((p.sectionsDone || 0) / p.sectionsTotal) * 75;
+    }
     if (p.phase === 'writing') {
         const expected = p.expectedChars || TYPICAL_PAGE_CHARS;
         return 10 + Math.min(1, (p.contentChars || 0) / expected) * 75;
@@ -77,9 +83,14 @@ export function HtmlDocGenerationProgress({ progress, canLeave, onCancel }: Prop
         {
             key: 'writing',
             label:
-                p.phase === 'writing' && p.section
-                    ? t('progress.writingSection', { section: p.section })
-                    : t('progress.writing'),
+                p.phase === 'writing' && p.sectionsTotal
+                    ? t('progress.writingParallel', {
+                          done: p.sectionsDone ?? 0,
+                          total: p.sectionsTotal,
+                      })
+                    : p.phase === 'writing' && p.section
+                      ? t('progress.writingSection', { section: p.section })
+                      : t('progress.writing'),
         },
         {
             key: 'images',
@@ -146,6 +157,14 @@ export function HtmlDocGenerationProgress({ progress, canLeave, onCancel }: Prop
                                 <Circle className="size-4" />
                             )}
                             <span className="truncate">{step.label}</span>
+                            {state === 'active' &&
+                                step.key === 'writing' &&
+                                !!p.sectionsTotal &&
+                                !!p.section && (
+                                    <span className="truncate font-normal text-neutral-500">
+                                        · {p.section}
+                                    </span>
+                                )}
                         </li>
                     );
                 })}

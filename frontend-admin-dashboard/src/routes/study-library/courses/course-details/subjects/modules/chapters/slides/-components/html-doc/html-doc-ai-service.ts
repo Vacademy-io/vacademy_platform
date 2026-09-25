@@ -221,6 +221,9 @@ export type HtmlDocJob = {
         images_total?: number;
         is_edit?: boolean;
         has_pdf?: boolean;
+        /** Parallel mode: sections are written at the same time. */
+        sections_total?: number | null;
+        sections_done?: number | null;
         /** Rough final size (edits: the current page's length) for the progress bar. */
         expected_chars?: number | null;
     };

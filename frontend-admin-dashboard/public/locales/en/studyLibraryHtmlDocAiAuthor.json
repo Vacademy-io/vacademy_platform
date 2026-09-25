@@ -33,7 +33,7 @@
     "completed": "completed",
     "creatingYourPage": "Creating your page…",
     "noContentYet": "No content yet",
-    "generatingHint": "The AI is designing a rich, self-contained page from your materials. This usually takes 3–5 minutes — you can leave and come back.",
+    "generatingHint": "The AI is designing a rich, self-contained page from your materials. This usually takes 2–4 minutes — you can leave and come back.",
     "addMaterialsHint": "Add materials and describe what you want, then generate — or paste HTML you already have.",
     "toast": {
         "someImagesFailed": "Some images failed to upload.",
@@ -67,7 +67,8 @@
         "writingSection": "Writing: {{section}}",
         "illustrations": "Drawing illustrations",
         "illustrationsCount": "Drawing illustrations ({{completed}}/{{total}})",
-        "canLeaveHint": "Usually takes 3–5 minutes. You can switch slides or close this tab — the page keeps building and will be here when you come back.",
-        "stayHint": "Usually takes 3–5 minutes. Keep this tab open until it finishes."
+        "canLeaveHint": "Usually takes 2–4 minutes. You can switch slides or close this tab — the page keeps building and will be here when you come back.",
+        "stayHint": "Usually takes 2–4 minutes. Keep this tab open until it finishes.",
+        "writingParallel": "Writing {{total}} sections in parallel ({{done}} done)"
     }
 }

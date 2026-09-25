@@ -788,6 +788,8 @@ function progressFromJob(job: HtmlDocJob): GenerationProgress {
         phase: p.phase ?? 'planning',
         section: p.section,
         hasPdf: p.has_pdf,
+        sectionsTotal: p.sections_total ?? undefined,
+        sectionsDone: p.sections_done ?? undefined,
         contentChars: p.content_chars ?? job.html_length,
         expectedChars: p.expected_chars ?? undefined,
         imagesDone: p.images_done,

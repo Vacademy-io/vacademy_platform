@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from html import escape as html_escape
 import logging
 import os
 import re
@@ -484,6 +485,7 @@ async def _ground(body: GenerateHtmlRequest, ctx: dict) -> None:
         allowed.update(m.group(2) for m in _URL_IN_HTML_RE.finditer(body.current_html))
     ctx["allowed_image_urls"] = {u.strip() for u in allowed if u and u.strip()}
     ctx["prompt"] = _build_prompt(body, grounding_text, figures)
+    ctx["grounding_block"] = _grounding_block(grounding_text, figures)
 
 
 async def _stream_llm(ctx: dict):
@@ -701,6 +703,365 @@ async def generate_html_document_stream(
 
 
 # ---------------------------------------------------------------------------
+# Parallel section generation (creates only).
+#
+# One model call writing a whole 45k-char page is bound by output speed (~40
+# tok/s on GLM → 6+ min). Instead: a small PLAN call (title + section briefs),
+# then the STYLIST (shared CSS + hero) and EVERY SECTION are written at the
+# same time. They agree up front on a fixed class vocabulary, so no section
+# waits for the CSS. Each section's pictures are drawn as soon as it lands,
+# overlapping the others. Wall time ≈ plan + slowest section + its pictures.
+# Edits keep the single-call path (they must see and preserve the whole page).
+# ---------------------------------------------------------------------------
+
+_PARALLEL = os.getenv("HTML_DOCUMENT_PARALLEL", "1").strip() not in ("0", "false", "no")
+_MAX_SECTIONS = 8
+_SECTION_ID_RE = re.compile(r"[^a-z0-9-]")
+
+# The contract between the stylist and the section writers.
+_CLASS_VOCABULARY = """\
+HERO: header.hero > .hero-brand (small brand line, may hold a logo img) + h1 + p.hero-hook + ul.hero-objectives > li
+LAYOUT: main.page (centered readable container) · section.section (one per section, generous spacing) ·
+  .section-head (row: .section-num badge + .section-title h2 + optional .section-lead p) ·
+  .grid (responsive auto-fit card grid) · .grid-2 (two columns, stacks on mobile) · .compare (side-by-side comparison, stacks on mobile)
+SURFACES: .card (+ .card-title) · .key-point (icon-led card; first child .key-icon holds an emoji/SVG) · .recap (summary box) ·
+  .formula (annotated formula box; big centered formula + small labels) · .figure (wraps <img>/<svg> + <figcaption>)
+CALLOUTS: .callout + one of .callout-definition | .callout-example | .callout-mistake | .callout-remember ; heading inside = .callout-title
+TEXT/BITS: .badge · .pill · .table-wrap > table (styled header, zebra rows, mobile scroll) · ol.steps > li.step (numbered process strip)
+CONTROLS: .btn · .btn-primary · .btn-ghost
+QUIZ: .quiz > .quiz-q (question block) > .quiz-option (button); state classes .is-correct / .is-wrong on options; .feedback (explanation text); .score
+GAME: .game-board · .chip (tappable/draggable item) · .drop-zone (target) ; states .is-selected / .is-placed / .is-correct / .is-wrong
+"""
+
+
+def _plan_prompt(req: GenerateHtmlRequest, materials: str) -> str:
+    wanted = [k for k in (req.content_types or []) if k in _CONTENT_TYPE_SPECS]
+    wanted_line = (
+        "Requested content elements (EACH gets exactly one section, in this order, after the core "
+        f"teaching sections): {', '.join(wanted)}."
+        if wanted
+        else "No specific elements requested — choose the sections that teach this best."
+    )
+    return (
+        "You are the lead instructional designer planning ONE learning web page that several "
+        "writers will build IN PARALLEL, one section each. Plan it so the sections fit together "
+        "without repeating each other.\n\n"
+        f"REQUEST: {req.prompt.strip() or 'Create a rich learning page on the material below.'}"
+        f"{materials}\n\n"
+        f"{wanted_line}\n\n"
+        "Return ONLY a JSON object (no markdown, no commentary):\n"
+        '{"title": "<page title>", "hook": "<one-line hook for the hero>", '
+        '"objectives": ["<3-5 learning objectives>"], "sections": [{"id": "s1-<slug>", '
+        '"title": "<section heading>", "type": "<concept | one of the requested element keys>", '
+        '"brief": "<3-5 sentences: exactly what this section teaches or contains — the concrete '
+        "facts, examples, questions or game items — and which visual to use (inline SVG diagram, "
+        'generated illustration, table, comparison, steps). Assign any uploaded image or source '
+        'figure URL to the ONE section that should embed it.>"}]}\n'
+        f"Rules: 3-{_MAX_SECTIONS} sections total. Start with 1-3 'concept' sections that teach the "
+        "core ideas visually, then the requested elements. Distinct, non-overlapping scopes. "
+        "Briefs must be specific to the topic (real facts, numbers, examples) so each writer can work "
+        "alone."
+    )
+
+
+def _stylist_prompt(req: GenerateHtmlRequest, brand_block: str) -> str:
+    """Runs in parallel with the PLAN call, so it only knows the topic."""
+    topic = req.prompt.strip() or ", ".join(req.key_points or []) or "a learning page"
+    return (
+        "You are a world-class front-end designer. Several writers are writing the sections of a "
+        "learning page in parallel using ONLY the class vocabulary below. You write the page's "
+        "SHARED STYLESHEET that gives all of it one striking, cohesive look.\n\n"
+        f"TOPIC: {topic}{brand_block}\n\n"
+        f"CLASS VOCABULARY (style EVERY one of these; writers rely on them):\n{_CLASS_VOCABULARY}\n"
+        "CSS RULES: define a palette as CSS variables on :root built around the brand colour (tints/"
+        "shades for surfaces and accents); you may @import ONE Google Font at the very top; style base "
+        "elements (body, h1-h4, p, a, img, svg, code, table); responsive mobile→desktop; readable "
+        "CONTRAST — set text colour explicitly on every surface, dark text on light surfaces, never "
+        "grey text on coloured backgrounds; inline emphasis inherits colour; no scroll-triggered "
+        "reveals (content visible on load; any entrance animation plays on load and ENDS at "
+        "opacity:1); honour prefers-reduced-motion; no fixed heights that clip.\n"
+        "Be COMPACT: one line per rule, no comments, under ~5000 characters — it is on the critical path.\n\n"
+        "Return ONLY the stylesheet as a single <style>…</style> element. No markdown, no commentary."
+    )
+
+
+def _build_hero(plan: dict, brand: Optional[BrandKit]) -> str:
+    esc = html_escape
+    brand_bits = ""
+    if brand and (brand.logo_url or brand.name):
+        logo = (
+            f'<img src="{esc(brand.logo_url)}" alt="{esc(brand.name or "logo")}">'
+            if brand.logo_url
+            else ""
+        )
+        brand_bits = f'<span class="hero-brand">{logo}{esc(brand.name or "")}</span>'
+    objectives = "".join(f"<li>{esc(str(o))}</li>" for o in (plan.get("objectives") or [])[:6])
+    return (
+        f'<header class="hero">{brand_bits}<h1>{esc(plan["title"])}</h1>'
+        + (f'<p class="hero-hook">{esc(str(plan.get("hook") or ""))}</p>' if plan.get("hook") else "")
+        + (f'<ul class="hero-objectives">{objectives}</ul>' if objectives else "")
+        + "</header>"
+    )
+
+
+def _section_prompt(
+    req: GenerateHtmlRequest, materials: str, plan: dict, idx: int, graded_id: Optional[str], image_cap: int
+) -> str:
+    sec = plan["sections"][idx]
+    sid = sec["id"]
+    outline = "\n".join(
+        f"  {i + 1}. [{s['id']}] {s['title']} — {s['brief']}" for i, s in enumerate(plan["sections"])
+    )
+    spec = _CONTENT_TYPE_SPECS.get(sec.get("type") or "", "")
+    if sid == graded_id:
+        reporting = "RESULT REPORTING: rule 8 applies to THIS section (it is the page's graded activity)."
+    else:
+        reporting = "RESULT REPORTING: do NOT postMessage vacademy:progress/complete from this section."
+    pictures = (
+        "ILLUSTRATIONS: include ONE generated-illustration placeholder (hard rule 9b) for the "
+        "real-world scene, object or apparatus that most helps here (at most "
+        f"{image_cap}); use inline SVG for anything schematic."
+        if image_cap
+        else "ILLUSTRATIONS: no generated-illustration placeholders in this section (inline SVG is fine)."
+    )
+    # Shared prefix first (directive + materials + plan + vocabulary) so the
+    # parallel calls hit the provider's prompt cache; section specifics last.
+    return (
+        f"{_SYSTEM_DIRECTIVE}\n\n"
+        f"PAGE REQUEST: {req.prompt.strip() or 'A rich learning page on the material below.'}"
+        f"{materials}\n\n"
+        f"PAGE TITLE: {plan['title']}\nFULL PAGE PLAN (other writers are writing the other sections "
+        f"right now — stay strictly inside YOUR scope):\n{outline}\n\n"
+        f"SHARED CLASS VOCABULARY (a shared stylesheet styles these — use them for a consistent look):\n"
+        f"{_CLASS_VOCABULARY}\n"
+        "PARALLEL-WRITER RULES (these OVERRIDE hard rules 1, 2 and 10 above): return ONLY one fragment\n"
+        f'  <section id="{sid}" class="section"> … </section>\n'
+        "  - no <html>/<head>/<body>, no global CSS, no :root/body/font rules, no page title or hero, no logo.\n"
+        f"  - extra CSS only in a <style> INSIDE the section whose EVERY selector starts with #{sid}.\n"
+        f"  - any JS in ONE <script> at the END of the section, wrapped in an IIFE, that finds elements "
+        f"only inside document.getElementById('{sid}') (never global ids/querySelector on document).\n"
+        f"  - start with the .section-head (section number {idx + 1}).\n"
+        f"  - {pictures}\n"
+        f"  - {reporting}\n\n"
+        f"YOUR SECTION: {idx + 1}. {sec['title']} (type: {sec.get('type') or 'concept'})\n"
+        f"BRIEF: {sec['brief']}\n"
+        + (f"ELEMENT SPEC: {spec}\n" if spec else "")
+        + "Return ONLY the <section> element — no markdown fences, no commentary."
+    )
+
+
+def _parse_plan(raw: str, wanted: Optional[list] = None) -> Optional[dict]:
+    text = _strip_fence(raw or "")
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        plan = json.loads(text[start : end + 1])
+    except Exception:  # noqa: BLE001
+        return None
+    sections = []
+    seen = set()
+    for i, s in enumerate(plan.get("sections") or []):
+        if not isinstance(s, dict) or not s.get("title") or not s.get("brief"):
+            continue
+        sid = _SECTION_ID_RE.sub("-", str(s.get("id") or f"s{i + 1}").lower()).strip("-") or f"s{i + 1}"
+        if not sid.startswith("s"):
+            sid = f"s{i + 1}-{sid}"
+        while sid in seen:
+            sid += "x"
+        seen.add(sid)
+        sections.append(
+            {"id": sid, "title": str(s["title"])[:120], "type": str(s.get("type") or "concept"), "brief": str(s["brief"])}
+        )
+    if len(sections) < 2:
+        return None
+    for key in wanted or []:
+        if not any(s["type"] == key for s in sections):
+            label = key.replace("_", " ").title()
+            sections.append({"id": f"s{len(sections) + 1}-{key.replace('_', '-')}", "title": label,
+                             "type": key, "brief": f"{label} for this page's topic."})
+    # Concept sections first (model's order), then the elements in the order
+    # the author picked them.
+    order = {k: i for i, k in enumerate(wanted or [])}
+    sections.sort(key=lambda s: (0, 0) if s["type"] not in order else (1, order[s["type"]]))
+    while len(sections) > _MAX_SECTIONS:
+        concepts = [s for s in sections if s["type"] not in _CONTENT_TYPE_SPECS]
+        if len(concepts) <= 1:
+            break
+        sections.remove(concepts[-1])
+    plan["sections"] = sections[:_MAX_SECTIONS]
+    plan["title"] = str(plan.get("title") or sections[0]["title"])[:150]
+    return plan
+
+
+def _extract_style(raw: str) -> str:
+    text = _strip_fence(raw or "")
+    m = re.search(r"<style[\s\S]*?</style>", text, re.IGNORECASE)
+    if m:
+        return m.group(0)
+    # Bare CSS (or an unterminated <style>) — keep what's there.
+    css = re.sub(r"</?style[^>]*>|===\w+===|```(?:css)?", "", text, flags=re.IGNORECASE).strip()
+    return f"<style>\n{css}\n</style>" if "{" in css else ""
+
+
+def _extract_section(raw: str, sid: str) -> str:
+    text = _strip_fence(raw or "")
+    start = text.lower().find("<section")
+    end = text.lower().rfind("</section>")
+    if start >= 0 and end > start:
+        return text[start : end + len("</section>")]
+    return f'<section id="{sid}" class="section">{text}</section>' if text.strip() else ""
+
+
+def _assemble(title: str, style: str, hero: str, sections: list) -> str:
+    body = "\n".join(s for s in sections if s)
+    return (
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+        f"<title>{html_escape(title)}</title>\n{style}\n</head>\n<body>\n<main class=\"page\">\n"
+        f"{hero}\n{body}\n</main>\n</body>\n</html>"
+    )
+
+
+async def _complete(ctx: dict, prompt: str) -> tuple[str, dict]:
+    """One streamed call collected to a string (streaming keeps the read
+    timeout per-chunk, so a long section can't trip a whole-request timeout)."""
+    parts: list[str] = []
+    usage: dict = {}
+    async for kind, value in _stream_llm({**ctx, "prompt": prompt}):
+        if kind == "content":
+            parts.append(value)
+        elif kind == "usage":
+            usage = value
+    return "".join(parts), usage
+
+
+def _add_usage(total: dict, usage: dict) -> None:
+    for k in ("prompt_tokens", "completion_tokens"):
+        total[k] = int(total.get(k) or 0) + int((usage or {}).get(k) or 0)
+
+
+async def _generate_parallel(ctx: dict, body: GenerateHtmlRequest, state: dict, live: dict, cancelled: asyncio.Event):
+    """Returns (html, images, usage), or None when the plan can't be made —
+    the caller then falls back to the single-call path."""
+    materials = (
+        _content_types_block(body.content_types)
+        + _key_points_block(body.key_points)
+        + _images_block(body.image_urls)
+        + ctx.get("grounding_block", "")
+    )
+    brand_block = _brand_block(body.brand)
+    usage: dict = {}
+
+    state["phase"] = "planning"
+    style_hero = {"style": "", "hero": ""}
+    plan: Optional[dict] = None
+
+    async def stylist() -> None:
+        raw, u2 = await _complete(ctx, _stylist_prompt(body, brand_block))
+        _add_usage(usage, u2)
+        style_hero["style"] = _extract_style(raw)
+        if not style_hero["style"]:
+            logger.warning("[html-doc] stylist returned no CSS: %r", (raw or "")[:200])
+        if plan is not None:
+            refresh_live()
+
+    # The stylesheet only needs the topic — start it alongside the plan.
+    style_task = asyncio.create_task(stylist())
+    try:
+        raw_plan, u = await _complete(ctx, _plan_prompt(body, brand_block + materials))
+    except Exception:
+        style_task.cancel()
+        raise
+    _add_usage(usage, u)
+    plan = _parse_plan(raw_plan, body.content_types)
+    if not plan:
+        style_task.cancel()
+        logger.warning("[html-doc] parallel plan unparseable; falling back. raw=%r", (raw_plan or "")[:300])
+        return None
+    style_hero["hero"] = _build_hero(plan, body.brand)
+    sections = plan["sections"]
+    n = len(sections)
+    graded_id = next(
+        (s["id"] for t in ("quiz", "interactive_games") for s in sections if s["type"] == t), None
+    )
+    no_pictures = {"quiz", "flashcards", "interactive_games", "summary"}
+    state.update(phase="writing", sections_total=n, sections_done=0, section="")
+    logger.info("[html-doc] parallel plan: %d sections %s", n, [s["title"] for s in sections])
+
+    done_html: list[str] = [""] * n
+    budget = {"left": _MAX_AI_IMAGES}
+    budget_lock = asyncio.Lock()
+    images_total = {"n": 0}
+
+    def refresh_live() -> None:
+        live["html"] = _assemble(plan["title"], style_hero["style"], style_hero["hero"], done_html)
+        state["content_chars"] = len(live["html"])
+
+    async def write(i: int) -> None:
+        sec = sections[i]
+        cap = 0 if sec["type"] in no_pictures else 2
+        raw, u2 = "", {}
+        for attempt in range(2):
+            try:
+                raw, u2 = await _complete(
+                    ctx, _section_prompt(body, materials, plan, i, graded_id, cap)
+                )
+                if raw.strip():
+                    break
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[html-doc] section %s attempt %d failed: %s", sec["id"], attempt + 1, e)
+        _add_usage(usage, u2)
+        frag = _extract_section(raw, sec["id"])
+        # Pictures for this section start now, overlapping the other writers.
+        frag, _ = adopt_foreign_images(frag, ctx.get("allowed_image_urls"))
+        wanted = count_image_placeholders(frag)
+        async with budget_lock:
+            take = min(wanted, budget["left"])
+            budget["left"] -= take
+            images_total["n"] += take
+            state["images_total"] = images_total["n"]
+        done_html[i] = frag  # text first — the preview shows it while pictures draw
+        state["sections_done"] = sum(1 for h in done_html if h)
+        refresh_live()
+        if wanted:
+            async def on_progress(done_n: int, total_n: int) -> None:
+                return None
+
+            try:
+                frag, got = await illustrate_document(frag, slide_path="html-doc", max_images=take, on_progress=on_progress)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[html-doc] section %s illustration failed: %s", sec["id"], e)
+                got = 0
+            state["images_done"] = int(state.get("images_done") or 0) + got
+            done_html[i] = frag
+            refresh_live()
+        writing = [s["title"] for j, s in enumerate(sections) if not done_html[j]]
+        state["section"] = ", ".join(writing[:3])
+
+    state["section"] = ", ".join(s["title"] for s in sections[:3])
+    refresh_live()
+    tasks = [style_task] + [asyncio.create_task(write(i)) for i in range(n)]
+    pending = set(tasks)
+    while pending:
+        _, pending = await asyncio.wait(pending, timeout=1.0)
+        if cancelled.is_set():
+            for t in pending:
+                t.cancel()
+            raise _JobCancelled(_CANCELLED_MSG)
+        if all(done_html) and pending:
+            state["phase"] = "images"
+    for t in tasks:
+        if t.exception():
+            logger.warning("[html-doc] parallel task failed: %s", t.exception())
+    if not any(done_html):
+        raise RuntimeError("No section could be generated.")
+    images = int(state.get("images_done") or 0)
+    html_out = _assemble(plan["title"], style_hero["style"], style_hero["hero"], done_html)
+    return html_out, images, usage
+
+
+# ---------------------------------------------------------------------------
 # Background jobs — generation that survives the author leaving the page.
 #
 # A generation is 3-10 minutes. Over SSE it died with the tab. Here the kickoff
@@ -780,14 +1141,16 @@ async def _run_job(task_id: str, body: HtmlDocJobRequest, ctx: dict) -> str:
         "expected_chars": len(body.current_html) if body.current_html else None,
     }
     collected: list[str] = []
+    # Parallel mode assembles the page itself; single-call mode streams chunks.
+    live: dict = {"html": None}
     cancelled = asyncio.Event()
     finished = asyncio.Event()
 
     async def heartbeat() -> None:
         last_len = -1
         while not finished.is_set():
-            partial = "".join(collected)
-            if partial:
+            partial = live["html"] if live["html"] is not None else "".join(collected)
+            if partial and live["html"] is None:
                 state["section"] = _current_section(partial) or state["section"]
             rj = json.dumps({"html": partial}) if len(partial) != last_len else None
             last_len = len(partial)
@@ -808,6 +1171,28 @@ async def _run_job(task_id: str, body: HtmlDocJobRequest, ctx: dict) -> str:
         await _ground(body, ctx)
         if cancelled.is_set():
             raise _JobCancelled(_CANCELLED_MSG)
+        if _PARALLEL and not body.current_html:
+            try:
+                result = await _generate_parallel(ctx, body, state, live, cancelled)
+            except _JobCancelled:
+                raise
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[html-doc] parallel generation failed; falling back: %s", e)
+                result = None
+            if result is not None:
+                html_out, images, usage = result
+                if cancelled.is_set():
+                    raise _JobCancelled(_CANCELLED_MSG)
+                _bill(ctx, body, usage)
+                _bill_images(ctx, body, images)
+                logger.info(
+                    "[html-doc] job %s done (parallel): %d chars, %d images, usage=%s",
+                    task_id, len(html_out), images, usage,
+                )
+                return json.dumps({"html": html_out, "model": ctx["model"], "images": images})
+            live["html"] = None
+            state.update(sections_total=None, sections_done=None, content_chars=0)
+
         state["phase"] = "planning"
         usage: dict = {}
         async for kind, value in _stream_llm(ctx):

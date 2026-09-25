@@ -35,7 +35,7 @@
     "completed": "terminé",
     "creatingYourPage": "Création de votre page…",
     "noContentYet": "Pas encore de contenu",
-    "generatingHint": "L'IA conçoit une page riche et autonome à partir de vos contenus. Cela prend généralement 3 à 5 minutes — vous pouvez partir et revenir.",
+    "generatingHint": "L'IA conçoit une page riche et autonome à partir de vos contenus. Cela prend généralement 2 à 4 minutes — vous pouvez partir et revenir.",
     "addMaterialsHint": "Ajoutez des ressources et décrivez ce que vous voulez, puis générez — ou collez un HTML que vous avez déjà.",
     "toast": {
         "someImagesFailed": "Certaines images n'ont pas pu être téléchargées.",
@@ -69,7 +69,8 @@
         "writingSection": "Rédaction : {{section}}",
         "illustrations": "Création des illustrations",
         "illustrationsCount": "Création des illustrations ({{completed}}/{{total}})",
-        "canLeaveHint": "Cela prend généralement 3 à 5 minutes. Vous pouvez changer de diapositive ou fermer cet onglet — la page continue de se construire et vous attendra à votre retour.",
-        "stayHint": "Cela prend généralement 3 à 5 minutes. Gardez cet onglet ouvert jusqu'à la fin."
+        "canLeaveHint": "Cela prend généralement 2 à 4 minutes. Vous pouvez changer de diapositive ou fermer cet onglet — la page continue de se construire et vous attendra à votre retour.",
+        "stayHint": "Cela prend généralement 2 à 4 minutes. Gardez cet onglet ouvert jusqu'à la fin.",
+        "writingParallel": "Rédaction de {{total}} sections en parallèle ({{done}} terminées)"
     }
 }

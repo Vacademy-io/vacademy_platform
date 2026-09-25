@@ -53,7 +53,7 @@ const mapContactToStudent = (contact: ContactUser): StudentTable => {
         }
     }
 
-    return {
+    const result: StudentTable = {
         id: contact.user.id,
         user_id: contact.user.id,
         full_name: contact.user.full_name,
@@ -103,6 +103,24 @@ const mapContactToStudent = (contact: ContactUser): StudentTable => {
         sub_org_id: contact.sub_org_id,
         comma_separated_org_roles: contact.comma_separated_org_roles,
     };
+
+    // LeadFormResponseCard reads the lead's form answers off `_response_fields`,
+    // which until now only the audience-list flows attached — so opening a lead
+    // from Contacts showed the Lead tab with no answers on it at all. The values
+    // are already in this response (the API sends field_name and field_type per
+    // field), and the loop above already walks them, so this is a re-shape of
+    // data we hold, not another request. Attached AFTER the object literal
+    // because it is not part of the canonical StudentTable shape.
+    (result as unknown as Record<string, unknown>)._response_fields = (contact.custom_fields ?? [])
+        .filter((cf) => cf.custom_field_id)
+        .map((cf) => ({
+            id: cf.custom_field_id,
+            name: cf.field_name,
+            type: cf.field_type,
+            rawValue: cf.value ?? null,
+        }));
+
+    return result;
 };
 
 const DetailsCell = ({ row }: { row: Row<ContactUser> }) => {

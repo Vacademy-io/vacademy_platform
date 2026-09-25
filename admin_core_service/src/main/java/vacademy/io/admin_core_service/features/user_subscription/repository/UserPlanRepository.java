@@ -639,6 +639,16 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                          AS activatedWithoutPaymentCount,
                        (SELECT COALESCE(SUM(outstanding), 0) FROM live) AS outstanding,
                        (SELECT COUNT(DISTINCT user_id) FROM live WHERE outstanding > 0) AS learnersOutstanding,
+                       (SELECT COALESCE(SUM(GREATEST(outstanding - overdue, 0)
+                                            + CASE WHEN kind = 'SUBSCRIPTION' THEN upcoming ELSE 0 END), 0)
+                          FROM live) AS upcomingAll,
+                       (SELECT COUNT(DISTINCT user_id) FROM live
+                         WHERE outstanding - overdue > 0 OR (kind = 'SUBSCRIPTION' AND upcoming > 0))
+                         AS learnersUpcomingAll,
+                       (SELECT CAST(MIN(next_due_date) AS varchar) FROM live
+                         WHERE next_due_date >= CURRENT_DATE AND outstanding - overdue > 0) AS nextDueDate,
+                       EXISTS (SELECT 1 FROM cpo_sched cs JOIN user_plan cu ON cu.id = cs.user_plan_id
+                                WHERE cu.status = 'ACTIVE') AS usesInstallments,
                        (SELECT currency FROM live WHERE currency IS NOT NULL
                          GROUP BY currency ORDER BY COUNT(*) DESC LIMIT 1) AS currency
                 """, nativeQuery = true)

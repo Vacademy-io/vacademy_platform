@@ -33,12 +33,8 @@ import { PaymentControlBar, type SegmentKey, type StatusSegment } from './Paymen
 import { DueLearnersTable } from './DueLearnersTable';
 import { DueLearnerDetailSheet } from './DueLearnerDetailSheet';
 import { PaymentLogsTable } from './PaymentLogsTable';
-import {
-    PaymentKpiCards,
-    hasNotYetDueBalance,
-    type RecordStatusKey,
-    type SummaryStatusKey,
-} from './PaymentKpiCards';
+import { PaymentKpiCards, type RecordStatusKey, type SummaryStatusKey } from './PaymentKpiCards';
+import { KpiCardSettings, useKpiCardPrefs } from './KpiCardSettings';
 import { PaymentDetailSheet } from './PaymentDetailSheet';
 import { SendRemindersModal } from './SendRemindersModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
@@ -102,7 +98,8 @@ export function TransactionsView() {
     const [view, setView] = useState<'records' | 'balances'>('records');
     // Which balances list is open: 'due' (something already overdue) or 'outstanding' (anything
     // still to collect, whatever its date — how an admin sees each learner's next instalment).
-    const [balanceScope, setBalanceScope] = useState<'due' | 'outstanding'>('due');
+    // 'upcoming' is the same list opened from the instalment Upcoming card.
+    const [balanceScope, setBalanceScope] = useState<'due' | 'outstanding' | 'upcoming'>('due');
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
     // Payment plan is the one detailed filter the API can't apply; it narrows the loaded set
     // locally, before the KPI tiles are computed, so it behaves like the server-side ones.
@@ -267,20 +264,39 @@ export function TransactionsView() {
                       activatedWithoutPaymentCount: billingSummary.activated_without_payment_count,
                       outstanding: billingSummary.outstanding,
                       learnersOutstanding: billingSummary.learners_outstanding,
+                      upcomingAll: billingSummary.upcoming_all ?? undefined,
+                      learnersUpcomingAll: billingSummary.learners_upcoming_all,
+                      nextDueDate: billingSummary.next_due_date,
+                      usesInstallments: billingSummary.uses_installments,
                       currency: billingSummary.currency || '',
                   }
                 : null,
         [billingSummary]
     );
 
-    // The Outstanding tab is offered only while there is money not yet due. If a date change takes
-    // that away while its list is open, fall back to the Due list rather than leave an unmarked list
-    // on screen. Waits for the billing figures, so a refetch in flight does not bounce the view.
+    // Which cards — and their tabs — the admin chose to show. Defaults follow the fee model.
+    const cardPrefs = useKpiCardPrefs(billing);
+    const upcomingHasList = !!billing?.usesInstallments && cardPrefs.visible.has('upcoming');
+
+    // A tab can disappear under an open list or filter — a date change removes Outstanding, or
+    // the admin switches a card off. Fall back rather than leave an unmarked view on screen.
+    // Waits for the billing figures, so a refetch in flight does not bounce the view.
     useEffect(() => {
-        if (billing && !hasNotYetDueBalance(billing) && balanceScope === 'outstanding') {
+        if (!billing) return;
+        if (
+            (balanceScope === 'outstanding' && !cardPrefs.visible.has('outstanding')) ||
+            (balanceScope === 'upcoming' && !upcomingHasList)
+        ) {
             setBalanceScope('due');
         }
-    }, [billing, balanceScope]);
+    }, [billing, balanceScope, cardPrefs.visible, upcomingHasList]);
+    useEffect(() => {
+        const hiddenBucket =
+            ((statusBucket === 'pending' || statusBucket === 'abandoned') &&
+                !cardPrefs.visible.has('pending')) ||
+            (statusBucket === 'failed' && !cardPrefs.visible.has('failed'));
+        if (hiddenBucket) setStatusBucket('total');
+    }, [statusBucket, cardPrefs.visible]);
 
     const pagedData: PaymentLogsResponse | undefined = useMemo(() => {
         if (!allData) return undefined;
@@ -444,7 +460,7 @@ export function TransactionsView() {
                 },
                 balancesPage,
                 PAGE_SIZE,
-                balanceScope === 'outstanding'
+                balanceScope !== 'due'
             ),
         staleTime: 60_000,
         retry: false,
@@ -453,12 +469,12 @@ export function TransactionsView() {
     /** 'due' / 'outstanding' open a balances list; everything else narrows the payment records. */
     const handleSegmentSelect = (key: SegmentKey) => {
         setCurrentPage(0);
-        if (key === 'due' || key === 'outstanding') {
+        if (key === 'due' || key === 'outstanding' || (key === 'upcoming' && upcomingHasList)) {
             setBalanceScope(key);
             setView('balances');
             return;
         }
-        // Upcoming is informational — there is no list of not-yet-due learners to open.
+        // The 30-day Upcoming is informational — there is no list behind it.
         if (key === 'upcoming') return;
         setView('records');
         // Clicking the active tile again clears back to "all".
@@ -470,14 +486,29 @@ export function TransactionsView() {
     // Segmented switch. The first five narrow the payment records; the last swaps in the learners
     // who owe money, counted from the balances query rather than from the records. Abandoned is
     // the stale-checkout pile — a warm-lead list for counsellors, not money in flight.
+    // Each tab follows its card in the Cards settings; All and Paid are always there.
+    const shown = cardPrefs.visible;
     const segments: StatusSegment[] = [
         { key: 'total', label: 'All', count: allEntries.length },
         { key: 'paid', label: 'Paid', count: paymentSummary.paid.count },
-        { key: 'pending', label: 'Pending', count: paymentSummary.pending.count },
-        { key: 'abandoned', label: 'Abandoned', count: paymentSummary.abandoned.count },
-        { key: 'failed', label: 'Failed', count: paymentSummary.failed.count },
-        // Offered only where it adds something beyond Due (see hasNotYetDueBalance).
-        ...(hasNotYetDueBalance(billing)
+        ...(shown.has('pending')
+            ? [
+                  {
+                      key: 'pending' as const,
+                      label: 'Pending',
+                      count: paymentSummary.pending.count,
+                  },
+                  {
+                      key: 'abandoned' as const,
+                      label: 'Abandoned',
+                      count: paymentSummary.abandoned.count,
+                  },
+              ]
+            : []),
+        ...(shown.has('failed')
+            ? [{ key: 'failed' as const, label: 'Failed', count: paymentSummary.failed.count }]
+            : []),
+        ...(shown.has('outstanding')
             ? [
                   {
                       key: 'outstanding' as const,
@@ -486,14 +517,27 @@ export function TransactionsView() {
                   },
               ]
             : []),
-        {
-            key: 'due',
-            label: 'Due',
-            count:
-                balanceScope === 'due'
-                    ? outstanding?.totalElements ?? 0
-                    : billing?.learnersOwing ?? 0,
-        },
+        ...(shown.has('due')
+            ? [
+                  {
+                      key: 'due' as const,
+                      label: 'Due',
+                      count:
+                          balanceScope === 'due'
+                              ? outstanding?.totalElements ?? 0
+                              : billing?.learnersOwing ?? 0,
+                  },
+              ]
+            : []),
+        ...(upcomingHasList
+            ? [
+                  {
+                      key: 'upcoming' as const,
+                      label: 'Upcoming',
+                      count: billing?.learnersUpcomingAll ?? 0,
+                  },
+              ]
+            : []),
     ];
 
     // Detailed-filter count for the Filters button badge. Status lives in the segmented switch and
@@ -634,6 +678,12 @@ export function TransactionsView() {
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        <KpiCardSettings
+                            visible={cardPrefs.visible}
+                            onToggle={cardPrefs.toggle}
+                            onReset={cardPrefs.reset}
+                            isCustomised={cardPrefs.isCustomised}
+                        />
                         <MyButton
                             buttonType="secondary"
                             scale="medium"
@@ -677,6 +727,7 @@ export function TransactionsView() {
                     isLoading={isLoadingPayments}
                     activeKey={view === 'balances' ? balanceScope : statusBucket}
                     onSelect={handleSummarySelect}
+                    visibleKeys={cardPrefs.visible}
                 />
 
                 {/* Control bar */}
@@ -738,7 +789,7 @@ export function TransactionsView() {
                 {view === 'balances' ? (
                     <DueLearnersTable
                         data={outstanding}
-                        mode={balanceScope}
+                        mode={balanceScope === 'due' ? 'due' : 'outstanding'}
                         isLoading={isLoadingOutstanding}
                         error={outstandingError as Error}
                         currentPage={currentPage}

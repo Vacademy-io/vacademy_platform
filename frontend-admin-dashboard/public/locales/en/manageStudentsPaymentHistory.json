@@ -115,11 +115,24 @@
         "action": "Delete permanently",
         "paymentTitle": "Permanently delete the {{label}} payment?",
         "invoiceTitle": "Permanently delete invoice {{label}}?",
-        "paymentDescription": "The payment record is removed for good. If it still counts, it is voided first: the amount goes back onto the learner's balance and installments, and the invoice generated for it is deleted. This cannot be undone. A record of the deletion is kept in the admin activity log.",
-        "invoiceDescription": "The invoice is removed for good. An unpaid bill also stops counting towards the learner's balance. Its invoice number is not reused. This cannot be undone. A record of the deletion is kept in the admin activity log.",
-        "typeToConfirm": "Type {{word}} to confirm",
+        "cannotUndo": "This cannot be undone.",
+        "whatHappens": "What happens",
+        "payment": {
+            "removed": "The payment record is removed for good.",
+            "balance": "If it still counts, the amount goes back onto the learner's balance and installments.",
+            "invoice": "The receipt invoice generated for it is deleted, and its number is freed for the next invoice."
+        },
+        "invoice": {
+            "removed": "The invoice is removed for good.",
+            "balance": "An unpaid bill stops counting towards the learner's balance.",
+            "number": "Its invoice number is freed and given to the next invoice."
+        },
+        "auditLog": "A record of the deletion is kept in the admin activity log.",
+        "typePrefix": "Type",
+        "typeSuffix": "to confirm",
         "keep": "Keep it",
         "confirm": "Delete permanently",
+        "deleting": "Deleting…",
         "paymentDeletedToast": "Payment {{label}} deleted",
         "invoiceDeletedToast": "Invoice {{label}} deleted",
         "errorToast": "Could not delete"

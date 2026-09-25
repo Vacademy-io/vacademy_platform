@@ -17,13 +17,14 @@ import vacademy.io.admin_core_service.features.invoice.repository.InvoicePayment
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
-import vacademy.io.common.auth.repository.UserRoleRepository;
+import vacademy.io.admin_core_service.features.live_session.client.InstituteRoleUserClient;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -51,7 +52,7 @@ class PaymentDeletionServiceTest {
     private InvoiceRepository invoiceRepository;
     private InvoicePaymentLogMappingRepository mappingRepository;
     private PaymentVoidService voidService;
-    private UserRoleRepository userRoleRepository;
+    private InstituteRoleUserClient roleClient;
     private InstituteSettingService settingService;
     private AsyncAuditDispatcher auditDispatcher;
     private AdminActivityLogRepository activityLogRepository;
@@ -65,7 +66,7 @@ class PaymentDeletionServiceTest {
         invoiceRepository = mock(InvoiceRepository.class);
         mappingRepository = mock(InvoicePaymentLogMappingRepository.class);
         voidService = mock(PaymentVoidService.class);
-        userRoleRepository = mock(UserRoleRepository.class);
+        roleClient = mock(InstituteRoleUserClient.class);
         settingService = mock(InstituteSettingService.class);
         auditDispatcher = mock(AsyncAuditDispatcher.class);
         activityLogRepository = mock(AdminActivityLogRepository.class);
@@ -86,13 +87,18 @@ class PaymentDeletionServiceTest {
         when(mappingRepository.findByInvoiceId(anyString())).thenReturn(List.of());
 
         service = new PaymentDeletionService(paymentLogRepository, invoiceRepository, mappingRepository,
-                voidService, userRoleRepository, settingService, auditDispatcher, activityLogRepository,
+                voidService, roleClient, settingService, auditDispatcher, activityLogRepository,
                 new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules());
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
     }
 
+    private void roles(String userId, Set<String> names, Set<String> ids) {
+        when(roleClient.findRolesOfUser(INST, userId)).thenReturn(Optional.of(names));
+        when(roleClient.findRoleIdsOfUser(INST, userId)).thenReturn(Optional.of(ids));
+    }
+
     private void admin(boolean flag) {
-        when(userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(USER, INST, "ADMIN")).thenReturn(true);
+        roles(USER, Set.of("ADMIN", "TEACHER"), Set.of("5", "6"));
         when(settingService.getSettingByInstituteIdAndKey(INST, "ADMIN_DISPLAY_SETTINGS"))
                 .thenReturn(Map.of("learnerManagement", Map.of("allowPortalAccess", true, "allowDeletePayments", flag)));
     }
@@ -119,7 +125,7 @@ class PaymentDeletionServiceTest {
     @Test
     @DisplayName("off by default: an admin whose settings never mention the flag cannot delete")
     void offByDefault() {
-        when(userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(USER, INST, "ADMIN")).thenReturn(true);
+        roles(USER, Set.of("ADMIN"), Set.of("5"));
         when(settingService.getSettingByInstituteIdAndKey(INST, "ADMIN_DISPLAY_SETTINGS"))
                 .thenReturn(Map.of("learnerManagement", Map.of("allowPortalAccess", true)));
         assertFalse(service.canDelete(USER, INST));
@@ -131,15 +137,12 @@ class PaymentDeletionServiceTest {
         admin(true);
         assertTrue(service.canDelete(USER, INST));
 
-        when(userRoleRepository.existsByUserIdAndInstituteIdAndRoleName("u2", INST, "ADMIN")).thenReturn(false);
-        when(userRoleRepository.findActiveRoleIdsByUserIdAndInstituteId("u2", INST)).thenReturn(List.of("role-9"));
+        roles("u2", Set.of("MENTOR"), Set.of("role-9"));
         when(settingService.getSettingByInstituteIdAndKey(INST, "ROLE_DISPLAY_SETTINGS"))
                 .thenReturn(Map.of("role-9", Map.of("learnerManagement", Map.of("allowDeletePayments", true))));
         assertTrue(service.canDelete("u2", INST));
 
-        when(userRoleRepository.existsByUserIdAndInstituteIdAndRoleName("u3", INST, "ADMIN")).thenReturn(false);
-        when(userRoleRepository.findActiveRoleIdsByUserIdAndInstituteId("u3", INST)).thenReturn(List.of("role-1"));
-        when(userRoleRepository.existsByUserIdAndInstituteIdAndRoleName("u3", INST, "TEACHER")).thenReturn(true);
+        roles("u3", Set.of("TEACHER"), Set.of("role-1"));
         when(settingService.getSettingByInstituteIdAndKey(INST, "TEACHER_DISPLAY_SETTINGS"))
                 .thenReturn(Map.of("learnerManagement", Map.of("allowDeletePayments", false)));
         assertFalse(service.canDelete("u3", INST));
@@ -148,8 +151,7 @@ class PaymentDeletionServiceTest {
     @Test
     @DisplayName("a custom-role card decides for its holders, exactly as the app does — the teacher card is not consulted")
     void customCardOverridesTeacherCard() {
-        when(userRoleRepository.existsByUserIdAndInstituteIdAndRoleName("u4", INST, "ADMIN")).thenReturn(false);
-        when(userRoleRepository.findActiveRoleIdsByUserIdAndInstituteId("u4", INST)).thenReturn(List.of("role-7"));
+        roles("u4", Set.of("MENTOR"), Set.of("role-7"));
         when(settingService.getSettingByInstituteIdAndKey(INST, "ROLE_DISPLAY_SETTINGS"))
                 .thenReturn(Map.of("role-7", Map.of("learnerManagement", Map.of("allowDeletePayments", false))));
         when(settingService.getSettingByInstituteIdAndKey(INST, "TEACHER_DISPLAY_SETTINGS"))
@@ -158,12 +160,25 @@ class PaymentDeletionServiceTest {
     }
 
     @Test
-    @DisplayName("fails closed on a broken settings lookup")
+    @DisplayName("fails closed when auth_service cannot say who the caller is")
     void failsClosed() {
-        when(userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(USER, INST, "ADMIN"))
-                .thenThrow(new RuntimeException("db down"));
+        when(roleClient.findRolesOfUser(INST, USER)).thenReturn(Optional.empty());
+        when(settingService.getSettingByInstituteIdAndKey(INST, "ADMIN_DISPLAY_SETTINGS"))
+                .thenReturn(Map.of("learnerManagement", Map.of("allowDeletePayments", true)));
         assertFalse(service.canDelete(USER, INST));
         assertFalse(service.canDelete(null, INST));
+
+        roles("u5", Set.of("MENTOR"), Set.of());
+        when(roleClient.findRoleIdsOfUser(INST, "u5")).thenReturn(Optional.empty());
+        assertFalse(service.canDelete("u5", INST));
+    }
+
+    @Test
+    @DisplayName("regression: roles come from auth_service, not admin_core's own DB (which has no user_role table)")
+    void adminWithSwitchOnIsAllowed() {
+        admin(true);
+        assertTrue(service.canDelete(USER, INST));
+        verify(roleClient).findRolesOfUser(INST, USER);
     }
 
     // ------------------------------------------------------------------ refusals are logged

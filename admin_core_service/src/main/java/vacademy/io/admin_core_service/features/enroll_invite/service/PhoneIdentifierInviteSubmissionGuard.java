@@ -8,7 +8,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
-import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.common.exceptions.EnrollmentConflictException;
 
 import java.util.List;
@@ -16,21 +16,25 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Prevents a phone-identified account from enrolling in the same course twice.
+ * Stops a phone-identified account that is ALREADY AN ENROLLED MEMBER of this course
+ * from enrolling in it a second time.
  *
- * <p>Scope is the COURSE (package session), not the invite link. An institute usually
- * has several links into one batch — monthly / quarterly / annual — and keying on
- * the link alone let a learner whose trial had ended (or whose autopay had failed)
- * take a fresh free trial through a sibling link, superseding their real plan. Two
- * checks, either one blocks:
- * <ol>
- *   <li>the account already holds a plan on THIS invite (the original rule);</li>
- *   <li>the account already holds a plan on ANY invite that lands in one of this
- *       invite's package sessions.</li>
- * </ol>
- * The learner is told to sign in: the dashboard offers "Pay to continue" for a
- * plan whose payment failed or whose mandate is gone, so nothing is lost by
- * refusing the form. Deliberately independent of trial or payment settings.
+ * <p>Scope is the COURSE (the invite's package sessions), not the invite link: an
+ * institute usually has several links into one batch -- monthly / quarterly / annual --
+ * and a current member who filled a sibling link was handed a fresh free trial that
+ * superseded their real, paid plan (twice in September 2026).
+ *
+ * <p>Membership means an ACTIVE mapping from a completed enrolment. These are
+ * deliberately NOT blocked, because they are not members and must be able to try again:
+ * <ul>
+ *   <li>abandoned cart -- form filled, checkout never completed;</li>
+ *   <li>payment failed -- the authorisation was refused;</li>
+ *   <li>expired or cancelled -- access has already been withdrawn.</li>
+ * </ul>
+ *
+ * <p>A member who is refused is told to sign in: their dashboard offers "Pay to
+ * continue", which renews the plan they already hold. Independent of trial or payment
+ * settings.
  */
 @Slf4j
 @Service
@@ -40,7 +44,7 @@ public class PhoneIdentifierInviteSubmissionGuard {
     private static final String USER_IDENTIFIER_SETTING = "USER_IDENTIFIER";
 
     private final InstituteSettingService instituteSettingService;
-    private final UserPlanRepository userPlanRepository;
+    private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final PackageSessionLearnerInvitationToPaymentOptionRepository inviteMappingRepository;
 
     private static final String ALREADY_ENROLLED_MESSAGE =
@@ -56,14 +60,6 @@ public class PhoneIdentifierInviteSubmissionGuard {
             return;
         }
 
-        if (userPlanRepository.findFirstByUserIdAndEnrollInviteIdOrderByCreatedAtDesc(
-                userId, enrollInvite.getId()).isPresent()) {
-            log.info("Blocking repeated phone-identifier invite submission: userId={}, instituteId={}, inviteId={}",
-                    userId, instituteId, enrollInvite.getId());
-            throw new EnrollmentConflictException(
-                    EnrollmentConflictException.ConflictType.ALREADY_ENROLLED, ALREADY_ENROLLED_MESSAGE);
-        }
-
         List<String> packageSessionIds = inviteMappingRepository
                 .findByEnrollInviteIdAndStatusWithPackageSession(enrollInvite.getId(), List.of("ACTIVE"))
                 .stream()
@@ -73,8 +69,8 @@ public class PhoneIdentifierInviteSubmissionGuard {
                 .distinct()
                 .toList();
         if (!packageSessionIds.isEmpty()
-                && userPlanRepository.existsByUserIdAndPackageSessionIds(userId, packageSessionIds)) {
-            log.info("Blocking phone-identifier enrolment via sibling invite: userId={}, instituteId={}, inviteId={}, packageSessions={}",
+                && mappingRepository.existsActiveMembership(userId, packageSessionIds)) {
+            log.info("Blocking enrolment: already an active member. userId={}, instituteId={}, inviteId={}, packageSessions={}",
                     userId, instituteId, enrollInvite.getId(), packageSessionIds);
             throw new EnrollmentConflictException(
                     EnrollmentConflictException.ConflictType.ALREADY_ENROLLED, ALREADY_ENROLLED_MESSAGE);

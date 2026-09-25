@@ -111,6 +111,30 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("daysAhead") int daysAhead);
 
   /**
+   * Is this user an enrolled member of any of these package sessions right now?
+   *
+   * <p>"Member" means an ACTIVE mapping that came from a completed enrolment. Rows the
+   * checkout leaves behind on the way -- ABANDONED_CART (form filled, never paid) and
+   * PAYMENT_FAILED (authorisation refused) -- are ACTIVE too but grant nothing, so they
+   * are excluded: someone whose payment never went through must stay free to fill the
+   * invite form again. Legacy rows carry no type and count as membership.
+   *
+   * <p>Used by the phone-identifier submission guard: a current member is sent to sign in
+   * and use "Pay to continue" rather than taking a second free trial through a sibling
+   * invite link. An expired or cancelled member (mapping INACTIVE) may re-register.
+   */
+  @Query("""
+      SELECT COUNT(m) > 0 FROM StudentSessionInstituteGroupMapping m
+      WHERE m.userId = :userId
+        AND m.packageSession.id IN :packageSessionIds
+        AND m.status = 'ACTIVE'
+        AND (m.type IS NULL OR m.type NOT IN ('ABANDONED_CART', 'PAYMENT_FAILED'))
+      """)
+  boolean existsActiveMembership(
+      @Param("userId") String userId,
+      @Param("packageSessionIds") List<String> packageSessionIds);
+
+  /**
    * Learners who must PAY MANUALLY to continue: their plan ends within the next
    * N days (or ended up to graceDays ago) and autopay will NOT charge them —
    * autopay off (cancelled mandate) or plan CANCELED/PAYMENT_FAILED/EXPIRED.

@@ -10,6 +10,9 @@ import vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeRequest
 import vacademy.io.admin_core_service.features.user_subscription.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentVoidService;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentDeletionService;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -22,6 +25,15 @@ public class UserPlanController {
 
     @Autowired
     private PaymentLogService paymentLogService;
+
+    @Autowired
+    private PaymentVoidService paymentVoidService;
+
+    @Autowired
+    private PaymentDeletionService paymentDeletionService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
 
     @GetMapping("/{userPlanId}/with-payment-logs")
     public ResponseEntity<UserPlanDTO> getUserPlanWithPaymentLogs(
@@ -82,14 +94,20 @@ public class UserPlanController {
     /**
      * Paginated drill-down behind the "Due payment" card: the learners who still owe money, with
      * the amount, the fee type, and (for custom instalment plans) their next instalment.
+     *
+     * <p>{@code includeNotYetDue=true} returns the "Outstanding" list instead: every learner with
+     * a balance still to collect, whatever its due date, soonest next instalment first. Defaults
+     * to false, so existing callers keep the Due list unchanged.
      */
     @PostMapping("/payment-logs/outstanding-learners")
     public ResponseEntity<Page<OutstandingLearnerDTO>> getOutstandingLearners(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestBody BillingSummaryRequestDTO request,
             @RequestParam(value = "pageNo", defaultValue = "0") int pageNo,
-            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
-        return ResponseEntity.ok(paymentLogService.getOutstandingLearners(request, pageNo, pageSize));
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+            @RequestParam(value = "includeNotYetDue", defaultValue = "false") boolean includeNotYetDue) {
+        return ResponseEntity.ok(
+                paymentLogService.getOutstandingLearners(request, pageNo, pageSize, includeNotYetDue));
     }
 
     /**
@@ -104,7 +122,58 @@ public class UserPlanController {
         return ResponseEntity.ok(paymentLogService.getLearnerPlanBreakdown(request, userId));
     }
 
+    /**
+     * Voids an offline / manually recorded payment that was entered by mistake — see
+     * {@link PaymentVoidService}. The payment stays in the listing (struck through) for audit;
+     * every total, installment and ledger figure it had moved is put back.
+     *
+     * <p>{@code POST /v1/user-plan/payment-logs/{paymentLogId}/void?instituteId=xxx}
+     */
+    @PostMapping("/payment-logs/{paymentLogId}/void")
+    @Auditable(
+            entityType = "PAYMENT",
+            action = "VOID",
+            captureBefore = "@paymentDeletionService.paymentAuditSnapshot(#paymentLogId)",
+            entityIdExpr = "#paymentLogId",
+            descriptionExpr = "'voided payment ' + #paymentLogId + (#request?.reason != null ? ': ' + #request.reason : '')")
+    public ResponseEntity<PaymentVoidResultDTO> voidPayment(
+            @PathVariable String paymentLogId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody(required = false) VoidPaymentRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(paymentVoidService.voidPayment(
+                paymentLogId,
+                instituteId,
+                request != null ? request.getReason() : null,
+                userDetails != null ? userDetails.getUserId() : null));
+    }
+
+    /**
+     * Permanently deletes an offline / manually recorded payment. OFF unless the caller's role has
+     * Display Settings → Learner Management → "delete payments & invoices" switched on — checked
+     * server-side by {@link PaymentDeletionService#canDelete}. A payment that still counts is
+     * voided first, so balances, installments and invoices are put right before the rows go. The
+     * deleted payment is kept in the admin activity log (before-snapshot).
+     *
+     * <p>{@code DELETE /v1/user-plan/payment-logs/{paymentLogId}?instituteId=xxx}
+     */
+    @DeleteMapping("/payment-logs/{paymentLogId}")
+    public ResponseEntity<java.util.Map<String, Object>> deletePayment(
+            @PathVariable String paymentLogId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(paymentDeletionService.deletePayment(
+                paymentLogId, instituteId, userDetails != null ? userDetails.getUserId() : null));
+    }
+
     @PostMapping("/payment-logs/update-tracking")
+    @Auditable(
+            entityType = "PAYMENT",
+            action = "UPDATE",
+            entityIdExpr = "#trackingDTO?.paymentLogId",
+            descriptionExpr = "'updated order tracking for payment ' + #trackingDTO?.paymentLogId")
     public ResponseEntity<Void> updatePaymentLogTracking(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestBody UpdatePaymentLogTrackingDTO trackingDTO) {

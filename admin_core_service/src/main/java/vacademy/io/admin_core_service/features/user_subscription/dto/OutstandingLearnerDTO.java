@@ -41,5 +41,10 @@ public class OutstandingLearnerDTO {
     private Long pendingInstallments;
     private LocalDate nextDueDate;
 
+    /** Outstanding list only: everything still to collect, whatever its due date. */
+    private Double outstanding;
+    /** Outstanding list only: what falls due on {@link #nextDueDate}. */
+    private Double nextDueAmount;
+
     private String currency;
 }

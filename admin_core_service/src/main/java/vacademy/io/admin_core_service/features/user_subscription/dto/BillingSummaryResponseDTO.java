@@ -43,6 +43,14 @@ public class BillingSummaryResponseDTO {
      * Might be an offline payment nobody recorded or a free grant, so it is reported, not billed.
      */
     private Long activatedWithoutPaymentCount;
+    /**
+     * Everything still to collect on live enrolments — every unpaid instalment whatever its due
+     * date, overdue renewals and unpaid invoices. Due and Upcoming are slices of it by date; this
+     * is the whole. A future subscription renewal is not in it: that is not a balance yet.
+     */
+    private Double outstanding;
+    /** Distinct learners with an outstanding balance — the rows on the Outstanding list. */
+    private Long learnersOutstanding;
     /** Most common currency across the live enrolments. null when none is resolvable. */
     private String currency;
 }

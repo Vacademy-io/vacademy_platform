@@ -50,6 +50,9 @@ const ACTION_VARIANT: Record<string, 'default' | 'destructive' | 'secondary' | '
     TERMINATE: 'destructive',
     UNASSIGN: 'destructive',
     REMOVE_MEMBER: 'destructive',
+    VOID: 'destructive',
+    DELETE_BLOCKED: 'destructive',
+    SPLIT: 'secondary',
 };
 
 const RESOURCE_LABELS: Record<string, string> = {

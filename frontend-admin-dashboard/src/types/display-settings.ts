@@ -321,6 +321,11 @@ export interface LearnerManagementSettings {
     // Only meaningful when allowViewPassword is on — the card it lives in is
     // hidden otherwise.
     allowEditCredentials?: boolean;
+    // Lets the role PERMANENTLY delete an offline/manual payment or an invoice from the learner's
+    // payment tab and Manage Payments. OFF by default for every role, including admin — an institute
+    // opts in here. Absent (every settings blob saved before this flag) means OFF, and the server
+    // enforces the same rule, so hiding the button is not the only guard.
+    allowDeletePayments?: boolean;
 }
 
 // What a custom header button links to.

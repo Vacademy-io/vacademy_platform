@@ -5080,6 +5080,64 @@ public class InvoiceService {
     }
 
     /**
+     * Unwinds the invoices tied to a payment an admin has voided (recorded by mistake). Two
+     * kinds are told apart by source, because they mean opposite things:
+     * <ul>
+     *   <li>A BILL raised before the payment (ADMIN_MANUAL / LIVE_SESSION — it carries its own
+     *       DEBIT_ACCRUAL) is still owed. It loses its link to the voided payment and goes back
+     *       to PENDING_PAYMENT, so the Due figures count it again and it can be paid again.</li>
+     *   <li>An invoice generated FROM the payment documents money that never arrived. It is
+     *       voided as REJECTED — the same terminal state as a cancelled admin invoice — and
+     *       keeps its link so the audit trail still shows which payment it belonged to.</li>
+     * </ul>
+     * No ledger rows are written here; the caller reverses the payment's own credit.
+     *
+     * @return how many invoices were changed
+     */
+    @Transactional
+    public int unwindInvoicesForVoidedPayment(String paymentLogId, String reason, String voidedBy) {
+        List<InvoicePaymentLogMapping> mappings =
+                invoicePaymentLogMappingRepository.findAllByPaymentLogId(paymentLogId);
+        int touched = 0;
+        for (InvoicePaymentLogMapping mapping : mappings) {
+            Invoice invoice = mapping.getInvoice();
+            if (invoice == null || INVOICE_STATUS_REJECTED.equalsIgnoreCase(invoice.getStatus())) {
+                continue;
+            }
+            Map<String, Object> audit = new HashMap<>();
+            audit.put("voidedPaymentLogId", paymentLogId);
+            audit.put("voidedBy", StringUtils.hasText(voidedBy) ? voidedBy : "system");
+            audit.put("voidedAt", LocalDateTime.now().toString());
+            if (StringUtils.hasText(reason)) {
+                audit.put("voidReason", reason);
+            }
+
+            boolean isBill = "ADMIN_MANUAL".equals(invoice.getSource())
+                    || INVOICE_SOURCE_LIVE_SESSION.equals(invoice.getSource());
+            if (isBill) {
+                invoicePaymentLogMappingRepository.delete(mapping);
+                // Another, still-valid payment may cover the same bill; only reopen it if not.
+                boolean stillPaid = invoicePaymentLogMappingRepository.findByInvoiceId(invoice.getId()).stream()
+                        .map(InvoicePaymentLogMapping::getPaymentLog)
+                        .anyMatch(pl -> pl != null
+                                && !paymentLogId.equals(pl.getId())
+                                && INVOICE_STATUS_PAID.equalsIgnoreCase(pl.getPaymentStatus()));
+                if (!stillPaid) {
+                    invoice.setStatus(INVOICE_STATUS_PENDING_PAYMENT);
+                }
+            } else {
+                invoice.setStatus(INVOICE_STATUS_REJECTED);
+            }
+            invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), audit));
+            invoiceRepository.save(invoice);
+            touched++;
+            log.info("[PaymentVoid] invoice {} ({}) -> {} after payment {} was voided",
+                    invoice.getInvoiceNumber(), invoice.getSource(), invoice.getStatus(), paymentLogId);
+        }
+        return touched;
+    }
+
+    /**
      * Merge additional keys into the invoice's {@code invoice_data_json} blob without
      * clobbering whatever is already there (e.g. persisted notes/overrides from create
      * time) — read-modify-write over the same JSON object shape {@code applyStoredOverrides}

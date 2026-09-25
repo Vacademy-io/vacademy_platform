@@ -323,6 +323,8 @@ const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         // Changing credentials signs the learner out, so it stays an admin
         // capability unless an admin explicitly grants it to another role.
         allowEditCredentials: true,
+        // OFF even for admin: permanent delete is opt-in per role from Display Settings.
+        allowDeletePayments: false,
     },
     studentManagementActions: {
         showEnrollButton: true,

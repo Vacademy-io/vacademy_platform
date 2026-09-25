@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BalanceLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
@@ -399,11 +400,25 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                            AS pending_installments,
                          MIN(CAST(sfp.due_date AS date))
                            FILTER (WHERE COALESCE(sfp.amount_paid, 0) < sfp.amount_expected)
-                           AS next_due_date
+                           AS next_due_date,
+                         COALESCE(SUM(GREATEST(sfp.amount_expected - COALESCE(sfp.amount_paid, 0), 0)), 0)
+                           AS outstanding
                     FROM student_fee_payment sfp
                    WHERE sfp.institute_id = :instituteId
                      AND sfp.status NOT IN ('DELETED', 'CANCELLED', 'DROPPED', 'WAIVED')
                    GROUP BY sfp.user_plan_id
+                ), cpo_next AS (
+                  SELECT u.user_plan_id, SUM(u.unpaid) AS next_due_amount
+                    FROM (SELECT sfp.user_plan_id,
+                                 CAST(sfp.due_date AS date) AS due_on,
+                                 GREATEST(sfp.amount_expected - COALESCE(sfp.amount_paid, 0), 0) AS unpaid,
+                                 MIN(CAST(sfp.due_date AS date)) OVER (PARTITION BY sfp.user_plan_id) AS first_due_on
+                            FROM student_fee_payment sfp
+                           WHERE sfp.institute_id = :instituteId
+                             AND sfp.status NOT IN ('DELETED', 'CANCELLED', 'DROPPED', 'WAIVED')
+                             AND COALESCE(sfp.amount_paid, 0) < sfp.amount_expected) u
+                   WHERE u.due_on = u.first_due_on
+                   GROUP BY u.user_plan_id
                 ), plan_paid AS (
                   SELECT pl.user_plan_id, SUM(pl.payment_amount) AS amt
                     FROM payment_log pl
@@ -457,12 +472,21 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                          cs.next_due_date AS next_due_date,
                          UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
                                         NULLIF(TRIM(ei.currency), ''))) AS currency,
-                         up.created_at AS created_at
+                         up.created_at AS created_at,
+                         CASE WHEN up.status <> 'ACTIVE' THEN 0
+                              WHEN po.type = 'CPO' THEN COALESCE(cs.outstanding, 0)
+                              WHEN po.type = 'SUBSCRIPTION'
+                                   AND up.end_date IS NOT NULL
+                                   AND up.end_date < CURRENT_TIMESTAMP THEN COALESCE(pp.actual_price, 0)
+                              ELSE 0 END AS outstanding,
+                         CASE WHEN up.status = 'ACTIVE' AND po.type = 'CPO' THEN cn.next_due_amount
+                              ELSE NULL END AS next_due_amount
                     FROM user_plan up
                     JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
                     LEFT JOIN payment_option po ON po.id = up.payment_option_id
                     LEFT JOIN payment_plan pp ON pp.id = up.plan_id
                     LEFT JOIN cpo_sched cs ON cs.user_plan_id = up.id
+                    LEFT JOIN cpo_next cn ON cn.user_plan_id = up.id
                     LEFT JOIN plan_paid pd ON pd.user_plan_id = up.id
                    WHERE ei.institute_id = :instituteId
                      AND up.created_at >= :startDate
@@ -493,7 +517,9 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                          0 AS pending_installments,
                          CAST(inv.due_date AS date) AS next_due_date,
                          UPPER(NULLIF(TRIM(inv.currency), '')) AS currency,
-                         inv.created_at AS created_at
+                         inv.created_at AS created_at,
+                         COALESCE(inv.total_amount, 0) AS outstanding,
+                         COALESCE(inv.total_amount, 0) AS next_due_amount
                     FROM invoice inv
                    WHERE inv.institute_id = :instituteId
                      AND inv.created_at >= :startDate
@@ -611,6 +637,8 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        (SELECT COUNT(*) FROM live WHERE is_plan) AS planCount,
                        (SELECT COUNT(*) FROM live WHERE activated_without_payment)
                          AS activatedWithoutPaymentCount,
+                       (SELECT COALESCE(SUM(outstanding), 0) FROM live) AS outstanding,
+                       (SELECT COUNT(DISTINCT user_id) FROM live WHERE outstanding > 0) AS learnersOutstanding,
                        (SELECT currency FROM live WHERE currency IS NOT NULL
                          GROUP BY currency ORDER BY COUNT(*) DESC LIMIT 1) AS currency
                 """, nativeQuery = true)
@@ -657,6 +685,55 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         HAVING SUM(o.overdue) > 0) owing
                 """, nativeQuery = true)
         Page<OutstandingLearnerProjection> findOutstandingLearners(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("upcomingDays") int upcomingDays,
+                        Pageable pageable);
+
+        /**
+         * The learners behind the "Outstanding" card: everyone with a balance still to collect on
+         * a live enrolment, whatever its due date — soonest next installment first. The Due list
+         * above only holds learners with something already overdue, so an institute whose
+         * installments all fall due next quarter saw an empty list and a zero card while lakhs
+         * were still to come in.
+         *
+         * Same {@link #DUE_OBLIGATION_CTES} as the Due list, so a learner row reconciles with the
+         * card; {@code nextDueAmount} is what falls due on {@code nextDueDate}.
+         */
+        @Query(value = DUE_OBLIGATION_CTES + """
+                SELECT o.user_id AS userId,
+                       (array_agg(o.course_name ORDER BY o.outstanding DESC))[1] AS courseName,
+                       (array_agg(o.payment_type ORDER BY o.outstanding DESC))[1] AS paymentType,
+                       (array_agg(o.plan_status ORDER BY o.outstanding DESC))[1] AS planStatus,
+                       SUM(o.billed) AS billed,
+                       SUM(o.paid) AS paid,
+                       SUM(o.overdue) AS due,
+                       SUM(o.upcoming) AS upcoming,
+                       SUM(o.outstanding) AS outstanding,
+                       COUNT(*) FILTER (WHERE o.is_plan) AS planCount,
+                       SUM(o.pending_installments) AS pendingInstallments,
+                       MIN(o.next_due_date) FILTER (WHERE o.outstanding > 0) AS nextDueDate,
+                       (array_agg(o.next_due_amount ORDER BY o.next_due_date NULLS LAST)
+                          FILTER (WHERE o.outstanding > 0))[1] AS nextDueAmount,
+                       MAX(o.currency) AS currency
+                  FROM obligations o
+                 WHERE o.is_live
+                 GROUP BY o.user_id
+                HAVING SUM(o.outstanding) > 0
+                 ORDER BY MIN(o.next_due_date) FILTER (WHERE o.outstanding > 0) NULLS LAST,
+                          SUM(o.outstanding) DESC
+                """, countQuery = DUE_OBLIGATION_CTES + """
+                SELECT COUNT(*)
+                  FROM (SELECT o.user_id
+                          FROM obligations o
+                         WHERE o.is_live
+                         GROUP BY o.user_id
+                        HAVING SUM(o.outstanding) > 0) owing
+                """, nativeQuery = true)
+        Page<BalanceLearnerProjection> findLearnersWithBalance(
                         @Param("instituteId") String instituteId,
                         @Param("startDate") LocalDateTime startDate,
                         @Param("endDate") LocalDateTime endDate,

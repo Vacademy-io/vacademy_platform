@@ -139,6 +139,8 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
         options: [
             { value: 'PAYMENT_PLAN', label: 'Payment plan' },
             { value: 'FEE_PLAN', label: 'Fee plan (CPO)' },
+            { value: 'PAYMENT', label: 'Payment' },
+            { value: 'INVOICE', label: 'Invoice' },
             { value: 'ERP_JOURNAL', label: 'Journal entry' },
             { value: 'ERP_FINANCE_PNL', label: 'Profit and loss' },
         ],
@@ -205,6 +207,9 @@ const ACTIVITY_OPTIONS: MultiSelectOption[] = [
     { value: 'DEACTIVATE', label: 'Deactivated (record)' },
     { value: 'PROVISION_BOOKING_PAGE', label: 'Booking page provisioned' },
     { value: 'MAKE_DEFAULT', label: 'Made default' },
+    { value: 'VOID', label: 'Voided' },
+    { value: 'SPLIT', label: 'Installment split' },
+    { value: 'DELETE_BLOCKED', label: 'Delete blocked' },
     { value: 'AWARD', label: 'Awarded' },
     { value: 'REVOKE', label: 'Revoked' },
     { value: 'APPROVE', label: 'Approved' },

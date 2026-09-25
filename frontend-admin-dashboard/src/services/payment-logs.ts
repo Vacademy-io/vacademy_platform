@@ -72,6 +72,16 @@ export interface BillingSummary {
     outstanding: number;
     /** Distinct learners with an outstanding balance — the rows on the Outstanding list. */
     learners_outstanding: number;
+    /**
+     * Expected but not yet owed, whatever the date: every future instalment and invoice plus
+     * renewals within `upcoming_days`. Null on an older server.
+     */
+    upcoming_all: number | null;
+    learners_upcoming_all: number;
+    /** Earliest future due date carrying money, yyyy-MM-dd. */
+    next_due_date: string | null;
+    /** The institute runs instalment plans (independent of the date window). */
+    uses_installments: boolean;
     currency: string | null;
 }
 
@@ -122,6 +132,10 @@ export const fetchBillingSummary = async (
         // An older server has no outstanding figure; Due is the closest honest floor.
         outstanding: Math.max(0, typeof d.outstanding === 'number' ? d.outstanding : due),
         learners_outstanding: num(d.learners_outstanding),
+        upcoming_all: typeof d.upcoming_all === 'number' ? Math.max(0, d.upcoming_all) : null,
+        learners_upcoming_all: num(d.learners_upcoming_all),
+        next_due_date: typeof d.next_due_date === 'string' ? d.next_due_date : null,
+        uses_installments: d.uses_installments === true,
         currency: d.currency ?? null,
     };
 };

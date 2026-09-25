@@ -1221,6 +1221,11 @@ public class PaymentLogService {
                 .outstanding(row != null && row.getOutstanding() != null ? row.getOutstanding() : 0d)
                 .learnersOutstanding(
                         row != null && row.getLearnersOutstanding() != null ? row.getLearnersOutstanding() : 0L)
+                .upcomingAll(row != null && row.getUpcomingAll() != null ? row.getUpcomingAll() : 0d)
+                .learnersUpcomingAll(
+                        row != null && row.getLearnersUpcomingAll() != null ? row.getLearnersUpcomingAll() : 0L)
+                .nextDueDate(row != null ? row.getNextDueDate() : null)
+                .usesInstallments(row != null && Boolean.TRUE.equals(row.getUsesInstallments()))
                 .currency(row != null ? row.getCurrency() : null)
                 .build();
     }

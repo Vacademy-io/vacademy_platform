@@ -51,6 +51,22 @@ public class BillingSummaryResponseDTO {
     private Double outstanding;
     /** Distinct learners with an outstanding balance — the rows on the Outstanding list. */
     private Long learnersOutstanding;
+    /**
+     * Everything expected but not yet owed, whatever the date: every unpaid instalment and invoice
+     * not yet due, plus subscription renewals within {@link #upcomingDays}. For an instalment
+     * institute this is what "upcoming" means — the next instalment may be months away, beyond the
+     * horizon {@link #upcoming} is limited to.
+     */
+    private Double upcomingAll;
+    /** Distinct learners behind {@link #upcomingAll}. */
+    private Long learnersUpcomingAll;
+    /** Earliest future due date carrying money, yyyy-MM-dd. null when nothing is scheduled. */
+    private String nextDueDate;
+    /**
+     * Whether the institute has any instalment schedule, independent of the date window — lets the
+     * cards pick instalment-friendly defaults without flipping as the admin changes the range.
+     */
+    private Boolean usesInstallments;
     /** Most common currency across the live enrolments. null when none is resolvable. */
     private String currency;
 }

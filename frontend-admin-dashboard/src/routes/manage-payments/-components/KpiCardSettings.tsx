@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { SlidersHorizontal } from '@phosphor-icons/react';
+import { GearSix } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { MyButton } from '@/components/design-system/button';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { hasNotYetDueBalance, type KpiBilling, type KpiCardKey } from './PaymentKpiCards';
@@ -93,7 +94,7 @@ interface KpiCardSettingsProps {
     isCustomised: boolean;
 }
 
-/** The "Cards" button: tick which summary cards (and their tabs) to show. */
+/** The gear button: tick which summary cards (and their tabs) to show. */
 export function KpiCardSettings({
     visible,
     onToggle,
@@ -102,12 +103,21 @@ export function KpiCardSettings({
 }: KpiCardSettingsProps) {
     return (
         <Popover>
-            <PopoverTrigger asChild>
-                <MyButton buttonType="secondary" scale="medium" className="gap-2">
-                    <SlidersHorizontal size={16} />
-                    Cards
-                </MyButton>
-            </PopoverTrigger>
+            <Tooltip>
+                <PopoverTrigger asChild>
+                    <TooltipTrigger asChild>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            layoutVariant="icon"
+                            aria-label="Choose which cards to show"
+                        >
+                            <GearSix size={18} />
+                        </MyButton>
+                    </TooltipTrigger>
+                </PopoverTrigger>
+                <TooltipContent side="bottom">Choose which cards to show</TooltipContent>
+            </Tooltip>
             <PopoverContent align="end" className="w-72 p-3">
                 <div className="mb-2 flex items-center justify-between">
                     <span className="text-caption font-semibold text-neutral-700">

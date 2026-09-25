@@ -75,6 +75,14 @@ public class PaymentDeletionService {
     private static final Set<String> DELETABLE_VENDORS = Set.of("MANUAL", "OFFLINE");
     private static final Set<String> BILL_SOURCES = Set.of("ADMIN_MANUAL", "LIVE_SESSION");
 
+    /**
+     * An admin bill (as opposed to a receipt). Null-safe on purpose: about half of production's
+     * invoices carry no source, and {@code Set.of(..).contains(null)} throws.
+     */
+    private static boolean isBill(String source) {
+        return source != null && BILL_SOURCES.contains(source);
+    }
+
     private final PaymentLogRepository paymentLogRepository;
     private final InvoiceRepository invoiceRepository;
     private final InvoicePaymentLogMappingRepository invoicePaymentLogMappingRepository;
@@ -264,7 +272,7 @@ public class PaymentDeletionService {
         List<String> deletedInvoices = new ArrayList<>();
         for (InvoicePaymentLogMapping mapping : invoicePaymentLogMappingRepository.findAllByPaymentLogId(paymentLogId)) {
             Invoice invoice = mapping.getInvoice();
-            if (invoice == null || BILL_SOURCES.contains(invoice.getSource())) continue;
+            if (invoice == null || isBill(invoice.getSource())) continue;
             boolean shared = invoicePaymentLogMappingRepository.findByInvoiceId(invoice.getId()).stream()
                     .anyMatch(m -> m.getPaymentLog() != null && !paymentLogId.equals(m.getPaymentLog().getId()));
             if (!shared) {
@@ -358,7 +366,7 @@ public class PaymentDeletionService {
         // A bill carries its own obligation in the ledger (raised, and reversed if it was
         // cancelled); it goes with the bill. Credits belong to their payments and stay.
         entityManager.flush();
-        if (BILL_SOURCES.contains(source)) {
+        if (isBill(source)) {
             execute("DELETE FROM user_account_ledger WHERE source_type = 'ADMIN_INVOICE' AND source_id = ?1 "
                     + "AND event_type IN ('DEBIT_ACCRUAL', 'DEBIT_REVERSAL')", invoiceId);
         }

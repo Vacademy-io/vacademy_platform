@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import {
+    ArrowClockwise,
     CaretDown,
     CaretRight,
     PencilSimple,
@@ -9,16 +11,47 @@ import {
     Trash,
     EyeSlash,
     Eye,
+    WarningCircle,
 } from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
+import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 import {
     deleteEngagementPlan,
     getEngagementPlan,
     updateEngagementPlan,
 } from '../-services/engagement-service';
 import { PlanOverviewDialog } from './PlanOverviewDialog';
-import type { EngagementItemDTO, EngagementPlanDTO } from '../-types/types';
+import type { EngagementItemDTO, EngagementPlanDTO, PlanStatus } from '../-types/types';
 import { ItemTrackingDialog } from './ItemTrackingDialog';
 import { PlanComposerDialog } from './PlanComposerDialog';
+
+const STATUS_TONE: Record<PlanStatus, StatusType> = {
+    PUBLISHED: 'SUCCESS',
+    DRAFT: 'INFO',
+    ARCHIVED: 'INFO',
+    DELETED: 'DANGER',
+};
+
+/** The server's own message when it sent one, else the caller's fallback. */
+function errorMessage(e: unknown, fallback: string): string {
+    return (
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
+    );
+}
+
+const ICON_BUTTON = 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900';
 
 /**
  * One plan in the list. Collapsed it shows status; expanded it loads the plan's
@@ -33,30 +66,35 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
     const [trackingItem, setTrackingItem] = useState<EngagementItemDTO | null>(null);
     const [editOpen, setEditOpen] = useState(false);
     const [overviewOpen, setOverviewOpen] = useState(false);
+    const [confirmRemove, setConfirmRemove] = useState(false);
     const [busy, setBusy] = useState(false);
 
-    async function togglePublished(e: React.MouseEvent | React.KeyboardEvent) {
-        e.stopPropagation();
+    const isPublished = plan.status === 'PUBLISHED';
+
+    async function togglePublished() {
         setBusy(true);
         try {
             await updateEngagementPlan(plan.id, {
-                status: plan.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED',
+                status: isPublished ? 'DRAFT' : 'PUBLISHED',
             });
+            toast.success(isPublished ? t('card.hidden') : t('card.shown'));
             onChanged?.();
+        } catch (e: unknown) {
+            toast.error(errorMessage(e, t('card.toggleError')));
         } finally {
             setBusy(false);
         }
     }
 
-    async function remove(e: React.MouseEvent | React.KeyboardEvent) {
-        e.stopPropagation();
-        // Removing a plan takes it off every learner's home page; the attempts and
-        // points already earned are untouched.
-        if (!window.confirm(t('card.removeConfirm', { title: plan.title }))) return;
+    async function remove() {
         setBusy(true);
         try {
             await deleteEngagementPlan(plan.id);
+            toast.success(t('card.removed'));
+            setConfirmRemove(false);
             onChanged?.();
+        } catch (e: unknown) {
+            toast.error(errorMessage(e, t('card.removeError')));
         } finally {
             setBusy(false);
         }
@@ -65,6 +103,7 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
     const {
         data: detail,
         isLoading,
+        isError,
         refetch,
     } = useQuery({
         queryKey: ['engagement-plan', plan.id],
@@ -73,116 +112,106 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
     });
 
     const slots = detail?.slots ?? [];
+    const detailId = `engagement-plan-${plan.id}`;
 
     return (
         <div className="rounded-lg border border-neutral-200">
-            <button
-                type="button"
-                onClick={() => setExpanded((v) => !v)}
-                className="flex w-full items-center gap-3 p-4 text-start transition hover:bg-neutral-50"
-            >
-                {expanded ? <CaretDown size={16} /> : <CaretRight size={16} />}
-                <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-neutral-900">
-                        {plan.title}
-                    </span>
-                    <span className="mt-0.5 block text-xs text-neutral-500">
-                        {plan.timezone} · {t(`composer.miss.${plan.defaultMissPolicy}`)}
-                    </span>
-                </span>
-                <span
-                    className={
-                        plan.status === 'PUBLISHED'
-                            ? 'rounded-md bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700'
-                            : 'rounded-md bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600'
-                    }
+            <div className="flex items-center gap-2 p-2 pe-3">
+                <button
+                    type="button"
+                    onClick={() => setExpanded((v) => !v)}
+                    aria-expanded={expanded}
+                    aria-controls={detailId}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-start transition hover:bg-neutral-50"
                 >
-                    {plan.status}
-                </span>
-                {/* Spans, not buttons: these sit inside the expand button, and a
-                    nested button is invalid HTML. */}
-                <span
-                    role="button"
-                    tabIndex={0}
+                    {expanded ? <CaretDown size={16} /> : <CaretRight size={16} />}
+                    <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-neutral-900">
+                            {plan.title}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-neutral-500">
+                            {plan.timezone} · {t(`composer.miss.${plan.defaultMissPolicy}`)}
+                        </span>
+                    </span>
+                </button>
+                <StatusChip
+                    text={t(`card.status.${plan.status}`)}
+                    textSize="text-caption"
+                    status={STATUS_TONE[plan.status] ?? 'INFO'}
+                    showIcon={false}
+                />
+                <MyButton
+                    type="button"
+                    buttonType="text"
+                    layoutVariant="icon"
                     aria-label={t('card.progress')}
                     title={t('card.progressTitle')}
-                    className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setOverviewOpen(true);
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setOverviewOpen(true);
-                        }
-                    }}
+                    className={ICON_BUTTON}
+                    onClick={() => setOverviewOpen(true)}
                 >
                     <ChartBar size={16} />
-                </span>
-                <span
-                    role="button"
-                    tabIndex={0}
-                    aria-label={
-                        plan.status === 'PUBLISHED' ? t('card.unpublish') : t('card.publish')
-                    }
-                    title={plan.status === 'PUBLISHED' ? t('card.hide') : t('card.show')}
-                    aria-disabled={busy}
-                    className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                    onClick={(e) => void togglePublished(e)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            void togglePublished(e);
-                        }
-                    }}
+                </MyButton>
+                <MyButton
+                    type="button"
+                    buttonType="text"
+                    layoutVariant="icon"
+                    aria-label={isPublished ? t('card.unpublish') : t('card.publish')}
+                    title={isPublished ? t('card.hide') : t('card.show')}
+                    disable={busy}
+                    className={ICON_BUTTON}
+                    onClick={() => void togglePublished()}
                 >
-                    {plan.status === 'PUBLISHED' ? <EyeSlash size={16} /> : <Eye size={16} />}
-                </span>
-                <span
-                    role="button"
-                    tabIndex={0}
+                    {isPublished ? <EyeSlash size={16} /> : <Eye size={16} />}
+                </MyButton>
+                <MyButton
+                    type="button"
+                    buttonType="text"
+                    layoutVariant="icon"
                     aria-label={t('card.remove')}
                     title={t('card.remove')}
-                    aria-disabled={busy}
-                    className="rounded p-1 text-neutral-400 hover:bg-danger-50 hover:text-danger-600"
-                    onClick={(e) => void remove(e)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            void remove(e);
-                        }
-                    }}
+                    disable={busy}
+                    className={cn(ICON_BUTTON, 'hover:bg-danger-50 hover:text-danger-600')}
+                    onClick={() => setConfirmRemove(true)}
                 >
                     <Trash size={16} />
-                </span>
-                <span
-                    role="button"
-                    tabIndex={0}
+                </MyButton>
+                <MyButton
+                    type="button"
+                    buttonType="text"
+                    layoutVariant="icon"
                     aria-label={t('card.edit')}
-                    className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setEditOpen(true);
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setEditOpen(true);
-                        }
-                    }}
+                    title={t('card.edit')}
+                    className={ICON_BUTTON}
+                    onClick={() => setEditOpen(true)}
                 >
                     <PencilSimple size={16} />
-                </span>
-            </button>
+                </MyButton>
+            </div>
 
             {expanded && (
-                <div className="border-t border-neutral-100 p-4">
+                <div id={detailId} className="border-t border-neutral-100 p-4">
                     {isLoading && <div className="h-16 animate-pulse rounded bg-neutral-100" />}
 
-                    {!isLoading && slots.length === 0 && (
+                    {isError && (
+                        <Alert className="border-danger-200 bg-danger-50 text-danger-700">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <WarningCircle size={18} className="shrink-0" />
+                                <AlertDescription className="min-w-0 flex-1">
+                                    {t('card.loadError')}
+                                </AlertDescription>
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => void refetch()}
+                                >
+                                    <ArrowClockwise size={14} /> {t('common.retry')}
+                                </MyButton>
+                            </div>
+                        </Alert>
+                    )}
+
+                    {!isLoading && !isError && slots.length === 0 && (
                         <p className="text-sm text-neutral-500">{t('card.noSlots')}</p>
                     )}
 
@@ -231,6 +260,41 @@ export function PlanCard({ plan, onChanged }: { plan: EngagementPlanDTO; onChang
                     </div>
                 </div>
             )}
+
+            {/* Removing a plan takes it off every learner's home page; the attempts and
+                points already earned are untouched. */}
+            <AlertDialog
+                open={confirmRemove}
+                onOpenChange={(next) => {
+                    if (!busy) setConfirmRemove(next);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-start">
+                            {t('card.removeTitle')}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="text-start">
+                            {t('card.removeConfirm', { title: plan.title })}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={busy}>{t('card.cancel')}</AlertDialogCancel>
+                        <AlertDialogAction
+                            disabled={busy}
+                            className="bg-danger-600 hover:bg-danger-500"
+                            onClick={(e) => {
+                                // Keep the dialog open until the delete settles, so a
+                                // failure is reported while the teacher is still here.
+                                e.preventDefault();
+                                void remove();
+                            }}
+                        >
+                            {busy ? t('card.removing') : t('card.remove')}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <PlanComposerDialog
                 open={editOpen}

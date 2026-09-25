@@ -10,7 +10,8 @@
         "nothingScheduledHint": "Create a plan to start showing daily tasks to this batch.",
         "pickBatch": "Pick a session and level to schedule engagement for this batch.",
         "tabTitle": "Daily engagement",
-        "tabSubtitle": "What this batch sees on their home page — readings, a question of the day, games — and how they did."
+        "tabSubtitle": "What this batch sees on their home page — readings, a question of the day, games — and how they did.",
+        "loadError": "Could not load the plans. Check your connection and try again."
     },
     "card": {
         "noSlots": "This plan has no scheduled slots yet.",
@@ -25,7 +26,22 @@
         "show": "Show to learners",
         "remove": "Remove plan",
         "removeConfirm": "Remove \"{{title}}\"? Learners will stop seeing its tasks.",
-        "edit": "Edit plan"
+        "edit": "Edit plan",
+        "status": {
+            "DRAFT": "Draft",
+            "PUBLISHED": "Published",
+            "ARCHIVED": "Archived",
+            "DELETED": "Removed"
+        },
+        "shown": "Plan is now visible to learners",
+        "hidden": "Plan is now hidden from learners",
+        "toggleError": "Could not change who can see this plan.",
+        "removeTitle": "Remove this plan?",
+        "removing": "Removing…",
+        "removed": "Plan removed",
+        "removeError": "Could not remove this plan.",
+        "cancel": "Cancel",
+        "loadError": "Could not load this plan's days and tasks."
     },
     "composer": {
         "titleNew": "New engagement plan",
@@ -124,7 +140,21 @@
             "CATCH_UP_REDUCED": "Catch up (reduced)",
             "CATCH_UP_REDUCED_hint": "Late, for fewer points"
         },
-        "thisBatch": "This batch"
+        "thisBatch": "This batch",
+        "loadError": "Could not load this plan.",
+        "saved": "Plan saved",
+        "created_one": "Plan created",
+        "created_other": "{{count}} plans created, one per batch",
+        "viewPlan": "View plan",
+        "multiDay_one": "This plan has {{count}} day. This editor changes day 1 only; other days are kept as they are.",
+        "multiDay_other": "This plan has {{count}} days. This editor changes day 1 only; other days are kept as they are.",
+        "datesLocked": "The first and last day are locked because this plan has more than one day, so day 1 can't overlap the days after it.",
+        "discard": {
+            "title": "Discard your changes?",
+            "description": "You have edits that aren't saved. Closing now throws them away.",
+            "keep": "Keep editing",
+            "confirm": "Discard"
+        }
     },
     "preview": {
         "title": "Learner preview",
@@ -151,7 +181,8 @@
         "remove": "Remove",
         "cancel": "Cancel",
         "use_one": "Use 1 batch",
-        "use_other": "Use {{count}} batches"
+        "use_other": "Use {{count}} batches",
+        "loadError": "Could not load batches."
     },
     "slidePicker": {
         "title": "Pick course content",
@@ -167,7 +198,11 @@
         "slide": "Slide",
         "selectSlide": "Select a slide",
         "cancel": "Cancel",
-        "use": "Use this slide"
+        "use": "Use this slide",
+        "loadError": "Could not load this course's content.",
+        "noModules": "This subject has no modules yet.",
+        "noChapters": "This module has no chapters yet.",
+        "noSlides": "This chapter has no slides yet."
     },
     "tracking": {
         "task": "Task",
@@ -191,7 +226,10 @@
         "openFile": "Open file",
         "learners_one": "{{count}} learner",
         "learners_other": "{{count}} learners",
-        "loading": "loading…"
+        "loading": "loading…",
+        "answersToRead": "Answers to read",
+        "loadError": "Could not load who attempted this task.",
+        "retry": "Retry"
     },
     "overview": {
         "title": "Progress",
@@ -208,7 +246,9 @@
         "missed": "Missed",
         "points": "Points",
         "lastActive": "Last active",
-        "never": "never"
+        "never": "never",
+        "loadError": "Could not load this plan's progress.",
+        "retry": "Retry"
     },
     "wizard": {
         "title": "Plan with AI",
@@ -283,6 +323,23 @@
             "pictures": "Could not generate the pictures.",
             "regenerate": "Could not regenerate that task.",
             "save": "Could not save the plan."
+        },
+        "days_one": "{{count}} day",
+        "days_other": "{{count}} days",
+        "discard": {
+            "title": "Discard this AI draft?",
+            "charged_one": "You were charged {{count}} credit.",
+            "charged_other": "You were charged {{count}} credits.",
+            "generating_one": "The draft is still being written. Its ~{{count}} credit is charged even if you discard it.",
+            "generating_other": "The draft is still being written. Its ~{{count}} credits are charged even if you discard it.",
+            "keep": "Keep editing",
+            "confirm": "Discard"
+        },
+        "resume": {
+            "title": "You have an unsaved AI draft",
+            "body": "{{title}} · saved {{when}}",
+            "action": "Resume draft",
+            "discard": "Discard"
         }
     },
     "settings": {
@@ -304,6 +361,18 @@
         "dwell": "Time on the page required (seconds)",
         "gamesTitle": "Games and self-reported scores",
         "gamesHint": "A teacher-uploaded game reports its own score, and anyone with devtools can report any number. By default such scores earn completion points only. Turn this on to let the score also earn a proportional bonus — and accept that the leaderboard can then be gamed.",
-        "unverified": "Let self-reported game scores earn bonus points"
+        "unverified": "Let self-reported game scores earn bonus points",
+        "loadError": "Could not load the saved settings",
+        "loadErrorHint": "The form is hidden so the defaults cannot overwrite your real values. Try again in a moment.",
+        "retry": "Retry",
+        "rangeError": "Enter a whole number from {{min}} to {{max}}.",
+        "minGameSeconds": "Minimum play time (seconds)"
+    },
+    "common": {
+        "retry": "Retry"
+    },
+    "slideAction": {
+        "assignTask": "Assign as task",
+        "task": "Task"
     }
 }

@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import type { EngagementItemType, MissPolicy } from '../-types/types';
 
 /**
@@ -26,14 +27,15 @@ export interface PreviewTask {
     correctPoints?: number;
 }
 
-const TYPE_ACCENT: Record<EngagementItemType, string> = {
-    READING_HTML: 'bg-sky-500',
-    VISUAL_NOTE: 'bg-violet-500',
-    QUESTION_OF_DAY: 'bg-amber-500',
-    QUIZ: 'bg-emerald-500',
-    GAME: 'bg-rose-500',
-    POLL: 'bg-indigo-500',
-    COURSE_SLIDE: 'bg-teal-500',
+/** Per-type accent, design tokens only. A type without one falls back to neutral. */
+export const ENGAGEMENT_TYPE_ACCENT: Partial<Record<EngagementItemType, string>> = {
+    READING_HTML: 'bg-info-500',
+    VISUAL_NOTE: 'bg-primary-300',
+    QUESTION_OF_DAY: 'bg-warning-500',
+    QUIZ: 'bg-success-500',
+    GAME: 'bg-danger-400',
+    POLL: 'bg-primary-500',
+    COURSE_SLIDE: 'bg-success-300',
 };
 
 function clean(html: string): string {
@@ -97,7 +99,10 @@ export function PlanPreview({
                     {tasks.map((task) => (
                         <div key={task.key} className="flex items-center gap-3 px-4 py-3">
                             <span
-                                className={`h-8 w-1.5 shrink-0 rounded-full ${TYPE_ACCENT[task.itemType]}`}
+                                className={cn(
+                                    'h-8 w-1.5 shrink-0 rounded-full',
+                                    ENGAGEMENT_TYPE_ACCENT[task.itemType] ?? 'bg-neutral-400'
+                                )}
                             />
                             <span className="min-w-0 flex-1">
                                 <span className="flex flex-wrap items-center gap-1.5">
@@ -134,7 +139,7 @@ export function PlanPreview({
                     </p>
 
                     {missPolicy === 'CATCH_UP_REDUCED' && (
-                        <p className="rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                        <p className="rounded bg-warning-50 px-2 py-1.5 text-xs text-warning-700">
                             {t('preview.catchUp', { percent: catchUpPercent ?? 50 })}
                         </p>
                     )}
@@ -148,7 +153,7 @@ export function PlanPreview({
                     )}
 
                     {active.itemType === 'COURSE_SLIDE' && (
-                        <p className="rounded bg-teal-50 px-2 py-1.5 text-xs text-teal-800">
+                        <p className="rounded bg-info-50 px-2 py-1.5 text-xs text-info-700">
                             {t('preview.lesson')}
                         </p>
                     )}

@@ -2,7 +2,8 @@ import { createLazyFileRoute, getRouteApi } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Plus, Sparkle } from '@phosphor-icons/react';
+import { ArrowClockwise, Plus, Sparkle, WarningCircle } from '@phosphor-icons/react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { MyButton } from '@/components/design-system/button';
@@ -32,6 +33,7 @@ function EngagementPlans() {
     const {
         data: plans,
         isLoading,
+        isError,
         refetch,
     } = useQuery({
         queryKey: ['engagement-plans', packageSessionId],
@@ -69,7 +71,27 @@ function EngagementPlans() {
                     </div>
                 )}
 
-                {!isLoading && (plans?.length ?? 0) === 0 && (
+                {/* Before the empty state: a failed load must not read as "no plans". */}
+                {isError && (
+                    <Alert className="border-danger-200 bg-danger-50 text-danger-700">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <WarningCircle size={18} className="shrink-0" />
+                            <AlertDescription className="min-w-0 flex-1">
+                                {t('page.loadError')}
+                            </AlertDescription>
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => void refetch()}
+                            >
+                                <ArrowClockwise size={14} /> {t('common.retry')}
+                            </MyButton>
+                        </div>
+                    </Alert>
+                )}
+
+                {!isLoading && !isError && (plans?.length ?? 0) === 0 && (
                     <div className="rounded-lg border border-dashed border-neutral-300 p-10 text-center">
                         <p className="text-sm font-medium text-neutral-900">{t('page.noPlans')}</p>
                         <p className="mt-1 text-sm text-neutral-500">{t('page.noPlansHint')}</p>

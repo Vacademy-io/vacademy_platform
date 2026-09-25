@@ -15,5 +15,8 @@ public interface BillingSummaryProjection {
     Long getPlanCount();
     /** Live, priced one-time plans with no payment recorded — activated by hand. */
     Long getActivatedWithoutPaymentCount();
+    /** Every unpaid installment / invoice on live enrolments, whatever its due date. */
+    Double getOutstanding();
+    Long getLearnersOutstanding();
     String getCurrency();
 }

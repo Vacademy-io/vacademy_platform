@@ -237,6 +237,8 @@ export function PaymentDashboard() {
               learnersOwing: billingSummary.learners_owing,
               learnersUpcoming: billingSummary.learners_upcoming,
               activatedWithoutPaymentCount: billingSummary.activated_without_payment_count,
+              outstanding: billingSummary.outstanding,
+              learnersOutstanding: billingSummary.learners_outstanding,
               currency: billingSummary.currency || '',
           }
         : null;

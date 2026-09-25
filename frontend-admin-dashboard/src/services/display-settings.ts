@@ -842,6 +842,15 @@ export function mergeDisplayWithDefaults(
         showApprovalToggle:
             incoming?.learnerManagement?.showApprovalToggle ??
             defLearnerManagement.showApprovalToggle,
+        // Was missing from this list, so a saved value was dropped on every read: the Display
+        // Settings toggle could never grant Edit Credentials to a teacher or custom role, and an
+        // admin could not take it away. Role default when never set (ON admin, OFF otherwise).
+        allowEditCredentials:
+            incoming?.learnerManagement?.allowEditCredentials ??
+            defLearnerManagement.allowEditCredentials,
+        // Explicit pass-through, or the flag is dropped on read and can never be switched on.
+        // Anything but an explicit `true` is OFF.
+        allowDeletePayments: incoming?.learnerManagement?.allowDeletePayments === true,
     };
 
     // Learner Management header action buttons (hide Enroll/Invite per role +

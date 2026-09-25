@@ -1266,6 +1266,9 @@ export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invo
 export const POST_ADMIN_PREVIEW_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/preview`;
 export const POST_REJECT_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/reject`;
+/** DELETE ?instituteId=… — permanent delete, gated by Display Settings (off by default). */
+export const DELETE_INVOICE = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const PUT_UPDATE_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
@@ -1531,6 +1534,8 @@ export const PUT_USER_PLAN_CPO_DISCOUNT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount`;
 export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
+export const POST_SPLIT_INSTALLMENT = (sfpId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}/split`;
 
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;

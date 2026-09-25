@@ -65,6 +65,13 @@ export interface BillingSummary {
      * be an offline payment nobody recorded or a free grant, so it is reported, not billed.
      */
     activated_without_payment_count: number;
+    /**
+     * Everything still to collect on live enrolments — every unpaid instalment whatever its due
+     * date, overdue renewals, unpaid invoices. Due and Upcoming are date slices of it.
+     */
+    outstanding: number;
+    /** Distinct learners with an outstanding balance — the rows on the Outstanding list. */
+    learners_outstanding: number;
     currency: string | null;
 }
 
@@ -112,6 +119,9 @@ export const fetchBillingSummary = async (
         learners_upcoming: num(d.learners_upcoming),
         plan_count: num(d.plan_count),
         activated_without_payment_count: num(d.activated_without_payment_count),
+        // An older server has no outstanding figure; Due is the closest honest floor.
+        outstanding: Math.max(0, typeof d.outstanding === 'number' ? d.outstanding : due),
+        learners_outstanding: num(d.learners_outstanding),
         currency: d.currency ?? null,
     };
 };
@@ -178,6 +188,10 @@ export interface OutstandingLearner {
     pending_installments: number;
     /** CPO only: when the next unpaid instalment falls due (YYYY-MM-DD). */
     next_due_date: string | null;
+    /** Outstanding list only: everything still to collect, whatever its due date. */
+    outstanding?: number | null;
+    /** Outstanding list only: what falls due on `next_due_date`. */
+    next_due_amount?: number | null;
     currency: string | null;
 }
 
@@ -221,7 +235,12 @@ export interface OutstandingLearnersPage {
 export const fetchOutstandingLearners = async (
     requestBody: BillingSummaryRequest = {},
     pageNo = 0,
-    pageSize = 20
+    pageSize = 20,
+    /**
+     * false: the Due list — learners with something already overdue. true: the Outstanding
+     * list — anyone with a balance still to collect, soonest next instalment first.
+     */
+    includeNotYetDue = false
 ): Promise<OutstandingLearnersPage> => {
     const instituteId = getCurrentInstituteId();
 
@@ -232,7 +251,7 @@ export const fetchOutstandingLearners = async (
     const response = await authenticatedAxiosInstance.post(
         OUTSTANDING_LEARNERS_URL,
         { ...requestBody, institute_id: instituteId },
-        { params: { pageNo, pageSize } }
+        { params: includeNotYetDue ? { pageNo, pageSize, includeNotYetDue } : { pageNo, pageSize } }
     );
 
     const d = (response.data ?? {}) as Partial<OutstandingLearnersPage>;
@@ -268,4 +287,89 @@ export const fetchLearnerPlanBreakdown = async (
         { params: { userId } }
     );
     return Array.isArray(response.data) ? (response.data as LearnerPlanBreakdown[]) : [];
+};
+
+/** What a void undid — echoed in the confirmation toast. */
+export interface PaymentVoidResult {
+    payment_log_id: string;
+    amount: number | null;
+    currency: string | null;
+    installments_reopened: number;
+    invoices_updated: number;
+    credit_reversed: number | null;
+}
+
+/** Vendors whose payments were entered by an admin — the only ones that can be voided. */
+const VOIDABLE_VENDORS = new Set(['MANUAL', 'OFFLINE']);
+
+/**
+ * Can this payment be voided from the admin UI? Only a PAID payment an admin recorded by hand:
+ * money a gateway captured really moved and has to be refunded through the gateway instead.
+ */
+export const isVoidablePayment = (
+    vendor: string | null | undefined,
+    paymentStatus: string | null | undefined
+): boolean =>
+    VOIDABLE_VENDORS.has((vendor || '').trim().toUpperCase()) &&
+    (paymentStatus || '').toUpperCase() === 'PAID';
+
+/**
+ * Voids a payment recorded by mistake. The server puts back everything it moved — instalments,
+ * invoices, the learner's ledger, Collected — and keeps the row, struck through, for audit.
+ */
+export const voidPaymentLog = async (
+    paymentLogId: string,
+    reason?: string
+): Promise<PaymentVoidResult> => {
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) {
+        throw new Error('Institute ID not found');
+    }
+    const response = await authenticatedAxiosInstance.post<PaymentVoidResult>(
+        `${PAYMENT_LOGS_URL}/${encodeURIComponent(paymentLogId)}/void`,
+        { reason: reason?.trim() || undefined },
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+/**
+ * Can this payment be PERMANENTLY deleted (when the role is allowed to at all)? Offline / manual
+ * payments that are paid or already voided; a gateway payment is refunded in the gateway instead.
+ */
+export const isDeletablePayment = (
+    vendor: string | null | undefined,
+    paymentStatus: string | null | undefined
+): boolean =>
+    VOIDABLE_VENDORS.has((vendor || '').trim().toUpperCase()) &&
+    ['PAID', 'VOIDED'].includes((paymentStatus || '').toUpperCase());
+
+/**
+ * PERMANENTLY deletes a payment. The server refuses unless the caller's role has Display Settings
+ * → Learner Management → "delete payments & invoices" on; a payment that still counts is voided
+ * first, so balances, installments and invoices are put right before the rows go.
+ */
+export const deletePaymentLog = async (
+    paymentLogId: string
+): Promise<{ payment_log_id: string; amount: number | null; invoices_deleted: string[] }> => {
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) {
+        throw new Error('Institute ID not found');
+    }
+    const response = await authenticatedAxiosInstance.delete(
+        `${PAYMENT_LOGS_URL}/${encodeURIComponent(paymentLogId)}`,
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+/**
+ * The reason the server gave for refusing a payment action. A VacademyException comes back as
+ * `{ ex: "<message>" }`; some handlers use `message`. Null when there is nothing readable.
+ */
+export const serverErrorMessage = (err: unknown): string | null => {
+    const data = (err as { response?: { data?: { ex?: unknown; message?: unknown } } })?.response?.data;
+    if (typeof data?.ex === 'string' && data.ex.trim()) return data.ex;
+    if (typeof data?.message === 'string' && data.message.trim()) return data.message;
+    return null;
 };

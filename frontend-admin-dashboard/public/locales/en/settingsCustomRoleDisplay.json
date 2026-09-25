@@ -152,7 +152,8 @@
         "allowViewPassword": "Allow Viewing Learner Password",
         "allowEditCredentials": "Allow Editing Learner Username & Password",
         "allowSendResetPasswordMail": "Allow Sending Reset Password Mail",
-        "showApprovalToggle": "Show Approval Requests toggle on Learners list"
+        "showApprovalToggle": "Show Approval Requests toggle on Learners list",
+        "allowDeletePayments": "Allow permanently deleting payments & invoices (cannot be undone)"
     },
     "dashboardWidgets": {
         "title": "Dashboard Widgets",

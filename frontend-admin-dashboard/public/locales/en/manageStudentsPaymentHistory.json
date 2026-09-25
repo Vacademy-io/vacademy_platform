@@ -82,7 +82,8 @@
             "creditWaiver": "Waiver",
             "creditAdjustment": "Adjustment",
             "debitPenalty": "Penalty",
-            "debitReversal": "Invoice cancelled"
+            "debitReversal": "Invoice cancelled",
+            "creditReversal": "Payment voided"
         }
     },
     "main": {
@@ -94,5 +95,33 @@
         "invoicesHeadingCount": "Invoices ({{count}})",
         "createInvoice": "Create Invoice",
         "loadingInvoices": "Loading invoices..."
+    },
+    "voidPayment": {
+        "action": "Void",
+        "actionTitle": "Void this payment — use it when a payment was recorded by mistake",
+        "voidedTag": "Voided",
+        "dialog": {
+            "title": "Void this {{amount}} payment?",
+            "description": "Use this for a payment that was recorded by mistake. The amount goes back onto the learner's balance and installments, its invoice is cancelled, and it stops counting as collected. The payment stays in the history, marked as voided. This cannot be undone.",
+            "reasonLabel": "Reason (optional)",
+            "reasonPlaceholder": "e.g. Entered twice",
+            "keep": "Keep payment",
+            "confirm": "Void payment"
+        },
+        "successToast": "Payment voided — {{amount}} is back on the learner's balance",
+        "errorToast": "Could not void this payment"
+    },
+    "permanentDelete": {
+        "action": "Delete permanently",
+        "paymentTitle": "Permanently delete the {{label}} payment?",
+        "invoiceTitle": "Permanently delete invoice {{label}}?",
+        "paymentDescription": "The payment record is removed for good. If it still counts, it is voided first: the amount goes back onto the learner's balance and installments, and the invoice generated for it is deleted. This cannot be undone. A record of the deletion is kept in the admin activity log.",
+        "invoiceDescription": "The invoice is removed for good. An unpaid bill also stops counting towards the learner's balance. Its invoice number is not reused. This cannot be undone. A record of the deletion is kept in the admin activity log.",
+        "typeToConfirm": "Type {{word}} to confirm",
+        "keep": "Keep it",
+        "confirm": "Delete permanently",
+        "paymentDeletedToast": "Payment {{label}} deleted",
+        "invoiceDeletedToast": "Invoice {{label}} deleted",
+        "errorToast": "Could not delete"
     }
 }

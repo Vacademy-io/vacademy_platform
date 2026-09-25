@@ -111,6 +111,17 @@ export interface ApplyCpoDiscountRequest {
     remove?: boolean;
 }
 
+/**
+ * Move part of an installment's UNPAID balance onto a new installment with its own dates. The
+ * plan total does not change — only when that part falls due.
+ */
+export interface SplitInstallmentRequest {
+    /** Net amount to move; at most the installment's outstanding balance. */
+    amount: number;
+    start_date?: string | null;
+    due_date: string;
+}
+
 export interface RecordOfflinePaymentRequest {
     amount: number;
     payment_date?: string | null;

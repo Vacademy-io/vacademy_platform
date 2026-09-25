@@ -152,7 +152,8 @@
         "allowViewPassword": "Autoriser la consultation du mot de passe de l'apprenant",
         "allowEditCredentials": "Autoriser la modification du nom d'utilisateur et du mot de passe de l'apprenant",
         "allowSendResetPasswordMail": "Autoriser l'envoi d'un e-mail de réinitialisation du mot de passe",
-        "showApprovalToggle": "Afficher le bascule « Demandes d'approbation » sur la liste des apprenants"
+        "showApprovalToggle": "Afficher le bascule « Demandes d'approbation » sur la liste des apprenants",
+        "allowDeletePayments": "Autoriser la suppression définitive des paiements et factures (irréversible)"
     },
     "dashboardWidgets": {
         "title": "Widgets du tableau de bord",

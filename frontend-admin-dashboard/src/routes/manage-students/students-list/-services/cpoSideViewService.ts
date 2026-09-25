@@ -3,6 +3,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     GET_USER_CPO_USER_PLANS,
     GET_USER_PLAN_INSTALLMENTS,
+    POST_SPLIT_INSTALLMENT,
     POST_USER_PLAN_OFFLINE_PAYMENT,
     PUT_INSTALLMENT,
     PUT_USER_PLAN_CPO_DISCOUNT,
@@ -13,6 +14,7 @@ import type {
     CpoUserPlanSummary,
     ModifyInstallmentRequest,
     RecordOfflinePaymentRequest,
+    SplitInstallmentRequest,
 } from '../-types/cpo-side-view-types';
 
 // ─── Reads ─────────────────────────────────────────────────────────────────
@@ -93,5 +95,27 @@ export const useRecordOfflinePayment = (userPlanId: string, userId?: string | nu
             return r.data;
         },
         onSuccess: () => refresh(queryClient, userPlanId, userId),
+    });
+};
+
+export const useSplitInstallment = (userPlanId: string, userId?: string | null) => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (input: { sfpId: string; body: SplitInstallmentRequest }) => {
+            const r = await authenticatedAxiosInstance.post<CpoSideViewInstallmentsResponse>(
+                POST_SPLIT_INSTALLMENT(input.sfpId),
+                input.body,
+            );
+            return r.data;
+        },
+        onSuccess: () => {
+            refresh(queryClient, userPlanId, userId);
+            // A split re-posts the plan's ledger rows, so the Account Summary and Transaction
+            // History on the same panel refresh too.
+            if (userId) {
+                queryClient.invalidateQueries({ queryKey: ['user-account-summary', userId] });
+                queryClient.invalidateQueries({ queryKey: ['user-account-ledger', userId] });
+            }
+        },
     });
 };

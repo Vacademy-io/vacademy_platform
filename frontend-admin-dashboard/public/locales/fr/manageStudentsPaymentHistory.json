@@ -83,7 +83,8 @@
             "creditWaiver": "Remise gracieuse",
             "creditAdjustment": "Ajustement",
             "debitPenalty": "Pénalité",
-            "debitReversal": "Facture annulée"
+            "debitReversal": "Facture annulée",
+            "creditReversal": "Paiement annulé"
         }
     },
     "main": {
@@ -95,5 +96,33 @@
         "invoicesHeadingCount": "Factures ({{count}})",
         "createInvoice": "Créer une facture",
         "loadingInvoices": "Chargement des factures..."
+    },
+    "voidPayment": {
+        "action": "Annuler le paiement",
+        "actionTitle": "Annuler ce paiement — à utiliser lorsqu'un paiement a été saisi par erreur",
+        "voidedTag": "Annulé",
+        "dialog": {
+            "title": "Annuler ce paiement de {{amount}} ?",
+            "description": "À utiliser pour un paiement saisi par erreur. Le montant est réaffecté au solde et aux échéances de l'apprenant, sa facture est annulée et il n'est plus compté comme encaissé. Le paiement reste dans l'historique, marqué comme annulé. Cette action est irréversible.",
+            "reasonLabel": "Motif (facultatif)",
+            "reasonPlaceholder": "ex. : saisi deux fois",
+            "keep": "Conserver le paiement",
+            "confirm": "Annuler le paiement"
+        },
+        "successToast": "Paiement annulé — {{amount}} est de nouveau dû par l'apprenant",
+        "errorToast": "Impossible d'annuler ce paiement"
+    },
+    "permanentDelete": {
+        "action": "Supprimer définitivement",
+        "paymentTitle": "Supprimer définitivement le paiement de {{label}} ?",
+        "invoiceTitle": "Supprimer définitivement la facture {{label}} ?",
+        "paymentDescription": "Le paiement est supprimé définitivement. S'il compte encore, il est d'abord annulé : le montant est réaffecté au solde et aux échéances de l'apprenant, et la facture émise pour lui est supprimée. Cette action est irréversible. Une trace de la suppression reste dans le journal d'activité des administrateurs.",
+        "invoiceDescription": "La facture est supprimée définitivement. Une facture impayée ne compte plus non plus dans le solde de l'apprenant. Son numéro n'est pas réutilisé. Cette action est irréversible. Une trace de la suppression reste dans le journal d'activité des administrateurs.",
+        "typeToConfirm": "Saisissez {{word}} pour confirmer",
+        "keep": "Conserver",
+        "confirm": "Supprimer définitivement",
+        "paymentDeletedToast": "Paiement {{label}} supprimé",
+        "invoiceDeletedToast": "Facture {{label}} supprimée",
+        "errorToast": "Suppression impossible"
     }
 }

@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.List;
 
 @Data
 @Builder
@@ -36,6 +37,8 @@ public class InboxMessageDTO {
     private String headerType;
     /** Actual media URL for an IMAGE/VIDEO/DOCUMENT header, so the UI can display the attachment. */
     private String headerMediaUrl;
+    /** The template's buttons (links, quick replies), drawn under the message like WhatsApp does. */
+    private List<InboxTemplateButtonDTO> buttons;
 
     /**
      * What we tried to send on a failed non-template message: text, interactive, media, template.

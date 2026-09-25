@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useInboxStore } from '../-stores/inbox-store';
-import type { InboxMessage } from '../-services/inbox-api';
+import type { InboxMessage, InboxTemplateButton } from '../-services/inbox-api';
 import { ReplyBox } from './reply-box';
 import { DeliveryTicks, deliveryState } from './delivery-ticks';
 import { formatMessageTime, groupMessagesByDay } from '../-utils/day-labels';
@@ -17,6 +17,9 @@ import {
     HandWaving,
     WarningCircle,
     ArrowClockwise,
+    ArrowSquareOut,
+    ArrowBendUpLeft,
+    Phone,
 } from '@phosphor-icons/react';
 
 interface Props {
@@ -277,7 +280,58 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                         <DeliveryTicks state={deliveryState(msg.deliveryStatus, msg.status)} />
                     )}
                 </p>
+
+                {msg.buttons && msg.buttons.length > 0 && <TemplateButtons buttons={msg.buttons} />}
             </div>
+        </div>
+    );
+}
+
+/**
+ * A template's buttons, drawn under the message the way WhatsApp shows them. A URL button opens
+ * its link and a phone button dials; a quick reply is only a label here — the admin is not the
+ * one who would tap it.
+ */
+function TemplateButtons({ buttons }: { buttons: InboxTemplateButton[] }) {
+    return (
+        <div className="-mx-3 -mb-2 mt-1.5 overflow-hidden rounded-b-lg">
+            {buttons.map((button, i) => {
+                const type = (button.type || '').toUpperCase();
+                const className =
+                    'flex items-center justify-center gap-1.5 border-t border-black/10 px-3 py-2 text-sm font-medium text-blue-600';
+                const href =
+                    button.url && /^https?:\/\//i.test(button.url)
+                        ? button.url
+                        : type === 'PHONE_NUMBER' && button.phoneNumber
+                          ? `tel:${button.phoneNumber.replace(/[^\d+]/g, '')}`
+                          : undefined;
+                const icon =
+                    type === 'PHONE_NUMBER' ? (
+                        <Phone size={14} />
+                    ) : type === 'URL' ? (
+                        <ArrowSquareOut size={14} />
+                    ) : (
+                        <ArrowBendUpLeft size={14} />
+                    );
+
+                return href ? (
+                    <a
+                        key={i}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`${className} hover:bg-black/5`}
+                    >
+                        {icon}
+                        <span className="truncate">{button.text}</span>
+                    </a>
+                ) : (
+                    <div key={i} className={className}>
+                        {icon}
+                        <span className="truncate">{button.text}</span>
+                    </div>
+                );
+            })}
         </div>
     );
 }

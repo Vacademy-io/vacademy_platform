@@ -74,6 +74,8 @@ export interface InboxMessage {
     headerType?: string;
     /** Media URL for an IMAGE/VIDEO/DOCUMENT template header. */
     headerMediaUrl?: string;
+    /** The template's buttons, drawn under the message the way WhatsApp shows them. */
+    buttons?: InboxTemplateButton[];
     /** On a failed non-template send: what we tried to send. */
     attemptedType?: string;
 
@@ -84,6 +86,16 @@ export interface InboxMessage {
     mediaUrl?: string;
     /** Original filename — what a document bubble shows. */
     mediaFilename?: string;
+}
+
+/** One button of a template message. */
+export interface InboxTemplateButton {
+    /** URL | QUICK_REPLY | PHONE_NUMBER | COPY_CODE ... */
+    type?: string;
+    text: string;
+    /** Complete http(s) link of a URL button; absent when it could not be rebuilt. */
+    url?: string;
+    phoneNumber?: string;
 }
 
 /** The media kinds WhatsApp accepts as a free-form message. */

@@ -233,6 +233,7 @@ public class WhatsAppInboxService {
                     .error(providerReported ? deliveryFailureReason(nl) : sendTimeError)
                     .headerType(rm != null ? rm.headerType : null)
                     .headerMediaUrl(rm != null ? rm.headerMediaUrl : null)
+                    .buttons(rm != null ? rm.buttons : null)
                     .attemptedType(failure != null ? failure.attemptedType : null)
                     .mediaType(media != null ? media.type() : null)
                     .mediaUrl(media != null ? media.url() : null)

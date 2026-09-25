@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from ...schemas.tutor import TeachingPlanDraft, VISUAL_OPS
 from .board_ops import iter_element_ops, op_words, ops_to_dicts, validate_ops
@@ -71,6 +71,25 @@ def is_hinglish(text: str) -> bool:
 # formula and a comparison table are visual on a whiteboard; demanding an SVG
 # on an algebra board only produces decoration.
 BOARD_VISUAL_OPS = VISUAL_OPS | {"formula", "table"}
+# A concept that labels or points at a diagram drawn earlier on the board is
+# extending that visual, not adding prose — it counts as a visual step.
+EXTENDS_VISUAL_OPS = {"annotate", "arrow", "highlight"}
+
+
+def concept_is_visual(ops: List[Dict[str, Any]]) -> bool:
+    """Does this concept's reveal give the learner something new to look at?
+    Notes (text, bullets, callouts) never do — that is the point of the rule."""
+    return any(op.get("op") in BOARD_VISUAL_OPS or op.get("op") in EXTENDS_VISUAL_OPS for op in iter_element_ops(ops))
+
+
+def image_target(plan: TeachingPlanDraft) -> int:
+    """How many real illustrations a slide should carry: about one per two
+    boards, and never fewer than one per four concepts — a single five-concept
+    board is a five-minute view and one picture does not carry it."""
+    topics = len(plan.topics)
+    concepts = sum(len(t.concepts) for t in plan.topics)
+    by_boards = 1 if topics <= 2 else 2 if topics <= 4 else 3
+    return min(4, max(by_boards, -(-concepts // 4)))
 
 MAX_WORDS_PER_CONCEPT = DEFAULT_LIMITS.words_per_concept
 MAX_HEADINGS_PER_CONCEPT = DEFAULT_LIMITS.headings_per_concept
@@ -221,21 +240,38 @@ def board_quality_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LI
             n = sentence_count(concept.say)
             if n > limits.max_say_sentences:
                 errors.append(f"{cloc}: say has {n} sentences; use {limits.min_say_sentences}-{limits.max_say_sentences}")
-        if limits.require_visual_per_topic and not any(
-            op.get("op") in BOARD_VISUAL_OPS for c in topic.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))
-        ):
-            errors.append(f"{tloc}: this board shows nothing to look at — add an svg diagram, an image, a formula or a "
-                          f"comparison table to one of its concepts")
+        if limits.require_visual_per_topic:
+            visual_flags = [concept_is_visual(ops_to_dicts(c.board_ops)) for c in topic.concepts]
+            if not any(visual_flags):
+                errors.append(f"{tloc}: this board shows nothing to look at — add an svg diagram, an image, a formula or a "
+                              f"comparison table to one of its concepts")
+            else:
+                # The unit a learner looks at is the concept, not the board: the
+                # opening reveal must be the visual, and two note-only reveals
+                # in a row is a wall of text however many callouts dress it.
+                if visual_flags and not visual_flags[0]:
+                    c0 = topic.concepts[0]
+                    errors.append(f"{tloc}.concepts[0]('{c0.title[:30]}'): the board opens with notes only — the diagram "
+                                  f"or picture belongs in the FIRST concept; later concepts extend it with annotate/arrow "
+                                  f"or add their own visual")
+                for ci in range(1, len(visual_flags)):
+                    if not visual_flags[ci] and not visual_flags[ci - 1]:
+                        c = topic.concepts[ci]
+                        errors.append(f"{tloc}.concepts[{ci}]('{c.title[:30]}'): two text-only concepts in a row — give "
+                                      f"this one something to look at (an svg, an image, a table, or annotate a part of "
+                                      f"the board's diagram) and move the explanation into the narration")
         if topic_words > limits.board_words_per_topic:
             errors.append(f"{tloc}: the topic's whole board is {topic_words} words; a board should fit one screen "
                           f"(<= {limits.board_words_per_topic})")
     if limits.expect_images:
         images = sum(1 for t in plan.topics for c in t.concepts
                      for op in iter_element_ops(ops_to_dicts(c.board_ops)) if op.get("op") == "image")
-        want = 1 if len(plan.topics) <= 2 else 2 if len(plan.topics) <= 4 else 3
+        want = image_target(plan)
         if images < want:
+            concepts = sum(len(t.concepts) for t in plan.topics)
             errors.append(
-                f"plan: only {images} real illustration(s) for {len(plan.topics)} board(s); aim for about {want}. "
+                f"plan: only {images} real illustration(s) for {len(plan.topics)} board(s) / {concepts} concepts; "
+                f"aim for about {want}. "
                 f"Students learn from pictures: add an `image` op where a picture teaches better than shapes "
                 f"(a real scene, an object, an organism, an apparatus, a labelled textbook illustration)")
     return errors

@@ -98,6 +98,7 @@ import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/ma
 import { Route as ManageStudentsInviteIndexRouteImport } from "./routes/manage-students/invite/index"
 import { Route as ManageStudentsEnrollRequestsIndexRouteImport } from "./routes/manage-students/enroll-requests/index"
 import { Route as ManagePagesProductPagesIndexRouteImport } from "./routes/manage-pages/product-pages/index"
+import { Route as ManagePagesBlogIndexRouteImport } from "./routes/manage-pages/blog/index"
 import { Route as ManageInstituteTeamsIndexRouteImport } from "./routes/manage-institute/teams/index"
 import { Route as ManageInstituteSessionsIndexRouteImport } from "./routes/manage-institute/sessions/index"
 import { Route as ManageInstituteBatchesIndexRouteImport } from "./routes/manage-institute/batches/index"
@@ -222,6 +223,7 @@ import { Route as StudyLibraryLiveSessionViewSessionIdRouteImport } from "./rout
 import { Route as StudyLibraryLiveSessionHostScheduleIdRouteImport } from "./routes/study-library/live-session/host/$scheduleId"
 import { Route as SettingsLeadsPoolsPoolIdRouteImport } from "./routes/settings/leads/pools/$poolId"
 import { Route as ManagePagesProductPagesEditorProductPageIdRouteImport } from "./routes/manage-pages/product-pages/editor/$productPageId"
+import { Route as ManagePagesBlogEditorPostIdRouteImport } from "./routes/manage-pages/blog/editor/$postId"
 import { Route as StudyLibraryLiveSessionScheduleStep2IndexRouteImport } from "./routes/study-library/live-session/schedule/step2/index"
 import { Route as StudyLibraryLiveSessionScheduleStep1IndexRouteImport } from "./routes/study-library/live-session/schedule/step1/index"
 import { Route as StudyLibraryLiveSessionScheduleBulkIndexRouteImport } from "./routes/study-library/live-session/schedule/bulk/index"
@@ -881,6 +883,11 @@ const ManagePagesProductPagesIndexRoute =
       (d) => d.Route,
     ),
   )
+const ManagePagesBlogIndexRoute = ManagePagesBlogIndexRouteImport.update({
+  id: "/manage-pages/blog/",
+  path: "/manage-pages/blog/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ManageInstituteTeamsIndexRoute =
   ManageInstituteTeamsIndexRouteImport.update({
     id: "/manage-institute/teams/",
@@ -1879,6 +1886,12 @@ const ManagePagesProductPagesEditorProductPageIdRoute =
     path: "/manage-pages/product-pages/editor/$productPageId",
     getParentRoute: () => rootRouteImport,
   } as any)
+const ManagePagesBlogEditorPostIdRoute =
+  ManagePagesBlogEditorPostIdRouteImport.update({
+    id: "/manage-pages/blog/editor/$postId",
+    path: "/manage-pages/blog/editor/$postId",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const StudyLibraryLiveSessionScheduleStep2IndexRoute =
   StudyLibraryLiveSessionScheduleStep2IndexRouteImport.update({
     id: "/study-library/live-session/schedule/step2/",
@@ -2203,6 +2216,7 @@ export interface FileRoutesByFullPath {
   "/manage-institute/batches/": typeof ManageInstituteBatchesIndexRoute
   "/manage-institute/sessions/": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams/": typeof ManageInstituteTeamsIndexRoute
+  "/manage-pages/blog/": typeof ManagePagesBlogIndexRoute
   "/manage-pages/product-pages/": typeof ManagePagesProductPagesIndexRoute
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
@@ -2238,6 +2252,7 @@ export interface FileRoutesByFullPath {
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
+  "/manage-pages/blog/editor/$postId": typeof ManagePagesBlogEditorPostIdRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
   "/settings/leads/pools/$poolId": typeof SettingsLeadsPoolsPoolIdRoute
   "/study-library/live-session/host/$scheduleId": typeof StudyLibraryLiveSessionHostScheduleIdRoute
@@ -2440,6 +2455,7 @@ export interface FileRoutesByTo {
   "/manage-institute/batches": typeof ManageInstituteBatchesIndexRoute
   "/manage-institute/sessions": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams": typeof ManageInstituteTeamsIndexRoute
+  "/manage-pages/blog": typeof ManagePagesBlogIndexRoute
   "/manage-pages/product-pages": typeof ManagePagesProductPagesIndexRoute
   "/manage-students/enroll-requests": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite": typeof ManageStudentsInviteIndexRoute
@@ -2475,6 +2491,7 @@ export interface FileRoutesByTo {
   "/workflow/$workflowId": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create": typeof WorkflowCreateIndexRoute
   "/workflow/list": typeof WorkflowListIndexRoute
+  "/manage-pages/blog/editor/$postId": typeof ManagePagesBlogEditorPostIdRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
   "/settings/leads/pools/$poolId": typeof SettingsLeadsPoolsPoolIdRoute
   "/study-library/live-session/host/$scheduleId": typeof StudyLibraryLiveSessionHostScheduleIdRoute
@@ -2679,6 +2696,7 @@ export interface FileRoutesById {
   "/manage-institute/batches/": typeof ManageInstituteBatchesIndexRoute
   "/manage-institute/sessions/": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams/": typeof ManageInstituteTeamsIndexRoute
+  "/manage-pages/blog/": typeof ManagePagesBlogIndexRoute
   "/manage-pages/product-pages/": typeof ManagePagesProductPagesIndexRoute
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
@@ -2714,6 +2732,7 @@ export interface FileRoutesById {
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
+  "/manage-pages/blog/editor/$postId": typeof ManagePagesBlogEditorPostIdRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
   "/settings/leads/pools/$poolId": typeof SettingsLeadsPoolsPoolIdRoute
   "/study-library/live-session/host/$scheduleId": typeof StudyLibraryLiveSessionHostScheduleIdRoute
@@ -2919,6 +2938,7 @@ export interface FileRouteTypes {
     | "/manage-institute/batches/"
     | "/manage-institute/sessions/"
     | "/manage-institute/teams/"
+    | "/manage-pages/blog/"
     | "/manage-pages/product-pages/"
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
@@ -2954,6 +2974,7 @@ export interface FileRouteTypes {
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
+    | "/manage-pages/blog/editor/$postId"
     | "/manage-pages/product-pages/editor/$productPageId"
     | "/settings/leads/pools/$poolId"
     | "/study-library/live-session/host/$scheduleId"
@@ -3156,6 +3177,7 @@ export interface FileRouteTypes {
     | "/manage-institute/batches"
     | "/manage-institute/sessions"
     | "/manage-institute/teams"
+    | "/manage-pages/blog"
     | "/manage-pages/product-pages"
     | "/manage-students/enroll-requests"
     | "/manage-students/invite"
@@ -3191,6 +3213,7 @@ export interface FileRouteTypes {
     | "/workflow/$workflowId"
     | "/workflow/create"
     | "/workflow/list"
+    | "/manage-pages/blog/editor/$postId"
     | "/manage-pages/product-pages/editor/$productPageId"
     | "/settings/leads/pools/$poolId"
     | "/study-library/live-session/host/$scheduleId"
@@ -3394,6 +3417,7 @@ export interface FileRouteTypes {
     | "/manage-institute/batches/"
     | "/manage-institute/sessions/"
     | "/manage-institute/teams/"
+    | "/manage-pages/blog/"
     | "/manage-pages/product-pages/"
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
@@ -3429,6 +3453,7 @@ export interface FileRouteTypes {
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
+    | "/manage-pages/blog/editor/$postId"
     | "/manage-pages/product-pages/editor/$productPageId"
     | "/settings/leads/pools/$poolId"
     | "/study-library/live-session/host/$scheduleId"
@@ -3632,6 +3657,7 @@ export interface RootRouteChildren {
   ManageInstituteBatchesIndexRoute: typeof ManageInstituteBatchesIndexRoute
   ManageInstituteSessionsIndexRoute: typeof ManageInstituteSessionsIndexRoute
   ManageInstituteTeamsIndexRoute: typeof ManageInstituteTeamsIndexRoute
+  ManagePagesBlogIndexRoute: typeof ManagePagesBlogIndexRoute
   ManagePagesProductPagesIndexRoute: typeof ManagePagesProductPagesIndexRoute
   ManageStudentsEnrollRequestsIndexRoute: typeof ManageStudentsEnrollRequestsIndexRoute
   ManageStudentsInviteIndexRoute: typeof ManageStudentsInviteIndexRoute
@@ -3667,6 +3693,7 @@ export interface RootRouteChildren {
   WorkflowWorkflowIdIndexRoute: typeof WorkflowWorkflowIdIndexRoute
   WorkflowCreateIndexRoute: typeof WorkflowCreateIndexRoute
   WorkflowListIndexRoute: typeof WorkflowListIndexRoute
+  ManagePagesBlogEditorPostIdRoute: typeof ManagePagesBlogEditorPostIdRoute
   ManagePagesProductPagesEditorProductPageIdRoute: typeof ManagePagesProductPagesEditorProductPageIdRoute
   SettingsLeadsPoolsPoolIdRoute: typeof SettingsLeadsPoolsPoolIdRoute
   StudyLibraryLiveSessionHostScheduleIdRoute: typeof StudyLibraryLiveSessionHostScheduleIdRoute
@@ -4379,6 +4406,13 @@ declare module "@tanstack/react-router" {
       path: "/manage-pages/product-pages"
       fullPath: "/manage-pages/product-pages/"
       preLoaderRoute: typeof ManagePagesProductPagesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/manage-pages/blog/": {
+      id: "/manage-pages/blog/"
+      path: "/manage-pages/blog"
+      fullPath: "/manage-pages/blog/"
+      preLoaderRoute: typeof ManagePagesBlogIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/manage-institute/teams/": {
@@ -5249,6 +5283,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ManagePagesProductPagesEditorProductPageIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/manage-pages/blog/editor/$postId": {
+      id: "/manage-pages/blog/editor/$postId"
+      path: "/manage-pages/blog/editor/$postId"
+      fullPath: "/manage-pages/blog/editor/$postId"
+      preLoaderRoute: typeof ManagePagesBlogEditorPostIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/study-library/live-session/schedule/step2/": {
       id: "/study-library/live-session/schedule/step2/"
       path: "/study-library/live-session/schedule/step2"
@@ -5551,6 +5592,7 @@ const rootRouteChildren: RootRouteChildren = {
   ManageInstituteBatchesIndexRoute: ManageInstituteBatchesIndexRoute,
   ManageInstituteSessionsIndexRoute: ManageInstituteSessionsIndexRoute,
   ManageInstituteTeamsIndexRoute: ManageInstituteTeamsIndexRoute,
+  ManagePagesBlogIndexRoute: ManagePagesBlogIndexRoute,
   ManagePagesProductPagesIndexRoute: ManagePagesProductPagesIndexRoute,
   ManageStudentsEnrollRequestsIndexRoute:
     ManageStudentsEnrollRequestsIndexRoute,
@@ -5589,6 +5631,7 @@ const rootRouteChildren: RootRouteChildren = {
   WorkflowWorkflowIdIndexRoute: WorkflowWorkflowIdIndexRoute,
   WorkflowCreateIndexRoute: WorkflowCreateIndexRoute,
   WorkflowListIndexRoute: WorkflowListIndexRoute,
+  ManagePagesBlogEditorPostIdRoute: ManagePagesBlogEditorPostIdRoute,
   ManagePagesProductPagesEditorProductPageIdRoute:
     ManagePagesProductPagesEditorProductPageIdRoute,
   SettingsLeadsPoolsPoolIdRoute: SettingsLeadsPoolsPoolIdRoute,

@@ -78,7 +78,7 @@
         "noProfileHint": "سيظهر الملف الشخصي بمجرد أن يقدم هذا المستخدم استفسارًا أو يتم تقييمه.",
         "leadInterestScore": "نتيجة اهتمام العميل المحتمل",
         "lastCalculatedLabel": "آخر حساب",
-        "setTier": "تعيين المستوى",
+        "setTier": "تعيين {{tier}}",
         "campaigns": "الحملات",
         "timelineEvents": "أحداث الجدول الزمني",
         "demoAttendance": "حضور العرض التجريبي",

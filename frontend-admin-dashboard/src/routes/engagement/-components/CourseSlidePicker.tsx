@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { ArrowClockwise, WarningCircle } from '@phosphor-icons/react';
 import {
     Dialog,
     DialogContent,
@@ -9,6 +10,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
     Select,
     SelectContent,
@@ -85,7 +87,7 @@ export function CourseSlidePicker({
     const { studyLibraryData } = useStudyLibraryStore();
     const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
     const studyLibraryQuery = useStudyLibraryQuery();
-    useQuery({ ...studyLibraryQuery, enabled: open });
+    const libraryQuery = useQuery({ ...studyLibraryQuery, enabled: open });
 
     const context = useMemo(() => {
         const details = getDetailsFromPackageSessionId({ packageSessionId });
@@ -132,10 +134,23 @@ export function CourseSlidePicker({
         return chapter.chapter_dto?.id ?? chapter.id;
     }
     function chapterNameOf(chapter: ChapterLike): string {
-        return chapter.chapter_dto?.chapter_name ?? chapter.chapter_name ?? 'Chapter';
+        return (
+            chapter.chapter_dto?.chapter_name ?? chapter.chapter_name ?? t('slidePicker.chapter')
+        );
     }
 
     const chosen = slides.find((s) => s.id === slideId);
+
+    // The course tree may already be in the store from another page, so a failed
+    // library refresh only matters when there is nothing to pick from.
+    const libraryFailed = libraryQuery.isError && subjects.length === 0;
+    const loadFailed = libraryFailed || modulesQuery.isError || slidesQuery.isError;
+
+    function retryFailed() {
+        if (libraryFailed) void libraryQuery.refetch();
+        if (modulesQuery.isError) void modulesQuery.refetch();
+        if (slidesQuery.isError) void slidesQuery.refetch();
+    }
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,6 +161,26 @@ export function CourseSlidePicker({
 
                 <div className="space-y-4">
                     <p className="text-sm text-neutral-500">{t('slidePicker.hint')}</p>
+
+                    {/* Before the empty states: a failed load must not read as "no subjects". */}
+                    {loadFailed && (
+                        <Alert className="border-danger-200 bg-danger-50 text-danger-700">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <WarningCircle size={18} className="shrink-0" />
+                                <AlertDescription className="min-w-0 flex-1">
+                                    {t('slidePicker.loadError')}
+                                </AlertDescription>
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={retryFailed}
+                                >
+                                    <ArrowClockwise size={14} /> {t('common.retry')}
+                                </MyButton>
+                            </div>
+                        </Alert>
+                    )}
 
                     <div className="space-y-1.5">
                         <Label>{t('slidePicker.subject')}</Label>
@@ -159,7 +194,13 @@ export function CourseSlidePicker({
                             }}
                         >
                             <SelectTrigger>
-                                <SelectValue placeholder={t('slidePicker.selectSubject')} />
+                                <SelectValue
+                                    placeholder={
+                                        libraryQuery.isLoading && subjects.length === 0
+                                            ? t('slidePicker.loading')
+                                            : t('slidePicker.selectSubject')
+                                    }
+                                />
                             </SelectTrigger>
                             <SelectContent>
                                 {subjects.map((s) => (
@@ -169,7 +210,7 @@ export function CourseSlidePicker({
                                 ))}
                             </SelectContent>
                         </Select>
-                        {subjects.length === 0 && (
+                        {libraryQuery.isSuccess && subjects.length === 0 && (
                             <p className="text-xs text-neutral-500">
                                 {t('slidePicker.noSubjects')}
                             </p>
@@ -199,11 +240,14 @@ export function CourseSlidePicker({
                             <SelectContent>
                                 {modules.map((m) => (
                                     <SelectItem key={m.module.id} value={m.module.id}>
-                                        {m.module.module_name ?? 'Module'}
+                                        {m.module.module_name ?? t('slidePicker.module')}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
+                        {modulesQuery.isSuccess && modules.length === 0 && (
+                            <p className="text-xs text-neutral-500">{t('slidePicker.noModules')}</p>
+                        )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -227,6 +271,11 @@ export function CourseSlidePicker({
                                 ))}
                             </SelectContent>
                         </Select>
+                        {moduleId && chapters.length === 0 && (
+                            <p className="text-xs text-neutral-500">
+                                {t('slidePicker.noChapters')}
+                            </p>
+                        )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -248,11 +297,14 @@ export function CourseSlidePicker({
                             <SelectContent>
                                 {slides.map((s) => (
                                     <SelectItem key={s.id} value={s.id}>
-                                        {s.title ?? 'Slide'}
+                                        {s.title ?? t('slidePicker.slide')}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
+                        {slidesQuery.isSuccess && slides.length === 0 && (
+                            <p className="text-xs text-neutral-500">{t('slidePicker.noSlides')}</p>
+                        )}
                     </div>
                 </div>
 

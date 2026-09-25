@@ -502,7 +502,7 @@ def test_run_bot_setup_and_teardown_structure():
     src = inspect.getsource(b.run_bot)
     # Vertex SA OAuth must not block the event loop (other live calls glitch).
     # Still off the event loop; now carries the per-agent provider override.
-    assert "await asyncio.to_thread(build_llm, _llm_provider)" in src
+    assert "await asyncio.to_thread(build_llm_waterfall, _llm_provider)" in src   # off-loop: Vertex OAuth
     # Greet task is tracked; watchdog + greet cancels are AWAITED.
     assert "_bg_tasks.append(asyncio.create_task(_greet_when_ready()))" in src
     tail = src[src.index("watchdog_task = asyncio.create_task"):]
@@ -1360,7 +1360,10 @@ def test_bot_is_interrupted_at_vad_onset_not_at_transcript():
     import inspect
     src = inspect.getsource(b.run_bot)
     vad = src[src.index("VADUserTurnStartStrategy("):]
-    assert "enable_interruptions=settings.interrupt_on_vad" in vad[:200]
+    # Onset cuts only in the legacy mode; voice mode (default since 2026-09-23)
+    # stops on meaning or sustained voice instead (BARGE_IN_MODE).
+    assert "enable_interruptions=(settings.interrupt_on_vad" in vad[:200]
+    assert 'settings.barge_in_mode != "voice"' in vad[:300]
     # Interims must NOT interrupt: Google STT streams them continuously.
     tr = src[src.index("TranscriptionUserTurnStartStrategy("):]
     assert "enable_interruptions=False" in tr[:200]
@@ -1515,6 +1518,7 @@ class _Rec:
 
     def __init__(self):
         self.frames = []
+        self.dirs = []
         self.interruptions = 0
 
     def cues(self):
@@ -1543,6 +1547,7 @@ def _replay_collector(rec, bot_speaking=True, bot_stopped_t=None,
 
     async def _push(frame, direction=None):
         rec.frames.append(frame)
+        rec.dirs.append(direction)
 
     async def _broadcast():
         rec.interruptions += 1
@@ -1690,12 +1695,16 @@ async def test_a_second_final_during_composition_is_not_a_fresh_turn():
 
 @pytest.mark.asyncio
 async def test_a_backchannel_during_composition_does_not_spawn_a_reply_either():
+    """Until 2026-09-22 this asserted a "carry on" cue here — a cue that RUNS
+    the model, i.e. exactly the second generation that produced "जी सर। जी सर।
+    जी, बोलिए।" in call 8e2041c8. The reply being composed is the reply."""
     rec = _Rec()
     tc = _replay_collector(rec, bot_speaking=False)
     tc._reply_in_flight = lambda: True
     await _feed(tc, "हाँ।")
     assert rec.interruptions == 0
-    assert any("carry on" in c for c in rec.cues()), rec.cues()
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+    assert "हाँ।" in rec.cues(), "the acknowledgement still goes into the context"
 
 
 @pytest.mark.asyncio
@@ -3214,7 +3223,7 @@ def test_run_bot_routes_only_listed_agents_to_sarvam():
     import inspect
     src = inspect.getsource(b.run_bot)
     assert '_agent_id in settings.sarvam_llm_agents' in src
-    assert 'to_thread(build_llm, _llm_provider)' in src
+    assert 'to_thread(build_llm_waterfall, _llm_provider)' in src
     assert 'diag.llm_vendor' in src
 
 
@@ -3502,8 +3511,11 @@ def test_resay_requires_an_interruption_after_the_greet_was_queued():
     had played and nothing had cancelled it -> the caller heard the intro twice."""
     import inspect
     src = inspect.getsource(b.run_bot)
-    resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resaid = True")]
+    resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resays += 1")]
     assert 'flags["last_cut_t"] > _greet_queued_t' in resay
+    # cut_now is the one exception: the turn-gate has just broadcast the
+    # interruption itself (a real barge-in), so the cut is a fact, not a guess.
+    assert "not cut_now and not (flags" in resay
     greet = src[src.index("async def _greet_when_ready"):]
     assert "_greet_queued_t = time.time()" in greet
     assert greet.index("_greet_queued_t = time.time()") < greet.index("await task.queue_frames(_frames)")
@@ -4784,6 +4796,28 @@ def test_replay_invariants_catch_todays_call_shapes():
     assert R.invariants(ok) == [], R.invariants(ok)
 
 
+def test_an_opening_after_pickup_noises_is_not_a_replay():
+    """23 Sep batch: 'Hi.' / 'हाँ।' recorded before the opening made the one
+    opening count as its own replay (6 false REDs)."""
+    import app.report as rp
+    op = "नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से। आपने inquiry की थी।"
+    o = type("O", (), {})()
+    o.transcript = [{"role": "user", "text": "Hi."}, {"role": "user", "text": "हाँ।"},
+                    {"role": "assistant", "text": op},
+                    {"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"},
+                    {"role": "assistant", "text": "जी सर, बच्चे का नाम क्या है?"}]
+    assert rp._played_invariants(o)[0] == 0
+    o.transcript.append({"role": "user", "text": "कौन बोल रहा है?"})
+    o.transcript.append({"role": "assistant", "text": op})        # a REAL replay
+    assert rp._played_invariants(o)[0] == 1
+
+
+def test_pickup_scraps_are_not_counted_as_lost_answers():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert "if i > _first_bot" in src, "pickup scraps before the opening must not count as lost"
+
+
 def test_played_invariants_name_todays_faults():
     """The two Call-Health faults added 2026-09-15 read the PLAYED transcript."""
     from app import report as rp, diagnostics as dg
@@ -5037,21 +5071,47 @@ async def test_a_carrier_line_and_a_repeat_release_the_turn_too():
 
 
 @pytest.mark.asyncio
-async def test_the_resume_waits_for_the_turn_to_close():
+async def test_a_resume_triggered_by_a_broadcast_vad_frame_still_travels_downstream():
+    """THE lost-resume bug (b41b481f, 0c42d3a6, 9050a3e1, 42106148). VAD frames
+    are broadcast by the aggregator and reach the turn-gate travelling
+    UPSTREAM; a resume that inherited that direction went into the STT and
+    vanished. Traced hop by hop in the timing sim on 2026-09-21."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
     rec = _Rec()
     tail = "like sending the link, reminders, attendance and fees."
     tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
-                           resume_unplayed=lambda n=600: tail, resume_settle_secs=0.01)
+                           resume_unplayed=lambda n=600: tail, resume_settle_secs=0.01,
+                           resume_on_stop_secs=1.0)
     tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
     b.FrameProcessor.process_frame = _noop_super
-    tc._user_turn_open = True
-    assert await tc._resume_cut_words(b.FrameDirection.DOWNSTREAM, "test")
-    await asyncio.sleep(0.15)
-    assert _spoken_texts(rec) == [], "spoke into the open turn"
-    tc._user_turn_open = False
-    await asyncio.sleep(0.15)
-    assert _spoken_texts(rec) == [tail]
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.2)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.1)
+    sent = [(f, d) for f, d in zip(rec.frames, rec.dirs) if isinstance(f, b.TTSSpeakFrame)]
+    assert [f.text for f, _ in sent] == [tail], [type(f).__name__ for f in rec.frames]
+    assert sent[0][1] == b.FrameDirection.DOWNSTREAM, "the resume went up the pipeline"
     tc._cancel_resume_check(stale=True)
+
+
+@pytest.mark.asyncio
+async def test_the_re_run_cue_after_a_blip_travels_downstream_too():
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "", resume_on_stop_secs=1.0)
+    tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    tc._noise_reask_wait_secs = 0.02
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.08)
+    cues = [(f, d) for f, d in zip(rec.frames, rec.dirs) if getattr(f, "run_llm", False)]
+    assert cues, "no re-run cue"
+    assert all(d == b.FrameDirection.DOWNSTREAM for _, d in cues), "the cue went up the pipeline"
 
 
 @pytest.mark.asyncio
@@ -5108,6 +5168,549 @@ async def test_a_second_hello_into_our_silence_is_not_a_duplicate():
 def _released_one(f):
     from pipecat.frames.frames import TranscriptionFrame
     return isinstance(f, TranscriptionFrame) and not f.text.strip()
+
+
+def test_a_grunt_and_a_yes_maam_are_backchannels_not_barge_ins():
+    """Call bd9e6a0d: 21 "real barge-ins" in 4.5 min, most of them "हाँ Ma'am"
+    and "हं" — the apostrophe and the nasal spelling defeated the vocabulary."""
+    from app.turntake import mid_reply_action, ABSORB, INTERRUPT
+    for t in ["हं।", "हँ", "हाँ Ma'am.", "जी Ma'am", "हाँ ma’am", "haanji", "ok sir"]:
+        assert mid_reply_action(t) == ABSORB, t
+    for t in ["हाँ Ma'am जल्दी है।", "हाँ कह सकते हैं ऐसा।", "नहीं Ma'am", "MIP क्या है?"]:
+        assert mid_reply_action(t) == INTERRUPT, t
+
+
+@pytest.mark.asyncio
+async def test_the_noise_re_ask_waits_for_the_stt_and_stands_down_when_words_arrive():
+    """Call bd9e6a0d: "हाँ Ma'am" was called noise 65 ms before its own final
+    arrived; the cue and the answer both ran the model."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: True,
+                           resume_unplayed=lambda n=600: "", resume_on_stop_secs=1.0,
+                           noise_reask_wait_secs=0.1)
+    tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], "decided before the STT"
+    await _feed(tc, "हाँ Ma'am जल्दी है।")               # the final lands inside the window
+    await asyncio.sleep(0.2)
+    cues = [c for c in rec.cues() if "noise on the line" in c]
+    assert cues == [], f"called their answer noise: {cues}"
+
+
+@pytest.mark.asyncio
+async def test_a_long_reply_is_capped_but_still_asks_its_closing_question():
+    """Call bd9e6a0d: a five-sentence pitch became a 30 s monologue and the
+    parent said "क्या बोला Ma'am, समझा नहीं"."""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "seventy eight percent.",
+                       max_sentences=lambda: 3)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "अच्छा! ", "ये तो अच्छी बात है सर। ",
+                 "रवि के जो marks आए हैं, that's actually a good performance। ",
+                 "लेकिन इस level पर हमारा focus सिर्फ marks improve करने का नहीं होता। ",
+                 "क्या रवि के साथ भी ऐसा है सर, कि कुछ subjects में वो बहुत अच्छा करता है?")
+    said = [t.strip() for t in rec.text]
+    assert len(said) == 4, said
+    assert said[-1].startswith("क्या रवि के साथ"), said
+    assert not any("focus" in t for t in said), "the fourth sentence should have been held"
+    rec.text.clear()
+    await _reply(g, "जी सर। ", "बताइए।")
+    assert len([t for t in rec.text if t.strip()]) == 2, "a short reply must be untouched"
+
+
+# ── call f58ca825 (2026-09-22): the LLM vendor went 34 s → 49 s → 403 ──────
+@pytest.mark.asyncio
+async def test_first_token_timeout_fails_fast_and_passes_a_healthy_stream_through():
+    from app.providers import with_first_token_timeout
+
+    class _Slow:
+        def __aiter__(self): return self
+        async def __anext__(self):
+            await asyncio.sleep(1.0); return "late"
+
+    class _Fast:
+        def __init__(self): self.n = 0; self.closed = False
+        def __aiter__(self): return self
+        async def __anext__(self):
+            self.n += 1
+            if self.n > 2: raise StopAsyncIteration
+            return f"chunk{self.n}"
+        async def close(self): self.closed = True
+
+    class _Svc:
+        stream = None
+        async def get_chat_completions(self, context): return self.stream
+
+    Guarded = with_first_token_timeout(_Svc, 0.05)
+    g = Guarded(); g.stream = _Slow()
+    with pytest.raises(TimeoutError):
+        async for _ in await g.get_chat_completions(None):
+            pass
+    g = Guarded(); f = _Fast(); g.stream = f
+    out = [c async for c in await g.get_chat_completions(None)]
+    assert out == ["chunk1", "chunk2"]
+    wrapped = await g.get_chat_completions(None)
+    await wrapped.close()                    # attribute passthrough
+    assert f.closed
+    assert with_first_token_timeout(_Svc, 0) is _Svc, "0 disables the guard"
+
+
+@pytest.mark.asyncio
+async def test_vertex_first_token_guard_fails_fast_so_the_waterfall_can_answer():
+    """23 Sep: a Vertex 429 took 7.1 s to surface; the 6 s guard only covered
+    OpenAI-compatible services. Gemini streams through _stream_content."""
+    from app.providers import with_stream_first_token_timeout
+
+    class _Stalled:
+        def __aiter__(self): return self
+        async def __anext__(self):
+            await asyncio.sleep(1.0); return "late"
+
+    class _Chunks:
+        def __init__(self): self.n = 0
+        def __aiter__(self): return self
+        async def __anext__(self):
+            self.n += 1
+            if self.n > 2: raise StopAsyncIteration
+            return f"c{self.n}"
+
+    class _Gemini:
+        stream = None; connect_secs = 0.0
+        async def _stream_content(self, context):
+            await asyncio.sleep(self.connect_secs)
+            return self.stream
+
+    G = with_stream_first_token_timeout(_Gemini, 0.05)
+    g = G(); g.stream = _Stalled()
+    with pytest.raises(TimeoutError):
+        async for _ in await g._stream_content(None):
+            pass
+    g = G(); g.connect_secs = 1.0; g.stream = _Chunks()
+    with pytest.raises(TimeoutError):
+        await g._stream_content(None)            # the 429 that takes seconds to come back
+    g = G(); g.stream = _Chunks()
+    assert [c async for c in await g._stream_content(None)] == ["c1", "c2"]
+    assert with_stream_first_token_timeout(_Gemini, 0) is _Gemini
+
+
+def test_llm_waterfall_primary_gives_up_early_only_when_a_fallback_exists(monkeypatch):
+    from app import providers as pv
+    class _S:
+        llm_provider = "vertex"; llm_fallback_provider = "sarvam"
+    monkeypatch.setattr(pv, "get_settings", lambda: _S())
+    built = []
+    def _build(prov=None, fail_fast=False):
+        built.append((prov, fail_fast)); return object()
+    monkeypatch.setattr(pv, "build_llm", _build)
+    monkeypatch.setattr("pipecat.pipeline.service_switcher.ServiceSwitcher",
+                        lambda services, strategy_type=None: ("switcher", services))
+    sw, primary, fallback = pv.build_llm_waterfall(None)
+    assert fallback is not None
+    assert (None, True) in built and ("sarvam", False) in built
+
+
+def test_llm_waterfall_runs_the_primary_alone_when_the_fallback_cannot_build(monkeypatch):
+    from app import providers as pv
+    class _S:
+        llm_provider = "sarvam"; llm_fallback_provider = "vertex"
+    monkeypatch.setattr(pv, "get_settings", lambda: _S())
+    built = []
+    def _build(prov=None, fail_fast=False):
+        built.append((prov, fail_fast))
+        if prov == "vertex":
+            raise RuntimeError("no credentials here")
+        return object()
+    monkeypatch.setattr(pv, "build_llm", _build)
+    sw, primary, fallback = pv.build_llm_waterfall(None)
+    assert fallback is None and sw is primary
+    assert (None, True) not in built, "no fallback → the primary must not give up early"
+    _S.llm_fallback_provider = ""
+    sw, primary, fallback = pv.build_llm_waterfall(None)
+    assert fallback is None and sw is primary
+    _S.llm_fallback_provider = "sarvam"           # same as primary: no waterfall
+    sw, primary, fallback = pv.build_llm_waterfall(None)
+    assert fallback is None
+
+
+@pytest.mark.asyncio
+async def test_run_guard_lets_the_same_context_run_again_after_the_vendor_failed():
+    from pipecat.frames.frames import LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    import app.diagnostics as dg
+    ctx = LLMContext(messages=[{"role": "system", "content": "x"},
+                               {"role": "user", "content": "कौन बच्चा?"}])
+    g = b.RunGuard(ctx, enabled=lambda: True, diag=dg.CallDiagnostics())
+    seen = []
+    async def _push(frame, direction=None): seen.append(type(frame).__name__)
+    g.push_frame = _push
+    b.FrameProcessor.process_frame = _noop_super
+    await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    assert seen.count("LLMContextFrame") == 1, "the unchanged-context block must still hold"
+    g.allow_rerun()
+    await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    assert seen.count("LLMContextFrame") == 2, "after a vendor failure the same turn must run again"
+
+
+@pytest.mark.asyncio
+async def test_a_backchannel_while_the_answer_is_composing_generates_nothing():
+    """Call 8e2041c8: "बोलिए" 90 ms after the real answer started a second run
+    (read as the answer to the last played question), then a third, and the
+    father heard "जी सर। जी सर। जी, बोलिए।"."""
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=False, recently_cut=lambda: False)
+    tc._outcome.transcript.append({"role": "assistant",
+                                   "text": "क्या मैं जान सकती हूँ कि मैं बच्चे के माता-पिता में से किससे बात कर रही हूँ?"})
+    tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
+    tc._reply_in_flight = lambda: True           # run #1 is composing, not audible
+    await _feed(tc, "बोलिए।")
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+    assert "बोलिए।" in rec.cues(), "the backchannel must still be in the context"
+    # Same words with NO reply in flight (the bot was cut mid-question and is
+    # quiet): the answer-to-the-question path still fires.
+    rec2 = _Rec()
+    tc2 = _replay_collector(rec2, bot_speaking=False, recently_cut=lambda: True)
+    tc2._outcome.transcript.append({"role": "assistant", "text": "आप बच्चे के पिता हैं?"})
+    await _feed(tc2, "बोलिए।")
+    assert [f for f in rec2.frames if getattr(f, "run_llm", False)], "the existing path must survive"
+
+
+def test_a_greeting_during_the_opening_is_absorbed():
+    from app.turntake import mid_reply_action, ABSORB
+    for t in ["नमस्ते।", "नमस्कार जी", "Namaste ma'am"]:
+        assert mid_reply_action(t) == ABSORB, t
+
+
+# ── call 4243a436 (2026-09-22): room chatter at pickup ran the model and cut ──
+def test_takes_over_opening_only_for_questions_refusals_and_cues():
+    from app.turntake import takes_over_opening
+    for t in ["तो गुजर जाएगी।", "सेटिंग कम हो जाएगी।", "नहीं वो तो ठीक था।", "Hello.", "हाँ जी बोलिए।"]:
+        assert not takes_over_opening(t), t
+    for t in ["आप कौन बोल रहे हो?", "कहाँ से बोल रहे हो madam", "who is this",
+              "not interested, cut the call", "[They asked who is calling.]"]:
+        assert takes_over_opening(t), t
+
+
+@pytest.mark.asyncio
+async def test_nothing_generates_before_the_opening_unless_the_caller_takes_over():
+    from pipecat.frames.frames import LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    import app.diagnostics as dg
+    pending = {"v": True}
+    seen = []
+    async def _push(frame, direction=None): seen.append(type(frame).__name__)
+    def _guard(ctx):
+        g = b.RunGuard(ctx, enabled=lambda: True, diag=dg.CallDiagnostics(),
+                       opening_pending=lambda: pending["v"])
+        g.push_frame = _push
+        return g
+    b.FrameProcessor.process_frame = _noop_super
+    ctx = LLMContext(messages=[{"role": "system", "content": "x"},
+                               {"role": "user", "content": "तो गुजर जाएगी।"}])
+    await _guard(ctx).process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    assert seen == [], "room chatter ran the model before the opening"
+    ctx2 = LLMContext(messages=[{"role": "system", "content": "x"},
+                                {"role": "user", "content": "आप कौन बोल रहे हो?"}])
+    await _guard(ctx2).process_frame(LLMContextFrame(ctx2), b.FrameDirection.DOWNSTREAM)
+    assert seen == ["LLMContextFrame"], "a question to us must still run"
+    pending["v"] = False
+    await _guard(ctx).process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    assert seen == ["LLMContextFrame", "LLMContextFrame"], "once the opening played, normal"
+
+
+@pytest.mark.asyncio
+async def test_a_real_barge_in_that_cut_an_unheard_opening_gets_it_said_again():
+    rec = _Rec()
+    calls = []
+    async def _resay(text, force=False, cut_now=False):
+        calls.append((text, cut_now)); return True
+    tc = _replay_collector(rec, bot_speaking=True, in_machine_window=lambda: True,
+                           resay_opening=_resay)
+    await _feed(tc, "नहीं वो तो ठीक था।")          # room chatter: a real barge-in
+    assert rec.interruptions == 1
+    assert calls == [("नहीं वो तो ठीक था।", True)], calls
+    calls.clear()
+    await _feed(tc, "आप कौन बोल रहे हो?")           # a question to us takes over
+    assert calls == [], "a takeover must not re-greet"
+
+
+# ── call 59888de8 (2026-09-22): "Obviously" ×5 regenerations; a question handed back; a lost last answer ──
+def test_english_affirmations_are_backchannels():
+    from app.turntake import mid_reply_action, ABSORB
+    for t in ["Obviously.", "हाँ that's.", "Exactly ma'am", "absolutely"]:
+        assert mid_reply_action(t) == ABSORB, t
+
+
+@pytest.mark.asyncio
+async def test_a_short_answer_on_a_noisy_line_still_runs():
+    """The hold waits for quiet; a line that never goes quiet is noise, not a
+    sentence — the run must go after the cap, not after the hang-up."""
+    from pipecat.frames.frames import LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    import app.diagnostics as dg
+    ctx = LLMContext(messages=[{"role": "system", "content": "x"},
+                               {"role": "assistant", "content": "क्या इसके अलावा कोई expectation है?"},
+                               {"role": "user", "content": "नहीं यही सब।"}])
+    seen = []
+    async def _push(frame, direction=None): seen.append(type(frame).__name__)
+    g = b.RunGuard(ctx, enabled=lambda: True, diag=dg.CallDiagnostics(),
+                   short_answer_grace_secs=0.05, short_answer_max_words=3,
+                   quiet_for=lambda: 0.0, noise_cap_secs=0.3)     # never quiet
+    g.push_frame = _push
+    g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    await g.process_frame(LLMContextFrame(ctx), b.FrameDirection.DOWNSTREAM)
+    await asyncio.sleep(0.15)
+    assert "LLMContextFrame" not in seen, "released before the cap"
+    # cap 0.3 s + the 0.5 s context-settle that follows every release
+    await asyncio.sleep(1.4)
+    assert seen.count("LLMContextFrame") == 1, "the noisy-line answer never ran"
+
+
+@pytest.mark.asyncio
+async def test_a_question_is_answered_not_handed_back_when_the_reply_was_a_repeat():
+    rec = _NRRec()
+    asked = []
+    async def _next_step(held, kind="", attempt=0):
+        asked.append((kind, held))
+    caller = {"t": "ठीक है।"}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    line = "generally जब parents किसी coaching से जुड़ते हैं तो उनकी तीन-चार basic expectations होती हैं।"
+    await _reply(g, line)
+    g._next_steps = 2                               # per-call budget already spent
+    caller["t"] = "हाँ anything else?"
+    rec.text.clear()
+    await _reply(g, line)                           # the model repeats its script line
+    assert asked and asked[-1][0] == "answer-question" and "anything else" in asked[-1][1], asked
+    assert not any(t.strip() in ("जी?", "जी, बोलिए।") for t in rec.text), rec.text
+    what, cue = b.next_step_cue("हाँ anything else?", "answer-question", 2)
+    assert "anything else" in cue and "Answer their question" in cue
+
+
+@pytest.mark.asyncio
+async def test_a_real_barge_in_forwards_the_words_before_cutting_the_reply():
+    """Call 59888de8: the transcript pushed right after our own interruption
+    went missing in the aggregator; "नहीं यही सब" never reached the model."""
+    from pipecat.frames.frames import TranscriptionFrame
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    order = []
+    async def _broadcast():
+        rec.interruptions += 1; order.append("INTERRUPT")
+    async def _push(frame, direction=None):
+        rec.frames.append(frame); rec.dirs.append(direction)
+        if isinstance(frame, TranscriptionFrame): order.append("TRANSCRIPT")
+    tc.broadcast_interruption = _broadcast
+    tc.push_frame = _push
+    await _feed(tc, "नहीं यही सब।")
+    assert rec.interruptions == 1
+    assert order == ["TRANSCRIPT", "INTERRUPT"], order
+    assert sum(isinstance(f, TranscriptionFrame) for f in rec.frames) == 1, "forwarded twice"
+
+
+# ── voice-mode barge-in (22 Sep paid batch: 473 cuts, 54% acknowledgements) ──
+def _voice_collector(rec, bot_speaking=True, **kw):
+    state = {"speaking": bot_speaking, "cut": False, "in_flight": False}
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: state["speaking"],
+        fillers_armed=lambda: False, bot_stopped_t=lambda: 0.0,
+        gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: state["cut"], recently_cut=lambda: state["cut"],
+        filler_phrases=[], in_machine_window=lambda: False,
+        reply_in_flight=lambda: state["in_flight"], bot_spoke_once=lambda: True,
+        cut_after_voice_secs=kw.pop("cut_after", 0.15), ack_answer_window_secs=3.0, **kw)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame); rec.dirs.append(direction)
+
+    async def _broadcast():
+        rec.interruptions += 1; state["cut"] = True
+    tc.push_frame = _push
+    tc.broadcast_interruption = _broadcast
+    tc.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    return tc, state
+
+
+def test_several_acknowledgements_in_one_breath_are_still_an_acknowledgement():
+    from app.turntake import mid_reply_action, ABSORB, INTERRUPT
+    for t in ["हाँ जी। नमस्ते जी। जी।", "ठीक है जी। हम्म।", "जी जी हाँ जी"]:
+        assert mid_reply_action(t) == ABSORB, t
+    for t in ["हाँ Ma'am जल्दी है।", "नहीं जी नहीं", "ठीक है पर fees कितनी है?"]:
+        assert mid_reply_action(t) == INTERRUPT, t
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_talks_straight_through_an_acknowledgement():
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=0.3)
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.1)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)   # a 0.1 s "हाँ"
+    await _feed(tc, "हाँ जी।")
+    await asyncio.sleep(0.4)                                     # past the cut window
+    assert rec.interruptions == 0, "an acknowledgement stopped the bot"
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+    assert "हाँ जी।" not in rec.cues(), "an aside must not split the context"
+
+
+@pytest.mark.asyncio
+async def test_a_talked_through_acknowledgement_does_not_split_the_bots_sentence():
+    """Sim hello_cuts_opening (2026-09-23): 'Hello.' recorded mid-opening split it
+    into '…Aarushi' + 'from Vacademy'; the opening check then saw 13 chars."""
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=5.0)
+    tc._outcome.transcript.append({"role": "assistant", "text": "Hi, is this Bhawana Jain? Aarushi"})
+    await _feed(tc, "Hello.")
+    tc._outcome.transcript.append({"role": "assistant", "text": "from Vacademy"})   # rest of the sentence
+    tc._unrecord_aside("Hello.")                      # idempotent: nothing left to remove
+    roles = [e["role"] for e in tc._outcome.transcript]
+    assert roles.count("user") == 0, tc._outcome.transcript
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_stops_once_the_caller_keeps_talking():
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=0.15)
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await asyncio.sleep(0.3)                                     # still talking
+    assert rec.interruptions == 1, "sustained voice must stop the bot"
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_real_words_stop_the_bot_on_their_transcript():
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=5.0)
+    await _feed(tc, "नहीं मुझे नहीं चाहिए।")
+    assert rec.interruptions == 1
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_over_the_closing_question_is_answered_when_the_reply_ends():
+    from pipecat.frames.frames import BotStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=5.0)
+    b.FrameProcessor.process_frame = _noop_super
+    await _feed(tc, "हाँ।")                                      # over the question
+    tc._outcome.transcript.append({"role": "assistant",
+                                   "text": "क्या आप Shiksha Nation से जुड़ना चाहेंगे?"})
+    state["speaking"] = False
+    await tc.process_frame(BotStoppedSpeakingFrame(), b.FrameDirection.UPSTREAM)
+    await asyncio.sleep(0.6)
+    cues = [c for c in rec.cues() if "their ANSWER" in c]
+    assert len(cues) == 1 and "हाँ" in cues[0], rec.cues()
+    assert any(getattr(f, "run_llm", False) for f in rec.frames)
+
+
+@pytest.mark.asyncio
+async def test_an_early_acknowledgement_or_a_hello_is_not_taken_as_the_answer():
+    from pipecat.frames.frames import BotStoppedSpeakingFrame
+    for text, back in (("हाँ।", 6.0), ("Hello.", 0.5)):
+        rec = _Rec()
+        tc, state = _voice_collector(rec, cut_after=5.0)
+        b.FrameProcessor.process_frame = _noop_super
+        await _feed(tc, text)
+        tc._acked_mid_reply = (text, time.time() - back)
+        tc._outcome.transcript.append({"role": "assistant", "text": "क्या आप जुड़ना चाहेंगे?"})
+        state["speaking"] = False
+        await tc.process_frame(BotStoppedSpeakingFrame(), b.FrameDirection.UPSTREAM)
+        await asyncio.sleep(0.6)
+        assert not [f for f in rec.frames if getattr(f, "run_llm", False)], (text, rec.cues())
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_right_after_the_gate_cut_the_reply_resumes_it():
+    """Call 0808862f: the gate cut at 0.7 s of voice; "हाँ जी बिल्कुल" arrived
+    0.1 s later, before the pipeline's own cut flag and before the bot-speaking
+    flag dropped. It was read as an aside — nothing resumed, 8 s of silence."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame
+    rec = _Rec()
+    tail = "क्या मानशु के साथ भी ऐसा है सर, कि कुछ subjects में वो बहुत अच्छा करता है?"
+    tc, state = _voice_collector(rec, cut_after=0.1, resume_unplayed=lambda n=600: tail,
+                                 resume_settle_secs=0.01)
+    b.FrameProcessor.process_frame = _noop_super
+    await tc.process_frame(VADUserStartedSpeakingFrame(), b.FrameDirection.UPSTREAM)
+    await asyncio.sleep(0.2)                         # the gate cuts on sustained voice
+    assert rec.interruptions == 1
+    state["cut"] = False                             # pipeline flag not stamped yet
+    assert state["speaking"] is True                 # …and the bot still reads as speaking
+    await _feed(tc, "हाँ जी बिल्कुल।")
+    await asyncio.sleep(0.1)
+    assert tc._acked_mid_reply is None, "treated as an aside over a reply that was cut"
+    assert any(isinstance(f, b.TTSSpeakFrame) and f.text == tail for f in rec.frames), \
+        "the unheard closing question was not resumed"
+
+
+@pytest.mark.asyncio
+async def test_voice_mode_a_blip_while_composing_does_not_re_ask():
+    """Nothing was cut, so the 'a noise killed your reply' recovery must not run."""
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, bot_speaking=False, cut_after=5.0,
+                                 resume_on_stop_secs=1.0, resume_unplayed=lambda n=600: "")
+    state["in_flight"] = True
+    tc._outcome.transcript.append({"role": "user", "text": "मैं बच्चे का पिता बोल रहा हूँ।"})
+    b.FrameProcessor.process_frame = _noop_super
+    UP = b.FrameDirection.UPSTREAM
+    await tc.process_frame(VADUserStartedSpeakingFrame(), UP)
+    await tc.process_frame(VADUserStoppedSpeakingFrame(), UP)
+    await asyncio.sleep(0.2)
+    assert rec.interruptions == 0
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+
+
+# ── 22 Sep batch: a fixed 0.30 s between "turn COMPLETE" and the model, every turn ──
+@pytest.mark.asyncio
+async def test_only_the_final_after_our_flush_is_flagged_finalized():
+    from pipecat.frames.frames import (TranscriptionFrame, VADUserStartedSpeakingFrame,
+                                       VADUserStoppedSpeakingFrame)
+    from app.providers import final_after_flush
+
+    class _Base:
+        _settings = type("S", (), {"vad_signals": None})()
+        def __init__(self): self.out = []
+        async def process_frame(self, frame, direction): pass
+        async def push_frame(self, frame, direction=None): self.out.append(frame)
+
+    stt = final_after_flush(_Base)()
+    D = b.FrameDirection.UPSTREAM
+    f = lambda t: TranscriptionFrame(t, "u", "0")
+    await stt.process_frame(VADUserStartedSpeakingFrame(), D)
+    await stt.push_frame(f("मेरा बेटा"))                  # mid-utterance final
+    await stt.process_frame(VADUserStoppedSpeakingFrame(), D)
+    await stt.push_frame(f("class 6 में है।"))             # the answer to our flush
+    await stt.process_frame(VADUserStartedSpeakingFrame(), D)
+    await stt.push_frame(f("और"))                         # caller speaking again
+    assert [x.finalized for x in stt.out] == [False, True, False]
+    # Sarvam's own VAD drives segmentation → no flush → never flag
+    _Base._settings.vad_signals = True
+    stt2 = final_after_flush(_Base)()
+    await stt2.process_frame(VADUserStoppedSpeakingFrame(), D)
+    await stt2.push_frame(f("हाँ।"))
+    assert stt2.out[-1].finalized is False
+
+
+def test_build_stt_uses_the_flagging_sarvam_class():
+    import inspect
+    from app import providers as pv
+    src = inspect.getsource(pv.build_stt)
+    assert "final_after_flush(SarvamSTTService) if s.sarvam_final_on_flush" in src
 
 
 @pytest.mark.asyncio
@@ -5518,3 +6121,311 @@ async def test_the_callers_thank_you_after_our_goodbye_does_not_reopen_the_call(
     await _feed(tc, "Thank you.")
     assert rec.frames == [], "the goodbye reached the model and re-opened the call"
     assert stamped == [True]
+
+
+# ── FloorGate: never START a reply over a caller who is talking (call 358e5026) ──
+def _floor(talking, speaking=lambda: False, cap=3.0):
+    import app.diagnostics as dg
+    d = dg.CallDiagnostics()
+    out = []
+    g = b.FloorGate(enabled=lambda: True, caller_talking=talking,
+                    is_bot_speaking=speaking, diag=d, cap_secs=cap, poll_secs=0.01)
+    async def _push(frame, direction=None):
+        out.append(frame)
+    g.push_frame = _push
+    g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    return g, out, d
+
+
+def _audio(tag=b"\x00\x00"):
+    from pipecat.frames.frames import TTSAudioRawFrame
+    return TTSAudioRawFrame(audio=tag * 80, sample_rate=8000, num_channels=1)
+
+
+@pytest.mark.asyncio
+async def test_a_reply_ready_while_the_caller_talks_waits_and_then_plays_in_order():
+    """The parent is mid-fragment when the reply's first audio is ready: hold
+    it; they stop (an acknowledgement, absorbed by the turn-gate) → the
+    whole reply plays, first frame first."""
+    from pipecat.frames.frames import LLMFullResponseEndFrame
+    st = {"talking": True}
+    g, out, d = _floor(lambda: st["talking"])
+    D = b.FrameDirection.DOWNSTREAM
+    a1, a2, end = _audio(b"\x01\x00"), _audio(b"\x02\x00"), LLMFullResponseEndFrame()
+    await g.process_frame(a1, D)
+    await g.process_frame(a2, D)
+    assert out == [] and g.is_holding(), "started talking over the caller"
+    await asyncio.sleep(0.05)
+    await g.process_frame(end, D)             # the reply's end arrives mid-hold
+    assert out == []
+    st["talking"] = False
+    await asyncio.sleep(0.05)
+    assert out == [a1, a2, end], "held reply lost or reordered"
+    assert not g.is_holding()
+    assert d.floor_holds == 1 and d.floor_holds_released == 1
+
+
+@pytest.mark.asyncio
+async def test_a_held_reply_is_dropped_when_the_caller_takes_the_turn():
+    """Their words turn out to be real ("बच्चों के class ये हैं।"): the
+    turn-gate interrupts and the stub never reaches the line."""
+    from pipecat.frames.frames import InterruptionFrame
+    g, out, d = _floor(lambda: True)
+    D = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(_audio(), D)
+    await g.process_frame(_audio(), D)
+    intr = InterruptionFrame()
+    await g.process_frame(intr, D)
+    await asyncio.sleep(0.05)
+    assert out == [intr], "a dropped reply leaked audio"
+    assert not g.is_holding() and d.floor_holds_dropped == 1
+    a = _audio()                              # the next reply, caller now quiet
+    g._caller_talking = lambda: False
+    await g.process_frame(a, D)
+    assert out[-1] is a
+
+
+@pytest.mark.asyncio
+async def test_a_reply_on_a_quiet_line_is_never_held():
+    g, out, d = _floor(lambda: False)
+    a = _audio()
+    await g.process_frame(a, b.FrameDirection.DOWNSTREAM)
+    assert out == [a] and d.floor_holds == 0
+
+
+@pytest.mark.asyncio
+async def test_sound_during_a_playing_reply_is_not_the_floor_gates_business():
+    """Voice mode talks through a "हाँ" mid-reply. Only a reply STARTING is
+    held: later audio of a reply already on the line passes."""
+    st = {"talking": False}
+    g, out, d = _floor(lambda: st["talking"])
+    D = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(_audio(), D)        # reply starts on a quiet line
+    st["talking"] = True
+    await g.process_frame(_audio(), D)        # next sentence, caller acking
+    assert len(out) == 2 and d.floor_holds == 0
+    g2, out2, d2 = _floor(lambda: True, speaking=lambda: True)
+    await g2.process_frame(_audio(), D)       # bot audibly speaking: never a start
+    assert len(out2) == 1 and d2.floor_holds == 0
+
+
+@pytest.mark.asyncio
+async def test_a_line_that_never_goes_quiet_still_gets_its_reply():
+    g, out, d = _floor(lambda: True, cap=0.1)
+    a = _audio()
+    await g.process_frame(a, b.FrameDirection.DOWNSTREAM)
+    await asyncio.sleep(0.2)
+    assert out == [a] and d.floor_holds_capped == 1
+
+
+def test_floor_gate_sits_before_the_duck_and_counts_as_a_reply_in_flight():
+    src = open(b.__file__, encoding="utf-8").read()
+    assert "        floor,          # never START a reply over a talking caller\n        duck," in src
+    assert "if floor.is_holding():\n            return True" in src
+
+
+# ── call e32df5c0 (2026-09-23): "क्या <name> के साथ भी ऐसा है सर" read aloud ──
+def test_template_slots_copied_from_the_prompt_are_never_spoken():
+    t, n = b.fill_template_slots("क्या <name> के साथ भी ऐसा है सर, कि कुछ subjects में?")
+    assert t == "क्या बच्चे के साथ भी ऐसा है सर, कि कुछ subjects में?" and n == 1
+    t, n = b.fill_template_slots("So how is <child name> doing in maths?")
+    assert t == "So how is your child doing in maths?" and n == 1
+    t, n = b.fill_template_slots("सर, <program> की fees लगभग <range> के बीच रहती है।")
+    assert "<" not in t and n == 2
+    for marker in ("<<SEND:scholarship_quiz>>", "<<END_CALL>>", "<<TRANSFER>>", "5 < 7 > 3"):
+        assert b.fill_template_slots(marker) == (marker, 0), marker
+
+
+def test_no_repeat_gate_fills_slots_before_the_tts():
+    src = open(b.__file__, encoding="utf-8").read()
+    i = src.index("async def _emit(self, text: str, direction, past_cap: bool = False)")
+    j = src.index("norm = normalize_spoken(text)", i)
+    assert "fill_template_slots(text)" in src[i:j]
+
+
+@pytest.mark.asyncio
+async def test_smallest_meters_only_the_characters_the_vendor_synthesises():
+    """diagnostics.tts.chars drives the per-call TTS cost; it was null for
+    Smallest. The cache wraps the instance's run_tts and calls the class one
+    only on a miss, so metering there counts vendor characters only."""
+    from app.providers import _letterless_guard
+    import app.diagnostics as dg
+
+    class _Engine:
+        async def run_tts(self, text, context_id=None):
+            yield "audio:" + text
+
+    G = _letterless_guard(_Engine)
+    d = dg.CallDiagnostics()
+    t = G(); t.set_diagnostics(d)
+    out = [f async for f in t.run_tts(" नमस्ते जी। ")]
+    assert out == ["audio: नमस्ते जी। "] and d.tts_chars == len("नमस्ते जी।")
+    original = t.run_tts                      # what install_tts_cache wraps
+
+    async def cached(text, context_id=None):
+        if text == "हाँ जी?":
+            yield "cached"; return            # a HIT never reaches the class method
+        async for f in original(text, context_id):
+            yield f
+    t.run_tts = cached
+    [f async for f in t.run_tts("हाँ जी?")]
+    assert d.tts_chars == len("नमस्ते जी।")
+    [f async for f in t.run_tts("ठीक है।")]
+    assert d.tts_chars == len("नमस्ते जी।") + len("ठीक है।")
+
+
+@pytest.mark.asyncio
+async def test_a_long_reply_stops_at_the_length_budget_but_asks_its_question():
+    """Call 3c2f5b82 (2026-09-24): a 210-char pitch sentence, then the faculty
+    line — "समझ में नहीं आया", hang-up. After the first sentence, nothing that
+    takes the reply past max_reply_chars; the closing question still goes."""
+    from app.config import Settings
+    assert Settings().max_reply_chars == 240 and Settings().max_sentences_per_reply == 3
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "नहीं।",
+                       max_sentences=lambda: 3, max_chars=lambda: 240)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "ठीक है सर। ",
+                 "Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है, हम Day one से "
+                 "बच्चों की concept clarity मजबूत करने पर काम करते हैं, ताकि वो school exams में "
+                 "बेहतर perform करें और पूरे confidence के साथ अच्छे marks ला सकें। ",
+                 "हमारे यहाँ 50+ full-time faculties हैं, और हर faculty class के बाद तीन-चार घंटे "
+                 "खुद तैयारी करते हैं। ",
+                 "क्या आप इसके बारे में और जानना चाहेंगे?")
+    said = [t.strip() for t in rec.text if t.strip()]
+    assert any("focus" in t for t in said), said
+    assert not any("faculties" in t for t in said), "the stacked sentence should be held"
+    assert said[-1].startswith("क्या आप"), said
+    rec.text.clear()
+    long_one = "Shiksha Nation में " + "बहुत अच्छी पढ़ाई होती है, " * 12 + "सच में।"
+    await _reply(g, long_one)
+    assert [t.strip() for t in rec.text if t.strip()] == [long_one.strip()], \
+        "the first sentence always plays, however long"
+
+
+# ── call 2983bf1f (2026-09-24): a question that cut the bot off went unanswered ──
+@pytest.mark.asyncio
+async def test_a_question_that_cuts_the_bot_off_is_answered_first():
+    """The model got "तो Ma'am कैसे क्या होगा… पढ़ाई हो सकती?" whole and
+    re-delivered the dashboard sentence it had lost. A cue now travels with
+    the question — before the interruption, so it cannot go missing — and
+    only once for a burst of pieces."""
+    from pipecat.frames.frames import TranscriptionFrame, LLMMessagesAppendFrame
+    rec = _Rec()
+    tc = _replay_collector(rec, bot_speaking=True)
+    order = []
+    async def _broadcast():
+        rec.interruptions += 1; order.append("INTERRUPT")
+    async def _push(frame, direction=None):
+        rec.frames.append(frame); rec.dirs.append(direction)
+        if isinstance(frame, TranscriptionFrame): order.append("TRANSCRIPT")
+        if isinstance(frame, LLMMessagesAppendFrame): order.append("CUE")
+    tc.broadcast_interruption = _broadcast
+    tc.push_frame = _push
+    await _feed(tc, "तो Ma'am कैसे क्या होगा क्या बच्चे?")
+    assert order == ["TRANSCRIPT", "CUE", "INTERRUPT"], order
+    assert any("QUESTION" in c for c in rec.cues())
+    order.clear()
+    await _feed(tc, "कैसे पढ़ाई होगी?")        # the next piece of the same burst
+    assert "CUE" not in order, "one cue per burst"
+    rec2 = _Rec()
+    tc2 = _replay_collector(rec2, bot_speaking=True)
+    await _feed(tc2, "नहीं यही सब।")              # a statement: no cue
+    assert not any("QUESTION" in c for c in rec2.cues())
+
+
+
+def test_a_line_the_transcript_joined_but_the_model_got_in_pieces_is_not_lost():
+    """Call 2983bf1f: "मेरा बच्चा mobile" + "बाईस से।" reached the model as
+    two messages; the transcript joined them and the report called it lost."""
+    import app.diagnostics as dg
+    heard = ["तो Ma'am कैसे क्या होगा क्या बच्चे?", "मेरा बच्चा mobile बाईस से।",
+             "उसकी मतलब पढ़ाई हो सकती।"]
+    delivered = ["तो Ma'am कैसे क्या होगा क्या बच्चे?", "मेरा बच्चा mobile", "बाईस से।",
+                 "उसकी मतलब पढ़ाई हो सकती।"]
+    assert dg.split_lost(heard, delivered).answers == 0
+    assert dg.split_lost(["मेरा बच्चा mobile बाईस से।"], ["कुछ और"]).answers == 1
+
+
+
+@pytest.mark.asyncio
+async def test_a_short_first_sentence_is_never_left_on_its_own_by_the_budget():
+    """Call 5aa10e10: 35 chars said, a 220-char sentence held, no question —
+    the bot said a fragment and went silent for 7 s."""
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "हाँ बोल सकते हैं।",
+                       max_sentences=lambda: 3, max_chars=lambda: 240)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    long_one = ("लेकिन इस level पर हमारा focus सिर्फ marks improve करने का नहीं होता, focus ये होता है "
+                "कि उसके concepts और मजबूत हों, weaknesses identify हों, और वो अपनी class के बाकी अच्छे "
+                "students के बीच अपनी position improve कर सके। ")
+    await _reply(g, "that's actually a good performance। ", long_one)
+    said = " ".join(t.strip() for t in rec.text if t.strip())
+    assert "position improve" in said, "the substantive sentence was held behind a fragment"
+
+
+# ── call 7f86df90 (2026-09-25, Shreya-marathi demo): Hindi in Marathi, "करतो/करते" ──
+def test_a_name_slot_is_filled_in_the_replys_own_language():
+    f = b.fill_template_slots
+    assert f("<name> च्या बाबतीतही असं आहे का मॅडम?")[0] == "मुलाच्या बाबतीतही असं आहे का मॅडम?"
+    assert f("<name> खूप छान करतो का?")[0] == "मूल खूप छान करतो का?"
+    assert f("क्या <name> के साथ भी ऐसा है सर?")[0] == "क्या बच्चे के साथ भी ऐसा है सर?"
+    assert f("<name> માટે આ સારું છે")[0].startswith("બાળક")
+    assert f("<name> பற்றி சொல்லுங்கள்")[0].startswith("குழந்தை")
+    assert f("So how is <child name> doing?")[0] == "So how is your child doing?"
+
+
+def test_an_either_or_pair_is_spoken_as_one_form():
+    c = b.collapse_alternatives
+    assert c("खूप छान करतो/करते पण")[0] == "खूप छान करतो पण"
+    assert c("मी शिकतो/शिकते.")[0] == "मी शिकतो."
+    assert c("जी सर/मॅडम, नमस्कार", "f")[0] == "जी मॅडम, नमस्कार"
+    assert c("जी सर/मैम, नमस्ते", "m")[0] == "जी सर, नमस्ते"
+    for keep in ("24/7 support", "https://vacademy.io/a b", "<<SEND:quiz>>"):
+        assert c(keep) == (keep, 0), keep
+
+
+@pytest.mark.asyncio
+async def test_the_gate_keeps_the_address_the_call_already_uses():
+    rec = _NRRec()
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "आई।")
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "जी मॅडम, धन्यवाद। ")
+    rec.text.clear()
+    await _reply(g, "सर/मॅडम, मुलगा खूप छान करतो/करते का?")
+    said = " ".join(t.strip() for t in rec.text if t.strip())
+    assert "मॅडम" in said and "सर" not in said and "/" not in said, said
+
+
+
+def test_hello_is_a_line_check_in_every_script():
+    from app.turntake import caller_checking_presence, is_audio_check
+    for hello in ("हॅलो.", "Hello?", "हेलो", "હેલો?", "হ্যালো", "ஹலோ", "హలో", "ಹಲೋ"):
+        assert is_audio_check(hello), hello
+        assert caller_checking_presence(hello), hello
+    assert not caller_checking_presence("बरोबर।")
+
+
+def test_an_opening_cut_at_pickup_and_said_again_is_not_a_replay():
+    """Call f9b9f575: "नमस्कार," (cut by the callee's "हॅलो."), then the whole
+    opening — scored OPENING_REPLAYED, RED."""
+    from app import report as rp
+    opening = ("नमस्कार, मी श्रेया बोलतेय Shiksha Nation मधून. तुम्ही तुमच्या मुलासाठी live "
+               "classes बद्दल चौकशी केली होती.")
+    class _O:
+        transcript = [{"role": "assistant", "text": "नमस्कार,"},
+                      {"role": "user", "text": "हॅलो."},
+                      {"role": "assistant", "text": opening},
+                      {"role": "user", "text": "बरोबर।"},
+                      {"role": "assistant", "text": "Shiksha Nation मध्ये आमचा focus फक्त syllabus वर नाही."}]
+    replays, _, _ = rp._played_invariants(_O())
+    assert replays == 0
+    class _Replayed:
+        transcript = [{"role": "assistant", "text": opening},
+                      {"role": "user", "text": "बरोबर, बोला।"},
+                      {"role": "assistant", "text": opening}]
+    assert rp._played_invariants(_Replayed())[0] == 1, "a real replay must still count"

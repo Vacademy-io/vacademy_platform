@@ -23,6 +23,7 @@ import vacademy.io.notification_service.features.combot.entity.ChannelToInstitut
 import vacademy.io.notification_service.features.combot.action.dto.FlowContext;
 import vacademy.io.notification_service.features.combot.action.service.FlowActionRouter;
 import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotFlowEngine;
+import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppSendFailureService;
 import vacademy.io.notification_service.features.combot.enums.CombotNotificationType;
 import vacademy.io.notification_service.features.combot.enums.WhatsAppMessageType;
 import vacademy.io.notification_service.features.combot.repository.ChannelFlowConfigRepository;
@@ -391,7 +392,7 @@ public class CombotWebhookService {
 
                 String lastTemplate = CombotConstants.DEFAULT_TEMPLATE;
                 if (lastLogOpt.isPresent()) {
-                    lastTemplate = extractTemplateNameFromPayload(lastLogOpt.get().getMessagePayload());
+                    lastTemplate = legacyFlowTemplateOf(lastLogOpt.get());
                 }
                 log.info("Flow lookup: phone={}, lastTemplate={}, instituteId={}, channelType={}",
                         userPhone, lastTemplate, instituteId, channelType);
@@ -1000,6 +1001,24 @@ public class CombotWebhookService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * The "last template" a legacy ChannelFlowConfig keys on, for the last message we sent.
+     * <p>
+     * A chatbot-flow row now records its template and flow on message_payload so the Inbox can
+     * show them — but that must not re-route legacy flows. Those rows always read here as they did
+     * when they carried no payload: a sent one as {@code DEFAULT_TEMPLATE}, a refused one (FAILED
+     * marker) as {@code UNKNOWN_TEMPLATE}.
+     */
+    String legacyFlowTemplateOf(NotificationLog lastLog) {
+        if ("CHATBOT_FLOW".equals(lastLog.getSource())) {
+            String payload = lastLog.getMessagePayload();
+            boolean refused = payload != null && payload.contains(
+                    "\"deliveryStatus\":\"" + WhatsAppSendFailureService.FAILED_STATUS + "\"");
+            return refused ? CombotConstants.UNKNOWN_TEMPLATE : CombotConstants.DEFAULT_TEMPLATE;
+        }
+        return extractTemplateNameFromPayload(lastLog.getMessagePayload());
     }
 
     private String extractTemplateNameFromPayload(String payloadJson) {

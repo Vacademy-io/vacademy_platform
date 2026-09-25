@@ -96,6 +96,17 @@ class Scenario:
     # the cached-sentence path (own audio context, synchronous frames) runs for
     # real. Non-empty also keeps the agent's speech_cache_mode FULL.
     cache_warm: List[str] = field(default_factory=list)
+    # "smallest": pipecat's REAL SmallestTTSService, built by production's
+    # build_tts, talking to sim/smallest_fake.py's protocol-faithful socket
+    # instead of SimTTS. The speech-cache scenarios need it — SimTTS yields its
+    # audio synchronously, which is how a cache HIT works, not how Smallest does.
+    engine: str = "sim"
+    # Chance of a thinking filler ("Hmm…") on a turn. 0 by default so a gate
+    # never flips a coin: production's 10% made a random scenario fail about
+    # one deploy in several (a6252b5c57's gate: a filler before a reply read
+    # as a hole inside it). Scenarios that exercise the filler set 1.0.
+    # SIM_FILLER_PROBABILITY overrides every scenario, for a forced run.
+    filler: float = 0.0
     # Needs the REAL STT (python -m sim.timing --real-stt): the check is about
     # what the vendor transcribes from the fixture audio, not the pipeline.
     # Skipped by "all" without the flag.
@@ -135,7 +146,7 @@ class Line:
 
 
 def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool = False):
-    from pipecat.frames.frames import (Frame, InputAudioRawFrame, InterruptionFrame,
+    from pipecat.frames.frames import (Frame, InputAudioRawFrame, InterruptionFrame, TTSSpeakFrame,
                                        LLMContextFrame, LLMFullResponseEndFrame,
                                        LLMFullResponseStartFrame, LLMTextFrame,
                                        OutputAudioRawFrame, StartFrame, TranscriptionFrame,
@@ -227,6 +238,7 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             self.model_name = "sim-tts"
 
         async def run_tts(self, text: str, context_id: str):
+            log(f"TTS run_tts {text[:40]!r}")
             line.tts_texts.append(text)
             words = max(1, len(text.split()))
             secs = max(0.5, words / 2.8)
@@ -354,7 +366,29 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
     else:
         stt = SimSTT()
     llm = SimLLM()
-    tts = SimTTS()
+    if scenario.engine == "smallest":
+        from sim.smallest_fake import patch_smallest_service
+        os.environ.setdefault("SMALLEST_API_KEY", "sim-not-a-key")
+        from app.config import get_settings as _gs
+        # Settings may already exist (an earlier scenario built it) and is
+        # frozen — without a key build_tts silently falls back to Sarvam.
+        if not _gs().smallest_api_key:
+            object.__setattr__(_gs(), "smallest_api_key", "sim-not-a-key")
+        line.smallest_sockets = []
+        patch_smallest_service(line.smallest_sockets)
+        from app.providers import build_tts
+        tts = build_tts(24000, voice="mrunal", tts_model="smallest_pro", pace=1.05,
+                        language="hi")
+        _orig_run_tts = tts.run_tts
+
+        async def _logged_run_tts(text, context_id=None, _o=_orig_run_tts):
+            log(f"TTS run_tts {text[:40]!r}")
+            line.tts_texts.append(text)
+            async for f in _o(text, context_id):
+                yield f
+        tts.run_tts = _logged_run_tts
+    else:
+        tts = SimTTS()
     pending: List[Say] = list(scenario.caller)
 
     async def feeder(inp: SimInput):
@@ -440,6 +474,9 @@ def _warm_cache(tts, agent: Dict[str, Any], lines: List[str]) -> None:
     from app.bot import _agent_voice, _as_float
     from app.providers import engine_of
     engine, model = engine_of(tts)
+    from app.speech_language import smallest_language_code
+    render_language = (smallest_language_code(agent.get("language"))
+                       if engine.lower() == "smallest" else "")
     cache = ttscache.get_cache()
     cache.open()
     for text in lines:
@@ -449,7 +486,7 @@ def _warm_cache(tts, agent: Dict[str, Any], lines: List[str]) -> None:
                                  pace=_as_float(agent.get("pace")),
                                  temperature=_as_float(agent.get("temperature")),
                                  sample_rate=ttscache.SAMPLE_RATE, term_map_version="",
-                                 text=norm)
+                                 text=norm, language=render_language)
         cand = ttscache.Candidate(key=key, text=norm, chars=len(norm), engine=engine.lower(),
                                   model=model, voice=_agent_voice(agent) or "",
                                   pace=_as_float(agent.get("pace")),
@@ -471,6 +508,18 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
     ctx["agent"]["speech_cache_mode"] = "FULL" if scenario.cache_warm else "OFF"
     ctx["agent"]["voiceModulation"] = 1.0
     ctx["corr"] = f"sim-{scenario.key}"
+    from app.config import get_settings as _gs
+    # A fresh, empty speech cache per scenario. One shared cache let a
+    # sentence rendered in an earlier scenario (the background sweeper warms
+    # what it saw) change the timing of a later one: the filler scenario
+    # passed alone and failed in the full run.
+    import tempfile
+    from app import ttscache as _tc
+    _tc._CACHE = _tc.SpeechCache(root=tempfile.mkdtemp(prefix=f"sim-cache-{scenario.key}-"))
+    _tc._CACHE.open()
+    _p = os.environ.get("SIM_FILLER_PROBABILITY")
+    object.__setattr__(_gs(), "filler_probability",
+                       float(_p) if _p not in (None, "") else scenario.filler)
     line = Line()
     transport, providers = build(scenario, line, verbose, real_stt)
     if scenario.cache_warm:
@@ -660,6 +709,36 @@ def chk_fragment_tail(res):
     return f
 
 
+def chk_pieces_with_gaps(res):
+    """Call 358e5026 (2026-09-23): a parent speaking in pieces got a reply to
+    every piece, each started while the NEXT piece was already under way and
+    cut 0.7 s later — "आप मुझे एक समय बता" / "मैं समझ" / "मैं समझ गई". No
+    reply may start while the caller is talking, no stub may reach the line,
+    and the pieces still get one full answer."""
+    f = []
+    if len(res["caller"]) < 3:
+        return ["caller turns missing"]
+    p1 = res["caller"][1]
+    p2 = res["caller"][2]
+    for a, b_ in res["bot"]:
+        if a < p1[0]:
+            continue
+        if any(ca + 0.05 < a < cb for ca, cb in res["caller"]):
+            f.append(f"bot audio started at {a:.2f}s while the caller was talking")
+        if b_ - a < 1.0 and a < p2[1] + 6.0:
+            f.append(f"a {b_ - a:.2f}s stub of a reply reached the line at {a:.2f}s")
+    # One answer to both pieces, played in full (its sentences are separate
+    # intervals on the line).
+    after = [iv for iv in res["bot"] if p2[1] <= iv[0] < p2[1] + 8.0]
+    if not after:
+        f.append("the pieces never got an answer")
+    elif sum(b_ - a for a, b_ in after) < 3.0:
+        f.append("the answer to the pieces was cut short")
+    if "Three girls" not in " ".join(_assistant_texts(res)):
+        f.append("the answer to both pieces never played")
+    return f
+
+
 LONG_ANSWER = ("Yes, I take classes in the evening, mostly at the studio near my house, "
                "and a few students come to my home on weekends")
 _LONG_KEYS = ("classes", "evening", "studio", "students", "weekends")
@@ -819,6 +898,93 @@ def chk_cached_opener(res):
     return f
 
 
+LONG_CACHED = ("Generally when parents join a coaching class they have three or four basic "
+               "expectations, first that the faculty is good and clears every concept properly.")
+LIVE_AFTER_CACHED = "Would you agree with that?"
+
+
+def chk_long_cached_then_live(res):
+    """Call d9aed777 (2026-09-25, first FULL-cache call): a 10.9 s cached
+    sentence, then a live question in the same reply. The audio played in
+    order, but the played transcript — and so the model's own context — came
+    out interleaved: "…पहली, faculty क्या आप इससे अच्छे सहमत हों हैं? और बच्चे
+    के concepts…". The cached sentence must be recorded whole, then the live
+    one, each once."""
+    f = []
+    if not res["caller"]:
+        return ["caller never spoke"]
+    texts = " ".join(" ".join(_assistant_texts(res)).split())
+    cached = " ".join(LONG_CACHED.split())
+    if cached not in texts:
+        f.append("the cached sentence is not recorded whole — words from another "
+                 "sentence landed inside it: " + texts[-260:])
+    elif LIVE_AFTER_CACHED not in texts:
+        f.append("the live sentence after the cached one never reached the played transcript")
+    elif texts.index(LIVE_AFTER_CACHED) < texts.index(cached):
+        f.append("played transcript out of order: the live sentence precedes the cached one")
+    if texts.count("Would you agree") > 1:
+        f.append("the live sentence was recorded twice")
+    cend = res["caller"][0][1]
+    ivs = [iv for iv in res["bot"] if cend <= iv[0] < cend + 20.0]
+    if sum(b - a for a, b in ivs) < 9.0:
+        f.append(f"reply audio only {sum(b - a for a, b in ivs):.1f}s — part of it was lost")
+    return f
+
+
+# ── speech cache on the REAL Smallest service (sim/smallest_fake.py) ──────
+S_LIVE_1 = "Rajeev is in class seven right now."
+S_LIVE_2 = "What marks did he get in his previous class?"
+S_CACHED_TAIL = "So that I get some idea of his performance."
+S_CACHED_HEAD = "Thank you."
+S_LIVE_Q = "Would you agree with that?"
+
+
+def _norm_ws(t: str) -> str:
+    return " ".join(t.split())
+
+
+def chk_reply_plays_whole(expected: List[str], max_gap: float = 0.8,
+                          leading_filler: bool = False):
+    """What the caller hears, for one multi-sentence reply: every sentence, in
+    order, exactly once, recorded exactly as it played (no sentence's words
+    inside another's), and no hole inside the reply longer than max_gap.
+    Calls d9aed777 and 5aa10e10 (2026-09-25) failed all three ways."""
+    def chk(res):
+        f = []
+        if not res["caller"]:
+            return ["caller never spoke"]
+        texts = _norm_ws(" ".join(_assistant_texts(res)))
+        want = _norm_ws(" ".join(expected))
+        if want not in texts:
+            f.append("played transcript does not contain the reply whole and in order — "
+                     f"got …{texts[-320:]!r}")
+        for sent in expected:
+            n = texts.count(_norm_ws(sent))
+            if n != 1 and want in texts:
+                f.append(f"{sent!r} recorded {n} times")
+        cend = res["caller"][0][1]
+        ivs = sorted(iv for iv in res["bot"] if iv[0] >= cend)
+        reply = []
+        for iv in ivs:                        # the reply = intervals until a >4 s pause (nudge)
+            if reply and iv[0] - reply[-1][1] > 4.0:
+                break
+            reply.append(iv)
+        if leading_filler:
+            # "Hmm…" covers the model's thinking time; the pause between it and
+            # the reply is the model, not a hole in the reply.
+            if not reply or reply[0][1] - reply[0][0] > 1.5:
+                f.append("no filler played before the reply")
+            else:
+                reply = reply[1:]
+        gaps = [round(b[0] - a[1], 2) for a, b in zip(reply, reply[1:])]
+        if any(g > max_gap for g in gaps):
+            f.append(f"hole inside the reply: gaps {gaps} s (max {max_gap})")
+        if not reply:
+            f.append("the reply never played")
+        return f
+    return chk
+
+
 _BREATH_REPLIES = [PITCH_Q, "Got it — evenings at the studio, weekends at home. Who sends the daily link right now?"]
 _BREATH_NOTE = "2026-09-15: VAD stop inside a 0.45 s breath; Smallest finalized the short part, the rest was dropped"
 
@@ -879,6 +1045,58 @@ SCENARIOS: List[Scenario] = [
              replies=[PITCH_Q, "It makes sense, good. So who sends the daily link right now — you, or someone else?"],
              checks=chk_fragment_tail, max_secs=45,
              note="call 31763255: '? It makes' → reply → 'some' as a real barge-in killed it"),
+    Scenario("pieces_with_gaps",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("My daughter is in the eighth class", 1.1, after_bot_stop=2,
+                         offset=0.8, stt_latency=0.4),
+                     # Starts 0.8 s after the first piece — on the CI runner's
+                     # usual ~1.2 s reply latency the reply is ready mid-piece
+                     # (gate off: a 0.28 s stub at 25.51 s). Closer, and the
+                     # first reply never starts at all; on a fast runner it
+                     # starts before this piece and the case does not arise.
+                     Say("and there are three girls at home studying", 1.4, after_bot_stop=2,
+                         offset=2.7, stt_latency=0.4)],
+             replies=[PITCH_Q,
+                      "Got it, eighth class. And how were her marks last year?",
+                      "Three girls, that's lovely. And how were the eldest one's marks last year?",
+                      "Okay."],
+             checks=chk_pieces_with_gaps, max_secs=45,
+             note="call 358e5026: a reply started over every next piece and was cut to a stub"),
+    Scenario("smallest_live_only",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([S_LIVE_1, S_LIVE_2])],
+             checks=chk_reply_plays_whole([S_LIVE_1, S_LIVE_2]), max_secs=30, engine="smallest",
+             note="baseline: the real Smallest service with no cache in the reply"),
+    Scenario("smallest_live_then_cached",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL])],
+             checks=chk_reply_plays_whole([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL]), max_secs=30,
+             cache_warm=[S_CACHED_TAIL], engine="smallest",
+             note="call 5aa10e10: a cached sentence behind two live ones waited 2.2 s"),
+    Scenario("smallest_cached_then_live",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([LONG_CACHED, S_LIVE_Q])],
+             checks=chk_reply_plays_whole([LONG_CACHED, S_LIVE_Q]), max_secs=35,
+             cache_warm=[LONG_CACHED], engine="smallest",
+             note="call d9aed777: live words stamped inside a long cached sentence"),
+    Scenario("smallest_cached_live_cached",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([S_CACHED_HEAD, S_LIVE_1, S_CACHED_TAIL])],
+             checks=chk_reply_plays_whole([S_CACHED_HEAD, S_LIVE_1, S_CACHED_TAIL]), max_secs=30,
+             cache_warm=[S_CACHED_HEAD, S_CACHED_TAIL], engine="smallest",
+             note="cached, live, cached in one reply"),
+    Scenario("smallest_filler_then_live_and_cached",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL])],
+             checks=chk_reply_plays_whole([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL],
+                                          leading_filler=True),
+             max_secs=30, cache_warm=[S_CACHED_TAIL], engine="smallest", filler=1.0,
+             note="a6252b5c57's gate: a 'Hmm…' filler, then the reply must still come whole"),
+    Scenario("long_cached_then_live",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[LONG_CACHED + " " + LIVE_AFTER_CACHED],
+             checks=chk_long_cached_then_live, max_secs=35, cache_warm=[LONG_CACHED],
+             note="call d9aed777: long cached sentence + live question — transcript interleaved"),
     Scenario("cached_opener_then_pitch",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=["Thank you. So the reason I called — we work with yoga teachers on everything "

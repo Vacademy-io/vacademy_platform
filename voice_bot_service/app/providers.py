@@ -296,7 +296,8 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     except Exception:
         logger.warning("build_stt: Settings rejected %r — model only", settings_kwargs)
         stt_settings = SarvamSTTService.Settings(model=stt_model)
-    return SarvamSTTService(
+    _cls = final_after_flush(SarvamSTTService) if s.sarvam_final_on_flush else SarvamSTTService
+    return _cls(
         api_key=s.sarvam_api_key,
         # Capability-gated, same reason as the settings above: saaras:v2.5 (a
         # documented SARVAM_STT_MODEL rollback target) has supports_mode=False
@@ -307,6 +308,46 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
         settings=stt_settings,
         ttfs_p99_latency=s.sarvam_ttfs_p99,
     )
+
+
+def final_after_flush(cls):
+    """Subclass a Sarvam STT so the transcript it sends in answer to our flush
+    is flagged finalized=True.
+
+    pipecat's Sarvam service flushes on every VAD stop (flush_signal) and
+    Sarvam answers with the utterance's final ~0.08 s later — but never flags
+    it, so TurnAnalyzerUserTurnStopStrategy treats it as provisional and waits
+    out its STT safety timeout before closing the turn: 0.30 s of dead air on
+    every turn of the 22 Sep batch. Only finals between a VAD stop and the next
+    VAD start are flagged; one Sarvam emits mid-utterance (on its own
+    segmentation) stays unflagged, so the turn cannot close on half a
+    sentence. Not applied when Sarvam's own VAD drives it (vad_signals): then
+    no flush is sent."""
+    from pipecat.frames.frames import (InterimTranscriptionFrame, TranscriptionFrame,
+                                       VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame)
+    from pipecat.processors.frame_processor import FrameDirection as _Dir
+
+    class _FinalOnFlush(cls):
+        _after_flush = False
+
+        async def process_frame(self, frame, direction):
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._after_flush = False
+            elif isinstance(frame, VADUserStoppedSpeakingFrame):
+                settings = getattr(self, "_settings", None)
+                self._after_flush = not bool(getattr(settings, "vad_signals", False) is True)
+            await super().process_frame(frame, direction)
+
+        async def push_frame(self, frame, direction=_Dir.DOWNSTREAM):
+            if (self._after_flush and isinstance(frame, TranscriptionFrame)
+                    and not isinstance(frame, InterimTranscriptionFrame)
+                    and (frame.text or "").strip()):
+                frame.finalized = True
+            await super().push_frame(frame, direction)
+
+    _FinalOnFlush.__name__ = cls.__name__
+    _FinalOnFlush.__qualname__ = cls.__qualname__
+    return _FinalOnFlush
 
 
 class _PersistentClientSession:
@@ -413,11 +454,127 @@ def _build_bedrock(s):
     return _tag_engine(svc, "bedrock", s.bedrock_model)
 
 
-def build_llm(provider: str | None = None):
-    """`provider` overrides LLM_PROVIDER for one call (per-agent POC routing —
-    see Settings.sarvam_llm_agents). None = the configured default."""
+class _FirstChunkGuard:
+    """Wraps the vendor's chat stream so the FIRST chunk is bounded in time.
+    `create()` returns once the headers arrive; a stalling model can hold the
+    stream open with no token for as long as it likes (call f58ca825,
+    2026-09-22: 34 s and 49 s to first token, then a 403). Everything after
+    the first chunk passes straight through; attributes (close, response…)
+    are delegated to the real stream."""
+
+    def __init__(self, stream, secs: float):
+        self._stream = stream
+        self._secs = secs
+        self._it = None
+        self._first = True
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._it is None:
+            self._it = self._stream.__aiter__()
+        if self._first:
+            self._first = False
+            try:
+                return await asyncio.wait_for(self._it.__anext__(), timeout=self._secs)
+            except asyncio.TimeoutError as e:
+                raise TimeoutError(f"LLM first token not received within {self._secs:.1f}s") from e
+        return await self._it.__anext__()
+
+    async def aclose(self):
+        it = self._it if self._it is not None else self._stream
+        if hasattr(it, "aclose"):
+            await it.aclose()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def with_first_token_timeout(cls, secs: float):
+    """Subclass an OpenAI-compatible pipecat LLM service so a reply whose
+    first token does not arrive within `secs` fails fast. The failure is an
+    ordinary exception inside pipecat's LLMContextFrame handling, so it
+    becomes a non-fatal ErrorFrame — which is exactly what ServiceSwitcher's
+    failover strategy switches on. 0 or None = no timeout."""
+    if not secs or secs <= 0:
+        return cls
+
+    class _Guarded(cls):
+        first_token_timeout_secs = float(secs)
+
+        async def get_chat_completions(self, context):
+            t = self.first_token_timeout_secs
+            try:
+                stream = await asyncio.wait_for(super().get_chat_completions(context), timeout=t)
+            except asyncio.TimeoutError as e:
+                raise TimeoutError(f"LLM did not answer within {t:.1f}s (connect)") from e
+            return _FirstChunkGuard(stream, t)
+    _Guarded.__name__ = cls.__name__
+    _Guarded.__qualname__ = cls.__qualname__
+    return _Guarded
+
+
+def with_stream_first_token_timeout(cls, secs: float):
+    """The same guard for pipecat's Google (Gemini/Vertex) service, which
+    streams through _stream_content instead of get_chat_completions. A 429 or
+    a stall before the first chunk raises inside _process_context, which
+    pipecat turns into a non-fatal ErrorFrame — the failover trigger."""
+    if not secs or secs <= 0:
+        return cls
+
+    class _Guarded(cls):
+        first_token_timeout_secs = float(secs)
+
+        async def _stream_content(self, context):
+            t = self.first_token_timeout_secs
+            try:
+                stream = await asyncio.wait_for(super()._stream_content(context), timeout=t)
+            except asyncio.TimeoutError as e:
+                raise TimeoutError(f"LLM did not answer within {t:.1f}s (connect)") from e
+            return _FirstChunkGuard(stream, t)
+    _Guarded.__name__ = cls.__name__
+    _Guarded.__qualname__ = cls.__qualname__
+    return _Guarded
+
+
+def build_llm_waterfall(provider: str | None = None):
+    """(switcher_or_primary, primary, fallback). Like build_stt_waterfall: when
+    LLM_FALLBACK_PROVIDER names a different provider that builds, the call
+    runs pipecat's ServiceSwitcher with the failover strategy over the two,
+    and a vendor error (a timeout, a 403, a 5xx) moves the rest of the call to
+    the fallback. If the fallback cannot be built (no credentials on this box)
+    the call runs on the primary alone, as before."""
     s = get_settings()
     prov = (provider or s.llm_provider or "").strip().lower()
+    fb = (s.llm_fallback_provider or "").strip().lower()
+    if not fb or fb == prov:
+        primary = build_llm(provider)
+        return primary, primary, None
+    try:
+        fallback = build_llm(fb)
+    except Exception as e:
+        logger.warning("llm: fallback provider %r could not be built (%s) — running on %s alone",
+                       fb, e, prov)
+        primary = build_llm(provider)
+        return primary, primary, None
+    # Only a primary that HAS somewhere to fail over to may give up early.
+    primary = build_llm(provider, fail_fast=True)
+    from pipecat.pipeline.service_switcher import (ServiceSwitcher,
+                                                   ServiceSwitcherStrategyFailover)
+    switcher = ServiceSwitcher([primary, fallback], strategy_type=ServiceSwitcherStrategyFailover)
+    logger.info("llm: waterfall %s → %s", type(primary).__name__, type(fallback).__name__)
+    return switcher, primary, fallback
+
+
+def build_llm(provider: str | None = None, fail_fast: bool = False):
+    """`provider` overrides LLM_PROVIDER for one call (per-agent POC routing —
+    see Settings.sarvam_llm_agents). None = the configured default.
+    fail_fast: this service is the primary of a waterfall, so a slow first
+    token should hand the turn to the fallback sooner (Vertex only)."""
+    s = get_settings()
+    prov = (provider or s.llm_provider or "").strip().lower()
+    _Timed = with_first_token_timeout(OpenAILLMService, s.llm_first_token_timeout_secs)
     if prov == "vertex":
         # Gemini on Vertex AI, served from vertex_location (asia-south1 = Mumbai):
         # in-country inference → low TTFT with no cross-ocean RTT. Auth = service
@@ -447,7 +604,10 @@ def build_llm(provider: str | None = None):
         from pipecat.services.google.vertex.llm import GoogleVertexLLMService
 
         creds = s.vertex_credentials_json.strip() or None
-        return GoogleVertexLLMService(
+        _Vertex = (with_stream_first_token_timeout(GoogleVertexLLMService,
+                                                   s.vertex_first_token_timeout_secs)
+                   if fail_fast else GoogleVertexLLMService)
+        return _Vertex(
             credentials=creds,
             credentials_path=(s.vertex_credentials_path.strip() or None) if not creds else None,
             project_id=s.vertex_project_id,
@@ -461,7 +621,7 @@ def build_llm(provider: str | None = None):
     if prov == "google":
         # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop).
         # reasoning_effort 'none' via extra_body: 3.1 thinks by default.
-        return OpenAILLMService(
+        return _Timed(
             api_key=s.gemini_api_key,
             base_url=s.google_llm_base_url,
             model=s.google_llm_model,
@@ -485,7 +645,7 @@ def build_llm(provider: str | None = None):
     # JSON null (Python None inside extra_body — the SDK drops None kwargs but
     # keeps them in extra_body): the ONLY value that disables hybrid thinking.
     # 0.14s median TTFT from Mumbai with null; 6-14s (or content=None) without.
-    return OpenAILLMService(
+    return _Timed(
         api_key=s.sarvam_llm_api_key,
         base_url=s.sarvam_llm_base_url,
         model=s.sarvam_llm_model,
@@ -772,6 +932,146 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
     ), "sarvam", s.sarvam_tts_model)
 
 
+def _smallest_request_routing(cls):
+    """Subclass pipecat's SmallestTTSService so that, with ONE AUDIO CONTEXT PER
+    SENTENCE (what the speech cache switches on), every chunk and word lands in
+    the context of the request that asked for it, and each context closes as
+    soon as its request is done.
+
+    Stock behaviour assumes one context per turn: a chunk is appended to
+    get_active_audio_context_id() — the context PLAYING — and nothing closes a
+    finished request's context, because Smallest sends no per-request
+    `complete` (recorded 2026-09-25: one `complete` ~4 s after the last audio
+    of a whole batch). With per-sentence contexts that meant the next
+    sentence's audio was filed under the previous one, its own context sat
+    empty, and pipecat's 3 s idle timeout closed it — a cached sentence queued
+    behind waited 2.2 s (call 5aa10e10; timing sim smallest_live_then_cached:
+    a 2.56 s hole).
+
+    Smallest serves requests on a socket strictly in order, each tagged with a
+    request_id, so the Nth new request_id belongs to the Nth run_tts. A
+    request is done when the next one starts streaming, or after
+    _REQUEST_IDLE_SECS with nothing for it (chunks arrive ~40 ms apart at ~4x
+    real time; closing a context ends its queue, not its playout).
+
+    With one context per turn (cache off) the stock path runs untouched.
+    """
+    import collections
+
+    class _Routed(cls):
+        _REQUEST_IDLE_SECS = 0.5
+
+        def _routing_on(self) -> bool:
+            return not getattr(self, "_reuse_context_id_within_turn", True)
+
+        def _routing_state(self):
+            if not hasattr(self, "_rq_pending"):
+                self._rq_pending = collections.deque()   # contexts awaiting a request_id
+                self._rq_ctx = {}                        # request_id -> context_id
+                self._rq_current = None                  # request_id streaming now
+                self._rq_idle_task = None
+            return self
+
+        def _routing_reset(self):
+            self._routing_state()
+            self._rq_pending.clear()
+            self._rq_ctx.clear()
+            self._rq_current = None
+            t, self._rq_idle_task = self._rq_idle_task, None
+            if t is not None and not t.done():
+                t.cancel()
+
+        async def _connect_websocket(self):
+            # A fresh socket starts a fresh request sequence (pipecat reconnects
+            # on every interruption).
+            self._routing_reset()
+            await super()._connect_websocket()
+
+        async def on_audio_context_interrupted(self, context_id: str):
+            self._routing_reset()
+            await super().on_audio_context_interrupted(context_id)
+
+        async def run_tts(self, text, context_id, *args, **kwargs):
+            if self._routing_on() and text and text.strip():
+                self._routing_state()._rq_pending.append(context_id)
+            async for frame in super().run_tts(text, context_id, *args, **kwargs):
+                yield frame
+
+        async def _close_request(self, rid):
+            ctx = self._rq_ctx.pop(rid, None)
+            if ctx and self.audio_context_available(ctx):
+                await self.remove_audio_context(ctx)
+
+        async def _close_after_idle(self, rid):
+            try:
+                await asyncio.sleep(self._REQUEST_IDLE_SECS)
+                if self._rq_current == rid:
+                    self._rq_current = None
+                await self._close_request(rid)
+            except asyncio.CancelledError:
+                pass
+
+        async def _route(self, rid):
+            """Context for this request_id; closes the previous request's."""
+            st = self._routing_state()
+            if rid not in st._rq_ctx:
+                if st._rq_current is not None and st._rq_current != rid:
+                    await self._close_request(st._rq_current)
+                st._rq_ctx[rid] = st._rq_pending.popleft() if st._rq_pending else None
+                st._rq_current = rid
+            t, st._rq_idle_task = st._rq_idle_task, None
+            if t is not None and not t.done():
+                t.cancel()
+            st._rq_idle_task = asyncio.get_running_loop().create_task(self._close_after_idle(rid))
+            ctx = st._rq_ctx.get(rid)
+            if ctx and self.audio_context_available(ctx):
+                return ctx
+            return self.get_active_audio_context_id()
+
+        async def _receive_messages(self):
+            if not self._routing_on():
+                await super()._receive_messages()
+                return
+            import base64 as _b64
+            import json as _json
+            from pipecat.frames.frames import TTSAudioRawFrame as _Audio, TTSStoppedFrame as _Stopped
+            async for message in self._get_websocket():
+                msg = _json.loads(message)
+                status = msg.get("status")
+                rid = msg.get("request_id")
+                if status == "complete":
+                    await self.stop_all_metrics()
+                    st = self._routing_state()
+                    for r in list(st._rq_ctx):
+                        await self._close_request(r)
+                    st._rq_current = None
+                elif status == "chunk":
+                    await self.stop_ttfb_metrics()
+                    ctx = await self._route(rid)
+                    await self.append_to_audio_context(ctx, _Audio(
+                        audio=_b64.b64decode(msg["data"]["audio"]),
+                        sample_rate=self.sample_rate, num_channels=1, context_id=ctx))
+                elif status == "word_timestamp":
+                    data = msg.get("data", {})
+                    word, start = data.get("word"), data.get("start")
+                    if word is not None and start is not None:
+                        ctx = await self._route(rid)
+                        # Each request has its own context and its own baseline:
+                        # its word times are already relative to its own audio.
+                        await self.add_word_timestamps([(word, start)], ctx)
+                elif status == "error":
+                    ctx = self.get_active_audio_context_id()
+                    await self.push_frame(_Stopped(context_id=ctx))
+                    await self.stop_all_metrics()
+                    await self.push_error(error_msg=f"Smallest TTS error: {msg.get('error', msg)}")
+                else:
+                    logger.warning(f"{self} unknown message status: {msg}")
+
+    _Routed.__name__ = cls.__name__
+    _Routed.__qualname__ = cls.__qualname__
+    return _Routed
+
+
 def _letterless_guard(cls):
     """Subclass `cls` so a sentence with no letter or digit never reaches the
     vendor. Smallest renders a bare "." as 9 s of hum (measured 2026-09-15:
@@ -785,6 +1085,25 @@ def _letterless_guard(cls):
     run_bot (a bridge line queued behind a long reply, call 28570ec0)."""
     class _NoLetterless(cls):
         skip_text_if = None
+        _vendor_diag = None
+
+        def set_diagnostics(self, diag):
+            # Meter what the VENDOR bills: characters that reach run_tts. The
+            # speech cache wraps the instance's run_tts and calls this class
+            # method only on a miss, so cache hits are not counted. Feeds
+            # diagnostics.tts.chars — the per-call TTS cost on the call card
+            # (it was null for Smallest, so the card fell back to duration).
+            self._vendor_diag = diag
+            sup = getattr(super(), "set_diagnostics", None)
+            if sup is not None:
+                sup(diag)
+
+        async def run_tts(self, text, *args, **kwargs):
+            d = self._vendor_diag
+            if d is not None and text:
+                d.bump("tts_chars", len(text.strip()))
+            async for frame in super().run_tts(text, *args, **kwargs):
+                yield frame
 
         async def _push_tts_frames(self, src_frame, *args, **kwargs):
             text = getattr(src_frame, "text", "") or ""
@@ -793,6 +1112,7 @@ def _letterless_guard(cls):
                             text.strip()[:12])
                 return None
             why = self.skip_text_if(text) if self.skip_text_if is not None else None
+            logger.info("tts: to vendor %r%s", text.strip()[:40], f" — SKIPPED: {why}" if why else "")
             if why:
                 logger.info("tts: %r skipped at synthesis — %s", text.strip()[:24], why)
                 return None
@@ -808,7 +1128,7 @@ def _build_smallest(cls, s, model: str, voice: str, speed: float,
     try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
     which only responds to prose), and its voice palettes are per-model — the API
     hard-rejects a cross-model voice, which is a mute call."""
-    cls = _letterless_guard(cls)
+    cls = _letterless_guard(_smallest_request_routing(cls))
     return cls(
         api_key=s.smallest_api_key,
         sample_rate=s.smallest_sample_rate,

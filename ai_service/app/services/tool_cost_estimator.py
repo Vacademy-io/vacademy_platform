@@ -37,6 +37,16 @@ logger = logging.getLogger(__name__)
 # All numbers are in CREDITS (not USD). `request_type` is the bucket the
 # Phase-2 deduction records on `credit_transactions.request_type`.
 #
+def _slab_credits(slabs: list, count: int) -> Decimal:
+    """Price of `count` units under a slab table; the last slab (upto null)
+    catches everything above the ceilings."""
+    for slab in slabs:
+        upto = slab.get("upto") if isinstance(slab, dict) else None
+        if upto is None or count <= int(upto):
+            return _d((slab or {}).get("credits"))
+    return _d(slabs[-1].get("credits")) if isinstance(slabs[-1], dict) else Decimal("0")
+
+
 # unit_field drives the formula:
 #   "questions"     → flat_base + num_questions × per_unit
 #                     (+ num_questions × params.image_unit_credits if images)
@@ -69,6 +79,35 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "flat_base_credits": Decimal("1"),
         "per_unit_credits": Decimal("0.2"),
         "unit_field": "questions",
+        "params": {},
+    },
+    # Vsmart Extract: digitising an EXISTING paper (mode=extract on
+    # pdf-to-questions). A digital PDF is read locally for free, so the only
+    # cost is the model (≈ ₹3 for a 60-question paper with solutions) — priced
+    # flat + per question actually extracted; the charge is max(this, real
+    # token cost). Mirrors ai_tool_pricing row `extract_questions` (V527) —
+    # tune the DB row, not this.
+    "extract_questions": {
+        "request_type": "pdf_questions",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "questions",
+        # One price per band of questions (model cost ≈ ₹0.5 for 40 questions,
+        # ₹1.2 for 60 with solutions). Tune the DB row's params_json.
+        "params": {"slabs": [
+            {"upto": 20, "credits": "2"},
+            {"upto": 50, "credits": "3"},
+            {"upto": 100, "credits": "5"},
+            {"upto": None, "credits": "7"},
+        ]},
+    },
+    # …and only when the file had no text layer (a scan) and went through
+    # MathPix OCR, which bills per page: a surcharge covering that cost.
+    "extract_questions_ocr": {
+        "request_type": "pdf_questions",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
         "params": {},
     },
     "coding_question": {
@@ -553,13 +592,28 @@ class ToolCostEstimator:
 
         if unit_field == "questions":
             num_q = max(0, int(params.get("num_questions") or 0))
-            q_credits = Decimal(num_q) * per_unit
-            total += q_credits
-            breakdown.append({
-                "component": "questions",
-                "detail": f"{num_q} question(s) × {per_unit}",
-                "credits": float(q_credits),
-            })
+            slabs = extra.get("slabs")
+            if isinstance(slabs, list) and slabs:
+                # Range pricing: params.slabs = [{"upto": 20, "credits": 1.5},
+                # {"upto": 50, "credits": 3}, …, {"upto": null, "credits": 6.5}]
+                # — the first slab whose `upto` the count does not exceed
+                # (null = no ceiling). One price per band, so a teacher knows
+                # the cost of a 40-question paper before uploading it.
+                q_credits = _slab_credits(slabs, num_q)
+                total += q_credits
+                breakdown.append({
+                    "component": "questions",
+                    "detail": f"{num_q} question(s), slab price",
+                    "credits": float(q_credits),
+                })
+            else:
+                q_credits = Decimal(num_q) * per_unit
+                total += q_credits
+                breakdown.append({
+                    "component": "questions",
+                    "detail": f"{num_q} question(s) × {per_unit}",
+                    "credits": float(q_credits),
+                })
             # Image add-on. An explicit `image_count` (charge time — the images
             # actually delivered) takes precedence; otherwise `include_images`
             # means "up to one per question", the preview upper bound. This is

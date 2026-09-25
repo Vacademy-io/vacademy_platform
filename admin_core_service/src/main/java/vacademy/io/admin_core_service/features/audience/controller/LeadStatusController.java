@@ -40,7 +40,7 @@ public class LeadStatusController {
     public ResponseEntity<LeadStatusDTO> create(@RequestParam String instituteId,
                                                 @RequestBody LeadStatusDTO dto,
                                                 @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(LeadStatusDTO.from(leadStatusService.create(instituteId, dto)));
+        return ResponseEntity.ok(LeadStatusDTO.from(leadStatusService.create(instituteId, dto, user != null ? user.getUserId() : null)));
     }
 
     @PutMapping("/{id}")
@@ -54,7 +54,7 @@ public class LeadStatusController {
     public ResponseEntity<LeadStatusDTO> update(@PathVariable String id,
                                                 @RequestBody LeadStatusDTO dto,
                                                 @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(LeadStatusDTO.from(leadStatusService.update(id, dto)));
+        return ResponseEntity.ok(LeadStatusDTO.from(leadStatusService.update(id, dto, user != null ? user.getUserId() : null)));
     }
 
     @DeleteMapping("/{id}")
@@ -66,7 +66,7 @@ public class LeadStatusController {
             descriptionExpr = "'deleted lead status ' + @crmAuditNarrator.nameFromSnapshot(#before, #id)")
     public ResponseEntity<Void> delete(@PathVariable String id,
                                        @RequestAttribute("user") CustomUserDetails user) {
-        leadStatusService.deactivate(id);
+        leadStatusService.deactivate(id, user != null ? user.getUserId() : null);
         return ResponseEntity.ok().build();
     }
 

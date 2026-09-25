@@ -134,5 +134,12 @@
         "addPdf": "Add a PDF in the panel on the right",
         "openDocument": "Open document",
         "download": "Download PDF"
+    },
+    "blog": {
+        "sampleCategory": "Study tips",
+        "sampleTitle": "Sample post {{n}}",
+        "sampleExcerpt": "A short teaser of the article shows here.",
+        "readMore": "Read more",
+        "liveNote": "Published posts appear here on the live site. Write them under Manage Pages → Blog."
     }
 }

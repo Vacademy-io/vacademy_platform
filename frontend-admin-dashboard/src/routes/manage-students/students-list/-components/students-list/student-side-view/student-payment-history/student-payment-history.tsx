@@ -29,8 +29,19 @@ import {
     ArrowCircleUp,
     ArrowCircleDown,
     XCircle,
+    Trash,
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
+import { isDeletablePayment, isVoidablePayment } from '@/services/payment-logs';
+import {
+    VoidPaymentDialog,
+    type VoidPaymentTarget,
+} from '@/routes/manage-payments/-components/VoidPaymentDialog';
+import {
+    PermanentDeleteDialog,
+    type PermanentDeleteTarget,
+} from '@/routes/manage-payments/-components/PermanentDeleteDialog';
+import { useCanDeletePayments } from '@/routes/manage-payments/-hooks/useCanDeletePayments';
 import { CpoInstallmentsEditor } from './cpo-installments-editor';
 import { CreateInvoiceDialog } from './create-invoice-dialog';
 import { ProfileSectionCard, ProfileEmpty, ProfileMiniBar } from '../profile-ui';
@@ -58,6 +69,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { CircleNotch } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { getCurrencySymbol } from '@/constants/currencies';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 
@@ -76,10 +88,31 @@ function formatDate(dateStr: string | null | undefined): string {
     }
 }
 
+/**
+ * Symbol for a currency code. Goes through the platform-wide CURRENCIES table rather
+ * than an inline ternary: this tab used to know only USD and EUR and fell through to
+ * ₹ for everything else, so an AUD institute saw its invoices priced in rupees.
+ * Unknown codes render as the code itself, never as a wrong symbol.
+ */
+function symbolFor(currency?: string | null): string {
+    return getCurrencySymbol((currency || 'INR').toUpperCase());
+}
+
+/**
+ * Amount grouped per the *currency's* locale, not always en-IN — en-IN lakh/crore
+ * grouping ("A$12,34,567.00") is wrong for every non-INR currency.
+ */
+function formatAmount(amount: number | null | undefined, currency?: string | null, minimumFractionDigits = 2): string {
+    const code = (currency || 'INR').toUpperCase();
+    return Number(amount || 0).toLocaleString(code === 'INR' ? 'en-IN' : 'en-US', {
+        minimumFractionDigits,
+        maximumFractionDigits: 2,
+    });
+}
+
 function formatCurrency(amount: number | null | undefined, currency?: string): string {
     if (amount == null) return '—';
-    const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₹';
-    return `${sym}${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${symbolFor(currency)}${formatAmount(amount, currency)}`;
 }
 
 /**
@@ -152,7 +185,10 @@ const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
                         {planLabel} · {t('feePlan.installments', { count: summary.installment_count })}
                     </div>
                     <div className="mt-0.5 text-caption text-muted-foreground">
-                        {t('feePlan.netPaid', { net: formatCurrency(net), paid: formatCurrency(paid) })}
+                        {t('feePlan.netPaid', {
+                            net: formatCurrency(net, summary.currency ?? undefined),
+                            paid: formatCurrency(paid, summary.currency ?? undefined),
+                        })}
                     </div>
                 </div>
                 <div className="text-right">
@@ -160,7 +196,7 @@ const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
                         {t('feePlan.outstanding')}
                     </div>
                     <div className="text-h2 font-bold leading-tight text-danger-600">
-                        {formatCurrency(summary.outstanding_total ?? 0)}
+                        {formatCurrency(summary.outstanding_total ?? 0, summary.currency ?? undefined)}
                     </div>
                 </div>
             </div>
@@ -174,9 +210,8 @@ const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
 /** Account summary grid — shows total accrued, paid, balance, overdue from the ledger. */
 const AccountSummaryGrid = ({ summary }: { summary: UserAccountSummaryDTO }) => {
     const { t } = useTranslation('manageStudentsPaymentHistory');
-    const sym = summary.currency === 'USD' ? '$' : summary.currency === 'EUR' ? '€' : '₹';
-    const fmt = (v: number) =>
-        `${sym}${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    const sym = symbolFor(summary.currency);
+    const fmt = (v: number) => `${sym}${formatAmount(v, summary.currency, 0)}`;
     return (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
@@ -290,6 +325,9 @@ const InvoicesList = ({
     const [cancellingId, setCancellingId] = useState<string | null>(null);
     // Inline PDF preview — view an invoice without downloading it first.
     const [previewTarget, setPreviewTarget] = useState<InvoiceDTO | null>(null);
+    // Permanent delete — only offered when the role has the Display Settings permission.
+    const canDeletePayments = useCanDeletePayments();
+    const [deleteTarget, setDeleteTarget] = useState<PermanentDeleteTarget | null>(null);
     const totalPages = Math.ceil(invoices.length / INVOICES_PER_PAGE);
     const paged = invoices.slice(page * INVOICES_PER_PAGE, (page + 1) * INVOICES_PER_PAGE);
 
@@ -349,6 +387,19 @@ const InvoicesList = ({
                         // outright, so offering it on GENERATED/SENT would only ever 400.
                         const canCancel = isAdminManual && status === 'PENDING_PAYMENT';
                         const paymentLink = inv.payment_link;
+                        // Only a real invoice row: the list also carries synthetic per-installment
+                        // rows ("DUE-…", "PAID-…", ids "sfp:…") that are not invoices at all, and a
+                        // live-class invoice is tied to its registration.
+                        const isSyntheticRow =
+                            String(inv.id || '').startsWith('sfp:') ||
+                            /^(PAID|PARTIAL|DUE|OVERDUE|WAIVED)-/i.test(inv.invoice_number || '');
+                        // A paid invoice has a live payment behind it; the server refuses those, so the
+                        // button is not offered (delete or void the payment first).
+                        const canDeleteInvoice =
+                            canDeletePayments &&
+                            !isSyntheticRow &&
+                            inv.source !== 'LIVE_SESSION' &&
+                            status !== 'PAID';
                         return (
                             <li
                                 key={inv.id}
@@ -449,7 +500,7 @@ const InvoicesList = ({
                                     )}
                                 </div>
                                 {/* Action row: payment link + mark paid for actionable invoices */}
-                                {(paymentLink || (isAdminManual && isPending) || canCancel) && (
+                                {(paymentLink || (isAdminManual && isPending) || canCancel || canDeleteInvoice) && (
                                     <div className="flex flex-wrap items-center gap-2">
                                         {paymentLink && (
                                             <button
@@ -497,6 +548,22 @@ const InvoicesList = ({
                                             >
                                                 <XCircle className="size-3" />
                                                 {cancellingId === inv.id ? t('invoicesList.cancelling') : t('invoicesList.cancelAction')}
+                                            </button>
+                                        )}
+                                        {canDeleteInvoice && (
+                                            <button
+                                                onClick={() =>
+                                                    setDeleteTarget({
+                                                        kind: 'invoice',
+                                                        id: inv.id,
+                                                        label: inv.invoice_number || inv.id,
+                                                    })
+                                                }
+                                                className="inline-flex items-center gap-1 rounded border border-danger-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-50"
+                                                title={t('permanentDelete.action')}
+                                            >
+                                                <Trash className="size-3" />
+                                                {t('permanentDelete.action')}
                                             </button>
                                         )}
                                     </div>
@@ -571,6 +638,11 @@ const InvoicesList = ({
                 invoice={previewTarget}
                 onClose={() => setPreviewTarget(null)}
             />
+            <PermanentDeleteDialog
+                target={deleteTarget}
+                onOpenChange={(o) => !o && setDeleteTarget(null)}
+                onDeleted={() => onRefresh?.()}
+            />
         </>
     );
 };
@@ -596,6 +668,8 @@ function buildLedgerEventMeta(
         CREDIT_ADJUSTMENT: { label: t('transactionHistory.event.creditAdjustment'), cls: 'bg-amber-50 text-amber-700 border-amber-200',    isCredit: true  },
         DEBIT_PENALTY:     { label: t('transactionHistory.event.debitPenalty'),     cls: 'bg-orange-50 text-orange-700 border-orange-200', isCredit: false },
         DEBIT_REVERSAL:    { label: t('transactionHistory.event.debitReversal'),    cls: 'bg-gray-50 text-gray-600 border-gray-200',       isCredit: true, neutral: true },
+        // A payment recorded by mistake and voided: takes it back out of Total Paid.
+        CREDIT_REVERSAL:   { label: t('transactionHistory.event.creditReversal'),   cls: 'bg-gray-50 text-gray-600 border-gray-200',       isCredit: false, neutral: true },
     };
 }
 
@@ -610,6 +684,9 @@ const TransactionHistory = ({
     const ledgerEventMeta = buildLedgerEventMeta(t);
     const [page, setPage] = useState(0);
     const PAGE_SIZE = 10;
+    const [voidTarget, setVoidTarget] = useState<VoidPaymentTarget | null>(null);
+    const canDeletePayments = useCanDeletePayments();
+    const [deleteTarget, setDeleteTarget] = useState<PermanentDeleteTarget | null>(null);
 
     const { data, isLoading } = useQuery({
         queryKey: ['user-account-ledger', userId, instituteId, page],
@@ -646,16 +723,27 @@ const TransactionHistory = ({
                         isCredit: false,
                         neutral: false,
                     };
-                    const sym = entry.currency === 'USD' ? '$' : entry.currency === 'EUR' ? '€' : '₹';
-                    const amtStr = `${sym}${Number(entry.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    const sym = symbolFor(entry.currency);
+                    const amtStr = `${sym}${formatAmount(entry.amount, entry.currency)}`;
                     // Discounted accrual: backend sends the list price (gross_amount)
                     // alongside the net amount — render it struck through so the
                     // coupon's effect is visible on the transaction line itself.
                     const gross = Number(entry.gross_amount || 0);
                     const grossStr =
                         gross > Number(entry.amount || 0)
-                            ? `${sym}${gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                            ? `${sym}${formatAmount(gross, entry.currency)}`
                             : null;
+                    // The payment behind a credit line: voided ones are labelled, and an offline /
+                    // manual one can be voided from here (a gateway payment is refunded instead).
+                    const isPaymentLine = entry.event_type === 'CREDIT_PAYMENT' && !!entry.reference_id;
+                    const isVoidedPayment =
+                        isPaymentLine && (entry.payment_status || '').toUpperCase() === 'VOIDED';
+                    const canVoid =
+                        isPaymentLine && isVoidablePayment(entry.payment_vendor, entry.payment_status);
+                    const canDelete =
+                        canDeletePayments &&
+                        isPaymentLine &&
+                        isDeletablePayment(entry.payment_vendor, entry.payment_status);
                     return (
                         <li key={entry.id} className="flex items-start gap-2.5 px-3 py-2 hover:bg-neutral-50">
                             <span className="mt-0.5 shrink-0">
@@ -669,6 +757,11 @@ const TransactionHistory = ({
                                     <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-2xs font-medium ${meta.cls}`}>
                                         {meta.label}
                                     </span>
+                                    {isVoidedPayment && (
+                                        <span className="inline-flex items-center rounded border border-danger-200 bg-danger-50 px-1.5 py-0.5 text-2xs font-medium text-danger-700">
+                                            {t('voidPayment.voidedTag')}
+                                        </span>
+                                    )}
                                     {entry.remarks && (
                                         <span className="truncate text-2xs text-muted-foreground" title={entry.remarks}>
                                             {entry.remarks}
@@ -686,9 +779,41 @@ const TransactionHistory = ({
                                         {grossStr}
                                     </span>
                                 )}
-                                <span className={`text-sm font-semibold tabular-nums ${meta.neutral ? 'text-neutral-500' : meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
+                                <span className={`text-sm font-semibold tabular-nums ${isVoidedPayment ? 'text-neutral-400 line-through' : meta.neutral ? 'text-neutral-500' : meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
                                     {meta.isCredit ? '+' : '-'}{amtStr}
                                 </span>
+                                {canVoid && (
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setVoidTarget({
+                                                paymentLogId: entry.reference_id as string,
+                                                amount: entry.amount,
+                                                currency: entry.currency,
+                                            })
+                                        }
+                                        className="mt-1 block w-full text-right text-2xs font-medium text-danger-600 hover:text-danger-700"
+                                        title={t('voidPayment.actionTitle')}
+                                    >
+                                        {t('voidPayment.action')}
+                                    </button>
+                                )}
+                                {canDelete && (
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setDeleteTarget({
+                                                kind: 'payment',
+                                                id: entry.reference_id as string,
+                                                label: amtStr,
+                                            })
+                                        }
+                                        className="mt-1 block w-full text-right text-2xs font-medium text-danger-600 hover:text-danger-700"
+                                        title={t('permanentDelete.action')}
+                                    >
+                                        {t('permanentDelete.action')}
+                                    </button>
+                                )}
                             </span>
                         </li>
                     );
@@ -717,6 +842,8 @@ const TransactionHistory = ({
                     </div>
                 </div>
             )}
+            <VoidPaymentDialog target={voidTarget} onOpenChange={(o) => !o && setVoidTarget(null)} />
+            <PermanentDeleteDialog target={deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)} />
         </div>
     );
 };

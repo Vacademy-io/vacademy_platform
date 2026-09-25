@@ -36,6 +36,8 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "audience_forms_edit",  # WRITE: additive only — create a campaign, add fields, send a test lead
     "workflows",            # READ:  automations, their runs, the authoring catalog, real entity ids
     "workflows_edit",       # WRITE: draft-only — validates and saves DRAFT automations the admin publishes
+    "blog",                 # READ:  blog posts, their bodies, and which website pages show them
+    "blog_edit",            # WRITE: draft-only — creates/edits DRAFT posts the admin publishes in Manage Pages → Blog
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
@@ -47,8 +49,14 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "website_edit": "draft-only: every action saves a draft revision; discard_draft undoes it",
     "audience_forms_edit": "additive: creates campaigns / adds fields / sends a test lead; never removes",
     "workflows_edit": (
-        "draft-only: every save forces status=DRAFT, which never fires (triggers and the scheduler only "
-        "run ACTIVE workflows); update/discard refuse anything that is not a DRAFT"
+        "draft-only + additive: every workflow save forces status=DRAFT, which never fires (triggers and "
+        "the scheduler only run ACTIVE workflows); update/discard refuse anything that is not a DRAFT; the "
+        "template actions only CREATE new email/WhatsApp templates (unused until an automation references "
+        "them) and never edit or remove an existing one"
+    ),
+    "blog_edit": (
+        "draft-only: create forces status=DRAFT (never served publicly); update/discard refuse anything "
+        "that is not a DRAFT; request_publish only returns the dashboard link — publishing is an admin click"
     ),
 }
 
@@ -63,6 +71,8 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "audience_forms_edits": "Lead forms: edit",
     "workflows": "Automations: view",
     "workflows_edits": "Automations: draft",
+    "blog": "Blog: view",
+    "blog_edits": "Blog: draft posts",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -94,8 +104,18 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
     "workflows_edits": (
         "Let the connected AI app build automations by conversation — compose the workflow (trigger, "
         "queries, emails, WhatsApp, delays, conditions), check it against the builder's rules and save it "
-        "as a DRAFT. A draft never runs until you open it in the builder and publish it; published "
-        "automations cannot be changed or removed from here. Uses no AI credits."
+        "as a DRAFT, and create the new email and WhatsApp templates it needs (WhatsApp templates go to "
+        "Meta for approval). A draft never runs until you open it in the builder and publish it; published "
+        "automations and existing templates cannot be changed or removed from here. Uses no AI credits."
+    ),
+    "blog": (
+        "See the institute's blog posts — drafts and published articles, their bodies and SEO fields, and "
+        "which website pages show them."
+    ),
+    "blog_edits": (
+        "Let the connected AI app write blog posts by conversation and save them as DRAFTS in Manage Pages → "
+        "Blog. A draft is never shown on the website until you open it and press Publish; published posts "
+        "cannot be changed or removed from here. Uses no AI credits."
     ),
 }
 

@@ -383,5 +383,25 @@
             "email": "E-mail",
             "phone": "Numéro de téléphone"
         }
+    },
+    "blog": {
+        "readMore": "Lire la suite",
+        "backToList": "Tous les articles",
+        "empty": "Pas encore d’articles — revenez bientôt.",
+        "emptyGuidance": "Aucun article publié pour l’instant. Rédigez-en un dans Manage Pages → Blog et publiez-le pour le voir ici.",
+        "homePageHint": "Ce blog est sur la page d’accueil : les articles s’ouvrent avec ?post=… dans l’adresse. Placez-le sur sa propre page (par ex. /blog) pour donner à chaque article une URL propre.",
+        "categories": "Catégories",
+        "allCategories": "Tous",
+        "loadFailed": "Impossible de charger les articles pour le moment.",
+        "pagination": "Pages du blog",
+        "newer": "Plus récents",
+        "older": "Plus anciens",
+        "pageOf": "Page {{page}} sur {{total}}",
+        "minRead": "{{minutes}} min de lecture",
+        "notFoundTitle": "Article introuvable",
+        "notFoundBody": "Cet article a peut-être été dépublié ou déplacé.",
+        "tags": "Étiquettes",
+        "copyLink": "Copier le lien",
+        "linkCopied": "Lien copié"
     }
 }

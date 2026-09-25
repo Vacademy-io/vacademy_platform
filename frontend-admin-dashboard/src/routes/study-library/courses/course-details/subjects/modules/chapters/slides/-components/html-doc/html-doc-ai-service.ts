@@ -81,7 +81,15 @@ export async function generateHtmlDocument({
 }: GenerateHtmlParams): Promise<string> {
     const res = await authenticatedAxiosInstance.post<{ html: string; model: string }>(
         GENERATE_HTML_DOCUMENT_URL,
-        requestBody({ prompt, currentHtml, contentTypes, keyPoints, imageUrls, referenceFileIds, idempotencyKey }),
+        requestBody({
+            prompt,
+            currentHtml,
+            contentTypes,
+            keyPoints,
+            imageUrls,
+            referenceFileIds,
+            idempotencyKey,
+        }),
         // Grounding + a rich page can take a while; give it room.
         { timeout: 180000 }
     );
@@ -190,4 +198,74 @@ export async function generateHtmlDocumentStream(
     if (!html.trim())
         throw new Error(i18next.t('studyLibraryHtmlDocAiService:errors.emptyDocument'));
     return html;
+}
+
+// ---------------------------------------------------------------------------
+// Background jobs — generation keeps running on the server if the author
+// leaves the page or closes the tab; the editor polls for progress and, when
+// they come back to the slide, re-attaches and applies the finished page.
+// ---------------------------------------------------------------------------
+
+export type HtmlDocJobPhase = 'reading_pdf' | 'planning' | 'writing' | 'images';
+
+export type HtmlDocJob = {
+    task_id: string;
+    slide_id: string;
+    /** INTERRUPTED = the server stopped heartbeating (deploy/restart) — offer a retry. */
+    status: 'PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
+    progress: {
+        phase?: HtmlDocJobPhase;
+        section?: string;
+        content_chars?: number;
+        images_done?: number;
+        images_total?: number;
+        is_edit?: boolean;
+        has_pdf?: boolean;
+        /** Parallel mode: sections are written at the same time. */
+        sections_total?: number | null;
+        sections_done?: number | null;
+        /** Rough final size (edits: the current page's length) for the progress bar. */
+        expected_chars?: number | null;
+    };
+    /** Tail of the page after `since` while running; the full page when COMPLETED. */
+    html: string;
+    html_length: number;
+    error: string;
+    is_edit: boolean;
+    elapsed_seconds: number;
+};
+
+const JOBS_URL = `${GENERATE_HTML_DOCUMENT_URL.replace(/\/generate$/, '')}/jobs`;
+
+export async function startHtmlDocJob(
+    params: GenerateHtmlParams & { slideId: string }
+): Promise<HtmlDocJob> {
+    const res = await authenticatedAxiosInstance.post<HtmlDocJob>(JOBS_URL, {
+        ...requestBody(params),
+        slide_id: params.slideId,
+    });
+    return res.data;
+}
+
+export async function pollHtmlDocJob(taskId: string, since: number): Promise<HtmlDocJob> {
+    const res = await authenticatedAxiosInstance.get<HtmlDocJob>(`${JOBS_URL}/${taskId}`, {
+        params: { since },
+    });
+    return res.data;
+}
+
+export async function getActiveHtmlDocJob(slideId: string): Promise<HtmlDocJob | null> {
+    const res = await authenticatedAxiosInstance.get<{ job: HtmlDocJob | null }>(
+        `${JOBS_URL}/active`,
+        { params: { slide_id: slideId } }
+    );
+    return res.data?.job ?? null;
+}
+
+export async function cancelHtmlDocJob(taskId: string): Promise<void> {
+    await authenticatedAxiosInstance.post(`${JOBS_URL}/${taskId}/cancel`);
+}
+
+export async function ackHtmlDocJob(taskId: string): Promise<void> {
+    await authenticatedAxiosInstance.post(`${JOBS_URL}/${taskId}/ack`);
 }

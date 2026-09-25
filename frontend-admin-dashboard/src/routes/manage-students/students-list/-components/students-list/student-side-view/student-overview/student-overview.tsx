@@ -29,6 +29,7 @@ import { ContactCallButton } from '@/components/shared/telephony/contact-call-bu
 import { EditStudentDetails } from './EditStudentDetails';
 import { EditLeadDetails } from './EditLeadDetails';
 import { StudentAttribution } from '../student-attribution/student-attribution';
+import { OverviewRemarks } from './overview-remarks';
 
 /**
  * Overview tab — intentionally simple: a clean stack of label/value section
@@ -259,6 +260,16 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                     <EditStudentDetails />
                 )}
             </div>
+
+            {/* Remarks + Call — the academic-staff loop (call the learner, note the
+                outcome) lives at the top so it is reachable without scrolling past
+                the profile sections. */}
+            <OverviewRemarks
+                userId={userId}
+                userName={selectedStudent?.full_name}
+                phone={selectedStudent?.mobile_number || studentDetails?.mobile_number}
+                leadResponseId={leadResponseId}
+            />
 
             {/* Detail sections — clean label/value cards (General Details,
                 Contact Information, Location Details, Parent/Guardian's Details, …).

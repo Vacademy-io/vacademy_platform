@@ -7,6 +7,8 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.audience.dto.*;
@@ -93,6 +95,9 @@ public class AudienceService {
     private AudienceRepository audienceRepository;
 
     @Autowired
+    private LeadTierService leadTierService;
+
+    @Autowired
     private AudienceRoleAccessService audienceRoleAccessService;
 
     @Autowired
@@ -133,6 +138,9 @@ public class AudienceService {
 
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
+
+    @Autowired
+    private LeadMoveWorkflowAsyncHelper leadMoveWorkflowAsyncHelper;
 
 
     /** Resolves caller + user-to-user descendants in the leads team. */
@@ -1508,8 +1516,9 @@ public class AudienceService {
      * form webhooks incl. Facebook/Meta) calls, so a new lead channel only has to invoke this
      * one method to get an owner. A manually supplied counsellor wins; otherwise we fall back
      * to the campaign's counselor pool (ROUND_ROBIN / TIME_BASED). Audiences not in any pool,
-     * or MANUAL pools, leave the lead unassigned. All failures are swallowed — assignment must
-     * never break lead intake.
+     * MANUAL pools, or lists set to on-demand assignment ({@code assign_on_intake=false}, the
+     * AI-first case where the bot must call before anyone owns the lead) leave the lead
+     * unassigned. All failures are swallowed — assignment must never break lead intake.
      *
      * NOTE: enquiry / walk-in leads use a SEPARATE assignment system ({@code linkCounsellorToEnquiry}
      * → LinkedUsers + enquiry flag) and must NOT call this, or they'd be double-assigned.
@@ -1536,7 +1545,7 @@ public class AudienceService {
         // Pool auto-assignment. The name lookup mirrors the manual-assign UI so the Counsellor
         // column renders a name (an id without a name shows up as Unassigned).
         try {
-            counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
+            counselorAssignmentService.assignCounselorOnIntake(savedResponse.getAudienceId())
                     .ifPresent(counselorUserId -> {
                         String counselorName = null;
                         try {
@@ -1961,7 +1970,7 @@ public class AudienceService {
                     return LeadScoreDTO.builder()
                             .audienceResponseId(responseId)
                             .rawScore(score.getRawScore())
-                            .tier(score.getTier())
+                            .tier(leadTierService.deriveTier(score.getInstituteId(), score.getRawScore()))
                             .percentileRank(score.getPercentileRank())
                             .scoringFactors(factors)
                             .lastCalculatedAt(score.getLastCalculatedAt())
@@ -1971,7 +1980,13 @@ public class AudienceService {
                 .orElse(LeadScoreDTO.builder()
                         .audienceResponseId(responseId)
                         .rawScore(0)
-                        .tier("COLD")
+                        .tier(leadTierService.deriveTier(
+                                audienceResponseRepository.findById(responseId)
+                                        .map(AudienceResponse::getAudienceId)
+                                        .flatMap(audienceRepository::findById)
+                                        .map(Audience::getInstituteId)
+                                        .orElse(null),
+                                0))
                         .build());
     }
 
@@ -3407,7 +3422,9 @@ public class AudienceService {
                     .parentEmail(response.getParentEmail())
                     .parentMobile(response.getParentMobile())
                     .leadScore(score != null ? score.getRawScore() : null)
-                    .leadTier(score != null ? score.getTier() : null)
+                    .leadTier(score != null
+                            ? leadTierService.deriveTier(instituteId, score.getRawScore())
+                            : null)
                     .percentileRank(score != null && score.getPercentileRank() != null
                             ? score.getPercentileRank().doubleValue()
                             : null)
@@ -3847,10 +3864,119 @@ public class AudienceService {
         logger.info("Migrated {} lead(s) into audience {} (skipped {}, anchor={}) by user {}",
                 migrated, targetAudienceId, skipped.size(), anchorMode, actor.getUserId());
 
+        // Run the target list's event-driven automations on the moved leads, exactly as if each
+        // had just been submitted there. "Start the new list's automation from day one"
+        // (RESET_TO_TARGET) means the whole of it: the scheduled drip re-anchored above AND the
+        // Lead-Submitted workflows (AI call, instant WhatsApp/email) — an admin picking it is
+        // asking for the lead to be treated as new, and the dialog promises exactly that. The
+        // explicit flag is kept for API callers who want the event workflows without touching
+        // the drip anchor. PRESERVE + no flag = pure bookkeeping, nothing fires. Contexts are
+        // built now (inside the transaction, reads only) but fired only after commit — a
+        // workflow that dials or messages must see the lead already in its new list, and a
+        // rollback must fire nothing.
+        boolean runAutomations = Boolean.TRUE.equals(request.getRunDestinationAutomations())
+                || anchorMode == MigrateLeadsRequestDTO.WorkflowAnchorMode.RESET_TO_TARGET;
+        if (runAutomations && !movable.isEmpty()) {
+            scheduleDestinationAutomations(movable, targetAudience, instituteId);
+        }
+
         return MigrateLeadsResponseDTO.builder()
                 .migrated(migrated)
                 .skipped(skipped)
                 .build();
+    }
+
+    /**
+     * Build one AUDIENCE_LEAD_SUBMISSION context per moved lead and hand the batch to
+     * {@link LeadMoveWorkflowAsyncHelper} once the move commits. Skipped silently when the
+     * target list has no ACTIVE lead-submission trigger — nothing would run, so nothing to build.
+     *
+     * <p>The context mirrors {@link #submitLead}'s so the same workflow nodes work unchanged
+     * (CALL_AI reads responseId / userId / phone; SEND_WHATSAPP reads user + customFields).
+     * Two deliberate differences: {@code leadSource = "LEAD_MOVED"} (+ {@code fromAudienceId})
+     * so a workflow can branch on it, and the respondent/admin email request lists are EMPTY —
+     * the person did not just fill a form, so a "thank you for submitting" email would be wrong.
+     */
+    private void scheduleDestinationAutomations(List<AudienceResponse> moved, Audience targetAudience,
+            String instituteId) {
+        String targetAudienceId = targetAudience.getId();
+        boolean triggerExists = workflowTriggerService
+                .findByInstituteIdEventNameAndEventId(instituteId,
+                        WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(), targetAudienceId)
+                .isPresent();
+        if (!triggerExists) {
+            logger.info("Moved-lead automations requested but audience {} has no active lead-submission trigger — nothing to run",
+                    targetAudienceId);
+            return;
+        }
+
+        // One auth round-trip for every moved lead's user, not one per lead.
+        List<String> userIds = moved.stream()
+                .map(r -> r.getUserId() != null ? r.getUserId() : r.getStudentUserId())
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        Map<String, UserDTO> usersById = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            try {
+                for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(userIds)) {
+                    if (u != null && u.getId() != null) usersById.put(u.getId(), u);
+                }
+            } catch (Exception e) {
+                logger.warn("Could not fetch users for moved-lead automations: {}", e.getMessage());
+            }
+        }
+
+        AudienceDTO audienceDTO = AudienceDTO.builder()
+                .id(targetAudience.getId())
+                .campaignName(targetAudience.getCampaignName())
+                .instituteId(targetAudience.getInstituteId())
+                .status(targetAudience.getStatus())
+                .toNotify(targetAudience.getToNotify())
+                .sendRespondentEmail(targetAudience.getSendRespondentEmail())
+                .build();
+        String instituteName = instituteRepository.findById(instituteId)
+                .map(Institute::getInstituteName).orElse("");
+        String submissionTime = java.time.ZonedDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z"));
+
+        List<Map<String, Object>> contexts = new ArrayList<>();
+        for (AudienceResponse response : moved) {
+            String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+            Map<String, Object> ctx = new HashMap<>();
+            ctx.put("user", usersById.get(leadUserId));
+            ctx.put("audience", audienceDTO);
+            ctx.put("audienceId", targetAudienceId);
+            ctx.put("instituteId", instituteId);
+            ctx.put("instituteName", instituteName);
+            ctx.put("customFields", buildCustomFieldMapForEmail(response.getId()));
+            ctx.put("submissionTime", submissionTime);
+            ctx.put("responseId", response.getId());
+            ctx.put("userId", leadUserId);
+            ctx.put("leadUserId", leadUserId);
+            ctx.put("phone", response.getParentMobile());
+            ctx.put("parentMobile", response.getParentMobile());
+            ctx.put("campaignName", targetAudience.getCampaignName());
+            ctx.put("sendRespondentEmail", false);
+            ctx.put("respondentEmailRequests", new ArrayList<>());
+            ctx.put("adminEmailRequests", new ArrayList<>());
+            ctx.put("leadSource", "LEAD_MOVED");
+            ctx.put("fromAudienceId", response.getOriginalAudienceId());
+            contexts.add(ctx);
+        }
+
+        Runnable fire = () -> leadMoveWorkflowAsyncHelper
+                .fireDestinationLeadSubmission(targetAudienceId, instituteId, contexts);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    fire.run();
+                }
+            });
+        } else {
+            fire.run();
+        }
     }
 
     private MigrateLeadsResponseDTO.SkippedLead skip(AudienceResponse response,
@@ -5229,7 +5355,9 @@ public class AudienceService {
                             .primaryResponseId(audienceResponse.getPrimaryResponseId())
                             // Lead score
                             .leadScore(leadScore != null ? leadScore.getRawScore() : null)
-                            .leadTier(leadScore != null ? leadScore.getTier() : null)
+                            .leadTier(leadScore != null
+                                    ? leadTierService.deriveTier(leadScore.getInstituteId(), leadScore.getRawScore())
+                                    : null)
                             .percentileRank(leadScore != null && leadScore.getPercentileRank() != null
                                     ? leadScore.getPercentileRank().doubleValue()
                                     : null)
@@ -5242,16 +5370,15 @@ public class AudienceService {
         String leadTier = filterDTO.getLeadTier();
         List<EnquiryWithResponseDTO> filteredDtos = dtos;
         if (leadTier != null && !leadTier.isBlank()) {
+            // Compare against the tier already resolved on the DTO (institute catalog aware)
+            // instead of re-deriving with fixed thresholds. Accepts a comma-separated list.
+            Set<String> wanted = Arrays.stream(leadTier.split(","))
+                    .map(String::trim).filter(v -> !v.isEmpty()).map(String::toUpperCase)
+                    .collect(Collectors.toSet());
             filteredDtos = dtos.stream().filter(dto -> {
-                Integer score = dto.getLeadScore();
-                if (score == null)
+                if (dto.getLeadScore() == null || dto.getLeadTier() == null)
                     return false;
-                return switch (leadTier.toUpperCase()) {
-                    case "HOT" -> score >= 80;
-                    case "WARM" -> score >= 50 && score < 80;
-                    case "COLD" -> score < 50;
-                    default -> true;
-                };
+                return wanted.contains(dto.getLeadTier().toUpperCase());
             }).collect(Collectors.toList());
         }
 

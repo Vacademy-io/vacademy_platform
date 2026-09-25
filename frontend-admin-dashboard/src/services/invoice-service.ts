@@ -7,6 +7,7 @@ import {
     POST_ADMIN_CREATE_INVOICE,
     POST_ADMIN_PREVIEW_INVOICE,
     POST_REJECT_INVOICE,
+    DELETE_INVOICE,
     GET_USER_ACCOUNT_SUMMARY,
     GET_USER_ACCOUNT_LEDGER,
     POST_MARK_INVOICE_PAID_MANUAL,
@@ -68,6 +69,8 @@ export interface UserAccountLedgerEntryDTO {
     // DEBIT_ACCRUAL | CREDIT_PAYMENT | CREDIT_WAIVER | CREDIT_ADJUSTMENT | DEBIT_PENALTY
     // | DEBIT_REVERSAL (obligation voided before any money moved — cancels the accrual out
     //   of total_accrued rather than counting as money received)
+    // | CREDIT_REVERSAL (a payment recorded by mistake was voided — takes it back out of
+    //   total_paid)
     event_type: string;
     amount: number;
     currency: string;
@@ -82,6 +85,10 @@ export interface UserAccountLedgerEntryDTO {
     gross_amount?: number | null;
     /** Discounted accruals only: the coupon/discount applied. */
     discount_amount?: number | null;
+    /** CREDIT_PAYMENT rows: status of the payment behind the credit (VOIDED once voided). */
+    payment_status?: string | null;
+    /** CREDIT_PAYMENT rows: how it was paid — MANUAL / OFFLINE ones can be voided. */
+    payment_vendor?: string | null;
 }
 
 export interface LedgerPageResponse {
@@ -281,6 +288,22 @@ export async function rejectInvoice(
     const response = await authenticatedAxiosInstance.post<InvoiceDTO>(
         POST_REJECT_INVOICE(invoiceId),
         reason ? { reason } : {},
+        { params: { instituteId } }
+    );
+    return response.data;
+}
+
+/**
+ * PERMANENTLY deletes an invoice. Only offered when the viewer's role has Display Settings →
+ * Learner Management → "delete payments & invoices" on (off by default); the server checks the
+ * same setting and refuses otherwise, and refuses an invoice with a live payment against it.
+ */
+export async function deleteInvoicePermanently(
+    invoiceId: string,
+    instituteId: string
+): Promise<{ invoice_id: string; invoice_number: string }> {
+    const response = await authenticatedAxiosInstance.delete<{ invoice_id: string; invoice_number: string }>(
+        DELETE_INVOICE(invoiceId),
         { params: { instituteId } }
     );
     return response.data;

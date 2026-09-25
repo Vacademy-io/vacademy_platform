@@ -166,7 +166,7 @@ export function useNonAdminSlides(chapterId: string) {
                         toast.error(t('toasts.audioDataMissing'));
                     }
                 } else {
-                    // Handle DOCUMENT slides (DOC, PDF, PRESENTATION, CODE, JUPYTER, SCRATCH)
+                    // Handle DOCUMENT slides (DOC, PDF, PPT_ANIM, PRESENTATION, CODE, JUPYTER, SCRATCH)
                     let currentData: string;
                     let totalPages: number;
 
@@ -174,6 +174,20 @@ export function useNonAdminSlides(chapterId: string) {
                     if (docType === 'PRESENTATION') {
                         // For presentations, data is a file ID, not HTML content
                         currentData = slide.document_slide?.data || '';
+                        totalPages = slide.document_slide?.total_pages || 1;
+                    } else if (docType === 'PDF' || docType === 'PPT_ANIM') {
+                        // File-backed slides: data is a PDF file id / deck base URL. The
+                        // editor is empty on these, so `currentEditorContent` is the
+                        // empty-document shell — using it here published that shell over
+                        // the file reference and broke the slide for admins and learners.
+                        currentData =
+                            slide.document_slide?.data ||
+                            slide.document_slide?.published_data ||
+                            '';
+                        if (!currentData) {
+                            toast.error(t('toasts.saveFailed'));
+                            return false;
+                        }
                         totalPages = slide.document_slide?.total_pages || 1;
                     } else if (
                         docType === 'CODE' ||

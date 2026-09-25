@@ -63,6 +63,25 @@ SESSION_MAX_SECONDS = 90 * 60
 # Idle = no learner frame other than keep-alive pings. Watching a video or
 # reading a PDF is legitimately silent for much longer.
 IDLE_SECONDS = 5 * 60
+
+# A client that can show the teacher's face waits to hear her until the face
+# is on screen and audio is unlocked: it sends `hold: true` in its auth frame
+# and `{"type": "begin"}` when it is ready. Older bundles (OTA, electron) send
+# neither and get the opening at once, as before. The cap keeps a broken
+# client from holding a lesson forever.
+BEGIN_WAIT_SECONDS = 8.0
+
+
+# Messages that drive a lesson. Before the opening they cannot mean anything
+# except "this device is ready": they open the lesson and are dropped.
+LESSON_MESSAGES = frozenset({"continue", "answer", "ask", "control", "audio_chunk", "audio_end",
+                             "audio_discard", "interrupt", "next_slide"})
+
+
+def client_holds_opening(auth_frame: dict) -> bool:
+    """Does this client want the opening held until it says `begin`?"""
+    return isinstance(auth_frame, dict) and auth_frame.get("hold") is True
+
 MEDIA_IDLE_SECONDS = 30 * 60
 # Every learner utterance is one model call; bound what a runaway client (or
 # a script with the learner's token) can spend.
@@ -181,6 +200,7 @@ def learner_chapter_slides(
 @router.post("/v1/sessions", summary="Start (or resume) a tutor session")
 def start_session(
     payload: StartSessionRequest,
+    background: BackgroundTasks,
     caller: Caller = Depends(_caller),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
@@ -201,6 +221,11 @@ def start_session(
         raise HTTPException(status_code=400, detail=str(e))
     lesson: sm.LessonPlan = boot["lesson"]
     settings: TutorSettings = boot["settings"]
+    # A lesson with a face: mint the Motion Server token now, in the
+    # background, so the browser's own request is a cache hit (1-9 s saved).
+    if (settings.avatar_provider == "spatius" and settings.avatar_id and spatius_service.available()
+            and payload.mode == "VOICE"):
+        background.add_task(spatius_service.warm_session_token)
     return {
         "tutor_session_id": boot["tutor_session_id"],
         "slide_id": lesson.slide_id,
@@ -270,6 +295,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
     turn_times: Deque[float] = deque()
     turns = 0
     meter_task: Optional[asyncio.Task] = None
+    opening_task: Optional[asyncio.Task] = None
     _summary_args = None       # set once the lesson is booted (see below)
 
     async def _send(payload: dict) -> None:
@@ -301,6 +327,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         if not claims or str(claims.get("user") or "") != str(user_id):
             await _fatal("Authentication required", 4401)
             return
+        hold_opening = client_holds_opening(first)
+        begin_event = asyncio.Event()
 
         # ── 2. load lesson, settings, learner state (one short session) ──
         ctx = svc.boot_context(tutor_session_id)
@@ -1098,9 +1126,26 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                      "slide_title": lesson.slide_title,
                      "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in lesson.topics]})
         reached_ready = True
-        if mode == "voice":
-            meter_task = asyncio.create_task(_meter())
-        _spawn(_open(first=True))
+
+        async def _opening() -> None:
+            """Wait for the client's `begin` (held clients only), then open.
+            The session clock and the meter start here: nobody pays for, or
+            loses demo seconds to, a face that is still downloading."""
+            nonlocal started_at, last_activity, meter_task
+            if hold_opening:
+                try:
+                    await asyncio.wait_for(begin_event.wait(), timeout=BEGIN_WAIT_SECONDS)
+                except asyncio.TimeoutError:
+                    logger.info("tutor socket %s: client never sent begin; opening anyway", tutor_session_id)
+            started_at = time.time()
+            last_activity = started_at
+            if mode == "voice":
+                meter_task = asyncio.create_task(_meter())
+            # The opening itself is the current task so a barge-in can still cut
+            # the greeting; the wait above is not, so a stray tap cannot cancel it.
+            _spawn(_open(first=True))
+
+        opening_task = asyncio.create_task(_opening())
 
         # ── 4. loop ──
         while True:
@@ -1148,6 +1193,12 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             last_activity = now
             if t == "auth":
                 continue
+            elif t == "begin":
+                begin_event.set()
+            elif not opened_once and t in LESSON_MESSAGES:
+                # A tap before the teacher has spoken: the device is ready, so
+                # open now; the tap itself raced the opening and is dropped.
+                begin_event.set()
             elif t == "config":
                 if isinstance(msg.get("avatar"), bool):
                     avatar_active = msg["avatar"]
@@ -1236,6 +1287,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
     finally:
         if current_task and not current_task.done():
             current_task.cancel()
+        if opening_task is not None and not opening_task.done():
+            opening_task.cancel()
         if meter_task is not None and not meter_task.done():
             meter_task.cancel()
         try:

@@ -68,6 +68,26 @@ export interface EngagementItem {
   correctOptionId?: string | null;
   explanation?: string | null;
   selectedOptionId?: string | null;
+
+  // History entries only.
+  isLate?: boolean | null;
+  completedAt?: string | null;
+  historyStatus?: EngagementHistoryStatus | null;
+}
+
+export type EngagementHistoryStatus = "DONE" | "MISSED" | "CATCH_UP";
+
+/** Past occurrences, newest first. Today's open tasks are not here. */
+export interface EngagementHistory {
+  from: string;
+  to: string;
+  items: EngagementItem[];
+  done: number;
+  /** Closed and no longer doable. */
+  missed: number;
+  /** Missed but still inside the catch-up window. */
+  catchUp: number;
+  pointsEarned: number;
 }
 
 export interface EngagementFeed {
@@ -187,6 +207,24 @@ export async function fetchEngagementFeed(): Promise<EngagementFeed> {
     console.error("[engagement] feed fetch failed:", error);
     return EMPTY_FEED;
   }
+}
+
+/** Past tasks over the last `days` days. Throws; the page shows its own error state. */
+export async function fetchEngagementHistory(days = 30): Promise<EngagementHistory> {
+  const instituteId = await getInstituteId();
+  const { data } = await authenticatedAxiosInstance.get(
+    `${BASE_URL}/admin-core-service/engagement/learner/v1/history`,
+    { params: { instituteId, days } }
+  );
+  return {
+    from: String(data?.from ?? ""),
+    to: String(data?.to ?? ""),
+    items: Array.isArray(data?.items) ? data.items : [],
+    done: Number(data?.done ?? 0),
+    missed: Number(data?.missed ?? 0),
+    catchUp: Number(data?.catchUp ?? 0),
+    pointsEarned: Number(data?.pointsEarned ?? 0),
+  };
 }
 
 /** Full payload for one task. Throws so the UI can show the server's reason. */

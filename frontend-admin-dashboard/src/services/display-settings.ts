@@ -290,7 +290,12 @@ function mergeArrayById<T extends { id: string }>(
     return merged;
 }
 
-function mergeDisplayWithDefaults(
+/**
+ * Exported for tests only. Every caller in this module uses it directly; the export exists so the
+ * "a saved blob that pre-dates a flag still gets the role's default" behaviour can be pinned —
+ * that is where a new setting silently comes out wrong for institutes who already saved settings.
+ */
+export function mergeDisplayWithDefaults(
     incoming: Partial<DisplaySettingsData> | null | undefined,
     role: RoleKey
 ): DisplaySettingsData {
@@ -773,6 +778,7 @@ function mergeDisplayWithDefaults(
         workflowsTab: false,
         parentTab: false,
         onboardingTab: false,
+        allowResendMessage: true,
     };
     merged.studentSideView = {
         overviewTab: incoming?.studentSideView?.overviewTab ?? defStudentSideView.overviewTab,
@@ -803,6 +809,12 @@ function mergeDisplayWithDefaults(
         parentTab: incoming?.studentSideView?.parentTab ?? defStudentSideView.parentTab ?? false,
         onboardingTab:
             incoming?.studentSideView?.onboardingTab ?? defStudentSideView.onboardingTab ?? false,
+        // Resend on the Notifications tab. The role's own default decides what a
+        // blob that pre-dates this flag gets (on for admin, off for the rest) —
+        // a literal here would hand every role the same answer.
+        allowResendMessage:
+            incoming?.studentSideView?.allowResendMessage ??
+            defStudentSideView.allowResendMessage,
         // Preserve user-supplied ordering and default-tab choice; fall back to
         // the role's defaults so older saved settings (which lacked these
         // fields) still render in a sensible order.
@@ -830,6 +842,15 @@ function mergeDisplayWithDefaults(
         showApprovalToggle:
             incoming?.learnerManagement?.showApprovalToggle ??
             defLearnerManagement.showApprovalToggle,
+        // Was missing from this list, so a saved value was dropped on every read: the Display
+        // Settings toggle could never grant Edit Credentials to a teacher or custom role, and an
+        // admin could not take it away. Role default when never set (ON admin, OFF otherwise).
+        allowEditCredentials:
+            incoming?.learnerManagement?.allowEditCredentials ??
+            defLearnerManagement.allowEditCredentials,
+        // Explicit pass-through, or the flag is dropped on read and can never be switched on.
+        // Anything but an explicit `true` is OFF.
+        allowDeletePayments: incoming?.learnerManagement?.allowDeletePayments === true,
     };
 
     // Learner Management header action buttons (hide Enroll/Invite per role +

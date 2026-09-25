@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getBackendErrorMessage } from "@/utils/error-message";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
@@ -18,6 +19,8 @@ import {
 import { UploadFileInS3 } from "@/services/upload_file";
 import { getUserId } from "@/constants/getUserId";
 import { Textarea } from "@/components/ui/textarea";
+import { useCorporateTheme } from "@/hooks/use-corporate-theme";
+import { CheckCircle, Lock, XCircle } from "@phosphor-icons/react";
 import { visualFor } from "./engagement-visuals";
 
 /**
@@ -26,6 +29,8 @@ import { visualFor } from "./engagement-visuals";
  * and scroll depth and refuses anything short.
  */
 const MIN_READ_MS = 15_000;
+/** When a game that never reports completion may be claimed by hand. Must exceed the server's minGameSeconds (20 s default). */
+const GAME_HATCH_MS = 60_000;
 
 /** Teacher rich text is sanitized before it touches the learner app's DOM. */
 function safeHtml(html: string): string {
@@ -63,6 +68,10 @@ export function EngagementItemDialog({
 
   const openedAtRef = useRef<number>(Date.now());
   const gameScoreRef = useRef<number | null>(null);
+  /** The game posted vacademy:complete — the only honest "played it" signal. */
+  const [gameFinished, setGameFinished] = useState(false);
+  /** Escape hatch for teacher games that never report completion. */
+  const [gameHatchOpen, setGameHatchOpen] = useState(false);
   /** Sentinel after the content; seeing it means the learner reached the end. */
   const endRef = useRef<HTMLDivElement | null>(null);
   const [reachedEnd, setReachedEnd] = useState(false);
@@ -82,6 +91,8 @@ export function EngagementItemDialog({
     setResult(null);
     setSelectedOptionId(null);
     gameScoreRef.current = null;
+    setGameFinished(false);
+    setGameHatchOpen(false);
     openedAtRef.current = Date.now();
     setReachedEnd(false);
     setDwellMet(false);
@@ -96,7 +107,7 @@ export function EngagementItemDialog({
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(e?.response?.data?.message ?? t("dialog.openError"));
+          setError(getBackendErrorMessage(e, t("dialog.openError")));
         }
       })
       .finally(() => {
@@ -121,6 +132,15 @@ export function EngagementItemDialog({
       }
     }, 250);
     return () => window.clearInterval(tick);
+  }, [open, item]);
+
+  // A game that never posts vacademy:complete would otherwise be impossible to
+  // finish. After a minute (well past the server's minimum play time) let the
+  // learner claim completion points by hand.
+  useEffect(() => {
+    if (!open || item?.itemType !== "GAME") return;
+    const timer = window.setTimeout(() => setGameHatchOpen(true), GAME_HATCH_MS);
+    return () => window.clearTimeout(timer);
   }, [open, item]);
 
   /**
@@ -148,6 +168,10 @@ export function EngagementItemDialog({
   const active = detail ?? item;
   const payload = useMemo(() => (active ? parseQuestionPayload(active) : null), [active]);
   const visual = active ? visualFor(active.itemType) : null;
+  const VisualIcon = visual?.icon;
+  // Corporate: a plain white header with a hairline divider and a line icon,
+  // instead of the per-type colour gradient with an emoji.
+  const isCorporate = useCorporateTheme();
 
   const format = active ? questionFormatOf(active) : "MCQ";
   const isQuestionItem =
@@ -163,7 +187,8 @@ export function EngagementItemDialog({
     [active, isCourseSlide]
   );
   const isReading = active?.itemType === "READING_HTML" || active?.itemType === "VISUAL_NOTE";
-  const isHtml = isReading || active?.itemType === "GAME";
+  const isGame = active?.itemType === "GAME";
+  const isHtml = isReading || isGame;
   const readingGateMet = reachedEnd && dwellMet;
 
   const handleSubmit = useCallback(async () => {
@@ -184,10 +209,9 @@ export function EngagementItemDialog({
       if (response.pointsAwarded > 0) celebrateCompletion();
       onCompleted(response);
     } catch (e: unknown) {
-      const message =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        t("dialog.submitError");
-      setError(message);
+      // The server's reason lives in ErrorInfo.ex ("Finish reading before…",
+      // "Play the game first"); reading only .message dropped every one of them.
+      setError(getBackendErrorMessage(e, t("dialog.submitError")));
     } finally {
       setSubmitting(false);
     }
@@ -199,6 +223,7 @@ export function EngagementItemDialog({
     if (isText) return textAnswer.trim().length > 0;
     if (isUpload) return fileIds.length > 0 && !uploading;
     if (isReading) return readingGateMet;
+    if (isGame) return gameFinished || gameHatchOpen;
     return true;
   })();
 
@@ -210,6 +235,7 @@ export function EngagementItemDialog({
     if (isReading && !reachedEnd) return t("dialog.scrollToEnd");
     if (isReading && !dwellMet) return t("dialog.almostThere");
     if (isCourseSlide) return t("dialog.finishedLesson");
+    if (isGame && !gameFinished && !gameHatchOpen) return t("dialog.finishGame");
     return t("dialog.markComplete");
   })();
 
@@ -222,17 +248,17 @@ export function EngagementItemDialog({
       <DialogContent className="max-h-screen-85 w-full max-w-3xl overflow-y-auto p-0">
         {/* Type-coloured header */}
         <DialogHeader
-          className={`sticky top-0 z-10 space-y-0 bg-gradient-to-r ${visual?.gradient ?? "from-neutral-500 to-neutral-400"} px-5 py-4`}
+          className={`sticky top-0 z-10 space-y-0 bg-gradient-to-r ${visual?.gradient ?? "from-neutral-500 to-neutral-400"} px-5 py-4 [.ui-corporate_&]:bg-none [.ui-corporate_&]:bg-card [.ui-corporate_&]:border-b [.ui-corporate_&]:border-border`}
         >
-          <DialogTitle className="flex items-center gap-2 text-start text-white">
-            <span aria-hidden className="text-xl">
-              {visual?.glyph}
+          <DialogTitle className="flex items-center gap-2 text-start text-white [.ui-corporate_&]:text-foreground">
+            <span aria-hidden className="text-xl [.ui-corporate_&]:flex [.ui-corporate_&]:size-9 [.ui-corporate_&]:items-center [.ui-corporate_&]:justify-center [.ui-corporate_&]:rounded-lg [.ui-corporate_&]:border [.ui-corporate_&]:border-border [.ui-corporate_&]:text-muted-foreground">
+              {isCorporate && VisualIcon ? <VisualIcon size={18} /> : visual?.glyph}
             </span>
             <span className="min-w-0">
-              <span className="block text-xs font-semibold uppercase tracking-wide text-white/80">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-white/80 [.ui-corporate_&]:normal-case [.ui-corporate_&]:tracking-normal [.ui-corporate_&]:font-medium [.ui-corporate_&]:text-muted-foreground">
                 {visual ? t(`types.${visual.label}`) : ""}
               </span>
-              <span className="block truncate text-lg font-bold">{active?.title}</span>
+              <span className="block truncate text-lg font-bold [.ui-corporate_&]:text-base [.ui-corporate_&]:font-semibold">{active?.title}</span>
             </span>
           </DialogTitle>
         </DialogHeader>
@@ -270,6 +296,7 @@ export function EngagementItemDialog({
                       if (typeof slideResult.score === "number") {
                         gameScoreRef.current = slideResult.score;
                       }
+                      setGameFinished(true);
                       setReachedEnd(true);
                     }}
                   />
@@ -487,17 +514,30 @@ export function EngagementItemDialog({
               )}
 
               {result && (
-                <div className="animate-in fade-in zoom-in-95 space-y-2 rounded-xl border border-neutral-200 bg-gradient-to-br from-primary-50 to-white p-4 text-center duration-300 dark:border-neutral-800 dark:from-primary-950/30 dark:to-neutral-900">
-                  <p className="text-3xl">
-                    {result.resultPending
-                      ? "🔒"
-                      : result.isCorrect === true
-                        ? "🎉"
-                        : result.isCorrect === false
-                          ? "💪"
-                          : "✅"}
-                  </p>
-                  <p className="text-lg font-bold text-neutral-900 dark:text-neutral-50">
+                <div className="animate-in fade-in zoom-in-95 space-y-2 rounded-xl border border-neutral-200 bg-gradient-to-br from-primary-50 to-white p-4 text-center duration-300 dark:border-neutral-800 dark:from-primary-950/30 dark:to-neutral-900 [.ui-corporate_&]:zoom-in-100 [.ui-corporate_&]:border-border [.ui-corporate_&]:bg-none [.ui-corporate_&]:bg-card">
+                  {isCorporate ? (
+                    // A status icon, not a celebration: the text below says the rest.
+                    <span className="mx-auto flex size-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground">
+                      {result.resultPending ? (
+                        <Lock size={20} aria-hidden />
+                      ) : result.isCorrect === false ? (
+                        <XCircle size={20} aria-hidden />
+                      ) : (
+                        <CheckCircle size={20} aria-hidden className="text-success-600" />
+                      )}
+                    </span>
+                  ) : (
+                    <p className="text-3xl">
+                      {result.resultPending
+                        ? "🔒"
+                        : result.isCorrect === true
+                          ? "🎉"
+                          : result.isCorrect === false
+                            ? "💪"
+                            : "✅"}
+                    </p>
+                  )}
+                  <p className="text-lg font-bold text-neutral-900 dark:text-neutral-50 [.ui-corporate_&]:text-base [.ui-corporate_&]:font-semibold [.ui-corporate_&]:text-foreground">
                     {result.resultPending
                       ? t("dialog.lockedIn")
                       : result.isCorrect === true

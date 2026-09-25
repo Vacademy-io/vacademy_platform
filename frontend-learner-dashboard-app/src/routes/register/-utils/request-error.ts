@@ -1,4 +1,5 @@
 import { AxiosError } from "axios";
+import { isChunkLoadError, isLazyResolverError } from "@/lib/chunk-reload";
 
 /**
  * Coarse buckets the register page can pick a message for.
@@ -66,6 +67,22 @@ export const isTransientRequestError = (error: unknown): boolean => {
   return kind === "network" || kind === "server";
 };
 
+/**
+ * The backend's "this assessment is over" rejection
+ * (VacademyException("Assessment is ended"), thrown once bound_end_time has
+ * passed). It arrives as a plain business error, so without this it landed on
+ * the generic "Something went wrong / Couldn't load the assessment" card —
+ * which tells a learner nothing and invites them to hit Try again forever.
+ *
+ * Matched on the whole phrase, not a bare "expired": this channel also carries
+ * "OTP has expired", and sending someone to an "Assessment Expired" screen
+ * because their one-time code lapsed would be worse than the generic card.
+ */
+export const isAssessmentEndedError = (error: unknown): boolean => {
+  const { kind, message } = classifyRequestError(error);
+  return kind === "business" && /assessment\s+is\s+(ended|expired)/i.test(message ?? "");
+};
+
 /** The assessment-page lookup's "no such share code" rejection. */
 export const isAssessmentNotFoundError = (error: unknown): boolean => {
   const { kind, status, message } = classifyRequestError(error);
@@ -73,4 +90,45 @@ export const isAssessmentNotFoundError = (error: unknown): boolean => {
     status === 404 ||
     (kind === "business" && /not found/i.test(message ?? ""))
   );
+};
+
+/**
+ * A stale tab whose hashed chunks no longer exist on the CDN. The app handles
+ * this globally (installChunkErrorHandler) and on every route that uses the
+ * router's SmartErrorPage default, but /register overrides `errorComponent`,
+ * so without this the same recoverable failure surfaced as a dead-end
+ * "Couldn't load the assessment" — on the one screen the learner cannot skip.
+ */
+export const isStaleBuildError = (error: unknown): boolean =>
+  isChunkLoadError(error) || isLazyResolverError(error);
+
+/** Which screen the register route's error boundary should show. */
+export type RegisterErrorScreen =
+  | { kind: "reload" }
+  | { kind: "notFound" }
+  | { kind: "expired" }
+  | { kind: "network" }
+  | { kind: "error"; detail?: string };
+
+/**
+ * Pure decision behind RegisterErrorComponent, kept out of the component so the
+ * routing can be tested without rendering the router.
+ */
+export const resolveRegisterErrorScreen = (
+  error: unknown,
+): RegisterErrorScreen => {
+  if (isStaleBuildError(error)) return { kind: "reload" };
+  // Order matters: a DELETED/DRAFT assessment is rejected as "not found" so it
+  // reads as a dead link rather than admitting the assessment exists.
+  if (isAssessmentNotFoundError(error)) return { kind: "notFound" };
+  if (isAssessmentEndedError(error)) return { kind: "expired" };
+
+  const classified = classifyRequestError(error);
+  if (classified.kind === "network") return { kind: "network" };
+
+  return {
+    kind: "error",
+    // Only surface backend sentences; axios/JS messages are noise to a learner.
+    detail: classified.kind === "business" ? classified.message : undefined,
+  };
 };

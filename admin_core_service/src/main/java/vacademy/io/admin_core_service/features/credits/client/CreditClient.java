@@ -15,6 +15,7 @@ import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -487,32 +488,56 @@ public class CreditClient {
         }
     }
     /**
+     * The institute's current balance, or EMPTY when it could not be read (the
+     * credits service is down, 401s, or answers without a usable
+     * {@code current_balance}).
+     *
+     * <p>Exists because {@link #hasActiveCredits} collapses those two cases into
+     * one {@code false}, which is the right default for autonomous spend (an
+     * unreadable balance must not authorise a charge nobody approved) but the
+     * wrong one for a human pressing a Call button: there, the same {@code false}
+     * would turn a credits-service blip into "nobody on the platform can dial".
+     * A caller that needs to tell "out of credits" from "don't know" reads this
+     * and picks its own failure direction — see
+     * {@code CallOrchestrator.assertVoiceCreditsAvailable}.
+     */
+    public Optional<Double> readBalance(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return Optional.empty();
+        }
+
+        Map<String, Object> balance = getBalance(instituteId);
+        if (balance == null || balance.get("current_balance") == null) {
+            return Optional.empty();
+        }
+        Object currentBalanceObj = balance.get("current_balance");
+        if (currentBalanceObj instanceof Number n) {
+            return Optional.of(n.doubleValue());
+        }
+        if (currentBalanceObj instanceof String s) {
+            try {
+                return Optional.of(Double.parseDouble(s));
+            } catch (NumberFormatException e) {
+                log.error("Failed to parse current_balance string: {}", currentBalanceObj);
+            }
+        }
+        // An unparseable value is "unknown", not zero: reporting 0 here would make
+        // a malformed payload look exactly like a genuinely empty wallet.
+        return Optional.empty();
+    }
+
+    /**
      * Check if an institute has active credits (> 0).
-     * 
+     *
+     * <p>Fails CLOSED: an unreadable balance answers false, so callers that gate
+     * autonomous spend on this (chatbot, engagement dispatch, AI calling) stop
+     * rather than run unpriced work.
+     *
      * @param instituteId The institute ID
      * @return true if balance > 0, false otherwise
      */
     public boolean hasActiveCredits(String instituteId) {
-        if (instituteId == null || instituteId.isBlank()) {
-            return false;
-        }
-        
-        Map<String, Object> balance = getBalance(instituteId);
-        if (balance != null && balance.get("current_balance") != null) {
-            Object currentBalanceObj = balance.get("current_balance");
-            double currentBalance = 0;
-            if (currentBalanceObj instanceof Number) {
-                currentBalance = ((Number) currentBalanceObj).doubleValue();
-            } else if (currentBalanceObj instanceof String) {
-                try {
-                    currentBalance = Double.parseDouble((String) currentBalanceObj);
-                } catch (NumberFormatException e) {
-                    log.error("Failed to parse current_balance string: {}", currentBalanceObj);
-                }
-            }
-            return currentBalance > 0.0;
-        }
-        return false;
+        return readBalance(instituteId).orElse(0.0) > 0.0;
     }
 
     // ========================================================================

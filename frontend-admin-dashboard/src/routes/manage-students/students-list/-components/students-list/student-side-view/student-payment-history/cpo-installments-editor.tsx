@@ -6,6 +6,7 @@ import {
     useApplyCpoDiscount,
     useModifyInstallment,
     useRecordOfflinePayment,
+    useSplitInstallment,
     useUserCpoUserPlans,
     useUserPlanInstallments,
 } from '@/routes/manage-students/students-list/-services/cpoSideViewService';
@@ -17,9 +18,21 @@ import type {
     ModifyInstallmentRequest,
     RecordOfflinePaymentRequest,
 } from '@/routes/manage-students/students-list/-types/cpo-side-view-types';
+import { getCurrencySymbol } from '@/constants/currencies';
+import { serverErrorMessage } from '@/services/payment-logs';
 
-const fmt = (n: number | null | undefined) =>
-    Number.isFinite(n as number) ? `₹${(n as number).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—';
+/**
+ * Money for one CPO plan. The currency comes from the plan itself — this used to hard-code
+ * ₹, so an AUD plan's installments read as rupees. en-IN lakh grouping is likewise only
+ * right for INR.
+ */
+const fmt = (n: number | null | undefined, currency?: string | null) => {
+    if (!Number.isFinite(n as number)) return '—';
+    const code = (currency || 'INR').toUpperCase();
+    return `${getCurrencySymbol(code)}${(n as number).toLocaleString(code === 'INR' ? 'en-IN' : 'en-US', {
+        maximumFractionDigits: 2,
+    })}`;
+};
 
 const isoDate = (s: string | null | undefined) => {
     if (!s) return '';
@@ -53,6 +66,117 @@ const statusPill = (status: string, t: TFunction) => {
     );
 };
 
+// ------------------------------------------------------------ Split form
+
+/** Today as YYYY-MM-DD in the admin's own zone (toISOString would give the UTC date — yesterday in IST before 5:30am). */
+const todayIso = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
+
+interface SplitFormProps {
+    row: CpoInstallmentRow;
+    userPlanId: string;
+    userId: string;
+    currency?: string | null;
+    onDone: () => void;
+}
+
+/**
+ * Moves part of an installment's unpaid balance onto a new installment with its own due date —
+ * how an admin schedules "25,000 paid, the other 40,000 is due on the 10th". The plan total
+ * stays the same; only when that part falls due changes.
+ */
+const SplitInstallmentForm = ({ row, userPlanId, userId, currency, onDone }: SplitFormProps) => {
+    const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
+    const { mutateAsync, isPending } = useSplitInstallment(userPlanId, userId);
+    const unpaid = Math.max(0, Number(row.outstanding) || 0);
+    const [amount, setAmount] = useState<string>(unpaid > 0 ? String(unpaid) : '');
+    const [startDate, setStartDate] = useState<string>(todayIso());
+    const [dueDate, setDueDate] = useState<string>('');
+
+    const submit = async () => {
+        const amt = Number(amount);
+        if (!Number.isFinite(amt) || amt <= 0 || amt > unpaid) {
+            toast.error(t('split.amountError', { unpaid: fmt(unpaid, currency) }));
+            return;
+        }
+        if (!dueDate) {
+            toast.error(t('split.dueDateError'));
+            return;
+        }
+        try {
+            await mutateAsync({
+                sfpId: row.id,
+                body: { amount: amt, start_date: startDate || null, due_date: dueDate },
+            });
+            toast.success(t('split.successToast', { amount: fmt(amt, currency), date: dueDate }));
+            onDone();
+        } catch (e: unknown) {
+            toast.error(serverErrorMessage(e) || t('split.errorToast'));
+        }
+    };
+
+    return (
+        <div className="rounded border border-primary-200 bg-primary-50/40 p-2.5">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-primary-700">
+                {t('split.heading', { unpaid: fmt(unpaid, currency) })}
+            </p>
+            <p className="mb-2 text-2xs text-neutral-500">{t('split.hint')}</p>
+            <div className="flex flex-wrap items-end gap-2">
+                <div>
+                    <label className="block text-2xs text-neutral-500">{t('split.amountLabel')}</label>
+                    <input
+                        type="number"
+                        step="any"
+                        min={0}
+                        max={unpaid}
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="w-28 rounded border border-neutral-200 px-2 py-1 text-2xs"
+                    />
+                </div>
+                <div>
+                    <label className="block text-2xs text-neutral-500">{t('split.startDateLabel')}</label>
+                    <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="rounded border border-neutral-200 px-2 py-1 text-2xs"
+                    />
+                </div>
+                <div>
+                    <label className="block text-2xs text-neutral-500">{t('split.dueDateLabel')}</label>
+                    <input
+                        type="date"
+                        value={dueDate}
+                        min={startDate || undefined}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        className="rounded border border-neutral-200 px-2 py-1 text-2xs"
+                    />
+                </div>
+                <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={submit}
+                    className="rounded bg-primary-500 px-3 py-1 text-2xs font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+                >
+                    {isPending ? t('split.saving') : t('split.save')}
+                </button>
+                <button
+                    type="button"
+                    onClick={onDone}
+                    className="rounded border border-neutral-200 px-3 py-1 text-2xs text-neutral-600 hover:bg-neutral-50"
+                >
+                    {t('split.cancel')}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // -------------------------------------------------------------- Row editor
 
 interface RowProps {
@@ -60,11 +184,15 @@ interface RowProps {
     index: number;
     userPlanId: string;
     userId: string;
+    currency?: string | null;
 }
 
-const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
+const InstallmentRowEditor = ({ row, index, userPlanId, userId, currency }: RowProps) => {
     const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const { mutateAsync: modify, isPending } = useModifyInstallment(userPlanId, userId);
+    const [splitOpen, setSplitOpen] = useState(false);
+    // Only an installment with something still unpaid has a balance to move.
+    const canSplit = Number(row.outstanding) > 0 && row.status !== 'WAIVED';
 
     const [startDate, setStartDate] = useState<string>(isoDate(row.start_date));
     const [dueDate, setDueDate] = useState<string>(isoDate(row.due_date));
@@ -138,6 +266,7 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
     };
 
     return (
+        <>
         <tr>
             <td className="px-2 py-1 align-middle">{index + 1}</td>
             <td className="px-2 py-1 align-middle">
@@ -156,7 +285,7 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
                     className="w-32 rounded border border-neutral-200 px-1 py-0.5 text-2xs outline-none focus:border-primary-300"
                 />
             </td>
-            <td className="px-2 py-1 text-right align-middle text-neutral-500">{fmt(row.original_amount)}</td>
+            <td className="px-2 py-1 text-right align-middle text-neutral-500">{fmt(row.original_amount, currency)}</td>
             <td className="px-2 py-1 text-right align-middle">
                 <input
                     type="number"
@@ -198,23 +327,49 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
                     />
                 )}
             </td>
-            <td className="px-2 py-1 text-right align-middle text-neutral-500">{fmt(row.amount_paid)}</td>
+            <td className="px-2 py-1 text-right align-middle text-neutral-500">{fmt(row.amount_paid, currency)}</td>
             <td className="px-2 py-1 align-middle">{statusPill(row.status, t)}</td>
             <td className="px-2 py-1 align-middle">
-                <button
-                    type="button"
-                    disabled={!dirty || isPending}
-                    onClick={save}
-                    className={`rounded px-2 py-0.5 text-2xs font-medium ${
-                        dirty
-                            ? 'bg-primary-500 text-white hover:bg-primary-600'
-                            : 'cursor-not-allowed bg-neutral-100 text-neutral-400'
-                    }`}
-                >
-                    {isPending ? '…' : t('row.save')}
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        disabled={!dirty || isPending}
+                        onClick={save}
+                        className={`rounded px-2 py-0.5 text-2xs font-medium ${
+                            dirty
+                                ? 'bg-primary-500 text-white hover:bg-primary-600'
+                                : 'cursor-not-allowed bg-neutral-100 text-neutral-400'
+                        }`}
+                    >
+                        {isPending ? '…' : t('row.save')}
+                    </button>
+                    {canSplit && (
+                        <button
+                            type="button"
+                            onClick={() => setSplitOpen((open) => !open)}
+                            title={t('row.splitTitle')}
+                            className="rounded border border-primary-300 px-2 py-0.5 text-2xs font-medium text-primary-700 hover:bg-primary-50"
+                        >
+                            {t('row.split')}
+                        </button>
+                    )}
+                </div>
             </td>
         </tr>
+        {splitOpen && canSplit && (
+            <tr>
+                <td colSpan={9} className="px-2 pb-2">
+                    <SplitInstallmentForm
+                        row={row}
+                        userPlanId={userPlanId}
+                        userId={userId}
+                        currency={currency}
+                        onDone={() => setSplitOpen(false)}
+                    />
+                </td>
+            </tr>
+        )}
+        </>
     );
 };
 
@@ -319,9 +474,10 @@ interface OfflineProps {
     userPlanId: string;
     userId: string;
     outstanding: number;
+    currency?: string | null;
 }
 
-const OfflinePaymentForm = ({ userPlanId, userId, outstanding }: OfflineProps) => {
+const OfflinePaymentForm = ({ userPlanId, userId, outstanding, currency }: OfflineProps) => {
     const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const { mutateAsync, isPending } = useRecordOfflinePayment(userPlanId, userId);
     const [open, setOpen] = useState(false);
@@ -344,7 +500,7 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding }: OfflineProps) =
         };
         try {
             await mutateAsync(body);
-            toast.success(t('offlinePayment.recordedSuccessToast', { amount: fmt(amt) }));
+            toast.success(t('offlinePayment.recordedSuccessToast', { amount: fmt(amt, currency) }));
             setOpen(false);
             setAmount('');
             setReference('');
@@ -465,9 +621,9 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                     <p className="mt-0.5 text-2xs text-neutral-500">
                         {t('card.installmentCount', { count: summary.installment_count })}
                         {' · '}
-                        {t('card.net', { amount: fmt(summary.net_total) })}
+                        {t('card.net', { amount: fmt(summary.net_total, summary.currency) })}
                         {' · '}
-                        {t('card.paid', { amount: fmt(summary.paid_total) })}
+                        {t('card.paid', { amount: fmt(summary.paid_total, summary.currency) })}
                         {' · '}
                         <span
                             className={
@@ -478,7 +634,7 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                                       : 'text-neutral-500'
                             }
                         >
-                            {t('card.outstanding', { amount: fmt(summary.outstanding_total) })}
+                            {t('card.outstanding', { amount: fmt(summary.outstanding_total, summary.currency) })}
                         </span>
                     </p>
                 </div>
@@ -522,6 +678,7 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                                                 index={idx}
                                                 userPlanId={data.user_plan_id}
                                                 userId={userId}
+                                                currency={summary.currency}
                                             />
                                         ))}
                                     </tbody>
@@ -538,6 +695,7 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                                 userPlanId={data.user_plan_id}
                                 userId={userId}
                                 outstanding={data.outstanding_total}
+                                currency={summary.currency}
                             />
                         </>
                     )}

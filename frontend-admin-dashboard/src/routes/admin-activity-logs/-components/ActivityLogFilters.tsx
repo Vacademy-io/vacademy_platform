@@ -46,6 +46,7 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
             { value: 'AUDIENCE', label: 'Audience list' },
             { value: 'LEAD', label: 'Lead' },
             { value: 'LEAD_STATUS', label: 'Lead status' },
+            { value: 'LEAD_TIER', label: 'Lead tier' },
             { value: 'LEAD_FOLLOWUP', label: 'Follow-up' },
             { value: 'LEAD_SLA_CONFIG', label: 'Lead SLA settings' },
             { value: 'LEAD_CONNECTOR', label: 'Lead connector' },
@@ -59,6 +60,10 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
             { value: 'TELEPHONY_NUMBER', label: 'Calling number' },
             { value: 'ENGAGEMENT_ENGINE', label: 'Engagement engine' },
             { value: 'AUTOMATION', label: 'Automation' },
+            // A message already sent to one person, sent again from their
+            // communication timeline. The send runs in notification-service;
+            // admin-core owns the action so the log has a named actor.
+            { value: 'COMMUNICATION', label: 'Message' },
         ],
     },
     {
@@ -74,6 +79,7 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
             // Reported by assessment_service through the internal audit endpoint,
             // not by an @Auditable annotation, so the contract test does not see it.
             { value: 'ASSESSMENT', label: 'Assessment' },
+            { value: 'AI_QUESTION_EXTRACTION', label: 'Question paper upload (AI)' },
         ],
     },
     {
@@ -133,6 +139,8 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
         options: [
             { value: 'PAYMENT_PLAN', label: 'Payment plan' },
             { value: 'FEE_PLAN', label: 'Fee plan (CPO)' },
+            { value: 'PAYMENT', label: 'Payment' },
+            { value: 'INVOICE', label: 'Invoice' },
             { value: 'ERP_JOURNAL', label: 'Journal entry' },
             { value: 'ERP_FINANCE_PNL', label: 'Profit and loss' },
         ],
@@ -170,6 +178,7 @@ const ACTIVITY_OPTIONS: MultiSelectOption[] = [
     { value: 'SCORE_CHANGE', label: 'Score changed' },
     { value: 'CONVERT', label: 'Marked converted' },
     { value: 'SEND_MESSAGE', label: 'Message sent' },
+    { value: 'RESEND', label: 'Message resent' },
     { value: 'EMAIL', label: 'Emailed' },
     { value: 'CLOSE', label: 'Closed' },
     { value: 'RESCHEDULE', label: 'Rescheduled' },
@@ -198,6 +207,9 @@ const ACTIVITY_OPTIONS: MultiSelectOption[] = [
     { value: 'DEACTIVATE', label: 'Deactivated (record)' },
     { value: 'PROVISION_BOOKING_PAGE', label: 'Booking page provisioned' },
     { value: 'MAKE_DEFAULT', label: 'Made default' },
+    { value: 'VOID', label: 'Voided' },
+    { value: 'SPLIT', label: 'Installment split' },
+    { value: 'DELETE_BLOCKED', label: 'Delete blocked' },
     { value: 'AWARD', label: 'Awarded' },
     { value: 'REVOKE', label: 'Revoked' },
     { value: 'APPROVE', label: 'Approved' },

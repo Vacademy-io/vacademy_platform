@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_PROCTORING_FORM } from '@/types/assessments/proctoring';
 
 export const BasicInfoFormSchema = z.object({
     status: z.string(),
@@ -46,6 +47,18 @@ export const BasicInfoFormSchema = z.object({
     resultType: z.string().min(1, 'Choose how results are evaluated'),
     // Automatic AI evaluation on submit. Off by default: it spends institute credits.
     aiEvaluationEnabled: z.boolean().default(false),
+    // Proctoring tier + knobs. NONE by default: the camera is only ever asked
+    // for because someone chose a tier.
+    proctoring: z
+        .object({
+            tier: z.enum(['NONE', 'BASIC', 'PRO', 'ULTRA']),
+            cameraRequired: z.boolean(),
+            snapshotIntervalSec: z.number().int().min(0).max(600),
+            faceCheck: z.boolean(),
+            maxViolations: z.number().int().min(0).max(20),
+            showSelfView: z.boolean(),
+        })
+        .default(DEFAULT_PROCTORING_FORM),
     switchSections: z.boolean(),
     raiseReattemptRequest: z.boolean(),
     raiseTimeIncreaseRequest: z.boolean(),

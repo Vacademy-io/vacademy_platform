@@ -18,6 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { timeLimit } from '@/constants/dummy-data';
+import { ProctoringReviewDialog } from './ProctoringReviewDialog';
 
 // Internal menu-option keys — decoupled from the translated display labels below
 // so branching logic never depends on the current locale's text.
@@ -213,6 +214,7 @@ const StudentOngoingDropdown = ({ student }: { student: AssessmentRevaluateStude
     const { t } = useTranslation('assessmentStudentOngoingDropdown');
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
     const [openDialog, setOpenDialog] = useState(false);
+    const [proctoringOpen, setProctoringOpen] = useState(false);
 
     const handleMenuOptionsChange = (value: string) => {
         setSelectedOption(value);
@@ -245,8 +247,22 @@ const StudentOngoingDropdown = ({ student }: { student: AssessmentRevaluateStude
                     >
                         {t('dropdown.closeSubmission')}
                     </DropdownMenuItem>
+                    {/* Watching a live attempt is the main reason to open this;
+                        the dialog refreshes itself while it is open. */}
+                    <DropdownMenuItem
+                        className="cursor-pointer"
+                        onClick={() => setProctoringOpen(true)}
+                    >
+                        {t('dropdown.proctoring')}
+                    </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+            <ProctoringReviewDialog
+                attemptId={student.attempt_id}
+                studentName={student.full_name}
+                open={proctoringOpen}
+                onOpenChange={setProctoringOpen}
+            />
             {/* Dialog should be controlled by openDialog state */}
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
                 {selectedOption === MENU_OPTION_INCREASE_TIME && (

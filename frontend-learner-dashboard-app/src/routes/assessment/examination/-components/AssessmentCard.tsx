@@ -32,11 +32,13 @@ import {
 } from "@/lib/format-date";
 import { toast } from "sonner";
 import {
+  CheckCircle,
   Timer,
   WarningCircle,
   HourglassMedium,
   XCircle,
 } from "@phosphor-icons/react";
+import { surveyCardState } from "../-utils/survey-card-state";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
@@ -288,16 +290,11 @@ export const AssessmentCard = ({
     );
   }
 
-  const canShowReport =
-    isPast &&
-    usedAttempts > 0 &&
-    (assessmentInfo.result_type !== "MANUAL" ||
-      assessmentInfo.report_release_status === "RELEASED");
-  const resultsPending =
-    isPast &&
-    usedAttempts > 0 &&
-    assessmentInfo.result_type === "MANUAL" &&
-    assessmentInfo.report_release_status !== "RELEASED";
+  const { canShowReport, resultsPending, surveySubmitted } = surveyCardState(
+    assessmentInfo,
+    isPast,
+    usedAttempts
+  );
   // Past assessments the learner never actually sat (no LIVE/ENDED attempt) now
   // reach this list too. There is no report to link, so label the row instead of
   // leaving it bare.
@@ -384,6 +381,12 @@ export const AssessmentCard = ({
                 <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-warning-200 bg-warning-50 px-2.5 py-1 text-caption font-medium text-warning-700">
                   <HourglassMedium size={14} aria-hidden="true" />
                   {t("card.meta.resultsPending")}
+                </span>
+              )}
+              {surveySubmitted && (
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-success-200 bg-success-50 px-2.5 py-1 text-caption font-medium text-success-700">
+                  <CheckCircle size={14} aria-hidden="true" />
+                  {t("card.meta.surveySubmitted")}
                 </span>
               )}
               {notAttempted && (

@@ -462,6 +462,12 @@ public class GetLiveSessionService {
             .collect(Collectors.toList());
 
         enrichWithPackageSessionDetails(sessions);
+        // The admin session cards show the instructor, so this path pays the
+        // same enrichment the learner lists do. It is ONE extra findAllById
+        // plus ONE user-directory call for the whole page (not per card), and
+        // it swallows its own failures — an unreachable directory costs the
+        // cards a name, never the admin their list.
+        enrichWithInstructors(sessions);
 
         // Build pagination metadata
         SessionSearchResponse.PageMetadata pagination = new SessionSearchResponse.PageMetadata(
@@ -572,9 +578,10 @@ public class GetLiveSessionService {
     /**
      * Attaches instructor names to learner-facing cards (V524).
      *
-     * <p>Called only from the learner list paths. The admin lists deliberately
-     * skip it: they have their own instructor affordances, and the extra
-     * directory round trip would be paid on every dashboard render.
+     * <p>Called from the learner list paths and from {@link #searchSessions}
+     * (the admin session list), whose cards show the instructor. The other
+     * admin list endpoints still skip it — nothing renders an instructor from
+     * them, so they would pay the directory round trip for nothing.
      *
      * <p>Never throws — an unreachable user directory costs the cards a name,
      * not the learner their class list.

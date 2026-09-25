@@ -100,13 +100,22 @@ def rules_text(images_enabled: bool = True) -> str:
 4. Every concept except the first of a topic has a check. Checks test the concept just taught, in the
    learner's own words where possible; give a rubric and 1-3 realistic misconceptions with hints.
 5. VISUALS ARE THE POINT OF A WHITEBOARD — a board of prose is a FAILED board. Institutes tell us students
-   learn from pictures, so every topic (board) carries something to LOOK at, most concepts add or extend one,
-   and two text-only concepts never follow each other. Besides diagrams and pictures, teach with VISUAL NOTES
-   the way a textbook margin does: `callout` with its right kind ("definition" for a term, "example" for a
-   worked or real case, "warning" for the common mistake, "tip" for the thing to remember), a `table` for any
-   comparison, `columns` for side-by-side, a numbered `bullet` strip for a process, and `annotate` to label a
-   part of a diagram the narration points at. Use an SVG diagram for anything structural (parts of a cell, a circuit, a force diagram, a
-   flow, a timeline, a comparison). SVG craft rules (the board renders them at ~700px wide in a sans-serif font):
+   learn from pictures. The unit the learner looks at is the CONCEPT (each reveal is on screen for about a
+   minute), so these are checked per concept:
+   - the FIRST concept of every board opens with its diagram or picture — a learner never stares at a
+     definition and two callouts while the drawing waits for concept three;
+   - every later concept either adds a visual of its own (svg, image, table, formula) or EXTENDS the board's
+     diagram — `annotate` the part the narration reaches, `arrow` between two parts, `highlight` one — so
+     the diagram grows as the teaching does; two note-only concepts never follow each other;
+   - a recap concept re-annotates the board's diagram rather than restating it in a callout.
+   Text, bullets and callouts are NOTES beside the visual and never count as the visual, however many there
+   are. Use them the way a textbook margin does: `callout` with its right kind ("definition" for a term,
+   "example" for a worked or real case, "warning" for the common mistake, "tip" for the thing to remember),
+   a `table` for any comparison, `columns` for side-by-side, a numbered `bullet` strip for a process.
+   Use an SVG diagram for anything structural (parts of a cell, a circuit, a force diagram, a
+   flow, a timeline, a comparison) and for any IDEA that has parts or a direction — three abilities become
+   three labelled shapes, a definition with a contrast becomes two boxes and an arrow, a chain becomes a
+   flow. SVG craft rules (the board renders them at ~700px wide in a sans-serif font):
    - viewBox='0 0 640 360' and FILL it: shapes spread across the whole canvas, nothing crammed into one corner
      or floating in empty white space; keep a 24px margin from every edge (text baselines >= 32 from the top).
    - 3-4 harmonious fill colours (soft blues/greens/ambers with a darker stroke) plus dark text; rounded
@@ -210,8 +219,9 @@ IMAGES_ON_RULE = """IMAGES ARE ON FOR THIS COURSE. A whiteboard mixes two kinds 
        "realistic, educational".
      A learner remembers a labelled illustration of the heart, or a photo of a physiotherapist assessing a
      patient, far better than a box labelled "assessment".
-   Image rules (checked): (a) a slide carries roughly one illustration per two boards — one on a short slide,
-   two or three on a long one — placed where a picture teaches more than shapes, never as decoration;
+   Image rules (checked): (a) a slide carries roughly one illustration per two boards and never fewer than
+   one per four concepts — one on a short slide, two or three on a long one — placed where a picture teaches
+   more than shapes, never as decoration;
    (b) every topic that involves people, places, organisms, equipment, practical technique or a worked
    real-world example gets an image op in one of its concepts, alongside (not instead of) any diagram that
    topic needs; (c) a purely abstract topic (definitions, categories, a derivation) keeps its diagram and
@@ -376,6 +386,9 @@ def soft_repair_prompt(errors: List[str], previous_json: str) -> str:
         "Your plan is valid but misses some of the engagement and diagram rules. Improve it: fix every point "
         "below, keep every topic and concept, keep what already works, and return the complete corrected JSON "
         "object, nothing else. For a diagram problem, redraw that svg on viewBox='0 0 640 360' with filled "
-        "rounded boxes, 16-22px labels inside or under their shapes, and nothing crossing.\n"
+        "rounded boxes, 16-22px labels inside or under their shapes, and nothing crossing. For a text-only "
+        "concept, draw the idea (its parts as labelled shapes, its contrast as two boxes and an arrow, its "
+        "chain as a flow) or extend the board's existing diagram with annotate/arrow/highlight — and move the "
+        "words that were on the board into the narration.\n"
         f"{listed}\n\nPREVIOUS JSON:\n{previous_json[:60000]}"
     )

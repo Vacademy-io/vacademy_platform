@@ -136,6 +136,15 @@ class Settings:
     # added dead air EVERY turn; the founder POC ships 0.5.
     sarvam_ttfs_p99: float = field(
         default_factory=lambda: float(_env("SARVAM_TTFS_P99", "0.5")))
+    # Mark the final Sarvam sends in answer to our flush (after the VAD stop,
+    # before the caller speaks again) as finalized, so the turn closes on it
+    # instead of waiting out sarvam_ttfs_p99 - vad_stop_secs = 0.30 s. The 22
+    # Sep batch: that 0.30 s sat between "Smart Turn: COMPLETE" and the model
+    # starting on EVERY turn, while the final itself had arrived 0.08 s after
+    # the voice stopped. Finals that arrive mid-utterance are left unflagged,
+    # so they keep the safety wait. Kill switch.
+    sarvam_final_on_flush: bool = field(
+        default_factory=lambda: _env("SARVAM_FINAL_ON_FLUSH", "1") not in ("0", "false", "no"))
     # Smart Turn v3 semantic end-of-turn: max silence it may wait before forcing
     # the turn closed (the model usually decides much earlier).
     smart_turn_stop_secs: float = field(
@@ -354,6 +363,21 @@ class Settings:
     # google = Gemini's OpenAI-compat endpoint hit directly (no proxy hop);
     # openrouter = proxy fallback (routing lottery spiked TTFT to 7.9s once).
     llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "sarvam"))
+    # Second LLM for the rest of a call once the first one errors or stalls
+    # (call f58ca825, 2026-09-22: Sarvam 34 s → 49 s → 403 with nothing to
+    # catch it). Empty = no waterfall. Same values as LLM_PROVIDER.
+    llm_fallback_provider: str = field(default_factory=lambda: _env("LLM_FALLBACK_PROVIDER", ""))
+    # A reply whose first token has not arrived by then is a vendor failure,
+    # not a slow reply: it errors, and the waterfall takes over. 0 = off.
+    llm_first_token_timeout_secs: float = field(
+        default_factory=lambda: float(_env("LLM_FIRST_TOKEN_TIMEOUT_SECS", "6.0")))
+    # Vertex primary WITH a fallback: give up on Gemini after this long with no
+    # first token and let the waterfall answer on the fallback. 23 Sep batch:
+    # one 429 RESOURCE_EXHAUSTED (asia-south1 shared capacity) took 7.1 s to
+    # surface, uncovered by the 6 s guard above (OpenAI-compatible services
+    # only). Gemini's own first token: p50 0.49 s, p95 0.80 s. 0 = off.
+    vertex_first_token_timeout_secs: float = field(
+        default_factory=lambda: float(_env("VERTEX_FIRST_TOKEN_TIMEOUT_SECS", "3.0")))
     openrouter_api_key: str = field(default_factory=lambda: _env("OPENROUTER_API_KEY"))
     openrouter_base_url: str = field(
         default_factory=lambda: _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
@@ -633,6 +657,21 @@ class Settings:
     # final (backchannel, carrier line, scrap, repeat). Otherwise pipecat keeps
     # it open for user_turn_stop_timeout (5 s) and nothing we say in that
     # window is heard. Kill switch only.
+    # A short voice burst with no transcript is judged "noise" only after the
+    # STT has had this long to deliver a final for it (call bd9e6a0d).
+    noise_reask_wait_secs: float = field(
+        default_factory=lambda: float(_env("NOISE_REASK_WAIT_SECS", "1.0")))
+    # Most body sentences one model reply may speak; the closing question is
+    # still asked. 0 disables. (call bd9e6a0d: a 30 s, five-sentence pitch)
+    max_sentences_per_reply: int = field(
+        default_factory=lambda: int(_env("MAX_SENTENCES_PER_REPLY", "3")))
+    # Length budget per reply, in characters: after the first sentence, no
+    # sentence that would take the reply past this (closing question still
+    # asked). 0 disables. Call 3c2f5b82 (2026-09-24): stacked pitch lines,
+    # "समझ में नहीं आया", hang-up. Shreya p95 = 228 chars; 2 sentences max was
+    # tried first and cut required content out of scripted turns (timing sim).
+    max_reply_chars: int = field(
+        default_factory=lambda: int(_env("MAX_REPLY_CHARS", "240")))
     turn_release_on_absorb: bool = field(
         default_factory=lambda: _env("TURN_RELEASE_ON_ABSORB", "1") not in ("0", "false", "no"))
     backchannel_resume_settle_secs: float = field(
@@ -643,6 +682,11 @@ class Settings:
         default_factory=lambda: float(_env("SHORT_ANSWER_GRACE_SECS", "0.8")))
     short_answer_max_words: int = field(
         default_factory=lambda: int(_env("SHORT_ANSWER_MAX_WORDS", "3")))
+    # A short answer's run waits for the caller's voice to go quiet — but not
+    # forever: a noisy line keeps the VAD "on" (call 59888de8: the last answer
+    # waited out the hang-up). Past this, the voice is noise; the run goes.
+    short_answer_noise_cap_secs: float = field(
+        default_factory=lambda: float(_env("SHORT_ANSWER_NOISE_CAP_SECS", "3.0")))
     # Cushion questions in context instead of firing them bare ("Do you take live
     # classes?") — founder 2026-09-08, "it's asking questions as if she is my
     # mother... humanize the prompt, inculcate this into AI calling in general".
@@ -680,8 +724,36 @@ class Settings:
         default_factory=lambda: int(_env("VERTEX_THINKING_BUDGET", "0")))
     reply_inflight_grace_secs: float = field(
         default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
+    # FloorGate: a reply whose first audio is ready while the caller is talking
+    # waits for them to stop instead of starting over them (call 358e5026: a
+    # parent speaking in pieces got a stub of a reply to every piece). The
+    # cap is for lines whose "voice" never stops. Kill switch: FLOOR_HOLD_ENABLED=0.
+    floor_hold_enabled: bool = field(
+        default_factory=lambda: _env("FLOOR_HOLD_ENABLED", "1") not in ("0", "false", "no"))
+    floor_hold_cap_secs: float = field(
+        default_factory=lambda: float(_env("FLOOR_HOLD_CAP_SECS", "3.0")))
     interrupt_on_vad: bool = field(
         default_factory=lambda: _env("INTERRUPT_ON_VAD", "true").lower() == "true")
+    # WHEN the caller's voice stops the bot.
+    #   "voice" — the bot keeps talking through a short sound; it stops when
+    #             the words turn out to be a real interruption, or once the
+    #             caller has talked for barge_in_voice_secs. "हाँ", "जी",
+    #             "हम्म", "Hello" never stop it.
+    #   "onset" — the old behaviour: any sound over 0.2 s stops the bot and the
+    #             words are judged afterwards (then the cut words are resumed).
+    # The 22 Sep paid batch (107 calls): 473 cuts, 54% of them acknowledgements
+    # or noise, each followed by a median 0.8 s / p90 3.9 s stall; the opening
+    # was cut by the pickup "Hello" in 18 calls. Acknowledgement bursts last
+    # p90 0.60 s / p95 0.70 s, so at 0.7 s 95% of those stops disappear.
+    # Rollback: BARGE_IN_MODE=onset.
+    barge_in_mode: str = field(
+        default_factory=lambda: _env("BARGE_IN_MODE", "voice").strip().lower())
+    barge_in_voice_secs: float = field(
+        default_factory=lambda: float(_env("BARGE_IN_VOICE_SECS", "0.7")))
+    # An acknowledgement that began this close to the end of a reply that ended
+    # on a question is the caller's ANSWER to it ("हाँ" over "…जुड़ना चाहेंगे?").
+    ack_answer_window_secs: float = field(
+        default_factory=lambda: float(_env("ACK_ANSWER_WINDOW_SECS", "3.0")))
 
     duck_enabled: bool = field(
         default_factory=lambda: _env("DUCK_ENABLED", "true").lower() == "true")

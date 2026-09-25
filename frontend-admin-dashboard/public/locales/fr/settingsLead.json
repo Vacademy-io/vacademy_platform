@@ -19,7 +19,7 @@
     },
     "visibilityCard": {
         "title": "Visibilité du badge de score",
-        "description": "Choisissez où le badge de score CHAUD / TIÈDE / FROID apparaît.",
+        "description": "Choisissez où apparaît le badge de score du lead.",
         "options": {
             "enquiryTable": "Tableau des demandes (Admissions → Demandes)",
             "contactsTable": "Tableau des contacts (Gérer les contacts)",
@@ -58,5 +58,14 @@
     "saveButton": {
         "saving": "Enregistrement…",
         "save": "Enregistrer les paramètres de notation"
+    },
+    "terminologyCard": {
+        "title": "Terminologie",
+        "description": "Nommez les attributs de lead intégrés comme votre équipe les appelle. Laissez vide pour garder les valeurs par défaut.",
+        "tierLabel": "Nom de « Tier »",
+        "tierPlaceholder": "p. ex. Niveau d'intérêt",
+        "leadStatusLabel": "Nom de « Statut du lead »",
+        "leadStatusPlaceholder": "p. ex. Action",
+        "hint": "Utilisé dans les en-têtes du tableau des leads, les filtres, la vue latérale et ces réglages. Enregistrez avec le bouton ci-dessous."
     }
 }

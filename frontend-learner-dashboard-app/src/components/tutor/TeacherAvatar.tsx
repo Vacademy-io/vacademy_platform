@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getPublicUrl } from "@/services/upload_file";
+import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface TeacherAvatarProps {
   /** Media file id from the course / institute Tutor Mode settings. */
@@ -25,8 +25,8 @@ export const DefaultTeacherFace: React.FC<{ className?: string }> = ({ className
   </svg>
 );
 
-/** Resolves the teacher's face file id to a signed url; falls back to the built-in face. */
-export const TeacherAvatar: React.FC<TeacherAvatarProps> = ({ fileId, name, className, speaking }) => {
+/** The teacher's photo as a signed url ("" while resolving or when there is none). */
+export function useTeacherPhotoUrl(fileId?: string | null): string {
   const [url, setUrl] = useState("");
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +34,9 @@ export const TeacherAvatar: React.FC<TeacherAvatarProps> = ({ fileId, name, clas
       setUrl("");
       return;
     }
+    // The public demo has no auth cookie, so the signed-in route 401s there.
     getPublicUrl(fileId)
+      .catch(() => getPublicUrlWithoutLogin(fileId))
       .then((u) => {
         if (!cancelled) setUrl(u || "");
       })
@@ -45,6 +47,12 @@ export const TeacherAvatar: React.FC<TeacherAvatarProps> = ({ fileId, name, clas
       cancelled = true;
     };
   }, [fileId]);
+  return url;
+}
+
+/** Resolves the teacher's face file id to a signed url; falls back to the built-in face. */
+export const TeacherAvatar: React.FC<TeacherAvatarProps> = ({ fileId, name, className, speaking }) => {
+  const url = useTeacherPhotoUrl(fileId);
   return (
     <div
       className={`relative shrink-0 overflow-hidden rounded-full bg-primary-100 ${speaking ? "ring-4 ring-primary-200" : ""} ${className ?? "size-12"}`}

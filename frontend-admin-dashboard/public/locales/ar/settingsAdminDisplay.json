@@ -152,7 +152,8 @@
         "allowViewPassword": "السماح بعرض كلمة مرور المتعلم",
         "allowEditCredentials": "السماح بتعديل اسم مستخدم وكلمة مرور المتعلم",
         "allowSendResetPasswordMail": "السماح بإرسال بريد إعادة تعيين كلمة المرور",
-        "showApprovalToggle": "إظهار مفتاح \"طلبات الموافقة\" في قائمة المتعلمين"
+        "showApprovalToggle": "إظهار مفتاح \"طلبات الموافقة\" في قائمة المتعلمين",
+        "allowDeletePayments": "السماح بالحذف النهائي للمدفوعات والفواتير (لا يمكن التراجع عنه)"
     },
     "dashboardWidgets": {
         "title": "أدوات لوحة التحكم",

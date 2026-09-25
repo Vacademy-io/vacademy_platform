@@ -35,6 +35,12 @@ public class EngagementSettingsService {
     /** Reading completion also needs this much dwell time. */
     public static final long DEFAULT_MIN_READ_MS = 15_000L;
 
+    /**
+     * A game pays out only after this much server-measured time since the learner
+     * opened it. "Mark complete" used to pay the moment the dialog opened.
+     */
+    public static final long DEFAULT_MIN_GAME_MS = 20_000L;
+
     private final InstituteRepository instituteRepository;
     private final ObjectMapper objectMapper;
 
@@ -49,6 +55,11 @@ public class EngagementSettingsService {
     public long getMinReadMs(String instituteId) {
         return intSetting(instituteId, "minReadSeconds",
                 (int) (DEFAULT_MIN_READ_MS / 1000), 0, 3600) * 1000L;
+    }
+
+    public long getMinGameMs(String instituteId) {
+        return intSetting(instituteId, "minGameSeconds",
+                (int) (DEFAULT_MIN_GAME_MS / 1000), 0, 3600) * 1000L;
     }
 
     /**

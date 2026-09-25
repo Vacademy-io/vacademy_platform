@@ -47,6 +47,8 @@ import {
 } from '@/components/shared/leads/lead-journey-export';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
+import { useLeadTiers } from '@/hooks/use-lead-tiers';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import {
@@ -250,11 +252,14 @@ const RecentLeadsContent = () => {
     const { t } = useTranslation('audienceManagerRecentLeadsPage');
     const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
     const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
-    const tierLabels: Record<string, string> = {
-        HOT: t('filters.tier.hot'),
-        WARM: t('filters.tier.warm'),
-        COLD: t('filters.tier.cold'),
-    };
+    // Institute tier catalog (custom tiers + labels + colours) and the institute's
+    // own names for "Tier" / "Lead status".
+    const tierCatalog = useLeadTiers();
+    const terminology = useLeadTerminology();
+    const tierLabels: Record<string, string> = useMemo(
+        () => Object.fromEntries(tierCatalog.tiers.map((tier) => [tier.tier_key, tier.label])),
+        [tierCatalog.tiers]
+    );
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const { setSelectedStudent } = useStudentSidebar();
@@ -295,9 +300,7 @@ const RecentLeadsContent = () => {
     // Audience multi-select — campaign ids. Empty = all campaigns.
     const [audienceFilters, setAudienceFilters] = useState<string[]>(() =>
         urlSearch.audience
-            ? urlSearch.audience
-                  .split(',')
-                  .filter((v) => v && v !== ALL_AUDIENCES_VALUE)
+            ? urlSearch.audience.split(',').filter((v) => v && v !== ALL_AUDIENCES_VALUE)
             : []
     );
 
@@ -411,8 +414,7 @@ const RecentLeadsContent = () => {
                 status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
                 tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 sla: slaFilters.length > 0 ? slaFilters.join(',') : undefined,
-                counsellor:
-                    counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
+                counsellor: counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
                 audience: audienceFilters.length > 0 ? audienceFilters.join(',') : undefined,
                 search: appliedSearch || undefined,
                 range: rangeDays === DEFAULT_RANGE_DAYS ? undefined : rangeDays,
@@ -489,8 +491,12 @@ const RecentLeadsContent = () => {
     // "Manage Column" toggle list — only the columns actually visible for the
     // current config (the Lead-name column is always shown).
     const toggleableColumns = useMemo(
-        () => buildLeadColumnToggles(showOps, showScore),
-        [showOps, showScore]
+        () =>
+            buildLeadColumnToggles(showOps, showScore, {
+                tier: terminology.tier,
+                leadStatus: terminology.leadStatus,
+            }),
+        [showOps, showScore, terminology.tier, terminology.leadStatus]
     );
 
     const audiencesQuery = useQuery(
@@ -522,7 +528,9 @@ const RecentLeadsContent = () => {
     const [showDeleted, setShowDeleted] = useState(false);
     // Undefined (not EXCLUDE_DELETED) when off, so the backend's own default applies and the
     // param stays absent from the normal request.
-    const audienceStatusFilter: 'ONLY_DELETED' | undefined = showDeleted ? 'ONLY_DELETED' : undefined;
+    const audienceStatusFilter: 'ONLY_DELETED' | undefined = showDeleted
+        ? 'ONLY_DELETED'
+        : undefined;
 
     // Restore needs no confirm dialog: unlike delete it's additive, and the rows are already
     // sitting in a view the admin had to opt into.
@@ -599,8 +607,7 @@ const RecentLeadsContent = () => {
                 lead_status_id: leadStatusId,
                 conversion_status_filter: conversionFilter,
                 audience_status_filter: audienceStatusFilter,
-                sla_filter:
-                    slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
+                sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
                 assigned_counselor_id:
                     nonUnassignedCounsellorIds.length > 0
                         ? nonUnassignedCounsellorIds.join(',')
@@ -704,9 +711,7 @@ const RecentLeadsContent = () => {
     // carries the userId too, because the assign actions operate per person.
     const [selectedLeads, setSelectedLeads] = useState<
         Map<string, { userId: string; responseId: string; name: string }>
-    >(
-        new Map()
-    );
+    >(new Map());
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
 
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -728,7 +733,8 @@ const RecentLeadsContent = () => {
         setSelectedLeads((prev) => {
             const next = new Map(prev);
             if (next.has(responseId)) next.delete(responseId);
-            else if (vm.userId) next.set(responseId, { userId: vm.userId, responseId, name: vm.name });
+            else if (vm.userId)
+                next.set(responseId, { userId: vm.userId, responseId, name: vm.name });
             return next;
         });
 
@@ -738,7 +744,11 @@ const RecentLeadsContent = () => {
             selectableVms.forEach((v) => {
                 if (!v.userId || !v.responseId) return;
                 if (checked)
-                    next.set(v.responseId, { userId: v.userId, responseId: v.responseId, name: v.name });
+                    next.set(v.responseId, {
+                        userId: v.userId,
+                        responseId: v.responseId,
+                        name: v.name,
+                    });
                 else next.delete(v.responseId);
             });
             return next;
@@ -766,8 +776,7 @@ const RecentLeadsContent = () => {
                 lead_status_id: leadStatusId,
                 conversion_status_filter: conversionFilter,
                 audience_status_filter: audienceStatusFilter,
-                sla_filter:
-                    slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
+                sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
                 assigned_counselor_id:
                     nonUnassignedCounsellorIds.length > 0
                         ? nonUnassignedCounsellorIds.join(',')
@@ -998,8 +1007,7 @@ const RecentLeadsContent = () => {
             if (selectedExportCols.has('activity_notes'))
                 tail.push(t('export.columns.activityNotes'));
             if (selectedExportCols.has('notes_count')) tail.push(t('export.columns.notesCount'));
-            if (selectedExportCols.has('lead_journey'))
-                tail.push(t('export.columns.leadJourney'));
+            if (selectedExportCols.has('lead_journey')) tail.push(t('export.columns.leadJourney'));
         }
         const rows = leads.map((lead) => {
             const u = lead.user ?? {};
@@ -1022,9 +1030,7 @@ const RecentLeadsContent = () => {
             if (selectedExportCols.has('mobile'))
                 row.push(csvSafe(u.mobile_number || lead.parent_mobile || '-'));
             if (selectedExportCols.has('audience')) row.push(csvSafe(displayAudience(lead)));
-            cfFieldIds.forEach((fieldId) =>
-                row.push(csvSafe(lead.custom_field_values?.[fieldId]))
-            );
+            cfFieldIds.forEach((fieldId) => row.push(csvSafe(lead.custom_field_values?.[fieldId])));
             if (showOps) {
                 const cName = userId
                     ? (prof as Record<string, { assigned_counselor_name?: string | null }>)[userId]
@@ -1196,7 +1202,8 @@ const RecentLeadsContent = () => {
         const cLabels = counsellorFilters.map((id) =>
             id === UNASSIGNED_COUNSELLOR_VALUE
                 ? t('chips.unassigned')
-                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? t('chips.fallbackSelected'))
+                : counsellorOptions.find((c) => c.id === id)?.full_name ??
+                  t('chips.fallbackSelected')
         );
         chips.push({
             label: t('chips.counsellor', { names: cLabels.join(', ') }),
@@ -1285,24 +1292,26 @@ const RecentLeadsContent = () => {
                 <div className="flex flex-wrap items-center gap-2">
                     {showOps && (
                         <MultiSelectFilter
-                            label={t('filters.tier.label')}
+                            label={terminology.tier}
                             icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
-                            options={[
-                                { value: 'HOT', label: tierLabels.HOT ?? 'HOT' },
-                                { value: 'WARM', label: tierLabels.WARM ?? 'WARM' },
-                                { value: 'COLD', label: tierLabels.COLD ?? 'COLD' },
-                            ]}
+                            options={tierCatalog.tiers.map((tier) => ({
+                                value: tier.tier_key,
+                                label: tier.label,
+                            }))}
                             selected={tierFilters}
                             onChange={setTier}
                             widthClass="w-36"
                         />
                     )}
                     <MultiSelectFilter
-                        label={t('filters.leadStatus.label')}
+                        label={terminology.leadStatus}
                         icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
                         options={[
                             { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
-                            { value: ALL_CONVERTED_VALUE, label: t('filters.leadStatus.converted') },
+                            {
+                                value: ALL_CONVERTED_VALUE,
+                                label: t('filters.leadStatus.converted'),
+                            },
                             ...leadStatusCatalog.map((s) => ({
                                 value: s.status_key,
                                 label: s.label,
@@ -1456,7 +1465,10 @@ const RecentLeadsContent = () => {
                         <Button
                             variant={showDeleted ? 'default' : 'outline'}
                             size="sm"
-                            className={cn('h-10', showDeleted && 'bg-danger-600 hover:bg-danger-700')}
+                            className={cn(
+                                'h-10',
+                                showDeleted && 'bg-danger-600 hover:bg-danger-700'
+                            )}
                             onClick={() => {
                                 setShowDeleted((v) => !v);
                                 setPage(0);
@@ -1485,9 +1497,7 @@ const RecentLeadsContent = () => {
                         variant="outline"
                         className="h-10"
                         onClick={() => {
-                            setSelectedExportCols(
-                                new Set(exportColumnOptions.map((c) => c.key))
-                            );
+                            setSelectedExportCols(new Set(exportColumnOptions.map((c) => c.key)));
                             setExportPickerOpen(true);
                         }}
                         disabled={isExporting || !data?.totalElements}

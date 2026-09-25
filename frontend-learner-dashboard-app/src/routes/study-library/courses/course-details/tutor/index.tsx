@@ -3,7 +3,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
-import { useSpatiusAvatar } from "@/hooks/useSpatiusAvatar";
+import { useSpatiusAvatar, type AvatarBoot } from "@/hooks/useSpatiusAvatar";
+import { BEGIN_CAP_MS, decideBegin, hasUserActivation } from "@/lib/tutorAudioGate";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorPace, type TutorStateEvent } from "@/hooks/useTutorSocket";
 import { Whiteboard } from "@/components/tutor/Whiteboard";
@@ -114,12 +115,23 @@ function TutorPage() {
   const [avatarOn, setAvatarOn] = useState(true);
   const avatarContainerRef = useRef<HTMLDivElement | null>(null);
   const avatarBootedRef = useRef(false);
-  // Shown: the face is on screen. Active: it is also unlocked (a tap initialised its audio), so
-  // narration goes through it; until then the speaker plays and the card asks for a tap.
-  const avatarShown = voiceMode && avatarOn && avatar.ready && !avatar.failed;
-  const avatarActive = avatarShown && avatar.activated;
+  const pendingAvatarRef = useRef<AvatarBoot | null>(null);
+  // Wanted: a voice lesson on a course with a face, kept on. Active: painted and
+  // unlocked, so narration goes through it; until then the speaker plays.
+  const avatarWanted = voiceMode && avatarOn && !!boot?.avatar;
+  const avatarShown = avatarWanted && !avatar.failed;
+  const avatarActive = avatarShown && avatar.painted && avatar.activated;
   const avatarActiveRef = useRef(false);
   avatarActiveRef.current = avatarActive;
+  // Speaker or face is chosen once per teacher turn, never mid-sentence.
+  const turnRouteRef = useRef<{ turn?: number; viaAvatar: boolean }>({ viaAvatar: false });
+  // Cold load (reload, direct link): the browser wants a tap before any audio.
+  // The tap that opened the lesson from the course page already counts.
+  const [needsTap, setNeedsTap] = useState(() => !hasUserActivation());
+  const [gate, setGate] = useState(false);
+  // The server holds the teacher's first words until this device says `begin`.
+  const [readyAt, setReadyAt] = useState<number | null>(null);
+  const begunRef = useRef(false);
   // Narration sync: the sentence being spoken and the elements written for it.
   const [sentence, setSentence] = useState<number | null>(null);
   const [focusIds, setFocusIds] = useState<string[]>([]);
@@ -330,9 +342,11 @@ function TutorPage() {
         // The board writes the elements of this sentence as it is spoken.
         if (syncedRef.current && typeof seg.sentence === "number") revealSynced(seg.sentence);
         if (!seg.buf) continue;
+        // The avatar plays the audio itself, lips in sync; otherwise the speaker
+        // does. Decided at the first segment of a turn and held for the turn.
+        if (turnRouteRef.current.turn !== seg.turn) turnRouteRef.current = { turn: seg.turn, viaAvatar: avatarActiveRef.current };
         try {
-          // The avatar plays the audio itself, lips in sync; otherwise the speaker does.
-          if (avatarActiveRef.current) await avatar.speak(seg.buf);
+          if (turnRouteRef.current.viaAvatar) await avatar.speak(seg.buf);
           else await audioPlayer.playAudio(seg.buf);
         } catch {
           /* autoplay blocked or decode error: keep going */
@@ -383,9 +397,10 @@ function TutorPage() {
   const socket = useTutorSocket({
     getToken: () => guestRef.current?.token,
     onReady: (ev) => {
-      if (guestRef.current) setDemoLeft((v) => (v === null ? (guestRef.current?.minutes ?? 3) * 60 : v));
+      // Controls stay inert until `begin`: the teacher has not started, and
+      // a tap now would only race the opening.
+      setReadyAt(Date.now());
       setDisconnected(null);
-      setPhase("idle");
       if (typeof ev.pace === "string") setPace(ev.pace as TutorPace);
       if (ev.language === "en" || ev.language === "hi") setLanguage(ev.language);
       if (Array.isArray(ev.topics)) setTopics(ev.topics as TutorTopicItem[]);
@@ -638,17 +653,59 @@ function TutorPage() {
     socket.sendConfig({ avatar: avatarActive });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarActive]);
-  // Audio contexts unlock on a tap: the first gesture also connects the avatar.
+  // The face is on screen: unlock its audio without a second tap when the
+  // document already has user activation; otherwise the gate asks for one.
   useEffect(() => {
-    if (!boot?.avatar || !avatar.ready) return;
-    const unlock = () => {
-      void avatar.activate();
-      window.removeEventListener("pointerdown", unlock, true);
-    };
-    window.addEventListener("pointerdown", unlock, true);
-    return () => window.removeEventListener("pointerdown", unlock, true);
+    if (!avatarShown || !avatar.painted || avatar.activated || needsTap) return;
+    void avatar.activate().then((ok) => {
+      if (!ok) setNeedsTap(true);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boot?.avatar, avatar.ready]);
+  }, [avatarShown, avatar.painted, avatar.activated, needsTap]);
+  // Opening: the server keeps the teacher quiet until this device can show and
+  // play her — or until the cap, so a slow face never holds the lesson.
+  useEffect(() => {
+    if (readyAt === null || begunRef.current) return;
+    const decide = () => {
+      if (begunRef.current) return;
+      const d = decideBegin({
+        avatarWanted, painted: avatar.painted, activated: avatar.activated, failed: !!avatar.failed, needsTap,
+        sinceReadyMs: Date.now() - readyAt,
+      });
+      if (d === "gate") {
+        setGate(true);
+        return;
+      }
+      if (d === "now") {
+        begunRef.current = true;
+        setGate(false);
+        setPhase("idle");
+        socket.sendBegin();
+        // The demo clock counts from the first words, not from the download.
+        if (guestRef.current) setDemoLeft((v) => (v === null ? (guestRef.current?.minutes ?? 10) * 60 : v));
+      }
+    };
+    decide();
+    const t = window.setTimeout(decide, Math.max(0, BEGIN_CAP_MS - (Date.now() - readyAt)) + 20);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readyAt, avatarWanted, avatar.painted, avatar.activated, avatar.failed, needsTap]);
+  // The one tap a cold load needs: unlock inside the gesture, then begin.
+  const onGateTap = async () => {
+    if (avatarShown && avatar.ready) await avatar.activate();
+    setNeedsTap(false);
+    setGate(false);
+  };
+  // Mount the face as soon as its container exists; the token request is
+  // already in flight and SDK init overlaps it.
+  useEffect(() => {
+    const pending = pendingAvatarRef.current;
+    const container = avatarContainerRef.current;
+    if (!pending || !container || avatarBootedRef.current) return;
+    avatarBootedRef.current = true;
+    void avatar.mount(pending, container);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boot?.avatar, voiceMode]);
 
   // Voice mode: after the audio of a no-question concept (or a topic summary)
   // has finished, continue by itself. Any tap — the mic, Doubt, typing — changes
@@ -680,6 +737,9 @@ function TutorPage() {
     setFatal(null);
     setDisconnected(null);
     setPhase("connecting");
+    begunRef.current = false;
+    setReadyAt(null);
+    setGate(false);
     try {
       const [b, slides] = await Promise.all([
         isDemo
@@ -699,22 +759,20 @@ function TutorPage() {
       currentSlideRef.current = b.slide_id;
       sessionRef.current = b.tutor_session_id;
       socket.connect(b.socket_path);
-      // Premium avatar: fetch a session token and mount the face; the lesson
+      // Premium avatar: the session token is requested now, in parallel with
+      // the socket; the face mounts once its card is in the DOM. The lesson
       // carries on with plain audio if any step fails.
-      if (b.avatar && voiceMode && !avatarBootedRef.current) {
-        avatarBootedRef.current = true;
-        void (async () => {
-          try {
-            const tok = guestRef.current
-              ? await getTutorDemoAvatarToken(b.tutor_session_id, guestRef.current.token)
-              : await getTutorAvatarToken(b.tutor_session_id);
-            const container = avatarContainerRef.current;
-            if (!container) return;
-            await avatar.mount({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token }, container);
-          } catch {
-            /* no avatar this lesson */
-          }
-        })();
+      if (b.avatar && voiceMode && !avatarBootedRef.current && !pendingAvatarRef.current) {
+        const tok = guestRef.current
+          ? getTutorDemoAvatarToken(b.tutor_session_id, guestRef.current.token)
+          : getTutorAvatarToken(b.tutor_session_id);
+        tok.catch(() => undefined);
+        pendingAvatarRef.current = {
+          provider: "spatius",
+          app_id: b.avatar.app_id,
+          avatar_id: b.avatar.avatar_id,
+          session_token: tok.then((t) => t.session_token),
+        };
       }
     } catch (e: unknown) {
       if (seq !== bootSeq.current) return;
@@ -871,7 +929,10 @@ function TutorPage() {
       {isDemo && (
         <div className="mb-2 flex items-center gap-x-3 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm sm:px-4 sm:py-2">
           <span className="font-semibold text-neutral-900">Tutezy demo</span>
-          <span className="hidden text-neutral-600 md:inline">A 3-minute taste. Your students would get the whole chapter, in your teacher&apos;s voice.</span>
+          <span className="hidden text-neutral-600 md:inline">
+            {/* Length comes from the server (tutor.demo.minutes) via the guest session, never a literal. */}
+            {guestRef.current?.minutes ? `A ${guestRef.current.minutes}-minute taste.` : "A short taste."} Your students would get the whole chapter, in your teacher&apos;s voice.
+          </span>
           {demoClock && <span className="hidden rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700 lg:inline">{demoClock} left</span>}
           <a href="https://tutezy.ai/#demo" className="ms-auto shrink-0 rounded-full bg-primary-500 px-3 py-1 text-xs font-semibold text-white">Book a demo</a>
         </div>
@@ -976,9 +1037,11 @@ function TutorPage() {
               socket.sendConfig({ pace: p });
             }}
             avatarContainerRef={boot?.avatar && voiceMode ? avatarContainerRef : undefined}
-            avatarState={boot?.avatar && voiceMode ? (avatar.failed ? "failed" : avatarShown ? "on" : avatar.ready ? "off" : "loading") : undefined}
-            avatarNeedsTap={avatarShown && !avatar.activated}
-            onActivateAvatar={() => void avatar.activate()}
+            avatarState={boot?.avatar && voiceMode ? (avatar.failed ? "failed" : !avatarOn ? "off" : avatar.painted ? "on" : "loading") : undefined}
+            avatarPainted={avatar.painted}
+            avatarProgress={avatar.progress}
+            gate={gate}
+            onGateTap={() => void onGateTap()}
             avatarError={avatar.failed ?? avatar.warning ?? undefined}
             onToggleAvatar={() => setAvatarOn((v) => !v)}
             onRetryAvatar={async () => {

@@ -1,6 +1,7 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { AI_SERVICE_BASE_URL, ADD_QUESTION_PAPER } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
+import { renderLatexDelimiters } from '@/lib/latex-delimiters';
 import type {
     Blueprint,
     KbTopic,
@@ -364,6 +365,33 @@ const withJavaEvaluationKeys = (questions: PaperQuestion[]): PaperQuestion[] =>
     });
 
 /**
+ * Generated question HTML carries its maths as `$…$` / `\(…\)` source — the
+ * reader (MathPix, the model) writes it that way. The bank's own convention,
+ * and what the editor, the question-bank views and the AI evaluator
+ * (`[data-latex]`) all understand, is the `.math-inline` node with the source
+ * on `data-latex`, the way Vsmart Extract stores it. Rendered here for every
+ * caller so a digitised paper does not show `$2 \mathrm{x}-5 \mathrm{y}=7$`
+ * verbatim in the assessment (2026-09-22). Text without delimiters is
+ * returned untouched.
+ */
+const withRenderedMath = (questions: PaperQuestion[]): PaperQuestion[] => {
+    const rich = <T extends { content?: string | null } | null | undefined>(text: T): T =>
+        text && typeof text.content === 'string' && text.content
+            ? { ...text, content: renderLatexDelimiters(text.content) }
+            : text;
+    return questions.map((q) => ({
+        ...q,
+        text: rich(q.text),
+        explanation_text: rich(q.explanation_text),
+        options: q.options?.map((o) => ({
+            ...o,
+            text: rich(o.text),
+            explanation_text: rich(o.explanation_text),
+        })),
+    }));
+};
+
+/**
  * The bank stores each explanation as its own row with `content NOT NULL`; the
  * question builder sends `""` for "no explanation". A generator that emits
  * `null` (a digitised paper has none — 2026-09-20, all 64 questions refused)
@@ -402,7 +430,9 @@ export const savePaperToQuestionBank = async (payload: {
         institute_id: instituteId,
         level_id: payload.levelId ?? null,
         subject_id: payload.subjectId ?? null,
-        questions: withBankSafeExplanation(withJavaEvaluationKeys(payload.questions)),
+        questions: withBankSafeExplanation(
+            withJavaEvaluationKeys(withRenderedMath(payload.questions))
+        ),
     });
     return data;
 };

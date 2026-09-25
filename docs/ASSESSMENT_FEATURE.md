@@ -396,6 +396,9 @@ Two-level persistence:
 
 ### 4.4 Anti-cheat / proctoring
 
+Two layers. The first has always been there and is client-only; the second is the
+per-assessment video proctoring added in V50 (see §4.4A).
+
 `hooks/proctoring/useProctoring.ts` composes:
 - `forceFullScreen`, `preventTabSwitch`, `preventContextMenu`, `preventUserSelection`, `preventCopy`
 - `useCopyDisable`, `useFullScreenDetection`, `useTabFocusDetection`
@@ -403,7 +406,62 @@ Two-level persistence:
 Tab-switch handling in `navbar.tsx`:
 - Increments `tabSwitchCount` on `visibilitychange`.
 - Shows warning dialog.
-- On 3rd violation (non-MANUAL evaluation) → auto-submit.
+- On 3rd violation (non-MANUAL evaluation) → auto-submit. The same effect also
+  submits when the proctoring layer sets `proctorAutoSubmitRequested` (§4.4A).
+
+### 4.4A Video proctoring (V50) — tier BASIC, "on-device AI, snapshots only"
+
+Per-assessment, **off unless chosen**. `assessment.proctoring_config` is JSONB and
+NULL for every assessment that predates V50 (and for any switched back to Off), so
+nothing changes for an existing exam: no config → no camera prompt, no snapshots,
+no events, and the `ProctorLayer` renders `null`.
+
+```
+{ "tier": "BASIC", "camera_required": true, "snapshot_interval_sec": 30,
+  "face_check": true, "max_violations": 0, "show_self_view": true }
+```
+
+Tiers are an enum (`ProctoringTier`: NONE, BASIC). PRO / ULTRA are shown in the
+wizard as "coming soon" and cannot be stored yet; adding one is a constant plus its
+defaults in `ProctoringConfigDTO.defaultsFor`, not a schema change. Pricing text is
+a translation key (`proctoring.tiers.<TIER>.price`).
+
+**Why this tier is cheap.** Nothing streams. The learner's browser counts faces
+locally (`lib/proctoring/face-detector.ts`: native `FaceDetector` → MediaPipe from
+the CDN, loaded only when proctoring is on → none) and uploads a 320-px JPEG
+(~15 KB) every N seconds plus one per flag. A 2-hour exam at 30 s is ~4 MB of S3.
+The interval is clamped server-side to 10–600 s so a client cannot inflate it.
+
+| Piece | Where |
+|---|---|
+| Config storage + defaults | `features/proctoring/dto/ProctoringConfigDTO`, `service/ProctoringConfigService` (only reader/writer; unreadable JSON = off, never throws) |
+| Event log | `attempt_proctor_event` (append-only; evidence = media_service file id, never bytes). Not joined to `StudentAttempt` on purpose: grading and reports never load it |
+| Learner API | `GET /assessment/learner/proctoring/config?assessmentId=` · `POST /assessment/learner/proctoring/events?attemptId=` (batch ≤50, owner-only, ignored once ENDED or when the assessment is unproctored) |
+| Admin API | `GET /assessment/admin/proctoring/attempt/{attemptId}?instituteId=` (timeline + counts) · `POST …/proctoring/summaries` (flag/warn counts for a page of attempts) |
+| Admin wizard | Step 1 → `ProctoringSettingsCard` (tier cards + knobs); `proctoring_config` is always sent whole, tier NONE clears |
+| Admin review | Submissions table → row menu → **Proctoring** → `ProctoringReviewDialog` (flag/warn/snapshot chips, timeline, lazy snapshot thumbnails) |
+| Learner check-in | `InstructionPage` → `ProctorCheckIn`: camera permission, live preview, waits for exactly one face, keeps a selfie; Start stays disabled while `camera_required` and the camera is refused |
+| Learner runtime | `ProctorLayer` inside the live shell → `useCameraProctor`: camera, 2 fps face count with hysteresis (no face ≥6 s, >1 face ≥2.5 s, 30 s re-flag cooldown), snapshot timer, `ProctorEventQueue` (10 s batches, FLAG flushes immediately, retried, bounded), self-view PiP |
+
+Event types: `CHECK_IN`, `SNAPSHOT` (INFO) · `TAB_SWITCH`, `FULLSCREEN_EXIT` (WARN —
+logged for the timeline but not counted, since the navbar's own 3-strike rule already
+enforces tab switches) · `CAMERA_DENIED`, `CAMERA_LOST`, `NO_FACE`, `MULTIPLE_FACES`
+(FLAG) · `AUTO_SUBMITTED`.
+
+`max_violations` is the admin's ceiling on FLAG events; 0 (the default) means
+"record only, a teacher decides". When hit, the hook sets
+`proctorAutoSubmitRequested` in the assessment store and the navbar's existing
+auto-submit path runs.
+
+Failure policy: every proctoring failure degrades to *record less* — camera refused,
+no detector, CDN down, events endpoint down — never to *block the learner*. The only
+thing that stops an exam is the admin's explicit ceiling.
+
+Not in this tier (candidates for PRO / ULTRA): clips on flag (`MediaRecorder` ring
+buffer), phone/object detection, gaze, identity match against a reference photo,
+post-hoc AI review of flagged frames, answer-similarity across a batch, live proctor
+room on BBB. Also still open: a retention/purge job for snapshots and a per-institute
+consent text.
 
 ### 4.5 Submission
 
@@ -617,6 +675,7 @@ question, that means **charging the institute twice for one submission**.
 - `…/question_bank/controller/GetQuestionBankController.java`, `…/manager/GetQuestionBankManager.java`, `…/dto/QuestionBankFilter.java` — question-level browse
 - `…/question_core/repository/QuestionRepository.findQuestionsByFilters`
 - `src/main/resources/db/migration/V42__question_source_and_institute.sql`
+- `…/proctoring/` — `ProctoringConfigDTO`, `ProctoringConfigService`, `ProctorEventService`, `AttemptProctorEvent`, `LearnerProctoringController`, `AdminProctoringController`; `V50__assessment_proctoring.sql`
 
 ### ai_service (knowledge base)
 - `ai_service/app/services/kb/` — `paper.py` (blueprint + generation + validation), `repository.py`, `retrieval.py`, `topics.py`, `ingest.py`, `generations.py`
@@ -627,6 +686,7 @@ question, that means **charging the institute twice for one submission**.
 - `frontend-admin-dashboard/src/routes/assessment/create-assessment/$assessmentId/$examtype/`
   - `-components/CreateAssessmentComponent.tsx`
   - `-components/StepComponents/Step1BasicInfo.tsx`
+  - `-components/StepComponents/-components/ProctoringSettingsCard.tsx` — tier picker (V50); types in `src/types/assessments/proctoring.ts`; review dialog in `assessment-list/…/assessment-submissions-dropdown-individual/ProctoringReviewDialog.tsx`, service `src/services/proctoring-review.ts`
   - `-components/StepComponents/Step2AddingQuestions.tsx`, `Step2SectionInfo.tsx`
   - `-components/StepComponents/Step3AddingParticipants.tsx`
   - `-components/StepComponents/Step4AccessControl.tsx`
@@ -650,6 +710,7 @@ question, that means **charging the institute twice for one submission**.
   - `otherQuestionTypes/numeric.tsx`, `OneWordInput.tsx`, `LongAnswerInput.tsx`, `paragraph.tsx`
 - `frontend-learner-dashboard-app/src/stores/assessment-store.ts`
 - `frontend-learner-dashboard-app/src/hooks/proctoring/useProctoring.ts`
+- `frontend-learner-dashboard-app/src/hooks/proctoring/useCameraProctor.ts`, `lib/proctoring/face-detector.ts`, `lib/proctoring/capture.ts`, `services/proctoring.ts`, `components/common/proctoring/ProctorCheckIn.tsx`, `ProctorLayer.tsx` — video proctoring (V50)
 - `frontend-learner-dashboard-app/src/routes/assessment/reports/student-report/`
 - `frontend-learner-dashboard-app/src/components/common/student-test-records/test-report-dialog.tsx`
 - `frontend-learner-dashboard-app/src/components/common/student-test-records/question-response-renderer.tsx`

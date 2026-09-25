@@ -14,6 +14,7 @@ import org.springframework.util.CollectionUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BalanceLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CombinedPaymentRowProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownDTO;
@@ -1217,6 +1218,9 @@ public class PaymentLogService {
                         row != null && row.getActivatedWithoutPaymentCount() != null
                                 ? row.getActivatedWithoutPaymentCount()
                                 : 0L)
+                .outstanding(row != null && row.getOutstanding() != null ? row.getOutstanding() : 0d)
+                .learnersOutstanding(
+                        row != null && row.getLearnersOutstanding() != null ? row.getLearnersOutstanding() : 0L)
                 .currency(row != null ? row.getCurrency() : null)
                 .build();
     }
@@ -1276,6 +1280,16 @@ public class PaymentLogService {
      */
     public Page<OutstandingLearnerDTO> getOutstandingLearners(
             BillingSummaryRequestDTO request, int pageNo, int pageSize) {
+        return getOutstandingLearners(request, pageNo, pageSize, false);
+    }
+
+    /**
+     * @param includeNotYetDue false: the Due list (something already overdue). true: the
+     *                         Outstanding list — anyone with a balance still to collect, soonest
+     *                         next installment first, with that installment's amount.
+     */
+    public Page<OutstandingLearnerDTO> getOutstandingLearners(
+            BillingSummaryRequestDTO request, int pageNo, int pageSize, boolean includeNotYetDue) {
         if (!StringUtils.hasText(request.getInstituteId())) {
             throw new VacademyException("institute_id is required");
         }
@@ -1287,14 +1301,14 @@ public class PaymentLogService {
                 : LocalDateTime.now();
         boolean noPackageSessions = CollectionUtils.isEmpty(request.getPackageSessionIds());
 
-        Page<OutstandingLearnerProjection> page = userPlanRepository.findOutstandingLearners(
-                request.getInstituteId(),
-                startDate,
-                endDate,
-                noPackageSessions,
-                noPackageSessions ? List.of("__none__") : request.getPackageSessionIds(),
-                upcomingDays,
-                PageRequest.of(pageNo, pageSize));
+        List<String> packageSessionIds = noPackageSessions ? List.of("__none__") : request.getPackageSessionIds();
+        Page<? extends OutstandingLearnerProjection> page = includeNotYetDue
+                ? userPlanRepository.findLearnersWithBalance(
+                        request.getInstituteId(), startDate, endDate, noPackageSessions,
+                        packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize))
+                : userPlanRepository.findOutstandingLearners(
+                        request.getInstituteId(), startDate, endDate, noPackageSessions,
+                        packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize));
 
         // Names/emails/phones live in the auth service, so resolve the page's learners in one call
         // rather than per row.
@@ -1311,7 +1325,10 @@ public class PaymentLogService {
 
         List<OutstandingLearnerDTO> content = page.getContent().stream().map(row -> {
             UserDTO user = users.get(row.getUserId());
+            BalanceLearnerProjection balance = row instanceof BalanceLearnerProjection b ? b : null;
             return OutstandingLearnerDTO.builder()
+                    .outstanding(balance != null ? balance.getOutstanding() : null)
+                    .nextDueAmount(balance != null ? balance.getNextDueAmount() : null)
                     .userId(row.getUserId())
                     .fullName(user != null ? user.getFullName() : null)
                     .email(user != null ? user.getEmail() : null)
@@ -1683,6 +1700,13 @@ public class PaymentLogService {
 
         if (PaymentStatusEnum.PAID.name().equals(paymentLog.getPaymentStatus())) {
             return PaymentStatusEnum.PAID.name();
+        }
+
+        // An admin voided this payment (PaymentVoidService). The listing already has a status for
+        // "shown struck through, counted in no total" — the one a voided invoice row uses — so
+        // report it the same way rather than inventing a second one every screen must learn.
+        if (PaymentVoidService.VOIDED.equals(paymentLog.getPaymentStatus())) {
+            return "CANCELLED";
         }
 
         if (PaymentStatusEnum.FAILED.name().equals(paymentLog.getPaymentStatus()) && paymentLog.getUserPlan() != null) {

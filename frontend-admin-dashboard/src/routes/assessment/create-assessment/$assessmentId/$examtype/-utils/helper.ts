@@ -349,6 +349,40 @@ export const normalizeResultTypeFor = (examType: string | undefined, resultType:
         ? 'AUTO_AFTER_SUBMISSION'
         : resultType;
 
+/**
+ * Whether Step 1 shows the "Result / evaluation type" settings at all.
+ *
+ * A survey has no marks and no result to release, so asking an admin to choose
+ * a release policy for one is noise — and picking MANUAL there would flip
+ * evaluation_type to MANUAL, which puts the learner player into PDF-upload mode
+ * (see defaultResultTypeFor). Surveys keep the AUTO_AFTER_SUBMISSION default and
+ * the section is hidden.
+ *
+ * Deliberately keyed off the type rather than the `result_type` step key: MOCK
+ * and PRACTICE do not declare that key either, yet they DO need a result type —
+ * that omission is what once turned a Mock full of MCQs into "Upload Answer".
+ */
+export const showsResultReleaseSettings = (examType: string | undefined) => examType !== 'SURVEY';
+
+/**
+ * The result type to load into Step 1 when editing an existing assessment.
+ *
+ * When the result section is hidden for this type there is no radio to correct,
+ * so an inherited value becomes permanent. That matters on surveys: 147 of them
+ * carry `result_type = MANUAL` (an old accidental default), and Step 1 maps
+ * `resultType === 'MANUAL'` to `evaluation_type = MANUAL` on save — which flips
+ * the learner player into PDF-upload mode. Editing anything else on such a
+ * survey would silently have broken it. A hidden section always resolves to the
+ * type's own default instead of whatever happens to be stored.
+ */
+export const resultTypeForEdit = (
+    examType: string | undefined,
+    storedResultType: string | undefined
+) =>
+    showsResultReleaseSettings(examType)
+        ? normalizeResultTypeFor(examType, storedResultType || defaultResultTypeFor(examType))
+        : defaultResultTypeFor(examType);
+
 /** The submission a Manual Upload Exam collects; nothing for self-grading types. */
 export const defaultSubmissionTypeFor = (examType: string | undefined) =>
     examType === 'MANUAL_UPLOAD_EXAM' ? 'PDF' : '';
@@ -366,6 +400,7 @@ export const syncStep1DataWithStore = (form: UseFormReturn<BasicSectionFormType>
         evaluationType: getValues('evaluationType'),
         resultType: getValues('resultType'),
         aiEvaluationEnabled: getValues('aiEvaluationEnabled'),
+        proctoring: getValues('proctoring'),
         switchSections: getValues('switchSections'),
         raiseReattemptRequest: getValues('raiseReattemptRequest'),
         raiseTimeIncreaseRequest: getValues('raiseTimeIncreaseRequest'),
@@ -997,3 +1032,48 @@ export function convertDateFormat(dateStr: string) {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+
+/**
+ * Whether Step 1's "Next" may be enabled.
+ *
+ * Kept out of the component so the rule can be tested: it is hand-rolled rather
+ * than derived from the zod schema (which treats the live-window dates as
+ * optional), and it once demanded a field that the same step never rendered.
+ * `AssessmentBasicDetail.getStepsForSurvey` declares both boundation dates
+ * OPTIONAL — a survey may carry a live window but does not need one — so the
+ * requirement is keyed off "REQUIRED", not off the field merely being rendered.
+ * Keying it off presence left "Next" permanently disabled on a new survey.
+ *
+ * Rule of thumb for anything added here: only require what Step 1 actually
+ * renders for that assessment type.
+ */
+export const isBasicInfoStepComplete = ({
+    examType,
+    isNewAssessment,
+    requiresLiveDateRange,
+    assessmentName,
+    liveDateRangeStartDate,
+    liveDateRangeEndDate,
+    reattemptCount,
+    errorCount,
+}: {
+    examType: string | undefined;
+    isNewAssessment: boolean;
+    requiresLiveDateRange: boolean;
+    assessmentName: string | undefined;
+    liveDateRangeStartDate: string | undefined;
+    liveDateRangeEndDate: string | undefined;
+    reattemptCount: string | number | undefined;
+    errorCount: number;
+}): boolean => {
+    if (!assessmentName || errorCount > 0) return false;
+
+    const needsFullSchedule = (examType === 'EXAM' || examType === 'SURVEY') && isNewAssessment;
+    if (!needsFullSchedule) return true;
+
+    if (requiresLiveDateRange && !(liveDateRangeStartDate && liveDateRangeEndDate)) {
+        return false;
+    }
+
+    return !!Number(reattemptCount);
+};

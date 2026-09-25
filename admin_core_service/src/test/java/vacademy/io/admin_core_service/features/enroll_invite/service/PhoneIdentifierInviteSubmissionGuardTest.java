@@ -5,6 +5,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
@@ -27,8 +28,13 @@ class PhoneIdentifierInviteSubmissionGuardTest {
     @Mock
     private UserPlanRepository userPlanRepository;
 
+    // Unstubbed: returns an empty list, so the sibling-invite check is a no-op here.
+    @Mock
+    private PackageSessionLearnerInvitationToPaymentOptionRepository inviteMappingRepository;
+
     private PhoneIdentifierInviteSubmissionGuard service() {
-        return new PhoneIdentifierInviteSubmissionGuard(instituteSettingService, userPlanRepository);
+        return new PhoneIdentifierInviteSubmissionGuard(
+                instituteSettingService, userPlanRepository, inviteMappingRepository);
     }
 
     @Test

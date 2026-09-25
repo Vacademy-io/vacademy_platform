@@ -43,8 +43,8 @@ export function EmptyState({
           neutral disc everywhere:
             play         bigger, gold, chunky — an invitation, not an absence
             cleanerPlay  bigger, warm gold tint, matching the felted set
-            corporate    deliberately restrained; a work tool should not
-                         celebrate having no data
+            corporate    a white bordered icon tile with a soft shadow — the
+                         modern B2B empty-state idiom; calm, not celebratory
           The icon size override works because CSS beats the presentational
           width/height attributes Phosphor emits for `size`. */}
       <div
@@ -52,7 +52,7 @@ export function EmptyState({
           "flex size-12 items-center justify-center rounded-full bg-primary-50 text-primary-500",
           "[.ui-play_&]:size-20 [.ui-play_&]:rounded-play-card [.ui-play_&]:bg-play-gold-soft [.ui-play_&]:text-play-gold-soft-ink [.ui-play_&]:shadow-play-soft-card",
           "[.ui-cleaner-play_&]:size-20 [.ui-cleaner-play_&]:bg-cp-gold-tint [.ui-cleaner-play_&]:text-cp-gold",
-          "[.ui-corporate_&]:rounded-md [.ui-corporate_&]:bg-muted [.ui-corporate_&]:text-muted-foreground",
+          "[.ui-corporate_&]:rounded-xl [.ui-corporate_&]:border [.ui-corporate_&]:border-border [.ui-corporate_&]:bg-card [.ui-corporate_&]:text-foreground [.ui-corporate_&]:shadow-sm",
         )}
       >
         <IconCmp

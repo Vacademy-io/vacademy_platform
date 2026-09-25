@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CircleNotch, Microphone, TextT } from "@phosphor-icons/react";
 import { getTutorDemoTopics, startTutorDemo, type TutorDemoTopic } from "@/services/tutor-api";
 import { writeTutorGuest } from "@/lib/tutorGuest";
+import { preloadAvatarKit } from "@/hooks/useSpatiusAvatar";
 
 interface TrySearch {
   done?: string;
@@ -10,7 +11,7 @@ interface TrySearch {
 }
 
 /**
- * Public 3-minute lesson for tutezy.ai visitors: a name, a topic, then the
+ * Public demo lesson for tutezy.ai visitors: a name, a topic, then the
  * real tutor page with a guest token. No sign-up, one per visitor per day.
  */
 export const Route = createFileRoute("/try/")({
@@ -28,7 +29,8 @@ function TryPage() {
   const search = Route.useSearch();
   const [topics, setTopics] = useState<TutorDemoTopic[] | null>(null);
   const [enabled, setEnabled] = useState(true);
-  const [minutes, setMinutes] = useState(3);
+  // Placeholder until /demo/topics answers with the real tutor.demo.minutes.
+  const [minutes, setMinutes] = useState(10);
   const [name, setName] = useState("");
   const [topic, setTopic] = useState(search.topic || "");
   const [mode, setMode] = useState<"VOICE" | "TEXT">("VOICE");
@@ -57,6 +59,8 @@ function TryPage() {
     }
     setError("");
     setBusy(true);
+    // The animated teacher's SDK downloads while the session is being created.
+    if (mode === "VOICE") void preloadAvatarKit().catch(() => undefined);
     try {
       const r = await startTutorDemo({ name: name.trim(), topicKey: topic, mode });
       writeTutorGuest({ token: r.token, boot: r.boot, minutes: r.minutes, name: name.trim(), topicKey: topic });

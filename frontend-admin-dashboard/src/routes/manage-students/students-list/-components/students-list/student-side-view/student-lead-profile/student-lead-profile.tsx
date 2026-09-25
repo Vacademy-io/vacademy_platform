@@ -22,6 +22,8 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
+import { tierChipStyle, useLeadTiers } from '@/hooks/use-lead-tiers';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { MyButton } from '@/components/design-system/button';
 import { Button } from '@/components/ui/button';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
@@ -879,7 +881,8 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 <div className="flex flex-col gap-2">
                     <div>
                         <label className="mb-1 block text-xs font-medium text-neutral-600">
-                            {t('addNote.scheduleTimeLabel')} <span className="text-danger-500">*</span>
+                            {t('addNote.scheduleTimeLabel')}{' '}
+                            <span className="text-danger-500">*</span>
                         </label>
                         <input
                             type="datetime-local"
@@ -928,9 +931,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
             )}
             <div className="mt-2 flex items-center justify-between">
                 <span className="text-caption text-neutral-400">
-                    {isFollowUp
-                        ? t('addNote.scheduleRequired')
-                        : t('addNote.ctrlEnterSubmit')}
+                    {isFollowUp ? t('addNote.scheduleRequired') : t('addNote.ctrlEnterSubmit')}
                 </span>
                 <div className="flex items-center gap-2">
                     <Button
@@ -1126,20 +1127,15 @@ interface StudentLeadProfileProps {
     userId: string;
 }
 
-function buildTierLabels(t: TFunction): Record<'HOT' | 'WARM' | 'COLD', string> {
-    return {
-        HOT: t('tier.hot'),
-        WARM: t('tier.warm'),
-        COLD: t('tier.cold'),
-    };
-}
-
 export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
     const { t } = useTranslation('manageStudentsLeadProfile');
     const instituteId = getCurrentInstituteId() ?? '';
     const queryClient = useQueryClient();
     const [showAssignCounselor, setShowAssignCounselor] = useState(false);
-    const tierLabels = buildTierLabels(t);
+    // Institute tier catalog (custom tiers, labels, colours, score bands) + the
+    // institute's own name for "Tier".
+    const tierCatalog = useLeadTiers();
+    const terminology = useLeadTerminology();
 
     const queryKey = ['user-lead-profile', userId, instituteId];
 
@@ -1183,7 +1179,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
     const { mutate: changeTier, isPending: changingTier } = useMutation({
         mutationFn: (tier: string) => updateLeadTier(userId, instituteId, tier),
         onSuccess: (_data, tier) => {
-            toast.success(t('profile.leadTierSetTo', { tier }));
+            toast.success(t('profile.leadTierSetTo', { tier: tierCatalog.labelFor(tier) }));
             invalidateLeadCaches(queryClient, userId);
         },
         onError: () => toast.error(t('profile.tierUpdateFailed')),
@@ -1254,36 +1250,40 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                     </span>
                 </div>
                 <div className="mt-3 border-t border-neutral-100 pt-3">
-                    <p className="mb-1.5 text-xs text-muted-foreground">{t('profile.setTier')}</p>
-                    <div className="flex gap-1.5">
-                        {(['HOT', 'WARM', 'COLD'] as const).map((tier) => {
+                    <p className="mb-1.5 text-xs text-muted-foreground">
+                        {t('profile.setTier', { tier: terminology.tier })}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                        {tierCatalog.tiers.map((tier) => {
+                            // Explicit override wins, else the institute's score bands.
                             const isActive =
-                                profile.lead_tier === tier ||
-                                (!profile.lead_tier &&
-                                    ((tier === 'HOT' && profile.best_score >= 80) ||
-                                        (tier === 'WARM' &&
-                                            profile.best_score >= 50 &&
-                                            profile.best_score < 80) ||
-                                        (tier === 'COLD' && profile.best_score < 50)));
-                            const colors = {
-                                HOT: isActive
-                                    ? 'bg-red-100 text-red-700 ring-1 ring-red-300'
-                                    : 'bg-neutral-50 text-neutral-500 hover:bg-red-50',
-                                WARM: isActive
-                                    ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300'
-                                    : 'bg-neutral-50 text-neutral-500 hover:bg-amber-50',
-                                COLD: isActive
-                                    ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300'
-                                    : 'bg-neutral-50 text-neutral-500 hover:bg-blue-50',
-                            };
+                                tierCatalog.resolve(profile.lead_tier, profile.best_score) ===
+                                tier.tier_key;
                             return (
                                 <button
-                                    key={tier}
-                                    onClick={() => changeTier(tier)}
+                                    key={tier.tier_key}
+                                    onClick={() => changeTier(tier.tier_key)}
                                     disabled={changingTier}
-                                    className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${colors[tier]}`}
+                                    // Inline style: tier colour is admin-picked hex (no design token).
+                                    style={
+                                        isActive
+                                            ? {
+                                                  ...tierChipStyle(tier.color),
+                                                  boxShadow: `0 0 0 1px ${tier.color}66`,
+                                              }
+                                            : undefined
+                                    }
+                                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition-all ${
+                                        isActive
+                                            ? ''
+                                            : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
+                                    }`}
                                 >
-                                    {tierLabels[tier]}
+                                    <span
+                                        className="size-1.5 rounded-full"
+                                        style={{ backgroundColor: tier.color }}
+                                    />
+                                    {tier.label}
                                 </button>
                             );
                         })}

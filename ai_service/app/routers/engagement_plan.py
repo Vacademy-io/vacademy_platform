@@ -16,14 +16,22 @@ pictures are opt-in per task.
 
 Nothing here publishes. The draft comes back in the composer's own request shape
 and the teacher saves it through the normal engagement API after review.
+
+Billing only follows a usable result. A regenerate that comes back empty, or as a
+different kind of task than the one being replaced, is a 422 with no charge.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from datetime import date
+from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -39,13 +47,54 @@ from ..services.engagement_plan_service import (
     call_model,
     model_name,
     normalise_draft,
+    normalise_single_item,
     parse_json_lenient,
+    single_item_target,
     MAX_DAYS,
     MAX_ITEMS_PER_DAY,
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/engagement/plan", tags=["engagement-plan"])
+
+
+class _PlainDetailRoute(APIRoute):
+    """Validation errors as one readable sentence in `detail`.
+
+    FastAPI's default 422 puts a list of error objects in `detail`; the wizard
+    shows `detail` as text, so a list would render as nothing useful (or crash
+    the view). The field-level list is still returned under `errors`.
+    """
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handler = super().get_route_handler()
+
+        async def route_handler(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except RequestValidationError as exc:
+                return JSONResponse(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    content={"detail": _validation_message(exc), "errors": jsonable_encoder(exc.errors())},
+                )
+
+        return route_handler
+
+
+def _validation_message(exc: RequestValidationError) -> str:
+    # The field is the last NAME in the error's location; list indexes and the
+    # character offset of a JSON syntax error are numbers and name nothing.
+    fields = set()
+    for err in exc.errors():
+        names = [str(p) for p in (err.get("loc") or ()) if isinstance(p, str) and p != "body"]
+        if names:
+            fields.add(names[-1])
+    if "start_date" in fields:
+        return "Pick a valid start date for the plan (yyyy-MM-dd)."
+    named = ", ".join(sorted(fields))
+    return f"Check the brief: {named} is not valid." if named else "Check the brief and try again."
+
+
+router = APIRouter(prefix="/engagement/plan", tags=["engagement-plan"], route_class=_PlainDetailRoute)
 
 # Draft credits = max(flat, actual token cost × markup). A whole plan is one big
 # call; the markup covers retries and the review that follows.
@@ -53,6 +102,9 @@ _USAGE_MARKUP = 2
 # Pictures per illustrated reading. Enough for a textbook-style page; capped so one
 # task cannot quietly become the most expensive thing in the plan.
 _MAX_IMAGES_PER_READING = 3
+# A regenerate that produced nothing usable of the requested kind. Refused before
+# billing, so the sentence can promise the teacher was not charged.
+_UNUSABLE_ITEM = "The AI didn't return a usable task. Try again; you weren't charged."
 
 
 class GroundingText(BaseModel):
@@ -75,7 +127,9 @@ class DraftRequest(BaseModel):
     audience: Optional[str] = None
     language: str = "English"
     difficulty: str = "medium"
-    start_date: str = Field(..., description="yyyy-MM-dd, institute-local")
+    # A real date, so an empty or malformed one is a 422 before the paid call —
+    # it used to reach date.fromisoformat() only after the paid model call (a 500).
+    start_date: date = Field(..., description="yyyy-MM-dd, institute-local")
     days: int = Field(7, ge=1, le=MAX_DAYS)
     per_day_items: int = Field(2, ge=1, le=MAX_ITEMS_PER_DAY)
     start_time: str = "06:00"
@@ -189,7 +243,12 @@ async def draft_plan(
     if not (body.topic and body.topic.strip()) and not body.grounding_texts and not body.kb_id:
         raise HTTPException(status_code=400, detail="Give a topic, pick some course content, or choose a knowledge base.")
 
-    is_single = bool(body.single_item_type)
+    is_single = bool(body.single_item_type and body.single_item_type.strip())
+    if is_single and single_item_target(body.single_item_type) is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can't regenerate a task of type {body.single_item_type.strip()[:40]}.",
+        )
     tool_key = "engagement_item" if is_single else "engagement_plan"
     if is_single:
         body.days = 1
@@ -216,7 +275,6 @@ async def draft_plan(
 
     try:
         text, usage = await call_model(prompt, api_key, base_url, model)
-        raw = parse_json_lenient(text)
     except httpx.HTTPStatusError as e:
         logger.error("[engagement-plan] model call failed: %s", e)
         raise HTTPException(status_code=502, detail="The AI provider rejected the request. Try again.")
@@ -224,7 +282,23 @@ async def draft_plan(
         logger.error("[engagement-plan] draft failed: %s", e)
         raise HTTPException(status_code=502, detail="Could not draft a plan from that brief. Try a clearer topic.")
 
-    draft = normalise_draft(raw, brief)
+    # Parsing AND normalising sit inside a try: anything in the reply that trips
+    # them fails here as a clean 422/502 and before billing, never as a bare 500.
+    try:
+        raw = parse_json_lenient(text)
+        draft = normalise_single_item(raw, brief) if is_single else normalise_draft(raw, brief)
+    except Exception as e:  # noqa: BLE001
+        logger.error("[engagement-plan] unreadable draft: %s", e)
+        if is_single:
+            raise HTTPException(status_code=422, detail=_UNUSABLE_ITEM)
+        raise HTTPException(status_code=502, detail="Could not draft a plan from that brief. Try a clearer topic.")
+
+    if is_single and draft is None:
+        # Empty, or a different kind of task than the one being replaced.
+        logger.warning(
+            "[engagement-plan] regenerate returned no usable %s; not billed", body.single_item_type
+        )
+        raise HTTPException(status_code=422, detail=_UNUSABLE_ITEM)
     if not draft["slots"]:
         raise HTTPException(status_code=422, detail="The draft came back empty. Try a narrower topic or fewer days.")
 

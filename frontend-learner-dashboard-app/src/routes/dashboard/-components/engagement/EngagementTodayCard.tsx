@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "@tanstack/react-router";
 import {
   EngagementItem,
   fetchEngagementFeed,
@@ -10,7 +11,11 @@ import { InlineQuestion } from "./InlineQuestion";
 import { glimpseFor } from "./engagement-preview";
 import { ProgressRing } from "./ProgressRing";
 import { RevealedAnswers } from "./RevealedAnswers";
+import { CalendarBlank, CheckCircle, Fire, Lock } from "@phosphor-icons/react";
+import { useCorporateTheme } from "@/hooks/use-corporate-theme";
 import {
+  CORPORATE_CHIP,
+  stripLeadingEmoji,
   isUrgent,
   shortDateLabel,
   staggerDelay,
@@ -26,6 +31,10 @@ import {
  */
 export function EngagementTodayCard() {
   const { t } = useTranslation("dashboardEngagement");
+  const navigate = useNavigate();
+  // Corporate swaps emoji for line icons and the per-type rainbow for one
+  // neutral chip; everything purely visual below uses [.ui-corporate_&]: variants.
+  const isCorporate = useCorporateTheme();
   const [feed, setFeed] = useState<EngagementFeed | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeItem, setActiveItem] = useState<EngagementItem | null>(null);
@@ -92,21 +101,22 @@ export function EngagementTodayCard() {
 
   return (
     <>
-      <section className="animate-fade-in-up overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow duration-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900">
+      <section className="animate-fade-in-up overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow duration-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 [.ui-corporate_&]:rounded-xl [.ui-corporate_&]:border-border">
         {/* Header */}
-        <div className="flex items-center gap-4 border-b border-neutral-100 bg-gradient-to-r from-primary-50 via-white to-white px-5 py-4 dark:border-neutral-800 dark:from-primary-950/30 dark:via-neutral-900 dark:to-neutral-900">
+        <div className="flex items-center gap-4 border-b border-neutral-100 bg-gradient-to-r from-primary-50 via-white to-white px-5 py-4 [.ui-corporate_&]:bg-none [.ui-corporate_&]:border-border dark:border-neutral-800 dark:from-primary-950/30 dark:via-neutral-900 dark:to-neutral-900">
           <ProgressRing percent={progressPercent} done={done} total={total} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
+              <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50 [.ui-corporate_&]:text-base [.ui-corporate_&]:font-semibold">
                 {allDone ? t("card.titleDone") : t("card.title")}
               </h2>
               {(feed.streakDays ?? 0) > 0 && (
                 <span
-                  className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                  className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 [.ui-corporate_&]:inline-flex [.ui-corporate_&]:items-center [.ui-corporate_&]:gap-1 [.ui-corporate_&]:rounded-md [.ui-corporate_&]:bg-muted [.ui-corporate_&]:font-medium [.ui-corporate_&]:text-muted-foreground"
                   title={t("card.streakTitle")}
                 >
-                  🔥 {t("card.streak", { count: feed.streakDays })}
+                  {isCorporate ? <Fire size={12} aria-hidden /> : "🔥 "}
+                  {t("card.streak", { count: feed.streakDays })}
                 </span>
               )}
             </div>
@@ -126,6 +136,8 @@ export function EngagementTodayCard() {
         <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
           {feed.items.map((item, index) => {
             const visual = visualFor(item.itemType);
+            const VisualIcon = visual.icon;
+            const chip = isCorporate ? CORPORATE_CHIP : visual.chip;
             const timeLeft = timeLeftLabel(t, item.closesAt, now);
             const urgent = isUrgent(item.closesAt, now);
             const maxPoints = item.completionPoints + item.correctPoints;
@@ -153,22 +165,22 @@ export function EngagementTodayCard() {
                       setDialogOpen(true);
                     }
                   }}
-                  className={`group flex w-full cursor-pointer items-start gap-4 px-5 py-4 text-start transition-colors duration-200 ${visual.wash}`}
+                  className={`group flex w-full cursor-pointer items-start gap-4 px-5 py-4 text-start transition-colors duration-200 ${isCorporate ? "group-hover:bg-muted/50" : visual.wash}`}
                 >
                   <span
-                    className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-xl transition-transform duration-200 group-hover:scale-110 ${visual.chip}`}
+                    className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-xl transition-transform duration-200 group-hover:scale-110 [.ui-corporate_&]:size-9 [.ui-corporate_&]:rounded-lg [.ui-corporate_&]:group-hover:scale-100 ${chip}`}
                     aria-hidden
                   >
-                    {visual.glyph}
+                    {isCorporate ? <VisualIcon size={18} /> : visual.glyph}
                   </span>
 
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-1.5">
-                      <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${visual.chip}`}>
+                      <span className={`rounded-md px-2 py-0.5 text-xs font-semibold [.ui-corporate_&]:font-medium ${chip}`}>
                         {t(`types.${visual.label}`)}
                       </span>
                       {item.isRequired && (
-                        <span className="rounded-md bg-neutral-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-neutral-100 dark:text-neutral-900">
+                        <span className="rounded-md bg-neutral-900 px-2 py-0.5 text-xs font-semibold text-white dark:bg-neutral-100 dark:text-neutral-900 [.ui-corporate_&]:border [.ui-corporate_&]:border-border [.ui-corporate_&]:bg-card [.ui-corporate_&]:font-medium [.ui-corporate_&]:text-muted-foreground">
                           {t("card.required")}
                         </span>
                       )}
@@ -219,11 +231,13 @@ export function EngagementTodayCard() {
                       )}
                       {(item.completedCount ?? 0) > 0 && (
                         <span className="text-neutral-500 dark:text-neutral-400">
-                          {t("card.alreadyDone", { count: item.completedCount ?? 0 })}
+                          {isCorporate
+                            ? stripLeadingEmoji(t("card.alreadyDone", { count: item.completedCount ?? 0 }))
+                            : t("card.alreadyDone", { count: item.completedCount ?? 0 })}
                         </span>
                       )}
                       {maxPoints > 0 && (
-                        <span className="rounded-full bg-primary-50 px-2 py-0.5 font-semibold text-primary-700 dark:bg-primary-950/40 dark:text-primary-300">
+                        <span className="rounded-full bg-primary-50 px-2 py-0.5 font-semibold text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 [.ui-corporate_&]:rounded-md [.ui-corporate_&]:bg-muted [.ui-corporate_&]:font-medium [.ui-corporate_&]:text-muted-foreground">
                           {t("card.points", { count: maxPoints })}
                         </span>
                       )}
@@ -240,7 +254,13 @@ export function EngagementTodayCard() {
 
           {feed.items.length === 0 && (
             <li className="px-5 py-8 text-center">
-              <p className="text-3xl">{done > 0 ? "🎉" : "🌱"}</p>
+              {isCorporate ? (
+                <span className="mx-auto flex size-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-xs">
+                  {done > 0 ? <CheckCircle size={20} /> : <CalendarBlank size={20} />}
+                </span>
+              ) : (
+                <p className="text-3xl">{done > 0 ? "🎉" : "🌱"}</p>
+              )}
               <p className="mt-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">
                 {done > 0 ? t("card.emptyDone") : t("card.emptyNone")}
               </p>
@@ -254,12 +274,13 @@ export function EngagementTodayCard() {
         {/* Locked future tasks */}
         {upcoming.length > 0 && (
           <div className="border-t border-neutral-100 bg-neutral-50/70 px-5 py-3 dark:border-neutral-800 dark:bg-neutral-950/40">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 [.ui-corporate_&]:normal-case [.ui-corporate_&]:tracking-normal [.ui-corporate_&]:font-medium">
               {t("card.comingUp")}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {upcoming.map((item) => {
                 const visual = visualFor(item.itemType);
+                const VisualIcon = visual.icon;
                 return (
                   // Locked: the server sends no content for these, so there is
                   // nothing to open and nothing to peek at in devtools.
@@ -268,16 +289,30 @@ export function EngagementTodayCard() {
                     className="flex items-center gap-1.5 rounded-full border border-dashed border-neutral-300 px-3 py-1 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
                   >
                     <span aria-hidden className="opacity-60">
-                      {visual.glyph}
+                      {isCorporate ? <VisualIcon size={12} /> : visual.glyph}
                     </span>
                     {shortDateLabel(item.runDate)}
-                    <span aria-hidden>🔒</span>
+                    {isCorporate ? <Lock size={12} aria-hidden /> : <span aria-hidden>🔒</span>}
                   </span>
                 );
               })}
             </div>
           </div>
         )}
+
+        {/* Yesterday and before — done, missed, still catchable */}
+        <div className="border-t border-neutral-100 px-5 py-3 dark:border-neutral-800">
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/engagement/history" })}
+            className="group flex w-full items-center justify-between text-sm font-semibold text-primary-700 transition-colors hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+          >
+            <span>{t("card.seePast")}</span>
+            <span className="transition-transform duration-200 group-hover:translate-x-1" aria-hidden>
+              ›
+            </span>
+          </button>
+        </div>
       </section>
 
       <EngagementItemDialog

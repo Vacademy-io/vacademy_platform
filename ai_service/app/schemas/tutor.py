@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ── Board operations ─────────────────────────────────────────────────────────
@@ -210,6 +210,31 @@ class Check(BaseModel):
     question_id: Optional[str] = None
     option_ids: List[str] = Field(default_factory=list)
 
+    # A rubric is prose for the grader, but when the source lists criteria
+    # ("Look for: a hook; under 15 words; …") the model mirrors them as a
+    # list or an object. Rejecting that failed whole compiles after three
+    # calls (2026-09-23, speaking-skills demos) — flatten it instead.
+    @field_validator("rubric", mode="before")
+    @classmethod
+    def _rubric_as_text(cls, v):
+        if v is None or isinstance(v, str):
+            return v
+        if isinstance(v, dict):
+            return "; ".join(f"{k}: {_flatten_text(val)}" for k, val in v.items() if val not in (None, "", [], {}))
+        if isinstance(v, (list, tuple)):
+            return "; ".join(_flatten_text(x) for x in v if x not in (None, "", [], {}))
+        return str(v)
+
+
+def _flatten_text(v) -> str:
+    if isinstance(v, str):
+        return v.strip()
+    if isinstance(v, dict):
+        return ", ".join(f"{k}: {_flatten_text(x)}" for k, x in v.items())
+    if isinstance(v, (list, tuple)):
+        return ", ".join(_flatten_text(x) for x in v)
+    return str(v)
+
 
 class ConceptDraft(BaseModel):
     id: str
@@ -225,6 +250,36 @@ class ConceptDraft(BaseModel):
     # this concept's board appears (first concept of a topic), graded lightly.
     predict: Optional[str] = None
     predict_i18n: Dict[str, str] = Field(default_factory=dict)
+
+    # "No check" arrives from the model as null, "none", false or {} at least
+    # as often as it arrives omitted; all of them mean the default Check, and
+    # a schema that rejects them fails the whole compile after three calls
+    # (2026-09-22, a first concept with "check": null).
+    # The title is a label for the admin outline and the learner's progress
+    # list, never spoken. The model occasionally drops it (or names it
+    # "name"/"concept") on long practice plans; that used to fail the compile.
+    @model_validator(mode="before")
+    @classmethod
+    def _title_is_derivable(cls, data):
+        if not isinstance(data, dict) or (isinstance(data.get("title"), str) and data["title"].strip()):
+            return data
+        for alt in ("name", "concept", "heading", "label"):
+            if isinstance(data.get(alt), str) and data[alt].strip():
+                return {**data, "title": data[alt].strip()[:120]}
+        say = data.get("say")
+        if isinstance(say, str) and say.strip():
+            words = say.strip().split()
+            return {**data, "title": " ".join(words[:6]).rstrip(".,;:!?") + ("…" if len(words) > 6 else "")}
+        if isinstance(data.get("id"), str) and data["id"].strip():
+            return {**data, "title": data["id"].replace("-", " ").replace("_", " ").strip().capitalize()}
+        return data
+
+    @field_validator("check", mode="before")
+    @classmethod
+    def _no_check_means_none(cls, v):
+        if v is None or v is False or v == {} or (isinstance(v, str) and v.strip().lower() in ("", "none", "null")):
+            return {}
+        return v
 
 
 class TopicDraft(BaseModel):

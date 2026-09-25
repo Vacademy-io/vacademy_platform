@@ -122,8 +122,18 @@ public class SubscriptionService {
                 .toList();
 
         // Manual renewal is offered whenever autopay will NOT charge this plan:
-        // cancelled/failed/expired plans, or an active plan whose mandate is gone.
+        // cancelled/failed/expired plans, an active plan whose mandate is gone, a plan
+        // in dunning (a charge was presented and refused — renewal_attempt_count is
+        // reset to 0 only by a successful renewal), or a plan whose period has already
+        // ended without a renewal. The last two matter because our mandate record is
+        // never read back from the gateway: a learner whose UPI mandate was cancelled
+        // at the bank still shows a "live" mandate here, and on 2026-09-21 seventeen
+        // members who had been told to pay could see only "Stop auto-pay".
+        boolean inDunning = plan.getRenewalAttemptCount() != null && plan.getRenewalAttemptCount() > 0;
+        boolean lapsed = plan.getEndDate() != null && plan.getEndDate().before(new java.util.Date());
         boolean canRenewManually = !liveMandate
+                || inDunning
+                || lapsed
                 || UserPlanStatusEnum.CANCELED.name().equals(plan.getStatus())
                 || UserPlanStatusEnum.PAYMENT_FAILED.name().equals(plan.getStatus())
                 || UserPlanStatusEnum.EXPIRED.name().equals(plan.getStatus());

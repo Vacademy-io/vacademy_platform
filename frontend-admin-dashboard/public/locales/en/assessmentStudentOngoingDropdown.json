@@ -17,6 +17,7 @@
     },
     "dropdown": {
         "increaseSubmissionTime": "Increase Submission Time",
-        "closeSubmission": "Close Submission"
+        "closeSubmission": "Close Submission",
+        "proctoring": "Proctoring"
     }
 }

@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { getBackendErrorMessage } from "@/utils/error-message";
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
 import { celebrateCompletion } from "@/lib/play-celebration";
+import { useCorporateTheme } from "@/hooks/use-corporate-theme";
+import { stripLeadingEmoji } from "./engagement-visuals";
 import {
   EngagementItem,
   parseQuestionPayload,
@@ -25,6 +28,7 @@ export function InlineQuestion({
   onCompleted: () => void;
 }) {
   const { t } = useTranslation("dashboardEngagement");
+  const isCorporate = useCorporateTheme();
   const payload = parseQuestionPayload(item);
   const [selected, setSelected] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -51,10 +55,7 @@ export function InlineQuestion({
       // Let the learner read the outcome before the row disappears from the feed.
       window.setTimeout(onCompleted, 1600);
     } catch (e: unknown) {
-      const message =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        t("inline.submitError");
-      setError(message);
+      setError(getBackendErrorMessage(e, t("inline.submitError")));
       setSelected(null);
     } finally {
       setSubmitting(false);
@@ -122,7 +123,7 @@ export function InlineQuestion({
       {result && (
         <p className="animate-in fade-in text-sm font-semibold text-primary-700 dark:text-primary-300">
           {result.resultPending ? (
-            <>{t("inline.lockedIn")}</>
+            <>{isCorporate ? stripLeadingEmoji(t("inline.lockedIn")) : t("inline.lockedIn")}</>
           ) : (
             <>
               {result.isCorrect === true

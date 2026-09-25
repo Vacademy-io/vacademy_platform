@@ -46,7 +46,7 @@ def test_exposed_set_is_the_documented_one():
     # one toggle per feature. Adding here means adding a label + docs too.
     assert MCP_EXPOSED_TOOLS == (
         "whoami", "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit",
-        "workflows", "workflows_edit",
+        "workflows", "workflows_edit", "blog", "blog_edit",
     )
 
 
@@ -85,7 +85,10 @@ def test_workflow_draft_tool_is_off_unless_its_group_is_enabled():
     assert "workflows_edit" in [t.name for t in adapter.list_tools_for(principal(), setting(["workflows_edits"]))]
     tool = next(t for t in adapter.list_tools_for(principal(), setting(["workflows_edits"])) if t.name == "workflows_edit")
     assert tool.annotations.read_only_hint is False
-    assert set(tool.input_schema["properties"]["action"]["enum"]) == {"validate", "create_draft", "update_draft", "discard_draft"}
+    assert set(tool.input_schema["properties"]["action"]["enum"]) == {
+        "validate", "create_draft", "update_draft", "discard_draft",
+        "create_email_template", "create_whatsapp_template", "sync_whatsapp_templates",
+    }
 
 
 # ── schema translation ───────────────────────────────────────────────────

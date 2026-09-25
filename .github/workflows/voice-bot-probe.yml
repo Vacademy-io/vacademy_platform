@@ -16,6 +16,10 @@ on:
         description: "extra pytest args"
         required: false
         default: "-s -q"
+      command:
+        description: "instead of pytest: a shell command run inside voice_bot_service (e.g. python -m sim.timing --scenarios backchannel_mid_reply --verbose --app-log)"
+        required: false
+        default: ""
 
 jobs:
   probe:
@@ -33,7 +37,11 @@ jobs:
         run: |
           cd voice_bot_service
           pip install -q -r requirements.txt pytest pytest-asyncio
-          python -m pytest ${{ github.event.inputs.probe }} ${{ github.event.inputs.pytest_args }} -p no:cacheprovider 2>&1 | tee probe.log
+          if [ -n "${{ github.event.inputs.command }}" ]; then
+            ${{ github.event.inputs.command }} 2>&1 | tee probe.log
+          else
+            python -m pytest ${{ github.event.inputs.probe }} ${{ github.event.inputs.pytest_args }} -p no:cacheprovider 2>&1 | tee probe.log
+          fi
         continue-on-error: true
 
       - name: Upload the log

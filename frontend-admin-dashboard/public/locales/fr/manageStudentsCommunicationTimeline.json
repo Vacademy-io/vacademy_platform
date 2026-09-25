@@ -55,6 +55,40 @@
         "heading": "Envoyer une notification",
         "subheading": "Message e-mail ou WhatsApp"
     },
+    "resend": {
+        "button": "Renvoyer",
+        "buttonTooltip": "Envoyer ce message à nouveau",
+        "blocked": {
+            "noTemplate": "Seuls les messages modèles peuvent être renvoyés — celui-ci a été saisi dans la boîte de réception",
+            "noBody": "Le corps du message d'origine n'a pas été conservé : il n'y a rien à renvoyer",
+            "unsupportedChannel": "Ce canal ne peut pas être renvoyé depuis ici"
+        },
+        "title": "Renvoyer ce message {{channel}} ?",
+        "confirmQuestion": "Voulez-vous vraiment le renvoyer à {{recipient}} ?",
+        "subjectLabel": "Objet :",
+        "hasVariables_one": "Ce modèle comporte {{count}} variable.",
+        "hasVariables_other": "Ce modèle comporte {{count}} variables.",
+        "modeSame": "Renvoyer à l'identique",
+        "modeSameHint": "Conserver les valeurs du premier envoi",
+        "modeSameBlockedHint": "Impossible — le premier envoi est parti sans {{names}}",
+        "modeEdit": "Modifier les variables",
+        "modeEditHint": "Modifier les valeurs avant l'envoi",
+        "variablePlaceholder": "Valeur de {{name}}",
+        "variableEmpty": "(vide)",
+        "previewHeading": "Aperçu",
+        "deliveryCaveat": "Ceci envoie un vrai message à l'apprenant.",
+        "variablesRequired": "Renseignez chaque variable — WhatsApp rejette le message tant que l'une d'elles reste vide.",
+        "cancel": "Annuler",
+        "confirmSame": "Renvoyer",
+        "confirmEdited": "Envoyer avec les nouvelles valeurs",
+        "emailSent": "E-mail renvoyé",
+        "whatsappQueued": "Message WhatsApp transmis au fournisseur",
+        "rejected": "Le fournisseur a refusé le renvoi",
+        "rejectedWithReason": "Le fournisseur a refusé le renvoi : {{reason}}",
+        "failed": "Impossible de renvoyer le message",
+        "noInstitute": "Aucun établissement sélectionné",
+        "noRecipient": "Ce message n'a aucun destinataire"
+    },
     "pagination": {
         "previous": "Précédent",
         "next": "Suivant",
@@ -85,5 +119,11 @@
         "recordingHeading": "Enregistrement",
         "noRecording": "Aucun enregistrement pour cet appel",
         "byCounsellor": "par {{name}}"
+    },
+    "origin": {
+        "workflow": "Envoyé par le flux de travail « {{name}} »",
+        "workflowUnnamed": "Envoyé par un flux de travail",
+        "chatbotFlow": "Envoyé par le flux de chatbot « {{name}} »",
+        "chatbotFlowUnnamed": "Envoyé par un flux de chatbot"
     }
 }

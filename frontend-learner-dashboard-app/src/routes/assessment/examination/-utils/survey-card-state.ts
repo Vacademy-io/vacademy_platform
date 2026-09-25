@@ -1,0 +1,39 @@
+/**
+ * What a finished assessment card offers the learner.
+ *
+ * A survey has no marks, so it has neither a report to open nor a result to
+ * wait for — but both of the original flags keyed off `result_type`, which on a
+ * survey is incidental. The 147 older surveys carry MANUAL (so they showed
+ * "Results pending" forever), while a survey created today defaults to
+ * AUTO_AFTER_SUBMISSION and would have offered "Show Report" and
+ * "Show AI Report" on an unmarked questionnaire.
+ */
+export interface CardResultInput {
+  play_mode?: string | null;
+  /** Nullable on the wire — older rows carry no result type at all. */
+  result_type?: string | null;
+  report_release_status?: string | null;
+}
+
+export const surveyCardState = (
+  info: CardResultInput,
+  isPast: boolean,
+  usedAttempts: number
+) => {
+  const isSurvey = info.play_mode === "SURVEY";
+  const attempted = isPast && usedAttempts > 0;
+
+  return {
+    canShowReport:
+      !isSurvey &&
+      attempted &&
+      (info.result_type !== "MANUAL" ||
+        info.report_release_status === "RELEASED"),
+    resultsPending:
+      !isSurvey &&
+      attempted &&
+      info.result_type === "MANUAL" &&
+      info.report_release_status !== "RELEASED",
+    surveySubmitted: isSurvey && attempted,
+  };
+};

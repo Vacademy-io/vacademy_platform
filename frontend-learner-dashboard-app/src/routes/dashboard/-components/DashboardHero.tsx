@@ -153,9 +153,10 @@ const firstRunBand = cn(
   "relative w-full overflow-hidden rounded-2xl border border-primary/15 p-5 sm:p-8",
   "bg-gradient-to-br from-primary/5 via-background to-background",
   "[.ui-vibrant_&]:from-primary-50 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
-  // Corporate: flat surface, hairline border. A brand-tinted band is exactly
-  // the "brand as fill" treatment this skin exists to avoid.
-  "[.ui-corporate_&]:bg-none [.ui-corporate_&]:border-border",
+  // Corporate: a plain white card — no wash, no glow. Linear/Vercel-register
+  // dashboards earn attention with hierarchy, not colour; the earlier
+  // brand-wash version still read as a consumer onboarding banner.
+  "[.ui-corporate_&]:bg-none [.ui-corporate_&]:bg-card [.ui-corporate_&]:border-border [.ui-corporate_&]:shadow-xs [.ui-corporate_&]:p-5 [.ui-corporate_&]:sm:p-6",
 );
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -293,7 +294,7 @@ export function DashboardHero({
         {/* Signature decorative mesh — tenant-primary, tasteful. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -end-16 -top-20 size-52 rounded-full bg-primary/10 blur-3xl"
+          className="pointer-events-none absolute -end-16 -top-20 size-52 rounded-full bg-primary/10 blur-3xl [.ui-corporate_&]:hidden"
         />
         <div className="relative">
           {liveBanner}
@@ -301,14 +302,14 @@ export function DashboardHero({
             {/* Left: greeting + checklist */}
             <div className="min-w-0 flex-1 space-y-5">
               <div className="flex items-start gap-3">
-                <span className="hidden size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex">
+                <span className="hidden size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex [.ui-corporate_&]:hidden">
                   <Sparkle size={22} weight="fill" />
                 </span>
                 <div className="min-w-0 space-y-1">
-                  <p className="text-caption font-semibold uppercase tracking-wider text-primary">
+                  <p className="text-caption font-semibold uppercase tracking-wider text-primary [.ui-corporate_&]:normal-case [.ui-corporate_&]:tracking-normal [.ui-corporate_&]:font-medium [.ui-corporate_&]:text-muted-foreground">
                     {userName ? t("dashboardHero.welcomeWithName", { name: userName }) : t("dashboardHero.welcome")}
                   </p>
-                  <h2 className="text-display-sm tracking-tight text-foreground">
+                  <h2 className="text-display-sm tracking-tight text-foreground [.ui-corporate_&]:text-h3 [.ui-corporate_&]:font-semibold">
                     {t("dashboardHero.getStartedTitle")}
                   </h2>
                   <p className="text-body text-muted-foreground">
@@ -317,7 +318,7 @@ export function DashboardHero({
                 </div>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2.5 [.ui-corporate_&]:space-y-0 [.ui-corporate_&]:divide-y [.ui-corporate_&]:divide-border [.ui-corporate_&]:overflow-hidden [.ui-corporate_&]:rounded-lg [.ui-corporate_&]:border [.ui-corporate_&]:border-border">
                 {steps.map((step, i) => (
                   <button
                     key={i}
@@ -326,6 +327,8 @@ export function DashboardHero({
                     className={cn(
                       "group/step flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-start transition-all duration-base ease-out-soft",
                       "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
+                      // Corporate: rows of one list — flat, hover tints the row.
+                      "[.ui-corporate_&]:rounded-none [.ui-corporate_&]:border-0 [.ui-corporate_&]:bg-transparent [.ui-corporate_&]:py-2.5 [.ui-corporate_&]:hover:translate-y-0 [.ui-corporate_&]:hover:bg-muted/60 [.ui-corporate_&]:hover:shadow-none",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
                       step.primary
                         ? "border-primary/40 bg-primary/5"
@@ -338,12 +341,13 @@ export function DashboardHero({
                         step.primary
                           ? "bg-primary text-primary-foreground"
                           : "bg-primary/10 text-primary group-hover/step:bg-primary/20",
+                        "[.ui-corporate_&]:size-8 [.ui-corporate_&]:border [.ui-corporate_&]:border-border [.ui-corporate_&]:bg-card [.ui-corporate_&]:text-muted-foreground [.ui-corporate_&]:group-hover/step:bg-card",
                       )}
                     >
                       <step.icon size={18} weight="duotone" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body font-semibold text-foreground">
+                      <span className="block truncate text-body font-semibold text-foreground [.ui-corporate_&]:font-medium">
                         {step.label}
                       </span>
                       <span className="block truncate text-caption text-muted-foreground">

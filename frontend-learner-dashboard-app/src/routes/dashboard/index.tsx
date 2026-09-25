@@ -1149,13 +1149,16 @@ export function DashboardComponent() {
         {!isPlayTheme && !isCleanerPlayTheme && (
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center space-x-3">
-              <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border-2 border-background shadow-sm">
+              {/* Corporate drops the letter-avatar: the account avatar already
+                  sits in the top bar, and a second big initial disc beside the
+                  greeting is a consumer-app cue. */}
+              <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border-2 border-background shadow-sm [.ui-corporate_&]:hidden">
                 <AvatarFallback className="bg-primary-100 text-lg font-semibold text-primary-500">
                   {userInitials}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
-                <h1 className="text-h2 sm:text-h1 tracking-tight text-foreground">
+                <h1 className="text-h2 sm:text-h1 tracking-tight text-foreground [.ui-corporate_&]:text-h3 [.ui-corporate_&]:sm:text-h2 [.ui-corporate_&]:font-semibold">
                   {isLoading ? (
                     <Skeleton className="h-8 w-48" />
                   ) : (

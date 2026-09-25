@@ -10,6 +10,7 @@ import {
     CheckCircle,
     Coins,
     FloppyDisk,
+    Info,
     ListChecks,
     NotePencil,
     PaperPlaneTilt,
@@ -569,6 +570,16 @@ function PaperBuilderPage() {
                         {kb?.name ?? t('fallbackKnowledgeBase')}
                     </MyButton>
                 </div>
+
+                {/* A syllabus fixes what is examinable; the model supplies the
+                    content. Say so up front, because there will be no page
+                    citations to a textbook in what comes out. */}
+                {kb?.curriculum?.kind === 'SYLLABUS' && (
+                    <p className="flex items-start gap-1.5 text-caption text-neutral-500">
+                        <Info className="mt-0.5 size-3.5 shrink-0 text-primary-500" />
+                        {t('syllabusNote')}
+                    </p>
+                )}
 
                 {/* Reopening a saved run: hold the step UI until its plan lands,
                     otherwise the syllabus step flashes before being replaced. */}

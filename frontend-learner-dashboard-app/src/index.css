@@ -211,6 +211,12 @@ html, body {
 
     /* ========= ShadCN variables ========= */
     --background: 0 0% 100%;
+    /* Page canvas: the surface BEHIND cards (body + the shell's SidebarInset).
+       Defaults to --background, so it is identical to before for every skin.
+       It exists as its own token so a skin can tint the canvas without also
+       tinting the ~100 bg-background usages that mean "white surface" —
+       dialogs, sheets, toasts, active tabs, switch thumbs, outline buttons. */
+    --canvas: var(--background);
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
@@ -583,7 +589,7 @@ html, body {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-canvas text-foreground font-sans;
     /* font-sans resolves to var(--app-font-family) -> Plus Jakarta Sans by default,
        white-label override at runtime. */
     font-variation-settings: normal;
@@ -955,7 +961,7 @@ html, body {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-canvas text-foreground;
   }
 }
 

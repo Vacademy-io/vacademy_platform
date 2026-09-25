@@ -21,6 +21,9 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
     // AI calling for a queue to mean anything -- on a quiet institute nothing ever
     // waits, so the page would only ever show an empty table.
     'calling-call-queue',
+    // Blog posts live inside Website Builder (Manage Pages → Blog button), so the
+    // sidebar entry is redundant for most institutes. Opt in for a shortcut.
+    'blog',
 ]);
 
 // Tabs that ship hidden until an institute admin opts them in via the
@@ -264,6 +267,10 @@ const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         progressTab: true,
         coursesTab: true,
         notificationTab: false,
+        // On for admin: when an institute turns the Notifications tab on, resending
+        // a message is part of working it. Off for every other role — an outbound
+        // message to a learner is not a read-only action.
+        allowResendMessage: true,
         membershipTab: false,
         paymentHistoryTab: true,
         userTaggingTab: false,
@@ -316,6 +323,8 @@ const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         // Changing credentials signs the learner out, so it stays an admin
         // capability unless an admin explicitly grants it to another role.
         allowEditCredentials: true,
+        // OFF even for admin: permanent delete is opt-in per role from Display Settings.
+        allowDeletePayments: false,
     },
     studentManagementActions: {
         showEnrollButton: true,

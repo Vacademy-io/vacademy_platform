@@ -2,7 +2,7 @@ import { AccordionContent, AccordionItem, AccordionTrigger } from '@/components/
 import { resolveSubjectName } from '@/services/subject-names';
 import React, { MutableRefObject, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFieldArray, UseFormReturn } from 'react-hook-form';
+import { UseFormReturn } from 'react-hook-form';
 import { PencilSimpleLine, TrashSimple, X } from '@phosphor-icons/react';
 import {
     AlertDialog,
@@ -49,11 +49,14 @@ export const Step2SectionInfo = ({
     index,
     currentStep,
     oldData,
+    onDelete,
 }: {
     form: UseFormReturn<SectionFormType>;
     index: number;
     currentStep: number;
     oldData: MutableRefObject<SectionFormType>;
+    /** Removes this section — the parent's field array owns the list. */
+    onDelete: (index: number) => void;
 }) => {
     const { t } = useTranslation('homeworkCreationStep2SectionInfo');
     const { assessmentId, examtype } = Route.useParams();
@@ -100,14 +103,9 @@ export const Step2SectionInfo = ({
     const { setValue, getValues, control, watch } = form;
     const allSections = getValues('section');
 
-    const { remove } = useFieldArray({
-        control,
-        name: 'section', // Matches the key in defaultValues
-    });
-
     const handleDeleteSection = (e: React.MouseEvent, index: number) => {
         e.stopPropagation();
-        remove(index);
+        onDelete(index);
     };
 
     useEffect(() => {

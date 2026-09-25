@@ -168,6 +168,22 @@ def _metadata(q: Dict[str, Any]) -> Dict[str, Any]:
         meta["ai_tags"] = tags
     if level:
         meta["ai_difficulty_level"] = level
+    # Shared material a digitised question depends on (a comprehension
+    # passage, a data table) travels as the parent rich text — the same slot
+    # the assessment builder already uses for its own passage questions.
+    passage = q.get("passage")
+    if isinstance(passage, str) and passage.strip():
+        meta["parent_rich_text"] = _rich(clean_text(passage))
+    # Where a digitised question sits in its paper and what it is worth
+    # there (Vsmart Extract) — the assessment builder uses these to create
+    # the paper's sections and marking. Absent for generated questions.
+    section = q.get("section")
+    if isinstance(section, str) and section.strip():
+        meta["section_name"] = section.strip()
+    for key in ("marks", "negative_marks"):
+        value = q.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+            meta[key] = float(value)
     return meta
 
 
@@ -397,5 +413,6 @@ def convert_to_question_paper_response(llm_output: Optional[str]) -> AutoQuestio
             "classes": root.get("classes"),
             "subjects": root.get("subjects"),
             "difficulty": root.get("difficulty"),
+            "extraction": root.get("extraction") if isinstance(root.get("extraction"), dict) else None,
         }
     )

@@ -27,7 +27,9 @@ import type { LeadCardVM } from './lead-view-model';
 import { truncateName } from './lead-view-model';
 import type { LeadActionHandlers, LeadTier } from './lead-actions';
 import { LeadAvatar } from './lead-avatar';
-import { LeadInlineSelect, LEAD_TIER_OPTIONS } from './lead-inline-select';
+import { LeadInlineSelect, useLeadTierOptions } from './lead-inline-select';
+import { useLeadTiers } from '@/hooks/use-lead-tiers';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { LeadSourcePill } from './lead-source-pill';
 import { LeadScoreBar } from './lead-score-bar';
 import { LeadConversionBadge } from './lead-conversion-badge';
@@ -254,6 +256,11 @@ export function LeadTable({
         : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100';
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
+    // Institute tier catalog (labels, colours, score bands) + the institute's own
+    // names for "Tier" / "Lead status" (e.g. "Interest Level" / "Action Label").
+    const tierCatalog = useLeadTiers();
+    const tierOptions = useLeadTierOptions();
+    const terminology = useLeadTerminology();
 
     // Rows that can participate in bulk selection. Needs a user id (assign targets a person)
     // AND a response id (that's the selection key, and what delete targets). response_id is the
@@ -330,8 +337,7 @@ export function LeadTable({
                 const showPhone = vm.phone !== '-';
                 if (!showEmail && !showPhone)
                     return <span className="text-sm text-neutral-300">—</span>;
-                const callGate =
-                    actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
+                const callGate = actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
                 // AI Call gating — falls back to canCall (both need a phone on file).
                 const aiGateFn = actions.canAiCall ?? actions.canCall;
                 const aiGate = actions.onAiCallLead && aiGateFn ? aiGateFn(vm) : null;
@@ -422,7 +428,7 @@ export function LeadTable({
         },
         {
             id: 'status',
-            header: 'Lead status',
+            header: terminology.leadStatus,
             thClass: 'w-40',
             show: showOps,
             interactive: true,
@@ -451,27 +457,20 @@ export function LeadTable({
         },
         {
             id: 'tier',
-            header: 'Tier',
+            header: terminology.tier,
             thClass: 'w-28',
             show: showOps,
             interactive: true,
             sortKey: 'LEAD_TIER',
             render: (vm, profile) => {
                 if (!vm.userId) return <span className="text-sm text-neutral-300">—</span>;
-                const explicitTier = profile?.lead_tier;
-                const derivedTier =
-                    !explicitTier && profile?.best_score != null
-                        ? profile.best_score >= 80
-                            ? 'HOT'
-                            : profile.best_score >= 50
-                              ? 'WARM'
-                              : 'COLD'
-                        : undefined;
+                // Explicit override wins, else the institute's score bands.
+                const resolvedTier = tierCatalog.resolve(profile?.lead_tier, profile?.best_score);
                 return (
                     <LeadInlineSelect
-                        value={explicitTier ?? derivedTier}
-                        options={LEAD_TIER_OPTIONS}
-                        placeholder="Set tier"
+                        value={resolvedTier ?? undefined}
+                        options={tierOptions}
+                        placeholder={`Set ${terminology.tier.toLowerCase()}`}
                         onChange={(t) => actions.onSetTier?.(vm.userId!, vm.name, t as LeadTier)}
                     />
                 );
@@ -639,9 +638,15 @@ export function LeadTable({
                                         {c.header}
                                         {sortBy === c.sortKey ? (
                                             sortDirection === 'ASC' ? (
-                                                <CaretUp className="size-3.5 text-primary-600" weight="bold" />
+                                                <CaretUp
+                                                    className="size-3.5 text-primary-600"
+                                                    weight="bold"
+                                                />
                                             ) : (
-                                                <CaretDown className="size-3.5 text-primary-600" weight="bold" />
+                                                <CaretDown
+                                                    className="size-3.5 text-primary-600"
+                                                    weight="bold"
+                                                />
                                             )
                                         ) : (
                                             <CaretUpDown className="size-3.5 text-neutral-400 opacity-60 group-hover/sort:opacity-100" />

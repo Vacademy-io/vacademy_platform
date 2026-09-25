@@ -24,6 +24,7 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { ASSESSMENT_SAVE } from "@/constants/urls";
 import { toast } from "sonner";
 import { safeParse } from "@/lib/storage";
+import { ProctorLayer } from "@/components/common/proctoring/ProctorLayer";
 import {
   LOCAL_SAVE_INTERVAL_MS,
   REMOTE_SAVE_INTERVAL_MS,
@@ -205,6 +206,7 @@ function LiveTestShell() {
   // Read by the autosave interval, whose closure is created once.
   const playModeRef = useRef<string>("");
   const [evaluationType, setEvaluationType] = useState<string>("");
+  const [assessmentIdForProctor, setAssessmentIdForProctor] = useState<string>("");
   // Latches so we show the "save failed" toast exactly once per failure streak
   // and the "recovered" toast exactly once when it clears.
   const hasShownSaveFailureToastRef = useRef(false);
@@ -376,11 +378,13 @@ function LiveTestShell() {
       const parsedData = safeParse<{
         play_mode?: string;
         evaluation_type?: string;
+        assessment_id?: string;
       } | null>(storedMode.value, null);
       if (parsedData) {
         setPlayMode(parsedData.play_mode ?? "");
         playModeRef.current = parsedData.play_mode ?? "";
         setEvaluationType(parsedData.evaluation_type ?? "");
+        setAssessmentIdForProctor(parsedData.assessment_id ?? "");
       }
     };
 
@@ -435,6 +439,8 @@ function LiveTestShell() {
       }}
     >
       <Navbar playMode={playMode} evaluationType={evaluationType} />
+      {/* Renders nothing unless the assessment is proctored (V48). */}
+      {assessmentIdForProctor && <ProctorLayer assessmentId={assessmentIdForProctor} />}
       <NetworkStatus onRetrySave={sendFormattedData} />
       <SectionTabs />
 

@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Sparkle, Image as ImageIcon, Trash, ArrowsClockwise } from '@phosphor-icons/react';
+import {
+    Sparkle,
+    Image as ImageIcon,
+    Trash,
+    ArrowsClockwise,
+    ClockCounterClockwise,
+} from '@phosphor-icons/react';
 import {
     Dialog,
     DialogContent,
@@ -9,6 +15,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,6 +44,10 @@ import {
 } from '@/stores/study-library/use-study-library-store';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useStudyLibraryQuery } from '@/routes/study-library/courses/-services/getStudyLibraryDetails';
+import { getInstituteId } from '@/constants/helper';
+import { cn } from '@/lib/utils';
+import { getLanguageSetting } from '@/services/language-settings';
+import { normalizeTimezone } from '@/utils/timezone';
 import { handleFetchModulesWithChapters } from '@/routes/study-library/courses/-services/getModulesWithChapters';
 import { fetchSlidesOnly } from '@/routes/study-library/courses/-services/getAllSlides';
 import { createEngagementPlan } from '../-services/engagement-service';
@@ -44,7 +64,7 @@ import {
 } from '../-services/ai-plan-service';
 import type { EngagementItemRequest, EngagementSlotRequest } from '../-types/types';
 import { BatchPickerDialog, type BatchOption } from './BatchPickerDialog';
-import { PlanPreview, type PreviewTask } from './PlanPreview';
+import { ENGAGEMENT_TYPE_ACCENT, PlanPreview, type PreviewTask } from './PlanPreview';
 
 type Step = 'brief' | 'generating' | 'review';
 
@@ -63,6 +83,127 @@ const KIND_LABEL_KEY: Record<(typeof TASK_KINDS)[number], string> = {
     reading: 'wizard.kind_reading',
     game: 'wizard.kind_game',
 };
+
+/**
+ * A reviewed draft cost real credits, so it outlives the dialog: it is mirrored to
+ * sessionStorage (per institute, per tab) and offered back on the brief step. Grounding
+ * texts are left out; they can be megabytes of slide HTML.
+ */
+interface StoredAiDraft {
+    v: 1;
+    savedAt: number;
+    draft: AiPlanDraft;
+    creditsSpent: number;
+    batches: BatchOption[];
+    topic: string;
+    startTime: string;
+    endTime: string;
+    revealTime: string;
+    language: string;
+    difficulty: AiPlanBrief['difficulty'];
+    mix: AiPlanBrief['mix'];
+}
+
+const draftStorageKey = () => `engagement.aiDraft.${getInstituteId() ?? 'unknown'}`;
+
+function readStoredDraft(): StoredAiDraft | null {
+    try {
+        const raw = sessionStorage.getItem(draftStorageKey());
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as StoredAiDraft;
+        return parsed?.v === 1 && Array.isArray(parsed.draft?.slots) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeStoredDraft(value: StoredAiDraft) {
+    try {
+        sessionStorage.setItem(draftStorageKey(), JSON.stringify(value));
+    } catch {
+        // Storage full or blocked: the draft still lives in memory until the tab closes.
+    }
+}
+
+function clearStoredDraft() {
+    try {
+        sessionStorage.removeItem(draftStorageKey());
+    } catch {
+        // Nothing to clear.
+    }
+}
+
+function instituteTimeZone(): string {
+    return normalizeTimezone(getLanguageSetting()?.timezone);
+}
+
+/** Today's date (yyyy-MM-dd) in the institute's timezone, where plan windows live. */
+function instituteToday(): string {
+    try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: instituteTimeZone(),
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        }).formatToParts(new Date());
+        const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+        return `${get('year')}-${get('month')}-${get('day')}`;
+    } catch {
+        return new Date().toISOString().slice(0, 10);
+    }
+}
+
+/**
+ * A slot date ("2026-09-25") as "Thu, 25 Sep". The string is already an institute-local
+ * calendar day, so it is pinned to UTC midnight and formatted in UTC; formatting it in
+ * a zone ahead of or behind UTC would shift it by a day.
+ */
+function formatSlotDate(isoDate: string, locale: string): string {
+    const [y, m, d] = isoDate.split('-').map(Number);
+    if (!y || !m || !d) return isoDate;
+    const date = new Date(Date.UTC(y, m - 1, d));
+    const options: Intl.DateTimeFormatOptions = {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        timeZone: 'UTC',
+    };
+    try {
+        return new Intl.DateTimeFormat(locale, options).format(date);
+    } catch {
+        return new Intl.DateTimeFormat(undefined, options).format(date);
+    }
+}
+
+/** "5 minutes ago" in the admin's language. */
+function formatAgo(savedAt: number, locale: string): string {
+    const minutes = Math.round((savedAt - Date.now()) / 60_000);
+    try {
+        const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+        if (minutes === 0) return rtf.format(0, 'second');
+        return Math.abs(minutes) < 60
+            ? rtf.format(minutes, 'minute')
+            : rtf.format(Math.round(minutes / 60), 'hour');
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * The QUESTION_OF_DAY answer format carried in payloadJson, read the way the server
+ * grades it: blank means MCQ, case is ignored.
+ */
+function questionFormat(item: EngagementItemRequest): string | null {
+    if (item.itemType !== 'QUESTION_OF_DAY') return null;
+    try {
+        const format = (JSON.parse(item.payloadJson ?? '{}') as { format?: string | null })?.format
+            ?.trim()
+            .toUpperCase();
+        return format || 'MCQ';
+    } catch {
+        return 'MCQ';
+    }
+}
 
 interface ChapterLike {
     id: string;
@@ -97,7 +238,7 @@ export function AiPlanWizard({
     onCreated: () => void;
     defaultPackageSessionId?: string;
 }) {
-    const { t } = useTranslation('engagement');
+    const { t, i18n } = useTranslation('engagement');
     const [step, setStep] = useState<Step>('brief');
     const [error, setError] = useState<string | null>(null);
 
@@ -108,7 +249,7 @@ export function AiPlanWizard({
     const [topic, setTopic] = useState('');
     const [days, setDays] = useState(7);
     const [perDay, setPerDay] = useState(2);
-    const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+    const [startDate, setStartDate] = useState(instituteToday);
     const [startTime, setStartTime] = useState('06:00');
     const [endTime, setEndTime] = useState('20:00');
     const [revealTime, setRevealTime] = useState('20:00');
@@ -136,16 +277,103 @@ export function AiPlanWizard({
     // Kept from the last draft so a single-task regeneration is grounded the same way.
     const [lastGrounding, setLastGrounding] = useState<{ title?: string; text: string }[]>([]);
     const [saving, setSaving] = useState(false);
+    // Credits this draft has cost so far (draft + regenerations + pictures).
+    const [creditsSpent, setCreditsSpent] = useState(0);
+    // A draft from earlier in this tab that the teacher can pick back up.
+    const [resumable, setResumable] = useState<StoredAiDraft | null>(null);
+    const [confirmDiscard, setConfirmDiscard] = useState(false);
+    // Bumped on discard so a draft still in flight is dropped when it lands.
+    const attemptRef = useRef(0);
 
     useEffect(() => {
         if (!open) return;
         setStep('brief');
         setError(null);
         setDraft(null);
+        setConfirmDiscard(false);
+        setResumable(readStoredDraft());
         if (defaultPackageSessionId)
             setBatches([{ id: defaultPackageSessionId, label: t('composer.thisBatch') }]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
+
+    // Mirror the draft under review so a reload or a closed dialog does not lose it.
+    useEffect(() => {
+        if (step !== 'review' || !draft) return;
+        writeStoredDraft(snapshot(draft));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        step,
+        draft,
+        creditsSpent,
+        batches,
+        topic,
+        startTime,
+        endTime,
+        revealTime,
+        language,
+        difficulty,
+        mix,
+    ]);
+
+    function snapshot(current: AiPlanDraft): StoredAiDraft {
+        return {
+            v: 1,
+            savedAt: Date.now(),
+            draft: current,
+            creditsSpent,
+            batches,
+            topic,
+            startTime,
+            endTime,
+            revealTime,
+            language,
+            difficulty,
+            mix,
+        };
+    }
+
+    /** Closing mid-generation or mid-review would throw away paid work: confirm first. */
+    function handleOpenChange(next: boolean) {
+        // The plan is being written; closing now would hide whether it was created.
+        if (!next && saving) return;
+        if (!next && (step === 'generating' || (step === 'review' && draft))) {
+            setConfirmDiscard(true);
+            return;
+        }
+        onOpenChange(next);
+    }
+
+    function discardDraft() {
+        attemptRef.current += 1;
+        // A draft abandoned mid-flight must not be replayed by the next attempt's key.
+        if (step === 'generating') setDraftKey(newIdempotencyKey('engagement-draft'));
+        clearStoredDraft();
+        setResumable(null);
+        setDraft(null);
+        setCreditsSpent(0);
+        setStep('brief');
+        setConfirmDiscard(false);
+        onOpenChange(false);
+    }
+
+    function resumeDraft(stored: StoredAiDraft) {
+        setDraft(stored.draft);
+        setCreditsSpent(stored.creditsSpent);
+        setBatches(stored.batches);
+        setTopic(stored.topic);
+        setStartTime(stored.startTime);
+        setEndTime(stored.endTime);
+        setRevealTime(stored.revealTime);
+        setLanguage(stored.language);
+        setDifficulty(stored.difficulty);
+        setMix(stored.mix);
+        setLastGrounding([]);
+        setSelectedDay(0);
+        setResumable(null);
+        setError(null);
+        setStep('review');
+    }
 
     // Subjects for the first selected batch, same derivation the slide picker uses.
     const { studyLibraryData } = useStudyLibraryStore();
@@ -206,6 +434,7 @@ export function AiPlanWizard({
         if (enabledCount === 0) return setError(t('wizard.errors.kinds'));
         setError(null);
         setStep('generating');
+        const attempt = ++attemptRef.current;
         try {
             const grounding_texts = await collectGrounding();
             setLastGrounding(grounding_texts);
@@ -231,7 +460,11 @@ export function AiPlanWizard({
             );
             // Success: the next draft is a new attempt and gets a new key.
             setDraftKey(newIdempotencyKey('engagement-draft'));
+            // Discarded while it was being written: drop it.
+            if (attempt !== attemptRef.current) return;
             setDraft(result);
+            setCreditsSpent(DRAFT_CREDITS);
+            setResumable(null);
             setSelectedDay(0);
             setStep('review');
         } catch (e: unknown) {
@@ -240,6 +473,7 @@ export function AiPlanWizard({
                     ?.data?.detail ??
                 (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
                 t('wizard.errors.draft');
+            if (attempt !== attemptRef.current) return;
             setError(message);
             setStep('brief');
         }
@@ -297,6 +531,7 @@ export function AiPlanWizard({
                 contentHtml: res.content_html,
                 itemType: res.images_generated > 0 ? 'VISUAL_NOTE' : item.itemType,
             });
+            setCreditsSpent((c) => c + res.images_generated * IMAGE_CREDITS);
         } catch (e: unknown) {
             setError(
                 (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
@@ -349,6 +584,7 @@ export function AiPlanWizard({
             );
             const fresh = res.slots[0]?.items?.[0];
             if (!fresh) throw new Error('empty');
+            setCreditsSpent((c) => c + ITEM_CREDITS);
             setDraft((prev) => {
                 if (!prev) return prev;
                 const slots = prev.slots.map((s, si) =>
@@ -388,6 +624,10 @@ export function AiPlanWizard({
                 defaultCatchUpPercent: 50,
                 slots: draft.slots as EngagementSlotRequest[],
             });
+            clearStoredDraft();
+            setDraft(null);
+            setCreditsSpent(0);
+            setStep('brief');
             onCreated();
             onOpenChange(false);
         } catch (e: unknown) {
@@ -433,7 +673,7 @@ export function AiPlanWizard({
     const totalItems = draft?.slots.reduce((n, s) => n + (s.items?.length ?? 0), 0) ?? 0;
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-5xl">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-start">
@@ -444,6 +684,50 @@ export function AiPlanWizard({
 
                 {step === 'brief' && (
                     <div className="space-y-5">
+                        {resumable && (
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
+                                <div className="flex min-w-0 items-start gap-2">
+                                    <ClockCounterClockwise
+                                        size={18}
+                                        className="mt-0.5 shrink-0 text-primary-500"
+                                    />
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-medium text-neutral-900">
+                                            {t('wizard.resume.title')}
+                                        </p>
+                                        <p className="truncate text-xs text-neutral-600">
+                                            {t('wizard.resume.body', {
+                                                title: resumable.draft.title,
+                                                when: formatAgo(resumable.savedAt, i18n.language),
+                                            })}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <MyButton
+                                        type="button"
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() => {
+                                            clearStoredDraft();
+                                            setResumable(null);
+                                            setDraft(null);
+                                            setCreditsSpent(0);
+                                        }}
+                                    >
+                                        {t('wizard.resume.discard')}
+                                    </MyButton>
+                                    <MyButton
+                                        type="button"
+                                        scale="small"
+                                        onClick={() => resumeDraft(resumable)}
+                                    >
+                                        {t('wizard.resume.action')}
+                                    </MyButton>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-1.5">
                                 <Label>{t('wizard.batches')}</Label>
@@ -716,10 +1000,10 @@ export function AiPlanWizard({
                         {/* Days */}
                         <div className="space-y-1">
                             <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                                {t('wizard.summary', {
-                                    days: draft.days_planned,
-                                    items: totalItems,
-                                })}
+                                {`${t('wizard.days', { count: draft.slots.length })} · ${t(
+                                    'wizard.tasks',
+                                    { count: totalItems }
+                                )}`}
                             </p>
                             {draft.slots.map((slot, i) => (
                                 <button
@@ -733,7 +1017,7 @@ export function AiPlanWizard({
                                     }
                                 >
                                     <span className="block text-xs text-neutral-500">
-                                        {slot.startDate}
+                                        {formatSlotDate(slot.startDate, i18n.language)}
                                     </span>
                                     <span className="block truncate text-sm font-medium text-neutral-900">
                                         {slot.title}
@@ -748,22 +1032,34 @@ export function AiPlanWizard({
                         {/* Tasks for the selected day */}
                         <div className="space-y-3">
                             {!draft.grounded && (
-                                <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                <p className="rounded-md bg-warning-50 px-3 py-2 text-xs text-warning-700">
                                     {t('wizard.ungrounded')}
                                 </p>
                             )}
                             {(draft.slots[selectedDay]?.items ?? []).map((item, ii) => {
                                 const placeholders = countImagePlaceholders(item.contentHtml);
                                 const key = `${selectedDay}-${ii}`;
+                                const format = questionFormat(item);
                                 return (
                                     <div
                                         key={key}
                                         className="space-y-2 rounded-lg border border-neutral-200 p-3"
                                     >
                                         <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
-                                                    {item.itemType}
+                                            <div className="min-w-0 flex-1">
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
+                                                    <span
+                                                        aria-hidden="true"
+                                                        className={cn(
+                                                            'size-2 rounded-full',
+                                                            ENGAGEMENT_TYPE_ACCENT[item.itemType] ??
+                                                                'bg-neutral-400'
+                                                        )}
+                                                    />
+                                                    {t(`composer.types.${item.itemType}`)}
+                                                    {format === 'TEXT' || format === 'UPLOAD'
+                                                        ? ` · ${t(`composer.formats.${format}`)}`
+                                                        : ''}
                                                 </span>
                                                 <Input
                                                     value={item.title}
@@ -855,7 +1151,11 @@ export function AiPlanWizard({
                             <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => setStep('brief')}
+                                onClick={() => {
+                                    // The draft stays on offer from the brief step.
+                                    if (draft) setResumable(snapshot(draft));
+                                    setStep('brief');
+                                }}
                             >
                                 {t('wizard.back')}
                             </Button>
@@ -882,6 +1182,43 @@ export function AiPlanWizard({
                     )}
                 </DialogFooter>
             </DialogContent>
+
+            <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{t('wizard.discard.title')}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {step === 'generating'
+                                ? t('wizard.discard.generating', { count: DRAFT_CREDITS })
+                                : t('wizard.discard.charged', { count: creditsSpent })}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>{t('wizard.discard.keep')}</AlertDialogCancel>
+                        {/* A reviewed draft can go to the server as a DRAFT plan instead of
+                            being thrown away; publish() closes the wizard when it lands. */}
+                        {step === 'review' && draft && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={saving}
+                                onClick={() => {
+                                    setConfirmDiscard(false);
+                                    void publish('DRAFT');
+                                }}
+                            >
+                                {t('wizard.saveDraft')}
+                            </Button>
+                        )}
+                        <AlertDialogAction
+                            className="bg-danger-600 text-white hover:bg-danger-500"
+                            onClick={discardDraft}
+                        >
+                            {t('wizard.discard.confirm')}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <BatchPickerDialog
                 open={batchPickerOpen}

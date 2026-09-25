@@ -79,7 +79,8 @@
         "generatingReport": "Generating Report...",
         "downloadReport": "Download Report",
         "releaseResult": "Release Result",
-        "downloadAiReport": "Download AI Report"
+        "downloadAiReport": "Download AI Report",
+        "proctoring": "Proctoring"
     },
     "toasts": {
         "reattemptProvided": "Reattempt has been provided to {{name}}.",
@@ -96,5 +97,33 @@
         "submissionLoadError": "Failed to load submission. Please try again.",
         "reportGenerateError": "Failed to generate the report. Please try again.",
         "aiReportError": "Could not download the AI report. Please try again."
+    },
+    "proctoring": {
+        "title": "Proctoring — {{name}}",
+        "loadError": "Could not load the proctoring log.",
+        "flags": "{{count}} flags",
+        "warnings": "{{count}} warnings",
+        "snapshots": "{{count}} snapshots",
+        "tier": "Tier: {{tier}}",
+        "filter": {
+            "flagsOnly": "Flags & warnings",
+            "everything": "Everything"
+        },
+        "empty": "No proctoring data for this attempt. Proctoring was off, or the learner's device sent nothing.",
+        "noFlags": "Nothing was flagged.",
+        "viewSnapshot": "View snapshot",
+        "snapshotMissing": "Snapshot unavailable",
+        "snapshotAlt": "Proctoring snapshot",
+        "events": {
+            "CHECK_IN": "Camera check-in",
+            "SNAPSHOT": "Snapshot",
+            "CAMERA_DENIED": "Camera permission denied",
+            "CAMERA_LOST": "Camera turned off",
+            "NO_FACE": "No face in frame",
+            "MULTIPLE_FACES": "More than one face",
+            "TAB_SWITCH": "Left the test window",
+            "FULLSCREEN_EXIT": "Exited fullscreen",
+            "AUTO_SUBMITTED": "Auto-submitted after too many flags"
+        }
     }
 }

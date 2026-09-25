@@ -17,6 +17,7 @@
     },
     "dropdown": {
         "increaseSubmissionTime": "सबमिशन का समय बढ़ाएं",
-        "closeSubmission": "सबमिशन बंद करें"
+        "closeSubmission": "सबमिशन बंद करें",
+        "proctoring": "प्रॉक्टरिंग"
     }
 }

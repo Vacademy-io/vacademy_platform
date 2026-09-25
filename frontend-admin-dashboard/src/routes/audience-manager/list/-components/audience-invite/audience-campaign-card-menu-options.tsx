@@ -474,6 +474,7 @@ export const AudienceCampaignCardMenuOptions = ({
                     audienceId={campaignId}
                     audienceName={campaign.campaign_name || t('defaults.thisCampaign')}
                     instituteId={instituteId}
+                    customFields={bulkImportCustomFields}
                 />
             )}
         </>

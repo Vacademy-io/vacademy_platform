@@ -1,7 +1,8 @@
 export interface PaymentLog {
     id: string;
     status: string;
-    payment_status: 'PAID' | 'FAILED' | 'PAYMENT_PENDING' | null;
+    /** VOIDED: an admin voided a payment recorded by mistake (listing reports it as CANCELLED). */
+    payment_status: 'PAID' | 'FAILED' | 'PAYMENT_PENDING' | 'VOIDED' | null;
     user_id: string;
     vendor: string;
     vendor_id: string;

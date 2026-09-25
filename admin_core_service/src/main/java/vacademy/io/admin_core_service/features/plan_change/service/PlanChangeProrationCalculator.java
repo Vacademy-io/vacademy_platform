@@ -85,6 +85,13 @@ public class PlanChangeProrationCalculator {
         if (remainingDays <= 0 || currentPrice.signum() <= 0) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
+        // A trial has paid nothing for the current cycle (only the token-registration
+        // auth, which is not the plan price), so there is no unused value to credit.
+        // Without this a trial learner upgrading on day 5 of a 14-day trial was credited
+        // the "unused" part of a Monthly price they never paid.
+        if (userPlan != null && Boolean.TRUE.equals(userPlan.getIsTrial())) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
         Integer validity = userPlan != null
                 ? firstNonNull(PlanValidityResolver.fromPlan(userPlan.getPaymentPlan()),
                         PlanValidityResolver.fromPlanJson(userPlan.getPlanJson()))

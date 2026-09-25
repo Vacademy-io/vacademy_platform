@@ -55,4 +55,43 @@ describe('savePaperToQuestionBank', () => {
         expect(JSON.parse(body.questions[0]!.auto_evaluation_json as string).data.correctOptionIds).toEqual(['2']);
         expect(body.questions[0]!.explanation_text?.content).toBe('');
     });
+
+    /**
+     * A digitised maths paper (SN Class 9, 2026-09-22) went into the bank with
+     * its LaTeX source — "$2 \mathrm{x}-5 \mathrm{y}=7$" — and showed that
+     * way in the assessment. The bank's convention is the editor's math node.
+     */
+    it('typesets delimited LaTeX into the bank\'s math node, on questions, options and explanations', async () => {
+        await savePaperToQuestionBank({
+            title: 'T',
+            questions: [
+                question({
+                    question_type: 'MCQS',
+                    text: {
+                        id: null,
+                        type: 'HTML',
+                        content: '<p>The linear equation $2 \\mathrm{x}-5 \\mathrm{y}=7$ has:</p>',
+                    },
+                    options: [
+                        { text: { id: null, type: 'HTML', content: '<p>$x=1$ only</p>' } },
+                        { text: { id: null, type: 'HTML', content: '<p>No solution</p>' } },
+                    ],
+                    explanation_text: { id: null, type: 'HTML', content: 'Since $x^2 \\ge 0$.' },
+                }),
+                question({ text: { id: null, type: 'HTML', content: '<p>Costs $5 and $10 each.</p>' } }),
+            ],
+        });
+        const body = post.mock.calls[0]?.[1] as { questions: PaperQuestion[] };
+        const [maths, prose] = body.questions;
+        const text = maths!.text!.content!;
+        expect(text).toContain('class="math-inline"');
+        expect(text).toContain('data-latex="2 \\mathrm{x}-5 \\mathrm{y}=7"');
+        expect(text).not.toContain('$2');
+        expect(text.startsWith('<p>The linear equation ')).toBe(true);
+        expect(maths!.options![0]!.text!.content).toContain('data-latex="x=1"');
+        expect(maths!.options![1]!.text!.content).toBe('<p>No solution</p>');
+        expect(maths!.explanation_text!.content).toContain('data-latex="x^2 \\ge 0"');
+        // Prose with dollar amounts is not maths and is left exactly as sent.
+        expect(prose!.text!.content).toBe('<p>Costs $5 and $10 each.</p>');
+    });
 });

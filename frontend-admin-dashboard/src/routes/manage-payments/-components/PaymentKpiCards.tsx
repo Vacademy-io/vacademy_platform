@@ -4,6 +4,7 @@ import {
     Clock,
     HourglassMedium,
     Receipt,
+    Wallet,
     XCircle,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -22,6 +23,7 @@ import { summarizeBucketAmount } from '../-utils/paymentSummary';
 export type SummaryStatusKey =
     | 'total'
     | 'paid'
+    | 'outstanding'
     | 'due'
     | 'upcoming'
     | 'pending'
@@ -29,7 +31,7 @@ export type SummaryStatusKey =
     | 'failed';
 
 /** The statuses that map onto payment records, so they can filter the table. */
-export type RecordStatusKey = Exclude<SummaryStatusKey, 'due' | 'upcoming'>;
+export type RecordStatusKey = Exclude<SummaryStatusKey, 'outstanding' | 'due' | 'upcoming'>;
 
 /**
  * Billing figures from the server: what came in, what learners with access still owe, and what
@@ -47,6 +49,13 @@ export interface KpiBilling {
     learnersUpcoming: number;
     /** Priced one-time plans an admin activated with no payment recorded — a hygiene hint. */
     activatedWithoutPaymentCount: number;
+    /**
+     * Everything still to collect on live enrolments, whatever its due date. Due and Upcoming are
+     * date slices of it — an institute whose instalments all fall due next quarter has Due and
+     * Upcoming at zero and lakhs outstanding.
+     */
+    outstanding: number;
+    learnersOutstanding: number;
     currency: string;
 }
 
@@ -80,7 +89,7 @@ interface CardDef {
 }
 
 /**
- * Collected / Due / Upcoming / Pending / Failed.
+ * Collected / Outstanding / Due / Upcoming / Pending / Failed.
  *
  * The rule behind Due: a learner owes money only when they have been granted access and an
  * obligation on it is unpaid — an overdue instalment, a lapsed subscription renewal, an unpaid
@@ -97,6 +106,15 @@ const CARDS: CardDef[] = [
         accentClass: 'bg-success-500',
         source: 'billing',
         bucket: 'paid',
+    },
+    {
+        key: 'outstanding',
+        label: 'Outstanding',
+        caption: 'Still to collect — every unpaid instalment & invoice',
+        icon: Wallet,
+        iconClass: 'bg-neutral-100 text-neutral-700',
+        accentClass: 'bg-neutral-500',
+        source: 'billing',
     },
     {
         key: 'due',
@@ -138,6 +156,14 @@ const CARDS: CardDef[] = [
     },
 ];
 
+/**
+ * Is there money still to collect that is not yet overdue? Only then does Outstanding say
+ * something Due does not. A subscription-only institute's outstanding IS its overdue renewals, so
+ * the card would just repeat Due — it stays hidden and those screens look exactly as they did.
+ */
+export const hasNotYetDueBalance = (billing?: KpiBilling | null): boolean =>
+    !!billing && billing.outstanding - billing.due > 0.005;
+
 const plural = (n: number, one: string, many: string) =>
     `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
@@ -153,17 +179,19 @@ export function PaymentKpiCards({
     onSelect,
     className,
 }: PaymentKpiCardsProps) {
+    const cards = CARDS.filter((card) => card.key !== 'outstanding' || hasNotYetDueBalance(billing));
     const money = (amount: number) =>
         formatMoney(amount, billing?.currency ?? '', { maximumFractionDigits: 0 });
 
     return (
         <div
             className={cn(
-                'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5',
+                'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3',
+                cards.length > 5 ? 'xl:grid-cols-6' : 'xl:grid-cols-5',
                 className
             )}
         >
-            {CARDS.map((card) => {
+            {cards.map((card) => {
                 const bucket = card.bucket ? summary[card.bucket] : undefined;
                 const recordAmount = bucket ? summarizeBucketAmount(bucket.amountByCurrency) : null;
 
@@ -184,6 +212,12 @@ export function PaymentKpiCards({
                                 ? `Total amount: ${recordAmount.full}`
                                 : undefined;
                         meta = plural(bucket?.count ?? 0, 'payment', 'payments');
+                        break;
+                    case 'outstanding':
+                        amountDisplay = billing ? money(billing.outstanding) : '—';
+                        meta = billing
+                            ? plural(billing.learnersOutstanding, 'learner', 'learners')
+                            : 'Needs the billing summary';
                         break;
                     case 'due':
                         amountDisplay = billing ? money(billing.due) : '—';

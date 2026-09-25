@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.engagement.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ public class EngagementPlanService {
     private final EngagementAttemptRepository attemptRepository;
     private final InstituteTimezoneService instituteTimezoneService;
     private final EngagementScheduleResolver scheduleResolver;
+    private final ObjectMapper objectMapper;
 
     /**
      * Create the plan for every batch named in the request.
@@ -264,34 +266,59 @@ public class EngagementPlanService {
     /**
      * Create or update an item.
      *
-     * An item that has ALREADY OPENED and been attempted is never edited in place:
-     * the existing row is RETIRED and a new version is written. Attempts pin to the
-     * version they were made against, so a teacher fixing a typo at noon cannot
-     * retroactively invalidate the morning's scores.
+     * The composer re-sends every task on every save, so most saves change nothing.
+     * An unchanged task is left exactly as it is (only its order and schedule
+     * overrides are updated). A real change is versioned IN PLACE: same id, version
+     * + 1, so learners who already finished stay finished and their attempts, points
+     * and tracking rows stay attached. The old rule retired the row and re-issued it
+     * under a new id on any save once anyone had opened it — a no-op save wiped
+     * completions and let learners earn the points again.
+     *
+     * Once learners have answered, the answer key itself is frozen (see
+     * EngagementItemChangePolicy.guardAnswerKey).
      */
     private String upsertItem(EngagementPlan plan, EngagementSlot slot, EngagementItemRequest request) {
         boolean isNew = request.getId() == null || request.getId().isBlank();
-        EngagementItem existing = isNew ? null : itemRepository.findById(request.getId())
-                .orElseThrow(() -> new VacademyException("Item not found"));
+        EngagementEnums.ItemType type = safeItemType(request.getItemType());
 
-        if (existing != null && hasOpenedAndBeenAttempted(plan, slot, existing)) {
-            existing.setStatus(EngagementEnums.ItemStatus.RETIRED.name());
-            existing.setUpdatedAt(now());
-            itemRepository.save(existing);
-
-            EngagementItem replacement = new EngagementItem();
-            applyItemRequest(replacement, request, slot);
-            replacement.setVersion(existing.getVersion() + 1);
-            itemRepository.save(replacement);
-            log.info("[engagement] item {} edited after open — retired, new version {} created",
-                    existing.getId(), replacement.getVersion());
-            return replacement.getId();
+        if (isNew) {
+            EngagementItemChangePolicy.validate(type, request, objectMapper);
+            EngagementItem item = new EngagementItem();
+            applyItemRequest(item, request, slot);
+            return itemRepository.save(item).getId();
         }
 
-        EngagementItem item = existing == null ? new EngagementItem() : existing;
-        applyItemRequest(item, request, slot);
-        if (existing != null) item.setVersion(existing.getVersion());
-        return itemRepository.save(item).getId();
+        EngagementItem existing = itemRepository.findById(request.getId())
+                .orElseThrow(() -> new VacademyException("Item not found"));
+        // An item id from another plan (or institute) must not be writable through this
+        // one. Moving a task between days of the SAME plan is allowed.
+        boolean samePlan = Objects.equals(existing.getSlotId(), slot.getId())
+                || slotRepository.findById(existing.getSlotId())
+                        .map(owner -> Objects.equals(owner.getPlanId(), plan.getId()))
+                        .orElse(false);
+        if (!samePlan) {
+            throw new VacademyException("Item not found");
+        }
+
+        if (!EngagementItemChangePolicy.isLearnerVisibleChange(existing, request, objectMapper)) {
+            // Order and schedule overrides only; nothing a learner sees or is graded on.
+            existing.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
+            existing.setMissPolicy(request.getMissPolicy() == null ? null : safeMissPolicy(request.getMissPolicy()));
+            existing.setCatchUpDays(request.getCatchUpDays());
+            existing.setCatchUpPercent(request.getCatchUpPercent());
+            existing.setStatus(EngagementEnums.ItemStatus.ACTIVE.name());
+            existing.setUpdatedAt(now());
+            return itemRepository.save(existing).getId();
+        }
+
+        EngagementItemChangePolicy.guardAnswerKey(existing, request,
+                attemptRepository.countCompletedForItem(existing.getId()), objectMapper);
+        EngagementItemChangePolicy.validate(type, request, objectMapper);
+        int nextVersion = (existing.getVersion() == null ? 1 : existing.getVersion()) + 1;
+        applyItemRequest(existing, request, slot);
+        existing.setVersion(nextVersion);
+        log.info("[engagement] item {} edited — version {}", existing.getId(), nextVersion);
+        return itemRepository.save(existing).getId();
     }
 
     private void applyItemRequest(EngagementItem item, EngagementItemRequest request, EngagementSlot slot) {
@@ -323,16 +350,6 @@ public class EngagementPlanService {
         item.setCatchUpPercent(request.getCatchUpPercent());
         item.setStatus(EngagementEnums.ItemStatus.ACTIVE.name());
         item.setUpdatedAt(now());
-    }
-
-    private boolean hasOpenedAndBeenAttempted(EngagementPlan plan, EngagementSlot slot, EngagementItem item) {
-        LocalDate today = LocalDate.now(scheduleResolver.zoneOf(plan));
-        LocalDate lastRun = scheduleResolver.mostRecentRunDate(slot, today);
-        if (lastRun == null) return false;
-        boolean hasOpened = scheduleResolver.stateOn(plan, slot, item, lastRun)
-                != EngagementScheduleResolver.SlotState.UPCOMING;
-        if (!hasOpened) return false;
-        return !attemptRepository.findByItem(item.getId()).isEmpty();
     }
 
     private EngagementPlan requirePlan(String planId, String instituteId) {

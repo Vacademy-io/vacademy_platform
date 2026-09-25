@@ -1,7 +1,29 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { WarningCircle } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MyButton } from '@/components/design-system/button';
+import { cn } from '@/lib/utils';
+import { getLanguageSetting } from '@/services/language-settings';
+import { normalizeTimezone } from '@/utils/timezone';
 import { getPlanOverview } from '../-services/engagement-service';
+
+/** A server instant as a date, in the institute's timezone and the admin's language. */
+function formatDay(iso: string, locale: string): string {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '—';
+    const options: Intl.DateTimeFormatOptions = {
+        dateStyle: 'medium',
+        timeZone: normalizeTimezone(getLanguageSetting()?.timezone),
+    };
+    try {
+        return new Intl.DateTimeFormat(locale, options).format(date);
+    } catch {
+        return new Intl.DateTimeFormat(undefined, options).format(date);
+    }
+}
 
 /**
  * Who is keeping up, who is slipping — across the whole plan.
@@ -19,8 +41,8 @@ export function PlanOverviewDialog({
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
-    const { t } = useTranslation('engagement');
-    const { data, isLoading } = useQuery({
+    const { t, i18n } = useTranslation('engagement');
+    const { data, isLoading, isError, isFetching, refetch } = useQuery({
         queryKey: ['engagement-plan-overview', planId],
         queryFn: () => getPlanOverview(planId),
         enabled: open,
@@ -35,7 +57,31 @@ export function PlanOverviewDialog({
                     </DialogTitle>
                 </DialogHeader>
 
-                {isLoading && <div className="h-24 animate-pulse rounded-lg bg-neutral-100" />}
+                {isLoading && (
+                    <div className="space-y-3" aria-busy="true">
+                        <Skeleton className="h-16 w-full rounded-lg" />
+                        <Skeleton className="h-40 w-full rounded-lg" />
+                    </div>
+                )}
+
+                {/* A failed background refetch keeps the numbers that did load. */}
+                {isError && !data && (
+                    <Alert className="border-danger-200 bg-danger-50">
+                        <WarningCircle size={18} className="text-danger-600" />
+                        <AlertDescription className="space-y-3 text-danger-700">
+                            <p>{t('overview.loadError')}</p>
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                disable={isFetching}
+                                onClick={() => void refetch()}
+                            >
+                                {t('overview.retry')}
+                            </MyButton>
+                        </AlertDescription>
+                    </Alert>
+                )}
 
                 {data && (
                     <div className="space-y-4">
@@ -91,7 +137,7 @@ export function PlanOverviewDialog({
                                         {data.rows.map((r) => (
                                             <tr
                                                 key={r.userId}
-                                                className={r.missed >= 3 ? 'bg-amber-50/60' : ''}
+                                                className={cn(r.missed >= 3 && 'bg-warning-50')}
                                             >
                                                 <td className="px-3 py-2">
                                                     <span className="block text-neutral-900">
@@ -111,7 +157,7 @@ export function PlanOverviewDialog({
                                                 </td>
                                                 <td className="px-3 py-2 tabular-nums">
                                                     {r.missed >= 3 ? (
-                                                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                                                        <span className="rounded bg-warning-100 px-1.5 py-0.5 text-xs font-medium text-warning-700">
                                                             {r.missed}
                                                         </span>
                                                     ) : (
@@ -123,11 +169,10 @@ export function PlanOverviewDialog({
                                                 </td>
                                                 <td className="px-3 py-2 text-neutral-500">
                                                     {r.lastCompletedAt
-                                                        ? new Date(
-                                                              r.lastCompletedAt
-                                                          ).toLocaleDateString(undefined, {
-                                                              dateStyle: 'medium',
-                                                          })
+                                                        ? formatDay(
+                                                              r.lastCompletedAt,
+                                                              i18n.language
+                                                          )
                                                         : t('overview.never')}
                                                 </td>
                                             </tr>
@@ -156,12 +201,12 @@ function Stat({
 }) {
     const cls =
         tone === 'warn'
-            ? 'border-amber-200 bg-amber-50'
+            ? 'border-warning-200 bg-warning-50'
             : tone === 'ok'
               ? 'border-success-100 bg-success-50'
               : 'border-neutral-200';
     return (
-        <div className={`rounded-lg border px-4 py-2 ${cls}`}>
+        <div className={cn('rounded-lg border px-4 py-2', cls)}>
             <p className="text-xs uppercase tracking-wide text-neutral-500">{label}</p>
             <p className="text-lg font-semibold tabular-nums text-neutral-900">{value}</p>
             {hint && <p className="text-xs text-neutral-500">{hint}</p>}

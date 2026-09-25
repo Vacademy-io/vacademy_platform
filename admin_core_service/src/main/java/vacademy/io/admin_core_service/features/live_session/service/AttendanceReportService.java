@@ -217,6 +217,10 @@ public class AttendanceReportService {
         String search = (request.getSearchQuery() != null && !request.getSearchQuery().trim().isEmpty())
                 ? request.getSearchQuery().trim()
                 : null;
+        // Flag + value pair (not a nullable numeric) — Postgres cannot infer the
+        // type of a null bind in ":param IS NULL", so the query would fail with 42P18.
+        boolean hasRatingBelow = request.getRatingBelow() != null;
+        double ratingBelow = hasRatingBelow ? request.getRatingBelow() : 0d;
 
         return liveSessionParticipantRepository.searchFeedback(
                 request.getInstituteId(),
@@ -227,6 +231,8 @@ public class AttendanceReportService {
                 subjects,
                 subjects.size(),
                 search,
+                hasRatingBelow ? 1 : 0,
+                ratingBelow,
                 pageable
         );
     }

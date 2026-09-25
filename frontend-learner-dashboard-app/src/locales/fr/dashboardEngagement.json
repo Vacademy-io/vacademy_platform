@@ -19,7 +19,8 @@
     "revealed": "✨ Révélé",
     "answer": "Réponse :",
     "youPicked": "Vous avez choisi : {{text}}",
-    "gotIt": "Bien joué — +{{count}} points"
+    "gotIt": "Bien joué — +{{count}} points",
+    "seePast": "Voir les tâches passées"
   },
   "time": {
     "daysLeft": "{{count}}j restants",
@@ -66,7 +67,8 @@
     "scrollToEnd": "Faites défiler jusqu'au bout pour terminer",
     "almostThere": "Presque…",
     "finishedLesson": "J'ai terminé la leçon",
-    "markComplete": "Marquer comme terminé"
+    "markComplete": "Marquer comme terminé",
+    "finishGame": "Terminez le jeu pour obtenir vos points"
   },
   "inline": {
     "submitError": "Impossible d'envoyer pour le moment.",
@@ -76,5 +78,28 @@
     "answered": "Répondu —",
     "points": "+{{count}} points",
     "revealLater": " · la réponse arrive plus tard aujourd'hui"
+  },
+  "history": {
+    "title": "Tâches passées",
+    "subtitle": "Ce que vous avez fait, manqué, et ce que vous pouvez encore rattraper.",
+    "back": "Accueil",
+    "window_one": "{{count}} jour",
+    "window_other": "{{count}} jours",
+    "done": "Faites",
+    "missed": "Manquées",
+    "points": "Points",
+    "today": "Aujourd'hui",
+    "doneBadge": "Faite",
+    "doneLate": "Faite en retard",
+    "missedBadge": "Manquée",
+    "catchUp": "Rattrapage · {{percent}} % des points",
+    "correct": "Bonne réponse",
+    "wrong": "Pas tout à fait",
+    "pending": "Le résultat arrive à la révélation",
+    "earned": "+{{count}} pts",
+    "openToCatchUp": "Ouvrir pour rattraper",
+    "empty": "Rien ici pour l'instant — vos tâches faites et manquées apparaîtront au fil des jours.",
+    "error": "Impossible de charger vos tâches passées.",
+    "retry": "Réessayer"
   }
 }

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import {
+    ArrowClockwise,
+    MagnifyingGlass,
+    CaretLeft,
+    CaretRight,
+    WarningCircle,
+    X,
+} from '@phosphor-icons/react';
 import {
     Dialog,
     DialogContent,
@@ -10,6 +17,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
@@ -73,7 +81,7 @@ export function BatchPickerDialog({
         return () => window.clearTimeout(timer);
     }, [search]);
 
-    const { data, isFetching } = useQuery({
+    const { data, isFetching, isError, refetch } = useQuery({
         queryKey: ['engagement-batch-picker', debounced, page],
         queryFn: () =>
             fetchPaginatedBatches({
@@ -130,17 +138,38 @@ export function BatchPickerDialog({
                                     onClick={() =>
                                         setDraft((prev) => prev.filter((x) => x.id !== b.id))
                                     }
-                                    className="rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-700 hover:bg-primary-100"
+                                    className="flex items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-600 hover:bg-primary-100"
                                     title={t('batchPicker.remove')}
+                                    aria-label={`${t('batchPicker.remove')}: ${b.label}`}
                                 >
-                                    {b.label} ✕
+                                    {b.label} <X size={12} />
                                 </button>
                             ))}
                         </div>
                     )}
 
+                    {/* Before the empty state: a failed load must not read as "no match". */}
+                    {isError && (
+                        <Alert className="border-danger-200 bg-danger-50 text-danger-700">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <WarningCircle size={18} className="shrink-0" />
+                                <AlertDescription className="min-w-0 flex-1">
+                                    {t('batchPicker.loadError')}
+                                </AlertDescription>
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => void refetch()}
+                                >
+                                    <ArrowClockwise size={14} /> {t('common.retry')}
+                                </MyButton>
+                            </div>
+                        </Alert>
+                    )}
+
                     <div className="max-h-80 divide-y divide-neutral-100 overflow-y-auto rounded-md border border-neutral-200">
-                        {rows.length === 0 && !isFetching && (
+                        {rows.length === 0 && !isFetching && !isError && (
                             <p className="p-6 text-center text-sm text-neutral-500">
                                 {t('batchPicker.noMatch')}
                             </p>

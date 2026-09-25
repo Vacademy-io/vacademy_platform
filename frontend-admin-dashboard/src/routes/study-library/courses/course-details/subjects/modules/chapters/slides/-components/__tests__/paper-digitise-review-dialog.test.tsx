@@ -66,7 +66,8 @@ const primaryButton = () =>
 describe('PaperDigitiseReviewDialog', () => {
     it('shows every question with its marks, what was charged, and flags to verify', () => {
         setup();
-        expect(screen.getByText('What is 2+2?')).toBeInTheDocument();
+        // Rendered as HTML now (the <b> stays bold), so the text spans two nodes.
+        expect(screen.getByText('2+2').closest('p')).toHaveTextContent('What is 2+2?');
         expect(screen.getByText('Explain soil.')).toBeInTheDocument();
         expect(screen.getByText(/review\.creditsCharged.*"credits":3.*"count":2/)).toBeInTheDocument();
         expect(screen.getByText(/review\.balanceNow.*97/)).toBeInTheDocument();
@@ -141,6 +142,24 @@ describe('PaperDigitiseReviewDialog', () => {
         setup({ billed: false, credits_charged: null, balance_after: null });
         expect(screen.getByText(/review\.creditsChargedUnknown.*"credits":3/)).toBeInTheDocument();
         expect(screen.queryByText(/review\.balanceNow/)).not.toBeInTheDocument();
+    });
+
+    it('typesets a maths question instead of showing its LaTeX source', () => {
+        setup({
+            questions: [
+                {
+                    question_type: 'MCQS',
+                    text: {
+                        type: 'HTML',
+                        content: '<p>The linear equation $2 \\mathrm{x}-5 \\mathrm{y}=7$ has:</p>',
+                    },
+                },
+            ],
+            raw_questions: [{ question_number: '3', marks: 1, marks_source: 'printed' }],
+        });
+        expect(screen.queryByText(/\$2 \\mathrm/)).not.toBeInTheDocument();
+        expect(document.querySelector('.katex')).not.toBeNull();
+        expect(screen.getByText(/The linear equation/)).toBeInTheDocument();
     });
 
     it('offers the manual path', () => {

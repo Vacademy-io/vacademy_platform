@@ -55,6 +55,40 @@
         "heading": "Send Notification",
         "subheading": "Email or WhatsApp message"
     },
+    "resend": {
+        "button": "Resend",
+        "buttonTooltip": "Send this message again",
+        "blocked": {
+            "noTemplate": "Only template messages can be resent — this one was typed in the Inbox",
+            "noBody": "The original message body was not stored, so there is nothing to resend",
+            "unsupportedChannel": "This channel cannot be resent from here"
+        },
+        "title": "Resend this {{channel}} message?",
+        "confirmQuestion": "Are you sure you want to send this again to {{recipient}}?",
+        "subjectLabel": "Subject:",
+        "hasVariables_one": "This template has {{count}} variable.",
+        "hasVariables_other": "This template has {{count}} variables.",
+        "modeSame": "Resend the same",
+        "modeSameHint": "Keep the values that went out the first time",
+        "modeSameBlockedHint": "Not possible — the first send went out without {{names}}",
+        "modeEdit": "Change the variables",
+        "modeEditHint": "Edit the values before sending",
+        "variablePlaceholder": "Value for {{name}}",
+        "variableEmpty": "(empty)",
+        "previewHeading": "Preview",
+        "deliveryCaveat": "This sends a real message to the learner.",
+        "variablesRequired": "Fill in every variable — WhatsApp rejects the message while any is empty.",
+        "cancel": "Cancel",
+        "confirmSame": "Send again",
+        "confirmEdited": "Send with new values",
+        "emailSent": "Email resent",
+        "whatsappQueued": "WhatsApp message handed to the provider",
+        "rejected": "The provider refused the resend",
+        "rejectedWithReason": "The provider refused the resend: {{reason}}",
+        "failed": "Could not resend the message",
+        "noInstitute": "No institute selected",
+        "noRecipient": "This message has no recipient to resend to"
+    },
     "pagination": {
         "previous": "Previous",
         "next": "Next",
@@ -84,5 +118,11 @@
         "recordingHeading": "Recording",
         "noRecording": "No recording for this call",
         "byCounsellor": "by {{name}}"
+    },
+    "origin": {
+        "workflow": "Sent by workflow “{{name}}”",
+        "workflowUnnamed": "Sent by a workflow",
+        "chatbotFlow": "Sent by chatbot flow “{{name}}”",
+        "chatbotFlowUnnamed": "Sent by a chatbot flow"
     }
 }

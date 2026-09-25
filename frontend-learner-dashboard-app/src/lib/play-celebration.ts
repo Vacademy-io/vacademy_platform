@@ -17,9 +17,23 @@ function reducedMotion(): boolean {
   );
 }
 
+/**
+ * The Corporate skin is a work-tool register (Linear / Stripe / Vercel); a
+ * confetti burst on every completed task is the loudest consumer-app cue there
+ * is. Checked here rather than at call sites because the engagement card and
+ * dialog call these without a skin gate.
+ */
+function quiet(): boolean {
+  return (
+    reducedMotion() ||
+    (typeof document !== "undefined" &&
+      document.documentElement.classList.contains("ui-corporate"))
+  );
+}
+
 /** Quick burst for a single completion (slide done, badge unlocked). */
 export function celebrateCompletion(): void {
-  if (reducedMotion()) return;
+  if (quiet()) return;
   confetti({
     particleCount: 80,
     spread: 70,
@@ -32,7 +46,7 @@ export function celebrateCompletion(): void {
 
 /** Bigger two-sided volley for milestones (chapter complete, streak 7/30…). */
 export function celebrateMilestone(): void {
-  if (reducedMotion()) return;
+  if (quiet()) return;
   const opts = {
     particleCount: 60,
     spread: 55,

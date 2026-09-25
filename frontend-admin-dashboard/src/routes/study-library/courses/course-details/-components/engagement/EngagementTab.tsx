@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Plus, Sparkle } from '@phosphor-icons/react';
+import { ArrowClockwise, Plus, Sparkle, WarningCircle } from '@phosphor-icons/react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MyButton } from '@/components/design-system/button';
 import { listEngagementPlans } from '@/routes/engagement/-services/engagement-service';
 import { AiPlanWizard } from '@/routes/engagement/-components/AiPlanWizard';
@@ -23,6 +24,7 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
     const {
         data: plans,
         isLoading,
+        isError,
         refetch,
     } = useQuery({
         queryKey: ['engagement-plans', packageSessionId],
@@ -65,7 +67,27 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
 
             {isLoading && <div className="h-20 animate-pulse rounded-lg bg-neutral-100" />}
 
-            {!isLoading && (plans?.length ?? 0) === 0 && (
+            {/* Before the empty state: a failed load must not read as "nothing scheduled". */}
+            {isError && (
+                <Alert className="border-danger-200 bg-danger-50 text-danger-700">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <WarningCircle size={18} className="shrink-0" />
+                        <AlertDescription className="min-w-0 flex-1">
+                            {t('page.loadError')}
+                        </AlertDescription>
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => void refetch()}
+                        >
+                            <ArrowClockwise size={14} /> {t('common.retry')}
+                        </MyButton>
+                    </div>
+                </Alert>
+            )}
+
+            {!isLoading && !isError && (plans?.length ?? 0) === 0 && (
                 <div className="rounded-lg border border-dashed border-neutral-300 p-10 text-center">
                     <p className="text-sm font-medium text-neutral-900">
                         {t('page.nothingScheduled')}

@@ -79,6 +79,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     progressTab: true,
     coursesTab: true,
     notificationTab: false,
+    allowResendMessage: true,
     membershipTab: false,
     paymentHistoryTab: true,
     userTaggingTab: false,
@@ -103,6 +104,8 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     showApprovalToggle: true,
     // Admins get this by default; teachers and custom roles do not.
     allowEditCredentials: true,
+    // Permanent delete of payments & invoices — OFF by default for every role.
+    allowDeletePayments: false,
 };
 
 export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanelProps = {}) {
@@ -271,6 +274,11 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
             key: 'showApprovalToggle',
             label: t('learnerManagement.showApprovalToggle'),
             defaultValue: LEARNER_MANAGEMENT_DEFAULTS.showApprovalToggle,
+        },
+        {
+            key: 'allowDeletePayments',
+            label: t('learnerManagement.allowDeletePayments'),
+            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowDeletePayments ?? false,
         },
     ];
 

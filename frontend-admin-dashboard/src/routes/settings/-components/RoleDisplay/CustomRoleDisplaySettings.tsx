@@ -91,6 +91,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     progressTab: true,
     coursesTab: true,
     notificationTab: false,
+    allowResendMessage: false,
     membershipTab: false,
     paymentHistoryTab: true,
     userTaggingTab: false,
@@ -225,6 +226,8 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowSendResetPasswordMail: true,
     showApprovalToggle: false,
     allowEditCredentials: false,
+    // Permanent delete of payments & invoices — OFF by default for every role.
+    allowDeletePayments: false,
 };
 
 // Built inside the component (not module scope) so labels stay reactive to
@@ -260,6 +263,11 @@ const buildLearnerManagementOptions = (
         key: 'showApprovalToggle',
         label: t('learnerManagement.showApprovalToggle'),
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.showApprovalToggle,
+    },
+    {
+        key: 'allowDeletePayments',
+        label: t('learnerManagement.allowDeletePayments'),
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowDeletePayments ?? false,
     },
 ];
 

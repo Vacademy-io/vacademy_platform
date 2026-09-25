@@ -22,6 +22,8 @@
         "clearSearchAriaLabel": "Clear search",
         "batch": "Batch",
         "subject": "Subject",
+        "ratingsBelow": "Ratings Below",
+        "anyRating": "Any",
         "noBatches": "No batches",
         "noSubjects": "No subjects",
         "clearAll": "Clear all"

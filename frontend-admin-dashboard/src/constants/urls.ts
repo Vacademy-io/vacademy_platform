@@ -406,6 +406,8 @@ export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v
 // dispositions) per lead, for CSV export.
 export const GET_LEAD_JOURNEY_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/journey-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
+// Manual STUDENT-scoped events (notes, call logs, meetings) by type + typeId.
+export const GET_TIMELINE_EVENTS = `${BASE_URL}/admin-core-service/timeline/v1/events`;
 // Guardian-student linking — student side-view "Guardian" tab.
 export const GET_PARENT_LINK_PARENT = `${BASE_URL}/admin-core-service/parent-link/v1/parent`;
 export const GET_PARENT_LINK_CHILDREN = `${BASE_URL}/admin-core-service/parent-link/v1/children`;
@@ -574,6 +576,9 @@ export const GET_ASSESSMENT_LISTS = `${BASE_URL}/assessment-service/assessment/a
 export const PUBLISH_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/publish/v1/`;
 export const PRIVATE_ADD_QUESTIONS = `${BASE_URL}/assessment-service/question-paper/public/manage/v1/add-only-question`;
 export const GET_OVERVIEW_URL = `${BASE_URL}/assessment-service/assessment/admin/get-overview`;
+// Proctoring review (V48): per-attempt timeline and per-page flag counts.
+export const PROCTORING_ATTEMPT_REVIEW_URL = `${BASE_URL}/assessment-service/assessment/admin/proctoring/attempt`;
+export const PROCTORING_SUMMARIES_URL = `${BASE_URL}/assessment-service/assessment/admin/proctoring/summaries`;
 export const GET_LEADERBOARD_URL = `${BASE_URL}/assessment-service/assessment/admin/get-leaderboard`;
 export const GET_EXPORT_PDF_URL_LEADERBOARD = `${BASE_URL}/assessment-service/assessment/export/pdf/leaderboard`;
 export const GET_EXPORT_CSV_URL_LEADERBOARD = `${BASE_URL}/assessment-service/assessment/export/csv/leaderboard`;
@@ -959,6 +964,10 @@ export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-ses
 export const SYNC_RECORDINGS_TO_S3 = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync-to-s3`;
 // Google Meet: on-demand pull of conferenceRecords.recordings (bypasses the hourly poll).
 export const SYNC_GOOGLE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/sync`;
+// Google Meet: attach an admin-uploaded copy of a Drive recording (no server-side Drive access).
+export const ATTACH_GOOGLE_RECORDING_FILE = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/attach-file`;
+// Google Meet: server downloads the recording from Drive into the library (needs Drive access on the account).
+export const SAVE_GOOGLE_RECORDING_TO_LIBRARY = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/save-to-library`;
 
 // ── Zoom integration ──
 // Per-institute Zoom account credentials (S2S OAuth + Meeting SDK pair).
@@ -1257,6 +1266,9 @@ export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invo
 export const POST_ADMIN_PREVIEW_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/preview`;
 export const POST_REJECT_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/reject`;
+/** DELETE ?instituteId=… — permanent delete, gated by Display Settings (off by default). */
+export const DELETE_INVOICE = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const PUT_UPDATE_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
@@ -1331,6 +1343,19 @@ export const CATALOGUE_REVISION_GET = (revisionId: string) =>
 // Catalogue site analytics (first-party page views, joined to leads)
 export const CATALOGUE_ANALYTICS_SUMMARY = (instituteId: string, days: number) =>
     `${BASE_URL}/admin-core-service/v1/catalogue-analytics/summary?instituteId=${instituteId}&days=${days}`;
+// Catalogue blog posts — rows an admin writes in Manage Pages → Blog, read live
+// by the `blog` section of any of the institute's sites.
+export const CATALOGUE_BLOG_BASE_URL = `${BASE_URL}/admin-core-service/v1/catalogue-blog`;
+export const CATALOGUE_BLOG_POSTS = (instituteId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/posts?instituteId=${instituteId}`;
+export const CATALOGUE_BLOG_POST = (instituteId: string, postId?: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post?instituteId=${instituteId}${postId ? `&postId=${postId}` : ''}`;
+export const CATALOGUE_BLOG_POST_PUBLISH = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/publish?instituteId=${instituteId}&postId=${postId}`;
+export const CATALOGUE_BLOG_POST_UNPUBLISH = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/unpublish?instituteId=${instituteId}&postId=${postId}`;
+export const CATALOGUE_BLOG_POST_ARCHIVE = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/archive?instituteId=${instituteId}&postId=${postId}`;
 
 // AI Page Builder (ai_service)
 export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;
@@ -1509,6 +1534,8 @@ export const PUT_USER_PLAN_CPO_DISCOUNT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount`;
 export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
+export const POST_SPLIT_INSTALLMENT = (sfpId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}/split`;
 
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;

@@ -97,6 +97,31 @@ public class DistinctUserAudienceService {
             return emptyResponse(request, audienceIds);
         }
 
+        // Lead/enquiry contacts are bare auth Users with no institute role and no
+        // student row, so a name that lives only on the auth User cannot be matched
+        // in SQL. Resolve it to user ids here and let the query match on them, the
+        // same way AudienceService.getLeads already does for the leads list.
+        //
+        // instituteId is deliberately NOT passed: searchUserIdsByQuery scopes to users
+        // holding a user_role for the institute, which no lead has. Broadening is safe
+        // because the ids are only ever intersected with ar.user_id, and that branch is
+        // already institute-scoped by its JOIN on audience.
+        //
+        // Placed AFTER the early return and gated on includeAudienceRespondents: the ids
+        // are read by the audience half of the UNION only, so a Students-only request or
+        // a request with both sources off must not pay for the round trip.
+        String searchUserIdsCsv = null;
+        if (nameSearch != null && includeAudienceRespondents) {
+            try {
+                List<String> ids = authService.searchUserIdsByQuery(nameSearch, null);
+                if (ids != null && !ids.isEmpty()) {
+                    searchUserIdsCsv = String.join(",", ids);
+                }
+            } catch (Exception e) {
+                logger.warn("auth-service user search failed for query='{}': {}", nameSearch, e.getMessage());
+            }
+        }
+
         // ── Step 1: Paginated user IDs from DB ────────────────────────────────
         // The UNION ALL query handles both institute users and audience respondents.
         // When a source is excluded, pass the __EXCLUDE__ sentinel so its part
@@ -143,6 +168,7 @@ public class DistinctUserAudienceService {
                 effectiveAudienceIds,
                 cfResolution.matchedIdsCsv(),
                 cfResolution.excludedIdsCsv(),
+                searchUserIdsCsv,
                 (request.getSortCustomFieldId() != null && !request.getSortCustomFieldId().isBlank())
                         ? request.getSortCustomFieldId() : null,
                 // SQL compares :cfSortDirection = 'ASC' literally — normalize

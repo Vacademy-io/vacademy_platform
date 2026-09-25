@@ -222,6 +222,26 @@ class CallDiagnostics:
     # unchanged — call 17be14f2). Each one is a reply-to-nothing that used to
     # re-deliver the intro. Evidence, not a fault.
     empty_runs_blocked: int = 0
+    # Runs held because the scripted opening had not been heard yet and the
+    # caller's words did not take over (room chatter at pickup, call 4243a436).
+    runs_held_for_opening: int = 0
+    # Short-answer holds released because the line never went quiet (noise).
+    short_answer_noise_releases: int = 0
+    # Voice-mode barge-in: acknowledgements the bot talked straight through, and
+    # stops made because the caller kept talking past barge_in_voice_secs.
+    acks_talked_through: int = 0
+    # FloorGate: replies held because the caller was talking when they were
+    # ready; then dropped (caller took the turn), released (caller stopped) or
+    # capped (the line never went quiet).
+    # "<name>" copied from the prompt's script lines, replaced before the TTS.
+    placeholders_filled: int = 0
+    # "करतो/करते"-style either-or pairs reduced to one form before the TTS.
+    alternatives_collapsed: int = 0
+    floor_holds: int = 0
+    floor_holds_dropped: int = 0
+    floor_holds_released: int = 0
+    floor_holds_capped: int = 0
+    voice_cuts: int = 0
     # Short-answer runs ("Yes." + a breath) dropped because the caller's voice
     # resumed inside the grace — the whole turn was answered once instead
     # (bot.RunGuard, 2026-09-15). The fix working, not a fault.
@@ -233,6 +253,7 @@ class CallDiagnostics:
     # Resumed words that never reached the line at all and were handed back to
     # the model (call b41b481f). A fault symptom, not a fault by itself.
     resume_lost: int = 0
+    sentences_capped: int = 0
     # From the PLAYED transcript at report time (report._played_invariants):
     # the opening said again after a substantive caller turn; 5+-word
     # sentences played twice without a caller "hello?"/"say again" between.
@@ -300,6 +321,16 @@ class CallDiagnostics:
     # failed audibly (no transcript for a heard utterance) or on its socket.
     stt_failovers: int = 0
     stt_vendor_final: str = ""
+    llm_failovers: int = 0
+    llm_vendor_final: str = ""
+    # Token usage summed over the call's LLM runs, from pipecat's usage
+    # metrics. cached = prompt tokens the vendor served from its prompt cache
+    # (Gemini implicit caching bills them at ~10%; Sarvam reports none) — the
+    # only per-call answer to "is caching lowering the LLM bill?".
+    llm_runs: int = 0
+    llm_prompt_tokens: int = 0
+    llm_cached_tokens: int = 0
+    llm_completion_tokens: int = 0
     hearing_failures: int = 0     # times we gave up and closed out honestly
     # Caller utterances DETECTED by VAD that produced no transcript at all. This
     # is the only signal that separates "nobody answered" from "we went deaf".
@@ -681,6 +712,22 @@ def split_lost(heard: List[str], delivered: List[str]) -> Lost:
         if hw and _consume_words(words, hw):
             continue
         missing.append(h)
+    # Pass 3, the reverse split: the transcript JOINS a fragment continuation
+    # onto its head ("मेरा बच्चा mobile" + "बाईस से।" -> one entry) while the
+    # model received the pieces as separate messages. Call 2983bf1f
+    # (2026-09-24) reported that line lost; the run that followed had all 17
+    # of the caller's words. Search the unconsumed messages joined in order.
+    if missing and spans:
+        joined = "".join(spans)
+        still: List[str] = []
+        for h in missing:
+            k = _norm_answer(h)
+            j = joined.find(k) if len(k) >= _CONTAIN_MIN_CHARS else -1
+            if j >= 0:
+                joined = joined[:j] + joined[j + len(k):]
+            else:
+                still.append(h)
+        missing = still
     answers = [h for h in missing if _lost_carries_meaning(h)]
     scraps = [h for h in missing if not _lost_carries_meaning(h)]
     return Lost(len(answers), answers[:_MAX_DELETED_ANSWERS],
@@ -913,9 +960,20 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "contentFreeTurns": d.content_free_turns,
                 "unsaidReverted": d.unsaid_reverted,
                 "emptyRunsBlocked": d.empty_runs_blocked,
+                "runsHeldForOpening": d.runs_held_for_opening,
+                "shortAnswerNoiseReleases": d.short_answer_noise_releases,
+                "acksTalkedThrough": d.acks_talked_through,
+                "placeholdersFilled": d.placeholders_filled,
+                "alternativesCollapsed": d.alternatives_collapsed,
+                "floorHolds": d.floor_holds,
+                "floorHoldsDropped": d.floor_holds_dropped,
+                "floorHoldsReleased": d.floor_holds_released,
+                "floorHoldsCapped": d.floor_holds_capped,
+                "voiceCuts": d.voice_cuts,
                 "shortAnswerHolds": d.short_answer_holds,
                 "resumeRespoken": d.resume_respoken,
                 "resumeLost": d.resume_lost,
+                "sentencesCapped": d.sentences_capped,
                 "openingReplays": d.opening_replays,
                 "repeatedLines": d.repeated_lines,
                 "repeatedLineSamples": d.repeated_line_samples[:3],
@@ -959,6 +1017,16 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "sttReconnects": d.stt_reconnects,
                 "sttFailovers": d.stt_failovers,
                 "sttVendorFinal": d.stt_vendor_final or None,
+                "llmFailovers": d.llm_failovers,
+                "llmVendorFinal": d.llm_vendor_final or None,
+                "llmUsage": {
+                    "runs": d.llm_runs,
+                    "promptTokens": d.llm_prompt_tokens,
+                    "cachedTokens": d.llm_cached_tokens,
+                    "completionTokens": d.llm_completion_tokens,
+                    "cachedPct": (round(100.0 * d.llm_cached_tokens / d.llm_prompt_tokens, 1)
+                                  if d.llm_prompt_tokens else None),
+                } if d.llm_runs else None,
                 "hearingFailures": d.hearing_failures,
                 "unheardUtterances": d.unheard_utterances,
                 "promptUnfilled": d.prompt_unfilled or None,

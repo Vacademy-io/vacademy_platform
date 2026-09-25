@@ -33,7 +33,12 @@ import { PaymentControlBar, type SegmentKey, type StatusSegment } from './Paymen
 import { DueLearnersTable } from './DueLearnersTable';
 import { DueLearnerDetailSheet } from './DueLearnerDetailSheet';
 import { PaymentLogsTable } from './PaymentLogsTable';
-import { PaymentKpiCards, type RecordStatusKey, type SummaryStatusKey } from './PaymentKpiCards';
+import {
+    PaymentKpiCards,
+    hasNotYetDueBalance,
+    type RecordStatusKey,
+    type SummaryStatusKey,
+} from './PaymentKpiCards';
 import { PaymentDetailSheet } from './PaymentDetailSheet';
 import { SendRemindersModal } from './SendRemindersModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
@@ -95,6 +100,9 @@ export function TransactionsView() {
     // 'balances' answers "who owes money", which the payment records cannot: an unpaid balance
     // normally has no row to filter to. It swaps the table rather than narrowing it.
     const [view, setView] = useState<'records' | 'balances'>('records');
+    // Which balances list is open: 'due' (something already overdue) or 'outstanding' (anything
+    // still to collect, whatever its date — how an admin sees each learner's next instalment).
+    const [balanceScope, setBalanceScope] = useState<'due' | 'outstanding'>('due');
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
     // Payment plan is the one detailed filter the API can't apply; it narrows the loaded set
     // locally, before the KPI tiles are computed, so it behaves like the server-side ones.
@@ -205,6 +213,11 @@ export function TransactionsView() {
             statusBucket === 'total'
                 ? allEntries
                 : allEntries.filter((entry) => {
+                      // A voided payment is in no card, so it is in no card's rows either — it
+                      // stays visible under "All" only. (Scoped to voided payments: cancelled
+                      // invoice rows keep their existing place in the Pending tab.)
+                      if ((entry.payment_log?.payment_status || '').toUpperCase() === 'VOIDED')
+                          return false;
                       if (classifyEntry(entry) !== statusBucket) return false;
                       // The Pending tile no longer counts records on a cancelled/terminated/expired
                       // enrolment, so the rows it filters to must not include them either — the
@@ -252,11 +265,22 @@ export function TransactionsView() {
                       learnersOwing: billingSummary.learners_owing,
                       learnersUpcoming: billingSummary.learners_upcoming,
                       activatedWithoutPaymentCount: billingSummary.activated_without_payment_count,
+                      outstanding: billingSummary.outstanding,
+                      learnersOutstanding: billingSummary.learners_outstanding,
                       currency: billingSummary.currency || '',
                   }
                 : null,
         [billingSummary]
     );
+
+    // The Outstanding tab is offered only while there is money not yet due. If a date change takes
+    // that away while its list is open, fall back to the Due list rather than leave an unmarked list
+    // on screen. Waits for the billing figures, so a refetch in flight does not bounce the view.
+    useEffect(() => {
+        if (billing && !hasNotYetDueBalance(billing) && balanceScope === 'outstanding') {
+            setBalanceScope('due');
+        }
+    }, [billing, balanceScope]);
 
     const pagedData: PaymentLogsResponse | undefined = useMemo(() => {
         if (!allData) return undefined;
@@ -409,6 +433,7 @@ export function TransactionsView() {
             endDate,
             requestFilters.package_session_ids,
             balancesPage,
+            balanceScope,
         ],
         queryFn: () =>
             fetchOutstandingLearners(
@@ -418,16 +443,18 @@ export function TransactionsView() {
                     package_session_ids: requestFilters.package_session_ids,
                 },
                 balancesPage,
-                PAGE_SIZE
+                PAGE_SIZE,
+                balanceScope === 'outstanding'
             ),
         staleTime: 60_000,
         retry: false,
     });
 
-    /** 'due' opens the balances list; everything else narrows the payment records. */
+    /** 'due' / 'outstanding' open a balances list; everything else narrows the payment records. */
     const handleSegmentSelect = (key: SegmentKey) => {
         setCurrentPage(0);
-        if (key === 'due') {
+        if (key === 'due' || key === 'outstanding') {
+            setBalanceScope(key);
             setView('balances');
             return;
         }
@@ -449,7 +476,24 @@ export function TransactionsView() {
         { key: 'pending', label: 'Pending', count: paymentSummary.pending.count },
         { key: 'abandoned', label: 'Abandoned', count: paymentSummary.abandoned.count },
         { key: 'failed', label: 'Failed', count: paymentSummary.failed.count },
-        { key: 'due', label: 'Due', count: outstanding?.totalElements ?? 0 },
+        // Offered only where it adds something beyond Due (see hasNotYetDueBalance).
+        ...(hasNotYetDueBalance(billing)
+            ? [
+                  {
+                      key: 'outstanding' as const,
+                      label: 'Outstanding',
+                      count: billing?.learnersOutstanding ?? 0,
+                  },
+              ]
+            : []),
+        {
+            key: 'due',
+            label: 'Due',
+            count:
+                balanceScope === 'due'
+                    ? outstanding?.totalElements ?? 0
+                    : billing?.learnersOwing ?? 0,
+        },
     ];
 
     // Detailed-filter count for the Filters button badge. Status lives in the segmented switch and
@@ -526,6 +570,7 @@ export function TransactionsView() {
         setDateRange(ALL_TIME_RANGE);
         setStatusBucket('total');
         setView('records');
+        setBalanceScope('due');
         setSelectedUserPlanStatuses([]);
         setSelectedPaymentPlans([]);
         setSelectedPaymentSources([]);
@@ -630,7 +675,7 @@ export function TransactionsView() {
                     summary={paymentSummary}
                     billing={billing}
                     isLoading={isLoadingPayments}
-                    activeKey={view === 'balances' ? 'due' : statusBucket}
+                    activeKey={view === 'balances' ? balanceScope : statusBucket}
                     onSelect={handleSummarySelect}
                 />
 
@@ -642,7 +687,7 @@ export function TransactionsView() {
                         setCurrentPage(0);
                     }}
                     segments={segments}
-                    activeStatus={view === 'balances' ? 'due' : statusBucket}
+                    activeStatus={view === 'balances' ? balanceScope : statusBucket}
                     onStatusSelect={handleSegmentSelect}
                     filterCount={detailedFilterCount}
                     onOpenFilters={() => setFiltersOpen(true)}
@@ -693,6 +738,7 @@ export function TransactionsView() {
                 {view === 'balances' ? (
                     <DueLearnersTable
                         data={outstanding}
+                        mode={balanceScope}
                         isLoading={isLoadingOutstanding}
                         error={outstandingError as Error}
                         currentPage={currentPage}
@@ -792,6 +838,7 @@ export function TransactionsView() {
                     entry={detailEntry}
                     open={detailOpen}
                     onOpenChange={setDetailOpen}
+                    onVoided={() => refetchPaymentLogs()}
                 />
 
                 {/* Balance breakdown, opened from a Due row */}

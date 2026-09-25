@@ -120,6 +120,7 @@ type TaskCardProps = {
     pollGenerateQuestionsFromAudio?: (data: QuestionsFromTextData, taskId: string) => void;
     sectionsForm?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
+    allowSectionSplit?: boolean;
 };
 
 const TaskCard = ({
@@ -133,6 +134,7 @@ const TaskCard = ({
     pollGenerateQuestionsFromAudio,
     sectionsForm,
     currentSectionIndex,
+    allowSectionSplit,
 }: TaskCardProps) => {
     const { t } = useTranslation('aiCenterAITasksList');
     const { t: tFormat } = useTranslation('aiCenterFormat');
@@ -211,6 +213,7 @@ const TaskCard = ({
                             setOpenQuestionsPreview={setIsOpen}
                             sectionsForm={sectionsForm}
                             currentSectionIndex={currentSectionIndex}
+                            allowSectionSplit={allowSectionSplit}
                         />
                     )}
                 {task.file_detail && (
@@ -247,6 +250,7 @@ const AITasksList = ({
     pollGenerateQuestionsFromAudio,
     sectionsForm,
     currentSectionIndex,
+    allowSectionSplit,
 }: {
     heading: string;
     enableDialog?: boolean;
@@ -261,6 +265,7 @@ const AITasksList = ({
     pollGenerateQuestionsFromAudio?: (data: QuestionsFromTextData, taskId: string) => void;
     sectionsForm?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
+    allowSectionSplit?: boolean;
 }) => {
     const { t } = useTranslation('aiCenterAITasksList');
     const { t: tFormat } = useTranslation('aiCenterFormat');
@@ -600,6 +605,7 @@ const AITasksList = ({
                                                 }
                                                 sectionsForm={sectionsForm}
                                                 currentSectionIndex={currentSectionIndex}
+                                                allowSectionSplit={allowSectionSplit}
                                             />
                                         ))}
                                     </div>

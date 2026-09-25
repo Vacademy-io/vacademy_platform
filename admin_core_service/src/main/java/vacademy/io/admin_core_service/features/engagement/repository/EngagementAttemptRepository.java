@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.engagement.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -50,4 +51,24 @@ public interface EngagementAttemptRepository extends JpaRepository<EngagementAtt
                                                  @Param("instituteId") String instituteId,
                                                  @Param("from") Timestamp from,
                                                  @Param("to") Timestamp to);
+
+    /**
+     * Record that a learner opened an item, once. The server's own clock then measures
+     * dwell and play time — the client's timeSpentMs is advisory and easy to forge.
+     *
+     * ON CONFLICT DO NOTHING because this runs inside the item read: a second open
+     * (or a race with submit) must not fail the request or reset startedAt.
+     */
+    @Modifying
+    @Query(value = "INSERT INTO engagement_attempt (id, item_id, item_version, user_id, institute_id, " +
+            "package_session_id, status, started_at, created_at, updated_at) " +
+            "VALUES (:id, :itemId, :itemVersion, :userId, :instituteId, :packageSessionId, 'STARTED', " +
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+            "ON CONFLICT (item_id, user_id) DO NOTHING", nativeQuery = true)
+    int insertStartedIfAbsent(@Param("id") String id,
+                              @Param("itemId") String itemId,
+                              @Param("itemVersion") int itemVersion,
+                              @Param("userId") String userId,
+                              @Param("instituteId") String instituteId,
+                              @Param("packageSessionId") String packageSessionId);
 }

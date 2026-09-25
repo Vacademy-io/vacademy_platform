@@ -106,6 +106,7 @@ import { getTerminology, getTerminologyPlural } from '@/components/common/layout
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { AddRecordingToCourseCard } from '../-components/content-linking/AddRecordingToCourseCard';
 import { ClassMaterialsCard } from '../-components/content-linking/ClassMaterialsCard';
+import { RecordingDriveUploadAction } from '../-components/RecordingDriveUploadAction';
 import type { DestinationBatch } from '../-components/content-linking/SessionContentDestinationPicker';
 
 export const Route = createFileRoute('/study-library/live-session/view/$sessionId')({
@@ -1481,6 +1482,10 @@ function ViewLiveSession() {
                                             : null;
                                         const canSaveToLibrary =
                                             rec.recordingStorage === 'ZOOM_CLOUD' && !rec.fileId;
+                                        // Meet recordings stay in the organiser's Drive — no server
+                                        // mirror, so the admin uploads a copy instead.
+                                        const needsDriveUpload =
+                                            rec.recordingStorage === 'GOOGLE_DRIVE' && !rec.fileId;
                                         return (
                                             <div
                                                 key={rec.recordingId || idx}
@@ -1530,6 +1535,13 @@ function ViewLiveSession() {
                                                                     {expiresInDays !== null
                                                                         ? ` · expires in ${Math.max(0, expiresInDays)}d`
                                                                         : ''}
+                                                                </Badge>
+                                                            ) : needsDriveUpload ? (
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className="border-amber-200 bg-amber-50 text-amber-700"
+                                                                >
+                                                                    Google Drive
                                                                 </Badge>
                                                             ) : null}
                                                         </div>
@@ -1601,6 +1613,17 @@ function ViewLiveSession() {
                                                                 ? 'Saving…'
                                                                 : 'Save to library'}
                                                         </button>
+                                                    )}
+                                                    {needsDriveUpload && (
+                                                        <RecordingDriveUploadAction
+                                                            rec={rec}
+                                                            onAttached={(scheduleId, recordings) =>
+                                                                setRefreshedRecordings((prev) => ({
+                                                                    ...prev,
+                                                                    [scheduleId]: recordings,
+                                                                }))
+                                                            }
+                                                        />
                                                     )}
                                                     <RecordingYoutubeAction
                                                         rec={rec}

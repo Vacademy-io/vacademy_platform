@@ -14,6 +14,7 @@ import {
     SYNC_RECORDINGS_FROM_BBB,
     SYNC_RECORDINGS_TO_S3,
     SYNC_GOOGLE_RECORDINGS,
+    ATTACH_GOOGLE_RECORDING_FILE,
     ZOOM_PROVISION_STATUS,
     ZOOM_PROVISION_NOW,
     RECORDING_TRANSCRIBE,
@@ -194,7 +195,10 @@ export interface MeetingRecording {
     type?: string;
     /** Zoom cloud-recording passcode shown as a fallback when the embedded ?pwd= is rejected. */
     passcode?: string;
-    /** Where the recording lives: 'ZOOM_CLOUD' (provider, expires) or 'S3' (mirrored, permanent). */
+    /**
+     * Where the recording lives: 'ZOOM_CLOUD' (provider, expires), 'GOOGLE_DRIVE' (Meet, organiser's
+     * Drive — admin must upload a copy) or 'S3' (mirrored/uploaded, permanent).
+     */
     recordingStorage?: string;
     /** ISO-8601 provider auto-delete time (Zoom ~30 days). Drives the "expires in N days" badge. */
     expiresAt?: string;
@@ -689,6 +693,24 @@ export const syncGoogleRecordings = async (
         SYNC_GOOGLE_RECORDINGS,
         null,
         { params: { scheduleId, instituteId } }
+    );
+    return response.data;
+};
+
+/**
+ * Google Meet recordings live in the organiser's Drive and can't be fetched server-side, so the
+ * admin downloads the MP4 and uploads it; this attaches that media fileId to the recording
+ * (storage flips to S3). Returns the updated stored recording list.
+ */
+export const attachGoogleRecordingFile = async (
+    scheduleId: string,
+    recordingId: string,
+    fileId: string
+): Promise<{ recordings: MeetingRecording[] }> => {
+    const response = await authenticatedAxiosInstance.post<{ recordings: MeetingRecording[] }>(
+        ATTACH_GOOGLE_RECORDING_FILE,
+        null,
+        { params: { scheduleId, recordingId, fileId } }
     );
     return response.data;
 };

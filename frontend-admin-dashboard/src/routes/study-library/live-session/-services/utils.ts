@@ -15,6 +15,7 @@ import {
     SYNC_RECORDINGS_TO_S3,
     SYNC_GOOGLE_RECORDINGS,
     ATTACH_GOOGLE_RECORDING_FILE,
+    SAVE_GOOGLE_RECORDING_TO_LIBRARY,
     ZOOM_PROVISION_STATUS,
     ZOOM_PROVISION_NOW,
     RECORDING_TRANSCRIBE,
@@ -712,6 +713,20 @@ export const attachGoogleRecordingFile = async (
         null,
         { params: { scheduleId, recordingId, fileId } }
     );
+    return response.data;
+};
+
+/**
+ * Server-side "Save to library" for Google Meet: the backend downloads the recording from the
+ * organiser's Drive into S3. 412 when the connected Google account hasn't granted Drive access.
+ */
+export const saveGoogleRecordingToLibrary = async (
+    scheduleId: string
+): Promise<{ mirrored: number; recordings: MeetingRecording[] }> => {
+    const response = await authenticatedAxiosInstance.post<{
+        mirrored: number;
+        recordings: MeetingRecording[];
+    }>(SAVE_GOOGLE_RECORDING_TO_LIBRARY, null, { params: { scheduleId } });
     return response.data;
 };
 

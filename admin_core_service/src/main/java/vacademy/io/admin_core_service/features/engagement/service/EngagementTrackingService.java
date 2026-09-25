@@ -36,6 +36,8 @@ public class EngagementTrackingService {
     private static final int MAX_PAGE_SIZE = 200;
     /** Bound on the export so one click cannot pull an unbounded result set. */
     private static final int EXPORT_LIMIT = 5000;
+    /** Byte-order mark; the controller encodes the body as UTF-8, so this lands as EF BB BF. */
+    static final String CSV_BOM = "\uFEFF";
 
     private final EngagementItemRepository itemRepository;
     private final EngagementSlotRepository slotRepository;
@@ -84,7 +86,9 @@ public class EngagementTrackingService {
         if (attempts.size() > EXPORT_LIMIT) attempts = attempts.subList(0, EXPORT_LIMIT);
         List<EngagementTrackingDTO.Row> rows = toRows(attempts);
 
-        StringBuilder csv = new StringBuilder();
+        // UTF-8 BOM first: without it Excel reads the file as the system code page and
+        // Hindi / Arabic names come out as mojibake.
+        StringBuilder csv = new StringBuilder(CSV_BOM);
         csv.append("Name,Username,Email,Status,Result,Score,Points,Late,Time spent (s),Completed at,Answer,Files\n");
         for (EngagementTrackingDTO.Row row : rows) {
             csv.append(csvCell(row.getFullName())).append(',')
@@ -280,10 +284,23 @@ public class EngagementTrackingService {
         return Boolean.TRUE.equals(row.getIsCorrect()) ? "Correct" : "Wrong";
     }
 
-    /** RFC-4180 quoting: a learner's name can legitimately contain a comma or quote. */
-    private String csvCell(String value) {
-        if (value == null) return "";
-        String escaped = value.replace("\"", "\"\"");
-        return "\"" + escaped + "\"";
+    /**
+     * One quoted CSV cell.
+     *
+     * RFC-4180 quoting, because a learner's name can legitimately contain a comma or
+     * quote. Plus formula-injection defence: names and answers are learner-typed, and a
+     * cell starting with = + - @ TAB or CR is executed as a formula by Excel / Sheets
+     * when the teacher opens the file. A leading apostrophe makes it plain text.
+     */
+    public static String csvCell(String value) {
+        if (value == null || value.isEmpty()) return "";
+        String safe = startsLikeFormula(value) ? "'" + value : value;
+        return "\"" + safe.replace("\"", "\"\"") + "\"";
+    }
+
+    private static boolean startsLikeFormula(String value) {
+        char first = value.charAt(0);
+        return first == '=' || first == '+' || first == '-' || first == '@'
+                || first == '\t' || first == '\r';
     }
 }

@@ -186,8 +186,12 @@ public class EngagementLearnerService {
 
                 // The reveal moment: a task this learner completed, whose reveal time
                 // has now passed, within the last two days. This is where the answer
-                // key and explanation are finally allowed out.
-                if (isCompleted && scheduleResolver.isRevealed(plan, slot, runDate)
+                // key and explanation are finally allowed out. Only question and poll
+                // items have anything to reveal; a finished reading or game is not news.
+                boolean hasReveal = EngagementEnums.ItemType.QUESTION_OF_DAY.name().equals(item.getItemType())
+                        || EngagementEnums.ItemType.POLL.name().equals(item.getItemType());
+                if (isCompleted && hasReveal
+                        && scheduleResolver.isRevealed(plan, slot, runDate)
                         && !runDate.isBefore(today.minusDays(2))) {
                     EngagementItemDTO shown = toLearnerDto(plan, slot, item, runDate, state, attempt,
                             completedCounts.getOrDefault(item.getId(), 0L));

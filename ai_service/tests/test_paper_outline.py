@@ -465,3 +465,20 @@ def test_numbering_runs_and_key_region_split():
            + _p("Solutions") + _p("Part A") + _p("1. Because of steps") + _p("1) first 2) second") + _p("2. x") + _p("3. y")
            + _p("Part B") + _p("1. z") + _p("2. w") + _p("3. v"))
     assert [len(r) for r in qe.split_key_region(qe.split_blocks(sol))] == [3, 3, 5, 3]
+
+
+def test_a_time_under_the_first_section_heading_is_that_sections_not_the_papers():
+    """EUG-03: each section prints its own time, the paper none above them;
+    the paper is 30 + 45 + 60, not Section 1's 30."""
+    html = (
+        _p("IPMAT Mock Test") + _p("SECTION 1: ENGLISH") + _p("Time: 30 minutes | Marking: +3 correct, -1 wrong")
+        + _mcq(1) + _mcq(2) + _p("SECTION 2: REASONING") + _p("Time: 45 minutes") + _mcq(3)
+        + _p("SECTION 3: QUANTITATIVE ABILITY") + _p("Time: 60 minutes") + _mcq(4)
+    )
+    o = outline_of_html(html)
+    assert [s["duration_minutes"] for s in o["sections"]] == [30, 45, 60] and o["duration_minutes"] == 135
+    # A time printed above the first heading is the paper's, as before.
+    assert outline_of_html(_p("Time allowed: 2 hours") + html)["duration_minutes"] == 120
+    # Not every section timed: the paper keeps what it read.
+    untimed = html.replace(_p("Time: 45 minutes"), "")
+    assert outline_of_html(untimed)["duration_minutes"] == 30

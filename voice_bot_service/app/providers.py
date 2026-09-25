@@ -932,6 +932,146 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
     ), "sarvam", s.sarvam_tts_model)
 
 
+def _smallest_request_routing(cls):
+    """Subclass pipecat's SmallestTTSService so that, with ONE AUDIO CONTEXT PER
+    SENTENCE (what the speech cache switches on), every chunk and word lands in
+    the context of the request that asked for it, and each context closes as
+    soon as its request is done.
+
+    Stock behaviour assumes one context per turn: a chunk is appended to
+    get_active_audio_context_id() — the context PLAYING — and nothing closes a
+    finished request's context, because Smallest sends no per-request
+    `complete` (recorded 2026-09-25: one `complete` ~4 s after the last audio
+    of a whole batch). With per-sentence contexts that meant the next
+    sentence's audio was filed under the previous one, its own context sat
+    empty, and pipecat's 3 s idle timeout closed it — a cached sentence queued
+    behind waited 2.2 s (call 5aa10e10; timing sim smallest_live_then_cached:
+    a 2.56 s hole).
+
+    Smallest serves requests on a socket strictly in order, each tagged with a
+    request_id, so the Nth new request_id belongs to the Nth run_tts. A
+    request is done when the next one starts streaming, or after
+    _REQUEST_IDLE_SECS with nothing for it (chunks arrive ~40 ms apart at ~4x
+    real time; closing a context ends its queue, not its playout).
+
+    With one context per turn (cache off) the stock path runs untouched.
+    """
+    import collections
+
+    class _Routed(cls):
+        _REQUEST_IDLE_SECS = 0.5
+
+        def _routing_on(self) -> bool:
+            return not getattr(self, "_reuse_context_id_within_turn", True)
+
+        def _routing_state(self):
+            if not hasattr(self, "_rq_pending"):
+                self._rq_pending = collections.deque()   # contexts awaiting a request_id
+                self._rq_ctx = {}                        # request_id -> context_id
+                self._rq_current = None                  # request_id streaming now
+                self._rq_idle_task = None
+            return self
+
+        def _routing_reset(self):
+            self._routing_state()
+            self._rq_pending.clear()
+            self._rq_ctx.clear()
+            self._rq_current = None
+            t, self._rq_idle_task = self._rq_idle_task, None
+            if t is not None and not t.done():
+                t.cancel()
+
+        async def _connect_websocket(self):
+            # A fresh socket starts a fresh request sequence (pipecat reconnects
+            # on every interruption).
+            self._routing_reset()
+            await super()._connect_websocket()
+
+        async def on_audio_context_interrupted(self, context_id: str):
+            self._routing_reset()
+            await super().on_audio_context_interrupted(context_id)
+
+        async def run_tts(self, text, context_id, *args, **kwargs):
+            if self._routing_on() and text and text.strip():
+                self._routing_state()._rq_pending.append(context_id)
+            async for frame in super().run_tts(text, context_id, *args, **kwargs):
+                yield frame
+
+        async def _close_request(self, rid):
+            ctx = self._rq_ctx.pop(rid, None)
+            if ctx and self.audio_context_available(ctx):
+                await self.remove_audio_context(ctx)
+
+        async def _close_after_idle(self, rid):
+            try:
+                await asyncio.sleep(self._REQUEST_IDLE_SECS)
+                if self._rq_current == rid:
+                    self._rq_current = None
+                await self._close_request(rid)
+            except asyncio.CancelledError:
+                pass
+
+        async def _route(self, rid):
+            """Context for this request_id; closes the previous request's."""
+            st = self._routing_state()
+            if rid not in st._rq_ctx:
+                if st._rq_current is not None and st._rq_current != rid:
+                    await self._close_request(st._rq_current)
+                st._rq_ctx[rid] = st._rq_pending.popleft() if st._rq_pending else None
+                st._rq_current = rid
+            t, st._rq_idle_task = st._rq_idle_task, None
+            if t is not None and not t.done():
+                t.cancel()
+            st._rq_idle_task = asyncio.get_running_loop().create_task(self._close_after_idle(rid))
+            ctx = st._rq_ctx.get(rid)
+            if ctx and self.audio_context_available(ctx):
+                return ctx
+            return self.get_active_audio_context_id()
+
+        async def _receive_messages(self):
+            if not self._routing_on():
+                await super()._receive_messages()
+                return
+            import base64 as _b64
+            import json as _json
+            from pipecat.frames.frames import TTSAudioRawFrame as _Audio, TTSStoppedFrame as _Stopped
+            async for message in self._get_websocket():
+                msg = _json.loads(message)
+                status = msg.get("status")
+                rid = msg.get("request_id")
+                if status == "complete":
+                    await self.stop_all_metrics()
+                    st = self._routing_state()
+                    for r in list(st._rq_ctx):
+                        await self._close_request(r)
+                    st._rq_current = None
+                elif status == "chunk":
+                    await self.stop_ttfb_metrics()
+                    ctx = await self._route(rid)
+                    await self.append_to_audio_context(ctx, _Audio(
+                        audio=_b64.b64decode(msg["data"]["audio"]),
+                        sample_rate=self.sample_rate, num_channels=1, context_id=ctx))
+                elif status == "word_timestamp":
+                    data = msg.get("data", {})
+                    word, start = data.get("word"), data.get("start")
+                    if word is not None and start is not None:
+                        ctx = await self._route(rid)
+                        # Each request has its own context and its own baseline:
+                        # its word times are already relative to its own audio.
+                        await self.add_word_timestamps([(word, start)], ctx)
+                elif status == "error":
+                    ctx = self.get_active_audio_context_id()
+                    await self.push_frame(_Stopped(context_id=ctx))
+                    await self.stop_all_metrics()
+                    await self.push_error(error_msg=f"Smallest TTS error: {msg.get('error', msg)}")
+                else:
+                    logger.warning(f"{self} unknown message status: {msg}")
+
+    _Routed.__name__ = cls.__name__
+    _Routed.__qualname__ = cls.__qualname__
+    return _Routed
+
+
 def _letterless_guard(cls):
     """Subclass `cls` so a sentence with no letter or digit never reaches the
     vendor. Smallest renders a bare "." as 9 s of hum (measured 2026-09-15:
@@ -988,7 +1128,7 @@ def _build_smallest(cls, s, model: str, voice: str, speed: float,
     try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
     which only responds to prose), and its voice palettes are per-model — the API
     hard-rejects a cross-model voice, which is a mute call."""
-    cls = _letterless_guard(cls)
+    cls = _letterless_guard(_smallest_request_routing(cls))
     return cls(
         api_key=s.smallest_api_key,
         sample_rate=s.smallest_sample_rate,

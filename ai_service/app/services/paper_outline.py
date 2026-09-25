@@ -443,6 +443,7 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
                 lines.append(texts[j])
             sec["instruction"] = " ".join(lines)[:400]
             sec["heading_text"] = texts[i]
+            sec["heading_at"] = i
             if sec["numbers"]:
                 sections.append(sec)
     # 3. "END OF SECTION I" markers.
@@ -472,7 +473,9 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
         if marks is not None:
             ranges.append({"from": int(m.group(1)), "to": int(m.group(2)), "marks": marks})
     paper_minutes = duration_of(front)
+    first_heading_at = sections[0].get("heading_at") if sections else None
     for sec in sections:
+        sec.pop("heading_at", None)
         own_text = " ".join(t for t in (sec.pop("heading_text", ""), sec["instruction"]) if t)
         own = marking_of(own_text) if own_text else {"marks": None, "negative_marks": None}
         if sec["duration_minutes"] is None and own_text:
@@ -493,6 +496,12 @@ def outline_of_blocks(blocks: Sequence[str], key_at: Optional[int]) -> Dict[str,
         if sec["numbers"]:
             sec["from"], sec["to"] = min(sec["numbers"]), max(sec["numbers"])
         sec.pop("numbers", None)
+    # "Time: 30 minutes" under the first section's heading, with no time
+    # printed above it, is that section's own time, not the paper's.
+    if (paper_minutes is not None and first_heading_at is not None and first_heading_at < first_q
+            and duration_of(" ".join(texts[:first_heading_at])) is None
+            and all(sec["duration_minutes"] for sec in sections)):
+        paper_minutes = None
     # A paper that times each section separately is as long as the sections
     # together, when it does not say so itself.
     if paper_minutes is None and sections and all(sec["duration_minutes"] for sec in sections):

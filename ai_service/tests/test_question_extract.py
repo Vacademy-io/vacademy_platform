@@ -141,6 +141,29 @@ def test_key_maps_printed_labels_onto_options():
     assert qs[3]["correct_options"] == []          # no key line for 4
 
 
+def test_a_markdown_key_table_cut_by_a_page_break_reads_whole():
+    """EUG-03 via MathPix: one <p> per "| … |" row, the VARC row cut at a page
+    break into 6 pairs + "7-" / repeated header / "C, 8-B …". A 60-question
+    paper needs 8 pairs a line, so Q1–7 went unanswered."""
+    head = _p("| Section | Questions | Answers |") + _p("| :--- | :--- | :--- |")
+    blocks = qe.split_blocks(
+        _p("CONSOLIDATED ANSWER KEY") + head
+        + _p("| VARC | 1-15 | 1-C, 2-C, 3-D, 4-C, 5-A, 6-A, 7- |") + head
+        + _p("|  |  | C, 8-B, 9-A, 10-A, 11-B, 12-A, 13-A, 14-B, 15-C |")
+        + _p("| LR | 16-30 | " + ", ".join(f"{n}-B" for n in range(16, 31)) + " |")
+        + _p("Q16 — B, Aarav") + _p("Gauri's statement is the false one, so Aarav is in the team.")
+    )
+    key, explained = qe.read_key_region(blocks, min_hits=8)
+    assert {n: key[str(n)]["options"] for n in (1, 6, 7, 8, 15, 16, 30)} == {
+        1: ["C"], 6: ["A"], 7: ["C"], 8: ["B"], 15: ["C"], 16: ["B"], 30: ["B"]}
+    assert explained == 1 and "Aarav is in the team" in key["16"]["exp"]
+    # Only a row cut mid-answer is stitched: small tables of short rows (a
+    # quiz key per table, numeric answers "2. 1") are read row by row as before.
+    quiz = qe.split_blocks(_p("| 1. a, b | 5. c |") + _p("| 2. 1 | 6. c |") + _p("| 3. c | 7. b |")
+                           + _p("Q2. (d) The relation is in BCNF after the split."))
+    assert qe.read_key_region(quiz, min_hits=3)[0]["2"]["options"] == ["d"]
+
+
 def test_key_never_overrides_an_answer_printed_at_the_question():
     qs = [_q(1, correct_options=["2"])]
     assert qe.apply_answer_key(qs, {"1": {"options": ["D"]}}) == 0
@@ -283,3 +306,15 @@ def test_an_option_line_with_numeric_options_is_never_a_key():
     blocks = qe.split_blocks("<p>1. Q?</p><p>(a) 1 (b) 2</p><p>2. Q?</p><p>(a) 1 (b) 2</p><p>3. Q?</p><p>(a) 10 (b) 12 (c) 14 (d) 100</p><p>Answers: 1. b 2. c 3. a</p>")
     k = qe.find_answer_key(blocks)
     assert qe._text_of(blocks[k]).startswith("Answers:")
+
+
+def test_markdown_escapes_in_prose_are_dropped_but_math_is_left_alone():
+    assert qe.unescape_prose("A) 12.5\\% increase") == "A) 12.5% increase"
+    assert qe.unescape_prose("QA \\&amp; DI") == "QA &amp; DI"
+    assert qe.unescape_prose("rate $r = 5\\%$ and 20\\%") == "rate $r = 5\\%$ and 20%"
+    assert qe.unescape_prose("costs \\$5, a rise of 3\\%") == "costs \\$5, a rise of 3%"
+    assert qe.unescape_prose("$$\\begin{aligned} & x \\\\ & y \\end{aligned}$$") == \
+        "$$\\begin{aligned} & x \\\\ & y \\end{aligned}$$"
+    q = {"question": {"content": "Growth?"}, "options": [{"content": "20\\%"}], "exp": "1.2 \\% more"}
+    qe.unescape_question_prose(q)
+    assert q["options"][0]["content"] == "20%" and q["exp"] == "1.2 % more" and "passage" not in q

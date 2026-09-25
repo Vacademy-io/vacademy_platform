@@ -432,6 +432,37 @@ def _pairs_from_tables(blocks: Sequence[str]) -> Dict[str, str]:
     return out
 
 
+_PIPE_RULE = re.compile(r"^[\s|:\-]+$")
+# A row that ends in the middle of an answer: "… 6-A, 7-".
+_CUT_PAIR = re.compile(r"(?<![A-Za-z0-9)])\d{1,3}\s*[\.\):\-–]\s*$")
+# A row that opens with the rest of it: "C, 8-B …".
+_CUT_REST = re.compile(r"^\(?(?:[A-Da-d]|i{1,3}|iv)\)?(?=\s|$|[,;])", re.I)
+
+
+def _rows_cut_by_a_page_break(blocks: Sequence[str]) -> List[str]:
+    """A markdown key row (MathPix prints one block per "| … |" row) that a
+    page break cut mid-answer — "… 6-A, 7-", the header again, "C, 8-B …" —
+    stitched back to its continuation. On its own the first half is short
+    of a key line's pairs and the cut answer is lost."""
+    texts = [_text_of(b) for b in blocks]
+    out: List[str] = []
+    for i, text in enumerate(texts):
+        row = text.replace("|", " ").strip()
+        if not text.lstrip().startswith("|") or not _CUT_PAIR.search(row):
+            continue
+        for nxt in texts[i + 1:i + 6]:
+            if not nxt.lstrip().startswith("|"):
+                break
+            rest = nxt.replace("|", " ").strip()
+            # the rule rows and the header the new page repeats
+            if _PIPE_RULE.match(nxt) or not re.search(r"\d", nxt):
+                continue
+            if _CUT_REST.match(rest):
+                out.append(f"{row} {rest}")
+            break
+    return out
+
+
 def read_key_region(blocks: Sequence[str], min_hits: int = 4) -> Tuple[Dict[str, Dict[str, Any]], int]:
     """(answers by question number, how many carry an explanation).
 
@@ -447,8 +478,9 @@ def read_key_region(blocks: Sequence[str], min_hits: int = 4) -> Tuple[Dict[str,
     # 1. Tables of numbers over letters, and "1. b 2. c" runs anywhere.
     for no, letter in _pairs_from_tables(blocks).items():
         entry(no)["options"] = [letter]
-    for block in blocks:
-        text = _text_of(block)
+    # A row a page break cut in two comes after the rows, so it only fills
+    # what they left unanswered.
+    for text in [_text_of(block) for block in blocks] + _rows_cut_by_a_page_break(blocks):
         hits = _key_pairs(text)
         if len(hits) >= min_hits and (len(text) / len(hits) < 14
                                       or re.match(r"^\s*(?:answer\s*keys?|answers?|key)\s*[:\-–]", text, re.I)):
@@ -614,6 +646,38 @@ def strip_question_number(q: Dict[str, Any]) -> None:
     m = _LEADING_NO.match(content)
     if m and m.group(2) == str(q.get("question_number") or "").strip():
         q["question"]["content"] = m.group(1) + content[m.end():]
+
+
+# MathPix writes markdown, which escapes "%" and "&" in prose ("12.5\%",
+# "KV Mysore \&amp;"). Only math reads the escape; outside $…$ the learner
+# would see the backslash.
+_MATH_SPAN = re.compile(r"\$\$.*?\$\$|\$[^$]*\$|\\\(.*?\\\)|\\\[.*?\\\]", re.S)
+_PROSE_ESCAPE = re.compile(r"\\(%|&)")
+
+
+def unescape_prose(html: Any) -> Any:
+    """"12.5\\% increase" → "12.5% increase"; math spans are left as written."""
+    if not isinstance(html, str) or "\\" not in html:
+        return html
+    text = html.replace("\\$", "\x00")  # an escaped dollar opens no math
+    out: List[str] = []
+    pos = 0
+    for m in _MATH_SPAN.finditer(text):
+        out.append(_PROSE_ESCAPE.sub(r"\1", text[pos:m.start()]))
+        out.append(m.group(0))
+        pos = m.end()
+    out.append(_PROSE_ESCAPE.sub(r"\1", text[pos:]))
+    return "".join(out).replace("\x00", "\\$")
+
+
+def unescape_question_prose(q: Dict[str, Any]) -> None:
+    holders = [q.get("question"), *(q.get("options") or [])]
+    for holder in holders:
+        if isinstance(holder, dict) and "content" in holder:
+            holder["content"] = unescape_prose(holder["content"])
+    for field in ("exp", "passage"):
+        if field in q:
+            q[field] = unescape_prose(q[field])
 
 
 def expand_passages(part: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -941,6 +1005,8 @@ async def extract_from_html(
     # "[2]" wins, then the section's instructions, then the paper's scheme.
     outline = outline_of_blocks(blocks, key_at)
     apply_outline(questions, outline)
+    for q in questions:
+        unescape_question_prose(q)
     sections = outline["sections"]
     mode = (section_mode or "").strip().lower()
     if mode not in ("split", "single"):

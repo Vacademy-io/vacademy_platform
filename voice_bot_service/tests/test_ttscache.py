@@ -1317,3 +1317,36 @@ def test_force_complete_leaves_queued_sentences_alone():
     t.audio_context_available = lambda cid: False
     seq.force_complete(0)
     assert seq.calls[-1] == ["playing", "queued-1", "queued-2"]
+
+
+
+async def test_a_long_cached_sentence_holds_the_next_one_until_it_has_played(
+        monkeypatch, tmp_path):
+    """Call d9aed777 (2026-09-25): a 10.9 s cached sentence handed the next,
+    live sentence to the vendor 6 s in (emission runs ~2x real time), its words
+    were stamped inside the cached one, and the played transcript interleaved
+    the two. The hit path now returns only ~0.3 s before its own audio ends."""
+    import time as _t
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    line = "Generally when parents join a coaching class they have basic expectations."
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(2000))
+    tts = _FakeTTS()
+    tts._reuse_context_id_within_turn = True
+    async def remove_audio_context(cid):
+        pass
+    tts.remove_audio_context = remove_audio_context
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+    assert ttscache.per_sentence_contexts(tts)
+    t0 = _t.monotonic()
+    kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-long") if f is not None]
+    took = _t.monotonic() - t0
+    assert "TTSAudioRawFrame" in kinds
+    assert took >= 2.0 - ttscache._NEXT_SENTENCE_LEAD_SECS - 0.1, \
+        f"returned {took:.2f}s into a 2.0 s blob — the next sentence would start inside it"
+    assert took < 2.0 + 0.3, f"held {took:.2f}s — longer than the blob itself"

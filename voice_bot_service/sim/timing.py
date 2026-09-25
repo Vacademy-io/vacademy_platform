@@ -850,6 +850,39 @@ def chk_cached_opener(res):
     return f
 
 
+LONG_CACHED = ("Generally when parents join a coaching class they have three or four basic "
+               "expectations, first that the faculty is good and clears every concept properly.")
+LIVE_AFTER_CACHED = "Would you agree with that?"
+
+
+def chk_long_cached_then_live(res):
+    """Call d9aed777 (2026-09-25, first FULL-cache call): a 10.9 s cached
+    sentence, then a live question in the same reply. The audio played in
+    order, but the played transcript — and so the model's own context — came
+    out interleaved: "…पहली, faculty क्या आप इससे अच्छे सहमत हों हैं? और बच्चे
+    के concepts…". The cached sentence must be recorded whole, then the live
+    one, each once."""
+    f = []
+    if not res["caller"]:
+        return ["caller never spoke"]
+    texts = " ".join(" ".join(_assistant_texts(res)).split())
+    cached = " ".join(LONG_CACHED.split())
+    if cached not in texts:
+        f.append("the cached sentence is not recorded whole — words from another "
+                 "sentence landed inside it: " + texts[-260:])
+    elif LIVE_AFTER_CACHED not in texts:
+        f.append("the live sentence after the cached one never reached the played transcript")
+    elif texts.index(LIVE_AFTER_CACHED) < texts.index(cached):
+        f.append("played transcript out of order: the live sentence precedes the cached one")
+    if texts.count("Would you agree") > 1:
+        f.append("the live sentence was recorded twice")
+    cend = res["caller"][0][1]
+    ivs = [iv for iv in res["bot"] if cend <= iv[0] < cend + 20.0]
+    if sum(b - a for a, b in ivs) < 9.0:
+        f.append(f"reply audio only {sum(b - a for a, b in ivs):.1f}s — part of it was lost")
+    return f
+
+
 _BREATH_REPLIES = [PITCH_Q, "Got it — evenings at the studio, weekends at home. Who sends the daily link right now?"]
 _BREATH_NOTE = "2026-09-15: VAD stop inside a 0.45 s breath; Smallest finalized the short part, the rest was dropped"
 
@@ -927,6 +960,11 @@ SCENARIOS: List[Scenario] = [
                       "Okay."],
              checks=chk_pieces_with_gaps, max_secs=45,
              note="call 358e5026: a reply started over every next piece and was cut to a stub"),
+    Scenario("long_cached_then_live",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[LONG_CACHED + " " + LIVE_AFTER_CACHED],
+             checks=chk_long_cached_then_live, max_secs=35, cache_warm=[LONG_CACHED],
+             note="call d9aed777: long cached sentence + live question — transcript interleaved"),
     Scenario("cached_opener_then_pitch",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=["Thank you. So the reason I called — we work with yoga teachers on everything "

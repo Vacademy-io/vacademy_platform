@@ -61,6 +61,15 @@ _CHUNK_BYTES = int(_BYTES_PER_SEC * CHUNK_MS / 1000)
 # Emit at ~2x real time — fast enough never to starve playout, slow enough that
 # DuckGate always has frames left to hold when the caller starts speaking.
 _EMIT_SLEEP = CHUNK_MS / 2000.0
+# A cache hit returns from run_tts only this long before its own audio ends.
+# Emitting at ~2x real time used to hand the NEXT sentence to the vendor while
+# the cached blob still had half its playout to go: that sentence's words were
+# stamped from "now", inside the cached sentence, and the played transcript —
+# the model's own context — came out interleaved (call d9aed777, 2026-09-25:
+# "…पहली, faculty क्या आप इससे अच्छे सहमत हों हैं? और बच्चे के concepts…").
+# 0.3 s ~ the vendor's first-audio time, so the live sentence still lands right
+# behind the cached one with no added gap.
+_NEXT_SENTENCE_LEAD_SECS = 0.3
 
 # Field separator for the key tuple. \x1f (ASCII unit separator) cannot occur in
 # TTS text, so no field can bleed into the next and collide two distinct inputs.
@@ -1359,6 +1368,7 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                         await tts.start_ttfb_metrics()
                         yield TTSStartedFrame(context_id=context_id)
                     await tts.stop_ttfb_metrics()
+                    emit_t0 = time.monotonic()
                     for i in range(0, len(blob), _CHUNK_BYTES):
                         yield TTSAudioRawFrame(blob[i:i + _CHUNK_BYTES],
                                                SAMPLE_RATE, CHANNELS,
@@ -1479,6 +1489,14 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                                 except Exception:
                                     logger.exception("tts-cache: late context close failed")
                             asyncio.get_running_loop().create_task(_close_after_playout())
+                    if async_arrival and per_sentence_contexts(tts):
+                        # Hold the next sentence back until this one has all but
+                        # played (see _NEXT_SENTENCE_LEAD_SECS). An interruption
+                        # cancels us here like anywhere else in run_tts.
+                        left = (entry.duration_ms / 1000.0 - (time.monotonic() - emit_t0)
+                                - _NEXT_SENTENCE_LEAD_SECS)
+                        if left > 0:
+                            await asyncio.sleep(left)
                     return
 
         # Counted here rather than at entry, so the denominator is "sentences the

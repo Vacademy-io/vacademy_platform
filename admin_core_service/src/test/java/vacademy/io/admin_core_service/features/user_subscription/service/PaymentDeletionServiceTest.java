@@ -288,6 +288,29 @@ class PaymentDeletionServiceTest {
     }
 
     @Test
+    @DisplayName("regression: a receipt invoice with NO source is deleted with its payment (was an NPE)")
+    void receiptWithNullSourceIsDeleted() {
+        admin(true);
+        PaymentLog pl = payment("MANUAL", "PAID");
+        Invoice receipt = new Invoice();
+        receipt.setId("inv-r");
+        receipt.setInvoiceNumber("INV-20260609-0001");
+        receipt.setInstituteId(INST);
+        receipt.setSource(null); // half of production's invoices look like this
+        InvoicePaymentLogMapping mapping = new InvoicePaymentLogMapping();
+        mapping.setInvoice(receipt);
+        mapping.setPaymentLog(pl);
+        when(mappingRepository.findAllByPaymentLogId("pl-1")).thenReturn(List.of(mapping));
+        when(mappingRepository.findByInvoiceId("inv-r")).thenReturn(List.of(mapping));
+
+        Map<String, Object> result = service.deletePayment("pl-1", INST, USER);
+
+        assertEquals(List.of("INV-20260609-0001"), result.get("invoices_deleted"));
+        assertTrue(executedSql.stream().anyMatch(q -> q.startsWith("DELETE FROM invoice WHERE id")));
+        assertTrue(executedSql.stream().anyMatch(q -> q.startsWith("INSERT INTO invoice_released_number")));
+    }
+
+    @Test
     @DisplayName("an already-voided payment is not voided again, only checked and removed")
     void deletesVoidedPayment() {
         admin(true);

@@ -67,7 +67,8 @@
     "scrollToEnd": "पूरा करने के लिए अंत तक स्क्रॉल करें",
     "almostThere": "लगभग हो गया…",
     "finishedLesson": "मैंने पाठ पूरा कर लिया",
-    "markComplete": "पूरा मार्क करें"
+    "markComplete": "पूरा मार्क करें",
+    "finishGame": "अंक पाने के लिए गेम पूरा करें"
   },
   "inline": {
     "submitError": "अभी सबमिट नहीं हो सका।",

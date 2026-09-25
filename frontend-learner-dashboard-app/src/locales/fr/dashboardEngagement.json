@@ -67,7 +67,8 @@
     "scrollToEnd": "Faites défiler jusqu'au bout pour terminer",
     "almostThere": "Presque…",
     "finishedLesson": "J'ai terminé la leçon",
-    "markComplete": "Marquer comme terminé"
+    "markComplete": "Marquer comme terminé",
+    "finishGame": "Terminez le jeu pour obtenir vos points"
   },
   "inline": {
     "submitError": "Impossible d'envoyer pour le moment.",

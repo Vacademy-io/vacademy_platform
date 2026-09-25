@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getBackendErrorMessage } from "@/utils/error-message";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
@@ -28,6 +29,8 @@ import { visualFor } from "./engagement-visuals";
  * and scroll depth and refuses anything short.
  */
 const MIN_READ_MS = 15_000;
+/** When a game that never reports completion may be claimed by hand. Must exceed the server's minGameSeconds (20 s default). */
+const GAME_HATCH_MS = 60_000;
 
 /** Teacher rich text is sanitized before it touches the learner app's DOM. */
 function safeHtml(html: string): string {
@@ -65,6 +68,10 @@ export function EngagementItemDialog({
 
   const openedAtRef = useRef<number>(Date.now());
   const gameScoreRef = useRef<number | null>(null);
+  /** The game posted vacademy:complete — the only honest "played it" signal. */
+  const [gameFinished, setGameFinished] = useState(false);
+  /** Escape hatch for teacher games that never report completion. */
+  const [gameHatchOpen, setGameHatchOpen] = useState(false);
   /** Sentinel after the content; seeing it means the learner reached the end. */
   const endRef = useRef<HTMLDivElement | null>(null);
   const [reachedEnd, setReachedEnd] = useState(false);
@@ -84,6 +91,8 @@ export function EngagementItemDialog({
     setResult(null);
     setSelectedOptionId(null);
     gameScoreRef.current = null;
+    setGameFinished(false);
+    setGameHatchOpen(false);
     openedAtRef.current = Date.now();
     setReachedEnd(false);
     setDwellMet(false);
@@ -98,7 +107,7 @@ export function EngagementItemDialog({
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(e?.response?.data?.message ?? t("dialog.openError"));
+          setError(getBackendErrorMessage(e, t("dialog.openError")));
         }
       })
       .finally(() => {
@@ -123,6 +132,15 @@ export function EngagementItemDialog({
       }
     }, 250);
     return () => window.clearInterval(tick);
+  }, [open, item]);
+
+  // A game that never posts vacademy:complete would otherwise be impossible to
+  // finish. After a minute (well past the server's minimum play time) let the
+  // learner claim completion points by hand.
+  useEffect(() => {
+    if (!open || item?.itemType !== "GAME") return;
+    const timer = window.setTimeout(() => setGameHatchOpen(true), GAME_HATCH_MS);
+    return () => window.clearTimeout(timer);
   }, [open, item]);
 
   /**
@@ -169,7 +187,8 @@ export function EngagementItemDialog({
     [active, isCourseSlide]
   );
   const isReading = active?.itemType === "READING_HTML" || active?.itemType === "VISUAL_NOTE";
-  const isHtml = isReading || active?.itemType === "GAME";
+  const isGame = active?.itemType === "GAME";
+  const isHtml = isReading || isGame;
   const readingGateMet = reachedEnd && dwellMet;
 
   const handleSubmit = useCallback(async () => {
@@ -190,10 +209,9 @@ export function EngagementItemDialog({
       if (response.pointsAwarded > 0) celebrateCompletion();
       onCompleted(response);
     } catch (e: unknown) {
-      const message =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        t("dialog.submitError");
-      setError(message);
+      // The server's reason lives in ErrorInfo.ex ("Finish reading before…",
+      // "Play the game first"); reading only .message dropped every one of them.
+      setError(getBackendErrorMessage(e, t("dialog.submitError")));
     } finally {
       setSubmitting(false);
     }
@@ -205,6 +223,7 @@ export function EngagementItemDialog({
     if (isText) return textAnswer.trim().length > 0;
     if (isUpload) return fileIds.length > 0 && !uploading;
     if (isReading) return readingGateMet;
+    if (isGame) return gameFinished || gameHatchOpen;
     return true;
   })();
 
@@ -216,6 +235,7 @@ export function EngagementItemDialog({
     if (isReading && !reachedEnd) return t("dialog.scrollToEnd");
     if (isReading && !dwellMet) return t("dialog.almostThere");
     if (isCourseSlide) return t("dialog.finishedLesson");
+    if (isGame && !gameFinished && !gameHatchOpen) return t("dialog.finishGame");
     return t("dialog.markComplete");
   })();
 
@@ -276,6 +296,7 @@ export function EngagementItemDialog({
                       if (typeof slideResult.score === "number") {
                         gameScoreRef.current = slideResult.score;
                       }
+                      setGameFinished(true);
                       setReachedEnd(true);
                     }}
                   />

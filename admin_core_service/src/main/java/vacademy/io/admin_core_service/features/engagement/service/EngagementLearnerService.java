@@ -162,6 +162,8 @@ public class EngagementLearnerService {
         int completedToday = 0;
 
         for (EngagementItem item : items) {
+            // QUIZ has no authoring or learner path yet; showing it would be a dead card.
+            if (EngagementEnums.ItemType.QUIZ.name().equals(item.getItemType())) continue;
             EngagementSlot slot = slotsById.get(item.getSlotId());
             if (slot == null) continue;
             EngagementPlan plan = plansById.get(slot.getPlanId());
@@ -261,7 +263,7 @@ public class EngagementLearnerService {
         LocalDate utcToday = LocalDate.now(ZoneId.of("UTC"));
         String from = utcToday.minusDays(window).toString();
         String to = utcToday.toString();
-        EngagementHistoryDTO empty = new EngagementHistoryDTO(from, to, List.of(), 0, 0, 0);
+        EngagementHistoryDTO empty = new EngagementHistoryDTO(from, to, List.of(), 0, 0, 0, 0);
 
         List<String> packageSessionIds =
                 enrollmentRepository.findPackageSessionIdsByUserIdAndInstituteId(userId, instituteId);
@@ -305,9 +307,10 @@ public class EngagementLearnerService {
         }
 
         List<EngagementItemDTO> out = new ArrayList<>();
-        int done = 0, missed = 0, points = 0;
+        int done = 0, missed = 0, catchUp = 0, points = 0;
 
         for (EngagementItem item : items) {
+            if (EngagementEnums.ItemType.QUIZ.name().equals(item.getItemType())) continue;
             EngagementSlot slot = slotsById.get(item.getSlotId());
             if (slot == null) continue;
             EngagementPlan plan = plansById.get(slot.getPlanId());
@@ -370,6 +373,8 @@ public class EngagementLearnerService {
                         dto.setExplanation(readPayloadText(item.getPayloadJson(), "explanation"));
                         dto.setSelectedOptionId(readResponseText(attempt, "selectedOptionId"));
                     }
+                } else if ("CATCH_UP".equals(status)) {
+                    catchUp++;
                 } else {
                     missed++;
                 }
@@ -381,7 +386,7 @@ public class EngagementLearnerService {
                         Comparator.nullsLast(Comparator.<String>reverseOrder()))
                 .thenComparing(EngagementItemDTO::getOpensAt,
                         Comparator.nullsLast(Comparator.<String>reverseOrder())));
-        return new EngagementHistoryDTO(from, to, out, done, missed, points);
+        return new EngagementHistoryDTO(from, to, out, done, missed, catchUp, points);
     }
 
     private Comparator<EngagementItemDTO> feedOrder() {
@@ -404,8 +409,14 @@ public class EngagementLearnerService {
 
     // ── Open one item ────────────────────────────────────────────────────────
 
-    /** Full payload for an item the learner may actually open right now. */
-    @Transactional(readOnly = true)
+    /**
+     * Full payload for an item the learner may actually open right now.
+     *
+     * Opening is also the start signal: a STARTED attempt is recorded once, and the
+     * reading and game gates measure from its startedAt on the server. Before this,
+     * both gates trusted a timeSpentMs the client made up.
+     */
+    @Transactional
     public EngagementItemDTO getItem(String itemId, String instituteId, String userId) {
         Context ctx = loadContext(itemId, instituteId, userId);
         if (ctx.state == SlotState.UPCOMING) {
@@ -414,6 +425,9 @@ public class EngagementLearnerService {
         if (ctx.state == SlotState.CLOSED) {
             throw new VacademyException("This task has closed");
         }
+        attemptRepository.insertStartedIfAbsent(java.util.UUID.randomUUID().toString(), itemId,
+                ctx.item.getVersion() == null ? 1 : ctx.item.getVersion(), userId, instituteId,
+                ctx.plan.getPackageSessionId());
         EngagementAttempt attempt =
                 attemptRepository.findByItemIdAndUserId(itemId, userId).orElse(null);
         return toLearnerDto(ctx.plan, ctx.slot, ctx.item, ctx.runDate, ctx.state, attempt,
@@ -445,14 +459,21 @@ public class EngagementLearnerService {
         EngagementEnums.ItemType type = itemType(ctx.item);
         boolean isLate = ctx.state == SlotState.CATCH_UP;
 
-        Grade grade = grade(ctx.item, type, request, instituteId, userId);
+        Timestamp startedAt = existing.map(EngagementAttempt::getStartedAt).orElse(null);
+        Grade grade = grade(ctx.item, type, request, instituteId, userId, startedAt);
         if (!grade.accepted) {
             throw new VacademyException(grade.rejectionReason);
         }
 
         int points = grade.points;
+        boolean answerAlreadyOut = scheduleResolver.isRevealed(ctx.plan, ctx.slot, ctx.runDate);
+        if (answerAlreadyOut && Boolean.TRUE.equals(grade.isCorrect)) {
+            // Once the reveal has passed, the answer is out among classmates who
+            // finished. Record the outcome, but only completion points are earned.
+            points -= nz(ctx.item.getCorrectPoints());
+        }
         boolean withholdResult = Boolean.TRUE.equals(ctx.item.getHideResultUntilReveal())
-                && !scheduleResolver.isRevealed(ctx.plan, ctx.slot, ctx.runDate);
+                && !answerAlreadyOut;
         if (withholdResult && Boolean.TRUE.equals(grade.isCorrect)) {
             // Hold the bonus back to the reveal. Awarding it now would tell the learner
             // they were right through the points, which is the same secret by another
@@ -557,8 +578,12 @@ public class EngagementLearnerService {
     }
 
     private Grade grade(EngagementItem item, EngagementEnums.ItemType type,
-                        EngagementSubmitRequest request, String instituteId, String userId) {
+                        EngagementSubmitRequest request, String instituteId, String userId,
+                        Timestamp startedAt) {
         int completion = item.getCompletionPoints() == null ? 0 : item.getCompletionPoints();
+        // Measured from the STARTED row written when the learner opened the item. A
+        // missing row means the item was never opened through getItem.
+        long serverElapsedMs = startedAt == null ? -1 : System.currentTimeMillis() - startedAt.getTime();
 
         switch (type) {
             case QUESTION_OF_DAY -> {
@@ -598,13 +623,23 @@ public class EngagementLearnerService {
                 int minScroll = settingsService.getMinScrollPercent(instituteId);
                 long minMs = settingsService.getMinReadMs(instituteId);
                 int scroll = request.getScrollPercent() == null ? 0 : request.getScrollPercent();
-                long spent = request.getTimeSpentMs() == null ? 0 : request.getTimeSpentMs();
-                if (scroll < minScroll || spent < minMs) {
+                if (serverElapsedMs < 0) {
+                    return Grade.reject("Open the reading first");
+                }
+                // scrollPercent is advisory (the server cannot see the page); the time
+                // gate is the server's own clock since the item was opened.
+                if (scroll < minScroll || serverElapsedMs < minMs) {
                     return Grade.reject("Finish reading before marking this complete");
                 }
                 return Grade.of(null, null, completion);
             }
             case GAME, QUIZ -> {
+                if (serverElapsedMs < 0) {
+                    return Grade.reject("Open the game first");
+                }
+                if (serverElapsedMs < settingsService.getMinGameMs(instituteId)) {
+                    return Grade.reject("Play the game first");
+                }
                 double reported = request.getScore() == null ? 0 : request.getScore();
                 // Clamp: the page reports its own score and cannot be trusted.
                 double max = item.getMaxScore() == null ? reported : item.getMaxScore();
@@ -744,11 +779,19 @@ public class EngagementLearnerService {
                 .completedCount(completedCount);
 
         if (!locked) {
+            // The reveal time alone must not un-redact: a catch-up question past its
+            // reveal is still answerable, and shipping the key to it handed out the
+            // answer (and the bonus). The key goes only to a learner who has finished,
+            // or who can no longer submit.
+            boolean finished = attempt != null
+                    && EngagementEnums.AttemptStatus.COMPLETED.name().equals(attempt.getStatus());
+            boolean submittable = state == SlotState.OPEN || state == SlotState.CATCH_UP;
+            boolean keyVisible = revealed && (finished || !submittable);
             builder.contentHtml(item.getContentHtml())
                     .slideId(item.getSlideId())
                     .questionId(item.getQuestionId())
                     .assessmentId(item.getAssessmentId())
-                    .payloadJson(redactPayload(item.getPayloadJson(), revealed));
+                    .payloadJson(redactPayload(item.getPayloadJson(), keyVisible));
         }
 
         if (attempt != null) {

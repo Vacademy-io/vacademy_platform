@@ -67,7 +67,8 @@
     "scrollToEnd": "Scroll to the end to finish",
     "almostThere": "Almost there…",
     "finishedLesson": "I've finished the lesson",
-    "markComplete": "Mark complete"
+    "markComplete": "Mark complete",
+    "finishGame": "Finish the game to claim your points"
   },
   "inline": {
     "submitError": "Could not submit that just now.",

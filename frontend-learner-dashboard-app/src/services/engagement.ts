@@ -83,7 +83,10 @@ export interface EngagementHistory {
   to: string;
   items: EngagementItem[];
   done: number;
+  /** Closed and no longer doable. */
   missed: number;
+  /** Missed but still inside the catch-up window. */
+  catchUp: number;
   pointsEarned: number;
 }
 
@@ -219,6 +222,7 @@ export async function fetchEngagementHistory(days = 30): Promise<EngagementHisto
     items: Array.isArray(data?.items) ? data.items : [],
     done: Number(data?.done ?? 0),
     missed: Number(data?.missed ?? 0),
+    catchUp: Number(data?.catchUp ?? 0),
     pointsEarned: Number(data?.pointsEarned ?? 0),
   };
 }

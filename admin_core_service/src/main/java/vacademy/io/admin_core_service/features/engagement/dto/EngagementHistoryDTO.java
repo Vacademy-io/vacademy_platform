@@ -21,6 +21,9 @@ public class EngagementHistoryDTO {
     private String to;
     private List<EngagementItemDTO> items;
     private int done;
+    /** Closed occurrences that can no longer be done. */
     private int missed;
+    /** Missed but still inside the catch-up window. */
+    private int catchUp;
     private int pointsEarned;
 }

@@ -67,7 +67,8 @@
     "scrollToEnd": "مرّر حتى النهاية للإنهاء",
     "almostThere": "اقتربت…",
     "finishedLesson": "أنهيت الدرس",
-    "markComplete": "علّم كمكتمل"
+    "markComplete": "علّم كمكتمل",
+    "finishGame": "أكمل اللعبة لتحصل على نقاطك"
   },
   "inline": {
     "submitError": "تعذّر الإرسال الآن.",

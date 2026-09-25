@@ -118,5 +118,11 @@
         "recordingHeading": "रिकॉर्डिंग",
         "noRecording": "इस कॉल की कोई रिकॉर्डिंग नहीं",
         "byCounsellor": "{{name}} द्वारा"
+    },
+    "origin": {
+        "workflow": "वर्कफ़्लो “{{name}}” द्वारा भेजा गया",
+        "workflowUnnamed": "एक वर्कफ़्लो द्वारा भेजा गया",
+        "chatbotFlow": "चैटबॉट फ़्लो “{{name}}” द्वारा भेजा गया",
+        "chatbotFlowUnnamed": "एक चैटबॉट फ़्लो द्वारा भेजा गया"
     }
 }

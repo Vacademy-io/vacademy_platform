@@ -39,6 +39,8 @@ public class InboxMessageDTO {
     private String headerMediaUrl;
     /** The template's buttons (links, quick replies), drawn under the message like WhatsApp does. */
     private List<InboxTemplateButtonDTO> buttons;
+    /** Who sent it — a workflow or a chatbot flow, with its name. Outgoing only; null when unknown. */
+    private MessageOriginDTO origin;
 
     /**
      * What we tried to send on a failed non-template message: text, interactive, media, template.

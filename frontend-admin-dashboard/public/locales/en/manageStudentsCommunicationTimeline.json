@@ -118,5 +118,11 @@
         "recordingHeading": "Recording",
         "noRecording": "No recording for this call",
         "byCounsellor": "by {{name}}"
+    },
+    "origin": {
+        "workflow": "Sent by workflow “{{name}}”",
+        "workflowUnnamed": "Sent by a workflow",
+        "chatbotFlow": "Sent by chatbot flow “{{name}}”",
+        "chatbotFlowUnnamed": "Sent by a chatbot flow"
     }
 }

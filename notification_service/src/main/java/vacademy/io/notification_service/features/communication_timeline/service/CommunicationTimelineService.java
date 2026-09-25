@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -11,6 +12,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppMessageOriginResolver;
 import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppTemplateRenderer;
 import vacademy.io.notification_service.features.communication_timeline.dto.CommunicationTimelineRequest;
 import vacademy.io.notification_service.features.communication_timeline.dto.UnifiedCommunicationDTO;
@@ -28,6 +30,17 @@ public class CommunicationTimelineService {
     private final NotificationLogRepository notificationLogRepository;
     private final ObjectMapper objectMapper;
     private final WhatsAppTemplateRenderer templateRenderer;
+
+    /**
+     * Who sent each WhatsApp message (workflow / chatbot flow). Setter-injected and optional, so
+     * the existing constructor keeps its shape; null simply means no origin is shown.
+     */
+    private WhatsAppMessageOriginResolver originResolver;
+
+    @Autowired(required = false)
+    public void setOriginResolver(WhatsAppMessageOriginResolver originResolver) {
+        this.originResolver = originResolver;
+    }
 
     private static final Map<String, String[]> TYPE_TO_CHANNEL_DIRECTION = Map.of(
             "EMAIL", new String[]{"EMAIL", "OUTBOUND"},
@@ -95,8 +108,9 @@ public class CommunicationTimelineService {
 
         // Map to DTOs
         Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
+        WhatsAppMessageOriginResolver.Cache originCache = originResolver != null ? originResolver.newCache() : null;
         List<UnifiedCommunicationDTO> dtos = logs.getContent().stream()
-                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents, templateCache))
+                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents, templateCache, originCache))
                 .collect(Collectors.toList());
 
         return new PageImpl<>(dtos, pageable, logs.getTotalElements());
@@ -147,7 +161,8 @@ public class CommunicationTimelineService {
             NotificationLog nl,
             Map<String, NotificationLog> latestEmailEvents,
             Map<String, List<NotificationLog>> allEmailEvents,
-            Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache) {
+            Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache,
+            WhatsAppMessageOriginResolver.Cache originCache) {
 
         String[] channelDirection = TYPE_TO_CHANNEL_DIRECTION.getOrDefault(
                 nl.getNotificationType(), new String[]{"UNKNOWN", "UNKNOWN"});
@@ -172,6 +187,9 @@ public class CommunicationTimelineService {
             mapEmailFields(builder, nl, latestEmailEvents, allEmailEvents);
         } else if ("WHATSAPP".equals(channel)) {
             mapWhatsAppFields(builder, nl, templateCache);
+            if (originResolver != null) {
+                builder.origin(originResolver.resolve(nl, nl.getInstituteId(), originCache));
+            }
         }
 
         return builder.build();
@@ -428,6 +446,7 @@ public class CommunicationTimelineService {
             // Surface the header media (image/video/document) so the UI can display the attachment.
             builder.headerType(rendered.headerType);
             builder.headerMediaUrl(rendered.headerMediaUrl);
+            builder.buttons(rendered.buttons);
         }
 
         // The optimistic default above assumes acceptance equals arrival. It does not: a provider
@@ -597,8 +616,9 @@ public class CommunicationTimelineService {
         }
 
         Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
+        WhatsAppMessageOriginResolver.Cache originCache = originResolver != null ? originResolver.newCache() : null;
         List<UnifiedCommunicationDTO> dtos = logs.getContent().stream()
-                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents, templateCache))
+                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents, templateCache, originCache))
                 .collect(Collectors.toList());
 
         return new PageImpl<>(dtos, pageable, logs.getTotalElements());

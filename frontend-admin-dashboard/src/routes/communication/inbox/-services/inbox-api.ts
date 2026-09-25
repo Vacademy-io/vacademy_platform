@@ -1,5 +1,7 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { WHATSAPP_INBOX_BASE } from '@/constants/urls';
+import type { WhatsAppTemplateButton } from '@/components/shared/whatsapp/whatsapp-template-buttons';
+import type { MessageOrigin } from '@/components/shared/whatsapp/message-origin';
 
 export type InboxFilter = 'ALL' | 'UNANSWERED' | 'FAILED';
 
@@ -75,7 +77,9 @@ export interface InboxMessage {
     /** Media URL for an IMAGE/VIDEO/DOCUMENT template header. */
     headerMediaUrl?: string;
     /** The template's buttons, drawn under the message the way WhatsApp shows them. */
-    buttons?: InboxTemplateButton[];
+    buttons?: WhatsAppTemplateButton[];
+    /** Who sent it — a workflow or a chatbot flow. Outgoing only; absent when unknown. */
+    origin?: MessageOrigin;
     /** On a failed non-template send: what we tried to send. */
     attemptedType?: string;
 
@@ -86,16 +90,6 @@ export interface InboxMessage {
     mediaUrl?: string;
     /** Original filename — what a document bubble shows. */
     mediaFilename?: string;
-}
-
-/** One button of a template message. */
-export interface InboxTemplateButton {
-    /** URL | QUICK_REPLY | PHONE_NUMBER | COPY_CODE ... */
-    type?: string;
-    text: string;
-    /** Complete http(s) link of a URL button; absent when it could not be rebuilt. */
-    url?: string;
-    phoneNumber?: string;
 }
 
 /** The media kinds WhatsApp accepts as a free-form message. */

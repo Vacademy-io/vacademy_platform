@@ -32,6 +32,12 @@ import {
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { WhatsAppTemplateButtons } from '@/components/shared/whatsapp/whatsapp-template-buttons';
+import {
+    MessageOriginIcon,
+    messageOriginKey,
+    type MessageOrigin,
+} from '@/components/shared/whatsapp/message-origin';
 import { MyButton } from '@/components/design-system/button';
 import { IndividualSendDialog } from './individual-send-dialog';
 import {
@@ -397,6 +403,27 @@ function TimelineHeaderMedia({ type, url }: { type?: string; url: string }) {
     );
 }
 
+// ─── Origin ────────────────────────────────────────────────────────────────
+// Which workflow or chatbot flow sent a WhatsApp message. Renders nothing when unknown.
+
+function OriginLine({
+    origin,
+    className,
+}: {
+    origin: MessageOrigin | null | undefined;
+    className?: string;
+}) {
+    const { t } = useTranslation('manageStudentsCommunicationTimeline');
+    const key = messageOriginKey(origin);
+    if (!key || !origin) return null;
+    return (
+        <span className={cn('flex min-w-0 items-center gap-1', className)}>
+            <MessageOriginIcon type={origin.type} />
+            <span className="truncate">{t(key, { name: origin.name })}</span>
+        </span>
+    );
+}
+
 // ─── Expanded Detail Body ───────────────────────────────────────────────────
 // Rendered as the `body` slot of a ProfileTimelineItem when the item is
 // expanded.  Click propagation is stopped so expanding text-selection inside
@@ -486,9 +513,18 @@ function ExpandedDetail({
                                 {item.fullBody}
                             </p>
                         )}
+                        {item.buttons && item.buttons.length > 0 && (
+                            <WhatsAppTemplateButtons
+                                buttons={item.buttons}
+                                className="mt-2 rounded-md border border-neutral-200 bg-white"
+                            />
+                        )}
                     </div>
                 )
             )}
+
+            {/* Who sent it: the workflow or chatbot flow behind this message */}
+            <OriginLine origin={item.origin} className="text-xs text-neutral-700" />
 
             {/* Template name */}
             {item.templateName && (
@@ -683,11 +719,16 @@ function CommItemBody({ item, resend }: { item: CommunicationItem; resend: Resen
                 <p className="line-clamp-2 text-xs text-neutral-600">{displayPreview}</p>
             )}
 
-            {/* Timestamp + mini delivery dots */}
-            <div className="mt-1.5 flex items-center justify-between">
-                <span className="text-xs text-neutral-400">
-                    {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
-                </span>
+            {/* Timestamp (+ who sent it) + mini delivery dots */}
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="text-xs text-neutral-400">
+                        {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+                    </span>
+                    {!expanded && (
+                        <OriginLine origin={item.origin} className="text-xs text-neutral-500" />
+                    )}
+                </div>
                 {item.channel === 'EMAIL' && !isInbound && (
                     <StatusMiniTimeline events={item.statusTimeline || []} status={item.status} />
                 )}

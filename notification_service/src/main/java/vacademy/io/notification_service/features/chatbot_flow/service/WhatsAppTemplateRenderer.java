@@ -143,7 +143,7 @@ public class WhatsAppTemplateRenderer {
      * only the body line {@code "Template: <name>"} written by {@code ChatbotFlowEngine}. Their
      * params were never stored, so a template with variables renders with its {{N}} left in.
      */
-    private String legacyChatbotTemplateName(NotificationLog nl) {
+    static String legacyChatbotTemplateName(NotificationLog nl) {
         String body = nl.getBody();
         if (!CHATBOT_FLOW_SOURCE.equals(nl.getSource()) || body == null
                 || !body.startsWith(CHATBOT_TEMPLATE_BODY_PREFIX)) {

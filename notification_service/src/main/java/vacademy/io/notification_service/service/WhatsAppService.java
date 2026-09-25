@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.chatbot_flow.engine.provider.CombotMessageProvider;
 import vacademy.io.notification_service.features.combot.repository.ChannelToInstituteMappingRepository;
+import vacademy.io.notification_service.features.notification_log.MessageOriginPayload;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
@@ -616,7 +617,10 @@ public class WhatsAppService {
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("templateName", templateName);
                 payload.put("phoneNumber", phoneNumber);
-                payload.put("bodyParams", params);
+                // Who sent it (workflow, ...) goes on the payload's top level, not in bodyParams —
+                // a resend built from these params must not carry the original sender along.
+                payload.put("bodyParams", MessageOriginPayload.withoutOrigin(params));
+                MessageOriginPayload.liftToPayload(params, payload);
                 payload.put("languageCode", languageCode);
                 payload.put("headerType", headerType);
                 payload.put("provider", provider);

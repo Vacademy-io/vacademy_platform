@@ -4,6 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.notification_service.features.chatbot_flow.dto.InboxTemplateButtonDTO;
+import vacademy.io.notification_service.features.chatbot_flow.dto.MessageOriginDTO;
 
 import java.time.Instant;
 import java.util.List;
@@ -64,6 +66,16 @@ public class UnifiedCommunicationDTO {
      * Actual media URL for an IMAGE/VIDEO/DOCUMENT header, so the UI can display the attachment
      */
     private String headerMediaUrl;
+
+    /**
+     * WhatsApp template buttons (links, quick replies), as WhatsApp draws them under the message
+     */
+    private List<InboxTemplateButtonDTO> buttons;
+
+    /**
+     * Who sent this WhatsApp message — a workflow or a chatbot flow, with its name; null when unknown
+     */
+    private MessageOriginDTO origin;
 
     /**
      * Current status: PENDING, SENT, DELIVERED, READ, FAILED, BOUNCED

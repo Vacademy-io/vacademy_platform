@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.features.chatbot_flow.dto.InboxConversationDTO;
 import vacademy.io.notification_service.features.chatbot_flow.dto.InboxMessageDTO;
@@ -56,6 +57,17 @@ public class WhatsAppInboxService {
     private final WhatsAppMediaPolicy mediaPolicy;
     private final ObjectMapper objectMapper;
     private final List<ChatbotMessageProvider> messageProviders;
+
+    /**
+     * Who sent each outgoing message (workflow / chatbot flow). Setter-injected and optional, so
+     * the constructor callers already have keep compiling; null simply means no origin is shown.
+     */
+    private WhatsAppMessageOriginResolver originResolver;
+
+    @Autowired(required = false)
+    public void setOriginResolver(WhatsAppMessageOriginResolver originResolver) {
+        this.originResolver = originResolver;
+    }
 
     public List<InboxConversationDTO> getConversations(String instituteId, int offset, int limit) {
         return getConversations(instituteId, offset, limit, null);
@@ -190,6 +202,7 @@ public class WhatsAppInboxService {
         List<NotificationLog> logs = notificationLogRepository.findMessagesForPhone(phone, instituteId, cursor, limit);
 
         Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
+        WhatsAppMessageOriginResolver.Cache originCache = originResolver != null ? originResolver.newCache() : null;
 
         return logs.stream().map(nl -> {
             WhatsAppTemplateRenderer.Rendered rm = templateRenderer.render(nl, instituteId, templateCache);
@@ -234,6 +247,7 @@ public class WhatsAppInboxService {
                     .headerType(rm != null ? rm.headerType : null)
                     .headerMediaUrl(rm != null ? rm.headerMediaUrl : null)
                     .buttons(rm != null ? rm.buttons : null)
+                    .origin(originResolver != null ? originResolver.resolve(nl, instituteId, originCache) : null)
                     .attemptedType(failure != null ? failure.attemptedType : null)
                     .mediaType(media != null ? media.type() : null)
                     .mediaUrl(media != null ? media.url() : null)

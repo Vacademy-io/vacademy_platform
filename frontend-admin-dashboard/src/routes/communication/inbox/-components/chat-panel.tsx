@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useInboxStore } from '../-stores/inbox-store';
-import type { InboxMessage, InboxTemplateButton } from '../-services/inbox-api';
+import type { InboxMessage } from '../-services/inbox-api';
+import { WhatsAppTemplateButtons } from '@/components/shared/whatsapp/whatsapp-template-buttons';
+import { MessageOriginIcon, messageOriginKey } from '@/components/shared/whatsapp/message-origin';
 import { ReplyBox } from './reply-box';
 import { DeliveryTicks, deliveryState } from './delivery-ticks';
 import { formatMessageTime, groupMessagesByDay } from '../-utils/day-labels';
@@ -17,9 +19,6 @@ import {
     HandWaving,
     WarningCircle,
     ArrowClockwise,
-    ArrowSquareOut,
-    ArrowBendUpLeft,
-    Phone,
 } from '@phosphor-icons/react';
 
 interface Props {
@@ -186,6 +185,7 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
     // The provider's verdict, said in words an admin can act on: "Re-engagement message (131047)"
     // becomes the 24-hour window, and an unrecognised code still shows the provider's exact text.
     const failure = failed ? explainWhatsAppFailure(msg.error) : null;
+    const originKey = messageOriginKey(msg.origin);
 
     return (
         <div className={`flex ${msg.direction === 'OUTGOING' ? 'justify-end' : 'justify-start'}`}>
@@ -225,6 +225,14 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                 {/* Message body — the actual template text the recipient received */}
                 {msg.body && (
                     <p className="whitespace-pre-wrap break-words text-gray-800">{msg.body}</p>
+                )}
+
+                {/* Who sent it: the workflow or chatbot flow behind this message */}
+                {originKey && msg.origin && (
+                    <p className="mt-1 flex items-center gap-1 text-caption text-gray-500">
+                        <MessageOriginIcon type={msg.origin.type} size={11} />
+                        <span>{t(originKey, { name: msg.origin.name })}</span>
+                    </p>
                 )}
 
                 {/* Template context: which template it came from */}
@@ -281,57 +289,13 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
                     )}
                 </p>
 
-                {msg.buttons && msg.buttons.length > 0 && <TemplateButtons buttons={msg.buttons} />}
+                {msg.buttons && msg.buttons.length > 0 && (
+                    <WhatsAppTemplateButtons
+                        buttons={msg.buttons}
+                        className="-mx-3 -mb-2 mt-1.5 rounded-b-lg border-t border-black/10"
+                    />
+                )}
             </div>
-        </div>
-    );
-}
-
-/**
- * A template's buttons, drawn under the message the way WhatsApp shows them. A URL button opens
- * its link and a phone button dials; a quick reply is only a label here — the admin is not the
- * one who would tap it.
- */
-function TemplateButtons({ buttons }: { buttons: InboxTemplateButton[] }) {
-    return (
-        <div className="-mx-3 -mb-2 mt-1.5 overflow-hidden rounded-b-lg">
-            {buttons.map((button, i) => {
-                const type = (button.type || '').toUpperCase();
-                const className =
-                    'flex items-center justify-center gap-1.5 border-t border-black/10 px-3 py-2 text-sm font-medium text-blue-600';
-                const href =
-                    button.url && /^https?:\/\//i.test(button.url)
-                        ? button.url
-                        : type === 'PHONE_NUMBER' && button.phoneNumber
-                          ? `tel:${button.phoneNumber.replace(/[^\d+]/g, '')}`
-                          : undefined;
-                const icon =
-                    type === 'PHONE_NUMBER' ? (
-                        <Phone size={14} />
-                    ) : type === 'URL' ? (
-                        <ArrowSquareOut size={14} />
-                    ) : (
-                        <ArrowBendUpLeft size={14} />
-                    );
-
-                return href ? (
-                    <a
-                        key={i}
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`${className} hover:bg-black/5`}
-                    >
-                        {icon}
-                        <span className="truncate">{button.text}</span>
-                    </a>
-                ) : (
-                    <div key={i} className={className}>
-                        {icon}
-                        <span className="truncate">{button.text}</span>
-                    </div>
-                );
-            })}
         </div>
     );
 }

@@ -153,9 +153,11 @@ const firstRunBand = cn(
   "relative w-full overflow-hidden rounded-2xl border border-primary/15 p-5 sm:p-8",
   "bg-gradient-to-br from-primary/5 via-background to-background",
   "[.ui-vibrant_&]:from-primary-50 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
-  // Corporate: flat surface, hairline border. A brand-tinted band is exactly
-  // the "brand as fill" treatment this skin exists to avoid.
-  "[.ui-corporate_&]:bg-none [.ui-corporate_&]:border-border",
+  // Corporate: a raised white surface with a faint brand wash in the top-left
+  // corner, fading to the card colour — the one place on the screen allowed
+  // to draw the eye. The stops end on `card`, not `background`, because the
+  // corporate canvas is off-white and would otherwise grey out the wash.
+  "[.ui-corporate_&]:border-border [.ui-corporate_&]:from-primary-50 [.ui-corporate_&]:via-card [.ui-corporate_&]:to-card [.ui-corporate_&]:shadow-sm",
 );
 
 // ── Component ────────────────────────────────────────────────────────────────

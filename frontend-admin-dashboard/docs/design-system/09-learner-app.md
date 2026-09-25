@@ -117,7 +117,13 @@ Five skins, applied as a class on `<html>`:
 | `vibrant` | `.ui-vibrant` | pastel, friendly accents |
 | `play` | `.ui-play` | gamified, bold, 3D press, 20px radii |
 | `cleanerPlay` | `.ui-cleaner-play` | warm felted-clay, illustrated, generous |
-| `corporate` | `.ui-corporate` | restrained, dense, structural (B2B/professional) |
+| `corporate` | `.ui-corporate` | modern B2B product UI — layered off-white canvas, raised white surfaces, 10px geometry, soft shadows |
+
+**Canvas vs surface.** `--canvas` is the page behind cards (painted only by `body` and the shell's
+`SidebarInset`); it defaults to `--background`. A skin that wants a tinted page must set `--canvas`,
+never `--background` — ~100 `bg-background` usages across 12 shared primitives (dialogs, sheets,
+toasts, active tabs, switch thumbs, outline buttons) mean "white surface" and would all go grey. An
+institute's page-background role writes both inline, so it still beats any skin's canvas tint.
 
 **Skin vs axes.** A skin's token values are DEFAULTS; an explicitly-chosen axis
 overrides them. `applyInstituteUiAxes()` writes a `data-ui-*` attribute only when

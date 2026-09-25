@@ -1,5 +1,5 @@
 /* =====================================================================
-   Corporate Theme — restrained, dense, structural
+   Corporate Theme — modern, calm, layered
    =====================================================================
    Applied via the .ui-corporate class on <html> (mutually exclusive with
    .ui-play / .ui-cleaner-play / .ui-vibrant — see __root.tsx applyUiType).
@@ -9,22 +9,40 @@
      vibrant      pastel, friendly accents
      play         gamified, bold, 3D press, 20px radii
      cleanerPlay  warm felted-clay, illustrated, generous whitespace
-     corporate    restrained, dense, structural  <- this file
+     corporate    modern B2B product UI — Linear / Stripe / Vercel register
 
-   Intended for the B2B / professional-training institutes on the platform,
-   where the interface should read as a work tool rather than a consumer app.
+   For the B2B and professional-training institutes on the platform, where
+   the interface should read as a polished work tool.
 
-   Design principles, in the order they matter:
+   ---------------------------------------------------------------------
+   REVISION NOTE (2026-09-25). The first version of this skin was built on
+   2012-era enterprise conventions — 4px corners, darkened hairline borders
+   with shadows stripped out, white cards on a white canvas, tighter spacing,
+   uppercase tracked eyebrows. Rendered, it read as a Bootstrap-3 intranet:
+   every card a grey wireframe box, nothing elevated. Modern corporate UI is
+   close to the opposite on almost every axis, and this file now follows it:
 
-   1. STRUCTURE FROM BORDERS, NOT SHADOWS. Enterprise UI reads crisp and flat.
-      Elevation is flattened almost to nothing and a slightly stronger border
-      carries the structure instead.
-   2. BRAND AS ACCENT, NOT FILL. play / cleanerPlay flood surfaces with brand
-      tint. Here surfaces stay neutral and brand is reserved for actions,
-      active state and focus, which is what makes a dense screen scannable.
-   3. CRISP CORNERS. 4px.
-   4. DENSER. More information per screen.
-   5. QUIET MOTION. Shorter durations, no bounce or scale.
+   1. LAYERING, NOT OUTLINES. A cool off-white canvas with white surfaces on
+      top. Depth comes from surface contrast plus a soft, layered shadow —
+      the border is a quiet low-contrast edge, not the structure itself.
+   2. SOFT GEOMETRY. 10px corners. Sharp 4px corners are the single most
+      dated cue in enterprise UI.
+   3. CALM, NOT CRAMPED. Default spacing. Density belongs in data tables, and
+      the density axis is still there for institutes that want it.
+   4. CONFIDENT, CONTROLLED BRAND. Primary actions are solid brand with a
+      subtle top highlight; focus rings and hero washes are brand-tinted.
+      Everything else is cool neutral — brand is still an accent, not a fill.
+   5. QUIET MOTION. Short, eased transitions; elevation changes on hover
+      instead of colour swaps or bounces.
+
+   ---------------------------------------------------------------------
+   WHAT A SKIN STYLESHEET CANNOT CHANGE (by design, not oversight):
+   - The font. utils/branding.ts applyTabBranding writes --app-font-family and
+     body.style.fontFamily INLINE on every route, so a stylesheet can only win
+     with !important — which would also stomp an institute's explicit font.
+   - The sidebar colours. theme-provider writes --nav-* INLINE for the same
+     reason (they are an institute-authored role in THEME_SETTING).
+   Both stay under the institute's control, which is the correct precedence.
 
    ---------------------------------------------------------------------
    HOW THIS COMPOSES WITH THE INSTITUTE AXES (data-ui-corners/density/gradient)
@@ -33,133 +51,149 @@
    only writes a data-ui-* attribute when the institute actually picked that
    axis, and styles/ui-axes.css is imported AFTER this file. Both selectors
    have specificity (0,1,1), so on a tie the later one — the axis — wins.
+   An institute-set page background is written inline (as both --background
+   and --canvas) by applyInstituteBackground, so it also beats the canvas
+   tint here.
 
-   Net effect:
-     corporate, institute set nothing      -> 4px corners, tight spacing (here)
-     corporate, institute picked "pill"    -> 16px corners (axis wins)
-   which is the precedence we want: a skin proposes, an explicit choice decides.
-
-   Deliberately NOT using !important anywhere. play-theme.css carries 181 of
-   them and its own header records that they had to be deleted from the navbar
-   and sidebar blocks because they masked the redesigned JSX. `.ui-corporate x`
-   is specificity (0,2,0) and beats a bare utility on its own.
+   No !important anywhere. play-theme.css carries 181 of them and its own
+   header records that they had to be deleted from the navbar and sidebar
+   blocks because they masked the redesigned JSX.
    ===================================================================== */
 
 html.ui-corporate {
-  /* ---- Corners (default; the corners axis overrides) ------------------ */
-  --radius: 4px;
+  /* ---- Geometry (default; the corners axis overrides) ----------------
+     10px seed -> sm/rounded 6, md 8, lg 10, xl 12, 2xl 14. */
+  --radius: 10px;
 
-  /* ---- Density (default; the density axis overrides) ------------------
-     Tighter than stock across the board — this is the axis of the skin that
-     users notice first. Roughly one step down from the default scale. */
-  --ui-pad-card: 0.875rem; /* vs 1rem   */
-  --ui-pad-card-lg: 1.25rem; /* vs 1.5rem */
-  --ui-pad-page: 0.875rem; /* vs 1rem   */
-  --ui-gap-stack: 0.625rem; /* vs 0.75rem */
-  --ui-gap-section: 1.25rem; /* vs 1.5rem */
-  --ui-control-h: 2.125rem; /* vs 2.25rem */
+  /* ---- Surfaces: layered, cool neutral -------------------------------
+     Off-white canvas, pure white cards. The small lightness gap is what
+     makes cards read as raised without heavy borders or big shadows.
 
-  /* ---- Elevation -> hairlines ----------------------------------------
-     Not set to `none`: a shadow of exactly 0 makes cards sit flat against a
-     tinted institute background and lose their edge entirely. These keep a
-     1px definition and drop the spread. */
-  --shadow-xs: 0 0 0 1px rgb(15 23 42 / 0.04);
-  --shadow-sm: 0 1px 1px 0 rgb(15 23 42 / 0.04);
-  --shadow: 0 1px 1px 0 rgb(15 23 42 / 0.04);
-  --shadow-md: 0 1px 2px 0 rgb(15 23 42 / 0.06);
-  --shadow-lg: 0 2px 4px -1px rgb(15 23 42 / 0.08);
-  --shadow-xl: 0 4px 10px -3px rgb(15 23 42 / 0.10);
-  --shadow-2xl: 0 8px 20px -6px rgb(15 23 42 / 0.12);
+     --canvas, NOT --background: ~100 bg-background usages across 12 shared
+     primitives mean "white surface" (dialogs, sheets, toasts, active tabs,
+     switch thumbs, outline buttons). Tinting --background turned all of them
+     grey; --canvas is painted only by body and the shell's SidebarInset. */
+  --canvas: 220 20% 97.5%;
+  --card: 0 0% 100%;
+  --popover: 0 0% 100%;
+  --muted: 220 16% 95.5%;
+  --muted-foreground: 220 9% 43%;
+  --accent: 220 16% 95.5%;
+  --accent-foreground: 222 47% 11%;
 
-  /* Borders do the work shadows used to. Slightly darker than the stock
-     210 18% 84% so a flat card still reads as a distinct surface. */
-  --border: 214 16% 80%;
-  --input: 214 16% 80%;
+  /* Borders are a quiet edge, LIGHTER than stock (210 18% 84%), because the
+     shadow now carries the elevation. */
+  --border: 220 15% 90%;
+  --input: 220 14% 87%;
 
-  /* ---- Surfaces stay neutral -----------------------------------------
-     Principle 2: no brand-tinted decorative fills. The gradient axis can
-     still turn these back on explicitly. */
-  --ui-gradient-from: hsl(var(--background));
-  --ui-gradient-to: hsl(var(--background));
+  /* Brand-tinted focus ring. --primary-500 is written inline on <html> by
+     theme-provider; a var() reference resolves against it at computed time. */
+  --ring: var(--primary-500);
 
-  /* ---- Motion ---------------------------------------------------------
-     Present but quick. Consumed by the duration-* utilities in index.css. */
-  --duration-fast: 90ms;
-  --duration-base: 140ms;
-  --duration-slow: 200ms;
+  /* ---- Elevation: soft, layered, cool-tinted ------------------------
+     Two-layer shadows (a tight contact shadow plus a wider soft one), the
+     convention across current B2B design systems. Tinted to a cool ink
+     rather than black so they sit naturally on the off-white canvas. */
+  --shadow-xs: 0 1px 2px 0 rgb(16 24 40 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(16 24 40 / 0.07), 0 1px 2px -1px rgb(16 24 40 / 0.05);
+  --shadow-md: 0 4px 10px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.05);
+  --shadow-lg: 0 12px 20px -4px rgb(16 24 40 / 0.08), 0 4px 8px -2px rgb(16 24 40 / 0.04);
+  --shadow-xl: 0 20px 28px -6px rgb(16 24 40 / 0.10), 0 8px 12px -4px rgb(16 24 40 / 0.04);
+  --shadow-2xl: 0 28px 56px -14px rgb(16 24 40 / 0.20);
+  --shadow-inner: inset 0 1px 2px 0 rgb(16 24 40 / 0.06);
+
+  /* ---- Brand wash for hero surfaces (gradient axis overrides) ---------
+     A barely-there brand tint fading into the card: modern products use
+     this on the one surface that should draw the eye, and nowhere else. */
+  --ui-gradient-from: hsl(var(--primary-50));
+  --ui-gradient-to: hsl(var(--card));
+
+  /* ---- Motion: quick and eased ---------------------------------------- */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 240ms;
+
+  /* ---- Page chrome ----------------------------------------------------- */
+  scrollbar-color: hsl(220 12% 80%) transparent;
+}
+
+html.ui-corporate ::selection {
+  background: hsl(var(--primary-100));
 }
 
 @layer components {
-  /* Cards: hairline structure, no lift on hover. `.cp-card` is included
-     because the Cleaner Play card class is used on several shared widgets
-     (MyBooksWidget, MyOrdersWidget) regardless of the active skin. */
+  /* Literal card classes (shadcn Cards emit none and are styled through the
+     tokens above). `.cp-card` is included because the Cleaner Play card class
+     is used on shared widgets regardless of the active skin. Hover raises the
+     surface rather than recolouring its edge. */
   .ui-corporate .card,
   .ui-corporate .Card,
   .ui-corporate .cp-card {
     border: 1px solid hsl(var(--border));
     box-shadow: var(--shadow-sm);
-    transition: border-color var(--duration-base) ease;
+    transition:
+      box-shadow var(--duration-base) var(--ease-out-soft),
+      border-color var(--duration-base) var(--ease-out-soft);
   }
   .ui-corporate .card:hover,
   .ui-corporate .Card:hover,
   .ui-corporate .cp-card:hover {
-    border-color: hsl(var(--primary-300));
+    box-shadow: var(--shadow-md);
+    border-color: hsl(220 14% 85%);
     transform: none; /* cancels the Play/Cleaner Play lift */
   }
 
-  /* Buttons: no press-scale, no 3D shadow. Weight carries emphasis. */
-  .ui-corporate button,
-  .ui-corporate .btn,
-  .ui-corporate .my-button {
-    font-weight: 500;
-    letter-spacing: 0.01em;
+  /* Primary actions: solid brand with a faint top highlight and a tight
+     contact shadow — the "pressable" treatment modern products use in place
+     of both flat fills and 3D bevels. Scoped to elements that actually carry
+     a solid primary background so outline/ghost buttons are untouched. */
+  .ui-corporate :is(button, a).bg-primary,
+  .ui-corporate :is(button, a).bg-primary-500 {
+    background-image: linear-gradient(rgb(255 255 255 / 0.1), rgb(255 255 255 / 0));
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.16),
+      0 1px 2px 0 rgb(16 24 40 / 0.12);
   }
+
   .ui-corporate button:active,
   .ui-corporate .btn:active,
   .ui-corporate .my-button:active {
-    transform: none;
+    transform: none; /* no press-scale */
   }
 
-  /* Headings: tighter tracking is most of what makes type read "corporate". */
-  .ui-corporate h1,
-  .ui-corporate h2,
-  .ui-corporate h3 {
-    letter-spacing: -0.014em;
+  /* Headings: tighter tracking on display sizes is most of what makes type
+     read current rather than default. */
+  .ui-corporate :is(h1, h2, h3, .text-h1, .text-h2, .text-h3, .text-display, .text-display-sm) {
+    letter-spacing: -0.02em;
   }
 }
 
 /* ── Icons ────────────────────────────────────────────────────────────
-   The app renders 203 Phosphor icons at weight="duotone" and 216 at
-   weight="fill". Both read as consumer-friendly; a professional surface wants
-   line icons.
+   The app renders ~200 Phosphor icons at weight="duotone". Line icons read
+   more current and more professional, so Corporate drops duotone's
+   translucent fill layer (opacity="0.2", verified in
+   @phosphor-icons/react/dist/index.umd.js) and keeps the outline — exactly
+   what weight="regular" draws. One rule, no call sites touched.
 
-   Phosphor duotone emits TWO paths — a translucent fill shape at
-   opacity="0.2" followed by the solid outline (verified in
-   @phosphor-icons/react/dist/index.umd.js). Dropping the translucent layer
-   leaves the outline alone, which is exactly what weight="regular" renders.
-   So this single rule converts every duotone icon in the app to a line icon
-   under Corporate, without touching 203 call sites or changing any other skin.
-
-   Scoped to the Phosphor viewBox so it cannot affect unrelated inline SVG
+   Scoped to the Phosphor viewBox so it cannot reach unrelated inline SVG
    (illustrations, charts, the boot splash) that legitimately use opacity.
 
-   KNOWN LIMIT: weight="fill" and weight="bold" bake their weight into the path
-   geometry, so CSS cannot outline them. Those 342 icons stay as-authored.
-   Converting them would mean changing the prop at each call site, and the
-   weight is often semantic (a filled star = earned, an outline star = not), so
-   it is deliberately not done wholesale here. */
+   KNOWN LIMIT: weight="fill" and weight="bold" bake their weight into the
+   path geometry and stay as authored; the weight is often semantic (a filled
+   star means earned), so converting them wholesale would destroy meaning. */
 .ui-corporate svg[viewBox="0 0 256 256"] path[opacity] {
   opacity: 0;
 }
 
 @layer utilities {
-  /* Section eyebrow — the small uppercase label above a block. Opt-in, for
-     screens that want the denser enterprise header treatment. */
+  /* Section label above a block. Sentence case, medium weight, muted — the
+     current convention; the uppercase-and-tracked version this replaced is a
+     large part of what dated the first iteration. */
   .ui-corporate .corporate-eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
     color: hsl(var(--muted-foreground));
   }
 }

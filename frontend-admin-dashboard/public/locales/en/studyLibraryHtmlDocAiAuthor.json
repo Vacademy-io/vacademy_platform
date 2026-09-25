@@ -33,7 +33,7 @@
     "completed": "completed",
     "creatingYourPage": "Creating your page…",
     "noContentYet": "No content yet",
-    "generatingHint": "The AI is designing a rich, self-contained page from your materials. This can take up to a minute.",
+    "generatingHint": "The AI is designing a rich, self-contained page from your materials. This usually takes 3–5 minutes — you can leave and come back.",
     "addMaterialsHint": "Add materials and describe what you want, then generate — or paste HTML you already have.",
     "toast": {
         "someImagesFailed": "Some images failed to upload.",
@@ -45,7 +45,10 @@
         "generationFailed": "Generation failed.",
         "pasteHtmlFirst": "Paste your HTML first.",
         "notHtml": "That does not look like HTML — paste the full page markup.",
-        "htmlAdded": "HTML added. Refine it with AI or edit the source anytime."
+        "htmlAdded": "HTML added. Refine it with AI or edit the source anytime.",
+        "finishedWhileAway": "Your page finished generating while you were away.",
+        "generationInterrupted": "Generation was interrupted (server restarted). Please try again — you were not charged.",
+        "lostConnection": "Lost connection while checking progress. Reopen this slide to pick the page up when it's ready."
     },
     "contentTypes": {
         "notes": "Short notes",
@@ -55,5 +58,16 @@
         "practicalExamples": "Practical examples",
         "interactiveGames": "Interactive games"
     },
-    "drawingIllustrations": "Drawing illustrations… ({{completed}}/{{total}})"
+    "drawingIllustrations": "Drawing illustrations… ({{completed}}/{{total}})",
+    "previewAppearsHere": "The live preview appears here as soon as the page starts being written.",
+    "progress": {
+        "readingPdf": "Reading your PDF",
+        "planning": "Planning the page",
+        "writing": "Writing the content",
+        "writingSection": "Writing: {{section}}",
+        "illustrations": "Drawing illustrations",
+        "illustrationsCount": "Drawing illustrations ({{completed}}/{{total}})",
+        "canLeaveHint": "Usually takes 3–5 minutes. You can switch slides or close this tab — the page keeps building and will be here when you come back.",
+        "stayHint": "Usually takes 3–5 minutes. Keep this tab open until it finishes."
+    }
 }

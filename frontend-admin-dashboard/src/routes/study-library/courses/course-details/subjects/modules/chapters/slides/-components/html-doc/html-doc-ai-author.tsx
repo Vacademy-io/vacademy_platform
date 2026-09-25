@@ -21,7 +21,18 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { Slide } from '../../-hooks/use-slides';
 import { getInitialHtmlDocContent } from './html-doc-utils';
-import { generateHtmlDocumentStream, buildHtmlContentTypes } from './html-doc-ai-service';
+import {
+    generateHtmlDocumentStream,
+    buildHtmlContentTypes,
+    startHtmlDocJob,
+    pollHtmlDocJob,
+    getActiveHtmlDocJob,
+    cancelHtmlDocJob,
+    ackHtmlDocJob,
+    type GenerateHtmlParams,
+    type HtmlDocJob,
+} from './html-doc-ai-service';
+import { HtmlDocGenerationProgress, type GenerationProgress } from './html-doc-generation-progress';
 import { HtmlSlidePreview } from '@/components/html-slide/html-slide-preview';
 
 type HtmlDocAiAuthorProps = {
@@ -45,7 +56,11 @@ function currentUserId(): string {
  * (rendered in a sandboxed iframe). Editing is conversational: each instruction
  * produces a new, revertible version.
  */
-export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: HtmlDocAiAuthorProps) {
+export function HtmlDocAiAuthor({
+    slide,
+    isLearnerView = false,
+    onHtmlChange,
+}: HtmlDocAiAuthorProps) {
     const { t } = useTranslation('studyLibraryHtmlDocAiAuthor');
     const htmlContentTypes = useMemo(() => buildHtmlContentTypes(t), [t]);
     const initial = useMemo(() => getInitialHtmlDocContent(slide), [slide.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -67,12 +82,15 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
     const [testResult, setTestResult] = useState<string | null>(null);
     // Live-stream buffer while generating (null = not streaming).
     const [streamingHtml, setStreamingHtml] = useState<string | null>(null);
-    // Progress of the illustration pass that runs after the text is written.
-    const [imageProgress, setImageProgress] = useState<{ completed: number; total: number } | null>(
-        null
-    );
+    // Live phase / section / picture count while generating (drives the
+    // step-by-step progress panel).
+    const [progress, setProgress] = useState<GenerationProgress | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const streamTsRef = useRef(0);
+    // Background job being polled (generation runs server-side and survives
+    // the author leaving the page). Null when nothing is running.
+    const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+    const jobHtmlRef = useRef('');
 
     // Institute brand kit — applied so slides across a course share an identity.
     const { instituteDetails } = useInstituteDetailsStore();
@@ -128,6 +146,121 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
         commit(target);
     };
 
+    // Poll callbacks outlive the render that created them — always call the
+    // latest pushVersion so the version index they splice at is current.
+    const pushVersionRef = useRef(pushVersion);
+    pushVersionRef.current = pushVersion;
+    const htmlRef = useRef(html);
+    htmlRef.current = html;
+
+    const resetGenerating = () => {
+        abortRef.current = null;
+        jobHtmlRef.current = '';
+        setActiveTaskId(null);
+        setStreamingHtml(null);
+        setProgress(null);
+        setIsGenerating(false);
+    };
+
+    /** Show a running (or just-started) job and start polling it. */
+    const attachJob = (job: HtmlDocJob) => {
+        jobHtmlRef.current = job.html || '';
+        streamTsRef.current = 0;
+        setIsGenerating(true);
+        setStreamingHtml(jobHtmlRef.current);
+        setProgress(progressFromJob(job));
+        setActiveTaskId(job.task_id);
+    };
+
+    /** A job reached a terminal state — apply / report it once, then forget it. */
+    const settleJob = (job: HtmlDocJob, { resumed }: { resumed: boolean }) => {
+        if (job.slide_id && job.slide_id !== slideIdRef.current) return;
+        if (job.status === 'COMPLETED' && job.html.trim()) {
+            // Already the live page (applied earlier, ack didn't land) — don't duplicate.
+            if (job.html !== htmlRef.current) pushVersionRef.current(job.html);
+            setPrompt('');
+            toast.success(
+                resumed
+                    ? t('toast.finishedWhileAway')
+                    : job.is_edit
+                      ? t('toast.updated')
+                      : t('toast.documentCreated')
+            );
+        } else if (job.status === 'INTERRUPTED') {
+            toast.error(t('toast.generationInterrupted'));
+        } else if (job.status === 'FAILED') {
+            toast.error(job.error || t('toast.generationFailed'));
+        }
+        if (job.status !== 'CANCELLED') {
+            // The parent saves the draft on a 4 s debounce. Ack only after that,
+            // so leaving right away re-offers the page instead of losing it.
+            const ackDelay = job.status === 'COMPLETED' ? 6000 : 0;
+            setTimeout(() => void ackHtmlDocJob(job.task_id).catch(() => undefined), ackDelay);
+        }
+        resetGenerating();
+    };
+
+    // Coming (back) to a slide: pick up a generation that is still running or
+    // that finished / failed while the author was away.
+    useEffect(() => {
+        if (isLearnerView) return;
+        let active = true;
+        resetGenerating();
+        void getActiveHtmlDocJob(slide.id)
+            .then((job) => {
+                if (!active || !job) return;
+                if (job.status === 'PROGRESS') attachJob(job);
+                else settleJob(job, { resumed: true });
+            })
+            .catch(() => undefined); // older ai-service without jobs — nothing to resume
+        return () => {
+            active = false;
+        };
+    }, [slide.id, isLearnerView]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Poll the active job. Unmounting / switching slide only stops watching —
+    // the server keeps generating and the effect above re-attaches later.
+    useEffect(() => {
+        if (!activeTaskId) return;
+        let stopped = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let failures = 0;
+        const tick = async () => {
+            try {
+                const job = await pollHtmlDocJob(activeTaskId, jobHtmlRef.current.length);
+                failures = 0;
+                if (stopped) return;
+                if (job.status === 'PROGRESS') {
+                    jobHtmlRef.current += job.html;
+                    setProgress(progressFromJob(job));
+                    const now = Date.now();
+                    if (job.html && now - streamTsRef.current > 1500) {
+                        // Re-rendering the iframe is heavy — refresh the live
+                        // preview at most every 1.5 s.
+                        streamTsRef.current = now;
+                        setStreamingHtml(jobHtmlRef.current);
+                    }
+                } else {
+                    settleJob(job, { resumed: false });
+                    return;
+                }
+            } catch {
+                // Transient network / pod blip — keep trying for a while.
+                if (++failures >= 15) {
+                    toast.error(t('toast.lostConnection'));
+                    resetGenerating();
+                    return;
+                }
+            }
+            if (!stopped) timer = setTimeout(() => void tick(), 2000);
+        };
+        timer = setTimeout(() => void tick(), 1000);
+        return () => {
+            stopped = true;
+            if (timer) clearTimeout(timer);
+        };
+    }, [activeTaskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const toggleType = (key: string) =>
         setContentTypes((prev) =>
             prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
@@ -140,7 +273,14 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
             const userId = currentUserId();
             const uploaded: UploadedImage[] = [];
             for (const file of Array.from(files)) {
-                const fileId = await UploadFileInS3(file, () => {}, userId, 'STUDENTS', undefined, true);
+                const fileId = await UploadFileInS3(
+                    file,
+                    () => {},
+                    userId,
+                    'STUDENTS',
+                    undefined,
+                    true
+                );
                 if (!fileId) continue;
                 const url = await getPublicUrl(fileId);
                 if (url) uploaded.push({ url, name: file.name });
@@ -180,44 +320,71 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
             toast.error(t('toast.describeRequired'));
             return;
         }
+        const params: GenerateHtmlParams = {
+            prompt: text,
+            currentHtml: hasContent ? html : null,
+            brand:
+                useBrand && hasBrand
+                    ? { primaryColor: brandColor, logoUrl: brandLogoUrl, name: brandName }
+                    : null,
+            contentTypes: hasContent ? undefined : contentTypes,
+            keyPoints: kp,
+            imageUrls: images.map((i) => i.url),
+            referenceFileIds: pdf ? [pdf.fileId] : undefined,
+        };
         setIsGenerating(true);
         setStreamingHtml('');
-        setImageProgress(null);
+        setProgress({ phase: pdf ? 'reading_pdf' : 'planning', hasPdf: !!pdf, elapsedSeconds: 0 });
+        try {
+            attachJob(await startHtmlDocJob({ ...params, slideId: slide.id }));
+        } catch (e) {
+            const statusCode = (e as { response?: { status?: number } })?.response?.status;
+            if (statusCode === 404 || statusCode === 405) {
+                // ai-service not yet on the jobs API — stream in this tab instead.
+                await runStreamInTab(params);
+                return;
+            }
+            const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data
+                ?.detail;
+            toast.error(detail || (e instanceof Error ? e.message : t('toast.generationFailed')));
+            resetGenerating();
+        }
+    };
+
+    /** Legacy in-tab SSE flow (dies with the tab) — fallback only. */
+    const runStreamInTab = async (params: GenerateHtmlParams) => {
         streamTsRef.current = 0;
         const controller = new AbortController();
         abortRef.current = controller;
+        const startedAt = Date.now();
+        const elapsed = () => Math.round((Date.now() - startedAt) / 1000);
         try {
-            const generated = await generateHtmlDocumentStream(
-                {
-                    prompt: text,
-                    currentHtml: hasContent ? html : null,
-                    brand:
-                        useBrand && hasBrand
-                            ? { primaryColor: brandColor, logoUrl: brandLogoUrl, name: brandName }
-                            : null,
-                    contentTypes: hasContent ? undefined : contentTypes,
-                    keyPoints: kp,
-                    imageUrls: images.map((i) => i.url),
-                    referenceFileIds: pdf ? [pdf.fileId] : undefined,
+            const generated = await generateHtmlDocumentStream(params, {
+                signal: controller.signal,
+                onImageProgress: (completed, total) =>
+                    setProgress({
+                        phase: 'images',
+                        imagesDone: completed,
+                        imagesTotal: total,
+                        elapsedSeconds: elapsed(),
+                    }),
+                onDelta: (acc) => {
+                    const now = Date.now();
+                    if (now - streamTsRef.current > 350) {
+                        streamTsRef.current = now;
+                        setStreamingHtml(acc);
+                        setProgress({
+                            phase: 'writing',
+                            contentChars: acc.length,
+                            expectedChars: params.currentHtml?.length,
+                            elapsedSeconds: elapsed(),
+                        });
+                    }
                 },
-                {
-                    signal: controller.signal,
-                    onImageProgress: (completed, total) =>
-                        setImageProgress(total > 0 ? { completed, total } : null),
-                    onDelta: (acc) => {
-                        // Throttle preview refreshes — re-rendering the iframe on
-                        // every token would thrash. ~3/sec is enough to feel live.
-                        const now = Date.now();
-                        if (now - streamTsRef.current > 350) {
-                            streamTsRef.current = now;
-                            setStreamingHtml(acc);
-                        }
-                    },
-                }
-            );
+            });
             pushVersion(generated);
             setPrompt('');
-            toast.success(hasContent ? t('toast.updated') : t('toast.documentCreated'));
+            toast.success(params.currentHtml ? t('toast.updated') : t('toast.documentCreated'));
         } catch (e) {
             if ((e as Error)?.name === 'AbortError') {
                 toast.info(t('toast.generationCancelled'));
@@ -225,14 +392,21 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                 toast.error(e instanceof Error ? e.message : t('toast.generationFailed'));
             }
         } finally {
-            abortRef.current = null;
-            setStreamingHtml(null);
-            setImageProgress(null);
-            setIsGenerating(false);
+            resetGenerating();
         }
     };
 
-    const cancelGenerate = () => abortRef.current?.abort();
+    const cancelGenerate = () => {
+        if (activeTaskId) {
+            const id = activeTaskId;
+            resetGenerating();
+            void cancelHtmlDocJob(id)
+                .then(() => toast.info(t('toast.generationCancelled')))
+                .catch(() => toast.error(t('toast.generationFailed')));
+            return;
+        }
+        abortRef.current?.abort();
+    };
 
     const usePastedHtml = () => {
         const next = pastedHtml.trim();
@@ -310,7 +484,9 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                 <Code className="size-4" />
                                 {showPaste ? t('hidePasteBox') : t('pasteHtml')}
                             </MyButton>
-                            {isUploading && <Spinner className="size-4 animate-spin text-primary-500" />}
+                            {isUploading && (
+                                <Spinner className="size-4 animate-spin text-primary-500" />
+                            )}
                         </div>
 
                         {/* Bring-your-own HTML — skip generation entirely */}
@@ -339,9 +515,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             </div>
                         )}
                         {pdf && (
-                            <p className="text-caption text-neutral-400">
-                                {t('pdfGroundingHint')}
-                            </p>
+                            <p className="text-caption text-neutral-400">{t('pdfGroundingHint')}</p>
                         )}
 
                         {/* Uploaded material chips */}
@@ -445,9 +619,7 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         onChange={(e) => setPrompt(e.target.value)}
                         disabled={isGenerating}
                         placeholder={
-                            hasContent
-                                ? t('promptPlaceholderEdit')
-                                : t('promptPlaceholderCreate')
+                            hasContent ? t('promptPlaceholderEdit') : t('promptPlaceholderCreate')
                         }
                         className="min-h-16 flex-1 resize-y border-neutral-300 text-body focus-visible:ring-primary-200"
                         onKeyDown={(e) => {
@@ -478,33 +650,22 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         </MyButton>
                     )}
                 </div>
-                <p className="mt-2 text-caption text-neutral-400">
-                    {t('authoredByAiHint')}
-                </p>
+                <p className="mt-2 text-caption text-neutral-400">{t('authoredByAiHint')}</p>
             </div>
 
             {/* Result */}
             {streamingHtml !== null ? (
                 <div className="overflow-hidden rounded-lg border border-primary-200">
-                    <div className="flex items-center justify-between border-b border-primary-100 bg-primary-50 px-3 py-2">
-                        <span className="flex items-center gap-2 text-caption font-medium text-primary-500">
-                            <Spinner className="size-4 animate-spin" />{' '}
-                            {imageProgress
-                                ? t('drawingIllustrations', {
-                                      completed: imageProgress.completed,
-                                      total: imageProgress.total,
-                                  })
-                                : t('buildingYourPage')}
-                        </span>
-                        <MyButton buttonType="secondary" scale="small" onClick={cancelGenerate}>
-                            <X className="size-4" /> {t('cancel')}
-                        </MyButton>
-                    </div>
+                    <HtmlDocGenerationProgress
+                        progress={progress}
+                        canLeave={!!activeTaskId}
+                        onCancel={cancelGenerate}
+                    />
                     {streamingHtml.trim() ? (
                         <HtmlSlidePreview html={streamingHtml} />
                     ) : (
-                        <div className="flex items-center justify-center gap-2 py-16 text-caption text-neutral-400">
-                            <Spinner className="size-4 animate-spin" /> {t('starting')}
+                        <div className="py-12 text-center text-caption text-neutral-400">
+                            {t('previewAppearsHere')}
                         </div>
                     )}
                 </div>
@@ -588,7 +749,10 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                                 html={html}
                                 onResult={(r) => {
                                     const parts: string[] = [];
-                                    if (typeof r.score === 'number' && typeof r.maxScore === 'number')
+                                    if (
+                                        typeof r.score === 'number' &&
+                                        typeof r.maxScore === 'number'
+                                    )
                                         parts.push(`${r.score}/${r.maxScore}`);
                                     else if (typeof r.wrong === 'number')
                                         parts.push(t('wrongCount', { count: r.wrong }));
@@ -616,4 +780,18 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
             )}
         </div>
     );
+}
+
+function progressFromJob(job: HtmlDocJob): GenerationProgress {
+    const p = job.progress || {};
+    return {
+        phase: p.phase ?? 'planning',
+        section: p.section,
+        hasPdf: p.has_pdf,
+        contentChars: p.content_chars ?? job.html_length,
+        expectedChars: p.expected_chars ?? undefined,
+        imagesDone: p.images_done,
+        imagesTotal: p.images_total,
+        elapsedSeconds: job.elapsed_seconds,
+    };
 }

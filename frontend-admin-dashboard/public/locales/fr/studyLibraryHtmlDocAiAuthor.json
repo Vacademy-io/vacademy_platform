@@ -35,7 +35,7 @@
     "completed": "terminé",
     "creatingYourPage": "Création de votre page…",
     "noContentYet": "Pas encore de contenu",
-    "generatingHint": "L'IA conçoit une page riche et autonome à partir de vos ressources. Cela peut prendre jusqu'à une minute.",
+    "generatingHint": "L'IA conçoit une page riche et autonome à partir de vos contenus. Cela prend généralement 3 à 5 minutes — vous pouvez partir et revenir.",
     "addMaterialsHint": "Ajoutez des ressources et décrivez ce que vous voulez, puis générez — ou collez un HTML que vous avez déjà.",
     "toast": {
         "someImagesFailed": "Certaines images n'ont pas pu être téléchargées.",
@@ -47,7 +47,10 @@
         "generationFailed": "Échec de la génération.",
         "pasteHtmlFirst": "Collez d'abord votre HTML.",
         "notHtml": "Cela ne ressemble pas à du HTML — collez le balisage complet de la page.",
-        "htmlAdded": "HTML ajouté. Affinez-le avec l'IA ou modifiez la source à tout moment."
+        "htmlAdded": "HTML ajouté. Affinez-le avec l'IA ou modifiez la source à tout moment.",
+        "finishedWhileAway": "Votre page a fini d'être générée pendant votre absence.",
+        "generationInterrupted": "La génération a été interrompue (redémarrage du serveur). Veuillez réessayer — rien ne vous a été facturé.",
+        "lostConnection": "Connexion perdue pendant le suivi. Rouvrez cette diapositive pour récupérer la page une fois prête."
     },
     "contentTypes": {
         "notes": "Notes courtes",
@@ -57,5 +60,16 @@
         "practicalExamples": "Exemples pratiques",
         "interactiveGames": "Jeux interactifs"
     },
-    "drawingIllustrations": "Création des illustrations… ({{completed}}/{{total}})"
+    "drawingIllustrations": "Création des illustrations… ({{completed}}/{{total}})",
+    "previewAppearsHere": "L'aperçu en direct apparaît ici dès que la page commence à être rédigée.",
+    "progress": {
+        "readingPdf": "Lecture de votre PDF",
+        "planning": "Planification de la page",
+        "writing": "Rédaction du contenu",
+        "writingSection": "Rédaction : {{section}}",
+        "illustrations": "Création des illustrations",
+        "illustrationsCount": "Création des illustrations ({{completed}}/{{total}})",
+        "canLeaveHint": "Cela prend généralement 3 à 5 minutes. Vous pouvez changer de diapositive ou fermer cet onglet — la page continue de se construire et vous attendra à votre retour.",
+        "stayHint": "Cela prend généralement 3 à 5 minutes. Gardez cet onglet ouvert jusqu'à la fin."
+    }
 }

@@ -32,6 +32,7 @@ from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.document_postprocess import (
     DOC_IMAGE_MODEL as _IMAGE_MODEL,
     MAX_DOC_IMAGES as _MAX_AI_IMAGES,
+    adopt_foreign_images,
     count_image_placeholders,
     illustrate_document,
 )
@@ -45,6 +46,12 @@ router = APIRouter(prefix="/html-doc", tags=["html-document"])
 _DEFAULT_MODEL = "z-ai/glm-5.3-flash"
 # HTML documents can be long (inline CSS + markup + a little JS).
 _MAX_TOKENS = 32000
+# GLM-5.x reasons before it writes and the provider will not let reasoning be
+# disabled. At its default effort it thought for ~8 min (13k+ hidden tokens)
+# before the first byte of HTML, so the author stared at a blank "Building your
+# page" for 10+ min (2026-09-25). "low" starts the HTML in ~3 s and halves the
+# tokens. Override with HTML_DOCUMENT_REASONING_EFFORT (low|medium|high|"" = model default).
+_REASONING_EFFORT = os.getenv("HTML_DOCUMENT_REASONING_EFFORT", "low").strip().lower()
 # Usage is charged as max(flat, actual_token_cost × markup). The markup deters
 # misuse (very large PDFs / huge pages) — heavy generations pay above raw cost.
 _USAGE_MARKUP = Decimal("2")
@@ -326,17 +333,29 @@ def _strip_fence(text: str) -> str:
     return text[start.start():].strip() if start else text.strip()
 
 
+def _llm_payload(prompt: str, model: str, stream: bool) -> dict:
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": _MAX_TOKENS,
+    }
+    if _REASONING_EFFORT:
+        payload["reasoning"] = {"effort": _REASONING_EFFORT}
+    if stream:
+        payload["stream"] = True
+        # Ask OpenRouter to emit a final usage chunk so we can bill on
+        # actual tokens (× markup), not just the flat floor.
+        payload["stream_options"] = {"include_usage": True}
+    return payload
+
+
 async def _call_openrouter(prompt: str, api_key: str, base_url: str, model: str) -> tuple[str, dict]:
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             base_url,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.7,
-                "max_tokens": _MAX_TOKENS,
-            },
+            json=_llm_payload(prompt, model, stream=False),
         )
     if resp.status_code != 200:
         raise httpx.HTTPStatusError(
@@ -354,10 +373,14 @@ async def _call_openrouter(prompt: str, api_key: str, base_url: str, model: str)
     return content, (data.get("usage") or {})
 
 
-async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict:
+async def _prepare(
+    body: GenerateHtmlRequest, current_user, db: Session, ground: bool = True
+) -> dict:
     """Auth + validation + preflight credit gate + PDF grounding, then build the
     prompt. Raises HTTPException (401/400/402/503) BEFORE any streaming starts.
-    Returns everything both the JSON and streaming endpoints need."""
+    Returns everything both the JSON and streaming endpoints need. With
+    ground=False the (slow, up to 150 s) PDF grounding is left for the caller —
+    background jobs run it via `_ground` after the request has returned."""
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
 
@@ -411,14 +434,35 @@ async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict
                 ),
             )
 
-    # Ground in an uploaded PDF (real text + reusable figures) — reuses the same
-    # MathPix ingestion the course flow uses. Bounded so a slow/failed
-    # conversion never hangs; generation proceeds without it.
-    grounding_text, figures, pdf_page_count = "", [], 0
+    ctx = {
+        "prompt": "",
+        "model": model,
+        "openrouter_key": openrouter_key,
+        "openrouter_url": openrouter_url,
+        "institute_id": institute_id,
+        "actor_user_id": actor_user_id,
+        "actor_role": actor_role,
+        "tool_key": tool_key,
+        "pdf_page_count": 0,
+        "allowed_image_urls": set(),
+    }
+    if ground:
+        await _ground(body, ctx)
+    return ctx
+
+
+_URL_IN_HTML_RE = re.compile(r'\ssrc=(["\'])(https?://.*?)\1', re.IGNORECASE)
+
+
+async def _ground(body: GenerateHtmlRequest, ctx: dict) -> None:
+    """Ground in an uploaded PDF (real text + reusable figures) — reuses the same
+    MathPix ingestion the course flow uses. Bounded so a slow/failed
+    conversion never hangs; generation proceeds without it. Fills ctx's
+    prompt, pdf_page_count and the image URLs the model may legitimately use."""
+    grounding_text, figures = "", []
     if body.reference_file_ids:
         try:
             from ..services.course_document_ingest import ingest_documents
-            import asyncio
 
             ingest = await asyncio.wait_for(
                 ingest_documents(body.reference_file_ids, rehost_figures=True), timeout=150
@@ -427,21 +471,70 @@ async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict
             # Per-page surcharge is billed on CREATE only — an edit re-grounding
             # the same PDF must not re-charge for its pages.
             if not body.current_html:
-                pdf_page_count = ingest.page_count
+                ctx["pdf_page_count"] = ingest.page_count
         except Exception as e:  # noqa: BLE001
             logger.warning("[html-doc] PDF ingest skipped: %s", e)
 
-    return {
-        "prompt": _build_prompt(body, grounding_text, figures),
-        "model": model,
-        "openrouter_key": openrouter_key,
-        "openrouter_url": openrouter_url,
-        "institute_id": institute_id,
-        "actor_user_id": actor_user_id,
-        "actor_role": actor_role,
-        "tool_key": tool_key,
-        "pdf_page_count": pdf_page_count,
+    allowed = set(body.image_urls or [])
+    allowed.update(getattr(f, "url", "") for f in figures or [])
+    if body.brand and body.brand.logo_url:
+        allowed.add(body.brand.logo_url)
+    if body.current_html:
+        # An edit keeps the pictures already generated for this page.
+        allowed.update(m.group(2) for m in _URL_IN_HTML_RE.finditer(body.current_html))
+    ctx["allowed_image_urls"] = {u.strip() for u in allowed if u and u.strip()}
+    ctx["prompt"] = _build_prompt(body, grounding_text, figures)
+
+
+async def _stream_llm(ctx: dict):
+    """Stream one generation from OpenRouter. Yields ("reasoning", n_chars),
+    ("content", text) and finally ("usage", dict). Raises on a non-200."""
+    headers = {
+        "Authorization": f"Bearer {ctx['openrouter_key']}",
+        "Content-Type": "application/json",
     }
+    payload = _llm_payload(ctx["prompt"], ctx["model"], stream=True)
+    usage: dict = {}
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        async with client.stream(
+            "POST", ctx["openrouter_url"], headers=headers, json=payload
+        ) as resp:
+            if resp.status_code != 200:
+                detail = (await resp.aread()).decode(errors="ignore")[:300]
+                raise RuntimeError(f"OpenRouter {resp.status_code}: {detail}")
+            async for line in resp.aiter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                chunk_str = line[len("data:"):].strip()
+                if chunk_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(chunk_str)
+                except Exception:  # noqa: BLE001
+                    continue
+                if chunk.get("usage"):
+                    usage = chunk["usage"]
+                choices = chunk.get("choices") or []
+                delta = (choices[0].get("delta") or {}) if choices else {}
+                reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+                if reasoning:
+                    yield "reasoning", len(reasoning)
+                if delta.get("content"):
+                    yield "content", delta["content"]
+    yield "usage", usage
+
+
+async def _illustrate(ctx: dict, html_out: str, on_progress=None) -> tuple[str, int]:
+    """Adopt invented image URLs as placeholders, then draw every placeholder.
+    Never raises — a failed picture pass returns the text-only page."""
+    html_out, _ = adopt_foreign_images(html_out, ctx.get("allowed_image_urls"))
+    if not count_image_placeholders(html_out):
+        return html_out, 0
+    try:
+        return await illustrate_document(html_out, slide_path="html-doc", on_progress=on_progress)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[html-doc] illustration pass failed: %s", e)
+        return html_out, 0
 
 
 def _bill(ctx: dict, body: GenerateHtmlRequest, usage: Optional[dict] = None) -> None:
@@ -524,7 +617,7 @@ async def generate_html_document(
     html_out = _strip_fence(raw)
     if not html_out:
         raise HTTPException(status_code=502, detail="Model returned empty HTML.")
-    html_out, images = await illustrate_document(html_out, slide_path="html-doc")
+    html_out, images = await _illustrate(ctx, html_out)
     _bill(ctx, body, usage)
     _bill_images(ctx, body, images)
     return GenerateHtmlResponse(html=html_out, model=ctx["model"])
@@ -549,46 +642,19 @@ async def generate_html_document_stream(
     async def event_gen():
         collected: list[str] = []
         usage: dict = {}
+        thinking_sent = False
         try:
-            payload = {
-                "model": ctx["model"],
-                "messages": [{"role": "user", "content": ctx["prompt"]}],
-                "temperature": 0.7,
-                "max_tokens": _MAX_TOKENS,
-                "stream": True,
-                # Ask OpenRouter to emit a final usage chunk so we can bill on
-                # actual tokens (× markup), not just the flat floor.
-                "stream_options": {"include_usage": True},
-            }
-            headers = {
-                "Authorization": f"Bearer {ctx['openrouter_key']}",
-                "Content-Type": "application/json",
-            }
-            async with httpx.AsyncClient(timeout=180.0) as client:
-                async with client.stream(
-                    "POST", ctx["openrouter_url"], headers=headers, json=payload
-                ) as resp:
-                    if resp.status_code != 200:
-                        detail = (await resp.aread()).decode(errors="ignore")[:300]
-                        yield _sse({"error": f"OpenRouter {resp.status_code}: {detail}"})
-                        return
-                    async for line in resp.aiter_lines():
-                        if not line or not line.startswith("data:"):
-                            continue
-                        chunk_str = line[len("data:"):].strip()
-                        if chunk_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(chunk_str)
-                        except Exception:  # noqa: BLE001
-                            continue
-                        if chunk.get("usage"):
-                            usage = chunk["usage"]
-                        choices = chunk.get("choices") or []
-                        delta = (choices[0].get("delta") or {}).get("content") if choices else None
-                        if delta:
-                            collected.append(delta)
-                            yield _sse({"delta": delta})
+            async for kind, value in _stream_llm(ctx):
+                if kind == "content":
+                    collected.append(value)
+                    yield _sse({"delta": value})
+                elif kind == "reasoning" and not thinking_sent and not collected:
+                    # Tell the client the model is planning (no HTML yet), so
+                    # the wait isn't a silent blank panel.
+                    thinking_sent = True
+                    yield _sse({"status": "thinking"})
+                elif kind == "usage":
+                    usage = value
 
             html_out = _strip_fence("".join(collected))
             if not html_out:
@@ -599,35 +665,26 @@ async def generate_html_document_stream(
             # pictures the page asked for are drawn now and patched in, so the
             # final `done` document is the one with real image URLs. Progress
             # is surfaced because this adds real seconds to the wait.
-            images = 0
-            if count_image_placeholders(html_out):
-                queue: asyncio.Queue = asyncio.Queue()
+            queue: asyncio.Queue = asyncio.Queue()
 
-                async def on_progress(done_n: int, total_n: int) -> None:
-                    await queue.put((done_n, total_n))
+            async def on_progress(done_n: int, total_n: int) -> None:
+                await queue.put((done_n, total_n))
 
-                task = asyncio.create_task(
-                    illustrate_document(
-                        html_out, slide_path="html-doc", on_progress=on_progress
-                    )
+            task = asyncio.create_task(_illustrate(ctx, html_out, on_progress))
+            while True:
+                get = asyncio.create_task(queue.get())
+                done_set, _ = await asyncio.wait(
+                    {get, task}, return_when=asyncio.FIRST_COMPLETED
                 )
-                while True:
-                    get = asyncio.create_task(queue.get())
-                    done_set, _ = await asyncio.wait(
-                        {get, task}, return_when=asyncio.FIRST_COMPLETED
-                    )
-                    if get in done_set:
-                        done_n, total_n = get.result()
-                        # NB: never key this "done" — the client treats a
-                        # truthy `done` as the final document event.
-                        yield _sse({"status": "images", "completed": done_n, "total": total_n})
-                        continue
-                    get.cancel()
-                    break
-                try:
-                    html_out, images = await task
-                except Exception as e:  # noqa: BLE001
-                    logger.warning("[html-doc] illustration pass failed: %s", e)
+                if get in done_set:
+                    done_n, total_n = get.result()
+                    # NB: never key this "done" — the client treats a
+                    # truthy `done` as the final document event.
+                    yield _sse({"status": "images", "completed": done_n, "total": total_n})
+                    continue
+                get.cancel()
+                break
+            html_out, images = await task
 
             _bill(ctx, body, usage)
             _bill_images(ctx, body, images)
@@ -641,3 +698,342 @@ async def generate_html_document_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Background jobs — generation that survives the author leaving the page.
+#
+# A generation is 3-10 minutes. Over SSE it died with the tab. Here the kickoff
+# returns a task id at once and the work runs detached (ai_task_service), with
+# progress — phase, current section, partial HTML, picture count — flushed to
+# the ai_task row every couple of seconds. The client polls (any pod can answer:
+# prod runs 2 replicas) and, on coming back to the slide, re-attaches by slide id
+# and applies the finished page. Cancel = flip the row to FAILED; the worker
+# notices on its next flush and stops (so no charge for a cancelled page).
+# Caveat: the coroutine lives in one pod, so a deploy/restart mid-run loses it;
+# a row that stops heartbeating is reported as INTERRUPTED so the UI can offer
+# a retry instead of spinning forever.
+# ---------------------------------------------------------------------------
+
+from datetime import datetime, timezone  # noqa: E402
+
+from sqlalchemy import text as sql_text  # noqa: E402
+
+from ..db import db_session  # noqa: E402
+from ..models.ai_task import AiTask, AiTaskInputType, AiTaskStatus, AiTaskType  # noqa: E402
+from ..repositories.ai_task_repository import AiTaskRepository  # noqa: E402
+from ..services import ai_task_service  # noqa: E402
+from ..services.ai_task_service import AiTaskService  # noqa: E402
+
+_JOB_FLUSH_SECONDS = 2.0
+# No heartbeat for this long ⇒ the pod running it died (deploy/OOM).
+_JOB_STALE_SECONDS = 90
+# How far back "come back to the slide and pick the result up" looks.
+_JOB_REATTACH_HOURS = 6
+_CANCELLED_MSG = "Cancelled by user"
+_H_TAG_RE = re.compile(r"<h[12][^>]*>([\s\S]*?)</h[12]>", re.IGNORECASE)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+class HtmlDocJobRequest(GenerateHtmlRequest):
+    slide_id: Optional[str] = Field(None, description="Slide this page is for — lets the editor re-attach.")
+
+
+class _JobCancelled(Exception):
+    pass
+
+
+def _current_section(partial_html: str) -> str:
+    """Heading of the section the model is writing right now (for the status line)."""
+    heads = _H_TAG_RE.findall(partial_html[-20000:])
+    if not heads:
+        return ""
+    title = re.sub(r"\s+", " ", _TAG_RE.sub("", heads[-1])).strip()
+    return title[:80]
+
+
+def _write_progress(task_id: str, status_message: str, result_json: Optional[str]) -> bool:
+    """Heartbeat write. Returns False when the row is no longer PROGRESS (the
+    author cancelled) so the worker can stop."""
+    with db_session() as db:
+        res = db.execute(
+            sql_text(
+                "UPDATE ai_task SET status_message = :sm, "
+                "result_json = COALESCE(:rj, result_json), updated_at = now() "
+                "WHERE id = :id AND status = 'PROGRESS'"
+            ),
+            {"sm": status_message, "rj": result_json, "id": task_id},
+        )
+        return (res.rowcount or 0) > 0
+
+
+async def _run_job(task_id: str, body: HtmlDocJobRequest, ctx: dict) -> str:
+    state = {
+        "phase": "reading_pdf" if body.reference_file_ids else "planning",
+        "reasoning_chars": 0,
+        "content_chars": 0,
+        "section": "",
+        "images_done": 0,
+        "images_total": 0,
+        "is_edit": bool(body.current_html),
+        "has_pdf": bool(body.reference_file_ids),
+        "expected_chars": len(body.current_html) if body.current_html else None,
+    }
+    collected: list[str] = []
+    cancelled = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def heartbeat() -> None:
+        last_len = -1
+        while not finished.is_set():
+            partial = "".join(collected)
+            if partial:
+                state["section"] = _current_section(partial) or state["section"]
+            rj = json.dumps({"html": partial}) if len(partial) != last_len else None
+            last_len = len(partial)
+            try:
+                alive = await asyncio.to_thread(_write_progress, task_id, json.dumps(state), rj)
+                if not alive:
+                    cancelled.set()
+                    return
+            except Exception:  # noqa: BLE001
+                logger.warning("[html-doc] progress write failed for %s", task_id, exc_info=True)
+            try:
+                await asyncio.wait_for(finished.wait(), timeout=_JOB_FLUSH_SECONDS)
+            except asyncio.TimeoutError:
+                pass
+
+    beat = asyncio.create_task(heartbeat())
+    try:
+        await _ground(body, ctx)
+        if cancelled.is_set():
+            raise _JobCancelled(_CANCELLED_MSG)
+        state["phase"] = "planning"
+        usage: dict = {}
+        async for kind, value in _stream_llm(ctx):
+            if cancelled.is_set():
+                raise _JobCancelled(_CANCELLED_MSG)
+            if kind == "content":
+                collected.append(value)
+                state["phase"] = "writing"
+                state["content_chars"] += len(value)
+            elif kind == "reasoning":
+                state["reasoning_chars"] += value
+            elif kind == "usage":
+                usage = value
+
+        html_out = _strip_fence("".join(collected))
+        if not html_out:
+            raise RuntimeError("Model returned empty HTML.")
+
+        async def on_progress(done_n: int, total_n: int) -> None:
+            state["phase"] = "images"
+            state["images_done"], state["images_total"] = done_n, total_n
+
+        html_out, images = await _illustrate(ctx, html_out, on_progress)
+        if cancelled.is_set():
+            raise _JobCancelled(_CANCELLED_MSG)
+        _bill(ctx, body, usage)
+        _bill_images(ctx, body, images)
+        logger.info(
+            "[html-doc] job %s done: %d chars, %d images, usage=%s",
+            task_id, len(html_out), images, usage,
+        )
+        return json.dumps({"html": html_out, "model": ctx["model"], "images": images})
+    finally:
+        finished.set()
+        await asyncio.gather(beat, return_exceptions=True)
+
+
+def _actor_institute(current_user, fallback: Optional[str]) -> Optional[str]:
+    inst = getattr(current_user, "institute_id", None)
+    if inst is None and isinstance(current_user, dict):
+        inst = current_user.get("institute_id")
+    return inst or fallback
+
+
+def _aware(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _job_view(task: AiTask, since: int = 0) -> dict:
+    """Poll payload. `html` is the tail after `since` while running (so a poll
+    every 2 s doesn't re-download the whole page) and the full page when done."""
+    now = datetime.now(timezone.utc)
+    created, updated = _aware(task.created_at), _aware(task.updated_at)
+    status_ = task.status or ""
+    progress: dict = {}
+    error = ""
+    html = ""
+    try:
+        data = json.loads(task.result_json) if task.result_json else {}
+    except Exception:  # noqa: BLE001
+        data = {}
+    if status_ == AiTaskStatus.PROGRESS.value:
+        try:
+            progress = json.loads(task.status_message or "{}")
+        except Exception:  # noqa: BLE001
+            progress = {}
+        if updated and (now - updated).total_seconds() > _JOB_STALE_SECONDS:
+            status_ = "INTERRUPTED"
+    elif status_ == AiTaskStatus.FAILED.value:
+        error = task.status_message or "Generation failed."
+        if error == _CANCELLED_MSG:
+            status_ = "CANCELLED"
+    full = data.get("html") or ""
+    if status_ == AiTaskStatus.COMPLETED.value:
+        html = full
+    elif since < len(full):
+        html = full[since:]
+    try:
+        dyn = json.loads(task.dynamic_values_map or "{}")
+    except Exception:  # noqa: BLE001
+        dyn = {}
+    return {
+        "task_id": task.id,
+        "slide_id": task.input_id,
+        "status": status_,
+        "progress": progress,
+        "html": html,
+        "html_length": len(full),
+        "model": data.get("model"),
+        "images": data.get("images"),
+        "error": error,
+        "is_edit": bool(dyn.get("is_edit")),
+        "acknowledged": bool(dyn.get("acked")),
+        "elapsed_seconds": int((now - created).total_seconds()) if created else 0,
+    }
+
+
+def _load_job(db: Session, task_id: str, institute_id: Optional[str]) -> AiTask:
+    task = AiTaskRepository(db).get(task_id)
+    if (
+        not task
+        or task.task_type != AiTaskType.HTML_DOC_GENERATE.value
+        or (institute_id and task.institute_id and task.institute_id != institute_id)
+    ):
+        raise HTTPException(status_code=404, detail="Generation not found.")
+    return task
+
+
+def _set_acked(db: Session, task: AiTask) -> None:
+    try:
+        dyn = json.loads(task.dynamic_values_map or "{}")
+    except Exception:  # noqa: BLE001
+        dyn = {}
+    dyn["acked"] = True
+    task.dynamic_values_map = json.dumps(dyn)
+    db.commit()
+
+
+@router.post("/v1/jobs")
+async def start_html_document_job(
+    body: HtmlDocJobRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> dict:
+    """Start a generation that keeps running if the author leaves. Auth, input
+    validation and the credit pre-flight still fail fast here (401/400/402)."""
+    ctx = await _prepare(body, current_user, db, ground=False)
+    repo = AiTaskRepository(db)
+
+    # One live generation per slide: a double-click or a second tab re-attaches
+    # to the running job instead of paying for two.
+    if body.slide_id:
+        running = (
+            db.query(AiTask)
+            .filter(
+                AiTask.task_type == AiTaskType.HTML_DOC_GENERATE.value,
+                AiTask.input_id == body.slide_id,
+                AiTask.status == AiTaskStatus.PROGRESS.value,
+            )
+            .order_by(AiTask.created_at.desc())
+            .first()
+        )
+        if running and _job_view(running)["status"] == AiTaskStatus.PROGRESS.value:
+            return _job_view(running)
+
+    task = AiTaskService(repo).create(
+        task_type=AiTaskType.HTML_DOC_GENERATE,
+        input_id=body.slide_id or "",
+        input_type=AiTaskInputType.SLIDE_ID,
+        task_name=(body.prompt or "HTML document")[:200],
+        institute_id=ctx["institute_id"] or "",
+        dynamic_values={"model": ctx["model"], "is_edit": bool(body.current_html)},
+    )
+    # Retries of the same job must never double-charge.
+    if not body.idempotency_key:
+        body.idempotency_key = f"html-doc-job:{task.id}"
+
+    async def _work() -> str:
+        return await _run_job(task.id, body, ctx)
+
+    ai_task_service.schedule(task.id, _work)
+    logger.info("[html-doc] job %s started (slide=%s model=%s)", task.id, body.slide_id, ctx["model"])
+    return _job_view(task)
+
+
+@router.get("/v1/jobs/active")
+async def get_active_html_document_job(
+    slide_id: str,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> dict:
+    """The slide's latest generation the editor hasn't picked up yet — running,
+    finished while the author was away, or failed/interrupted. {"job": null}
+    when there is nothing to show."""
+    institute_id = _actor_institute(current_user, None)
+    since = datetime.now(timezone.utc).timestamp() - _JOB_REATTACH_HOURS * 3600
+    q = db.query(AiTask).filter(
+        AiTask.task_type == AiTaskType.HTML_DOC_GENERATE.value,
+        AiTask.input_id == slide_id,
+        AiTask.created_at >= datetime.fromtimestamp(since, tz=timezone.utc),
+    )
+    if institute_id:
+        q = q.filter(AiTask.institute_id == institute_id)
+    task = q.order_by(AiTask.created_at.desc()).first()
+    if not task:
+        return {"job": None}
+    view = _job_view(task)
+    if view["acknowledged"] or view["status"] == "CANCELLED":
+        return {"job": None}
+    return {"job": view}
+
+
+@router.get("/v1/jobs/{task_id}")
+async def get_html_document_job(
+    task_id: str,
+    since: int = 0,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> dict:
+    task = _load_job(db, task_id, _actor_institute(current_user, None))
+    return _job_view(task, max(0, since))
+
+
+@router.post("/v1/jobs/{task_id}/cancel")
+async def cancel_html_document_job(
+    task_id: str,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> dict:
+    task = _load_job(db, task_id, _actor_institute(current_user, None))
+    if task.status == AiTaskStatus.PROGRESS.value:
+        task.status = AiTaskStatus.FAILED.value
+        task.status_message = _CANCELLED_MSG
+    _set_acked(db, task)
+    return _job_view(task)
+
+
+@router.post("/v1/jobs/{task_id}/ack")
+async def ack_html_document_job(
+    task_id: str,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> dict:
+    """The editor applied (or dismissed) this result — stop offering it."""
+    task = _load_job(db, task_id, _actor_institute(current_user, None))
+    _set_acked(db, task)
+    return {"ok": True}

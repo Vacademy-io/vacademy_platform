@@ -169,6 +169,54 @@ async def _generate_one_image(
             pass
 
 
+_ANY_IMG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_SRC_RE = re.compile(r'\ssrc=(["\'])(.*?)\1', re.IGNORECASE)
+# An alt this short ("image", "photo") is not a usable drawing prompt.
+_MIN_ALT_PROMPT_CHARS = 12
+
+
+def adopt_foreign_images(html: str, allowed_urls: Optional[set] = None) -> Tuple[str, int]:
+    """Turn images the model INVENTED into proper illustration placeholders.
+
+    Despite the prompt, models sometimes emit `<img src="https://…/rocket.png">`
+    (a guessed/hallucinated URL) instead of the `data-img-prompt` contract —
+    nothing generates those, so they reach the learner as a broken-image icon
+    with the alt text showing. Any <img> whose src is not one we handed the
+    model (uploads, PDF figures, logo, images already in an edited page) or an
+    inline data: URI is rewritten into a placeholder drawn from its alt text;
+    with no usable alt it is dropped. Returns (html, adopted_count)."""
+    if not html or "<img" not in html.lower():
+        return html, 0
+    allowed = {u.strip() for u in (allowed_urls or set()) if u and u.strip()}
+    adopted = 0
+
+    def _fix(m: "re.Match[str]") -> str:
+        nonlocal adopted
+        tag = m.group(0)
+        if "data-img-prompt" in tag.lower():
+            return tag
+        src_m = _SRC_RE.search(tag)
+        src = (src_m.group(2) if src_m else "").strip()
+        if src == "placeholder.png" or src.startswith("data:") or src in allowed:
+            return tag
+        alt_m = _ALT_RE.search(tag)
+        alt = (alt_m.group(2) if alt_m else "").strip()
+        if len(alt) < _MIN_ALT_PROMPT_CHARS:
+            logger.info("Dropping invented image with no usable alt: %s", src[:80])
+            return ""
+        adopted += 1
+        safe = html_lib.escape(html_lib.unescape(alt), quote=True)
+        return (
+            f'<img src="placeholder.png" data-img-prompt="{safe}" '
+            f'data-img-aspect="{_aspect_of(tag)}" alt="{safe}">'
+        )
+
+    out = _ANY_IMG_RE.sub(_fix, html)
+    if adopted:
+        logger.info("Adopted %d invented image URL(s) as illustration placeholders", adopted)
+    return out, adopted
+
+
 def count_image_placeholders(html: str) -> int:
     """How many illustrations this document asks for (before the cap) — so a
     caller can tell the user a picture pass is about to add real seconds."""
@@ -269,6 +317,7 @@ async def illustrate_document(
 __all__ = [
     "normalize_code_blocks",
     "illustrate_document",
+    "adopt_foreign_images",
     "count_image_placeholders",
     "strip_wrapping_fence",
     "MAX_DOC_IMAGES",

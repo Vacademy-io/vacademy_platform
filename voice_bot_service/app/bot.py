@@ -2081,8 +2081,10 @@ class NoRepeatGate(FrameProcessor):
         r"नमस्ते|नमस्कार|हेलो|हैलो)(\s+(ji|जी|sir|ma'?am|madam))?\W*$", re.I)
 
     def _may_ask_next_step(self) -> bool:
-        """At most two per call AND at most one per caller turn."""
-        if self._next_steps >= 2:
+        """At most five per call AND at most one per caller turn. Two ran out
+        by the middle of a scripted call (97c06634): every repeat after that
+        went straight to a bare handback."""
+        if self._next_steps >= 5:
             return False
         turn = normalize_spoken(self._last_caller_text() or "")
         if turn and turn == self._next_step_for:
@@ -2993,8 +2995,15 @@ def next_step_cue(held: str, kind: str = "", attempt: int = 0):
                "nothing. Do not restate it again. ")
         what = "restatement"
     elif held:
-        why = ("[Your last reply only repeated a question they have ALREADY "
-               "answered. Do not ask it again, and do not restate their answer. ")
+        # Name the line. A generic "you repeated yourself" left Gemini to guess
+        # what it had repeated, and it said the same line again — then the
+        # fallback was a bare "जी, बोलिए।" / "हाँ जी?" (calls 83735c51,
+        # 97c06634, 2026-09-26: the expectations lines, which are statements,
+        # re-said after the parent's "ठीक है").
+        line = " ".join((held or "").split()).replace("]", "").replace('"', "'")[:160]
+        why = ("[You just said: \"" + line + "\" — the caller HEARD it and has replied. "
+               "Do not say it again, not even reworded, and do not restate their answer. "
+               "Continue with what comes AFTER it in your script. ")
         what = "all-repeat"
     else:
         why = ("[Your last reply was only an acknowledgment and the caller is "

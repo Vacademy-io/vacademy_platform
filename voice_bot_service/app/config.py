@@ -685,8 +685,12 @@ class Settings:
     # A short answer's run waits for the caller's voice to go quiet — but not
     # forever: a noisy line keeps the VAD "on" (call 59888de8: the last answer
     # waited out the hang-up). Past this, the voice is noise; the run goes.
+    # 3.0 -> 6.0 (2026-09-26): in production 5 of the 6 releases since 22 Sep
+    # were a caller still TALKING ("हाँ जी" then a 4 s answer), not noise — the
+    # bot answered the bare "हाँ" (re-asking the name and class) and then the
+    # real answer, back to back (calls 23a3ffd9, 8b8533fc).
     short_answer_noise_cap_secs: float = field(
-        default_factory=lambda: float(_env("SHORT_ANSWER_NOISE_CAP_SECS", "3.0")))
+        default_factory=lambda: float(_env("SHORT_ANSWER_NOISE_CAP_SECS", "6.0")))
     # Cushion questions in context instead of firing them bare ("Do you take live
     # classes?") — founder 2026-09-08, "it's asking questions as if she is my
     # mother... humanize the prompt, inculcate this into AI calling in general".

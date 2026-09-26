@@ -5486,7 +5486,7 @@ async def test_a_question_is_answered_not_handed_back_when_the_reply_was_a_repea
     b.FrameProcessor.process_frame = _noop_super
     line = "generally जब parents किसी coaching से जुड़ते हैं तो उनकी तीन-चार basic expectations होती हैं।"
     await _reply(g, line)
-    g._next_steps = 2                               # per-call budget already spent
+    g._next_steps = 5                               # per-call budget already spent
     caller["t"] = "हाँ anything else?"
     rec.text.clear()
     await _reply(g, line)                           # the model repeats its script line
@@ -6459,3 +6459,23 @@ def test_a_filler_after_the_opening_does_not_make_it_unheard():
     assert b._opening_barely_heard(opening, cut, 0.0), "a real cut at the start is still unheard"
     assert b._opening_barely_heard(opening, [], 0.0)
     assert not b._opening_barely_heard(opening, cut, 12.0), "once a reply ran, never"
+
+
+
+def test_a_caller_still_talking_after_haan_ji_is_not_line_noise():
+    """Calls 23a3ffd9 / 8b8533fc (2026-09-26): "हाँ जी" then a 4 s answer
+    tripped the 3 s noise cap; the bot answered the bare "हाँ" and then the
+    real answer, back to back. The cap must outlast an ordinary answer."""
+    from app.config import Settings
+    assert Settings().short_answer_noise_cap_secs >= 6.0
+
+
+
+def test_the_next_step_cue_names_the_line_that_was_repeated():
+    """Calls 83735c51 / 97c06634 (2026-09-26): a generic cue let Gemini repeat
+    the same line again, and the fallback was a bare handback."""
+    held = "सर, generally जब parents किसी coaching से जुड़ते हैं तो उनकी तीन-चार basic expectations होती हैं।"
+    what, cue = b.next_step_cue(held, "", 1)
+    assert what == "all-repeat"
+    assert "generally जब parents" in cue and "AFTER it" in cue
+    assert "]" not in cue[:-1], "the quoted line must not close the cue early"

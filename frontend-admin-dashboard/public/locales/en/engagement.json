@@ -106,7 +106,29 @@
             "content": "Pick the course content for every course-content task.",
             "options": "A question needs at least two options.",
             "correct": "Mark which option is correct.",
-            "save": "Could not save this plan."
+            "save": "Could not save this plan.",
+            "titleTooLong": "Keep this under 200 characters.",
+            "days": "Add at least one day.",
+            "date": "Enter a valid date.",
+            "dateOrder": "The last day can't be before the first day.",
+            "timeFormat": "Enter a time like 06:00.",
+            "revealBeforeOpen": "Answers can't be revealed before the task opens.",
+            "weekdays": "None of the chosen weekdays falls between the first and last day.",
+            "points": "Enter a whole number from 0 to 1000.",
+            "maxScore": "Enter the game's top score, a whole number from 1 to 1000.",
+            "contentRequired": "Add the content learners will see.",
+            "pollOptions": "A poll needs at least two options.",
+            "optionIds": "Two options share the same id. Remove one and add it again.",
+            "catchUpDays": "Catch-up can last from 1 to 30 days.",
+            "catchUpPercent": "Enter a percentage from 1 to 100.",
+            "cardsMin": "Add at least 1 card.",
+            "cardsMax": "Flashcards can have at most 50 cards.",
+            "cardFront": "The front is required.",
+            "cardBack": "The back is required.",
+            "cardTooLong": "This is over the character limit.",
+            "cardTooManyLines": "Keep each side to 12 lines or fewer.",
+            "cardId": "This card has an invalid id. Duplicate it and delete the original.",
+            "cardDuplicateId": "Two cards share an id. Duplicate one of them and delete the original."
         },
         "types": {
             "READING_HTML": "Reading",
@@ -122,7 +144,11 @@
             "COURSE_SLIDE": "Course content",
             "COURSE_SLIDE_hint": "A lesson from this course",
             "QUIZ": "Quiz",
-            "QUIZ_hint": "Several graded questions"
+            "QUIZ_hint": "Several graded questions",
+            "FLASHCARDS": "Flashcards",
+            "FLASHCARDS_hint": "Cards to flip and self-check",
+            "UNKNOWN": "Task",
+            "UNKNOWN_hint": "A task type this version can't edit"
         },
         "formats": {
             "MCQ": "Multiple choice",

@@ -17,7 +17,13 @@ export interface AiPlanMix {
     text_question: boolean;
     poll: boolean;
     reading: boolean;
+    /** Legacy: an AI flashcard deck rendered as a GAME page. Replaced by `flashcards`. */
     game: boolean;
+    /**
+     * Native FLASHCARDS decks. Servers before the flashcards planner ignore the field
+     * (pydantic drops unknown keys), so sending it early is harmless.
+     */
+    flashcards?: boolean;
 }
 
 export interface AiPlanBrief {

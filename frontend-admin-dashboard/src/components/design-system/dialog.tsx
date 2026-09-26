@@ -30,6 +30,12 @@ interface DialogProps {
      * Nesting has to happen here — DialogTrigger > TooltipTrigger > the element.
      */
     triggerTooltip?: string;
+    /**
+     * Start-aligned content in the footer row, opposite the `footer` actions: an error
+     * summary, a "go to first error" link, a dirty-state note. Renders only alongside
+     * `footer`; callers that don't pass it get the footer exactly as before.
+     */
+    footerLeft?: React.ReactNode;
 }
 
 export const MyDialog = ({
@@ -46,6 +52,7 @@ export const MyDialog = ({
     headerActions,
     className,
     triggerTooltip,
+    footerLeft,
 }: DialogProps) => {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -61,7 +68,7 @@ export const MyDialog = ({
             )}
             <DialogContent
                 data-dialog-id={dialogId}
-                className={`${dialogWidth || 'max-w-2xl'} dialog-no-close-icon flex max-h-[85vh] w-full flex-col overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl ${className || ''}`}
+                className={`${dialogWidth || 'max-w-2xl'} dialog-no-close-icon flex max-h-[85vh] w-full flex-col overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl ${className || ''}`} // design-lint-ignore: pre-existing viewport cap shared by every MyDialog
                 onInteractOutside={(e) => {
                     if (isTour) e.preventDefault();
                 }}
@@ -106,7 +113,18 @@ export const MyDialog = ({
                 {/* Footer */}
                 {footer && (
                     <DialogFooter className="shrink-0 border-t border-gray-100 bg-gray-50/50 px-6 py-4">
-                        <div className="flex w-full items-center justify-end gap-3">{footer}</div>
+                        {footerLeft ? (
+                            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0 flex-1">{footerLeft}</div>
+                                <div className="flex shrink-0 items-center justify-end gap-3">
+                                    {footer}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex w-full items-center justify-end gap-3">
+                                {footer}
+                            </div>
+                        )}
                     </DialogFooter>
                 )}
             </DialogContent>
